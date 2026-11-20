@@ -59,3 +59,7 @@ Every `ui.tsx` stays React while React code imports it. A Solid part reaches ano
 or through a `ui.solid.tsx` once that extension has one: `conversations` does (`ConversationRef`), so `pause` and
 `self` dropped their React or copied references. Give an extension a `ui.solid.tsx` when a moved part needs one of its
 components, not ahead of time.
+
+`sidebar` has one since 0.9 E (`ProjectSwatch`, `RepoLabel` for the projects rail), sharing `colour.ts` with its React
+`tile.tsx`. The core's `web/src/app/titlebar.tsx` keeps its own `prettyName`; both SDKs export the one in
+`web/src/sdk/format.ts`, so the switch drops the title bar's copy.
