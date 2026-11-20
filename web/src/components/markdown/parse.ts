@@ -12,6 +12,9 @@ import { remarkMentions } from '../ai/mentions.ts'
 
 export const incompleteLink = 'streamdown:incomplete-link'
 
+const domClobbering = new Set<unknown>(['id', 'name'])
+const footnoteIds: [string, RegExp, string] = ['id', /^user-content-/, 'footnote-label']
+
 const schema = {
   ...defaultSchema,
   clobberPrefix: '',
@@ -23,6 +26,12 @@ const schema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code ?? []), 'metastring'],
+    '*': [
+      ...(defaultSchema.attributes?.['*'] ?? []).filter(
+        (attribute) => !domClobbering.has(attribute),
+      ),
+      footnoteIds,
+    ],
   },
 }
 const hardening = {
