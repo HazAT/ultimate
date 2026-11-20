@@ -45,15 +45,33 @@ export const inboxItems = (
         message,
       })),
     ...provided.flat().map((item) => ({ key: item.key, at: item.at, item })),
-  ].toSorted((a, b) => a.at - b.at)
+  ].toSorted(byAge)
+
+const byAge = (a: Anchor, b: Anchor) => a.at - b.at || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
 
 export function shown<T extends Anchor>(entries: readonly T[], selected: Selection): T | undefined {
   if (!selected) return entries[0]
   return (
     entries.find((entry) => entry.key === selected.key) ??
-    entries.find((entry) => entry.at >= selected.at) ??
+    entries.find((entry) => byAge(entry, selected) > 0) ??
     entries.at(-1)
   )
+}
+
+export const UNLOADED = 0
+
+export function selectionAfterChange(
+  before: readonly Anchor[],
+  after: readonly Anchor[],
+  selected: Selection,
+): Selection | undefined {
+  if (!selected) return undefined
+  const entry = after.find((candidate) => candidate.key === selected.key)
+  if (entry) return entry.at === selected.at ? undefined : { ...selected, at: entry.at }
+  const notListedYet = !before.some((candidate) => candidate.key === selected.key)
+  if (notListedYet) return undefined
+  const successor = shown(after, selected)
+  return successor && { key: successor.key, at: successor.at, open: selected.open }
 }
 
 export const previewUrl = (text: string) =>
@@ -103,7 +121,14 @@ export function answeredToday(messages: readonly Message[], now: number): Answer
     .flatMap((m) => {
       const reply = messages.find((r) => r.from === 'user' && r.re === m.id)
       return reply && reply.at >= midnight
-        ? [{ ...sender(m.from), id: m.id, at: reply.at, title: lead(m.text).title }]
+        ? [
+            {
+              ...sender(m.from),
+              id: m.id,
+              at: reply.at,
+              title: lead(m.text).title,
+            },
+          ]
         : []
     })
     .toSorted((a, b) => b.at - a.at)

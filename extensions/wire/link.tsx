@@ -11,10 +11,10 @@ import {
 import type { EntryRecord } from '@/sdk'
 import { cacheBusts } from '../../lib/context-usage.ts'
 import { SYSTEM_TAB_KEY } from '../system/ui.tsx'
-import { callFor } from './call-for.ts'
 import { ListAction } from './refs.ts'
 import { WIRE_PICKED_KEY } from './state.ts'
 import type { Picked } from './state.ts'
+import type { WireSummary } from './refs.ts'
 
 export function useOpenWire() {
   const [, setTab] = useUiState<string>(SYSTEM_TAB_KEY, 'agents')
@@ -23,6 +23,20 @@ export function useOpenWire() {
     setTab('wire')
     showSurface('system')
   }
+}
+
+const MAX_RESPONSE_START_DISTANCE_MS = 60_000
+
+function callFor(
+  calls: readonly WireSummary[],
+  responseId: string | undefined,
+  at: number,
+): WireSummary | undefined {
+  if (responseId) return calls.find((call) => call.responseId === responseId)
+  let best: WireSummary | undefined
+  for (const call of calls)
+    if (!best || Math.abs(call.startedAt - at) < Math.abs(best.startedAt - at)) best = call
+  return best && Math.abs(best.startedAt - at) <= MAX_RESPONSE_START_DISTANCE_MS ? best : undefined
 }
 
 export function WireLink({

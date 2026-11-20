@@ -16,7 +16,7 @@ import {
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { StandingAction } from '../subagents/refs.ts'
-import { SELECTED, SURFACE, amber, keyOf } from './items.ts'
+import { SELECTED, SURFACE, UNLOADED, amber, keyOf } from './items.ts'
 import type { Anchor, Answered, Selection } from './items.ts'
 
 async function backToUltimate(source: string) {
@@ -121,7 +121,7 @@ export function LinkOverlay(props: { entries: readonly Anchor[] }) {
   const [, setSelected] = useUiState<Selection>(SELECTED, null)
   const open = (key: string | undefined) => {
     if (key !== undefined) {
-      const at = props.entries.find((entry) => entry.key === key)?.at ?? 0
+      const at = props.entries.find((entry) => entry.key === key)?.at ?? UNLOADED
       setSelected({ key, at, open: true })
     }
     showSurface(SURFACE)

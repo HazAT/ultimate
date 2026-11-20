@@ -4,9 +4,38 @@ import { formatTokens } from '@/sdk/solid'
 import { isBranch, isObject, parse, plural, requestShape } from './json.ts'
 import type { Json, JsonObject } from './json.ts'
 import type { WireCall, WireUsage } from './refs.ts'
-import { events, runs } from './stream.ts'
-import type { Event } from './stream.ts'
 import { CacheMark, Children, Fold, Node, Part, TextBlock } from './tree.solid.tsx'
+
+type Event = { name: string; data: string }
+
+function events(stream: string): Event[] {
+  return stream
+    .split(/\r?\n\r?\n/u)
+    .map((chunk) => {
+      const lines = chunk.split(/\r?\n/u)
+      const name =
+        lines
+          .find((line) => line.startsWith('event:'))
+          ?.slice(6)
+          .trim() ?? 'message'
+      const data = lines
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n')
+      return { name, data }
+    })
+    .filter((event) => event.data || event.name !== 'message')
+}
+
+function runs(list: Event[]) {
+  const out: { name: string; events: Event[] }[] = []
+  for (const event of list) {
+    const last = out.at(-1)
+    if (last?.name === event.name) last.events.push(event)
+    else out.push({ name: event.name, events: [event] })
+  }
+  return out
+}
 
 function HeaderValue(props: { name: string; value: string }) {
   return (
@@ -237,8 +266,16 @@ function Usage(props: { usage: WireUsage }) {
   const prompt = () => props.usage.input + props.usage.cacheRead + props.usage.cacheWrite
   const cells = createMemo(() => [
     { label: 'cache read', tokens: props.usage.cacheRead, tone: 'bg-brand/60' },
-    { label: 'cache write', tokens: props.usage.cacheWrite, tone: 'bg-warning/70' },
-    { label: 'input', tokens: props.usage.input, tone: 'bg-muted-foreground/50' },
+    {
+      label: 'cache write',
+      tokens: props.usage.cacheWrite,
+      tone: 'bg-warning/70',
+    },
+    {
+      label: 'input',
+      tokens: props.usage.input,
+      tone: 'bg-muted-foreground/50',
+    },
   ])
   return (
     <div class="flex flex-col gap-2 px-1 py-1.5">

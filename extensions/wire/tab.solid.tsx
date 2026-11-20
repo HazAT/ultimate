@@ -57,7 +57,6 @@ function CallRow(props: { call: WireSummary; selected: boolean; onPick: () => vo
         'block h-auto w-full rounded-none border-0 border-l-2 border-transparent px-3 py-1.5 text-left font-mono text-[11px] font-normal hover:bg-accent/60',
         props.selected && 'border-brand bg-accent',
       )}
-      data-selected={props.selected || undefined}
       onClick={() => props.onPick()}
       variant="ghost"
     >
@@ -216,7 +215,10 @@ function CallMenu(props: {
 
 export function WireTab(props: { busy: boolean | undefined; phone: boolean }) {
   const conversationId = useConversationId()
-  const list = useAction(ListAction, null, { on: () => props.busy, focus: true })
+  const list = useAction(ListAction, null, {
+    on: () => props.busy,
+    focus: true,
+  })
   const [picked, setPicked] = useUiState<Picked | null>(WIRE_PICKED_KEY, null)
   const newestFirst = createMemo(() => list.data()?.toReversed() ?? [])
   const selected = createMemo(() => {

@@ -44,6 +44,7 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 | inbox      | the surface frame (`Surface`: core `Sidebar`, `Header`, the `QuestionPane` takeover)                                        | `extensions/inbox/web.tsx:35`       | the surface host; side-chat's React pane               |
 | inbox      | the reading pane (`Reading`): messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, a provided item's `pane` | `extensions/inbox/reading.tsx:12`   | hosts other extensions' React                          |
 | inbox      | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands                                   | `extensions/inbox/ui.tsx`           | React points other extensions provide                  |
+| wire       | the `wire.open` overlay `OpenOnCommand` (React `useDialog`, `useOpenWire`)                                                  | `extensions/wire/web.tsx`           | a command's context cannot set UI state                |
 | wire       | the tab's React wrapper, docking the core `Conversation`                                                                    | `extensions/wire/web.tsx`           | System's tab host; the core dock                       |
 
 ## Hooks the core calls (`provide`)

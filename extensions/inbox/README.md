@@ -36,14 +36,15 @@ React renders the shell and reading pane; Solid islands render the list, empty s
 handler. They receive plain data, not provided panes.
 
 The durable UI key `ext.inbox.selected` holds `{ key, at, open }`. The list and the reading pane show that key if
-present. If it leaves, they show the first entry at or after its timestamp, or the last entry if none is that new.
+present. If it leaves, they show the next one in the list's order (by age, then key), or the last entry if none is
+that new, and the selection moves to that entry, so a newer arrival never takes its place.
 With no selection they show the oldest entry. Desktop ignores `open`; the phone's back arrow clears `open` without
 forgetting the selection.
 
 `?inbox=<key>` on load opens the surface at that entry and removes the parameter from the address. The
 `inbox:open {key}` event does the same at runtime (a push notification's tap, `extensions/push`). A plain number, in
 either or as `inbox:open {message}`, is a question's message id. A link to an entry that has not loaded yet keeps
-its key with `at: 0`, so the entry shows when it arrives.
+its key with `at: 0`, so the entry shows when it arrives and the selection takes its real age.
 
 ## Elsewhere
 

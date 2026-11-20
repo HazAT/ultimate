@@ -34,7 +34,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     if (path === '/api/extensions/wire/actions/list')
       return Response.json({ result: harness.calls })
     if (path === '/api/extensions/wire/actions/call') {
-      const { args } = JSON.parse(init!.body as string) as { args: { n: number } }
+      const { args } = JSON.parse(init!.body as string) as {
+        args: { n: number }
+      }
       const call = harness.calls.find(({ n }) => n === args.n)
       return Response.json({
         result: call
@@ -57,7 +59,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     fetch,
   })
   const api = createApi(store, { fetch })
-  return { store, api, reads: createReads(api, store), uiState: createUiState(api.updateUi) }
+  return {
+    store,
+    api,
+    reads: createReads(api, store),
+    uiState: createUiState(api.updateUi),
+  }
 })
 
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
@@ -99,23 +106,30 @@ it('records an agent’s call and part under Wire without changing the System ta
   ))
   await settle()
   flush()
-  expect(container.querySelector('[data-selected]')?.getAttribute('aria-label')).toBe(
+  expect(container.querySelector('[aria-current="true"]')?.getAttribute('aria-label')).toBe(
     'Call #13 claude-test',
   )
   await expectDistinctAgentNames(agent)
 
   expect(
-    await agent.act({ steps: [{ ref: control('Call #12 claude-test').ref, action: 'press' }] }),
+    await agent.act({
+      steps: [{ ref: control('Call #12 claude-test').ref, action: 'press' }],
+    }),
   ).toMatchObject({ ok: true })
   await settle()
   flush()
-  expect(container.querySelector('[data-selected]')?.getAttribute('aria-label')).toBe(
+  expect(container.querySelector('[aria-current="true"]')?.getAttribute('aria-label')).toBe(
     'Call #12 claude-test',
   )
   const part = control('Part of the call')
-  expect(part).toMatchObject({ component: 'segmented-control', value: 'request' })
+  expect(part).toMatchObject({
+    component: 'segmented-control',
+    value: 'request',
+  })
   expect(
-    await agent.act({ steps: [{ ref: part.ref, action: 'setValue', args: ['response'] }] }),
+    await agent.act({
+      steps: [{ ref: part.ref, action: 'setValue', args: ['response'] }],
+    }),
   ).toMatchObject({ ok: true })
   await settle()
   flush()
@@ -131,7 +145,13 @@ it('records an agent’s call and part under Wire without changing the System ta
   setPhone(true)
   flush()
   const result = await agent.act({
-    steps: [{ ref: control('Choose Wire call').ref, action: 'press', args: ['#13 claude-test'] }],
+    steps: [
+      {
+        ref: control('Choose Wire call').ref,
+        action: 'press',
+        args: ['#13 claude-test'],
+      },
+    ],
   })
   expect(result.error?.message).toBeUndefined()
   expect(result).toMatchObject({ ok: true })

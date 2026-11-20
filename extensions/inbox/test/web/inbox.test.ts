@@ -1,6 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { inboxItems, keyOf, shown } from '../../items.ts'
+import { inboxItems, keyOf, selectionAfterChange, shown, UNLOADED } from '../../items.ts'
+import type { Anchor, Selection } from '../../items.ts'
 import type { InboxItem } from '../../ui.tsx'
 import type { Message } from '../../../messages/refs.ts'
 
@@ -61,11 +62,33 @@ it('moves on to the next oldest when the shown item is answered', () => {
   expect(shown([], selected)).toBeUndefined()
 })
 
-it('shows the linked key when it loads, even without its timestamp', () => {
-  const linked = { key: 'message:7', at: 0, open: true }
-  const entries = inboxItems(log)
-  expect(shown(entries.slice(0, -1), linked)?.key).toBe('message:1')
-  expect(shown(entries, linked)?.key).toBe('message:7')
+const step = (before: Anchor[], after: Anchor[], selected: Selection) =>
+  selectionAfterChange(before, after, selected) ?? selected
+const at = (key: string, time: number): Anchor => ({ key, at: time })
+
+it('keeps the item that took the shown one’s place when a newer one arrives', () => {
+  const [a, b, c, d] = [at('a', 10), at('b', 20), at('c', 30), at('d', 40)]
+  let selected = step([a, b, c], [a, b], { key: 'c', at: 30, open: true })
+  expect(selected).toEqual({ key: 'b', at: 20, open: true })
+  selected = step([a, b], [a, b, d], selected)
+  expect(shown([a, b, d], selected)?.key).toBe('b')
+})
+
+it('waits for a linked key, then moves on from it by its real age', () => {
+  const [a, b, c] = [at('a', 10), at('b', 20), at('c', 30)]
+  let selected = step([], [a, c], { key: 'b', at: UNLOADED, open: true })
+  expect(selected).toEqual({ key: 'b', at: UNLOADED, open: true })
+  selected = step([a, c], [a, b, c], selected)
+  expect(selected).toEqual({ key: 'b', at: 20, open: true })
+  selected = step([a, b, c], [a, c], selected)
+  expect(shown([a, c], selected)?.key).toBe('c')
+})
+
+it('moves forward past items of the same age', () => {
+  const entries = inboxItems([], [[item('x:b', 10), item('x:a', 10), item('x:c', 20)]])
+  expect(entries.map((entry) => entry.key)).toEqual(['x:a', 'x:b', 'x:c'])
+  const left = entries.filter((entry) => entry.key !== 'x:b')
+  expect(shown(left, { key: 'x:b', at: 10, open: false })?.key).toBe('x:c')
 })
 
 it('reads a link as a key, a plain number as a message id', () => {

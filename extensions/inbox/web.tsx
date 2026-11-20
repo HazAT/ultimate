@@ -1,4 +1,5 @@
 import { InboxIcon } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import {
   Header,
   Provided,
@@ -10,11 +11,12 @@ import {
   useUiState,
   useUltimate,
   useViewport,
+  writingAs,
 } from '@/sdk'
 import type { Message } from '../messages/refs.ts'
 import { UnderUltimate } from '../sidebar/ui.tsx'
 import { Badge, LinkOverlay, SidebarRow, Zero } from './chrome.solid.tsx'
-import { SELECTED, SURFACE, answeredToday, shown, toRow } from './items.ts'
+import { SELECTED, SURFACE, answeredToday, selectionAfterChange, shown, toRow } from './items.ts'
 import type { Entry, Selection } from './items.ts'
 import { List } from './list.solid.tsx'
 import { Reading } from './reading.tsx'
@@ -37,6 +39,12 @@ function Surface({ entries, messages }: { entries: Entry[]; messages: readonly M
   const now = useNow(60_000)
   const [selected, setSelected] = useUiState<Selection>(SELECTED, null)
   const item = shown(entries, selected)
+  const listed = useRef(entries)
+  useEffect(() => {
+    const next = selectionAfterChange(listed.current, entries, selected)
+    listed.current = entries
+    if (next) writingAs('app', () => setSelected(next))
+  }, [entries, selected, setSelected])
   const list = <ListIsland phone={phone} rows={entries.map(toRow)} />
   const reading = item && (
     <Reading
@@ -121,7 +129,11 @@ export default defineWebExtension({
     },
   ],
   commands: [
-    { id: 'inbox.open', title: 'Open Inbox', run: (context) => context.showSurface(SURFACE) },
+    {
+      id: 'inbox.open',
+      title: 'Open Inbox',
+      run: (context) => context.showSurface(SURFACE),
+    },
   ],
   provides: [provide(UnderUltimate, useInboxSidebar)],
 })
