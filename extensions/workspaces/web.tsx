@@ -7,6 +7,7 @@ import { cn, column, defineWebExtension, useConversation, useTranscript } from '
 import { useWorkspaceIndex } from './data.tsx'
 import { CommitCount, LandingCard, useGithubRepo } from './landing.tsx'
 import { LanderLogEntry, LanderReport, WorkspaceCall } from './log.tsx'
+import { PullRequestLink } from './pull-request-link.tsx'
 import { compareUrl } from '../../lib/compare.ts'
 import { NoteEntry } from '../entries/ui.tsx'
 import type { NoteData } from '../entries/refs.ts'
@@ -114,6 +115,7 @@ function LanderComposer({ core, dock }: { core: ReactNode; dock?: boolean }) {
 
 export default defineWebExtension({
   composer: LanderComposer,
+  link: PullRequestLink,
   tools: { workspace: WorkspaceCall },
   entries: {
     'lineage.note': ({ entry, core }) =>

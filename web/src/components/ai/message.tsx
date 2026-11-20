@@ -18,7 +18,14 @@ import {
   linkRenderers,
 } from '../../sdk/registry.ts'
 import { codePlugin } from './code-block.tsx'
-import { mentionHref, parseMention, remarkMentions, splitMentions } from './mentions.ts'
+import {
+  mentionHref,
+  parseMention,
+  parsePullRequest,
+  remarkMentions,
+  remarkPullRequests,
+  splitMentions,
+} from './mentions.ts'
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & { from: 'user' | 'assistant' }
 
@@ -49,7 +56,7 @@ const CoreLink = defaultComponents.a
 function Link(props: ComponentProps<'a'> & ExtraProps) {
   const renderers = linkRenderers(useExtensions())
   const { href, children } = props
-  const mentionWithoutRendererStaysText = href && parseMention(href)
+  const mentionWithoutRendererStaysText = href && (parseMention(href) || parsePullRequest(href))
   const core = mentionWithoutRendererStaysText ? <>{children}</> : <CoreLink {...props} />
   const incompleteStreamingLink = !href || href === 'streamdown:incomplete-link'
   if (incompleteStreamingLink) return core
@@ -106,7 +113,11 @@ function InlineCode(props: ComponentProps<'code'> & ExtraProps) {
 }
 
 const components = { a: Link, inlineCode: InlineCode }
-const gfmBeforeMentionsKeepsUrlFragments = [...Object.values(defaultRemarkPlugins), remarkMentions]
+const gfmBeforeMentionsKeepsUrlFragments = [
+  ...Object.values(defaultRemarkPlugins),
+  remarkPullRequests,
+  remarkMentions,
+]
 
 function ExtensionCodeBlock({ code, language, isIncomplete }: CustomRendererProps) {
   const renderers = codeBlockRenderers(useExtensions(), language)
