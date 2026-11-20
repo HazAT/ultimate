@@ -53,6 +53,10 @@ it('follows, escapes, returns and keeps the read row in place while history page
     (await conversation.submit({ type: 'input', content }, context)).wait(context)
   for (let n = 0; n < 60; n++) await say(`turn ${n}`)
   await say('output')
+  await server.harness.commit(
+    (tx) => tx.appendEntry(id, { kind: 'conversations.identity', data: {} }),
+    context,
+  )
 
   const browser = await chromium.launch({
     executablePath: await browserBinary(),
@@ -63,6 +67,23 @@ it('follows, escapes, returns and keeps the read row in place while history page
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(`${server.url}/?conversation=${id}`)
   await page.locator('[data-ui="transcript"] [data-ui="tool"]').last().waitFor()
+  // A row a renderer leaves empty (conversations' React renderer of its identity note returns null) is hidden, and no
+  // row is shown with nothing in it.
+  const blank = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('[data-ui="transcript"] > [data-entry-id]')].filter(
+        (row) =>
+          getComputedStyle(row).display !== 'none' && row.getBoundingClientRect().height === 0,
+      ).length,
+  )
+  expect(blank).toBe(0)
+  expect(
+    await page.evaluate(() =>
+      [...document.querySelectorAll('[data-ui="transcript"] > [data-entry-id]')].some(
+        (row) => getComputedStyle(row).display === 'none',
+      ),
+    ),
+  ).toBe(true)
   const place = () =>
     page.evaluate(() => {
       const scroll = document.querySelector('[data-ui="transcript"]')!.parentElement!

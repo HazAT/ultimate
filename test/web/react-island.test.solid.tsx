@@ -1,7 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h, act, useContext, useEffect } from 'react'
-import { readFileSync } from 'node:fs'
 import { createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
@@ -104,7 +103,7 @@ it('marks an empty React result so its row collapses, renders island(C) as Solid
   expect(container.innerHTML).toBe('<b>second x</b>')
 })
 
-it('keeps a chained row mounted while its streamed props change; hides an empty React row, not a text-only Solid one', () => {
+it('keeps a chained row mounted while its streamed props change, and marks only an empty React host', () => {
   const mounts = vi.fn<() => void>()
   const ReactWrap = ({ core, call }: { core: unknown; call: { output: string } }) => {
     useEffect(() => mounts(), [])
@@ -157,13 +156,9 @@ it('keeps a chained row mounted while its streamed props change; hides an empty 
   expect(container.querySelector('section')).toBe(section)
   expect(section?.textContent).toBe('react twotwo')
   expect(mounts).toHaveBeenCalledOnce()
-  const emptyRow = ':empty, :has(> [data-empty]:only-child)'
   const row = (name: string) => container.querySelector(`[data-row="${name}"]`)!
-  expect(readFileSync('web/src/index.css', 'utf8')).toContain('&:has(> [data-empty]:only-child)')
-  expect(row('empty').matches(emptyRow)).toBe(true)
+  expect(row('empty').querySelector(':scope > [data-empty]:only-child')).not.toBeNull()
   expect(row('text').textContent).toBe('plain')
-  expect(row('text').matches(emptyRow)).toBe(false)
-  expect(row('chain').matches(emptyRow)).toBe(false)
 })
 
 it('reads a provided value in Solid, follows its replacement, and unmounts without React taking it as a cleanup', async () => {
