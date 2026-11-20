@@ -5718,15 +5718,15 @@
     },
     {
       "switch": {
-        "cold": 632,
-        "warm": 184.5
+        "cold": 638.5,
+        "warm": 185.5
       },
       "stream": {
         "median": 92,
         "p95": 94,
         "max": 583,
-        "taskMs": 5,
-        "taskP95Ms": 10.7,
+        "taskMs": 5.2,
+        "taskP95Ms": 6.9,
         "mutations": 1,
         "mutationsP95": 2,
         "events": 23
@@ -5740,7 +5740,7 @@
               "screenshots": 2,
               "kb": 126,
               "tokens": 3461,
-              "ms": 204,
+              "ms": 208,
               "ok": true
             },
             "ui": {
@@ -5749,7 +5749,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 395,
-              "ms": 85,
+              "ms": 98,
               "ok": true
             }
           },
@@ -5760,7 +5760,7 @@
               "screenshots": 2,
               "kb": 132,
               "tokens": 3461,
-              "ms": 211,
+              "ms": 209,
               "ok": true
             },
             "ui": {
@@ -5769,7 +5769,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 531,
-              "ms": 133,
+              "ms": 134,
               "ok": true
             }
           },
@@ -5780,7 +5780,7 @@
               "screenshots": 2,
               "kb": 141,
               "tokens": 3459,
-              "ms": 156,
+              "ms": 165,
               "ok": true
             },
             "ui": {
@@ -5795,11 +5795,11 @@
           }
         }
       },
-      "commit": "da4f7d76",
-      "sha": "da4f7d766db3a7c7c78cf036c05545d57a12063a",
+      "commit": "c72badc1",
+      "sha": "c72badc1ffecfab0c995685e59a22e6026abaf43",
       "label": "C0",
       "date": "2026-11-20",
-      "committedAt": 1795152586,
+      "committedAt": 1795152858,
       "lines": {
         "total": 51896,
         "solid": 9707,
