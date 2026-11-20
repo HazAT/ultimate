@@ -6,6 +6,7 @@ import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
+import { Input, SecretInput } from '@/components/ui/input.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
@@ -142,6 +143,37 @@ it('lets an agent open a tooltip and a status popover by their names', async () 
     true,
   )
   expect(container.textContent).toContain('Everything is fine')
+})
+
+it('lets an agent fill a text field and a secret it can never read back', async () => {
+  const typed = vi.fn<(value: string, source: string) => void>()
+  const container = renderSolid(() => (
+    <>
+      <Input aria-label="Machine name" onValueChange={(value, d) => typed(value, d.source)} />
+      <SecretInput aria-label="API token" onValueChange={(value, d) => typed(value, d.source)} />
+    </>
+  ))
+  await settle()
+  const secret = agent.snapshot().find((item) => item.label === 'API token')
+  expect(JSON.stringify(secret)).not.toContain('hunter2')
+  const result = await agent.act({
+    steps: [
+      { ref: refFor('Machine name'), action: 'setValue', args: ['laptop'] },
+      { ref: refFor('API token'), action: 'setValue', args: ['hunter2'] },
+    ],
+  })
+  expect(result.ok).toBe(true)
+  flush()
+  expect(typed.mock.calls).toEqual([
+    ['laptop', 'agent'],
+    ['hunter2', 'agent'],
+  ])
+  const field = container.querySelector<HTMLInputElement>('input[aria-label="API token"]')!
+  expect(field.type).toBe('password')
+  expect(JSON.stringify(agent.snapshot())).not.toContain('hunter2')
+  container.querySelector<HTMLButtonElement>('[aria-label="Show API token"]')!.click()
+  flush()
+  expect(field.type).toBe('text')
 })
 
 it('dims a disabled button that stays focusable', () => {
