@@ -41,10 +41,10 @@ a prompt run costs a whole agent turn per fire. The seventh fire within an hour 
 escalating with `Fired more than 6 times in an hour; paused`. Only fires that start a run or wake a subscriber count:
 one skipped beside a still-working run starts nothing, so a long deploy run does not pause its train.
 
-An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation` and `subagent`),
-model and thinking, discovered as in subagents; its isolate is ignored and unknown names are refused. Without one, runs
-copy the root agent minus the automation tool, on the default model. `model {provider, modelId}` and `thinking`
-override either. Enabled automations add a line each to the prompt, such as `when @ultimate context ≥ 80%`.
+An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation`, and `subagent`
+unless its `tools` lists it), model and thinking, discovered as in subagents; its isolate is ignored and unknown names
+are refused. Without one, runs copy the root agent minus the automation tool, on the default model.
+`model {provider, modelId}` and `thinking` override either. Enabled automations add a line each to the prompt, such as `when @ultimate context ≥ 80%`.
 
 ## Tool
 
