@@ -8,6 +8,7 @@ import type {
   TaskId,
 } from '@earendil-works/pi-durable'
 import type { ComponentType, ReactNode } from 'react'
+import type { Component as SolidComponent, Element as SolidElement } from 'solid-js'
 import type { ImageContent, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 
@@ -111,26 +112,31 @@ export type EntryRenderer = ComponentType<{
 }>
 
 /**
- * A link in Markdown (messages, reports): `href` and the link's `children`, and `core`, the rendering so far, starting
- * with the default link that asks before opening in a new tab. Return `core` for links you leave alone.
+ * A link in Markdown (messages, reports), a Solid component (`*.solid.tsx`): `href` and the link's `children`, and
+ * `core`, the rendering so far, starting with the default link that opens in a new tab. Return `core` for links you
+ * leave alone.
  */
-export type LinkRenderer = ComponentType<{ href: string; children: ReactNode; core: ReactNode }>
+export type LinkRenderer = SolidComponent<{
+  href: string
+  children: SolidElement
+  core: SolidElement
+}>
 
 /**
- * An inline code span in Markdown (messages, reports): its text as `code`, and `core`, the rendering so far, starting
- * with the default `<code>`. Return `core` for spans you leave alone.
+ * An inline code span in Markdown (messages, reports), a Solid component: its text as `code`, and `core`, the
+ * rendering so far, starting with the default `<code>`. Return `core` for spans you leave alone.
  */
-export type InlineCodeRenderer = ComponentType<{ code: string; core: ReactNode }>
+export type InlineCodeRenderer = SolidComponent<{ code: string; core: SolidElement }>
 
 /**
- * A fenced code block in Markdown, by its language: `code`, `language`, `incomplete` while the fence still streams, and
- * `core`, the rendering so far, starting with the highlighted block with its copy button.
+ * A fenced code block in Markdown by its language, a Solid component: `code`, `language`, `incomplete` while the
+ * fence still streams, and `core`, the rendering so far, starting with the highlighted block with its copy button.
  */
-export type CodeBlockRenderer = ComponentType<{
+export type CodeBlockRenderer = SolidComponent<{
   code: string
   language: string
   incomplete: boolean
-  core: ReactNode
+  core: SolidElement
 }>
 
 export type InboxRenderer = ComponentType<{ item: InboxItem; core: ReactNode; cancel: ReactNode }>

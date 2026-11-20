@@ -1,63 +1,22 @@
-import { createCodePlugin } from '@streamdown/code'
-import type { HighlightOptions, HighlightResult } from '@streamdown/code'
 import { cn } from 'cn'
 import type { CSSProperties, HTMLAttributes, Ref } from 'react'
-import { memo, useEffect, useState } from 'react'
+import { memo, useState } from 'react'
+import { highlight, plainLines } from '../markdown/highlight.ts'
+import type { Line } from '../markdown/highlight.ts'
 
-export const codePlugin = createCodePlugin({ themes: ['vitesse-light', 'vitesse-dark'] })
-const themes = codePlugin.getThemes()
-export type BundledLanguage = HighlightOptions['language']
+export { languageFromPath } from '../markdown/highlight.ts'
 
-const extensions: Record<string, string> = {
-  cjs: 'js',
-  mjs: 'js',
-  cts: 'ts',
-  mts: 'ts',
-  sh: 'bash',
-  zsh: 'bash',
-  yml: 'yaml',
-  md: 'markdown',
-  rs: 'rust',
-  py: 'python',
-  rb: 'ruby',
-  kt: 'kotlin',
-  h: 'c',
-  hpp: 'cpp',
-}
-export function languageFromPath(path: string): BundledLanguage {
-  const name = path.split('/').at(-1)?.toLowerCase() ?? ''
-  if (name === 'dockerfile') return 'dockerfile'
-  if (name === 'makefile') return 'makefile'
-  const extension = name.includes('.') ? (name.split('.').at(-1) ?? '') : ''
-  const language = extensions[extension] ?? extension
+function useLines(code: string, language: string): Line[] {
+  const [loaded, setLoaded] = useState<{ code: string; language: string; lines: Line[] }>()
+  if (loaded?.code === code && loaded.language === language) return loaded.lines
   return (
-    codePlugin.supportsLanguage(language as BundledLanguage) ? language : 'text'
-  ) as BundledLanguage
-}
-
-type Line = HighlightResult['tokens'][number]
-const plain = (code: string): Line[] =>
-  code.split('\n').map((content) => (content ? [{ content, offset: 0, color: 'inherit' }] : []))
-
-function useLastSameLanguageTokens(code: string, language: BundledLanguage): Line[] {
-  const [result, setResult] = useState<{ language: string; tokens: Line[] }>()
-  useEffect(() => {
-    let cancelled = false
-    const update = (highlighted: HighlightResult) => {
-      if (!cancelled) setResult({ language, tokens: highlighted.tokens })
-    }
-    const cached = codePlugin.highlight({ code, language, themes }, update)
-    if (cached) update(cached)
-    return () => {
-      cancelled = true
-    }
-  }, [code, language])
-  return result?.language === language ? result.tokens : plain(code)
+    highlight(code, language, (lines) => setLoaded({ code, language, lines })) ?? plainLines(code)
+  )
 }
 
 export type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string
-  language: BundledLanguage
+  language: string
   showLineNumbers?: boolean
   startLine?: number
   caret?: boolean
@@ -73,7 +32,7 @@ const CodeBlockContent = memo(
     caret = false,
     className,
   }: Omit<CodeBlockProps, keyof HTMLAttributes<HTMLDivElement>> & { className?: string }) => {
-    const tokens = useLastSameLanguageTokens(code.replace(/\n$/, ''), language)
+    const tokens = useLines(code.replace(/\n$/, ''), language)
     const width = String(startLine + tokens.length - 1).length
     return (
       <pre
@@ -97,14 +56,7 @@ const CodeBlockContent = memo(
                 {line.length === 0 && !(caret && index === tokens.length - 1)
                   ? ' '
                   : line.map((token, i) => (
-                      <span
-                        key={i}
-                        style={{
-                          color: token.color,
-                          fontStyle: token.fontStyle && token.fontStyle & 1 ? 'italic' : undefined,
-                          ...(token.htmlStyle as CSSProperties),
-                        }}
-                      >
+                      <span key={i} style={token.htmlStyle as CSSProperties}>
                         {token.content}
                       </span>
                     ))}

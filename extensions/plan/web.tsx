@@ -83,7 +83,7 @@ const time = (at: string) => formatTime(at)
 
 function LiteralPlanText({ children, className }: { children: string; className?: string }) {
   return (
-    <MessageResponse className={className} parseIncompleteMarkdown={false}>
+    <MessageResponse className={className}>
       {verbatim(children)}
     </MessageResponse>
   )

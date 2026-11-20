@@ -336,7 +336,7 @@ function FetchedPage({ page, open }: { page: Page; open: boolean }) {
             <div className="mt-1.5 max-h-96 overflow-y-auto rounded-sm border border-border/70 bg-background px-3 py-2 font-sans">
               <MessageResponse
                 className="text-[13px] leading-relaxed"
-                disallowedElements={elementsThatCouldFetchRemoteAssets}
+                without={elementsThatCouldFetchRemoteAssets}
               >
                 {body}
               </MessageResponse>
