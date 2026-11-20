@@ -1,5 +1,5 @@
 import { InboxIcon } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   Header,
   Provided,
@@ -39,9 +39,13 @@ function Surface({ entries, messages }: { entries: Entry[]; messages: readonly M
   const now = useNow(60_000)
   const [selected, setSelected] = useUiState<Selection>(SELECTED, null)
   const item = shown(entries, selected)
+  const handedOff = useRef<string>(undefined)
   useEffect(() => {
     const next = selectionAfterChange(entries, selected)
-    if (next) writingAs('app', () => setSelected(next))
+    const handoff = JSON.stringify([selected, next])
+    if (!next || handedOff.current === handoff) return
+    handedOff.current = handoff
+    writingAs('app', () => setSelected(next))
   }, [entries, selected, setSelected])
   const list = <ListIsland phone={phone} rows={entries.map(toRow)} />
   const reading = item && (
