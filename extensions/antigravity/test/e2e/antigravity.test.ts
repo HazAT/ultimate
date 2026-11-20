@@ -16,7 +16,7 @@ if (process.argv[2] === 'models') {
 `,
   )
   await chmod(agy, 0o755)
-  vi.stubEnv('ULTIMATE_AGY_COMMAND', agy)
+  vi.stubEnv('PI_ANTIGRAVITY_COMMAND', agy)
   const projectRoot = join(home, 'project')
   await mkdir(join(projectRoot, '.ultimate'), { recursive: true })
   const settings = join(projectRoot, '.ultimate/settings.json')
@@ -45,6 +45,14 @@ if (process.argv[2] === 'models') {
     await until(() => runtime.getProvider('antigravity') !== before)
     await until(() => !!runtime.getProvider('antigravity'))
     expect(await status()).toMatchObject({ loggedIn: true })
+    const reloaded = (await runtime.getAuth(model))?.auth.baseUrl
+    expect(reloaded).not.toBe(relay)
+    await until(() =>
+      fetch(`${relay}/models/gemini-x:streamGenerateContent`, { method: 'POST' }).then(
+        () => false,
+        () => true,
+      ),
+    )
 
     await writeFile(settings, JSON.stringify({ extensions: { disable: ['antigravity'] } }))
     await until(() => !runtime.getProvider('antigravity'))

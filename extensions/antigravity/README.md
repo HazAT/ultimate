@@ -25,7 +25,7 @@ model call.
 - `agy` itself gets a finished one-word answer, so it never runs a tool, then is stopped.
 - Model discovery runs `agy models` through the same relay and reads the limits Code Assist reports for each model.
 
-`ULTIMATE_AGY_COMMAND` selects the executable (default `agy`).
+`PI_ANTIGRAVITY_COMMAND` selects the executable (default `agy`).
 
 ## Credentials and terms
 

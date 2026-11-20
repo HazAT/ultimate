@@ -1,10 +1,11 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { Model } from '@earendil-works/pi-ai'
 import { streamSimple } from '@earendil-works/pi-ai/api/google-generative-ai'
 import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript'
 import { startRelay } from '../relay.ts'
+import { noProxyWithLoopback } from '../server.ts'
 import type { RunAgy } from '../relay.ts'
 
 const closers: (() => Promise<void>)[] = []
@@ -223,14 +224,7 @@ it('reports an upstream failure by status only, without its body', async () => {
   expect(aborted).toHaveLength(1)
 })
 
-const call = (relayUrl: string, key: string) =>
-  fetch(`${relayUrl}/models/gemini-x:streamGenerateContent?alt=sse`, {
-    method: 'POST',
-    headers: { 'x-goog-api-key': key },
-    body: '{}',
-  })
-
-it('splits events on mixed line endings and masks an in-stream error envelope', async () => {
+it('splits events on mixed line endings and ends a turn with an in-stream error as an error', async () => {
   const text = (word: string) => ({
     candidates: [{ content: { role: 'model', parts: [{ text: word }] } }],
   })
@@ -244,14 +238,63 @@ it('splits events on mixed line endings and masks an in-stream error envelope', 
   )
   const relay = await startRelay(fakeAgy([], []), upstream.url)
   closers.push(() => relay.close())
-  const body = await (await call(relay.url, relay.key)).text()
-  const events = body
-    .split('\n\n')
-    .filter(Boolean)
-    .map((event) => JSON.parse(event.slice(5)) as Record<string, unknown>)
-  expect(events.slice(0, 2)).toEqual([text('a'), text('b')])
-  expect(events[2]).toMatchObject({ error: { code: 401 } })
-  expect(body).not.toContain('ya29')
+  const context = normalizeContext({
+    messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+  } as never)
+  const message = await streamSimple(model(relay.url), context, { apiKey: relay.key }).result()
+  expect(message.stopReason).toBe('error')
+  expect(message.errorMessage).not.toContain('ya29')
+  n = 0
+  const clean = await codeAssist([text('a'), text('b')], (event) =>
+    n++ === 0
+      ? `data: ${JSON.stringify({ response: event })}\n\r\n`
+      : `data: ${JSON.stringify({ response: event })}\r\n\r\n`,
+  )
+  const second = await startRelay(fakeAgy([], []), clean.url)
+  closers.push(() => second.close())
+  const ok = await streamSimple(model(second.url), context, { apiKey: second.key }).result()
+  expect(ok.content).toMatchObject([{ type: 'text', text: 'ab' }])
+})
+
+it('reports a discovery that runs out of time as a failure, not a sign-out', async () => {
+  vi.useFakeTimers()
+  try {
+    const relay = await startRelay(
+      (_args, _env, signal) =>
+        new Promise((resolve) =>
+          signal.addEventListener('abort', () => resolve({ code: null, stdout: '' })),
+        ),
+      'http://127.0.0.1:9',
+    )
+    closers.push(() => relay.close())
+    const found = relay.discover(new AbortController().signal).then(
+      () => 'resolved',
+      (error: Error) => error.message,
+    )
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(await found).toBe('agy models gave no answer in time')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('adds the loopback relay to the proxy exclusions without dropping any', () => {
+  expect(noProxyWithLoopback({})).toBeUndefined()
+  expect(noProxyWithLoopback({ HTTP_PROXY: 'http://proxy' })).toBe('127.0.0.1')
+  expect(noProxyWithLoopback({ HTTP_PROXY: 'http://proxy', NO_PROXY: 'internal.example' })).toBe(
+    'internal.example,127.0.0.1',
+  )
+  expect(
+    noProxyWithLoopback({
+      http_proxy: 'http://proxy',
+      no_proxy: 'a.example',
+      NO_PROXY: 'b.example',
+    }),
+  ).toBe('a.example,127.0.0.1')
+  expect(noProxyWithLoopback({ HTTP_PROXY: 'http://proxy', NO_PROXY: '*' })).toBeUndefined()
+  expect(noProxyWithLoopback({ HTTP_PROXY: 'http://proxy', NO_PROXY: 'x.example,*' })).toBe(
+    'x.example,*,127.0.0.1',
+  )
 })
 
 it('stops agy and the upstream stream when Pi goes away mid-turn', async () => {

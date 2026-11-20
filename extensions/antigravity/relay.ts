@@ -127,7 +127,7 @@ function piEvent(data: string) {
   const parsed = JSON.parse(data) as { response?: unknown; error?: { code?: unknown } }
   if (parsed.response && typeof parsed.response === 'object') return JSON.stringify(parsed.response)
   const code = typeof parsed.error?.code === 'number' ? parsed.error.code : 502
-  return errorBody(code >= 400 && code < 600 ? code : 502, `Antigravity stream error (${code})`)
+  throw upstreamFailure(code >= 400 && code < 600 ? code : 502)
 }
 
 async function unwrapCodeAssistEvents(
@@ -140,8 +140,11 @@ async function unwrapCodeAssistEvents(
   let data: string[] = []
   const line = async (text: string) => {
     if (text === '') {
-      if (data.length) await write(res, `data: ${piEvent(data.join('\n'))}\n\n`, signal)
+      const event = data.length ? piEvent(data.join('\n')) : undefined
       data = []
+      if (event === undefined) return
+      if (!res.headersSent) res.writeHead(200, { 'content-type': 'text/event-stream' })
+      await write(res, `data: ${event}\n\n`, signal)
     } else if (text.startsWith('data:')) data.push(text.slice(5))
   }
   for await (const chunk of body) {
@@ -269,8 +272,8 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
           await settled(answer.arrayBuffer())
           throw upstreamFailure(answer.status)
         }
-        res.writeHead(200, { 'content-type': 'text/event-stream' })
         await unwrapCodeAssistEvents(answer.body, res, visit.signal)
+        if (!res.headersSent) res.writeHead(200, { 'content-type': 'text/event-stream' })
         res.end()
       },
       { takeAgentRequest: agentRequest.resolve },
@@ -305,11 +308,15 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
     key,
     async discover(signal: AbortSignal): Promise<Discovery> {
       let models: Record<string, AgyModelInfo> = {}
+      let expired = false
       const { code, stdout } = await withAgy(
         ['models'],
         signal,
         async (visit, exited) => {
-          const cancel = deadline(DISCOVERY_TIMEOUT_MS, visit.stop)
+          const cancel = deadline(DISCOVERY_TIMEOUT_MS, () => {
+            expired = true
+            visit.stop()
+          })
           try {
             return await exited
           } finally {
@@ -319,6 +326,7 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
         { models: (found) => (models = found) },
       )
       signal.throwIfAborted()
+      if (expired) throw new Error('agy models gave no answer in time')
       if (code !== 0) return { available: true, loggedIn: false, models: [] }
       const listed = stdout
         .split('\n')
@@ -327,9 +335,12 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
         .map(([, id, name]) => ({ id, name, info: models[id] }))
       return { available: true, loggedIn: listed.length > 0, models: listed }
     },
-    async close() {
-      for (const visit of visits.values()) visit.stop()
-      server.closeAllConnections()
+    async close({ finishActiveTurns = false } = {}) {
+      if (finishActiveTurns) server.closeIdleConnections()
+      else {
+        for (const visit of visits.values()) visit.stop()
+        server.closeAllConnections()
+      }
       await new Promise<void>((resolve) => server.close(() => resolve()))
       await Promise.all([...children].map(settled))
     },
