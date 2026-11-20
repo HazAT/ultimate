@@ -139,12 +139,16 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
   // Undo keeps the picks and the note; sending again opens a new window.
   await undo.click()
-  await card.getByRole('button', { name: 'Send', exact: true }).waitFor()
+  const send = card.getByRole('button', {
+    name: `Send: answer to message ${asked.id}`,
+    exact: true,
+  })
+  await send.waitFor()
   expect(await card.locator('textarea[data-note]').inputValue()).toBe(
     'Also rename the tab.\nAnd soon.',
   )
   expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
-  await card.getByRole('button', { name: 'Send', exact: true }).click()
+  await send.click()
   await undo.waitFor()
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await page.keyboard.press('Enter')
@@ -165,15 +169,18 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   const second = (await ask())!
   const next = page.locator(`[data-questions-card="message:${second.id}"]`)
   await next.locator('fieldset').nth(2).waitFor()
-  const send = next.getByRole('button', { name: 'Send', exact: true })
-  const box = (await send.boundingBox())!
+  const sendNext = next.getByRole('button', {
+    name: `Send: answer to message ${second.id}`,
+    exact: true,
+  })
+  const box = (await sendNext.boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   // Released early, the hold is an ordinary click: Send with its undo window.
   await page.mouse.down()
   await page.waitForTimeout(400)
   await page.mouse.up()
   await next.getByRole('button', { name: 'Undo' }).click()
-  await send.waitFor()
+  await sendNext.waitFor()
   const picked = async () =>
     (await log())?.messages.find((m) => m.re === second.id && m.from === 'user')
   const held = Date.now()
@@ -190,7 +197,9 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
 
 it('sends a held answer when the page is left inside the undo window', async () => {
   const { log, asked, page, card } = await openCard()
-  await card.getByRole('button', { name: 'Send', exact: true }).click()
+  await card
+    .getByRole('button', { name: `Send: answer to message ${asked.id}`, exact: true })
+    .click()
   await card.getByRole('button', { name: 'Undo' }).waitFor()
   await page.goto('about:blank')
   const answer = async () =>

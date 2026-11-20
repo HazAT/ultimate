@@ -12,13 +12,17 @@ vi.mock('react', async (original) => ({
 vi.mock('@/sdk', async () => ({
   ROOT: 1,
   defineWebExtension: (facet: unknown) => facet,
+  island: (component: unknown) => component,
   provide: () => ({}),
   useDocOf: () => ({ messages: [{ id: 5, from: 2, to: 'user', reply: true, state: 'answered' }] }),
   useUiState: () => [{ 'message:5': {} }, () => page.writers.push(writerNow())],
   writingAs: (await import('../../../../web/src/sdk/writer.ts')).writingAs,
 }))
 vi.mock('../../../messages/ui.tsx', () => ({ MessagesDoc: {}, MessageAnswers: {} }))
-vi.mock('../../card.tsx', () => ({ MessageQuestions: () => null }))
+vi.mock('../../card.solid.tsx', () => ({
+  MessageQuestions: () => null,
+  HiddenQuestionEntry: () => null,
+}))
 
 it('sweeps a settled question’s draft as the app, not as a person', async () => {
   const facet = (await import('../../web.tsx')).default as unknown as {

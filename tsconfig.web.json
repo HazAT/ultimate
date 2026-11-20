@@ -60,6 +60,8 @@
     "extensions/sounds/cues.ts",
     "extensions/keep-warm/due.ts",
     "extensions/inbox/items.ts",
+    "extensions/questions/open.ts",
+    "extensions/questions/state.ts",
     "extensions/sounds/tones.ts",
     "extensions/sounds/agents.ts",
     "extensions/sounds/conductor.ts",
