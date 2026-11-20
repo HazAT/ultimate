@@ -7,6 +7,7 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandInput,
+  CommandItem,
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -21,7 +22,6 @@ import {
   isFamilyName,
 } from '../../lib/families.ts'
 import { refreshFamilies } from './families.tsx'
-import { ModelRow } from './picker.tsx'
 import { SaveFamiliesAction } from './refs.ts'
 import type { FamiliesView, FamilyView, SaveFamilies } from './refs.ts'
 
@@ -392,12 +392,23 @@ function ModelSelect({
             {groups.map(([provider, items]) => (
               <CommandGroup heading={provider} key={provider}>
                 {items.map((model) => (
-                  <ModelRow
-                    current={`${model.provider}/${model.id}` === value}
+                  <CommandItem
+                    className={cn(
+                      'gap-2 py-1 font-mono text-[12px]',
+                      !model.available && 'opacity-60',
+                    )}
                     key={`${model.provider}/${model.id}`}
-                    model={model}
                     onSelect={() => choose(() => onChange(`${model.provider}/${model.id}`))}
-                  />
+                    value={`${model.provider}/${model.id}`}
+                  >
+                    <span className="w-3.5 shrink-0 text-brand">
+                      {`${model.provider}/${model.id}` === value ? '✓' : ''}
+                    </span>
+                    {model.id}
+                    {model.name !== model.id && (
+                      <span className="truncate font-sans text-muted-foreground">{model.name}</span>
+                    )}
+                  </CommandItem>
                 ))}
               </CommandGroup>
             ))}

@@ -1,17 +1,14 @@
-import type { ConversationId } from '@earendil-works/pi-durable'
-import { createElement as h, isValidElement } from 'react'
-import type { EffectCallback, ReactElement, ReactNode } from 'react'
+import { createElement as h } from 'react'
+import type { EffectCallback } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { ModelsResponse, StreamedView } from '../../shared/protocol.ts'
+import type { StreamedView } from '../../shared/protocol.ts'
 import { FakeSource, fakeSubscriptions } from './fake-source.ts'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   effects: [] as EffectCallback[],
-  select: new Map<string, () => void>(),
   fetch: vi.fn<typeof fetch>(),
-  pass: ({ children }: { children?: ReactNode }) => children ?? null,
 }))
 // As in conversation-scope.test.ts: server rendering with captured effects and direct external-store snapshots.
 vi.mock('react', async (original) => ({
@@ -44,51 +41,11 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   }
 })
 vi.mock('../../web/src/sdk/resume.ts', () => ({ covered: () => false }))
-// The picker's dialog renders in place (a portal renders nothing on the server); picking a row runs its `onSelect`.
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: harness.pass,
-  DialogContent: harness.pass,
-  DialogDescription: harness.pass,
-  DialogTitle: harness.pass,
-}))
-vi.mock('@/components/ui/command', () => {
-  const { pass } = harness
-  return {
-    Command: pass,
-    CommandEmpty: pass,
-    CommandGroup: pass,
-    CommandInput: () => null,
-    CommandList: pass,
-    CommandItem: ({ value, onSelect }: { value: string; onSelect: () => void }) => {
-      harness.select.set(value, onSelect)
-      return null
-    },
-  }
-})
-
 import { Composer as CoreComposer, ComposerRedirect } from '../../web/src/app/composer.tsx'
-import { ConversationScope } from '../../web/src/sdk/conversation-scope.tsx'
 import { actions } from '../../web/src/sdk/actions.ts'
 import { store, uiState } from '../../web/src/sdk/client.ts'
-import { ModelPicker } from '../../extensions/models/picker.tsx'
-import { dialogs, reopenPicker } from '../../extensions/models/state.tsx'
-import models from '../../extensions/models/web.tsx'
 import sideChat from '../../extensions/side-chat/web.tsx'
 
-const modelList: ModelsResponse = {
-  providers: [],
-  models: ['main-model', 'side-model'].map((id) => ({
-    provider: 'faux',
-    id,
-    name: id,
-    contextWindow: 1000,
-    maxTokens: 100,
-    reasoning: true,
-    thinkingLevels: ['off', 'low', 'high'],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    available: true,
-  })),
-}
 const server = fakeSubscriptions(harness.sources)
 const effects: (() => void)[] = []
 beforeEach(() => {
@@ -101,14 +58,11 @@ beforeEach(() => {
   }))
   harness.fetch.mockReset()
   harness.fetch.mockImplementation(
-    async (url, init) =>
-      server.handle(url as string, init) ??
-      Response.json((url as string) === '/api/models' ? modelList : { rev: 1 }),
+    async (url, init) => server.handle(url as string, init) ?? Response.json({ rev: 1 }),
   )
   harness.sources.length = 0
   server.subscriptions.length = 0
   harness.effects.length = 0
-  harness.select.clear()
   store.show(undefined)
   store.start()
   harness.sources[0].open()
@@ -137,99 +91,6 @@ function view(id: number, modelId: string, thinkingLevel: string): StreamedView 
     docs: { 'pi.agent': { model: { provider: 'faux', modelId }, thinkingLevel } },
   } as unknown as StreamedView
 }
-const calls = () =>
-  harness.fetch.mock.calls.flatMap(([url, init]) =>
-    (url as string).endsWith('/configure') ? [[url as string, init?.body as string]] : [],
-  )
-const inScope = (id: number, children: ReactNode) =>
-  h(ConversationScope, { id: id as ConversationId, children })
-
-/** Renders `component`'s own output, for calling the handlers on it, inside whatever wraps `Capture`. */
-let captured: ReactElement | null = null
-function Capture({ of }: { of: () => ReactElement | null }) {
-  captured = of()
-  return null
-}
-/** The element under `node` whose key is `key`, such as one row of a mapped list. */
-function find(node: ReactNode, key: string): ReactElement<{ onClick: () => void }> | undefined {
-  if (Array.isArray(node)) return node.map((child) => find(child, key)).find(Boolean)
-  if (!isValidElement<{ children?: ReactNode }>(node)) return undefined
-  if (node.key === key) return node as ReactElement<{ onClick: () => void }>
-  return find(node.props.children, key)
-}
-
-it('points the model and thinking controls inside a scope at the scoped conversation, not the shown one', async () => {
-  harness.sources[0].send('system', {
-    process: { pid: 1, generation: 1 },
-    code: { sha: 'abc' },
-    project: { settings: {} },
-  } as never)
-  stream().send('view', view(1, 'main-model', 'off'))
-  const [ModelButton, ThinkingButton] = models.slots!['composer.toolbar'] as [
-    () => ReactElement,
-    () => ReactElement,
-  ]
-  const inSide = (of: () => ReactElement) => inScope(17, h(Capture, { of }))
-  renderToStaticMarkup(inSide(ModelButton))
-  await settle()
-  stream(17).send('view', view(17, 'side-model', 'low'))
-
-  // The toolbar shows the side chat's model and level.
-  expect(renderToStaticMarkup(inScope(17, h(ModelButton)))).toContain('side-model')
-  expect(renderToStaticMarkup(inScope(17, h(ThinkingButton)))).toContain('low')
-
-  // Its thinking popover configures the side chat, and opens apart from main's.
-  renderToStaticMarkup(inSide(ThinkingButton))
-  find(captured, 'high')!.props.onClick()
-  await vi.advanceTimersByTimeAsync(10)
-  expect(calls().at(-1)).toEqual([
-    '/api/conversations/17/configure',
-    JSON.stringify({ thinkingLevel: 'high' }),
-  ])
-
-  // Its model button opens the global picker on the side chat: it marks the side chat's model and configures it.
-  renderToStaticMarkup(inSide(ModelButton))
-  ;(captured as unknown as ReactElement<{ onClick: () => void }>).props.onClick()
-  expect(store.getState().ui.dialogs[dialogs.picker]).toBe(true)
-  renderToStaticMarkup(h(ModelPicker))
-  harness.select.get('faux/main-model')!()
-  await vi.advanceTimersByTimeAsync(10)
-  expect(calls().at(-1)).toEqual([
-    '/api/conversations/17/configure',
-    JSON.stringify({ model: { provider: 'faux', modelId: 'main-model' } }),
-  ])
-  expect(calls().some(([url]) => url === '/api/conversations/1/configure')).toBe(false)
-
-  // A login started from the side chat's picker comes back to it: "Pick a model" still configures the side chat.
-  renderToStaticMarkup(h(ModelPicker))
-  harness.select.get('login')!()
-  expect(store.getState().ui.dialogs[dialogs.login]).toBe(true)
-  reopenPicker(actions)
-  renderToStaticMarkup(h(ModelPicker))
-  harness.select.get('faux/side-model')!()
-  await vi.advanceTimersByTimeAsync(10)
-  expect(calls().at(-1)?.[0]).toBe('/api/conversations/17/configure')
-  expect(calls().some(([url]) => url === '/api/conversations/1/configure')).toBe(false)
-
-  // Shift+Tab typed in the side chat cycles its level; typed in main, main's.
-  const cycle = models.commands!.find((command) => command.id === 'model.thinking.cycle')!
-  await cycle.run({ ...actions, surface: 'agent', conversationId: 17 as ConversationId })
-  expect(calls().at(-1)?.[0]).toBe('/api/conversations/17/configure')
-  await cycle.run({ ...actions, surface: 'agent', conversationId: 1 as ConversationId })
-  expect(calls().at(-1)).toEqual([
-    '/api/conversations/1/configure',
-    JSON.stringify({ thinkingLevel: 'low' }),
-  ])
-
-  // Opened from main's toolbar, the picker configures main again.
-  renderToStaticMarkup(h(Capture, { of: ModelButton }))
-  ;(captured as unknown as ReactElement<{ onClick: () => void }>).props.onClick()
-  renderToStaticMarkup(h(ModelPicker))
-  harness.select.get('faux/side-model')!()
-  await vi.advanceTimersByTimeAsync(10)
-  expect(calls().at(-1)?.[0]).toBe('/api/conversations/1/configure')
-})
-
 it('makes main’s composer inert while a side chat is in front, with Back to main outside it', async () => {
   stream().send('view', view(44, 'main-model', 'off'))
   const Composer = sideChat.composer!

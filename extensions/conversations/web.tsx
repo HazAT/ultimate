@@ -1,5 +1,5 @@
-import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, provide } from '@/sdk'
-import { SummaryModelDialog, summaryModelDialog } from './dialogs.tsx'
+import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, island, provide } from '@/sdk'
+import { SummaryModelDialog, summaryModelDialog } from './summary-model.solid.tsx'
 import { useStandingEmpty, useStandingPlaceholder } from './standing.tsx'
 import { SummaryAction } from './summary-entry.tsx'
 import { MentionLink } from './mention.tsx'
@@ -19,7 +19,7 @@ export default defineWebExtension({
     'conversations.assessed': SummaryAction,
     'conversations.summary-discarded': SummaryAction,
   },
-  slots: { overlay: [SummaryModelDialog] },
+  slots: { overlay: [island(SummaryModelDialog)] },
   commands: [
     {
       id: 'conversations.summary-model',

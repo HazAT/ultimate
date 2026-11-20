@@ -1,76 +1,28 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { api, cn, useSystem } from '@/sdk'
 import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'
+import { familiesCache, modelIdOf, refresh, refreshFor, runsOn } from './family-state.ts'
 import { FamiliesAction } from './refs.ts'
-import type { FamiliesView, FamilyView } from './refs.ts'
 
-export const agentsPanel = 'agents'
+export { agentsPanel, runsOn } from './family-state.ts'
 
-let sharedFamiliesView: FamiliesView | undefined
-let fetchedSettingsAndCommitRevision: string | undefined
-let loading: Promise<void> | undefined
-const listeners = new Set<() => void>()
-
-export function refreshFamilies() {
-  loading ??= api
-    .action(FamiliesAction, null)
-    .then((next) => {
-      sharedFamiliesView = next
-      for (const listener of listeners) listener()
-    })
-    .catch((error: unknown) => console.error('models: families not loaded', error))
-    .finally(() => {
-      loading = undefined
-    })
-  return loading
-}
+const fetchFamilies = () => api.action(FamiliesAction, null)
+export const refreshFamilies = () => refresh(fetchFamilies)
 
 export function useFamilies() {
-  const current = useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
-    () => sharedFamiliesView,
-  )
+  const current = useSyncExternalStore(familiesCache.subscribe, familiesCache.get)
   const system = useSystem()
-  const settingsAndCommitRevision = `${system?.code.sha} ${JSON.stringify(system?.project.settings)}`
+  const revision = `${system?.code.sha} ${JSON.stringify(system?.project.settings)}`
   useEffect(() => {
-    if (fetchedSettingsAndCommitRevision === settingsAndCommitRevision) return
-    fetchedSettingsAndCommitRevision = settingsAndCommitRevision
-    void refreshFamilies()
-  }, [settingsAndCommitRevision])
+    void refreshFor(revision, fetchFamilies)
+  }, [revision])
   useEffect(() => {
-    const refresh = () => void refreshFamilies()
-    globalThis.addEventListener?.('focus', refresh)
-    return () => globalThis.removeEventListener?.('focus', refresh)
+    const reload = () => void refreshFamilies()
+    globalThis.addEventListener?.('focus', reload)
+    return () => globalThis.removeEventListener?.('focus', reload)
   }, [])
   return current
 }
-
-export const runsOn = (family: FamilyView) => family.model ?? family.follows
-
-export const thinkingOf = (family: FamilyView) =>
-  family.thinking ?? (family.model ? undefined : family.followsThinking)
-
-export function familyOf(
-  families: FamiliesView | undefined,
-  ref: { provider: string; modelId: string } | undefined,
-  thinking: string | undefined,
-  recorded: string | null | undefined,
-) {
-  if (!ref) return undefined
-  const family = families?.families.find((item) => item.name === (recorded ?? DEFAULT_FAMILY))
-  if (!family || recorded) return family
-  const stillUsesDefault =
-    runsOn(family) === `${ref.provider}/${ref.modelId}` &&
-    (thinkingOf(family) ?? thinking) === thinking
-  return stillUsesDefault ? family : undefined
-}
-
-export const modelIdOf = (ref: string) => ref.slice(ref.indexOf('/') + 1)
 
 export function FamilyDot({ color, className }: { color: string | undefined; className?: string }) {
   return (
