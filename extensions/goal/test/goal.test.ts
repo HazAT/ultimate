@@ -116,6 +116,13 @@ it('keeps one goal open at a time and ends it once', async () => {
   expect((await start(tx, 'Next', 3)).id).toBe(2)
 })
 
+it('proposes without starting, and a start from the card names its proposal', async () => {
+  const tx = fakeTx()
+  await expect(act(tx, ULTIMATE, { action: 'propose', text: 'Ship it' }, 0)).resolves.toBeTruthy()
+  expect(await openGoal(tx)).toBeUndefined()
+  expect(await start(tx, 'Ship it', 0, 'call-1')).toMatchObject({ id: 1, proposal: 'call-1' })
+})
+
 it('blocks a criterion after repeated failed tries and finishes with the outcome', async () => {
   const tx = fakeTx()
   await expect(act(tx, ULTIMATE, { action: 'met', n: 1 }, 0)).rejects.toThrow('No hands-off goal')
