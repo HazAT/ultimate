@@ -54,8 +54,8 @@ The libraries ship skills that match the pinned versions: read them, not your me
   point another extension renders stays React and returns an island (`provide(ExtensionDetails, …)` in
   `extensions/mcp/web.tsx`). A Solid part that needs what only React reads takes it as a prop from a small React
   wrapper in `web.tsx`; `island` passes props on live, without a remount (`extensions/todos/web.tsx`). A React point
-  a moved part would render (`Review` in a commit count) gets a page-bus event its provider also listens to
-  (`events.emit('review:open', { spec })`), never a Solid copy of the point.
+  a moved part reads, it reads with `useProvided` or `Provided` from `@/sdk/parts.solid.tsx` (`Review` in
+  `CommitCount`, `extensions/workspaces/ui.solid.tsx`), never through a Solid copy of the point.
 - **Contracts:** `ui.solid.tsx` holds only what other extensions use; parts an extension keeps to itself live in their
   own file (`extensions/workspaces/panel.solid.tsx`, re-exported). A pure `.ts` helper counts as server code to
   `ultimate/api-only-imports`: it imports other extensions' refs only as types, or takes their tokens as arguments
@@ -79,8 +79,9 @@ The libraries ship skills that match the pinned versions: read them, not your me
 - **Points across frameworks.** Read another extension's point in Solid with `Provided` (all providers, or `last`) or
   `useProvided` from `@/sdk/parts.solid.tsx`. A provider written `provide(Point, island(C))` renders as Solid with the
   point's input as props, in Solid hosts and React ones (`<Provided>`, `<AllProvided>`), under its own extension name;
-  a React hook provider mounts through the bridge with a copy of the input taken on any nested change, since board
-  reconciliation updates fields like `message.state` in place. So a point meant for `island(C)` providers takes an
+  under `<Provided>` a React hook provider mounts through the bridge with a copy of the input's plain objects and
+  arrays taken on any nested change, since board reconciliation updates fields like `message.state` in place;
+  `useProvided` passes its accessor's value as it is, so give it plain values. So a point meant for `island(C)` providers takes an
   object input (`{ message }`, `{ conversation }`), and is defined in a `.ts` file both `ui.tsx` and `ui.solid.tsx`
   re-export (`extensions/conversations/points.ts`): a definition reached through `@/sdk` drags browser module-scope
   code into Node tests.
