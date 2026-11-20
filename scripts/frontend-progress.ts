@@ -26,7 +26,7 @@ import { pace, within } from '../lib/timers.ts'
 import { median, runsFlag } from './measure.ts'
 
 const usage =
-  'Usage: node scripts/frontend-progress.ts <tree> --label <label> [--snapshot <paused state.sqlite>] [--runs 3] [--only switch,stream,previews]'
+  'Usage: node scripts/frontend-progress.ts <tree> --label <label> [--summary <one line>] [--snapshot <paused state.sqlite>] [--runs 3] [--only switch,stream,previews]'
 const args = process.argv.slice(2)
 const flag = (name: string) => {
   const index = args.indexOf(name)
@@ -34,6 +34,7 @@ const flag = (name: string) => {
 }
 const tree = args[0] && resolve(args[0])
 const label = flag('--label')
+const summary = flag('--summary')
 if (!tree || !label) throw new Error(usage)
 const snapshot = flag('--snapshot')
 const runs = runsFlag(args)
@@ -54,7 +55,7 @@ const scratchParent = await realpath(tmpdir())
 const fromHome = relative(await realpath(homedir()), scratchParent)
 if (fromHome === '' || (fromHome.split(sep)[0] !== '..' && !isAbsolute(fromHome)))
   throw new Error(`${scratchParent} is inside ${homedir()}; point TMPDIR elsewhere`)
-const chromium = await browserBinary()
+const chromium = resolve(await browserBinary())
 const interruption = new AbortController()
 const stops = new Set<() => unknown>()
 const interrupt = () => {
@@ -170,7 +171,11 @@ function assertManualPause(database: string) {
   }
 }
 
-async function serve(home: string, agentDir: string, use: (url: string) => Promise<unknown>) {
+async function serve(
+  home: string,
+  agentDir: string,
+  use: (url: string, home: string) => Promise<unknown>,
+) {
   const userHome = join(home, 'user')
   await mkdir(join(userHome, '.ultimate'), { recursive: true })
   await writeFile(join(userHome, '.ultimate/onboarding.json'), '{"firstRunDone":true}')
@@ -217,7 +222,7 @@ async function serve(home: string, agentDir: string, use: (url: string) => Promi
       ready,
       () => new Error(`No server after ${readyMs} ms:\n${output}`),
     )
-    return await use(url)
+    return await use(url, home)
   } finally {
     stops.delete(stopOnInterrupt)
     if (group.child.pid) await (stopping ?? stop())
@@ -269,14 +274,12 @@ function measureStream(home: string, agentDir: string) {
 }
 
 function measurePreviews(home: string, agentDir: string) {
-  return serve(
-    home,
-    agentDir,
-    async (url) =>
-      JSON.parse(
-        await node(join(here, 'scripts/preview-bench.ts'), [url, '--runs', String(runs)]),
-      ) as unknown,
-  )
+  return serve(home, agentDir, async (url, served) => {
+    await writeFile(join(served, 'benchmark-host'), url)
+    return JSON.parse(
+      await node(join(here, 'scripts/preview-bench.ts'), [served, '--runs', String(runs)]),
+    ) as unknown
+  })
 }
 
 type Weight = {
@@ -341,7 +344,7 @@ const stored = await readFile(progressFile, 'utf8').catch((error: unknown) => {
 })
 type Entry = typeof entry & Record<string, unknown>
 const progress = JSON.parse(stored) as Record<string, unknown> & { entries: Entry[] }
-const same = (item: Entry) => (item.sha ? item.sha === full : full.startsWith(item.commit))
+const same = (item: Entry) => item.sha === full
 const previous = progress.entries.find(same)
 const merged: Entry = {
   switch: null,
@@ -349,6 +352,7 @@ const merged: Entry = {
   previews: null,
   ...previous,
   ...entry,
+  ...(summary ? { summary } : {}),
   ...measured,
   ...(measured.previews && previous?.previews
     ? { previews: { ...previous.previews, ...measured.previews } }
@@ -358,7 +362,12 @@ progress.entries = [...progress.entries.filter((item) => !same(item)), merged].t
   (a, b) => a.committedAt - b.committedAt,
 )
 const staged = `${progressFile}.${process.pid}`
-await writeFile(staged, `${JSON.stringify(progress, null, 2)}\n`)
-await rename(staged, progressFile)
+try {
+  await writeFile(staged, `${JSON.stringify(progress, null, 2)}\n`)
+  stage()
+  await rename(staged, progressFile)
+} finally {
+  await rm(staged, { force: true })
+}
 process.off('SIGINT', interrupt)
 console.log(JSON.stringify(merged))

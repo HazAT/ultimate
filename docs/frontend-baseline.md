@@ -21,7 +21,7 @@ Every migration step adds one entry, measured the same way on one machine:
 ```bash
 git worktree add --detach ~/fw/<sha> <sha> && (cd ~/fw/<sha> && pnpm install --frozen-lockfile --prefer-offline)
 node .ultimate/skills/measure-switch/copy-paused.ts ~/.ultimate/projects/<home>/state.sqlite ~/fw/snap
-node scripts/frontend-progress.ts ~/fw/<sha> --label 0.7 --snapshot ~/fw/snap/state.sqlite
+node scripts/frontend-progress.ts ~/fw/<sha> --label 0.8 --summary "<what the step did, one line>" --snapshot ~/fw/snap/state.sqlite
 ```
 
 Run it from the newest checkout: it measures the given tree with today's scripts, starts each server on a scratch home

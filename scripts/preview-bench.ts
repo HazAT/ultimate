@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { chromium } from 'playwright-core'
 import type { Browser, Page } from 'playwright-core'
 import { browserBinary } from '../extensions/browser/server.ts'
@@ -29,9 +31,9 @@ export type Measured = {
   ok: boolean
 }
 
-const base = process.argv[2]
-if (!base?.startsWith('http'))
-  throw new Error('Usage: node scripts/preview-bench.ts <url> [--runs 3]')
+const home = process.argv[2]
+if (!home) throw new Error('Usage: node scripts/preview-bench.ts <scratch home> [--runs 3]')
+const base = (await readFile(join(home, 'benchmark-host'), 'utf8')).trim()
 const runs = runsFlag(process.argv)
 const viewport = { width: 1440, height: 900 }
 const bytesPerToken = 4
