@@ -47,10 +47,7 @@ async function fixture() {
   })
   let opened: OpenHost
   let opener: () => Promise<void>
-  let scripts: (Omit<Seed['scripts'][number], 'subscribers'> & {
-    enabled: boolean
-    subscribers?: (ConversationId | string)[]
-  })[] = []
+  let scripts: (Seed['scripts'][number] & { enabled: boolean; state?: string })[] = []
   /** A faked `CloudApi`: never the real Worker. */
   let cloud: CloudService | undefined
   const tokens = [...lineageDocs, Messages, Todos, Next]
@@ -66,10 +63,10 @@ async function fixture() {
       return action === 'list'
         ? [
             ...(result as Automation[]),
-            ...scripts.map(({ ask, once, ...item }) => ({
+            ...scripts.map(({ ask, once, state, ...item }) => ({
               subscribers: [],
               ...item,
-              script: { ask, once: once ?? true },
+              script: { ask, once: once ?? true, state: state ?? 'running' },
             })),
           ]
         : result
@@ -675,10 +672,14 @@ it('recreates each open card session with a pointer back, its watcher resumed fr
     })
     return { card, done, watcher }
   }, context)
-  const folder = join(f.home, 'old-chapter', 'A37')
-  await mkdir(join(folder, 'state'), { recursive: true })
-  await writeFile(join(folder, 'run'), '#!/bin/sh\nsleep 3600\n', { mode: 0o644 })
-  await writeFile(join(folder, 'state', 'pr-watch.json'), '{"sha":"abc"}')
+  const old = (id: string) => join(f.home, '.ultimate/automations', 'old@cards-not-notes', id)
+  for (const id of ['A37', 'A4', 'A9']) {
+    await mkdir(join(old(id), 'state'), { recursive: true })
+    // Not executable: a fast test launches no process, so an adopted script stops at its launch check.
+    await writeFile(join(old(id), 'run'), '#!/bin/sh\nsleep 3600\n', { mode: 0o644 })
+  }
+  await writeFile(join(old('A37'), 'state', 'pr-watch.json'), '{"sha":"abc"}')
+  const oldUltimate = (await f.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate
   f.scripts([
     {
       id: 'A37',
@@ -687,7 +688,27 @@ it('recreates each open card session with a pointer back, its watcher resumed fr
       once: false,
       enabled: true,
       subscribers: [ids.card],
-      folder,
+      folder: old('A37'),
+    },
+    // @ultimate made this watcher for itself: it subscribes by id.
+    {
+      id: 'A4',
+      name: 'Feedback',
+      ask: 'Watch Slack',
+      once: false,
+      enabled: true,
+      subscribers: [oldUltimate],
+      folder: old('A4'),
+    },
+    // Still being written: nothing to adopt, so it stays a to-do.
+    {
+      id: 'A9',
+      name: 'Draft',
+      ask: 'Watch drafts',
+      enabled: true,
+      state: 'writing',
+      subscribers: ['@ultimate'],
+      folder: old('A9'),
     },
   ])
   const seed = await buildSeed(f.host, PREPARED)
@@ -725,8 +746,16 @@ it('recreates each open card session with a pointer back, its watcher resumed fr
   const text = JSON.stringify((await first())!.model)
   expect(text).toContain(`the-beginning#${ids.card}`)
   expect(text).toContain('waiting on CI for PR #2342')
-  expect(text).toContain('git switch card-2311')
-  const [watch] = Object.values((await f.harness.snapshot(Automations, context))!.automations)
+  expect(text).toContain('git merge card-2311')
+  const made = Object.values((await f.harness.snapshot(Automations, context))!.automations)
+  expect(made.map(({ name, subscribers }) => [name, subscribers])).toEqual([
+    ['PR #2342', [next]],
+    ['Feedback', ['@ultimate']],
+  ])
+  const [watch] = made
+  // Adopted, then launched straight away: without an executable run its watcher is asked to repair it.
+  expect(watch.script).toMatchObject({ state: 'investigating', adopt: old('A37') })
+  expect(await f.todos()).toContain('Recreate script A9 (Draft)')
   expect(watch).toMatchObject({
     name: 'PR #2342',
     subscribers: [next],
@@ -748,5 +777,5 @@ it('recreates each open card session with a pointer back, its watcher resumed fr
   expect((await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))!.branches).toEqual(
     carried,
   )
-  expect(Object.keys((await f.harness.snapshot(Automations, context))!.automations)).toHaveLength(1)
+  expect(Object.keys((await f.harness.snapshot(Automations, context))!.automations)).toHaveLength(2)
 })

@@ -81,12 +81,14 @@ that work. Reopening does not reapply those documents.
 
 After that commit, each carried branch is branched again from the root (isolated when it had a worktree) with its
 label, instructions and model, and gets a `dream.carried` first input: it continues `<chapter>#<old id>`, names how
-to read that history, carries the last abstract and the git branch to switch to. `dream.seed.branches` maps old ids
-to new ones. Each user script with a runtime folder is then created again with `adopt`: its `run` and `state/` are
-copied and it runs at once, with no watcher turn, waking the carried branches its `#id` subscribers became (a script
-whose subscribers all stayed behind and that has no prompt is dropped). Each open question then comes back as a
-reply-expected card from its carried asker, or from @ultimate. Branches, scripts and questions keep receipts in
-`dream.seed`, so a reopen repeats none of them.
+to read that history, carries the last abstract and the git branch to merge. `dream.seed.branches` maps old ids to
+new ones. Each running user script is then created again with `adopt`: automations copies its `run` and `state/`
+and runs it at once, with no watcher turn. Its subscribers follow: `@name` stays, the old @ultimate becomes
+`@ultimate`, a carried branch its new id. Each open question then comes back as a reply-expected card from its
+carried asker, or from @ultimate. A branch, script or question that cannot come back (a fork or create that throws,
+no subscriber left, a refused card) becomes an @ultimate-owned to-do instead. Branches, scripts and questions keep
+receipts in `dream.seed`, and @ultimate's `dream.chapter` input goes out last, so its first turn sees all of them;
+a reopen repeats none. A seed from before branches were carried still turns its questions into to-dos.
 
 Automations are recreated through their create action after the commit, with per-name receipts in `dream.seed`.
 A seed carries at most one enabled automation per name: building rejects duplicates. The destination starts empty;

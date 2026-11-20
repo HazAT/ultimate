@@ -411,6 +411,59 @@ it("keeps a later chapter's scripts in their own folder, apart from the first ch
   await call(server, 'pause', sub.id)
 })
 
+it("adopts an earlier chapter's script: copies its run and state, runs it with no watcher turn, even after a crash before the copy", async () => {
+  const first = await fixture()
+  const legacy = first.folder('A7')
+  await writeRun(legacy, 'echo FIRE "$(cat "$AUTOMATION_STATE/sha")"; sleep 60')
+  await writeFile(join(legacy, 'state/sha'), 'abc\n')
+  const { home, userHome } = first
+  await server?.close()
+  server = undefined
+  await requestChapter(home, 'next')
+  server = await fauxServer({ ...first.options, home, userHome })
+  const caller = await server.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const args = { name: 'PR', ask: 'Watch the PR', once: false, adopt: legacy, key: 'seed:next:A7' }
+  await expect(
+    server.extensions.invoke(
+      'automations',
+      'create',
+      { ...args, adopt: join(home, 'elsewhere') },
+      new AbortController().signal,
+      caller.id,
+    ),
+  ).rejects.toThrow('adopt must name a script folder under')
+  const sub = (await server.extensions.invoke(
+    'automations',
+    'create',
+    args,
+    new AbortController().signal,
+    caller.id,
+  )) as Automation
+  const folder = join(userHome, '.ultimate/automations', `${basename(home)}@next`, sub.id)
+  const get = async () =>
+    (await server!.harness.snapshot(Automations, context))!.automations[sub.id]
+  await until(async () => (await get()).fires === 1)
+  expect((await get()).script).toMatchObject({ state: 'running', adopt: legacy })
+  expect((await get()).script!.pid).toBeGreaterThan(1)
+  expect(await readFile(join(folder, 'state/sha'), 'utf8')).toBe('abc\n')
+  const watcher = (await get()).script!.conversationId
+  const briefs = (
+    await (await server.harness.conversation(watcher, context))!.context(context)
+  ).entries.filter((e) => e.conversationId === watcher && e.kind.startsWith('automations.'))
+  expect(briefs).toEqual([])
+  await call(server, 'pause', sub.id)
+
+  // A crash after the create committed but before anything was copied: the next start copies it.
+  await rm(folder, { recursive: true, force: true })
+  await call(server, 'resume', sub.id)
+  await until(async () => (await get()).fires === 2)
+  expect(await readFile(join(folder, 'run'), 'utf8')).toContain('FIRE')
+  await call(server, 'pause', sub.id)
+})
+
 it('keeps listing and supervising scripts after a reload bumps the ledger version', async () => {
   const { app, folder } = await fixture()
   const sub = await create(app)

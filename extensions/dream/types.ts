@@ -40,7 +40,7 @@ export type Seed = {
     ask: string
     once?: boolean
     secrets?: string[]
-    subscribers?: ConversationId[]
+    subscribers?: (ConversationId | string)[]
     folder?: string
     prompt?: string
     agent?: string

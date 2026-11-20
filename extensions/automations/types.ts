@@ -58,6 +58,7 @@ export type Automation = {
     exitCode?: number
     lastOutputAt?: number
     error?: string
+    adopt?: string
   }
   prompt?: string
   agent?: string
@@ -108,7 +109,7 @@ export type Args = Partial<CreateArgs> & {
 export type Manifest = { name: string; ask: string; once: boolean; secrets?: string[]; to: string }
 export const STANDING = /^@[a-zA-Z0-9_-]+$/
 export const FAILURE_LIMIT = 3
-export type Effect = { id: string; action: string; previousPid?: number; adopt?: string }
+export type Effect = { id: string; action: string; previousPid?: number }
 export const isSlug = (id: string) => /^[a-z][a-z0-9-]{0,62}$/.test(id) && !(id in Object.prototype)
 export const isId = (id: string) => /^A[1-9]\d*$/.test(id) || isSlug(id)
 
