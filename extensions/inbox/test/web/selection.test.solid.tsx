@@ -2,33 +2,41 @@
 import { createElement as h, act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, expect, it, vi } from 'vitest'
+import { createUiState } from '../../../../web/src/sdk/ui-state.ts'
 import { SELECTED, UNLOADED } from '../../items.ts'
+import { useSelection } from '../../selection.tsx'
 import type { Entry, Selection } from '../../items.ts'
 
-const harness = vi.hoisted(() => ({ writes: [] as unknown[], failures: 0, rejections: 0 }))
-vi.mock('../../../../web/src/sdk/client.ts', async () => {
-  const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
-  return {
-    uiState: createUiState(
-      async (request) => {
-        harness.writes.push(request.ops[0].value)
-        if (harness.failures < harness.rejections) throw new Error('server down')
-        return { ok: true, rev: harness.writes.length }
-      },
-      { delayMs: 0, onError: () => harness.failures++ },
-    ),
-  }
-})
+const harness = vi.hoisted(() => ({
+  writes: [] as unknown[],
+  failures: 0,
+  rejections: 0,
+  store: undefined as unknown,
+}))
+vi.mock('../../../../web/src/sdk/client.ts', () => ({
+  get uiState() {
+    return harness.store
+  },
+}))
+
+const freshStore = () =>
+  createUiState(
+    async (request) => {
+      harness.writes.push(request.ops[0].value)
+      if (harness.failures < harness.rejections) throw new Error('server down')
+      return { ok: true, rev: harness.writes.length }
+    },
+    { delayMs: 0, onError: () => harness.failures++ },
+  )
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const entry = (key: string, at: number) => ({ key, at }) as Entry
 const [a, b] = [entry('a', 10), entry('b', 20)]
 
-let page: Awaited<ReturnType<typeof load>>
-async function load() {
-  const { uiState } = await import('../../../../web/src/sdk/client.ts')
-  const { useSelection } = await import('../../selection.tsx')
+let page: ReturnType<typeof load>
+function load() {
+  const uiState = harness.store as ReturnType<typeof freshStore>
   let select: (next: Selection) => void = () => undefined
   function Probe({ entries }: { entries: Entry[] }) {
     select = useSelection(entries).setSelected
@@ -49,10 +57,9 @@ async function load() {
   return { uiState, root, show, choose }
 }
 
-beforeEach(async ({ onTestFinished }) => {
-  Object.assign(harness, { writes: [], failures: 0, rejections: 0 })
-  vi.resetModules()
-  page = await load()
+beforeEach(({ onTestFinished }) => {
+  Object.assign(harness, { writes: [], failures: 0, rejections: 0, store: freshStore() })
+  page = load()
   onTestFinished(() => page.root.unmount())
 })
 
@@ -63,7 +70,7 @@ it('sends a rejected handoff once while mounted, and once more after a remount',
   expect(harness.writes).toEqual([{ key: 'a', at: 10, open: true }])
   expect(harness.failures).toBe(1)
   page.root.unmount()
-  const remounted = await load()
+  const remounted = load()
   await remounted.show([a])
   expect(harness.writes).toHaveLength(2)
   remounted.root.unmount()
@@ -80,10 +87,12 @@ it('sends a rejected repair of a late link’s age once while mounted', async ()
 it('repairs a second link to the same entry after the selection moved elsewhere', async () => {
   page.uiState.receive({ [SELECTED]: { key: 'b', at: UNLOADED, open: true } })
   await page.show([a, b])
+  expect(harness.writes).toEqual([{ key: 'b', at: 20, open: true }])
   await page.choose({ key: 'a', at: 10, open: true })
   await page.show([a])
   await page.choose({ key: 'b', at: UNLOADED, open: true })
   await page.show([a, b])
+  expect(harness.writes.at(-1)).toEqual({ key: 'b', at: 20, open: true })
   expect(page.uiState.get(SELECTED)).toEqual({ key: 'b', at: 20, open: true })
 })
 
