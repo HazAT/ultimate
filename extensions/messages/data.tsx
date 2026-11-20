@@ -92,16 +92,16 @@ export function waitLabel(
       : remote?.progress
         ? ` · ${remote.progress.label} ${remote.progress.index}/${remote.progress.total}`
         : ''
+  const hop = primaryWait?.on === 'remote' ? ` → ${primaryWait.project}${suffix}` : ''
   switch (wait.on) {
     case 'work':
       return 'working'
     case 'user':
       return 'waits on you'
     case 'agent':
+      return wait.to === primary ? `waits on @ultimate${hop}` : `waits on #${wait.to}`
     case 'starter':
-      return wait.to === primary
-        ? `waits on @ultimate${primaryWait?.on === 'remote' ? ` → ${primaryWait.project}${suffix}` : ''}`
-        : `waits on #${wait.to}`
+      return wait.to === primary ? `reported to @ultimate${hop}` : `reported to #${wait.to}`
     case 'remote':
       return `waits on ${wait.project}${suffix}`
     case 'timer':

@@ -629,16 +629,26 @@ describe('conversation state', () => {
     const progress = { reachable: true, progress: { label: 'run', index: 2, total: 4 } }
     expect(waitLabel(remote, 3, remote, progress)).toBe('waits on ultimate-eval · run 2/4')
     expect(waitLabel(branch, 3, remote, progress)).toBe(
-      'waits on @ultimate → ultimate-eval · run 2/4',
+      'reported to @ultimate → ultimate-eval · run 2/4',
     )
     expect(waitLabel(remote, 3, remote, { reachable: false })).toBe(
       'waits on ultimate-eval · not running',
     )
     expect(waitLabel(branch, 3, remote, { reachable: false })).toBe(
-      'waits on @ultimate → ultimate-eval · not running',
+      'reported to @ultimate → ultimate-eval · not running',
     )
     expect(waitLabel(remote, 3, remote, { reachable: true })).toBe('waits on ultimate-eval')
-    expect(waitLabel(branch, 3, undefined, progress)).toBe('waits on @ultimate')
+    expect(waitLabel(branch, 3, undefined, progress)).toBe('reported to @ultimate')
+  })
+
+  it('says a branch that only reported apart from one that asks its starter', () => {
+    const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, starter: 3 }
+    const reported = conversationWait(branch, messagesLog())
+    expect(conversationState(branch, messagesLog())).toBe('awaiting')
+    expect(waitLabel(reported, 3)).toBe('reported to @ultimate')
+    expect(waitLabel(reported, 9)).toBe('reported to #3')
+    const asks = messagesLog({ from: 5 as ConversationId, to: 3 as ConversationId })
+    expect(waitLabel(conversationWait(branch, asks), 3)).toBe('waits on @ultimate')
   })
 
   it('says every state in a word, so a standing row or lane never falls back to idle', () => {
