@@ -190,7 +190,7 @@ export function backgroundRow(
   return answered.length > 0 && answered.every((m) => m.reply && m.from !== 'user')
 }
 
-const routedTo = (messages: readonly Message[], entry: EntryRecord) =>
+export const routedTo = (messages: readonly Message[], entry: EntryRecord) =>
   messages.filter((m) => m.from === entry.conversationId && m.routed === entry.id)
 
 export function threadRow(

@@ -66,8 +66,8 @@ export { ExtensionBoundary } from '../app/boundary.tsx'
 export { column } from '../app/layout.ts'
 /** The transcript's card: a bordered section with the brand accent on its left edge. */
 export { Card } from '../app/card.tsx'
-/** A card that folds to one quiet line in compact mode, and whether one is open; the reader's choice survives reloads. */
-export { Fold, useFold } from '../app/fold.tsx'
+/** A card that folds to one quiet line in compact mode or as agent-to-agent traffic, and whether one is open; the reader's choice survives reloads. */
+export { Fold, toggleAgentTrafficFolds, useFold } from '../app/fold.tsx'
 /** The entries a go-back set aside, which the model's context leaves out. */
 export { setAsideIds } from '../app/compact.ts'
 /** A message's footer as the transcript shows it: details such as usage, time, copy, go back and a reference link. */

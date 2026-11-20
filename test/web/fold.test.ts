@@ -5,10 +5,14 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { Fold, foldKey, writeFold } from '../../web/src/app/fold.tsx'
 
 const state = vi.hoisted(() => ({ compact: false, conversation: 7 }))
+vi.mock('../../web/src/sdk/client.ts', () => ({
+  uiState: { get: () => undefined, set: () => {} },
+}))
 vi.mock('../../web/src/sdk/hooks.ts', () => ({
   useCompact: () => (state.compact ? () => true : undefined),
   useConversation: (select: (conversation: { id: number }) => unknown) =>
     select({ id: state.conversation }),
+  useUiState: () => [true],
 }))
 
 const stored = new Map<string, string>()

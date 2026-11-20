@@ -292,13 +292,70 @@ function NoteCard({
   )
 }
 
+function NoteSender({
+  id,
+  title,
+  prefix,
+}: {
+  id?: ConversationId | string
+  title?: string
+  prefix?: string
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {prefix && <span className="shrink-0">{prefix}</span>}
+      {typeof id === 'number' ? (
+        <span className="flex min-w-0 text-foreground/80">
+          <ConversationRef id={id} title={title} />
+        </span>
+      ) : (
+        id && <span className="shrink-0">{id}</span>
+      )}
+    </span>
+  )
+}
+
+function NoteWords({ text }: { text: string }) {
+  const words = text.replace(/\s+/g, ' ').trim()
+  return (
+    <span className="min-w-0 truncate">{words.length > 80 ? `${words.slice(0, 80)}…` : words}</span>
+  )
+}
+
 function Note({ entry, core }: { entry: EntryRecord; core: React.ReactNode }) {
   if (!NoteEntry.is(entry)) return core
-  const { from, text, source } = entry.data
+  const { from, text, title, source } = entry.data
   if (source === 'lander') return core
-  if (source === 'finished') return <Finished entry={entry} />
-  if (source === 'main') return <Catchup text={text} />
-  return <NoteCard id={from} label="Note from" note="received" text={text} />
+  const finished = source === 'finished'
+  const catchup = source === 'main'
+  return (
+    <Fold
+      agent
+      card={entry.id}
+      summary={
+        <>
+          {finished ? (
+            <CircleCheckIcon className="size-3 shrink-0 text-success" />
+          ) : catchup ? (
+            <GitBranchIcon className="size-3 shrink-0 text-brand" />
+          ) : (
+            <StickyNoteIcon className="size-3 shrink-0 text-note" />
+          )}
+          <NoteSender id={from} title={title} />
+          <span className="shrink-0">{finished ? 'finished' : catchup ? 'catch-up' : 'note'}</span>
+          <NoteWords text={text} />
+        </>
+      }
+    >
+      {finished ? (
+        <Finished entry={entry} />
+      ) : catchup ? (
+        <Catchup text={text} />
+      ) : (
+        <NoteCard id={from} label="Note from" note="received" text={text} />
+      )}
+    </Fold>
+  )
 }
 
 function Catchup({ text }: { text: string }) {
@@ -319,15 +376,24 @@ function NoteCall({ call, core }: { call: ToolCallView; core: ReactNode }) {
   if (call.status === 'error' || call.status === 'interrupted') return core
   const left = /^Left a note in #(\d+)\.$/.exec(call.output)
   const to = left ? Number(left[1]) : call.args.to
+  const id =
+    typeof to === 'number' ? parseConversationId(to) : typeof to === 'string' ? to : undefined
+  const text = typeof call.args.text === 'string' ? call.args.text : ''
   return (
-    <NoteCard
-      id={
-        typeof to === 'number' ? parseConversationId(to) : typeof to === 'string' ? to : undefined
+    <Fold
+      agent
+      card={call.id}
+      summary={
+        <>
+          <StickyNoteIcon className="size-3 shrink-0 text-note" />
+          <NoteSender id={id} prefix="to" />
+          <span className="shrink-0">note</span>
+          <NoteWords text={text} />
+        </>
       }
-      label="Note →"
-      note="left"
-      text={typeof call.args.text === 'string' ? call.args.text : ''}
-    />
+    >
+      <NoteCard id={id} label="Note →" note="left" text={text} />
+    </Fold>
   )
 }
 

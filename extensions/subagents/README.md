@@ -166,7 +166,8 @@ Actions for the Agents tab:
 - A `subagent` call renders the agent, task, the child's workspace branch and state, whether it works, its plan task
   chip, its answer, and "open #id".
 - Instructions to a child and reports from it are stored as `subagents.instruction` and `subagents.report` inputs and
-  render as compact cards with the sender and a **Source** button; message bodies show in full.
+  render as one-line rows naming the sender and which of the two it is, in every conversation; opening one shows the
+  body and its **Source** button.
 - Source and Open add a header **Return** button back to where you came from. The core `ultimate:reveal-entry
   {conversationId, entryId, toolCallId?}` web event reveals a row at the top of the view without auto-follow pulling
   it back.
