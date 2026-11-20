@@ -100,8 +100,15 @@ The libraries ship skills that match the pinned versions: read them, not your me
 - **A module several frameworks drive** (read-aloud's player) stays one plain module: `web.tsx` hands it to a Solid
   factory at module scope (`const Action = readAloudAction(player)`), and the factory's component subscribes to it.
   That keeps browser-only promises out of a `.ts` file the server lint would check.
-- **What waits for the core switch:** the composer wrapper, `provide` hooks, and anything that hosts other extensions'
-  React. The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
+- **The composer is Solid (step C3).** A `composer` wrapper is `island(C)` with `C` typed `SolidComposerProps`, an
+  `inbox` renderer `island(C)` with `SolidInboxProps`; read the redirect target with `useContext(ComposerRedirect)`
+  (an accessor) and provide it with `<ComposerRedirect value={target}>` around `props.core`. A core host renders every
+  contribution only through `Contribution`/`Contributed`/`Slot` from `web/src/sdk/react-island.solid.tsx`, never by
+  calling a component itself, so React contributions (outside extensions included) keep mounting through the bridge.
+  Solid parts a React contribution places (`core`, `cancel`) go in `Contribution`'s `elements`: each is made once into
+  a host element the React side receives as a node.
+- **What waits for the core switch:** `provide` hooks and anything that hosts other extensions' React (the shell, panel
+  hosts). The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
 ## The UI kit
 
@@ -157,7 +164,9 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   `prettyName` come from `@/sdk/solid`; a shared `.ts` helper takes `formatAgo` and `plural` from `lib/`. Never a local
   copy.
 - **Writes after an `await`:** `writingAs` holds only for the synchronous call. Take `details.source` before the
-  `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). A write the
+  `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). Deep in a
+  helper the handler calls, take `writerNow()` instead (`send` in `web/src/app/composer.solid.tsx`, whose steer awaits
+  a withdrawal before it submits). A write the
   person didn't make with this action (a URL, a timer, an effect) runs in `writingAs('app', …)` and records nothing.
 - **Forms:** the kit `Form`, with the change started in its submit Button's `onClick`, which receives `details.source`.
   A native `onSubmit` has no source, so an agent's submit would be recorded as the person's. Enter in an Input and
@@ -240,6 +249,11 @@ Solid 2:
 - A Solid element handed to React for it to place is a real element made once (`document.createElement` plus `insert`),
   never a component's JSX return rebuilt in a tracked callback: each rebuild is a new subtree, and React's
   `node.remove()` breaks on a Solid return that is not one element.
+- A kit `Textarea` takes `readonly` (lowercase) and `autoResize` with a CSS `max-h-*`; its agent `setValue` runs the
+  field's `onValueChange`, so an agent fill updates a draft store like typing does. Keyboard shortcuts on it
+  (Enter, Alt+Enter, ↑) stay a plain `onKeyDown`: `submitShortcut` knows only Enter and mod+Enter.
+- A capture-phase listener (`onKeyDownCapture` in React) is a ref callback:
+  `ref={(el) => el.addEventListener('keydown', handler, { capture: true })}` (side chat's Tab in `frame.solid.tsx`).
 - An attribute built from untrusted input is set as one property, never as a string another value can extend:
   `style={{ 'text-align': align }}`, not ``style={`text-align:${align}`}``.
 - `reconcile` by position adopts incoming objects: reconcile a `structuredClone` when the value shares rows with the
@@ -320,6 +334,8 @@ Tooling:
   write). For keyboard focus on a Tooltip, dispatch a Tab `keydown` before `.focus()`. Modal Tab wrapping, inertness
   and Enter submitting a form need a real browser. `switchConversation` and `showSurface` read `matchMedia`: stub it
   with `vi.stubGlobal` in a test that navigates.
+- **A root document in a test** (`ultimate.standing-agents`) reaches `server.of(1)` only once a mounted reader watches
+  it: mount first, then send it (`extensions/side-chat/test/web/frame.test.solid.tsx`).
 - **Who wrote it, in a preview:** a page the browser tool drives counts every write as the agent's, clicks and keys
   included. Prove a person's attribution in a jsdom test or by the user's own click, not through the browser tool.
 - **Whole page:** the browser tool's `ui` steps (`snapshot`, `query`, `act`) wait for the first render and every
