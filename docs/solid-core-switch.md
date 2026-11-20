@@ -14,14 +14,21 @@ messageActions|messageDetails|answerLabels|userBubble):" extensions/*/web.tsx` l
 (`ParkedRuns`, `RunStart`, `MessageReference`, `FileUpload`, `EmptyTranscript`) and the `transcript.*` slots run their
 React providers through the same bridge until C4.
 
-**Summary (C2):** 51 rows (a row is one part or a group of one extension's parts) in 29 extensions. By core host:
+**Done in P3:** the transcript renderers of subagents, context (whole: its slots too), browser, codemode, parallel,
+instance, todos, models, prompt, watchdog, recall, wire, read-aloud and automations are `island(C)`. A UI-valued point a
+Solid host reads is filled with `provide(Point, island(C))` and rendered with `Provided` from `@/sdk/parts.solid.tsx`
+(`ConversationTaskChip`, which plan fills). context keeps local Solid copies of conversations' `AgentMark` and
+coding-tools' `Diff` (`mark.solid.tsx`, `section-diff.solid.tsx`): move them to those extensions' `ui.solid.tsx` when
+those move, and delete the copies.
+
+**Summary (after P3, before P2):** 39 rows (a row is one part or a group of one extension's parts). By core host:
 
 | Core host                                                               | Rows | Extensions |
 | ----------------------------------------------------------------------- | ---- | ---------- |
-| The transcript's renderers (P2/P3; host done in C2)                     | 31   | 24         |
+| The transcript's renderers and points (P2; host done in C2)             | 17   | 14         |
 | The sidebar (React rows and sections other extensions provide)          | 3    | 3          |
-| Panel and surface hosts, System's tab host, documents' views            | 10   | 7          |
-| The composer                                                            | 2    | 2          |
+| Panel and surface hosts, System's tab host, documents' views            | 11   | 8          |
+| The composer                                                            | 3    | 3          |
 | React points of other extensions (onboarding, workspaces' landing card) | 5    | 5          |
 
 User extensions outside this repository (`~/.ultimate/extensions`) contribute React renderers too: pr-triage's
@@ -30,39 +37,25 @@ breaks them unless they move to `island(C)` first.
 
 ## The transcript
 
-| Extension     | Part                                                                                               | Where                       | Hook in the transcript       |
-| ------------- | -------------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------- |
-| browser       | tool renderers `screenshot`, `browser`                                                             | `browser/web.tsx`           | tool calls                   |
-| codemode      | tool renderer and compact line `codemode`                                                          | `codemode/web.tsx`          | tool calls, compact lines    |
-| goal          | tool renderer `goal` (`call.tsx`)                                                                  | `goal/web.tsx`              | tool calls                   |
-| instance      | tool renderer `instance`                                                                           | `instance/web.tsx`          | tool calls                   |
-| parallel      | tool renderers `web_search`, `web_fetch`                                                           | `parallel/web.tsx`          | tool calls                   |
-| self          | tool renderer `restart`                                                                            | `self/web.tsx`              | tool calls                   |
-| todos         | tool renderer `todo`                                                                               | `todos/web.tsx`             | tool calls                   |
-| workspaces    | tool renderer `workspace`; entries `lineage.note` (landing card), `ultimate.lander`, lander report | `workspaces/web.tsx`        | tool calls, entries          |
-| context       | entries `pi.system`, `pi.reset`, `pi.compaction`, `pi.assistant`; point `CacheRebuiltLine`         | `context/web.tsx`, `ui.tsx` | entries                      |
-| context       | slots `Start`, `PinnedPrompt` (read `useTranscriptScroll`)                                         | `context/web.tsx`           | start and top                |
-| goal          | entries `goal.started`, `goal.report` (with End hands-off), `goal.note` (model-only)               | `goal/cards.tsx`            | entries                      |
-| pause         | entries `pause.note`, `pause.limit`, `pause.autoplay`, `pause.held`                                | `pause/web.tsx`             | entries                      |
-| prompt        | entry `prompt.build`                                                                               | `prompt/web.tsx`            | entries                      |
-| recall        | entry of recalled memories (model-only); user bubble `RecallBubble`                                | `recall/web.tsx`            | entries, user message        |
-| setup         | entry `setup.note` (model-only)                                                                    | `setup/web.tsx`             | entries                      |
-| todos         | entry `todos.note` (model-only)                                                                    | `todos/web.tsx`             | entries                      |
-| watchdog      | entry `watchdog.failure`                                                                           | `watchdog/web.tsx`          | entries                      |
-| models        | entries `pi.assistant` (model switch divider `Switched`), `models.fallback` (`FellBack`)           | `models/web.tsx`            | entries                      |
-| automations   | tool renderer `automation`; entries `automations.fired`, `.failed`, `.escalated`, `.writing`       | `automations/web.tsx`       | tool calls, entries          |
-| automations   | provided `WaitTimers` (`useWaitTimers`)                                                            | `automations/web.tsx`       | messages' wait timers        |
-| conversations | entries `conversations.*` (`SummaryAction`)                                                        | `conversations/web.tsx`     | entries                      |
-| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                        | `conversations/web.tsx`     | empty transcript             |
-| wire          | entry `pi.assistant` (`WireLink`)                                                                  | `wire/web.tsx`              | entries                      |
-| read-aloud    | message action                                                                                     | `read-aloud/web.tsx`        | message bar                  |
-| status-line   | message detail `MessageUsage`                                                                      | `status-line/web.tsx`       | message bar                  |
-| codemode      | provided `MessageReference`                                                                        | `codemode/web.tsx`          | message actions              |
-| reel          | provided `MessageExtras` (its player shows questions' React answer card)                           | `reel/web.tsx`              | message cards, inbox's cards |
-| questions     | provided `MessageAnswers`; the answer card agents cannot press yet                                 | `questions/web.tsx`         | message cards, inbox's cards |
-| tasks         | provided `RunStart`                                                                                | `tasks/web.tsx`             | the run timer                |
-| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                        | `pause/web.tsx`             | parked runs                  |
-| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`      | `review/web.tsx`            | the landing card, sidebar    |
+| Extension     | Part                                                                                               | Where                   | Hook in the transcript       |
+| ------------- | -------------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------- |
+| goal          | tool renderer `goal` (`call.tsx`)                                                                  | `goal/web.tsx`          | tool calls                   |
+| self          | tool renderer `restart`                                                                            | `self/web.tsx`          | tool calls                   |
+| workspaces    | tool renderer `workspace`; entries `lineage.note` (landing card), `ultimate.lander`, lander report | `workspaces/web.tsx`    | tool calls, entries          |
+| goal          | entries `goal.started`, `goal.report` (with End hands-off), `goal.note` (model-only)               | `goal/cards.tsx`        | entries                      |
+| pause         | entries `pause.note`, `pause.limit`, `pause.autoplay`, `pause.held`                                | `pause/web.tsx`         | entries                      |
+| setup         | entry `setup.note` (model-only)                                                                    | `setup/web.tsx`         | entries                      |
+| automations   | provided `WaitTimers` (`useWaitTimers`)                                                            | `automations/web.tsx`   | messages' wait timers        |
+| conversations | entries `conversations.*` (`SummaryAction`)                                                        | `conversations/web.tsx` | entries                      |
+| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                        | `conversations/web.tsx` | empty transcript             |
+| status-line   | message detail `MessageUsage`                                                                      | `status-line/web.tsx`   | message bar                  |
+| codemode      | provided `MessageReference`                                                                        | `codemode/web.tsx`      | message actions              |
+| reel          | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card)    | `reel/web.tsx`          | message cards, inbox's cards |
+| questions     | provided `MessageAnswers`; the answer card agents cannot press yet                                 | `questions/web.tsx`     | message cards, inbox's cards |
+| tasks         | provided `RunStart` (a data hook)                                                                  | `tasks/web.tsx`         | the run timer                |
+| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                        | `pause/web.tsx`         | parked runs                  |
+| subagents     | provided `ErrorReport` (a data hook the React boundary reads)                                      | `subagents/web.tsx`     | error cards                  |
+| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`      | `review/web.tsx`        | the landing card, sidebar    |
 
 ## The sidebar
 
@@ -74,24 +67,26 @@ breaks them unless they move to `island(C)` first.
 
 ## Panel and surface hosts
 
-| Extension   | Part                                                                                                                    | Where                 | Why it waits                                                |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------- |
-| agent       | the `agent` surface and the title bar's panel buttons                                                                   | `agent/web.tsx`       | is the conversation view: transcript, composer, panels      |
-| documents   | the Documents panel                                                                                                     | `documents/web.tsx`   | hosts other extensions' React document views                |
-| codemode    | document view `codemode.store`                                                                                          | `codemode/web.tsx`    | a Documents view                                            |
-| inbox       | the surface frame (core `Sidebar`, `Header`, the `QuestionPane` takeover)                                               | `inbox/web.tsx`       | the surface host; side-chat's React pane                    |
-| inbox       | the reading pane: messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, items' `pane`                    | `inbox/reading.tsx`   | hosts the transcript's message parts                        |
-| inbox       | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands                               | `inbox/ui.tsx`        | React points other extensions provide                       |
-| wire        | the tab's wrapper, docking the core `Conversation`                                                                      | `wire/web.tsx`        | System's tab host; the core dock                            |
-| wire        | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                                    | `wire/web.tsx`        | a command cannot set UI state                               |
-| todos       | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                                                 | `todos/web.tsx`       | inbox's `Waiting` is React                                  |
-| automations | the panel's wrapper, passing `overlayOpen` (phone/tablet panel overlay) and `requested` (the conversation being loaded) | `automations/web.tsx` | the shell's open state and `requested` have no Solid reader |
+| Extension   | Part                                                                                                                    | Where                 | Why it waits                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------- |
+| agent       | the `agent` surface and the title bar's panel buttons                                                                   | `agent/web.tsx`       | is the conversation view: transcript, composer, panels          |
+| documents   | the Documents panel                                                                                                     | `documents/web.tsx`   | hosts other extensions' React document views                    |
+| codemode    | document view `codemode.store`                                                                                          | `codemode/web.tsx`    | a Documents view                                                |
+| subagents   | the Agents panel (`overview.tsx`) and the definition dialog (`definitions.tsx`, `fields.tsx`)                           | `subagents/web.tsx`   | uses models' React family editor (`FamilyPopover`, `AddFamily`) |
+| inbox       | the surface frame (core `Sidebar`, `Header`, the `QuestionPane` takeover)                                               | `inbox/web.tsx`       | the surface host; side-chat's React pane                        |
+| inbox       | the reading pane: messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, items' `pane`                    | `inbox/reading.tsx`   | hosts the transcript's message parts                            |
+| inbox       | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands                               | `inbox/ui.tsx`        | React points other extensions provide                           |
+| wire        | the tab's wrapper, docking the core `Conversation`                                                                      | `wire/web.tsx`        | System's tab host; the core dock                                |
+| wire        | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                                    | `wire/web.tsx`        | a command cannot set UI state                                   |
+| todos       | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                                                 | `todos/web.tsx`       | inbox's `Waiting` is React                                      |
+| automations | the panel's wrapper, passing `overlayOpen` (phone/tablet panel overlay) and `requested` (the conversation being loaded) | `automations/web.tsx` | the shell's open state and `requested` have no Solid reader     |
 
 ## The composer
 
 | Extension     | Part                                            | Where                   |
 | ------------- | ----------------------------------------------- | ----------------------- |
 | read-aloud    | composer wrapper `ReadingStrip`                 | `read-aloud/web.tsx`    |
+| subagents     | inbox renderer `AgentInbox` (`inbox.tsx`)       | `subagents/web.tsx`     |
 | conversations | provided `ComposerPlaceholder` (`standing.tsx`) | `conversations/web.tsx` |
 
 ## Other extensions' React points
