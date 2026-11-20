@@ -8,6 +8,7 @@ import {
   Errored,
   For,
   onCleanup,
+  onSettled,
   untrack,
   useContext,
 } from 'solid-js'
@@ -25,10 +26,19 @@ function MountReact(props: { render: () => ReactNode }) {
     conversation: useContext(ConversationScope) ?? undefined,
     transcript: useContext(Transcript) ?? undefined,
   })
+  const markEmpty = () => host.toggleAttribute('data-empty', !host.hasChildNodes())
   onCleanup(root.unmount)
+  onSettled(() => {
+    const children = new MutationObserver(markEmpty)
+    children.observe(host, { childList: true })
+    return () => children.disconnect()
+  })
   createEffect(
     () => props.render(),
-    (element) => root.render(element),
+    (element) => {
+      root.render(element)
+      markEmpty()
+    },
   )
   return host
 }
@@ -102,16 +112,17 @@ export function Contribution(props: {
   props: Props
   fallback: (extension: string, error: unknown) => JSX.Element
 }) {
-  const component = createMemo(() => props.item.component)
+  const item = createMemo(() => props.item, {
+    equals: (a, b) => a.component === b.component && a.extension === b.extension,
+  })
   return (
-    <For each={[component()]}>
+    <For each={[item()]}>
       {(current) => {
-        const Solid = islandSolid(current) as Component<Props> | undefined
-        if (!Solid)
-          return <MountReact render={() => contribution(props.item, { ...props.props })} />
+        const Solid = islandSolid(current.component) as Component<Props> | undefined
+        if (!Solid) return <MountReact render={() => contribution(item(), { ...props.props })} />
         return (
-          <Errored fallback={(error) => props.fallback(props.item.extension, error())}>
-            <ExtensionName value={props.item.extension}>
+          <Errored fallback={(error) => props.fallback(current.extension, error())}>
+            <ExtensionName value={current.extension}>
               <Solid {...props.props} />
             </ExtensionName>
           </Errored>

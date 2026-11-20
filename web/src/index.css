@@ -169,15 +169,15 @@
   }
 }
 
-/* A section or group heading in the chrome (panels, sidebar sections, picker groups): quiet sentence-case mono. */
-/* Hidden while it shows nothing: no children, or only React hosts in the transcript whose renderers returned nothing. */
+/* A transcript row hidden while it shows nothing: no children, or only a React host whose renderers returned nothing. */
 @utility empty-row {
   &:empty,
-  &:not(:has(> :not([data-empty]))) {
+  &:has(> [data-empty]:only-child) {
     display: none;
   }
 }
 
+/* A section or group heading in the chrome (panels, sidebar sections, picker groups): quiet sentence-case mono. */
 @utility section-label {
   @apply font-mono text-[11px] font-normal tracking-normal text-muted-foreground normal-case;
 }

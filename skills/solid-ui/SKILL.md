@@ -179,9 +179,12 @@ Solid 2:
   11 remounts per row for one short reply with a DOM mutation observer).
 - React mounted inside Solid commits in a later task unless `flushSync`: a Solid effect that measures the React part
   (a reveal finding a tool card inside its row) then sees it empty. The bridge's roots render with `flushSync`.
-- A Solid setter returns the value it set: called as an arrow body in a React `useLayoutEffect(() => set(v))`, a
-  function value becomes React's cleanup and runs on the next render (`T is not a function` from `ParkedRuns`). Give
-  the effect a block body.
+- A Solid setter returns the value it set: as the arrow body of a React `useLayoutEffect(() => set(v))`, that value
+  becomes React's cleanup, and React calls it on the next render (`T is not a function` when `ParkedRuns` set a
+  `Set`). Give the effect a block body.
+- A transcript row hides with the `empty-row` utility, which also hides a row whose only child is a React host that
+  rendered nothing (`data-empty`); `:empty` alone no longer matches once the bridge wraps React.
+- A control in the transcript is a kit `Button`, never a bare `<button>`: the agent bridge sees only kit parts.
 - A Solid element handed to React for it to place is a real element made once (`document.createElement` plus `insert`),
   never a component's JSX return rebuilt in a tracked callback: each rebuild is a new subtree, and React's
   `node.remove()` breaks on a Solid return that is not one element.

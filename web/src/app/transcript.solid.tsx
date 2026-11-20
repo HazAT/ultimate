@@ -110,7 +110,9 @@ export function Transcript(props: { dock?: boolean }) {
   const loading = createMemo(() => conversation().loading)
   return (
     <div class="relative flex min-h-0 flex-1 flex-col">
-      <For each={[id()]}>{() => <TranscriptView dock={props.dock} loading={loading()} />}</For>
+      <For each={[id()]}>
+        {(shown) => <TranscriptView dock={props.dock} initialId={shown} loading={loading()} />}
+      </For>
       <SkeletonUntilLoaded dock={props.dock} loading={loading()} />
     </div>
   )
@@ -167,9 +169,13 @@ const rowGap = (content: Element | undefined) =>
   content ? Number.parseFloat(getComputedStyle(content).rowGap) || 0 : 0
 const preloadOneViewportBeforeTop = '100% 0px 0px 0px'
 
-function TranscriptView(props: { dock?: boolean; loading: boolean }) {
+function TranscriptView(props: {
+  dock?: boolean
+  loading: boolean
+  initialId: ConversationId | undefined
+}) {
   const conversation = useConversation()
-  const id = conversation().id
+  const id = props.initialId
   const busy = createMemo(() => conversation().busy)
   const live = createMemo(() => conversation().live)
   const history = createHistory(
@@ -177,7 +183,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     createMemo(() => conversation().entries),
     createMemo(() => conversation().older),
   )
-  const transcript = createTranscriptFrame(history.entries())
+  const transcript = createTranscriptFrame()
   createEffect(history.entries, (entries) => transcript.setEntries(entries))
 
   let scroll!: HTMLDivElement
@@ -185,10 +191,11 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
   let pinned!: HTMLDivElement
   let sentinel: HTMLDivElement | undefined
   const [scroller, setScroller] = createSignal<Follow>()
-  const [atBottom, setAtBottom] = createSignal(true)
+  const [following, setFollowing] = createSignal(true)
   let tail!: HTMLDivElement
   let held: Element | null = null
   let maxPinnedCover = 0
+  let releaseTailOnResize: (() => void) | undefined
   const [tailSpace, setTailSpaceSignal] = createSignal(0)
   const setTailSpace = (next: number | ((space: number) => number)) => {
     const space = typeof next === 'function' ? next(tailSpace()) : next
@@ -200,7 +207,7 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
   onSettled(() => {
     transcript.mount({ scroll, content })
     const controller = follow(scroll, content, () => {
-      setAtBottom(controller.atBottom())
+      setFollowing(controller.following())
       transcript.setAtBottom(controller.atBottom())
       scroll.style.overflowAnchor = controller.following() ? 'none' : ''
     })
@@ -212,9 +219,14 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
   })
   const hasRows = () => history.entries().length > 0
 
+  const toEnd = (instant = false) => {
+    held = null
+    setTailSpace(0)
+    scroller()?.toBottom(instant)
+  }
   useEvent('ultimate:sent', (value) => {
     if ((value as { conversationId?: ConversationId } | undefined)?.conversationId === id)
-      scroller()?.toBottom(true)
+      toEnd(true)
   })
 
   createEffect(tailSpace, (space) => {
@@ -225,12 +237,11 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
       const removingTailCannotClampReader = scroll.scrollTop <= bottom - space - rowGap(content)
       if (removingTailCannotClampReader || scroll.scrollTop >= bottom - 1) setTailSpace(0)
     }
-    const grown = new ResizeObserver(releaseTail)
-    grown.observe(content)
+    releaseTailOnResize = releaseTail
     scroll.addEventListener('scroll', releaseTail)
     releaseTail()
     return () => {
-      grown.disconnect()
+      releaseTailOnResize = undefined
       scroll.removeEventListener('scroll', releaseTail)
     }
   })
@@ -396,7 +407,10 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
     follower.place(scroll.scrollTop + move)
   }
   onSettled(() => {
-    const resize = new ResizeObserver(hold)
+    const resize = new ResizeObserver(() => {
+      hold()
+      releaseTailOnResize?.()
+    })
     for (const element of [scroll, content, pinned]) resize.observe(element)
     const release = () => {
       held = null
@@ -682,11 +696,11 @@ function TranscriptView(props: { dock?: boolean; loading: boolean }) {
             <div aria-hidden="true" class="-mt-3 shrink-0" data-history-anchor-space ref={tail} />
           </div>
         </div>
-        <Show when={!atBottom()}>
+        <Show when={!following()}>
           <Button
             aria-label="Scroll to bottom"
             class="absolute bottom-3 left-1/2 size-7 -translate-x-1/2 rounded-full bg-popover shadow-md"
-            onClick={() => scroller()?.toBottom()}
+            onClick={() => toEnd()}
             size="icon"
             variant="outline"
           >

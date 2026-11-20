@@ -19,7 +19,9 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 import { ConversationIdContext } from '../../web/src/sdk/conversation-scope.tsx'
 import { ExtensionNameContext } from '../../web/src/sdk/hooks.ts'
 import { island } from '../../web/src/sdk/island.tsx'
-import { Contribution } from '../../web/src/sdk/react-island.solid.tsx'
+import { registry } from '../../web/src/sdk/client.ts'
+import { Contributed, Contribution, useProvided } from '../../web/src/sdk/react-island.solid.tsx'
+import { definePoint, provide } from '../../web/src/sdk/types.ts'
 import { ConversationScope } from '../../web/src/sdk/solid.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
@@ -99,6 +101,98 @@ it('marks an empty React result so its row collapses, renders island(C) as Solid
     flush()
   })
   expect(container.innerHTML).toBe('<b>second x</b>')
+})
+
+it('keeps a chained row mounted while its streamed props change, and shows a text-only Solid row beside an empty React one', () => {
+  const mounts = vi.fn<() => void>()
+  const ReactWrap = ({ core, call }: { core: unknown; call: { output: string } }) => {
+    useEffect(() => mounts(), [])
+    return h('section', null, `react ${call.output}`, core as never)
+  }
+  const SolidText = island((props: { call: { output: string } }) => <>{props.call.output}</>)
+  const [output, setOutput] = createSignal('one')
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => (
+      <>
+        <div class="empty-row" data-row="chain">
+          <Contributed
+            core={() => <p>core</p>}
+            fallback={() => <p>failed</p>}
+            props={{
+              get call() {
+                return { output: output() }
+              },
+            }}
+            renderers={[
+              { extension: 'solid', version: 1, component: SolidText },
+              { extension: 'react', version: 1, component: ReactWrap },
+            ]}
+          />
+        </div>
+        <div class="empty-row" data-row="empty">
+          <Contribution
+            fallback={failed}
+            item={{ extension: 'none', version: 1, component: () => null }}
+            props={{}}
+          />
+        </div>
+      </>
+    ))
+  })
+  const section = container.querySelector('section')
+  expect(section?.textContent).toBe('react oneone')
+  act(() => {
+    setOutput('two')
+    flush()
+  })
+  expect(container.querySelector('section')).toBe(section)
+  expect(section?.textContent).toBe('react twotwo')
+  expect(mounts).toHaveBeenCalledOnce()
+  const empty = container.querySelector('[data-row="empty"]')!
+  expect(empty.querySelector(':scope > [data-empty]:only-child')).not.toBeNull()
+  expect(container.querySelector('[data-row="chain"] > [data-empty]')).toBeNull()
+})
+
+it('reads a provided value in Solid, follows its replacement, and unmounts without React taking it as a cleanup', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const Parked = definePoint<null, ReadonlySet<number>>('test.parked')
+  const first = new Set([1])
+  const second = new Set([2])
+  let current: ReadonlySet<number> = first
+  await registry.setLoaders({
+    'extensions/parked/web.tsx': async () => ({
+      default: { provides: [provide(Parked, () => current)] },
+    }),
+  })
+  const [shown, setShown] = createSignal(true)
+  const [input, setInput] = createSignal(0)
+  function Reader() {
+    const value = useProvided(Parked, () => (input(), null))
+    return <i>{[...(value() ?? [])].join()}</i>
+  }
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => <>{shown() && <Reader />}</>)
+    flush()
+  })
+  expect(container.textContent).toBe('1')
+  current = second
+  await act(async () => {
+    await registry.setLoaders({
+      'extensions/parked/web.tsx': async () => ({
+        default: { provides: [provide(Parked, () => current)] },
+      }),
+    })
+    setInput(1)
+    flush()
+  })
+  expect(container.textContent).toBe('2')
+  act(() => {
+    setShown(false)
+    flush()
+  })
+  expect(console.error).not.toHaveBeenCalled()
 })
 
 it('keeps the Solid host running when a React contribution throws', () => {

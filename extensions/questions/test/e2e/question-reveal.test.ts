@@ -132,6 +132,19 @@ it('brings the question card to the top of the view below the pinned strip', asy
     await page.locator(`[data-inbox-item="${id}"] button:has-text("Open in branch")`).click()
     expect(await drift(page, id)).toBeLessThan(4)
   }
+  // After both reveals, the room a reveal added below the last row goes with the way back to the end.
+  await page.locator('[aria-label="Scroll to bottom"]').click()
+  await until(
+    async () =>
+      await page.evaluate(() => {
+        const transcript = document.querySelector('[data-ui="transcript"]')!
+        const scroll = transcript.parentElement!
+        const rows = transcript.querySelectorAll(':scope > [data-entry-id]')
+        const last = rows[rows.length - 1].getBoundingClientRect().bottom
+        return scroll.getBoundingClientRect().bottom - last < 120
+      }),
+    5_000,
+  )
 })
 
 it('opens a question link at the question, once', async () => {

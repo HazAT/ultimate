@@ -11,15 +11,11 @@ import type { TranscriptFrame } from './transcript-frame.ts'
 
 export type Rendered = { extension: string; version: number; component: unknown }
 
-const markEmpty = (host: HTMLElement) => host.toggleAttribute('data-empty', !host.hasChildNodes())
-
 export function reactRoot(
   host: HTMLElement,
   context: { conversation?: ConversationId; transcript?: TranscriptFrame },
 ) {
   const root = createRoot(host)
-  const children = new MutationObserver(() => markEmpty(host))
-  children.observe(host, { childList: true })
   return {
     render: (element: ReactNode) => {
       flushSync(() =>
@@ -31,12 +27,8 @@ export function reactRoot(
           </TooltipProvider>,
         ),
       )
-      markEmpty(host)
     },
-    unmount: () => {
-      children.disconnect()
-      root.unmount()
-    },
+    unmount: () => root.unmount(),
   }
 }
 
