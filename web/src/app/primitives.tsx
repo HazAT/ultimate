@@ -194,7 +194,7 @@ export function Sidebar() {
     )
   if (!open) return null
   return (
-    <aside className={cn('flex shrink-0 flex-col border-r', sidebarWidth, look)}>
+    <aside className={cn('relative flex shrink-0 flex-col border-r', sidebarWidth, look)}>
       <Slot name="sidebar" />
     </aside>
   )
@@ -364,7 +364,7 @@ export function Panels() {
   const content = (
     <>
       <PanelTabs active={active} panels={tabs} />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         <ExtensionBoundary
           extension={active.extension}
           key={`${active.extension}:${active.id}`}
