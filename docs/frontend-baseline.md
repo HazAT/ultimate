@@ -14,6 +14,37 @@ into the `a0638de4` checkout, the `measure-switch` scripts from `134703f`) in de
 like `instance start` (`server/main.ts`, its own home, every agent on `openai-codex/gpt-6.2-sol`); speed numbers are
 the median of three runs, the range after it is the spread of those runs (the noise).
 
+### The series: `docs/frontend-progress.json`
+
+Every migration step adds one entry, measured the same way on one machine:
+
+```bash
+git worktree add --detach ~/fw/<sha> <sha> && (cd ~/fw/<sha> && pnpm install --frozen-lockfile --prefer-offline)
+node .ultimate/skills/measure-switch/copy-paused.ts ~/.ultimate/projects/<home>/state.sqlite ~/fw/snap
+node scripts/frontend-progress.ts ~/fw/<sha> --label 0.8 --summary "<what the step did, one line>" --snapshot ~/fw/snap/state.sqlite
+```
+
+Run it from the newest checkout: it measures the given tree with today's scripts, starts each server on a scratch home
+outside the real home, with a scripted model, `claude-code` disabled and no provider credentials, refuses a snapshot
+copy that is not paused or a tree with uncommitted changes, and replaces only that commit's entry: entries are never
+dropped, so the file keeps every step. Per entry:
+
+- `lines`, `perExtension`, `bundleGzipKB` and `entryGzipKB` come from `frontend-weight.ts`.
+- `switch` is the `settledMs` median of three `switch.ts --rounds 3` runs on a copy of the paused snapshot (`cold` is
+  round 0, `warm` rounds 1–2). Compare entries measured from one snapshot: a new snapshot has other conversations.
+  The backfill ran on 2026-11-20 under heavy machine load (load average 15–20 from parallel branches), so a run's
+  cold median spread up to 30% (585–790 ms at `a0638de4`); read the switch series as flat within that noise.
+- `stream` replaces the real model turn above: the scripted model streams one fixed 40-chunk reply, so every tree gets
+  the same `ops` events (23–25), and three runs repeat to the unit (`median` 92, `p95` 127). It counts React components
+  only.
+- `previews` (`scripts/preview-bench.ts`) runs three status-line tasks (keep-warm, pause, reading the setup issues)
+  three times each from a fresh page, once with CSS selectors and screenshots and once with `ui` steps (`null` before
+  `ui` steps existed at `1c5d056`). `tokens` estimates what the agent reads back: text at 4 bytes a token, a
+  1440×900 screenshot at width × height / 750. `agent` is a worker on `openai-codex/gpt-6.2-sol` given the keep-warm task
+  in plain words, three runs, counted from its stored entries; measured by hand and only at some commits.
+- `previewUsage` (`node scripts/preview-usage.ts ~/.ultimate/projects/<home>`) counts browser calls, `ui`/click/eval
+  steps and screenshots per week over every chapter of the project's history, read-only.
+
 ### Code and bundle: `node scripts/frontend-weight.ts`
 
 Non-blank lines of `web/src/**/*.{ts,tsx,css}` and every `extensions/*/**/*.tsx`, tests excluded; the production

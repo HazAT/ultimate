@@ -22,6 +22,13 @@ const counted = await Promise.all(
 )
 const sum = (files: { lines: number }[]) => files.reduce((total, file) => total + file.lines, 0)
 const solid = counted.filter(({ file }) => file.endsWith('.solid.tsx'))
+const perExtension: Record<string, { react: number; solid: number }> = {}
+for (const { file, lines: count } of counted) {
+  const name = /^extensions\/([^/]+)\//.exec(file)?.[1]
+  if (!name) continue
+  const own = (perExtension[name] ??= { react: 0, solid: 0 })
+  own[file.endsWith('.solid.tsx') ? 'solid' : 'react'] += count
+}
 
 const home = await mkdtemp(join(tmpdir(), 'frontend-weight-'))
 try {
@@ -61,7 +68,7 @@ try {
     JSON.stringify(
       {
         rev: await git(root, 'rev-parse', '--short', 'HEAD'),
-        dirty: (await git(root, 'status', '--porcelain')).length > 0,
+        dirty: (await git(root, 'status', '--porcelain', '--untracked-files=all')).length > 0,
         lines: {
           frontend: sum(counted),
           webSrc: sum(counted.filter(({ file }) => file.startsWith('web/src/'))),
@@ -70,6 +77,7 @@ try {
           files: counted.length,
           solidFiles: solid.length,
         },
+        perExtension,
         bundleKb: {
           js: kb(bundle.js),
           jsGzip: kb(bundle.jsGzip),
