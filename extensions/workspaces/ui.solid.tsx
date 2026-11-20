@@ -3,7 +3,7 @@
 import { ArrowUpRight } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { ROOT, cn, events, useAction, useExtensions } from '@/sdk/solid'
+import { ROOT, cn, events, plural, useAction, useExtensions } from '@/sdk/solid'
 import { GithubAction } from './refs.ts'
 
 export { Workspaces, useWorkspacesMeta } from './panel.solid.tsx'
@@ -48,7 +48,7 @@ export function CommitCount(props: {
   class?: string
 }) {
   const extensions = useExtensions()
-  const label = () => `${props.count} commit${props.count === 1 ? '' : 's'}`
+  const label = () => plural(props.count, 'commit')
   const reviewable = createMemo(
     () =>
       props.range !== undefined &&

@@ -11,6 +11,7 @@ import {
   elidePath,
   formatBytes,
   keepLast,
+  plural,
   shortenPath,
   useAction,
   useConversationId,
@@ -157,9 +158,7 @@ function Checkout(props: {
           </span>
         </Row>
         <Show when={typeof ahead() === 'number'}>
-          <Row label="ahead">
-            {ahead()} commit{ahead() === 1 ? '' : 's'}
-          </Row>
+          <Row label="ahead">{plural(ahead()!, 'commit')}</Row>
         </Show>
         <Show when={workspace().landed}>
           {(sha) => <Row label="landed">{sha().slice(0, 7)}</Row>}

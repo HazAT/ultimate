@@ -86,6 +86,7 @@
     "extensions/review/lines.ts",
     "extensions/review/sha256.ts",
     "lib/ago.ts",
+    "lib/plural.ts",
     "lib/compare.ts",
     "lib/context-usage.ts",
     "lib/conversation-ref.ts",

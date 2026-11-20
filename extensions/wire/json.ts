@@ -1,3 +1,5 @@
+import { plural } from '../../lib/plural.ts'
+
 export type Json = null | boolean | number | string | Json[] | JsonObject
 export type JsonObject = { [key: string]: Json }
 
@@ -49,8 +51,6 @@ export function hintOf(value: Json): string {
   }
   return ''
 }
-
-export const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
 export function kindOf(value: JsonObject | Json[], label: string): string {
   if (Array.isArray(value)) return plural(value.length, 'item')

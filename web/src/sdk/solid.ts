@@ -63,6 +63,7 @@ export {
   formatDuration,
   formatTime,
   formatTokens,
+  plural,
   prettyName,
   shortenPath,
 } from './format.ts'
