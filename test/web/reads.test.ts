@@ -129,6 +129,37 @@ it('rechecks readiness when the last reader of a pending read goes', async () =>
   await expect(done).resolves.toBeUndefined()
 })
 
+it('drops a hung call once a reader with a timeout joins it, forgets the answer and polls on', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers()
+  onTestFinished(() => void vi.useRealTimers())
+  const { action, reads } = readiness()
+  const hung = (...[, , options]: unknown[]) =>
+    new Promise<string>((_, reject) => {
+      const { signal } = options as { signal: AbortSignal }
+      signal.addEventListener('abort', () => reject(signal.reason))
+    })
+  action.mockResolvedValueOnce('first')
+  const read = reads.get('test', 'rate', null)
+  read.use({})
+  await vi.advanceTimersByTimeAsync(0)
+  expect(read.get().data).toBe('first')
+
+  action.mockImplementationOnce(hung)
+  const dropped = read.refetch()
+  await vi.advanceTimersByTimeAsync(1000)
+  read.use({ timeout: 5000, every: 1000 })
+  await vi.advanceTimersByTimeAsync(4000)
+  expect(await dropped).toBeUndefined()
+  expect(read.get().data).toBeUndefined()
+
+  action.mockResolvedValueOnce('second')
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(action).toHaveBeenCalledTimes(3)
+  expect(read.get().data).toBe('second')
+})
+
 it('stops waiting for readiness when its signal aborts', async () => {
   const { action, reads } = readiness()
   action.mockReturnValue(new Promise<string>(() => {}))

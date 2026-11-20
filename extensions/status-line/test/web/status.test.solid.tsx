@@ -113,7 +113,7 @@ const sample = (output: number): RateSample => ({
 const system = (generation: number) =>
   ({ process: { pid: 7, generation } }) as unknown as SystemInfo
 
-it('gives up on a hung rates request after 5 s and polls on, and asks the restarted server at once', async ({
+it('gives up on a hung rates request after 5 s and polls on, and forgets the rate as the restarted server is asked', async ({
   onTestFinished,
 }) => {
   vi.useFakeTimers()
@@ -147,9 +147,8 @@ it('gives up on a hung rates request after 5 s and polls on, and asks the restar
   harness.hang = true
   const beforeRestart = harness.requests
   stream.send('system', system(2))
-  await vi.advanceTimersByTimeAsync(10)
-  expect(harness.requests).toBeGreaterThan(beforeRestart)
-  await vi.advanceTimersByTimeAsync(5000)
+  await vi.advanceTimersByTimeAsync(0)
   flush()
+  expect(harness.requests).toBeGreaterThan(beforeRestart)
   expect(rate()).toBe('↓? tok/s')
 })

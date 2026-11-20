@@ -226,13 +226,11 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
   const [sending, setSending] = createSignal(false)
   const [stored, setOwner] = useExtensionUiState<Todo['owner']>('owner', 'user')
   const owner = (): Todo['owner'] => (stored() === 'ultimate' ? 'ultimate' : 'user')
-  const submit = async (source: string) => {
+  const submit = async () => {
     const trimmed = text().trim()
     if (!trimmed || sending()) return
     setSending(true)
-    const add = props.add
-    const forWhom = owner()
-    if (await writingAs(source, () => add(trimmed, forWhom))) setText('')
+    if (await props.add(trimmed, owner())) setText('')
     setSending(false)
   }
   return (
@@ -241,7 +239,7 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
         aria-label="Add the to-do"
         class="-ml-1 size-6 text-muted-foreground hover:text-foreground"
         disabled={sending()}
-        onClick={(_, details) => submit(details.source)}
+        onClick={submit}
         size="icon-xs"
         type="submit"
         variant="ghost"

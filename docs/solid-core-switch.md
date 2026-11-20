@@ -20,6 +20,7 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 | todos       | entry `todos.note` (model-only, renders nothing)                    | `extensions/todos/web.tsx:16`       | the transcript's entries       |
 | watchdog    | entry `watchdog.failure`                                            | `extensions/watchdog/web.tsx:8`     | the transcript's entries       |
 | prompt      | entry `prompt.build`                                                | `extensions/prompt/web.tsx:65`      | the transcript's entries       |
+| setup       | entry `setup.note` (model-only)                                     | `extensions/setup/web.tsx:8`        | the transcript's entries       |
 | recall      | entry of recalled memories (model-only)                             | `extensions/recall/web.tsx:92`      | the transcript's entries       |
 | recall      | user bubble `RecallBubble`                                          | `extensions/recall/web.tsx:91`      | the transcript's user message  |
 | pause       | entries `pause.note`, `pause.limit`, `pause.autoplay`, `pause.held` | `extensions/pause/web.tsx:194`      | the transcript's entries       |
@@ -32,6 +33,7 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 | Extension  | Part                                                                                          | Where                               | Rendered by                                            |
 | ---------- | --------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------ |
 | read-aloud | composer wrapper `ReadingStrip`                                                               | `extensions/read-aloud/web.tsx:147` | the composer                                           |
+| codemode   | document view `codemode.store`                                                                | `extensions/codemode/web.tsx:256`   | the Documents panel                                    |
 | documents  | the Documents panel                                                                           | `extensions/documents/web.tsx:127`  | hosts other extensions' React document views           |
 | agent      | the `agent` surface and the title bar's panel buttons                                         | `extensions/agent/web.tsx:67`       | is the conversation view: transcript, composer, panels |
 | todos      | the panel's React wrapper (`Todos`), reading inbox's React `Waiting` point for the Solid list | `extensions/todos/web.tsx:10`       | inbox's `Waiting` is React                             |

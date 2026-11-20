@@ -159,6 +159,7 @@ export function Control() {
               >
                 <label class="flex flex-1 items-center gap-2">
                   <Checkbox
+                    aria-label={`Sound on for ${label}`}
                     bind={[
                       () => !off().includes(sound),
                       (on) => {

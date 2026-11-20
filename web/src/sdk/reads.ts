@@ -37,7 +37,10 @@ const MAX_RETAINED_IDLE_READS = 50
 const REMOUNT_FRESHNESS_MS = 2000
 
 export function createReads(api: Api, store: Store) {
-  const reads = new Map<string, Read & { readers: Set<Reader>; answered: () => boolean }>()
+  const reads = new Map<
+    string,
+    Read & { readers: Set<Reader>; answered: () => boolean; forget: () => undefined }
+  >()
   const changed = new Set<() => void>()
   const inUseReadsSettled = () =>
     [...reads.values()].every((read) => !read.readers.size || read.answered())
@@ -59,7 +62,12 @@ export function createReads(api: Api, store: Store) {
     if (next === process) return
     const restarted = process !== undefined
     process = next
-    if (restarted) for (const read of reads.values()) if (read.readers.size) void read.refetch()
+    if (restarted)
+      for (const read of reads.values())
+        if (read.readers.size) {
+          if ([...read.readers].some((reader) => reader.timeout !== undefined)) read.forget()
+          void read.refetch()
+        }
   })
   if (typeof window !== 'undefined')
     window.addEventListener('focus', () => {
@@ -103,6 +111,22 @@ export function createReads(api: Api, store: Store) {
       set({ data: undefined, loading: false, settled: true })
       return undefined
     }
+    type Call = { startedAt: number; timedOut: boolean; expire?: Cancel }
+    let inFlight: Call | undefined
+    function armTimeout() {
+      const call = inFlight
+      const own = controller
+      if (!call || !own) return
+      const timeout = Math.min(...[...readers].map((reader) => reader.timeout ?? Infinity))
+      call.expire?.()
+      call.expire =
+        timeout === Infinity
+          ? undefined
+          : deadline(Math.max(0, call.startedAt + timeout - Date.now()), () => {
+              call.timedOut = true
+              own.abort()
+            })
+    }
     function repoll() {
       cancelPoll?.()
       const every = Math.min(...[...readers].map((reader) => reader.every ?? Infinity))
@@ -117,46 +141,46 @@ export function createReads(api: Api, store: Store) {
       const firstReaderErrorHandlerAtCallStart = [...readers].find(
         (reader) => reader.onError,
       )?.onError
-      const timeout = Math.min(...[...readers].map((reader) => reader.timeout ?? Infinity))
-      let timedOut = false
-      const expire =
-        timeout === Infinity
-          ? undefined
-          : deadline(timeout, () => {
-              timedOut = true
-              own.abort()
-            })
+      const call: Call = { startedAt: Date.now(), timedOut: false }
+      inFlight = call
+      armTimeout()
       set({ loading: true })
       try {
         const data = await api.action(
           actionRef<unknown, unknown>(extension, name),
           ...([args, { signal: own.signal, conversationId }] as ActionArgs<unknown, ActionOptions>),
         )
-        if (own.signal.aborted) return timedOut ? forget() : undefined
+        if (own.signal.aborted) return call.timedOut ? forget() : undefined
         answered = true
         lastAnswerAtMs = Date.now()
         networkFailedReads.delete(read)
         set({ data, error: undefined, loading: false, settled: true })
         return data
       } catch (error) {
-        if (own.signal.aborted) return timedOut ? forget() : undefined
+        if (own.signal.aborted) return call.timedOut ? forget() : undefined
         answered = true
         const failure = error as ActionError
 
         const silentRetryableFailure = failure.status === 0
+        const expires = [...readers].some((reader) => reader.timeout !== undefined)
         if (silentRetryableFailure) {
           networkFailedReads.add(read)
-          set({ loading: false })
+          set(expires ? { data: undefined, loading: false } : { loading: false })
           return undefined
         }
         networkFailedReads.delete(read)
-        set({ error: failure, loading: false, settled: true })
+        set({
+          ...(expires ? { data: undefined } : {}),
+          error: failure,
+          loading: false,
+          settled: true,
+        })
 
         if (firstReaderErrorHandlerAtCallStart) firstReaderErrorHandlerAtCallStart(failure)
         else store.notify({ level: 'error', message: actionMessage(failure) })
         return undefined
       } finally {
-        expire?.()
+        call.expire?.()
         if (controller === own) {
           controller = undefined
           repoll()
@@ -165,6 +189,7 @@ export function createReads(api: Api, store: Store) {
     }
     const read = {
       readers,
+      forget,
       get: () => state,
       answered: () => answered,
       subscribe(listener: () => void) {
@@ -181,7 +206,10 @@ export function createReads(api: Api, store: Store) {
         const needsFreshCallAfterRemount =
           !controller && !sameTickRequest && Date.now() - lastAnswerAtMs > REMOUNT_FRESHNESS_MS
         if (needsFreshCallAfterRemount) void read.refetch()
-        else repoll()
+        else {
+          armTimeout()
+          repoll()
+        }
         return function releaseReaderKeepingInFlightCall() {
           readers.delete(reader)
           if (readers.size) return repoll()

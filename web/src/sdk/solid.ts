@@ -192,7 +192,8 @@ export function useExtensionUiState<T extends JsonValue>(key: string, initial: T
 /**
  * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again,
  * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there,
- * and `timeout` the ms after which a call that has not answered is dropped and `data` forgets the last answer.
+ * and `timeout` the ms after which a call that has not answered is dropped. With a `timeout`, `data` is only ever the
+ * live server's answer: it is forgotten when a call times out or fails and when the server restarts.
  */
 export type UseActionOptions<T = unknown> = {
   conversation?: ConversationId

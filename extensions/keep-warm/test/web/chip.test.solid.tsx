@@ -74,6 +74,17 @@ async function mountChip() {
   return container
 }
 
+it('sends a person’s click on the switch as theirs', async () => {
+  const container = await mountChip()
+  container
+    .querySelector<HTMLButtonElement>(`button[aria-label="Keep @ultimate's cache warm"]`)!
+    .click()
+  flush()
+  container.querySelector<HTMLButtonElement>('[role="switch"]')!.click()
+  await vi.advanceTimersByTimeAsync(10)
+  expect(harness.actions).toContainEqual({ name: 'set', args: { on: false }, source: 'person' })
+})
+
 it('stays on screen and actable while the page switches to another conversation', async () => {
   const container = await mountChip()
   const calls = harness.actions.length

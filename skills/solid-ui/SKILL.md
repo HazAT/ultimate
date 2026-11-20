@@ -61,17 +61,17 @@ before assuming a component exists; for a behaviour the kit lacks, build it with
 and add it to the kit. Lint: `ultimate/ui-framework-boundaries`, `ultimate/ui-kit-roles` (hand-made widget roles and
 bare `<form>`s).
 
-| Component                                                                      | Notes                                                                                                     |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Button                                                                         | `onClick(event, details)`; return the Promise so it shows pending. `render` replaces `asChild`.           |
-| Form                                                                           | Never navigates; its `type="submit"` Button's `onClick` submits, which Enter in a field presses too.      |
-| Input, SecretInput (`input.solid.tsx`)                                         | A secret field agents may fill but never read.                                                            |
-| Checkbox, Switch, SegmentedControl, Slider, NumberInput                        | Take `bind`. Checkbox may report `"indeterminate"`; NumberInput's agent `setValue` fires `onValueChange`. |
-| Collapsible                                                                    | Unmounts its panel when closed; `keepMounted` keeps it.                                                   |
-| Popover, StatusPopoverTrigger (`status-trigger.solid.tsx`), HoverCard, Tooltip | Popups in the top layer; Tooltip needs no provider.                                                       |
-| Dialog, DropdownMenu, Command                                                  | `DialogContent`'s `finalFocus`, menu labels in a group, Command's `filter`: see Pitfalls.                 |
-| Toast                                                                          | Fed by `createToaster()` (`extensions/notices/toasts.solid.tsx`).                                         |
-| Kbd and KbdGroup, Row and Rows, Skeleton                                       | Static parts.                                                                                             |
+| Component                                                                      | Notes                                                                                                                                                |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Button                                                                         | `onClick(event, details)`; return the Promise so it shows pending. `render` replaces `asChild`.                                                      |
+| Form                                                                           | Never navigates; its `type="submit"` Button's `onClick` submits, which Enter in a field presses too.                                                 |
+| Input, SecretInput (`input.solid.tsx`)                                         | A secret field agents may fill but never read.                                                                                                       |
+| Checkbox, Switch, SegmentedControl, Slider, NumberInput                        | Take `bind`. Checkbox may report `"indeterminate"`; NumberInput's agent `setValue` fires `onValueChange`; Slider's agent acts on its labelled thumb. |
+| Collapsible                                                                    | Unmounts its panel when closed; `keepMounted` keeps it.                                                                                              |
+| Popover, StatusPopoverTrigger (`status-trigger.solid.tsx`), HoverCard, Tooltip | Popups in the top layer; Tooltip needs no provider.                                                                                                  |
+| Dialog, DropdownMenu, Command                                                  | `DialogContent`'s `finalFocus`, menu labels in a group, Command's `filter`: see Pitfalls.                                                            |
+| Toast                                                                          | Fed by `createToaster()` (`extensions/notices/toasts.solid.tsx`).                                                                                    |
+| Kbd and KbdGroup, Row and Rows, Skeleton                                       | Static parts.                                                                                                                                        |
 
 Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test.
 
@@ -81,9 +81,10 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   `<Switch bind={digest} />`. Never call a hook inside a JSX prop: a Solid prop is a getter, so it runs again at every
   read. For an action: `bind={[() => state().on, (on) => void toggle(on)]}`.
 - **Reading the server:** `useAction(ref, args, options)` shares one call per action and args. `every` takes ms or
-  `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting); `timeout` drops a call that never
-  answers and forgets `data` (`extensions/status-line/status.solid.tsx`); it refetches after a restart and on
-  reconnect by itself. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
+  `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). With `timeout`, a call that does not
+  answer in time is dropped and `data` is only the live server's answer: forgotten on a timeout, a failure or a restart
+  (`extensions/status-line/status.solid.tsx`). Every read refetches after a restart; on reconnect only reads whose
+  request never reached the server retry. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
   since a plain read follows the shown conversation and starts unanswered when the view arrives. A read with getter
   args keeps the args its key was made from.
 - **The conversation's model:** `useAgent()`, not a whole conversation replica.
@@ -101,14 +102,17 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **One-time page work** (a service worker, a URL parameter read once) goes in `onSettled`
   (`extensions/share/receive.solid.tsx`).
 - **Coming and going lists** are a kit `Toast` with a `createToaster()`: it owns duration, pause on hover or focus,
-  `maxVisible` and dismissal.
+  `maxVisible` and dismissal. The agent sees one `toast` component for the region (labelled with the region's name
+  only when two or more show) and dismisses one with `press` and its close button's text as the argument; name close
+  buttons by their toast (`Dismiss notice <id>: <message>`).
 - **Agent permissions:** `data-agent-confirm="what it does"` on an action that needs a person; `data-agent-secret` on a
   field an agent may fill but never read; `data-agent-hidden` on a region agents should not see (a person's click there
   still works, but the bridge reports nothing); `agent: { secret: true }` in a `definePrimitive` whose value must never
   be read.
 - **Names:** every control has a visible label or `aria-label` naming its action (`Play paused work`, `Pause: stop
-  starting new work`). The bridge resolves a label by prefix, so no name on the page may equal or start with another
-  ("New to-do" also matched "New to-do for"; a popover trigger and its switch were both "Sounds"). A Tooltip trigger
+  starting new work`). The bridge resolves a name as whole words of a label or row text, regardless of case and
+  accents, so no name on the page may appear as whole words in another ("New to-do" also named "New to-do for";
+  "Finished" also named "Play Finished"; a popover trigger and its switch were both "Sounds"). A Tooltip trigger
   rendered as a `<span>` is not named by its text: give it an `aria-label`.
 - **Styling:** our tokens (`text-muted-foreground`, `bg-muted`, `border-border/70`, `text-brand`) and ui-sdk's state
   attributes (`data-pressed:`, `data-checked:`, `data-open:`, `data-disabled:`), never inline styles for state. Dense
@@ -147,8 +151,8 @@ ui-sdk:
   element then, from a remembered id, not a kept node (the composer remounts), falling back to the shown
   conversation, since a command or `useDialog` opening it never calls `onOpenChange(true)`. Target an element a person
   can reach (`uncoveredComposer()`, not a composer behind a side chat) and look it up in an effect on the controlled
-  `open`, before the modal makes the page inert. Focusing in `onOpenChangeComplete` loses to the SDK's own return to
-  the trigger.
+  `open`, before the modal makes the page inert, and write to that element's own conversation
+  (`dataset.conversation`). Focusing in `onOpenChangeComplete` loses to the SDK's own return to the trigger.
 - The installed Solid SDK documents agent permissions in `docs/agents.md#permissions`.
 - Tooltip keeps its content mounted (hidden) so it can name an icon-only trigger; keyboard focus opens it at once.
 - Packages shipping raw JSX under the `solid` condition (ui-sdk, `@lucide/solid`) belong in the Solid plugin's `include`
@@ -190,8 +194,9 @@ Tooling:
   and Enter submitting a form need a real browser.
 - **Whole page:** the browser tool's `ui` steps (`snapshot`, `query`, `act`) wait for the first render and every
   mounted read's first answer. A change is recorded only when it reaches stored state (`ui.changed`, see
-  `extensions/ui/README.md`); opening, closing, hover and focus never are. Act on the whole page once in a preview to
-  catch name clashes between extensions.
+  `extensions/ui/README.md`); opening, closing, hover and focus never are. The browser tool sends pending UI-state
+  writes before it closes the page, whatever the last step was. Act on the whole page once in a preview to catch name
+  clashes between extensions.
 
 ## Measuring
 

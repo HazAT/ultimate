@@ -276,6 +276,10 @@ it('asks a person before pressing a destructive item in a closed menu', async ({
   const refused = await agent.act({ steps: [{ ref: refFor('Project actions'), ...step }] })
   expect(refused.ok).toBe(false)
   expect(refused.error?.message).toBe(`The person said no to "${confirm}".`)
+  const unasked = createAgent()
+  const ref = unasked.snapshot().find((item) => !item.offPage && item.label === 'Project actions')!
+  const byDefault = await unasked.act({ steps: [{ ref: ref.ref, ...step }] })
+  expect(byDefault.error?.message).toContain('Needs a person')
   expect(acted).not.toHaveBeenCalled()
   expect(container.querySelector('[role="menu"][data-open]')).toBeNull()
 
