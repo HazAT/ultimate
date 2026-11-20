@@ -42,6 +42,7 @@ documents, tools and model-facing text.
   6000 tokens the newest full ones stay and older ones collapse too. New target commits that touch none of its files
   are one line; otherwise up to 30 are listed, overlaps first, with conversation trailers. An isolate also gets its
   behind count. The note asks the reader to check its plan only when something touched its files or a note was left.
+  When its files cannot be read (a broken worktree, a failing git call), it falls back to the full listing and the check.
   @ultimate gets every conversation in full and no commit section. Nothing new means no note; mid-run inputs and
   tallies get none. `lineage.seen` `{ main?, at?, tally? }` keeps
   the baseline.

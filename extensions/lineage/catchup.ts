@@ -139,7 +139,7 @@ async function catchupText(
   host: ExtensionHost,
   main: Main,
   since: { main: string; at?: number },
-  changed: ReadonlySet<string>,
+  changed: ReadonlySet<string> | undefined,
 ) {
   const range = `${since.main}..${main.sha}`
   const firstParentTargetLogBoundedByRows = (...args: string[]) =>
@@ -156,7 +156,7 @@ async function catchupText(
     firstParentTargetLogBoundedByRows(range),
   ])
   if (!count) return undefined
-  const ownFilePathspecForBoundedMergeNames = [...changed]
+  const ownFilePathspecForBoundedMergeNames = [...(changed ?? [])]
     .slice(0, MAX_PATHS_WITH_OVERLAP_MARKS)
     .map((path) => `:(top,literal)${path}`)
   const overlapMarksOrEmpty = ownFilePathspecForBoundedMergeNames.length
@@ -167,8 +167,9 @@ async function catchupText(
         range,
         '--',
         ...ownFilePathspecForBoundedMergeNames,
-      ).catch(() => '')
+      ).catch(meansNone)
     : ''
+  const overlapsKnown = changed !== undefined && overlapMarksOrEmpty !== undefined
   const parse = (records: string) =>
     records
       .split('\x1e')
@@ -178,17 +179,23 @@ async function catchupText(
         const [sha, subject, trailer, paths = ''] = record.split('\0')
         return { sha, subject, trailer, paths: paths.trim().split('\n').filter(Boolean) }
       })
-  const overlaps = parse(overlapMarksOrEmpty)
+  const overlaps = parse(overlapMarksOrEmpty ?? '')
   const behind = main.workspace
     ? Number(
-        await git(main.workspace, 'rev-list', '--first-parent', '--count', `HEAD..${main.sha}`),
-      )
+        await git(
+          main.workspace,
+          'rev-list',
+          '--first-parent',
+          '--count',
+          `HEAD..${main.sha}`,
+        ).catch(meansNone),
+      ) || 0
     : 0
   const behindLine = behind
     ? [`Your workspace is ${behind} commits behind ${main.target}; merge it before continuing.`]
     : []
   const landedLine = `Since you last worked (${new Date(since.at ?? Date.now()).toISOString()}), ${count} commits landed on ${main.target}`
-  if (!overlaps.length)
+  if (overlapsKnown && !overlaps.length)
     return {
       overlap: false,
       text: [
@@ -211,7 +218,7 @@ async function catchupText(
     })
     .slice(0, COMMIT_ROWS_OVERLAPS_FIRST)
   return {
-    overlap: true,
+    overlap: overlaps.length > 0 || !overlapsKnown,
     text: [
       `${landedLine}:`,
       ...commits.map((commit) => commit.row),
@@ -379,6 +386,7 @@ export async function tallyText(
   for (const activity of activities.values()) activity.title ??= activity.prompt
   const newest = [...activities.values()].toSorted((a, b) => b.last - a.last)
   const own = newest.length ? await reader?.files() : undefined
+  const unreadable = !!reader && newest.length > 0 && own === undefined
   const touchesOwnFiles = async (activity: Activity) => {
     for (const landing of activity.landings) if (await reader!.touched(landing, own!)) return true
     return false
@@ -452,7 +460,7 @@ export async function tallyText(
   }
   return {
     tip,
-    relevant,
+    relevant: relevant || unreadable,
     text: [
       header,
       ...(lines.length || dropped
@@ -502,7 +510,7 @@ function readerOf(host: ExtensionHost, id: ConversationId, main: Main, tx: Tx): 
         landing.sha,
         '--',
         ...pathspecs,
-      ).catch(() => '')
+      ).catch(() => 'unknown')
       return touched.trim().length > 0
     },
   }
@@ -538,9 +546,9 @@ export async function catchup(
     : undefined
   const mainMoved =
     !!main && !!alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
-  const own = reader && mainMoved ? ((await reader.files()) ?? new Set<string>()) : undefined
+  const own = reader && mainMoved ? await reader.files() : undefined
   const commits =
-    main && own && mainMoved
+    main && reader && mainMoved
       ? await catchupText(
           host,
           main,

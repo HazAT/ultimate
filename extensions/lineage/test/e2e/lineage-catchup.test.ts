@@ -598,7 +598,11 @@ it('finds an overlap past the eight paths a landing note lists, and lists every 
     .cwd!
   await writeFile(join(brokenCwd, '.git'), 'gitdir: /nowhere\n')
   const later = await branchFrom(f.server, { from: 1, prompt: 'Later feature' })
+  repoGit(f.projectRoot, 'commit', '--allow-empty', '-m', 'Landed while broken')
   await ask(f.server, broken, 'continue broken')
   const full = ((await catchups(f.server, broken)).at(-1)!.data as { text: string }).text
   expect(full).toContain(`**#${later}** started: Later feature`)
+  expect(full).toContain('Landed while broken')
+  expect(full).not.toContain('none touching your files')
+  expect(full).toContain('Check whether')
 })
