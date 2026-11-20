@@ -132,28 +132,37 @@ it('follows, escapes, returns and keeps the read row in place while history page
   await until(async () => (await place()).distance <= 1 && !(await place()).button, 5_000)
 
   // Earlier history pages in above the row the reader looks at without moving it.
-  const first = await page
-    .locator('[data-ui="transcript"] > [data-entry-id]')
-    .first()
-    .getAttribute('data-entry-id')
+  let releaseHistory: (() => void) | undefined
+  await page.route('**/api/conversations/*/history*', async (request) => {
+    await new Promise<void>((resume) => (releaseHistory = resume))
+    await request.continue()
+  })
   await page.locator('[data-ui="transcript"]').hover()
   await page.mouse.wheel(0, -100_000)
+  await until(async () => releaseHistory !== undefined, 5_000)
   await until(async () => (await place()).top < 50, 5_000)
-  const anchor = await page.evaluate(async (oldest) => {
-    const rows = () => [...document.querySelectorAll('[data-ui="transcript"] > [data-entry-id]')]
-    const row = rows().find((element) => element.getBoundingClientRect().top > 150)!
-    const top = row.getBoundingClientRect().top
-    const deadline = performance.now() + 8000
-    while (rows()[0].getAttribute('data-entry-id') === oldest && performance.now() < deadline)
-      await new Promise((tick) => setTimeout(tick, 50))
-    await new Promise((tick) => setTimeout(tick, 300))
-    return {
-      paged: rows()[0].getAttribute('data-entry-id') !== oldest,
-      drift: row.getBoundingClientRect().top - top,
-    }
-  }, first)
-  expect(anchor.paged).toBe(true)
-  expect(Math.abs(anchor.drift)).toBeLessThan(2)
+  const read = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('[data-ui="transcript"] > [data-entry-id]')].find(
+      (element) => element.getBoundingClientRect().top > 150,
+    )!
+    return { row: row.getAttribute('data-entry-id'), top: row.getBoundingClientRect().top }
+  })
+  const rows = await page.locator('[data-ui="transcript"] > [data-entry-id]').count()
+  releaseHistory!()
+  await until(
+    async () => (await page.locator('[data-ui="transcript"] > [data-entry-id]').count()) > rows,
+    8_000,
+  )
+  await page.waitForTimeout(300)
+  const drift = await page.evaluate(
+    ({ row, top }) =>
+      document
+        .querySelector(`[data-ui="transcript"] > [data-entry-id="${row}"]`)!
+        .getBoundingClientRect().top - top,
+    read,
+  )
+  expect(Math.abs(drift)).toBeLessThan(2)
+  await page.unroute('**/api/conversations/*/history*')
 
   // A sent message brings the view back to its end.
   await page.locator('textarea').fill('last')

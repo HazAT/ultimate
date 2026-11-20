@@ -19,58 +19,56 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   }
   const bottom = () => scroll.scrollHeight - scroll.clientHeight
   let pressed = false
-  let steered = false
-  const left = () => steered && scroll.scrollTop < seen - 1 && distance() > 1
+  let touching = false
+  const steering = () => pressed || touching
+  const left = () => steering() && scroll.scrollTop < seen - 1 && distance() > 1
   const selecting = () => pressed && !!getSelection()?.toString()
   const onScroll = () => {
     const top = scroll.scrollTop
     if (left()) report({ following: false })
-    else if (steered && !following && top > seen + 1 && distance() <= 1) report({ following: true })
+    else if (!following && top > seen + 1 && distance() <= 1) report({ following: true })
     else report({})
     seen = top
-    steered = pressed
   }
-  const scrollsItself = (element: Element) =>
-    element.scrollHeight > element.clientHeight &&
-    /auto|scroll/.test(getComputedStyle(element).overflowY)
-  const ownerOf = (target: EventTarget | null) => {
+  const movesUp = (element: Element) =>
+    element.scrollTop > 0 && /auto|scroll/.test(getComputedStyle(element).overflowY)
+  const innerTakes = (target: EventTarget | null) => {
     for (
       let element = target instanceof Element ? target : null;
-      element;
+      element && element !== scroll;
       element = element.parentElement
     )
-      if (element === scroll || scrollsItself(element)) return element
-    return null
+      if (movesUp(element)) return true
+    return false
   }
   const onWheel = (event: WheelEvent) => {
-    if (ownerOf(event.target) !== scroll || !scrollsItself(scroll)) return
-    steered = true
-    if (event.deltaY < 0) report({ following: false })
+    if (event.deltaY < 0 && !innerTakes(event.target)) report({ following: false })
   }
-  const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
   const typing = (target: EventTarget | null) =>
     target instanceof HTMLElement &&
     (target.isContentEditable || !!target.closest('input, textarea'))
-  const steer = (event: Event) => {
-    steered = true
-    if (event.type === 'pointerdown') pressed = true
+  const upKeys = new Set(['ArrowUp', 'PageUp', 'Home'])
+  const reader = {
+    pointerdown: () => (pressed = true),
+    pointerup: () => (pressed = false),
+    pointercancel: () => (pressed = false),
+    touchstart: () => (touching = true),
+    touchend: () => (touching = false),
+    touchcancel: () => (touching = false),
+    keydown: (event: Event) => {
+      const key = event as KeyboardEvent
+      if (upKeys.has(key.key) && !typing(key.target)) report({ following: false })
+    },
   }
-  const onKey = (event: KeyboardEvent) => {
-    if (scrollKeys.has(event.key) && !typing(event.target)) steered = true
-  }
-  const release = () => {
-    pressed = false
-  }
+  const onTranscript = new Set(['pointerdown', 'touchstart'])
   const grow = new ResizeObserver(() => {
     if (following && !selecting()) place(bottom())
     report({})
   })
   scroll.addEventListener('scroll', onScroll, { passive: true })
   scroll.addEventListener('wheel', onWheel, { passive: true })
-  scroll.addEventListener('pointerdown', steer, { passive: true })
-  scroll.addEventListener('touchstart', steer, { passive: true })
-  window.addEventListener('pointerup', release, { passive: true })
-  window.addEventListener('keydown', onKey, { passive: true })
+  for (const [type, listener] of Object.entries(reader))
+    (onTranscript.has(type) ? scroll : window).addEventListener(type, listener, { passive: true })
   grow.observe(scroll)
   grow.observe(content)
   place(bottom())
@@ -89,10 +87,8 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
       grow.disconnect()
       scroll.removeEventListener('scroll', onScroll)
       scroll.removeEventListener('wheel', onWheel)
-      scroll.removeEventListener('pointerdown', steer)
-      scroll.removeEventListener('touchstart', steer)
-      window.removeEventListener('pointerup', release)
-      window.removeEventListener('keydown', onKey)
+      for (const [type, listener] of Object.entries(reader))
+        (onTranscript.has(type) ? scroll : window).removeEventListener(type, listener)
     },
   }
 }
