@@ -810,14 +810,34 @@ it('recovers no-model failures separately from earlier reply-expecting inputs an
   expect(await f.tasks()).toHaveLength(2)
 })
 
-it('uses a notice, not a card, when @ultimate fails after one retry', async () => {
-  const f = await fixture(() => error(overloaded))
+it('writes a display-only card into @ultimate’s own transcript when it fails after one retry, once across a replay', async () => {
+  let modelCalls = 0
+  const barrier = Promise.withResolvers<void>()
+  const held = { phase: 'report' as const, entered: false, promise: barrier.promise }
+  const f = await fixture(
+    () => {
+      modelCalls++
+      return error(overloaded)
+    },
+    true,
+    held,
+  )
   await (await f.submit(f.ultimate, 'fail')).wait(context)
   await f.sleeping()
   f.advance(60_000)
-  await until(async () => f.notices.length === 1)
-  expect(f.notices[0]).toContain('After one automatic retry')
+  await until(async () => held.entered)
+  await f.reopen()
+  barrier.resolve()
+  const own = () => f.entries(f.ultimate, 'watchdog.standing-failure')
+  await until(async () => (await own()).length === 1)
+  await until(async () => (await f.tasks()).every((task) => task.state.status === 'terminal'))
+  await f.reopen()
+  await f.harness.waitForIdle(context)
+  expect(await own()).toHaveLength(1)
   expect(await f.entries()).toHaveLength(0)
+  expect((await own())[0].data).toMatchObject({ conversation: f.ultimate, retried: true })
+  expect(f.notices).toEqual([])
+  expect(modelCalls).toBe(2)
 })
 
 it('reports a broken login at once, with a hint to log in again and no retry', async () => {

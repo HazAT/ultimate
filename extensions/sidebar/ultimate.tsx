@@ -1,5 +1,6 @@
 import { ROOT } from '@/sdk'
 import type { ReactNode } from 'react'
+import { CircleXIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   cn,
@@ -121,6 +122,9 @@ function Primary({ parked }: { parked?: ReadonlySet<number> }) {
                   size="sm"
                 />
                 @{name}
+                {runState === 'error' && (
+                  <CircleXIcon aria-hidden className={cn('size-3.5', stateTone.failed)} />
+                )}
                 {state === 'working' && word !== 'working' && (
                   <span className="text-brand">{word}</span>
                 )}
