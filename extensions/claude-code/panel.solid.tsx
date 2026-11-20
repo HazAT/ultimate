@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { RefreshCw } from '@lucide/solid'
-import { createEffect, Show } from 'solid-js'
+import { createEffect, createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { keepLast, refreshModels, useAction } from '@/sdk/solid'
 import { StatusAction } from './refs.ts'
@@ -15,7 +15,8 @@ function title(status: ClaudeStatus | undefined, failed: boolean) {
 
 export function ClaudeCodePanel() {
   const status = useAction(StatusAction, null, { onError: keepLast })
-  createEffect(status.data, (data) => void (data && refreshModels()))
+  const answer = createMemo(status.data)
+  createEffect(answer, (data) => void (data && refreshModels()))
   return (
     <div class="space-y-6 p-4 text-sm">
       <div class="space-y-2 border-b pb-4">
