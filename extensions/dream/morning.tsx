@@ -50,7 +50,7 @@ const nouns: Record<keyof Seed['counts'], [string, string]> = {
 
 export function CarriedCard({ entry }: { entry: EntryRecord }) {
   if (!BranchCarried.is(entry)) return null
-  const { from, conversation, title } = entry.data
+  const { from, conversation } = entry.data
   return (
     <Card data-dream-carried-branch={conversation}>
       <header className="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
@@ -59,7 +59,6 @@ export function CarriedCard({ entry }: { entry: EntryRecord }) {
         <span className="text-foreground">
           {from.name}#{conversation}
         </span>
-        <span className="min-w-0 truncate">{title}</span>
         <span>from {chapterLabel(from.number, from.name)}</span>
       </header>
     </Card>
