@@ -33,6 +33,7 @@
     "extensions/projects/links.ts",
     "extensions/cloud/types.ts",
     "extensions/conversations/types.ts",
+    "extensions/conversations/visible.ts",
     "extensions/dream/stage.ts",
     "extensions/dream/types.ts",
     "extensions/lineage/types.ts",

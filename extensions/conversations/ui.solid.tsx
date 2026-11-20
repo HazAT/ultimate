@@ -8,6 +8,21 @@ import { ROOT, cn, useConversations, useDocOf } from '@/sdk/solid'
 import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
 import { OverviewDoc } from './refs.ts'
 
+export { hiddenConversationIds } from './visible.ts'
+
+/** A conversation's feature, as a small tag in the feature's hue. */
+export function FeatureTag(props: { feature: string; class?: string }) {
+  return (
+    <span
+      class={cn(featureTagClass, featureHue(props.feature), props.class)}
+      data-feature={props.feature}
+      title={props.feature}
+    >
+      {props.feature}
+    </span>
+  )
+}
+
 /**
  * Conversation `id` as its standing agent's name, else its feature tag, else `title` or its live title, then `#id`;
  * the same parts as React's `ConversationRef`.
@@ -29,17 +44,7 @@ export function ConversationRef(props: { id: ConversationId; title?: string; cla
       class={cn('inline-flex max-w-full min-w-0 items-center gap-1.5', props.class)}
       data-conversation-ref={props.id}
     >
-      <Show when={parts().tag}>
-        {(tag) => (
-          <span
-            class={cn(featureTagClass, featureHue(tag()), 'shrink-0')}
-            data-feature={tag()}
-            title={tag()}
-          >
-            {tag()}
-          </span>
-        )}
-      </Show>
+      <Show when={parts().tag}>{(tag) => <FeatureTag class="shrink-0" feature={tag()} />}</Show>
       <Show when={parts().name}>
         {(name) => (
           <span class="min-w-0 truncate" title={name()}>
