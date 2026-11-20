@@ -73,6 +73,7 @@
     "extensions/sidebar/work.ts",
     "extensions/sidebar/landings.ts",
     "extensions/subagents/landing.ts",
+    "extensions/subagents/source.ts",
     "extensions/onboarding/onboarded.ts",
     "extensions/tasks/kinds.ts",
     "extensions/tasks/tree.ts",

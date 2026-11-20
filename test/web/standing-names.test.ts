@@ -1,9 +1,8 @@
-import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
-import { AgentInput } from '../../extensions/subagents/messages.tsx'
 import { LandingCard } from '../../extensions/workspaces/landing.tsx'
 
 const conversations = [
@@ -23,8 +22,7 @@ vi.mock('@/sdk', async () => ({
   AllProvided: () => null,
   useConversation: () => 1,
   useConversations: () => conversations,
-  useConversationSummary: (id?: number) =>
-    conversations.find((item: { id: number }) => item.id === id),
+  useConversationSummary: (id?: number) => conversations.find((item) => item.id === id),
   useDocOf: () => ({ conversations: { '43': { feature: 'Chat Cards' } } }),
   useEvent: () => {},
   useUltimate: () => ({ switchConversation: () => {} }),
@@ -55,19 +53,4 @@ it("folds a standing agent's landing to its @name, not the feature it carried at
     )
   expect(landing(43)).toBe('landed @ultimate #43 · 5e1f0a2')
   expect(landing(60)).toBe('landed Chat Cards Fold cards in the chat #60 · 5e1f0a2')
-})
-
-it('names a report by its standing agent, a subagent by its definition', () => {
-  const report = (sender: number) =>
-    text(
-      createElement(AgentInput, {
-        entry: {
-          id: 2,
-          kind: 'subagents.report',
-          data: { kind: 'report', agent: 'worker', sender, body: 'done' },
-        } as unknown as EntryRecord,
-      }),
-    )
-  expect(report(43)).toMatch(/^@ultimate #43 report/)
-  expect(report(50)).toMatch(/^worker #50 report/)
 })

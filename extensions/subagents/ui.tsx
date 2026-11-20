@@ -4,7 +4,6 @@
  */
 export { InstructionEntry, ReportEntry } from './refs.ts'
 
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { ROOT } from '@/sdk'
 import { WandSparklesIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -12,6 +11,7 @@ import { api, events, useDocOf } from '@/sdk'
 import type { UltimateActions } from '@/sdk'
 import { RunsDoc, StandingAction } from './refs.ts'
 import type { Run } from './refs.ts'
+import { agentSource } from './source.ts'
 
 export {
   DefinitionAction,
@@ -59,11 +59,4 @@ export async function talkToUltimate(
 }
 
 /** Show `source`, where an agent's message came from, with a way back to `receiver`, where it arrived. */
-export function openAgentSource(
-  switchConversation: (id: ConversationId) => void,
-  source: { conversation: ConversationId; entry?: number },
-  receiver: { conversation: ConversationId; entry?: number },
-) {
-  events.emit('subagents:source', { target: source, back: receiver })
-  switchConversation(source.conversation)
-}
+export const openAgentSource = agentSource(events)
