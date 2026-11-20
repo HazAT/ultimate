@@ -1,4 +1,4 @@
-import { ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
+import { BrainIcon, ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandInput,
+  CommandItem,
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -21,9 +22,9 @@ import {
   isFamilyName,
 } from '../../lib/families.ts'
 import { refreshFamilies } from './families.tsx'
-import { ModelRow } from './picker.tsx'
 import { SaveFamiliesAction } from './refs.ts'
 import type { FamiliesView, FamilyView, SaveFamilies } from './refs.ts'
+import { modelFacts, modelKey } from './state.ts'
 
 type Spec = SaveFamilies['families'][string]
 const label = 'section-label'
@@ -391,14 +392,53 @@ function ModelSelect({
             )}
             {groups.map(([provider, items]) => (
               <CommandGroup heading={provider} key={provider}>
-                {items.map((model) => (
-                  <ModelRow
-                    current={`${model.provider}/${model.id}` === value}
-                    key={`${model.provider}/${model.id}`}
-                    model={model}
-                    onSelect={() => choose(() => onChange(`${model.provider}/${model.id}`))}
-                  />
-                ))}
+                {items.map((model) => {
+                  const key = modelKey(model)
+                  const facts = modelFacts(model)
+                  return (
+                    <CommandItem
+                      className={cn(
+                        'gap-2 py-1 font-mono text-[12px]',
+                        !model.available && 'opacity-60',
+                      )}
+                      key={key}
+                      onSelect={() => choose(() => onChange(key))}
+                      value={key}
+                    >
+                      <span className="w-3.5 shrink-0 text-brand">{key === value ? '✓' : ''}</span>
+                      <span className={cn('shrink-0', key === value && 'text-brand')}>
+                        {model.id}
+                      </span>
+                      {model.name !== model.id && (
+                        <span className="min-w-0 truncate font-sans text-muted-foreground/80">
+                          {model.name}
+                        </span>
+                      )}
+                      <span className="ml-auto flex shrink-0 items-center gap-3 pl-3 text-[11px] text-muted-foreground tabular-nums">
+                        {facts.paid && <span className="text-warning/80">{facts.paid}</span>}
+                        <span
+                          className={cn(
+                            'flex items-center gap-1',
+                            !facts.thinkingTitle && 'text-muted-foreground/40',
+                          )}
+                          title={facts.thinkingTitle}
+                        >
+                          {facts.thinkingTitle && <BrainIcon className="size-3" />}
+                          {facts.thinking}
+                        </span>
+                        <span className="w-11 text-right" title="context window">
+                          {facts.context}
+                        </span>
+                        <span
+                          className="w-20 text-right max-sm:hidden"
+                          title="$ per million input / output tokens"
+                        >
+                          {facts.cost}
+                        </span>
+                      </span>
+                    </CommandItem>
+                  )
+                })}
               </CommandGroup>
             ))}
           </CommandList>

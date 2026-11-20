@@ -15,14 +15,22 @@ import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
 import { writingAs } from '@/sdk/solid'
+import { runAsItsSource } from './action-source.solid.tsx'
+import type { SourcedAction } from './action-source.solid.tsx'
 import { commandStyles } from './command-styles.ts'
 
-function Command(props: ComponentProps<typeof CommandRoot> & { class?: string }) {
-  const rest = omit(props, 'class', 'onQueryChange', 'onValueChange', 'onPagesChange')
+function Command(
+  props: Omit<ComponentProps<typeof CommandRoot>, 'onAction'> & {
+    class?: string
+    onAction?: SourcedAction
+  },
+) {
+  const rest = omit(props, 'class', 'onQueryChange', 'onValueChange', 'onPagesChange', 'onAction')
   return (
     <CommandRoot
       {...rest}
       class={cn(commandStyles.root, props.class)}
+      onAction={(value, details) => runAsItsSource(props.onAction, value, details)}
       onQueryChange={(query, details) => {
         const changed = props.onQueryChange
         writingAs(details.source, () => changed?.(query, details))

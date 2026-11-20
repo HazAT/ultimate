@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import type { RefObject } from 'react'
 import {
   BotIcon,
   SparklesIcon,
@@ -28,7 +27,14 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { MessageResponse } from '@/components/ai/message'
 import type { Isolation } from '../workspaces/refs.ts'
-import { refreshFamilies, runsOn, SetDefaultAction, useFamilies, usePicks } from '../models/ui.tsx'
+import {
+  modelDialogs,
+  refreshFamilies,
+  runsOn,
+  SetDefaultAction,
+  useFamilies,
+  usePicks,
+} from '../models/ui.tsx'
 import { DEFAULT_FAMILY, RECOMMENDED_MODELS } from '../../lib/families.ts'
 import { nextTurn } from '../../lib/timers.ts'
 import { FirstRunDoneAction } from './refs.ts'
@@ -75,8 +81,13 @@ export function FirstRun({
   const [error, setError] = useState<string>()
   const primary = useRef<HTMLButtonElement>(null)
   const body = useRef<HTMLDivElement>(null)
+  const opener = useRef<string>(undefined)
   const next = !connected ? 'auth.login' : !model?.available ? 'model.pick' : 'continue'
-  const covered = useStore((state) => Object.values(state.ui.dialogs).some(Boolean))
+  const covered = useStore(
+    (state) =>
+      state.ui.dialogs[modelDialogs.login] === true ||
+      state.ui.dialogs[modelDialogs.picker] === true,
+  )
   const was = useRef({ covered, next })
   useEffect(() => {
     const before = was.current
@@ -84,7 +95,7 @@ export function FirstRun({
     if (!open || covered) return undefined
     const active = document.activeElement
     const here = !active || active === document.body || body.current?.contains(active)
-    if (!before.covered && (before.next === next || !here)) return undefined
+    if (before.covered || before.next === next || !here) return undefined
     return nextTurn(() => primary.current?.focus())
   }, [covered, next, open])
   const finish = async (skipped: boolean) => {
@@ -109,13 +120,24 @@ export function FirstRun({
   }
   const action = (id: string, label: string) =>
     commands.some((c) => c.id === id) && (
-      <RunCommand id={id} label={label} focus={next === id ? primary : undefined} />
+      <Button
+        size="sm"
+        variant="outline"
+        ref={next === id ? primary : undefined}
+        data-onboarding-command={id}
+        onClick={() => {
+          opener.current = id
+          ui.runCommand(id)
+        }}
+      >
+        {label}
+      </Button>
     )
   return (
     <Dialog
-      open={open}
+      open={open && !covered}
       onOpenChange={(isOpen) => {
-        if (!isOpen) void finish(true)
+        if (!isOpen && !covered) void finish(true)
       }}
     >
       <DialogContent
@@ -124,11 +146,17 @@ export function FirstRun({
         onInteractOutside={(e) => e.preventDefault()}
         onOpenAutoFocus={(e) => {
           e.preventDefault()
-          primary.current?.focus()
+          const id = opener.current
+          opener.current = undefined
+          const button =
+            id &&
+            body.current?.querySelector<HTMLButtonElement>(`[data-onboarding-command="${id}"]`)
+          if (button) button.focus()
+          else primary.current?.focus()
         }}
         onCloseAutoFocus={(e) => {
           e.preventDefault()
-          onClosed()
+          if (!open) onClosed()
         }}
       >
         <header>
@@ -206,23 +234,6 @@ export function FirstRun({
         </footer>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function RunCommand({
-  id,
-  label,
-  focus,
-}: {
-  id: string
-  label: string
-  focus?: RefObject<HTMLButtonElement | null>
-}) {
-  const ui = useUltimate()
-  return (
-    <Button size="sm" variant="outline" ref={focus} onClick={() => ui.runCommand(id)}>
-      {label}
-    </Button>
   )
 }
 

@@ -11,7 +11,7 @@ import { debounce } from '../lib/timers.ts'
 import { writeTextAtomically } from '../lib/json-file.ts'
 import { discoverExtensions } from '../lib/discovery.ts'
 import { discoveryRoots } from '../lib/project-paths.ts'
-import { projectSettings } from '../lib/project-setup.ts'
+import { projectSettings, useProjectSetup } from '../lib/project-setup.ts'
 import { extensionSettingsFiles } from '../lib/extension-settings.ts'
 import type { Watch } from './extensions.ts'
 import { watchRoots } from './watch-roots.ts'
@@ -22,6 +22,7 @@ interface Manifest {
   at: number
   inputs: string[]
   facets: string[]
+  trusted: boolean
   broken: string[]
   retired: Record<string, number>
 }
@@ -93,11 +94,7 @@ export async function createWeb(options: {
     join(userHome, '.ultimate/trust.json'),
   ]
   const webRoot = join(ultimateRoot, 'web')
-  const always = [
-    join(ultimateRoot, 'vite.config.ts'),
-    join(ultimateRoot, 'pnpm-lock.yaml'),
-    ...settings,
-  ]
+  const always = [join(ultimateRoot, 'vite.config.ts'), join(ultimateRoot, 'pnpm-lock.yaml')]
   let manifest = await readFile(join(folder, 'manifest.json'), 'utf8').then(
     (text) => {
       try {
@@ -121,12 +118,34 @@ export async function createWeb(options: {
   const scheduleUpdate = debounce(150, () => void buildUntilFreshSerially())
   const closing = new AbortController()
 
-  async function fresh(current: Manifest) {
+  async function builtWithCurrentSettings(current: Manifest) {
     const facets = await webFacets(ultimateRoot, projectRoot, userHome)
+    return (
+      current.trusted === useProjectSetup(projectRoot, userHome) &&
+      facets.join('\0') === current.facets.join('\0')
+    )
+  }
+
+  async function fresh(current: Manifest) {
     const retryPossiblyFixedFacets = current.broken?.length
-    if (retryPossiblyFixedFacets || facets.join('\0') !== current.facets.join('\0')) return false
+    if (retryPossiblyFixedFacets || !(await builtWithCurrentSettings(current))) return false
     const { at: buildStartedEpochMs } = current
     return !(await changedSince(current.inputs, buildStartedEpochMs))
+  }
+
+  async function settingsChanged(file: string) {
+    try {
+      identity = await appIdentity(projectRoot, userHome)
+      if (!manifest || !(await builtWithCurrentSettings(manifest))) touched(file)
+    } catch (error) {
+      options.notice(`${file} could not be read: ${String(error)}`)
+    }
+  }
+
+  function settingsSaved(file: string) {
+    const work = settingsChanged(file)
+    inProcess('a restart compares the settings with the manifest again', work)
+    return work
   }
 
   async function savedSince(files: string[], at: number) {
@@ -155,6 +174,7 @@ export async function createWeb(options: {
 
   async function buildOnce() {
     const buildStartedEpochMs = Date.now()
+    const trusted = useProjectSetup(projectRoot, userHome)
     const facets = await webFacets(ultimateRoot, projectRoot, userHome)
     const targets = await discoverExtensions(ultimateRoot, projectRoot, userHome)
     const outDir = join(folder, 'next')
@@ -227,6 +247,7 @@ export async function createWeb(options: {
         ]),
       ],
       facets,
+      trusted,
       broken: brokenFolders,
       retired: {},
     }
@@ -287,6 +308,7 @@ export async function createWeb(options: {
   const tests = (file: string) =>
     roots.some((root) => inside(file, root) && inExtensionTests(relative(root, file)))
   const onChange = (file: string) => {
+    if (settings.includes(file)) return settingsSaved(file)
     if (file.includes(`${sep}node_modules${sep}`) || tests(file)) return
     if (inside(file, webRoot) || always.includes(file) || inputs.has(file)) return touched(file)
     if (roots.some((root) => inside(file, root)))
@@ -300,15 +322,16 @@ export async function createWeb(options: {
       )
   }
   const onStructure = (file: string) => {
+    if (settings.includes(file)) return settingsSaved(file)
     if (file.includes(`${sep}node_modules${sep}`) || tests(file)) return
-    if (inside(file, webRoot) || roots.some((root) => inside(file, root))) touched(file)
+    if (inside(file, webRoot) || roots.some((root) => inside(file, root))) return touched(file)
   }
   const structure = ['add', 'unlink', 'addDir', 'unlinkDir'] as const
   const unwatch = options.watch((watcher) => {
     watcher.add([...roots, ...settings, webRoot])
     const stopRoots = watchRoots([...roots, ...settings], (root) => {
       watcher.add(root)
-      touched(root)
+      return settings.includes(root) ? settingsSaved(root) : touched(root)
     })
     watcher.on('change', onChange)
     for (const event of structure) watcher.on(event, onStructure)
