@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch'
 import { cn, useModels } from '@/sdk'
 import type { ModelsResponse } from '@/sdk'
+import type { CachePolicy } from './refs.ts'
 
 type ModelInfo = ModelsResponse['models'][number]
 export type ModelRef = { provider: string; modelId: string }
@@ -81,6 +82,102 @@ export function SummariesField({
         Title and reply activity
         <Switch aria-label="Automatic summaries" checked={value} onCheckedChange={onChange} />
       </label>
+    </Field>
+  )
+}
+
+function CacheNumber({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string
+  value: number | undefined
+  placeholder: string
+  onChange: (value: number | undefined) => void
+}) {
+  return (
+    <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+      <span className="flex-1">{label}</span>
+      <input
+        aria-label={label}
+        className={cn(inputClass, 'w-28 py-1 text-right tabular-nums')}
+        min={0}
+        onChange={(event) => {
+          const next = event.target.valueAsNumber
+          onChange(Number.isFinite(next) && next >= 0 ? next : undefined)
+        }}
+        placeholder={placeholder}
+        type="number"
+        value={value ?? ''}
+      />
+    </label>
+  )
+}
+
+export function CacheField({
+  value,
+  standing,
+  onChange,
+}: {
+  value: CachePolicy
+  standing: boolean
+  onChange: (value: CachePolicy) => void
+}) {
+  const set = <K extends keyof CachePolicy>(key: K, next: CachePolicy[K]) => {
+    const { [key]: _old, ...rest } = value
+    onChange(next === undefined ? rest : { ...rest, [key]: next })
+  }
+  return (
+    <Field
+      label="Prompt cache"
+      hint={
+        standing
+          ? 'Counts from your last input; the cache lifetime comes from the model. Its dreams compact it, so it is not compacted before cold.'
+          : 'Branch coordinators count from their last request; the cache lifetime comes from the model. Subagents are not warmed.'
+      }
+    >
+      <div className="flex flex-col gap-1.5 rounded-md border border-border/80 bg-background px-2 py-1.5">
+        <label className="flex items-center justify-between text-[13px]">
+          Keep warm while idle
+          <Switch
+            aria-label="Keep warm"
+            checked={value.warm ?? false}
+            onCheckedChange={(warm) => set('warm', warm)}
+          />
+        </label>
+        <CacheNumber
+          label="Warm for (min)"
+          onChange={(minutes) => set('minutes', minutes)}
+          placeholder="30"
+          value={value.minutes}
+        />
+        <CacheNumber
+          label="On caches under an hour (min)"
+          onChange={(minutes) => set('shortMinutes', minutes)}
+          placeholder="same"
+          value={value.shortMinutes}
+        />
+        {!standing && (
+          <label className="flex items-center justify-between text-[13px]">
+            Compact before it goes cold
+            <Switch
+              aria-label="Compact before cold"
+              checked={value.compact ?? false}
+              onCheckedChange={(compact) => set('compact', compact)}
+            />
+          </label>
+        )}
+        {!standing && value.compact && (
+          <CacheNumber
+            label="Compact from (tokens)"
+            onChange={(tokens) => set('compactTokens', tokens)}
+            placeholder="150000"
+            value={value.compactTokens}
+          />
+        )}
+      </div>
     </Field>
   )
 }

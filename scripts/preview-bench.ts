@@ -4,6 +4,7 @@ import { chromium } from 'playwright-core'
 import type { Browser, Page } from 'playwright-core'
 import { browserBinary } from '../extensions/browser/server.ts'
 import { SetAction, StateAction as WarmStateAction } from '../extensions/keep-warm/refs.ts'
+import { StandingAction } from '../extensions/subagents/refs.ts'
 import { PlayAction, StateAction as PauseStateAction } from '../extensions/pause/refs.ts'
 import { meansNone } from '../lib/errors.ts'
 import type { ActionRef } from '../shared/extension-api.ts'
@@ -49,6 +50,8 @@ const action = async <Args, Result>(ref: ActionRef<Args, Result>, args: Args) =>
   if (!response.ok) throw new Error(`${ref.extension}.${ref.name}: ${await response.text()}`)
   return ((await response.json()) as { result: Result }).result
 }
+const warmState = async () =>
+  action(WarmStateAction, { id: await action(StandingAction, { name: 'ultimate' }) })
 const expect = async (holds: Promise<boolean>, what: string) => {
   if (!(await holds)) throw new Error(`Benchmark needs ${what} before it starts`)
 }
@@ -70,7 +73,7 @@ const scenarios: Record<string, Scenario> = {
           {
             ui: 'act',
             steps: [
-              { ref: "Keep @ultimate's cache warm", action: 'setOpen', args: [true] },
+              { ref: "@ultimate's prompt cache", action: 'setOpen', args: [true] },
               { ref: 'Keep @ultimate warm', action: 'setChecked', args: [false] },
             ],
           },
@@ -84,11 +87,13 @@ const scenarios: Record<string, Scenario> = {
       }),
     ready: () =>
       expect(
-        action(WarmStateAction, null).then((state) => state.on),
+        warmState().then((state) => state.warm.value),
         'keep-warm on',
       ),
     restore: async () => {
-      if (!(await action(WarmStateAction, null)).on) await action(SetAction, { on: true })
+      const id = await action(StandingAction, { name: 'ultimate' })
+      if ((await action(WarmStateAction, { id })).warm.source === 'override')
+        await action(SetAction, { id, warm: null })
     },
   },
   pause: {

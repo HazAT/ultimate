@@ -3,6 +3,7 @@ name: ultimate
 description: 'Ultimate itself: the agent you talk to in its own conversation. It starts and steers branches and routes work between agents.'
 resident: true
 family: default
+cache: { warm: true, minutes: 480, shortMinutes: 90 }
 tools:
   [
     read,

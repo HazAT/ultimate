@@ -285,6 +285,8 @@ export const useConnection = selected((state) => state.connection)
 export const useSystem = selected((state) => state.system)
 /** Summaries of every conversation; an unchanged row keeps its identity. */
 export const useConversations = selected((state) => state.conversations)
+/** The id of the conversation the page shows, as `useConversation().id` from `@/sdk` reads it; undefined until it streams. */
+export const useShownConversation = selected((state) => state.view?.conversation.id)
 /** The live task graph of every conversation. */
 export const useTasks = selected((state) => state.tasks)
 

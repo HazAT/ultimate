@@ -80,6 +80,9 @@ Fields (others are errors):
   subagent]` opts into bounded delegation. A deferred tool named here is loaded for that conversation. Tool lists
   select tools; they are not a shell sandbox.
 - `denyTools`: tool names removed from `tools` or the inherited ones; unknown names are ignored.
+- `cache`: a mapping `{ warm, minutes, shortMinutes, compact, compactTokens }` for how the keep-warm extension
+  keeps its conversations' prompt cache warm; only standing agents and branch coordinators are warmed. An overlay
+  changes only the keys it names. See `extensions/keep-warm/README.md`.
 - `skills`: a YAML list of the skill names its system prompt lists; omitted, every project skill, `[]` none. An overlay
   replaces the list. `/skill:name` still runs any skill. The Agent card and the form flag names no skill provides.
 - `isolate`: `none` or `worktree`. `resident: true` makes it a standing agent.
