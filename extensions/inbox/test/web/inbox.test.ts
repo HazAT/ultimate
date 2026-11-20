@@ -62,26 +62,26 @@ it('moves on to the next oldest when the shown item is answered', () => {
   expect(shown([], selected)).toBeUndefined()
 })
 
-const step = (before: Anchor[], after: Anchor[], selected: Selection) =>
-  selectionAfterChange(before, after, selected) ?? selected
+const step = (entries: Anchor[], selected: Selection) =>
+  selectionAfterChange(entries, selected) ?? selected
 const at = (key: string, time: number): Anchor => ({ key, at: time })
 
-it('keeps the item that took the shown one’s place when a newer one arrives', () => {
-  const [a, b, c, d] = [at('a', 10), at('b', 20), at('c', 30), at('d', 40)]
-  let selected = step([a, b, c], [a, b], { key: 'c', at: 30, open: true })
+it('keeps the item that took the shown one’s place when a newer one arrives, mounted or not', () => {
+  const [a, b, d] = [at('a', 10), at('b', 20), at('d', 40)]
+  let selected = step([a, b], { key: 'c', at: 30, open: true })
   expect(selected).toEqual({ key: 'b', at: 20, open: true })
-  selected = step([a, b], [a, b, d], selected)
+  selected = step([a, b, d], selected)
   expect(shown([a, b, d], selected)?.key).toBe('b')
 })
 
 it('waits for a linked key, then moves on from it by its real age', () => {
   const [a, b, c] = [at('a', 10), at('b', 20), at('c', 30)]
-  let selected = step([], [a, c], { key: 'b', at: UNLOADED, open: true })
+  let selected = step([a, c], { key: 'b', at: UNLOADED, open: true })
   expect(selected).toEqual({ key: 'b', at: UNLOADED, open: true })
-  selected = step([a, c], [a, b, c], selected)
+  selected = step([a, b, c], selected)
   expect(selected).toEqual({ key: 'b', at: 20, open: true })
-  selected = step([a, b, c], [a, c], selected)
-  expect(shown([a, c], selected)?.key).toBe('c')
+  selected = step([a, c], selected)
+  expect(selected).toEqual({ key: 'c', at: 30, open: true })
 })
 
 it('moves forward past items of the same age', () => {

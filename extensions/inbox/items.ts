@@ -61,16 +61,15 @@ export function shown<T extends Anchor>(entries: readonly T[], selected: Selecti
 export const UNLOADED = 0
 
 export function selectionAfterChange(
-  before: readonly Anchor[],
-  after: readonly Anchor[],
+  entries: readonly Anchor[],
   selected: Selection,
 ): Selection | undefined {
   if (!selected) return undefined
-  const entry = after.find((candidate) => candidate.key === selected.key)
+  const entry = entries.find((candidate) => candidate.key === selected.key)
   if (entry) return entry.at === selected.at ? undefined : { ...selected, at: entry.at }
-  const notListedYet = !before.some((candidate) => candidate.key === selected.key)
-  if (notListedYet) return undefined
-  const successor = shown(after, selected)
+  const linkStillLoading = selected.at === UNLOADED
+  if (linkStillLoading) return undefined
+  const successor = shown(entries, selected)
   return successor && { key: successor.key, at: successor.at, open: selected.open }
 }
 
