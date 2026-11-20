@@ -10,7 +10,7 @@ import { ConversationScope, ExtensionName, Transcript } from './solid.ts'
 
 type Props = Record<string, unknown>
 
-type IslandProps<P> = { [K in keyof P]: K extends 'core' ? ReactNode : P[K] }
+type IslandProps<P> = { [K in keyof P]: K extends 'core' | 'cancel' ? ReactNode : P[K] }
 
 /**
  * A React component that mounts the Solid `component` (from a `*.solid.tsx`) in place, so a `web.tsx` can contribute it

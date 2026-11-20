@@ -98,6 +98,7 @@ export {
 export type {
   ComposerTarget,
   SolidComposerProps,
+  SolidInboxProps,
   SolidEntryProps,
   SolidToolProps,
   ToolCallView,

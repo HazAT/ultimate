@@ -47,6 +47,7 @@ function MountReact(props: { render: () => ReactNode }) {
 const solidHost = (children: () => JSX.Element) => {
   const host = document.createElement('div')
   host.className = 'contents'
+  host.dataset.solidHost = ''
   insert(host, children)
   return host
 }
@@ -108,9 +109,14 @@ export function Contributed(props: {
   return <For each={[links()]}>{(current) => wrap(current.length - 1)}</For>
 }
 
+/**
+ * One contribution: an `island(C)` one renders as Solid with `props`; a React one mounts through the bridge, its
+ * `elements` (Solid parts it places, such as `core`) each made once into a host element it receives as a node.
+ */
 export function Contribution(props: {
   item: Rendered
   props: Props
+  elements?: Record<string, () => JSX.Element>
   fallback: (extension: string, error: unknown) => JSX.Element
 }) {
   const mounted = createMemo(() => props.item, {
@@ -120,12 +126,22 @@ export function Contribution(props: {
     <For each={[mounted()]}>
       {(current) => {
         const Solid = islandSolid(current.component) as Component<Props> | undefined
-        if (!Solid)
-          return <MountReact render={() => contribution(props.item, { ...props.props })} />
+        const elements = props.elements ?? {}
+        if (!Solid) {
+          const hosts = Object.fromEntries(
+            Object.entries(elements).map(([key, element]) => [key, solidHost(element)]),
+          )
+          return (
+            <MountReact render={() => contribution(props.item, { ...props.props, ...hosts })} />
+          )
+        }
+        const solidElements = Object.fromEntries(
+          Object.keys(elements).map((key) => [key, elements[key]()]),
+        )
         return (
           <Errored fallback={(error) => props.fallback(current.extension, error())}>
             <ExtensionName value={current.extension}>
-              <Solid {...props.props} />
+              <Solid {...props.props} {...solidElements} />
             </ExtensionName>
           </Errored>
         )

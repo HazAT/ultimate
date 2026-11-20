@@ -52,7 +52,9 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 
 import { getDraft } from '../../web/src/app/drafts.ts'
 import { Composer } from '../../web/src/app/composer.solid.tsx'
-import { store } from '../../web/src/sdk/client.ts'
+import { registry, store } from '../../web/src/sdk/client.ts'
+import { createElement as h } from 'react'
+import type { ReactNode } from 'react'
 
 const faux = { provider: 'faux', id: 'faux-1', available: true }
 const agent = createAgent()
@@ -156,6 +158,28 @@ it('steers on Enter, queues a follow-up on Alt+Enter, cancels a queued input and
     { path: '/api/conversations/8/inbox/80/cancel', body: {}, source: 'agent' },
     { path: '/api/conversations/8/abort', body: {}, source: 'agent' },
   ])
+})
+
+it('mounts a React inbox renderer through the bridge, with the core row as its core', async () => {
+  await registry.setLoaders({
+    '/extensions/legacy/web.tsx': async () => ({
+      default: {
+        inbox: ({ item, core }: { item: { id: number }; core: ReactNode }) =>
+          h('div', { 'data-legacy-inbox': item.id }, core),
+      },
+    }),
+  })
+  await show(11, {
+    'pi.live': { run: { taskId: 2, inputs: [], turns: 0 } },
+    'pi.inbox': { items: [{ id: 110, mode: 'steer', content: 'queued steer' }] },
+  })
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  const legacy = container.querySelector('[data-legacy-inbox="110"]')
+  expect(legacy?.textContent).toContain('queued steer')
+  expect(legacy?.querySelector('[aria-label^="Cancel queued input 110"]')).not.toBeNull()
+  await registry.setLoaders({})
 })
 
 it('keeps a typed draft per conversation across a remount', async () => {

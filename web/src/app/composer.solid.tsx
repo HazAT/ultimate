@@ -9,19 +9,10 @@ import {
   Square,
   X,
 } from '@lucide/solid'
-import { dynamic, Portal } from '@solidjs/web'
+import { Portal } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  Errored,
-  For,
-  onSettled,
-  Show,
-  useContext,
-} from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onSettled, Show, useContext } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
@@ -52,7 +43,7 @@ import {
 } from '@/sdk/solid'
 import type { ModelsResponse } from '../../../shared/protocol.ts'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
-import { Contributed, Slot, useProvided } from '../sdk/react-island.solid.tsx'
+import { Contributed, Contribution, Slot, useProvided } from '../sdk/react-island.solid.tsx'
 import { Attached, createAttach } from './attach.solid.tsx'
 import { splitAttachments, withAttachments } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
@@ -161,21 +152,23 @@ function Inbox(props: { items: readonly InboxItem[] }) {
               const core = () => <QueuedRow cancel={cancellation()} item={item()} />
               return (
                 <Show when={renderer()} fallback={core()}>
-                  {(found) => {
-                    const Renderer = dynamic(() => found().component)
-                    return (
-                      <Errored
-                        fallback={(failure) => (
-                          <>
-                            {failed(found().extension, failure())}
-                            {core()}
-                          </>
-                        )}
-                      >
-                        <Renderer cancel={cancellation()} core={core()} item={item()} />
-                      </Errored>
-                    )
-                  }}
+                  {(found) => (
+                    <Contribution
+                      fallback={(extension, failure) => (
+                        <>
+                          {failed(extension, failure)}
+                          {core()}
+                        </>
+                      )}
+                      elements={{ core, cancel: cancellation }}
+                      item={found()}
+                      props={{
+                        get item() {
+                          return item()
+                        },
+                      }}
+                    />
+                  )}
                 </Show>
               )
             }}

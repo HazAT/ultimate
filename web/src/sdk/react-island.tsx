@@ -41,6 +41,18 @@ export function SolidNode({ node }: { node: HTMLElement }) {
   return <div className="contents" ref={host} />
 }
 
+const reactProps = (props: object) =>
+  Object.fromEntries(
+    Object.entries(props).map(([key, value]) => [
+      key,
+      value instanceof HTMLElement && value.dataset.solidHost !== undefined ? (
+        <SolidNode key={key} node={value} />
+      ) : (
+        value
+      ),
+    ]),
+  )
+
 export function contribution(item: Rendered, props: object, fallback: ReactNode = null) {
   const Renderer = item.component as ComponentType<object>
   return (
@@ -50,7 +62,7 @@ export function contribution(item: Rendered, props: object, fallback: ReactNode 
       key={item.extension}
       version={item.version}
     >
-      <Renderer {...props} />
+      <Renderer {...reactProps(props)} />
     </ExtensionBoundary>
   )
 }

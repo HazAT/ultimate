@@ -142,14 +142,12 @@ export type CodeBlockRenderer = SolidComponent<{
 }>
 
 /**
- * A queued input above the composer, a Solid component: `item`, `core`, the core's row, and `cancel`, its cancel button.
- * Return `core` for items you leave alone.
+ * A queued input above the composer: `item`, `core`, the core's row, and `cancel`, its cancel button. Return `core` for
+ * items you leave alone. Contribute a Solid one as `island(C)` with `C` typed `SolidInboxProps`; a React one mounts
+ * through the core's bridge.
  */
-export type InboxRenderer = SolidComponent<{
-  item: InboxItem
-  core: SolidElement
-  cancel: SolidElement
-}>
+export type InboxRenderer = ComponentType<{ item: InboxItem; core: ReactNode; cancel: ReactNode }>
+export type SolidInboxProps = { item: InboxItem; core: SolidElement; cancel: SolidElement }
 
 /**
  * Wraps the shown conversation's composer (`core`); `dock` when it sits in a narrow side region. Contribute a Solid one

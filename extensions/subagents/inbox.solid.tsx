@@ -1,17 +1,16 @@
 /** @jsxImportSource @solidjs/web */
-import type { InboxItem } from '@earendil-works/pi-durable'
 import { Bot, SquareArrowOutUpRight } from '@lucide/solid'
-import type { JSX } from '@solidjs/web'
 import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Card } from '@/sdk/parts.solid.tsx'
 import { switchConversation, useConversationId, useConversationSummary } from '@/sdk/solid'
+import type { SolidInboxProps } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { openAgentSource } from './run-name.solid.tsx'
 import { senderAgent } from './source.ts'
 import type { AgentOrigin } from './types.ts'
 
-export function AgentInbox(props: { item: InboxItem; core: JSX.Element; cancel: JSX.Element }) {
+export function AgentInbox(props: SolidInboxProps) {
   const id = useConversationId()
   const origin = createMemo(() =>
     props.item.mode !== 'write' &&

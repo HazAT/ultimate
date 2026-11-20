@@ -16,7 +16,7 @@ export default defineWebExtension({
     { id: agentsPanel, title: 'Agents', icon: NetworkIcon, component: AgentsOverview, order: 3 },
   ],
   entries: { 'subagents.instruction': island(AgentInput), 'subagents.report': island(AgentInput) },
-  inbox: AgentInbox,
+  inbox: island(AgentInbox),
   provides: [provide(ErrorReport, useErrorReport)],
   slots: {
     overlay: [DefinitionDialog, island(LandOnUltimate)],
