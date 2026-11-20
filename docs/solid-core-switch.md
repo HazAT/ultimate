@@ -40,32 +40,33 @@ breaks them unless they move to `island(C)` first.
 
 ## The transcript
 
-| Extension     | Part                                                                                          | Where                       | Hook in the transcript       |
-| ------------- | --------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------- |
-| browser       | tool renderers `screenshot`, `browser`                                                        | `browser/web.tsx`           | tool calls                   |
-| codemode      | tool renderer and compact line `codemode`                                                     | `codemode/web.tsx`          | tool calls, compact lines    |
-| instance      | tool renderer `instance`                                                                      | `instance/web.tsx`          | tool calls                   |
-| parallel      | tool renderers `web_search`, `web_fetch`                                                      | `parallel/web.tsx`          | tool calls                   |
-| todos         | tool renderer `todo`                                                                          | `todos/web.tsx`             | tool calls                   |
-| context       | entries `pi.system`, `pi.reset`, `pi.compaction`, `pi.assistant`; point `CacheRebuiltLine`    | `context/web.tsx`, `ui.tsx` | entries                      |
-| context       | slots `Start`, `PinnedPrompt` (read `useTranscriptScroll`)                                    | `context/web.tsx`           | start and top                |
-| prompt        | entry `prompt.build`                                                                          | `prompt/web.tsx`            | entries                      |
-| recall        | entry of recalled memories (model-only); user bubble `RecallBubble`                           | `recall/web.tsx`            | entries, user message        |
-| todos         | entry `todos.note` (model-only)                                                               | `todos/web.tsx`             | entries                      |
-| watchdog      | entry `watchdog.failure`                                                                      | `watchdog/web.tsx`          | entries                      |
-| models        | entries `pi.assistant` (model switch divider `Switched`), `models.fallback` (`FellBack`)      | `models/web.tsx`            | entries                      |
-| automations   | tool renderer `automation`; entries `automations.fired`, `.failed`, `.escalated`, `.writing`  | `automations/web.tsx`       | tool calls, entries          |
-| automations   | provided `WaitTimers` (`useWaitTimers`)                                                       | `automations/web.tsx`       | messages' wait timers        |
-| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                   | `conversations/web.tsx`     | empty transcript             |
-| wire          | entry `pi.assistant` (`WireLink`)                                                             | `wire/web.tsx`              | entries                      |
-| read-aloud    | message action                                                                                | `read-aloud/web.tsx`        | message bar                  |
-| codemode      | provided `MessageReference`                                                                   | `codemode/web.tsx`          | message actions              |
-| reel          | provided `MessageExtras` (its player shows questions' answer card through `MessageAnswers`)   | `reel/web.tsx`              | message cards, inbox's cards |
-| tasks         | provided `RunStart`                                                                           | `tasks/web.tsx`             | the run timer                |
-| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                   | `pause/web.tsx`             | parked runs                  |
-| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open` | `review/web.tsx`            | the sidebar                  |
-| messages      | slots `OffscreenQuestions` (`transcript.top`), `MessageNavigation`, `OpenMessages`            | `messages/web.tsx`          | top, overlay, composer       |
-| questions     | overlay `CrossSurfaceDraftSweep` (no controls)                                                | `questions/web.tsx`         | overlay                      |
+| Extension     | Part                                                                                           | Where                       | Hook in the transcript       |
+| ------------- | ---------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------- |
+| browser       | tool renderers `screenshot`, `browser`                                                         | `browser/web.tsx`           | tool calls                   |
+| codemode      | tool renderer and compact line `codemode`                                                      | `codemode/web.tsx`          | tool calls, compact lines    |
+| instance      | tool renderer `instance`                                                                       | `instance/web.tsx`          | tool calls                   |
+| parallel      | tool renderers `web_search`, `web_fetch`                                                       | `parallel/web.tsx`          | tool calls                   |
+| todos         | tool renderer `todo`                                                                           | `todos/web.tsx`             | tool calls                   |
+| context       | entries `pi.system`, `pi.reset`, `pi.compaction`, `pi.assistant`; point `CacheRebuiltLine`     | `context/web.tsx`, `ui.tsx` | entries                      |
+| context       | slots `Start`, `PinnedPrompt` (read `useTranscriptScroll`)                                     | `context/web.tsx`           | start and top                |
+| prompt        | entry `prompt.build`                                                                           | `prompt/web.tsx`            | entries                      |
+| recall        | entry of recalled memories (model-only); user bubble `RecallBubble`                            | `recall/web.tsx`            | entries, user message        |
+| todos         | entry `todos.note` (model-only)                                                                | `todos/web.tsx`             | entries                      |
+| watchdog      | entry `watchdog.failure`                                                                       | `watchdog/web.tsx`          | entries                      |
+| models        | entries `pi.assistant` (model switch divider `Switched`), `models.fallback` (`FellBack`)       | `models/web.tsx`            | entries                      |
+| automations   | tool renderer `automation`; entries `automations.fired`, `.failed`, `.escalated`, `.writing`   | `automations/web.tsx`       | tool calls, entries          |
+| automations   | provided `WaitTimers` (`useWaitTimers`)                                                        | `automations/web.tsx`       | messages' wait timers        |
+| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                    | `conversations/web.tsx`     | empty transcript             |
+| wire          | entry `pi.assistant` (`WireLink`)                                                              | `wire/web.tsx`              | entries                      |
+| read-aloud    | message action                                                                                 | `read-aloud/web.tsx`        | message bar                  |
+| codemode      | provided `MessageReference`                                                                    | `codemode/web.tsx`          | message actions              |
+| reel          | provided `MessageExtras` (its player shows questions' answer card through `MessageAnswers`)    | `reel/web.tsx`              | message cards, inbox's cards |
+| tasks         | provided `RunStart`                                                                            | `tasks/web.tsx`             | the run timer                |
+| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                    | `pause/web.tsx`             | parked runs                  |
+| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`  | `review/web.tsx`            | the sidebar                  |
+| messages      | slot `OffscreenQuestions` (reads the React `useTranscriptScroll` refs to find cards offscreen) | `messages/web.tsx`          | top                          |
+| messages      | `MessageNavigation` overlay, `OpenMessages` (composer status)                                  | `messages/web.tsx`          | overlay, composer            |
+| questions     | overlay `CrossSurfaceDraftSweep` (no controls)                                                 | `questions/web.tsx`         | overlay                      |
 
 ## The sidebar
 
@@ -99,12 +100,14 @@ breaks them unless they move to `island(C)` first.
 
 ## Other extensions' React points
 
-| Extension   | Part                                                                                                                                                | Where          | Called by                                                           |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------- |
-| mcp         | provided `ExtensionDetails`                                                                                                                         | `mcp/web.tsx`  | onboarding's React details (returns an island)                      |
-| reel        | provided `LandingExtras`                                                                                                                            | `reel/web.tsx` | workspaces' React landing card                                      |
-| models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`      | subagents' Agents panel and definition form, onboarding's Get ready |
-| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries                                             | `automations/` | sidebar, system, its transcript entries                             |
+| Extension   | Part                                                                                                                                                | Where               | Called by                                                           |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- |
+| mcp         | provided `ExtensionDetails`                                                                                                                         | `mcp/web.tsx`       | onboarding's React details (returns an island)                      |
+| reel        | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`      | workspaces' Solid landing card, through `Provided`                  |
+| side-chat   | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    |
+| plan        | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  |
+| models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`           | subagents' Agents panel and definition form, onboarding's Get ready |
+| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries                                             | `automations/`      | sidebar, system, its transcript entries                             |
 
 ## Shared state and keys
 
