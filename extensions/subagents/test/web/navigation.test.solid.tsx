@@ -5,15 +5,11 @@ import { createRoot, createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 
-const shown = vi.hoisted(() => ({
-  set: (_id: number): unknown => undefined,
-  get: (): number => 1,
-}))
+const shown = vi.hoisted(() => ({ get: (): number => 1 }))
 
 vi.mock('@/sdk/solid', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/sdk/solid')>()
   const [conversation, setConversation] = createRoot(() => createSignal(1))
-  shown.set = setConversation
   shown.get = conversation
   return {
     ...original,

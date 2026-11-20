@@ -70,9 +70,12 @@ The libraries ship skills that match the pinned versions: read them, not your me
   action, message detail, answer label, user bubble or compact summary contributed as `island(C)` renders as plain
   Solid there (`islandSolid` in `web/src/sdk/island-mark.ts`); any other is React and mounts through the temporary
   bridge `web/src/sdk/react-island*.tsx` (C5 deletes it), consecutive React renderers sharing one root around the Solid
-  `core`. So moving a row is `entries: { 'my.kind': island(Card) }` with `Card` taking `{ entry, core, blocks }` as Solid
-  props. React rows read `useTranscript()` and `useTranscriptScroll()` from one `TranscriptFrame` whose identity stays,
-  so a streamed update re-renders none of them; Solid ones read `useTranscript()` from `@/sdk/solid`.
+  `core`. So moving a row is `entries: { 'my.kind': island(Card) }` with `Card` typed `SolidEntryProps` (`SolidToolProps`
+  for a tool) from `@/sdk/solid`. React rows read `useTranscript()` and `useTranscriptScroll()` from one
+  `TranscriptFrame` whose identity stays, so a streamed update re-renders none of them; Solid ones read `useTranscript()`
+  and `useTranscriptElements()` (the scroll and row elements, no follow state) from `@/sdk/solid`. An entry narrowed by
+  its token is `island(renderEntry(Token, Card))` with `renderEntry` from `@/sdk/parts.solid.tsx`; a model-only entry
+  still gets a Solid null renderer (a `.solid.tsx` returning `null`), or it mounts React to render nothing.
 - **Transcript parts for Solid renderers** come from `@/sdk/parts.solid.tsx` (P2): `Card`, `Fold` (its `label` names
   the toggle), `MessageActions` (`name` names its copy button when several cards share an entry), `UserText`,
   `UserView`, `useToolDuration`. `@/sdk/solid` cannot re-export them: they import it, and `import/no-cycle` fails.
@@ -90,6 +93,13 @@ The libraries ship skills that match the pinned versions: read them, not your me
   that styles the part with direct-child selectors (`[&>div]:px-0`) now hits the island's `display: contents` host:
   reach through it (`[&>div>div]`) or pass a `class`. A React caller passing React children into a Solid part cannot:
   keep a small React shell for it (voice-live's `Bubble`).
+- **A UI-valued point a Solid host reads** gets its own point whose value is the UI, filled with
+  `provide(Point, island(C))` (P3's `ConversationTaskChip`, which plan fills with its chip): a Solid host cannot pick
+  `.chip` out of a React provider's `{ chip, title }`. A core-tier reader cannot import an optional extension's
+  `ui.solid.tsx` at all, so the point is the only way.
+- **A module several frameworks drive** (read-aloud's player) stays one plain module: `web.tsx` hands it to a Solid
+  factory at module scope (`const Action = readAloudAction(player)`), and the factory's component subscribes to it.
+  That keeps browser-only promises out of a `.ts` file the server lint would check.
 - **What waits for the core switch:** the composer wrapper, `provide` hooks, and anything that hosts other extensions'
   React. The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
@@ -210,6 +220,23 @@ Solid 2:
 - A Web Animation started from a `ref` callback runs before the element is inserted and stays at its first frame in
   Chromium: start it in `onSettled` (`extensions/questions/send.solid.tsx`).
 - `expectDistinctAgentNames` is async: `await` it, or the test passes whatever the names.
+- A card name repeats when two cards show the same thing: two `subagent` calls to one child, a start and a list card
+  of one preview, two codemode results. Name a card's controls by the call or entry they sit on
+  (`Show conversation #34 (call 1a2b3c4d)`), and give a shared part an `on` (`TaskChip`) or `name` (`JsonTree`) prop to
+  carry it. A tree names nodes by a path that cannot collide: `doc["a.b"]`, not `doc.a.b`.
+- React refused `javascript:` URLs in `href`; Solid sets the attribute as given. A link built from tool output or a
+  provider's data parses the URL and links only `http(s):`, showing anything else as text
+  (`extensions/parallel/calls.solid.tsx`).
+- `<For>` over freshly built rows (`Object.entries(value)`, mapped tuples) remounts every row on each update: key it
+  (`keyed={(entry) => entry[0]}`), or an expanded branch collapses when a sibling changes
+  (`web/src/components/json-tree.solid.tsx`). Then the row is an accessor (`entry()`).
+- A `group` state class on a recursive part (`group-data-open/json`) reaches every descendant: an open ancestor
+  restyles closed children. Put the group on the node's own trigger and read its `aria-expanded`.
+- `import('@lucide/solid/icons')` puts the whole icon set (about 190 KB gzipped) in the page's entry even though it
+  is dynamic. Name icons statically, or load one by name from
+  `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')`.
+- A part inside a collapsible trigger cannot be a kit `Button` (buttons do not nest): put it beside the trigger, as the
+  subagent card's task chip sits next to its open button.
 - A Solid element handed to React for it to place is a real element made once (`document.createElement` plus `insert`),
   never a component's JSX return rebuilt in a tracked callback: each rebuild is a new subtree, and React's
   `node.remove()` breaks on a Solid return that is not one element.
@@ -260,7 +287,10 @@ ui-sdk:
 Tooling:
 
 - A browser helper extracted to `.ts` goes in `tsconfig.web.json`'s `include`. A `.ts` helper shared by React and Solid
-  imports neither SDK entry: pass SDK functions in or use `lib/`.
+  imports neither SDK entry: pass SDK functions in or use `lib/`. Another extension reaches it through the owner's
+  `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), never by importing the `.ts` file.
+- Check the entry bundle after a move (`node scripts/frontend-weight.ts`, `entryAssetsGzip`); measure each commit in a
+  throwaway detached worktree to find the one that grew it.
 
 ## Testing
 
