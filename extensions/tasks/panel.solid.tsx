@@ -51,18 +51,19 @@ function useTaskFacts<T>(
 ) {
   const [known, setKnown] = createStore<Record<string, T | undefined>>({})
   const connection = useConnection()
-  const [failedOn, setFailedOn] = createSignal<number>()
+  const [rejections, setRejections] = createSignal(0)
   const requested = new Set<number>()
+  const failedOn = new Map<number, number>()
   const controller = new AbortController()
   onCleanup(() => controller.abort())
   createEffect(
     () => {
       const { status: link, since } = connection()
-      return { all: ids(), open: link === 'open', since, failed: failedOn() }
+      return { all: ids(), open: link === 'open', since, rejections: rejections() }
     },
-    ({ all, open, since, failed }) => {
-      if (!open || failed === since) return
-      const missing = all.filter((id) => !requested.has(id))
+    ({ all, open, since }) => {
+      if (!open) return
+      const missing = all.filter((id) => !requested.has(id) && failedOn.get(id) !== since)
       if (!missing.length) return
       for (const id of missing) requested.add(id)
       const askedOn = since
@@ -75,8 +76,11 @@ function useTaskFacts<T>(
             }),
           (error: unknown) => {
             if (controller.signal.aborted) return
-            for (const id of missing) requested.delete(id)
-            setFailedOn(askedOn)
+            for (const id of missing) {
+              requested.delete(id)
+              failedOn.set(id, askedOn)
+            }
+            setRejections((count) => count + 1)
             console.warn('Task graph:', error)
           },
         )
