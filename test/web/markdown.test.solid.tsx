@@ -229,21 +229,29 @@ it('keeps sanitized raw HTML and drops what could run', () => {
   expect(view.querySelector('script, [onerror]')).toBeNull()
 })
 
-it('names each copy and link button apart, across replies that repeat a fence or a link', async () => {
+it('names each copy and link button apart, across replies and links the parser splits, and keeps a name while code streams', async () => {
   const reply = '[docs](https://example.com/docs)\n\n```sh\nnpm test\n```'
+  const [code, setCode] = createSignal('```sh\nnpm test\n')
   renderSolid(() => (
     <>
       <Markdown text={reply} />
       <Markdown text={reply} />
+      <Markdown text={'<a href="https://example.com"><div><br>'} />
+      <Markdown streaming text={code()} />
     </>
   ))
   flush()
   await settle()
   await expectDistinctAgentNames(agent)
-  expect(
+  const labels = () =>
     agent
       .snapshot()
       .filter((entry) => !entry.offPage)
-      .map((entry) => entry.label),
-  ).toHaveLength(4)
+      .map((entry) => entry.label)
+  expect(labels()).toHaveLength(7)
+  const streamed = labels().at(-1)
+  setCode('```sh\nnpm test\nnpm run build\n')
+  flush()
+  await settle()
+  expect(labels().at(-1)).toBe(streamed)
 })

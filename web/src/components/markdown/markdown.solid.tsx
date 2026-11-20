@@ -297,13 +297,7 @@ function attributesOf(node: Element) {
   return attributes
 }
 
-let unpositioned = 0
-const placeOf = (node: Element, context: Context) => {
-  const at = node.position
-  return `${context.block}.${at ? `${at.start.offset}-${at.end.offset}` : `x${++unpositioned}`}`
-}
-
-type Context = { openFences: readonly number[]; without?: readonly string[]; block: string }
+type Context = { openFences: readonly number[]; without?: readonly string[]; place: string }
 
 const fenceIncomplete = (node: Element, context: Context) =>
   context.openFences.includes(node.position?.start.offset ?? -1)
@@ -311,7 +305,22 @@ const fenceIncomplete = (node: Element, context: Context) =>
 function Nodes(props: { nodes: ElementContent[]; context: Context }) {
   return (
     <For each={props.nodes} keyed={false}>
-      {(node) => <Node context={props.context} node={node()} />}
+      {(node, index) => (
+        <Node
+          context={{
+            get openFences() {
+              return props.context.openFences
+            },
+            get without() {
+              return props.context.without
+            },
+            get place() {
+              return `${props.context.place}.${index}`
+            },
+          }}
+          node={node()}
+        />
+      )}
     </For>
   )
 }
@@ -363,7 +372,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       <Match when={fencedCode(props.node)}>
         {(block) => (
           <CodeBlock
-            at={placeOf(props.node, props.context)}
+            at={props.context.place}
             code={block().code}
             incomplete={fenceIncomplete(props.node, props.context)}
             language={block().language}
@@ -372,7 +381,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       </Match>
       <Match when={props.node.tagName === 'a'}>
         <Anchor
-          at={placeOf(props.node, props.context)}
+          at={props.context.place}
           attributes={attributes()}
           href={hrefOf(props.node)}
           text={textOf(props.node)}
@@ -426,7 +435,7 @@ function Block(props: {
         get without() {
           return props.without
         },
-        get block() {
+        get place() {
           return `${props.markdown}.${props.index}`
         },
       }}

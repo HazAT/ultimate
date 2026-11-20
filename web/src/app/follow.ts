@@ -24,15 +24,17 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   const bottom = () => scroll.scrollHeight - scroll.clientHeight
   let pressed = false
   let touching = false
-  let key: KeyboardEvent | undefined
-  let keyMoved = false
-  let cancelKeyIntent: Cancel = () => {}
-  const keyScrolls = () => !!key && !key.defaultPrevented && !consumedBy(key)
+  let key: { event: KeyboardEvent; moved: boolean; expire: Cancel } | undefined
+  const forgetKey = () => {
+    key?.expire()
+    key = undefined
+  }
+  const keyScrolls = () => !!key && !key.event.defaultPrevented && !consumedBy(key.event)
   const steering = () => pressed || touching || keyScrolls()
   const left = () => steering() && scroll.scrollTop < seen - 1 && distance() > 1
   const selecting = () => pressed && !!getSelection()?.toString()
   const onScroll = () => {
-    if (key) keyMoved = true
+    if (key) key.moved = true
     const top = scroll.scrollTop
     if (left()) report({ following: false })
     else if (!following && top > seen && distance() <= 1) report({ following: true })
@@ -54,12 +56,15 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     if (event.deltaY < 0 && scroll.scrollHeight > scroll.clientHeight && !innerTakes(event.target))
       report({ following: false })
   }
-  const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']
+  const upKey = (event: KeyboardEvent) =>
+    ['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)
+  const textEntry =
+    'textarea, select, [contenteditable=""], [contenteditable="true"], input:not([type=button], [type=submit], [type=reset], [type=checkbox], [type=radio], [type=range], [type=color], [type=file], [type=image])'
   const consumedBy = (event: KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : null
     if (!target) return false
-    if (target.isContentEditable || target.closest('input, textarea, select')) return true
-    return event.key === ' ' && !!target.closest('button, a[href], [role="button"]')
+    if (target.closest(textEntry)) return true
+    return event.key === ' ' && !!target.closest('button, a[href], [role="button"], input')
   }
   const reader = {
     pointerdown: () => (pressed = true),
@@ -70,14 +75,15 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     touchcancel: () => (touching = false),
     keydown: (event: Event) => {
       const pressedKey = event as KeyboardEvent
-      if (!scrollKeys.includes(pressedKey.key)) return
-      key = pressedKey
-      keyMoved = false
+      if (!upKey(pressedKey)) return
+      forgetKey()
+      key = { event: pressedKey, moved: false, expire: () => {} }
     },
-    keyup: () => {
-      cancelKeyIntent()
-      cancelKeyIntent = deadline(keyScrollStartsWithinMs, () => {
-        if (!keyMoved) key = undefined
+    keyup: (event: Event) => {
+      const held = key
+      if (!held || (event as KeyboardEvent).key !== held.event.key) return
+      held.expire = deadline(keyScrollStartsWithinMs, () => {
+        if (key === held && !held.moved) key = undefined
       })
     },
   }
@@ -87,11 +93,7 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     report({})
   })
   scroll.addEventListener('scroll', onScroll, { passive: true })
-  const keyScrolled = () => {
-    key = undefined
-    keyMoved = false
-  }
-  scroll.addEventListener('scrollend', keyScrolled, { passive: true })
+  scroll.addEventListener('scrollend', forgetKey, { passive: true })
   scroll.addEventListener('wheel', onWheel, { passive: true })
   for (const [type, listener] of Object.entries(reader))
     (onTranscript.has(type) ? scroll : window).addEventListener(type, listener, { passive: true })
@@ -110,10 +112,10 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
       else scroll.scrollTo({ top: bottom(), behavior: 'smooth' })
     },
     dispose: () => {
-      cancelKeyIntent()
+      forgetKey()
       grow.disconnect()
       scroll.removeEventListener('scroll', onScroll)
-      scroll.removeEventListener('scrollend', keyScrolled)
+      scroll.removeEventListener('scrollend', forgetKey)
       scroll.removeEventListener('wheel', onWheel)
       for (const [type, listener] of Object.entries(reader))
         (onTranscript.has(type) ? scroll : window).removeEventListener(type, listener)
