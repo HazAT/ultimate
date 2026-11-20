@@ -86,6 +86,14 @@ export const ResumeAction = actionRef<{ ids: ConversationId[] }, { resumed: Conv
   'conversations',
   'resume',
 )
+/**
+ * `{ ids }` → `{ [id]: { turns, calls, cost, lastAt? } }`: each conversation's own input and tool call counts,
+ * cost in dollars and latest model message timestamp (Unix milliseconds). Unknown ids are omitted.
+ */
+export const ActivityAction = actionRef<
+  { ids: ConversationId[] },
+  Record<string, { turns: number; calls: number; cost: number; lastAt?: number }>
+>('conversations', 'activity')
 /** `{ id }` → conversation `id`'s summaries, newest first, at most 50: what the sidebar's history popover shows. */
 export const SummariesAction = actionRef<{ id: ConversationId }, SummaryRecord[]>(
   'conversations',
