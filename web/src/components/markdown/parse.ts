@@ -49,12 +49,21 @@ export function parse(markdown: string): ElementContent[] {
 
 export const closeUnfinished = (markdown: string) => remend(markdown)
 
-export function lastFenceOpen(markdown: string) {
-  let fence: string | undefined
-  for (const [, marks] of markdown.matchAll(/^ {0,3}(`{3,}|~{3,})/gm))
-    if (!fence) fence = marks
-    else if (marks[0] === fence[0] && marks.length >= fence.length) fence = undefined
-  return fence !== undefined
+const fenceMarks = (line: string) => /^[ \t>]*(`{3,}|~{3,})/.exec(line)?.[1]
+
+export function fenceStillOpen(markdown: string, start: number, end: number) {
+  if (markdown.slice(end).trim()) return false
+  const lines = markdown.slice(start, end).trimEnd().split('\n')
+  const opener = fenceMarks(lines[0])
+  const last = lines.at(-1)!
+  const closer = /^[ \t>]*(`{3,}|~{3,})[ \t]*$/.exec(last)?.[1]
+  return !(
+    lines.length > 1 &&
+    opener &&
+    closer &&
+    closer[0] === opener[0] &&
+    closer.length >= opener.length
+  )
 }
 
 const voidTags = new Set([
@@ -81,33 +90,46 @@ function openTags(html: string) {
   return open
 }
 
-const refersAcrossBlocks = (markdown: string) =>
-  /\[\^[\w-]{1,200}\]/.test(markdown) || /^ {0,3}\[[^\]]+\]:/m.test(markdown)
+const endsAtBlankLine = /\n[ \t]*\n$/
+const startsUnindented = /^[^\s]/
 
-function split(markdown: string): string[] {
+function split(markdown: string) {
   const tree = blocks.parse(markdown)
-  const starts = tree.children.map((node) => node.position!.start.offset!)
+  const definesAcrossBlocks = tree.children.some(
+    (node) => node.type === 'definition' || node.type === 'footnoteDefinition',
+  )
+  const starts = tree.children.map(
+    (node) => markdown.lastIndexOf('\n', node.position!.start.offset! - 1) + 1,
+  )
   const parts: string[] = []
   let open = 0
   for (const [index, start] of starts.entries()) {
     const text = markdown.slice(index === 0 ? 0 : start, starts[index + 1] ?? markdown.length)
     const node = tree.children[index]
-    if (open > 0) parts[parts.length - 1] += text
-    else parts.push(text)
+    const previous = parts.at(-1)
+    const settled =
+      previous !== undefined &&
+      open === 0 &&
+      endsAtBlankLine.test(previous) &&
+      startsUnindented.test(text)
+    if (previous === undefined || settled) parts.push(text)
+    else parts[parts.length - 1] += text
     if (node.type === 'html') open = Math.max(0, open + openTags(node.value))
   }
-  return parts.length ? parts : [markdown]
+  return { parts: parts.length ? parts : [markdown], definesAcrossBlocks }
 }
 
 export function blockSplitterKeepingFinishedBlocks() {
   let kept: string[] = []
   return (markdown: string) => {
     const prefix = kept.join('')
-    const parts = refersAcrossBlocks(markdown)
+    const grows = kept.length > 0 && markdown.startsWith(prefix)
+    const rest = split(grows ? markdown.slice(prefix.length) : markdown)
+    const parts = rest.definesAcrossBlocks
       ? [markdown]
-      : kept.length && markdown.startsWith(prefix)
-        ? kept.concat(split(markdown.slice(prefix.length)))
-        : split(markdown)
+      : grows
+        ? kept.concat(rest.parts)
+        : rest.parts
     kept = parts.slice(0, -1)
     return parts
   }

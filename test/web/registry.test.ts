@@ -16,7 +16,6 @@ import {
   linkRenderers,
   inlineCodeRenderers,
   panelBadges,
-  codeBlockLanguages,
   codeBlockRenderers,
   messageItems,
   composerRenderers,
@@ -313,7 +312,6 @@ describe('web extension registry', () => {
       { extension: 'a', version: 1, component: First },
       { extension: 'b', version: 1, component: Second },
     ])
-    expect(codeBlockLanguages(records)).toEqual(['mermaid', 'dot'])
     // Any extension can badge any panel's tab, its own or another's.
     expect(panelBadges(records, 'tasks')).toEqual([
       { extension: 'a', version: 1, component: First },

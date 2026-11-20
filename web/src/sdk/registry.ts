@@ -505,10 +505,6 @@ export function codeBlockRenderers(
   })
 }
 
-export function codeBlockLanguages(records: readonly ExtensionRecord[]): string[] {
-  return [...new Set(records.flatMap((record) => Object.keys(record.extension?.codeBlocks ?? {})))]
-}
-
 export function messageItems<
   C extends 'messageActions' | 'messageDetails' | 'answerLabels' | 'userBubble',
 >(

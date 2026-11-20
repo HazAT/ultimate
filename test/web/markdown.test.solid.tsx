@@ -2,6 +2,21 @@
 import { createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
+const installed = vi.hoisted(() => {
+  const listeners = new Set<() => void>()
+  let records: unknown[] = []
+  return {
+    get: () => records,
+    subscribe: (listener: () => void) => (
+      listeners.add(listener),
+      () => listeners.delete(listener)
+    ),
+    set(next: unknown[]) {
+      records = next
+      for (const listener of listeners) listener()
+    },
+  }
+})
 vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../web/src/sdk/store.ts')
   const { createUiState } = await import('../../web/src/sdk/ui-state.ts')
@@ -9,12 +24,31 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
     store: createStore(),
     uiState: createUiState(undefined),
     api: {},
-    registry: { getSnapshot: () => [], subscribe: () => () => {} },
+    registry: { getSnapshot: installed.get, subscribe: installed.subscribe },
   }
 })
 
+import type { CodeBlockRenderer } from '../../web/src/sdk/types.ts'
 import { Markdown } from '../../web/src/components/markdown/markdown.solid.tsx'
 import { renderSolid } from './solid-dom-setup.ts'
+
+function stream(chunks: string[]) {
+  const [text, setText] = createSignal('')
+  const view = renderSolid(() => <Markdown streaming text={text()} />)
+  let sent = ''
+  for (const chunk of chunks) {
+    sent += chunk
+    setText(sent)
+    flush()
+  }
+  return view
+}
+
+const finished = (text: string) => {
+  const view = renderSolid(() => <Markdown text={text} />)
+  flush()
+  return view.innerHTML
+}
 
 it('streams into the last block only, closing what it leaves open', () => {
   const [text, setText] = createSignal('# Plan\n\nFirst paragraph.\n\nSecond **bold')
@@ -40,6 +74,63 @@ it('streams into the last block only, closing what it leaves open', () => {
   flush()
   expect(view.querySelector('p')).toBe(first)
   expect(view.querySelector('em')?.textContent).toBe('one star')
+})
+
+it('ends a stream as the whole text renders, wherever its chunks broke', () => {
+  const texts = [
+    'a\n#topic and more\n\nnext',
+    'Intro\n\n   ```ts\n   let x\n   ```\n\nafter',
+    '- one\n- two\n\n- three\n\nend',
+  ]
+  for (const text of texts)
+    for (let cut = 1; cut < text.length; cut++)
+      expect(stream([text.slice(0, cut), text.slice(cut)]).innerHTML).toBe(finished(text))
+})
+
+it('tells a code block renderer only its own fence is unfinished', () => {
+  const Probe: CodeBlockRenderer = (props) => (
+    <span data-probe={props.incomplete ? 'open' : 'done'}>{props.code.trim()}</span>
+  )
+  installed.set([{ name: 'probe', version: 1, extension: { codeBlocks: { ts: Probe } } }])
+  try {
+    const view = stream(['```ts\ndone\n```\n> ```ts\n> open'])
+    const probes = [...view.querySelectorAll('[data-probe]')]
+    expect(probes.map((probe) => [probe.textContent, probe.getAttribute('data-probe')])).toEqual([
+      ['done', 'done'],
+      ['open', 'open'],
+    ])
+  } finally {
+    installed.set([])
+  }
+})
+
+it('falls back to the core rendering when an extension renderer throws', () => {
+  const Broken: CodeBlockRenderer = () => {
+    throw new Error('broken')
+  }
+  installed.set([{ name: 'broken', version: 1, extension: { codeBlocks: { ts: Broken } } }])
+  try {
+    const view = renderSolid(() => <Markdown text={'Before.\n\n```ts\nlet x\n```\n\nAfter.'} />)
+    flush()
+    expect(view.querySelector('[data-extension-error="broken"]')).not.toBeNull()
+    expect(view.querySelector('.code-block pre')?.textContent).toBe('let x')
+    expect(view.textContent).toContain('After.')
+  } finally {
+    installed.set([])
+  }
+})
+
+it('aligns table cells without letting the alignment carry other CSS', () => {
+  const view = renderSolid(() => (
+    <Markdown
+      text={'<table><tr><td align="left;background:url(https://x/y)">b</td></tr></table>'}
+      without={['img']}
+    />
+  ))
+  flush()
+  const cell = view.querySelector('td')!
+  expect(cell.style.length).toBeLessThanOrEqual(1)
+  expect(cell.style.backgroundImage).toBe('')
 })
 
 it('leaves a finished message as written', () => {

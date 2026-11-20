@@ -5,7 +5,7 @@ import {
 } from '../components/markdown/markdown.solid.tsx'
 
 const MarkdownIsland = island(Markdown)
-const MentionIsland = island(SolidMentionText)
+const MentionIsland = island(SolidMentionText, { inline: true })
 
 export function MessageResponse({
   children,

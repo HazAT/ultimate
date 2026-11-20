@@ -13,11 +13,15 @@ type Props = Record<string, unknown>
  * anywhere it contributes React: `slots: { 'statusline.left': island(Status) }`. The Solid tree gets the extension name
  * and the conversation scope around it, and remounts when either changes. React props reach the Solid component as
  * live props: a React wrapper can hand it what only React reads (`<Panel count={entries.length} />` with
- * `const Panel = island(List)`), and a new value updates it without a remount.
+ * `const Panel = island(List)`), and a new value updates it without a remount. It mounts in a `display: contents`
+ * `<div>`, or a `<span>` with `{ inline: true }` for a component that renders inside text.
  */
-export function island<P extends object = Record<string, never>>(component: Component<P>) {
+export function island<P extends object = Record<string, never>>(
+  component: Component<P>,
+  { inline = false }: { inline?: boolean } = {},
+) {
   return function Island(props: P) {
-    const host = useRef<HTMLDivElement>(null)
+    const host = useRef<HTMLElement>(null)
     const extension = useContext(ExtensionNameContext) ?? null
     const conversation = useContext(ConversationIdContext) ?? null
     const committed = useEffectEvent(() => ({ ...(props as Props) }))
@@ -50,6 +54,7 @@ export function island<P extends object = Record<string, never>>(component: Comp
         dispose()
       }
     }, [extension, conversation])
-    return <div ref={host} className="contents" />
+    const Host = inline ? 'span' : 'div'
+    return <Host ref={host as never} className="contents" />
   }
 }

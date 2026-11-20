@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { Check, Copy } from '@lucide/solid'
+import { Check, Copy, ExternalLink } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
@@ -15,6 +15,14 @@ import {
   Switch,
 } from 'solid-js'
 import type { Component } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog.solid.tsx'
 import {
   codeBlockRenderers,
   errorMessage,
@@ -31,7 +39,7 @@ import {
   blockSplitterKeepingFinishedBlocks,
   closeUnfinished,
   incompleteLink,
-  lastFenceOpen,
+  fenceStillOpen,
   parse,
 } from './parse.ts'
 import type { Element, ElementContent } from './parse.ts'
@@ -90,9 +98,9 @@ function Anchor(props: {
     parseMention(props.href) ? (
       props.children
     ) : (
-      <a {...props.attributes} href={props.href} rel="noreferrer" target="_blank">
+      <ConfirmedLink attributes={props.attributes} href={props.href}>
         {props.children}
-      </a>
+      </ConfirmedLink>
     )
   return (
     <Show when={props.href !== incompleteLink} fallback={props.children}>
@@ -102,6 +110,61 @@ function Anchor(props: {
         renderers={renderers()}
       />
     </Show>
+  )
+}
+
+function ConfirmedLink(props: {
+  href: string
+  children: JSX.Element
+  attributes: Record<string, unknown>
+}) {
+  const [open, setOpen] = createSignal(false)
+  const { copied, copy } = useCopy()
+  const external = () => !props.href.startsWith('#')
+  return (
+    <>
+      <a
+        {...props.attributes}
+        href={props.href}
+        onClick={(event) => {
+          if (!external()) return
+          event.preventDefault()
+          setOpen(true)
+        }}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {props.children}
+      </a>
+      <Dialog onOpenChange={setOpen} open={open()}>
+        <DialogContent class="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle class="flex items-center gap-2 text-base">
+              <ExternalLink aria-hidden="true" class="size-4" />
+              Open external link?
+            </DialogTitle>
+            <DialogDescription>You're about to visit an external website.</DialogDescription>
+          </DialogHeader>
+          <div class="max-h-32 overflow-y-auto rounded-md bg-muted p-3 font-mono text-sm break-all">
+            {props.href}
+          </div>
+          <div class="flex gap-2">
+            <Button class="flex-1" onClick={() => copy(props.href)} variant="outline">
+              {copied() ? 'Copied' : 'Copy link'}
+            </Button>
+            <Button
+              class="flex-1"
+              onClick={() => {
+                window.open(props.href, '_blank', 'noreferrer')
+                setOpen(false)
+              }}
+            >
+              Open link
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
@@ -197,7 +260,7 @@ function attributesOf(node: Element) {
   for (const [property, value] of Object.entries(node.properties)) {
     if (value === undefined || value === null || value === false) continue
     if (property === 'align' && (node.tagName === 'td' || node.tagName === 'th')) {
-      attributes.style = `text-align:${String(value)}`
+      attributes.style = { 'text-align': String(value) }
       continue
     }
     const info = find(html, property)
@@ -208,7 +271,11 @@ function attributesOf(node: Element) {
   return attributes
 }
 
-type Context = { incomplete: boolean; without?: readonly string[] }
+type Context = { streamed?: string; without?: readonly string[] }
+
+const fenceIncomplete = (node: Element, context: Context) =>
+  context.streamed !== undefined &&
+  fenceStillOpen(context.streamed, node.position?.start.offset ?? 0, node.position?.end.offset ?? 0)
 
 function Nodes(props: { nodes: ElementContent[]; context: Context }) {
   return (
@@ -266,7 +333,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
         {(block) => (
           <CodeBlock
             code={block().code}
-            incomplete={props.context.incomplete}
+            incomplete={fenceIncomplete(props.node, props.context)}
             language={block().language}
           />
         )}
@@ -297,9 +364,10 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
 }
 
 function Block(props: { source: string; streaming: boolean; without?: readonly string[] }) {
+  const source = createMemo(() => (props.streaming ? closeUnfinished(props.source) : props.source))
   const tree = createProjection<{ nodes: ElementContent[] }>(
     (draft) => {
-      draft.nodes = parse(props.streaming ? closeUnfinished(props.source) : props.source)
+      draft.nodes = parse(source())
     },
     { nodes: [] },
     { key: null },
@@ -307,8 +375,8 @@ function Block(props: { source: string; streaming: boolean; without?: readonly s
   return (
     <Nodes
       context={{
-        get incomplete() {
-          return props.streaming && lastFenceOpen(props.source)
+        get streamed() {
+          return props.streaming ? source() : undefined
         },
         get without() {
           return props.without

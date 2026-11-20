@@ -41,41 +41,53 @@ to that rendering. Return `core` to leave it unchanged, wrap it to decorate it, 
 
 ## Link renderers
 
-`link` renders the links in Markdown that `MessageResponse` shows (messages, reports). It receives `{ href, children,
-core }`; `core` starts as Streamdown's link, which asks "Open external link?" before opening a new tab. Like tool
-renderers, link renderers compose in discovery order behind error boundaries that fall back to `core`: return `core`
-for links you leave alone. A link still streaming never reaches them. `instance` renders links to its previews as chips
+The Markdown that `MessageResponse` shows (messages, reports) is the Solid renderer in `web/src/components/markdown/`,
+so the link, inline-code and code-block renderers are Solid components (`*.solid.tsx`, passed straight to `link:`,
+`inlineCode:` or `codeBlocks:` in `web.tsx`, without `island`). Read props where you use them, as in any Solid
+component.
+
+`link` renders the links in Markdown. It receives `{ href, children, core }`; `core` starts as the default link, which asks
+"Open external link?" before opening a new tab; a link still streaming stays text and never reaches a renderer. Like tool renderers, link renderers compose in discovery order behind error boundaries that fall back
+to `core`: return `core` for links you leave alone. A link still streaming never reaches them. `instance` renders links to its previews as chips
 that open in the window. `MessageResponse` also turns `#id` and `#id/entry` mentions (three or more digits, outside
 code and links) into `#conversation-<id>[-<entry>]` links, and `MentionText` does the same for plain text;
 `conversations` renders those of known conversations as their feature chip, others stay text.
 
 ```tsx
-link: ({ href, children, core }) =>
-  href.startsWith('https://docs.example.com/') ? <a href={href}>{children}</a> : core
+export const DocsLink: LinkRenderer = (props) => (
+  <Show when={props.href.startsWith('https://docs.example.com/')} fallback={props.core}>
+    <a href={props.href}>{props.children}</a>
+  </Show>
+)
 ```
 
 ## Inline code renderers
 
-`inlineCode` renders the inline code spans in Markdown that `MessageResponse` shows; fenced blocks never reach it. It
+`inlineCode` renders the inline code spans in Markdown; fenced blocks never reach it. It
 receives `{ code, core }`, where `code` is the span's text and `core` starts as the default `<code>`. They compose like
 link renderers: return `core` for spans you leave alone. For example, an extension can make file paths clickable:
 
 ```tsx
-inlineCode: ({ code, core }) =>
-  code.startsWith('src/') ? <button onClick={() => open(code)}>{core}</button> : core
+export const PathCode: InlineCodeRenderer = (props) => (
+  <Show when={props.code.startsWith('src/')} fallback={props.core}>
+    <button onClick={() => open(props.code)}>{props.core}</button>
+  </Show>
+)
 ```
 
 ## Code block renderers
 
-`codeBlocks` renders the fenced code blocks of one language in Markdown that `MessageResponse` shows, keyed by the
+`codeBlocks` renders the fenced code blocks of one language in Markdown, keyed by the
 fence's language. Each receives `{ code, language, incomplete, core }`; `core` starts as the highlighted block with its
 copy button, and `incomplete` is true while the fence still streams. They compose in discovery order behind error
 boundaries that fall back to `core`. Return `core` while `incomplete`, so a half-written block never renders.
 
 ```tsx
-codeBlocks: {
-  dot: ({ code, incomplete, core }) => (incomplete ? core : <Graph source={code} />),
-}
+export const Dot: CodeBlockRenderer = (props) => (
+  <Show when={!props.incomplete} fallback={props.core}>
+    <Graph source={props.code} />
+  </Show>
+)
 ```
 
 ## Message actions
