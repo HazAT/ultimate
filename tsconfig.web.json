@@ -109,6 +109,7 @@
     "extensions/review/types.ts",
     "extensions/review/drafts.ts",
     "extensions/review/lines.ts",
+    "extensions/review/link-state.ts",
     "extensions/review/sha256.ts",
     "lib/ago.ts",
     "lib/plural.ts",

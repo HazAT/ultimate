@@ -1,9 +1,9 @@
 import { FileDiffIcon } from 'lucide-react'
 import { lazy, Suspense } from 'react'
-import { defineWebExtension, island, provide } from '@/sdk'
+import { defineWebExtension, events, island, provide } from '@/sdk'
 import { Review } from '../workspaces/ui.tsx'
 import { ReviewCard } from './card.solid.tsx'
-import { openReview, ReviewLink } from './link.tsx'
+import { ReviewLink } from './link.solid.tsx'
 import { Frame, Loading } from './parts.tsx'
 
 const Viewer = lazy(() => import('./surface.tsx'))
@@ -36,7 +36,7 @@ export default defineWebExtension({
   commands: [
     { id: 'review.open', title: 'Open Review', run: (context) => context.showSurface('review') },
   ],
-  slots: { overlay: [ReviewLink] },
+  slots: { overlay: [island(ReviewLink)] },
   entries: { 'review.comments': island(ReviewCard) },
-  provides: [provide(Review, (spec) => () => openReview(spec))],
+  provides: [provide(Review, (spec) => () => events.emit('review:open', { spec }))],
 })
