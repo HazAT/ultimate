@@ -38,6 +38,7 @@ import {
   formatTime,
   formatTokens,
   Header,
+  island,
   Sidebar,
   StatusLine,
   useConversation,
@@ -67,7 +68,7 @@ import { BranchedEntry } from './entries.ts'
 import type { MemoryItem } from './refs.ts'
 import { MEMORY_FOCUS, MEMORY_SURFACE, MemoryHeader, useRoots } from './ui.tsx'
 import { MemoryCall, NotifyCall, RememberCall } from './calls.tsx'
-import { GoBackAction, Rewound, RewoundDependent } from './rewind.tsx'
+import { GoBackAction, Rewound, RewoundDependent } from './rewind.solid.tsx'
 
 function userText(entry: EntryRecord) {
   const message = entry.model?.[0]
@@ -705,11 +706,11 @@ export default defineWebExtension({
     'lineage.finished': Finished,
     'lineage.woken': Woken,
     'lineage.abstract': Abstract,
-    'lineage.rewound': Rewound,
-    'lineage.rewound-dependent': RewoundDependent,
+    'lineage.rewound': island(Rewound),
+    'lineage.rewound-dependent': island(RewoundDependent),
     'pi.reset': Reset,
   },
-  messageActions: [GoBackAction],
+  messageActions: [island(GoBackAction)],
   composer: RootComposer,
   surfaces: [
     {
