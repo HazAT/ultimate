@@ -49,6 +49,8 @@ const register = (tailnet?: { latest?: string; machine?: string }): Register => 
 
 it("resolves this project, a running local one, and the last backup's tailnet address", () => {
   expect(resolveProject('ultimate', [here], undefined)).toEqual({ current: true })
+  // Agents pass the folder they work in as often as its name.
+  expect(resolveProject('/p/ultimate/', [here], undefined)).toEqual({ current: true })
   const local = { name: 'poe2-rust', current: false, running: { url: 'http://127.0.0.1:4748' } }
   // A local running project wins over the register.
   expect(
