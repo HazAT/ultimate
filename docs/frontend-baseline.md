@@ -41,13 +41,13 @@ dropped, so the file keeps every step. Per entry:
   - `mutations`, `mutationsP95` (from C0): DOM mutation records inside `[data-ui="transcript"]`, counted with a
     MutationObserver, whichever framework made them, within the event's window: from its dispatch until its next task.
     A deferred write (a later timer, an animation frame) counts for no event. This is the comparable number across the
-    core switch. At C0 a streamed delta changes about one text node (median MUT, p95 MUTP) while React renders 92
+    core switch. At C0 a streamed delta changes about one text node (median 1, p95 2) while React renders 92
     components for it: the gap is render work that produces no DOM change. A rise means a host now rewrites rows it
     used to keep.
   - `taskMs`, `taskP95Ms` (from C0): time from the event until the next task: the handler, render and commit of either
     framework, plus any work already queued ahead of it, so it is latency rather than time spent on the event alone.
     The median is the steady cost; the p95 is the slow events a reader feels as jank. One run's p95 can jump with
-    machine load (RANGE), so read the median of runs.
+    machine load (28.6 ms in one of three C0 runs, about 7 ms in the other two), so read the median of runs.
 - `previews` (`scripts/preview-bench.ts`) runs three status-line tasks (keep-warm, pause, reading the setup issues)
   three times each from a fresh page, once with CSS selectors and screenshots and once with `ui` steps (`null` before
   `ui` steps existed at `1c5d056`). `tokens` estimates what the agent reads back: text at 4 bytes a token, a

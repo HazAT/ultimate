@@ -5718,15 +5718,15 @@
     },
     {
       "switch": {
-        "cold": 561.5,
-        "warm": 145
+        "cold": 564,
+        "warm": 143.5
       },
       "stream": {
         "median": 92,
         "p95": 94,
         "max": 583,
-        "taskMs": 5,
-        "taskP95Ms": 7.4,
+        "taskMs": 4.9,
+        "taskP95Ms": 7.3,
         "mutations": 1,
         "mutationsP95": 2,
         "events": 23
@@ -5738,9 +5738,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 130,
+              "kb": 126,
               "tokens": 3461,
-              "ms": 209,
+              "ms": 206,
               "ok": true
             },
             "ui": {
@@ -5749,7 +5749,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 395,
-              "ms": 89,
+              "ms": 90,
               "ok": true
             }
           },
@@ -5758,9 +5758,9 @@
               "calls": 2,
               "steps": 2,
               "screenshots": 2,
-              "kb": 136,
+              "kb": 132,
               "tokens": 3461,
-              "ms": 209,
+              "ms": 222,
               "ok": true
             },
             "ui": {
@@ -5769,7 +5769,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 531,
-              "ms": 129,
+              "ms": 127,
               "ok": true
             }
           },
@@ -5778,9 +5778,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 145,
+              "kb": 140,
               "tokens": 3459,
-              "ms": 160,
+              "ms": 163,
               "ok": true
             },
             "ui": {
@@ -5789,17 +5789,17 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 391,
-              "ms": 60,
+              "ms": 59,
               "ok": true
             }
           }
         }
       },
-      "commit": "4aff29c1",
-      "sha": "4aff29c14cb5bf310d9983641257c6c1f42722d6",
+      "commit": "b2a17734",
+      "sha": "b2a1773459e760b552a4e38b3c28420ad96267ec",
       "label": "C0",
       "date": "2026-11-20",
-      "committedAt": 1795151508,
+      "committedAt": 1795152134,
       "lines": {
         "total": 51896,
         "solid": 9707,
