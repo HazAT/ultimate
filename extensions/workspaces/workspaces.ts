@@ -966,6 +966,7 @@ export function workspaces(host: Host) {
     standLander,
     started: tasksStartedByThisModule,
     get,
+    serialize: serializeSourceWrites,
     unavailable,
     land,
     submit,

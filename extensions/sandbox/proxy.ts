@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { lookup } from 'node:dns/promises'
 import { BlockList, connect, isIP, type Socket } from 'node:net'
+import { inProcess } from '../../lib/errors.ts'
 
 const SOCKET_PATH_MAX_BYTES = 107
 const HOST_PATTERN = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i
@@ -70,27 +71,30 @@ export async function startProxy(
       return
     }
     client.on('error', () => client.destroy())
-    void publicAddress(host).then(
-      (address) => {
-        if (client.destroyed) return
-        if (!address) {
-          client.end(forbidden)
-          return
-        }
-        const upstream = connect(Number(port), address, () => {
-          client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
-          if (head.length > 0) upstream.write(head)
-          upstream.pipe(client)
-          client.pipe(upstream)
-        })
-        const closeBoth = () => {
-          client.destroy()
-          upstream.destroy()
-        }
-        upstream.on('error', closeBoth)
-        client.on('close', closeBoth)
-      },
-      () => client.end(forbidden),
+    inProcess(
+      'a proxied connection dies with the process',
+      publicAddress(host).then(
+        (address) => {
+          if (client.destroyed) return
+          if (!address) {
+            client.end(forbidden)
+            return
+          }
+          const upstream = connect(Number(port), address, () => {
+            client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+            if (head.length > 0) upstream.write(head)
+            upstream.pipe(client)
+            client.pipe(upstream)
+          })
+          const closeBoth = () => {
+            client.destroy()
+            upstream.destroy()
+          }
+          upstream.on('error', closeBoth)
+          client.on('close', closeBoth)
+        },
+        () => client.end(forbidden),
+      ),
     )
   })
   const sockets = new Set<Socket>()

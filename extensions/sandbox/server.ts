@@ -28,7 +28,7 @@ import {
   createReadTool,
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
-import { ignoring, isMissing } from '../../lib/errors.ts'
+import { ignoring, inProcess, isMissing } from '../../lib/errors.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Profile } from '../subagents/api.ts'
 import { Confinement, WorkspacesApi } from '../workspaces/api.ts'
@@ -113,7 +113,10 @@ export default function sandbox(host: ExtensionHost) {
         .then(() => startProxy(socket, allow))
         .then((started) => ({ socket, close: () => started.close() }))
       proxies.set(key, proxy)
-      proxy.catch(() => proxies.delete(key))
+      inProcess(
+        'a proxy socket belongs to this process',
+        proxy.catch(() => proxies.delete(key)),
+      )
     }
     return proxy
   }

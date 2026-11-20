@@ -16,6 +16,8 @@ import type { Workspaces, workspaces } from './workspaces.ts'
 type Implementation = ReturnType<typeof workspaces>
 
 export type WorkspaceService = {
+  /** Run writes to one source checkout one at a time: the queue the lander's own fast-forwards hold. */
+  serialize<T>(source: string, operation: () => Promise<T>): Promise<T>
   /** The worktree of conversation `id` (path, branch, target, state), or undefined when it has none. */
   get: Implementation['get']
   /** Give conversation `id` a new worktree of `cwd`'s repository inside `tx`; throws when `cwd` cannot be isolated. */
