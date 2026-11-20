@@ -47,6 +47,10 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   return { store, api, reads: createReads(api, store), registry: createRegistry() }
 })
 vi.mock('../../web/src/sdk/resume.ts', () => ({ covered: () => false }))
+vi.mock('../../web/src/sdk/markdown.tsx', () => ({
+  MentionText: ({ text }: { text: string }) => text,
+  MessageResponse: ({ children }: { children: string }) => children,
+}))
 vi.mock('@/components/ai/prompt-input', () => ({
   PromptInput: ({
     children,
