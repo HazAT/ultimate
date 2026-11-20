@@ -895,6 +895,8 @@ it.each([
     undefined,
   ],
   ['Overloaded (529)', true, undefined],
+  ['Provider stopped with: MALFORMED_RESPONSE', true, undefined],
+  ['Unhandled stop reason: MALFORMED_RESPONSE', true, undefined],
   // A conversation pinned to a provider whose login was removed (rog, 2026-10-25).
   [
     'Provider is not configured: openrouter',

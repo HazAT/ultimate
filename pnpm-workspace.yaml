@@ -30,6 +30,7 @@ minimumReleaseAgeExclude:
   - '@ui-sdk/solid@0.1.0-beta.13'
   - solid-js@2.0.3
 # Pi upstream: @earendil-works/chord@1.5.2 dist/output.js — sanitizeOutput keeps numeric SGR colours, which 1.5.2 strips with the other escape sequences. Drop when Pi keeps SGR.
+# Pi upstream: @earendil-works/pi-ai@1.5.2 dist/api/google-shared.js, dist/utils/retry.js — mapStopReason maps MALFORMED_RESPONSE and unknown FinishReason values to "error" instead of throwing "Unhandled stop reason: ...", and isRetryableAssistantError treats MALFORMED_RESPONSE (in errorMessage or rawStopReason) as retryable. Drop when upstream maps unknown Google FinishReasons to "error" and retries MALFORMED_RESPONSE.
 # Pi upstream: @earendil-works/pi-durable@1.5.2 dist/harness/inbox.js — transactional beforeInput hook places entries before a new run’s first input. Drop when Pi ships input-placement hooks.
 # Pi upstream: @earendil-works/pi-durable@1.5.2 dist/harness/inbox.js, dist/types.d.ts — mark entries placed from input submissions. Drop when Pi ships input provenance.
 # Pi upstream: @earendil-works/pi-durable@1.5.2 dist/harness/scheduler.js, dist/harness/harness.js — Harness.hold()/release() keep the scheduler from starting task runs. Drop when Pi Durable ships a scheduler hold.
@@ -51,5 +52,6 @@ overrides:
   vite: 8.3.5
 patchedDependencies:
   '@earendil-works/chord@1.5.2': patches/@earendil-works__chord@1.5.2.patch
+  '@earendil-works/pi-ai@1.5.2': patches/@earendil-works__pi-ai@1.5.2.patch
   '@earendil-works/pi-claude-code@0.1.0': patches/@earendil-works__pi-claude-code@0.1.0.patch
   '@earendil-works/pi-durable@1.5.2': patches/@earendil-works__pi-durable@1.5.2.patch

@@ -1,0 +1,46 @@
+diff --git a/dist/api/google-shared.js b/dist/api/google-shared.js
+index f344df5..710d8b8 100644
+--- a/dist/api/google-shared.js
++++ b/dist/api/google-shared.js
+@@ -459,11 +459,10 @@ export function mapStopReason(reason) {
+         case FinishReason.UNEXPECTED_TOOL_CALL:
+         case FinishReason.TOO_MANY_TOOL_CALLS:
+         case FinishReason.NO_IMAGE:
++        case "MALFORMED_RESPONSE":
++            return "error";
++        default:
+             return "error";
+-        default: {
+-            const _exhaustive = reason;
+-            throw new Error(`Unhandled stop reason: ${_exhaustive}`);
+-        }
+     }
+ }
+ /**
+diff --git a/dist/utils/retry.js b/dist/utils/retry.js
+index dae863c..a03ab09 100644
+--- a/dist/utils/retry.js
++++ b/dist/utils/retry.js
+@@ -109,6 +109,8 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
+     // failures can arrive mid-stream without an HTTP 503 in the message.
+     "subscription_sharing_usage_unavailable",
+     "subscription_sharing_user_unavailable",
++    // Gemini transient malformed response finish reason.
++    "malformed_response",
+ ]);
+ export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
+ export function retryDelayMs(policy, attempt) {
+@@ -206,9 +208,11 @@ export async function retryAssistantCall(produce, policy, signal, callbacks) {
+  * before restarting the assistant turn.
+  */
+ export function isRetryableAssistantError(message) {
+-    if (message.stopReason !== "error" || !message.errorMessage)
++    if (message.stopReason !== "error")
++        return false;
++    const errorMessage = message.errorMessage || message.rawStopReason;
++    if (!errorMessage)
+         return false;
+-    const errorMessage = message.errorMessage;
+     if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage))
+         return false;
+     return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
