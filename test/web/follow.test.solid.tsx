@@ -162,10 +162,10 @@ it('takes PageUp on a focused control as reading, and forgets an up key that mov
   toggle.type = 'checkbox'
   document.body.append(copy, toggle)
   copy.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }))
-  window.dispatchEvent(new KeyboardEvent('keyup', { key: 'PageUp' }))
   vi.advanceTimersByTime(20)
   view.moveTo(3800)
   expect(pinned.following()).toBe(false)
+  window.dispatchEvent(new KeyboardEvent('keyup', { key: 'PageUp' }))
   scroll.dispatchEvent(new Event('scrollend'))
 
   view.moveTo(4300)
@@ -187,4 +187,18 @@ it('takes PageUp on a focused control as reading, and forgets an up key that mov
   view.moveTo(4250)
   layout()
   expect([pinned.following(), view.top()]).toEqual([true, 4350])
+})
+
+it('leaves keys a native control takes to it', () => {
+  const { view, pinned, layout } = transcript(5000)
+  const range = document.createElement('input')
+  range.type = 'range'
+  document.body.append(range)
+  for (const target of [range]) {
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+    view.resize(view.top() + 760)
+    view.moveTo(view.top() - 40)
+    layout()
+    expect(pinned.following()).toBe(true)
+  }
 })

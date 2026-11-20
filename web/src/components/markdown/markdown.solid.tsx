@@ -198,7 +198,7 @@ function CopyCode(props: { code: string; at: string }) {
   const { copied, copy } = useCopy()
   return (
     <Button
-      aria-label={`Copy code ${props.at}: ${props.code.trim().split('\n')[0]?.slice(0, 60) ?? ''}`}
+      aria-label={`Copy code ${props.at}`}
       class="h-auto rounded-none p-1 font-normal text-muted-foreground hover:text-foreground"
       onClick={() => copy(props.code)}
       size={null}

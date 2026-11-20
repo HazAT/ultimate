@@ -58,13 +58,13 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   }
   const upKey = (event: KeyboardEvent) =>
     ['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)
-  const textEntry =
-    'textarea, select, [contenteditable=""], [contenteditable="true"], input:not([type=button], [type=submit], [type=reset], [type=checkbox], [type=radio], [type=range], [type=color], [type=file], [type=image])'
+  const keyControls =
+    'textarea, select, input:not([type=button], [type=submit], [type=reset], [type=checkbox], [type=color], [type=file], [type=image])'
   const consumedBy = (event: KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : null
     if (!target) return false
-    if (target.closest(textEntry)) return true
-    return event.key === ' ' && !!target.closest('button, a[href], [role="button"], input')
+    if (target.isContentEditable || target.matches(keyControls)) return true
+    return event.key === ' ' && target.matches('button, a[href], [role="button"], input')
   }
   const reader = {
     pointerdown: () => (pressed = true),

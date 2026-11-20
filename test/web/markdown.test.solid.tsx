@@ -231,7 +231,7 @@ it('keeps sanitized raw HTML and drops what could run', () => {
 
 it('names each copy and link button apart, across replies and links the parser splits, and keeps a name while code streams', async () => {
   const reply = '[docs](https://example.com/docs)\n\n```sh\nnpm test\n```'
-  const [code, setCode] = createSignal('```sh\nnpm test\n')
+  const [code, setCode] = createSignal('```sh\nnpm te')
   renderSolid(() => (
     <>
       <Markdown text={reply} />
