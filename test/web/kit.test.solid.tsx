@@ -6,7 +6,7 @@ import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
-import { Input, SecretInput } from '@/components/ui/input.solid.tsx'
+import { Input, SecretInput, Textarea } from '@/components/ui/input.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
@@ -146,11 +146,12 @@ it('lets an agent open a tooltip and a status popover by their names', async () 
   expect(container.textContent).toContain('Everything is fine')
 })
 
-it('lets an agent fill a text field and a secret it can never read back', async () => {
+it('lets an agent fill text fields and a secret it can never read back', async () => {
   const typed = vi.fn<(value: string, source: string) => void>()
   const container = renderSolid(() => (
     <>
       <Input aria-label="Machine name" onValueChange={(value, d) => typed(value, d.source)} />
+      <Textarea aria-label="Notes" onValueChange={(value, d) => typed(value, d.source)} />
       <SecretInput aria-label="API token" onValueChange={(value, d) => typed(value, d.source)} />
     </>
   ))
@@ -158,6 +159,7 @@ it('lets an agent fill a text field and a secret it can never read back', async 
   const result = await agent.act({
     steps: [
       { ref: refFor('Machine name'), action: 'setValue', args: ['laptop'] },
+      { ref: refFor('Notes'), action: 'setValue', args: ['two\nlines'] },
       { ref: refFor('API token'), action: 'setValue', args: ['hunter2'] },
     ],
   })
@@ -165,6 +167,7 @@ it('lets an agent fill a text field and a secret it can never read back', async 
   flush()
   expect(typed.mock.calls).toEqual([
     ['laptop', 'agent'],
+    ['two\nlines', 'agent'],
     ['hunter2', 'agent'],
   ])
   const field = container.querySelector<HTMLInputElement>('input[aria-label="API token"]')!

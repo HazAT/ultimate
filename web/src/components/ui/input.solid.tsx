@@ -1,6 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { Eye, EyeOff } from '@lucide/solid'
 import { Input as InputRoot } from '@ui-sdk/solid/input'
+import { Textarea as TextareaRoot } from '@ui-sdk/solid/textarea'
 import {
   PasswordInput,
   PasswordInputControl,
@@ -24,6 +25,22 @@ function Input(props: InputProps) {
       spellcheck={false}
       {...rest}
       class={cn(field, props.class)}
+      onValueChange={(value, details) => {
+        const change = props.onValueChange
+        writingAs(details.source, () => change?.(value, details))
+      }}
+    />
+  )
+}
+
+type TextareaProps = ComponentProps<typeof TextareaRoot> & { class?: string }
+
+function Textarea(props: TextareaProps) {
+  const rest = omit(props, 'class', 'onValueChange')
+  return (
+    <TextareaRoot
+      {...rest}
+      class={cn(field, 'h-auto resize-y py-2 font-sans text-[13px] leading-relaxed', props.class)}
       onValueChange={(value, details) => {
         const change = props.onValueChange
         writingAs(details.source, () => change?.(value, details))
@@ -82,4 +99,4 @@ function SecretInput(props: SecretInputProps) {
   )
 }
 
-export { Input, SecretInput }
+export { Input, SecretInput, Textarea }
