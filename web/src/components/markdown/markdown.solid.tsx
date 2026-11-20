@@ -15,12 +15,25 @@ import {
   Switch,
 } from 'solid-js'
 import type { Component } from 'solid-js'
-import { ExtensionName, useCopy, useExtensions } from '@/sdk/solid'
+import {
+  codeBlockRenderers,
+  errorMessage,
+  ExtensionName,
+  inlineCodeRenderers,
+  linkRenderers,
+  useCopy,
+  useExtensions,
+} from '@/sdk/solid'
 import type { CodeBlockRenderer, InlineCodeRenderer, LinkRenderer } from '@/sdk'
-import { codeBlockRenderers, inlineCodeRenderers, linkRenderers } from '../../sdk/registry.ts'
 import { highlight, plainLines } from './highlight.ts'
 import type { Line } from './highlight.ts'
-import { incompleteLink, openFence, parse, repair, splitter } from './parse.ts'
+import {
+  blockSplitterKeepingFinishedBlocks,
+  closeUnfinished,
+  incompleteLink,
+  lastFenceOpen,
+  parse,
+} from './parse.ts'
 import type { Element, ElementContent } from './parse.ts'
 import { mentionHref, parseMention, splitMentions } from '../ai/mentions.ts'
 
@@ -51,17 +64,15 @@ function Contributed<P extends { core: JSX.Element }>(props: {
 }
 
 function ContributionError(props: { extension: string; error: unknown; inner: JSX.Element }) {
-  console.error(`[extension ${props.extension}]`, props.error)
-  const message = () => (props.error instanceof Error ? props.error.message : String(props.error))
   return (
     <>
       <span
         class="inline-flex max-w-72 items-center gap-1 rounded-sm bg-error/12 px-1.5 font-mono text-[11px] text-error"
         data-extension-error={props.extension}
-        title={message()}
+        title={errorMessage(props.error)}
       >
         <span class="truncate">
-          {props.extension}: {message()}
+          {props.extension}: {errorMessage(props.error)}
         </span>
       </span>
       {props.inner}
@@ -140,9 +151,7 @@ export function HighlightedCode(props: { code: string; language: string }) {
           <span class="block">
             <Show when={line().length} fallback={'\n'}>
               <For each={line()} keyed={false}>
-                {(token) => (
-                  <span style={token().htmlStyle}>{token().content}</span>
-                )}
+                {(token) => <span style={token().htmlStyle}>{token().content}</span>}
               </For>
             </Show>
           </span>
@@ -226,6 +235,11 @@ function Node(props: { node: ElementContent; context: Context }): JSX.Element {
   )
 }
 
+const hrefOf = (node: Element) => {
+  const href = node.properties.href
+  return typeof href === 'string' ? href : ''
+}
+
 const onlyImage = (node: Element) =>
   node.tagName === 'p' &&
   node.children.length === 1 &&
@@ -258,7 +272,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
         )}
       </Match>
       <Match when={props.node.tagName === 'a'}>
-        <Anchor attributes={attributes()} href={String(props.node.properties.href ?? '')}>
+        <Anchor attributes={attributes()} href={hrefOf(props.node)}>
           {children()}
         </Anchor>
       </Match>
@@ -274,7 +288,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       </Match>
       <Match when={props.node.tagName === 'img'}>
         <span class="image">
-          <img {...attributes()} />
+          <img alt="" {...attributes()} />
         </span>
       </Match>
       <Match when={onlyImage(props.node)}>{children()}</Match>
@@ -285,7 +299,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
 function Block(props: { source: string; streaming: boolean; without?: readonly string[] }) {
   const tree = createProjection<{ nodes: ElementContent[] }>(
     (draft) => {
-      draft.nodes = parse(props.streaming ? repair(props.source) : props.source)
+      draft.nodes = parse(props.streaming ? closeUnfinished(props.source) : props.source)
     },
     { nodes: [] },
     { key: null },
@@ -294,7 +308,7 @@ function Block(props: { source: string; streaming: boolean; without?: readonly s
     <Nodes
       context={{
         get incomplete() {
-          return props.streaming && openFence(props.source)
+          return props.streaming && lastFenceOpen(props.source)
         },
         get without() {
           return props.without
@@ -305,18 +319,13 @@ function Block(props: { source: string; streaming: boolean; without?: readonly s
   )
 }
 
-/**
- * Markdown as the transcript shows it: GFM, `#id` mentions, highlighted code and sanitized raw HTML, with the
- * extensions' link, inline-code and code-block renderers. While `streaming`, only the last block re-renders as text
- * arrives, and what it leaves open is closed for the moment. `without` leaves out elements by tag name.
- */
 export function Markdown(props: {
   text: string
   streaming?: boolean
   without?: readonly string[]
   class?: string
 }) {
-  const split = splitter()
+  const split = blockSplitterKeepingFinishedBlocks()
   const blocks = createMemo(() => split(props.text))
   return (
     <div class={cn('markdown min-w-0', props.class)}>
@@ -333,20 +342,25 @@ export function Markdown(props: {
   )
 }
 
-/** Text with `#id` and `#id/entry` mentions drawn as links, as Markdown draws them. */
+type Mention = Exclude<ReturnType<typeof splitMentions>[number], string>
+
+function Part(props: { part: string | Mention }) {
+  const mention = () => (typeof props.part === 'string' ? undefined : props.part)
+  return (
+    <Show when={mention()} fallback={<>{props.part as string}</>}>
+      {(link) => (
+        <Anchor attributes={{}} href={mentionHref(link().conversation, link().entry)}>
+          {link().text}
+        </Anchor>
+      )}
+    </Show>
+  )
+}
+
 export function MentionText(props: { text: string }) {
   return (
     <For each={splitMentions(props.text)} keyed={false}>
-      {(part) => {
-        const value = part()
-        return typeof value === 'string' ? (
-          value
-        ) : (
-          <Anchor attributes={{}} href={mentionHref(value.conversation, value.entry)}>
-            {value.text}
-          </Anchor>
-        )
-      }}
+      {(part) => <Part part={part()} />}
     </For>
   )
 }

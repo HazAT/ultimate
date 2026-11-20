@@ -68,6 +68,8 @@ export {
   shortenPath,
 } from './format.ts'
 export { formatKeys } from './keys.ts'
+/** The installed link, inline-code and code-block renderers of Markdown, in discovery order (`useExtensions()` records). */
+export { codeBlockRenderers, inlineCodeRenderers, linkRenderers } from './registry.ts'
 export { keepLast } from '../../../lib/errors.ts'
 export { cn } from 'cn'
 

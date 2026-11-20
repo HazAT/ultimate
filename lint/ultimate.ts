@@ -111,7 +111,12 @@ const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
 const reactIslandFile = 'web/src/sdk/react-island.tsx'
-const rendererBridges = new Set(['web/src/sdk/island.tsx', 'web/src/sdk/solid.ts', reactIslandFile])
+const rendererBridges = new Set([
+  'web/src/sdk/island.tsx',
+  'web/src/sdk/solid.ts',
+  'web/src/sdk/markdown.tsx',
+  reactIslandFile,
+])
 const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
 const solidSdk = 'web/src/sdk/solid.ts'
 const reactSdk = (module: string) => {

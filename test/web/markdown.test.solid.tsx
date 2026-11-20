@@ -61,6 +61,16 @@ it('checks the done items of a task list', () => {
   ])
 })
 
+it('shows a long table at full height, not in a scrolled box', () => {
+  const rows = Array.from({ length: 20 }, (_, index) => `| ${index} | row ${index} |`)
+  const view = renderSolid(() => (
+    <Markdown text={['| # | Name |', '| - | - |', ...rows].join('\n')} />
+  ))
+  flush()
+  expect(view.querySelectorAll('tbody tr')).toHaveLength(20)
+  expect(view.innerHTML).not.toMatch(/max-height/)
+})
+
 it('keeps sanitized raw HTML and drops what could run', () => {
   const view = renderSolid(() => (
     <Markdown

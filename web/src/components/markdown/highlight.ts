@@ -1,5 +1,11 @@
 import { bundledLanguages, bundledLanguagesInfo, createHighlighter } from 'shiki'
-import type { GrammarState, HighlighterGeneric, ThemedToken } from 'shiki'
+import type {
+  BundledLanguage,
+  BundledTheme,
+  GrammarState,
+  HighlighterGeneric,
+  ThemedToken,
+} from 'shiki'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 
 export type Line = ThemedToken[]
@@ -8,10 +14,11 @@ const themes = { light: 'vitesse-light', dark: 'vitesse-dark' } as const
 const aliases = new Map(
   bundledLanguagesInfo.flatMap((info) => (info.aliases ?? []).map((alias) => [alias, info.id])),
 )
-const languageOf = (name: string) => {
+const isBundled = (id: string): id is BundledLanguage => Object.hasOwn(bundledLanguages, id)
+const languageOf = (name: string): BundledLanguage | 'text' => {
   const lower = name.trim().toLowerCase()
   const id = aliases.get(lower) ?? lower
-  return Object.hasOwn(bundledLanguages, id) ? id : 'text'
+  return isBundled(id) ? id : 'text'
 }
 
 export const supportsLanguage = (name: string) => languageOf(name) !== 'text'
@@ -41,28 +48,34 @@ export function languageFromPath(path: string) {
   return supportsLanguage(language) ? language : 'text'
 }
 
-type Highlighter = HighlighterGeneric<string, string>
+type Highlighter = HighlighterGeneric<BundledLanguage, BundledTheme>
 let highlighter: Highlighter | undefined
-let starting: Promise<Highlighter> | undefined
-const loading = new Map<string, Promise<unknown>>()
-
-function load(language: string) {
-  starting ??= createHighlighter({
+const starting = once(() =>
+  createHighlighter({
     themes: [themes.light, themes.dark],
     langs: [],
     engine: createJavaScriptRegexEngine({ forgiving: true }),
-  }).then((ready) => (highlighter = ready))
+  }).then((created) => (highlighter = created)),
+)
+const loading = new Map<string, Promise<unknown>>()
+
+function load(language: BundledLanguage | 'text') {
   let loaded = loading.get(language)
   if (!loaded) {
-    loaded = starting.then((ready) =>
-      language === 'text' ? undefined : ready.loadLanguage(language as never),
+    loaded = starting().then((created) =>
+      language === 'text' ? undefined : created.loadLanguage(language),
     )
     loading.set(language, loaded)
   }
   return loaded
 }
 
-const ready = (language: string) =>
+function once<T>(make: () => T) {
+  let made: { value: T } | undefined
+  return () => (made ??= { value: make() }).value
+}
+
+const loadedLanguage = (language: string) =>
   highlighter !== undefined &&
   (language === 'text' || highlighter.getLoadedLanguages().includes(language))
 
@@ -70,9 +83,9 @@ const finished = new Map<string, Line[]>()
 const finishedLimit = 500
 const streaming = new Map<string, { prefix: string; lines: Line[]; state?: GrammarState }>()
 
-function tokenize(ready: Highlighter, code: string, language: string): Line[] {
+function tokenize(created: Highlighter, code: string, language: BundledLanguage | 'text'): Line[] {
   const tokens = (text: string, state?: GrammarState) =>
-    ready.codeToTokens(text, { lang: language, themes, grammarState: state })
+    created.codeToTokens(text, { lang: language, themes, grammarState: state })
   const whole = code.lastIndexOf('\n') + 1
   let done = streaming.get(language)
   if (!done || !code.startsWith(done.prefix)) done = { prefix: '', lines: [] }
@@ -93,7 +106,7 @@ export function highlight(code: string, name: string, then: (lines: Line[]) => v
   const key = `${language}\n${code}`
   const known = finished.get(key)
   if (known) return known
-  if (!ready(language)) {
+  if (!loadedLanguage(language)) {
     void load(language).then(() => then(highlight(code, name, then) ?? []))
     return undefined
   }

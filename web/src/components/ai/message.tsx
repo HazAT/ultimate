@@ -1,7 +1,5 @@
 import { cn } from 'cn'
 import type { HTMLAttributes } from 'react'
-import { island } from '../../sdk/island.tsx'
-import { Markdown, MentionText as SolidMentionText } from '../markdown/markdown.solid.tsx'
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & { from: 'user' | 'assistant' }
 
@@ -28,25 +26,4 @@ export const MessageContent = ({ className, ...props }: HTMLAttributes<HTMLDivEl
   />
 )
 
-const MarkdownIsland = island(Markdown)
-const MentionIsland = island(SolidMentionText)
-
-export function MessageResponse({
-  children,
-  className,
-  isAnimating,
-  without,
-}: {
-  children: string
-  className?: string
-  isAnimating?: boolean
-  without?: readonly string[]
-}) {
-  return (
-    <MarkdownIsland class={className} streaming={isAnimating} text={children} without={without} />
-  )
-}
-
-export function MentionText({ text }: { text: string }) {
-  return <MentionIsland text={text} />
-}
+export { MentionText, MessageResponse } from '../../sdk/markdown.tsx'

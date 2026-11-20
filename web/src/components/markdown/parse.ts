@@ -1,5 +1,4 @@
-import type { Element, ElementContent, Root as HastRoot } from 'hast'
-import type { Root as MdastRoot } from 'mdast'
+import type { Element, ElementContent } from 'hast'
 import { harden } from 'rehype-harden'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
@@ -43,17 +42,14 @@ const toHast = unified()
   .use(rehypeSanitize, schema)
   .use(harden, hardening)
 
-/** Markdown as the sanitized HTML tree the renderer draws: GFM, `#id` mentions, raw HTML kept within the allowlist. */
 export function parse(markdown: string): ElementContent[] {
   const tree = toHast.runSync(toHast.parse(markdown))
   return tree.children.filter((node) => node.type !== 'doctype')
 }
 
-/** Closes what an unfinished stream leaves open (`**`, `` ` ``, a link), so the tail renders as it will end. */
-export const repair = (markdown: string) => remend(markdown)
+export const closeUnfinished = (markdown: string) => remend(markdown)
 
-/** True while the last of `markdown`'s code fences is still open. */
-export function openFence(markdown: string) {
+export function lastFenceOpen(markdown: string) {
   let fence: string | undefined
   for (const [, marks] of markdown.matchAll(/^ {0,3}(`{3,}|~{3,})/gm))
     if (!fence) fence = marks
@@ -103,14 +99,7 @@ function split(markdown: string): string[] {
   return parts.length ? parts : [markdown]
 }
 
-/**
- * Cuts Markdown into top-level blocks that render the same one by one as together; a block keeps the blank lines
- * after it. Raw HTML left open joins the blocks up to its close (`<details>` around Markdown), and footnotes or link
- * definitions, which refer across blocks, keep the source whole. For a source that grows by appended text, as a
- * streamed reply does, the blocks before the last one are kept while the source still starts with them, and only the
- * rest is cut again.
- */
-export function splitter() {
+export function blockSplitterKeepingFinishedBlocks() {
   let kept: string[] = []
   return (markdown: string) => {
     const prefix = kept.join('')
