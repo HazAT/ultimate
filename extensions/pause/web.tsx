@@ -24,19 +24,9 @@ import { lasted, unwrappedProviderError } from './lasted.ts'
 import { parkedConversations } from './parked.ts'
 import { PauseAction, PauseDoc, PlayAction } from './refs.ts'
 import type { AutoPlayed, HeldNote, PauseNote, RateLimit } from './refs.ts'
-import { Item, Play } from './status.solid.tsx'
+import { Hint, Item, Play } from './status.solid.tsx'
 
 const usePaused = () => useDocOf(ROOT, PauseDoc)?.paused === true
-
-function Hint() {
-  if (!usePaused()) return null
-  return (
-    <span className="flex items-center gap-1.5 text-warning" data-pause-hint>
-      <PauseIcon className="size-3" />
-      Paused — your message runs on Play
-    </span>
-  )
-}
 
 function Note({ entry }: { entry: EntryRecord }) {
   const note = (entry.data ?? {}) as Partial<PauseNote>
@@ -199,7 +189,7 @@ export default defineWebExtension({
       { component: island(Item), order: -3, phone: true },
       { component: island(Play), order: -3, phone: true },
     ],
-    'composer.status': [Hint],
+    'composer.status': [island(Hint)],
   },
   entries: {
     'pause.note': Note,
