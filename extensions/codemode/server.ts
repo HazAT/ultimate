@@ -542,11 +542,14 @@ export default function codemode(host: ExtensionHost) {
               name: resolved.name,
               arguments: prepared as JsonObject,
             })
-            const result: StructuredResult = await resolved.execute(
+            const returned = await resolved.execute(
               validated,
               nested,
               withAbortSignal(signal, context),
             )
+            if ('sleep' in returned || 'wait' in returned)
+              throw new Error(`Tool ${resolved.name} parked; code mode cannot wait for it`)
+            const result: StructuredResult = returned
             signal.throwIfAborted()
             const details =
               result.details && typeof result.details === 'object' && !Array.isArray(result.details)

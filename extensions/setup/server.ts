@@ -484,7 +484,7 @@ export default function setup(host: ExtensionHost) {
     name: 'setup',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
           if (standing.ultimate !== conversationId) return undefined

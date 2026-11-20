@@ -277,7 +277,7 @@ export default function goalExtension(host: ExtensionHost) {
     tasks: [deliverTask(host), reminderTask(host, Goals)],
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: async (input, { tx, conversationId }) => {
           if ((await ultimateOf(tx)) !== conversationId) return undefined
           const goal = await openGoal(tx)

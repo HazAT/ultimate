@@ -99,7 +99,7 @@ export function rewindPlan(current: View, past: View, at: EntryId) {
 const rows = (text: string) => text.split('\n').filter(Boolean)
 const numstatLinesOrZeroForBinary = (count: string) => Number(count) || 0
 
-// Pi upstream: @earendil-works/pi-durable@1.5.2 src/tools/path-utils.ts — copied unexported normalizeToolPath (unicode spaces, leading @), which edit and write apply before env.absolutePath. Drop when Pi exports resolveToolPath's normalization.
+// Pi upstream: @earendil-works/pi-durable@1.6.0 src/tools/path-utils.ts — copied unexported normalizeToolPath (unicode spaces, leading @), which edit and write apply before env.absolutePath. Drop when Pi exports resolveToolPath's normalization.
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g
 function normalizeToolPath(path: string) {
   const normalized = path.replace(UNICODE_SPACES, ' ')
