@@ -111,7 +111,7 @@ const sample = (output: number): RateSample => ({
   totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
 })
 const system = (generation: number) =>
-  ({ process: { pid: 7, generation } }) as unknown as SystemInfo
+  ({ process: { pid: 7, generation, startedAt: '2026-01-01T00:00:00Z' } }) as unknown as SystemInfo
 
 it('gives up on a hung rates request after 5 s and polls on, and forgets the rate when the server restarts', async ({
   onTestFinished,
