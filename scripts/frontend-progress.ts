@@ -235,7 +235,10 @@ function measureSwitch(home: string, agentDir: string) {
 
 function measureStream(home: string, agentDir: string) {
   return serve(home, agentDir, async (url) => {
-    const measured: Record<'median' | 'p95' | 'max' | 'taskMs' | 'events', number>[] = []
+    const measured: Record<
+      'median' | 'p95' | 'max' | 'taskMs' | 'taskP95Ms' | 'mutations' | 'mutationsP95' | 'events',
+      number
+    >[] = []
     for (let index = 0; index < runs; index++) {
       const line = (await node(join(skill, 'renders.ts'), [url, '1', '--send', prompt]))
         .split('\n')
@@ -243,10 +246,18 @@ function measureStream(home: string, agentDir: string) {
       if (!line) throw new Error('The scripted turn streamed no ops events')
       const ops = JSON.parse(line) as {
         n: number
-        taskMs: { median: number }
+        taskMs: { median: number; p95: number }
+        mutations: { median: number; p95: number }
         renders: { median: number; p95: number; max: number }
       }
-      measured.push({ ...ops.renders, taskMs: ops.taskMs.median, events: ops.n })
+      measured.push({
+        ...ops.renders,
+        taskMs: ops.taskMs.median,
+        taskP95Ms: ops.taskMs.p95,
+        mutations: ops.mutations.median,
+        mutationsP95: ops.mutations.p95,
+        events: ops.n,
+      })
       console.error(`stream run ${index + 1}: ${JSON.stringify(measured.at(-1))}`)
     }
     const of = (key: keyof (typeof measured)[number]) => median(measured.map((row) => row[key]))
@@ -255,6 +266,9 @@ function measureStream(home: string, agentDir: string) {
       p95: of('p95'),
       max: of('max'),
       taskMs: of('taskMs'),
+      taskP95Ms: of('taskP95Ms'),
+      mutations: of('mutations'),
+      mutationsP95: of('mutationsP95'),
       events: of('events'),
     }
   })

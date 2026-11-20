@@ -1,5 +1,5 @@
-// Measure what each server event costs a page: main-thread time until the next task, React components rendered, and
-// the components whose own update started those renders. Watches an open conversation, or sends one prompt and waits.
+// Measure what each server event costs a page: main-thread time until the next task, DOM mutations in the transcript
+// (any framework), React components rendered, and the components whose own update started those renders. Watches an open conversation, or sends one prompt and waits.
 // Usage: node renders.ts <url> <id> [--seconds 45] [--send "prompt"] [--profile out.cpuprofile]
 // With --send the page needs `window.ultimate` (web/src/sdk/test-hook.ts); it measures until that turn is idle.
 import { writeFileSync } from 'node:fs'
@@ -34,11 +34,39 @@ await page.addInitScript(() => {
     memoizedState: unknown
   }
   const w = window as unknown as Record<string, unknown>
-  type Measured = { ev: string; task: number; renders: number; owners: Record<string, number> }
+  type Measured = {
+    ev: string
+    task: number
+    mutations: number
+    renders: number
+    owners: Record<string, number>
+  }
   const events: Measured[] = []
   let current: Measured | undefined
   let on = false
-  w.renders = { events, start: () => (on = true) }
+  // Mutation records count toward the latest event, like commits: the observer delivers them in a microtask after the
+  // DOM changed, and each event's clock takes the rest before it stops.
+  // The transcript may mount after measuring starts, so the observer watches the app and counts what lands inside it.
+  const inTranscript = (records: MutationRecord[]) =>
+    records.filter((record) => {
+      const node = record.target instanceof Element ? record.target : record.target.parentElement
+      return node?.closest('[data-ui="transcript"]')
+    }).length
+  const mutations = new MutationObserver((records) => {
+    if (current) current.mutations += inTranscript(records)
+  })
+  w.renders = {
+    events,
+    start: () => {
+      mutations.observe(document.getElementById('app')!, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        characterData: true,
+      })
+      on = true
+    },
+  }
   const nameOf = (type: unknown) => {
     const t = type as { displayName?: string; name?: string; render?: { name?: string } } | null
     return t?.displayName || t?.name || t?.render?.name || '?'
@@ -103,12 +131,15 @@ await page.addInitScript(() => {
           const measured: Measured = {
             ev: kind && name.startsWith('doc') ? `${name} ${kind}` : name,
             task: 0,
+            mutations: 0,
             renders: 0,
             owners: {},
           }
+          if (current) current.mutations += inTranscript(mutations.takeRecords())
           current = measured
           afterNextTask(() => {
             measured.task = performance.now() - started
+            measured.mutations += inTranscript(mutations.takeRecords())
             if (on) events.push(measured)
           })
         })
@@ -144,7 +175,13 @@ const events = await page.evaluate(
     (
       window as unknown as {
         renders: {
-          events: { ev: string; task: number; renders: number; owners: Record<string, number> }[]
+          events: {
+            ev: string
+            task: number
+            mutations: number
+            renders: number
+            owners: Record<string, number>
+          }[]
         }
       }
     ).renders.events,
@@ -157,6 +194,7 @@ const byEvent = Map.groupBy(events, (event) => event.ev)
 for (const [ev, list] of [...byEvent].toSorted((a, b) => b[1].length - a[1].length)) {
   const task = list.map((event) => event.task)
   const renders = list.map((event) => event.renders)
+  const mutations = list.map((event) => event.mutations)
   const owners: Record<string, number> = {}
   for (const event of list)
     for (const [name, count] of Object.entries(event.owners))
@@ -170,6 +208,7 @@ for (const [ev, list] of [...byEvent].toSorted((a, b) => b[1].length - a[1].leng
       ev,
       n: list.length,
       taskMs: { median: +median(task).toFixed(1), p95: +quantile(task, 0.95).toFixed(1) },
+      mutations: { median: median(mutations), p95: quantile(mutations, 0.95) },
       renders: {
         median: median(renders),
         p95: quantile(renders, 0.95),

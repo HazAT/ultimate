@@ -185,6 +185,24 @@ function metrics(entries: Entry[]): Metric[] {
     series('switch, cold', 'ms', (entry) => entry.switch?.cold, 'settledMs median'),
     series('switch, warm', 'ms', (entry) => entry.switch?.warm, 'settledMs median'),
     series(
+      'DOM mutations / streamed event',
+      'records',
+      (entry) => entry.stream?.mutations,
+      'median in the transcript; counts Solid and React alike',
+    ),
+    series(
+      'task / streamed event',
+      'ms',
+      (entry) => entry.stream?.taskMs,
+      'median main-thread time of a scripted stream',
+    ),
+    series(
+      'task p95 / streamed event',
+      'ms',
+      (entry) => entry.stream?.taskP95Ms,
+      'the slow streamed events; from C0 on',
+    ),
+    series(
       'React renders / streamed event',
       'components',
       (entry) => entry.stream?.median,

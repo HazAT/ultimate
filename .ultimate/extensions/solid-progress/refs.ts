@@ -18,11 +18,26 @@ export type Entry = {
   bundleGzipKB: number | null
   entryGzipKB: number | null
   switch: { cold: number; warm: number } | null
-  stream: { median: number; p95: number; max: number; taskMs: number } | null
+  stream: StreamCost | null
   previews?: Previews | null
   summary?: string
   coordinator?: number
   statuses?: Record<string, Status>
+}
+
+/**
+ * What one `ops` event of the scripted 40-chunk stream costs the page, medians of 3 runs: React components rendered
+ * (`median`, `p95`, `max`), main-thread task ms, and DOM mutation records in the transcript, which count Solid and React
+ * alike. The task p95 and mutations exist from C0 on.
+ */
+export type StreamCost = {
+  median: number
+  p95: number
+  max: number
+  taskMs: number
+  taskP95Ms?: number
+  mutations?: number
+  mutationsP95?: number
 }
 
 /** One preview task's cost to the agent, medians of 3 fresh-page runs; `ok` when all 3 succeeded. */

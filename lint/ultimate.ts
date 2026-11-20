@@ -110,7 +110,8 @@ const membersOf = (declaration: Node): Node[] =>
 const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
-const rendererBridges = new Set(['web/src/sdk/island.tsx', 'web/src/sdk/solid.ts'])
+const reactIslandFile = 'web/src/sdk/react-island.tsx'
+const rendererBridges = new Set(['web/src/sdk/island.tsx', 'web/src/sdk/solid.ts', reactIslandFile])
 const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
 const solidSdk = 'web/src/sdk/solid.ts'
 const reactSdk = (module: string) => {
@@ -260,10 +261,13 @@ const hasBody = (statement: Node) =>
 /** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` for Solid. */
 const sdkEntry = (filename: string) =>
   ['web/src/sdk/index.ts', solidSdk].includes(repositoryPath(filename))
-/** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */
+/**
+ * Where JSDoc is a contract: the statements of a contract file, the exports of the Solid SDK and of the core's
+ * temporary `reactIsland`, or the exports of the React SDK entry's public names.
+ */
 function contractStatements(filename: string, statements: Node[]) {
   if (contractFile(filename)) return statements
-  if (repositoryPath(filename) === solidSdk)
+  if ([solidSdk, reactIslandFile].includes(repositoryPath(filename)))
     return statements.filter((statement) => statement.type === 'ExportNamedDeclaration')
   if (!inSdk(filename)) return []
   const names = publicSdk()
@@ -326,6 +330,14 @@ export default {
           if (typeof source !== 'string') return
           if (node.importKind === 'type' || node.exportKind === 'type') return
           const local = localModule(context.filename, source)
+          if (local !== undefined && repositoryPath(local) === reactIslandFile) {
+            if (!repositoryPath(context.filename).startsWith('web/src/app/'))
+              context.report({
+                node,
+                message: `reactIsland is a temporary bridge for the core switch: only the core hosts in web/src/app mount leftover React in Solid, and C5 deletes it with React. Move this part to Solid, or keep it React and contribute it where a core host renders React.`,
+              })
+            return
+          }
           const localReact = local?.endsWith('.tsx') === true && !solidFile(local)
           const localSolid =
             local !== undefined && (solidFile(local) || repositoryPath(local) === solidSdk)
