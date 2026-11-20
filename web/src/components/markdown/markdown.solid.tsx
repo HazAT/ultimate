@@ -39,7 +39,6 @@ import {
   blockSplitterKeepingFinishedBlocks,
   closeUnfinished,
   incompleteLink,
-  fenceStillOpen,
   parse,
 } from './parse.ts'
 import type { Element, ElementContent } from './parse.ts'
@@ -120,22 +119,24 @@ function ConfirmedLink(props: {
 }) {
   const [open, setOpen] = createSignal(false)
   const { copied, copy } = useCopy()
-  const external = () => !props.href.startsWith('#')
   return (
-    <>
-      <a
+    <Show
+      when={!props.href.startsWith('#')}
+      fallback={
+        <a {...props.attributes} href={props.href}>
+          {props.children}
+        </a>
+      }
+    >
+      <button
         {...props.attributes}
-        href={props.href}
-        onClick={(event) => {
-          if (!external()) return
-          event.preventDefault()
-          setOpen(true)
-        }}
-        rel="noreferrer"
-        target="_blank"
+        class="link"
+        data-href={props.href}
+        onClick={() => setOpen(true)}
+        type="button"
       >
         {props.children}
-      </a>
+      </button>
       <Dialog onOpenChange={setOpen} open={open()}>
         <DialogContent class="sm:max-w-md">
           <DialogHeader>
@@ -164,7 +165,7 @@ function ConfirmedLink(props: {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </Show>
   )
 }
 
@@ -271,11 +272,10 @@ function attributesOf(node: Element) {
   return attributes
 }
 
-type Context = { streamed?: string; without?: readonly string[] }
+type Context = { openFences: readonly number[]; without?: readonly string[] }
 
 const fenceIncomplete = (node: Element, context: Context) =>
-  context.streamed !== undefined &&
-  fenceStillOpen(context.streamed, node.position?.start.offset ?? 0, node.position?.end.offset ?? 0)
+  context.openFences.includes(node.position?.start.offset ?? -1)
 
 function Nodes(props: { nodes: ElementContent[]; context: Context }) {
   return (
@@ -365,18 +365,20 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
 
 function Block(props: { source: string; streaming: boolean; without?: readonly string[] }) {
   const source = createMemo(() => (props.streaming ? closeUnfinished(props.source) : props.source))
-  const tree = createProjection<{ nodes: ElementContent[] }>(
+  const tree = createProjection<{ nodes: ElementContent[]; openFences: number[] }>(
     (draft) => {
-      draft.nodes = parse(source())
+      const parsed = parse(source())
+      draft.nodes = parsed.nodes
+      draft.openFences = props.streaming ? parsed.openFences : []
     },
-    { nodes: [] },
+    { nodes: [], openFences: [] },
     { key: null },
   )
   return (
     <Nodes
       context={{
-        get streamed() {
-          return props.streaming ? source() : undefined
+        get openFences() {
+          return tree.openFences
         },
         get without() {
           return props.without

@@ -32,15 +32,18 @@ import type { CodeBlockRenderer } from '../../web/src/sdk/types.ts'
 import { Markdown } from '../../web/src/components/markdown/markdown.solid.tsx'
 import { renderSolid } from './solid-dom-setup.ts'
 
-function stream(chunks: string[]) {
+function stream(chunks: string[], { end = false } = {}) {
   const [text, setText] = createSignal('')
-  const view = renderSolid(() => <Markdown streaming text={text()} />)
+  const [streaming, setStreaming] = createSignal(true)
+  const view = renderSolid(() => <Markdown streaming={streaming()} text={text()} />)
   let sent = ''
   for (const chunk of chunks) {
     sent += chunk
     setText(sent)
     flush()
   }
+  if (end) setStreaming(false)
+  flush()
   return view
 }
 
@@ -81,10 +84,14 @@ it('ends a stream as the whole text renders, wherever its chunks broke', () => {
     'a\n#topic and more\n\nnext',
     'Intro\n\n   ```ts\n   let x\n   ```\n\nafter',
     '- one\n- two\n\n- three\n\nend',
+    '1. one\n\n2. two',
+    '[x][r]\n\n> [r]: /target',
   ]
   for (const text of texts)
     for (let cut = 1; cut < text.length; cut++)
-      expect(stream([text.slice(0, cut), text.slice(cut)]).innerHTML).toBe(finished(text))
+      expect(stream([text.slice(0, cut), text.slice(cut)], { end: true }).innerHTML).toBe(
+        finished(text),
+      )
 })
 
 it('tells a code block renderer only its own fence is unfinished', () => {
@@ -93,12 +100,16 @@ it('tells a code block renderer only its own fence is unfinished', () => {
   )
   installed.set([{ name: 'probe', version: 1, extension: { codeBlocks: { ts: Probe } } }])
   try {
-    const view = stream(['```ts\ndone\n```\n> ```ts\n> open'])
-    const probes = [...view.querySelectorAll('[data-probe]')]
-    expect(probes.map((probe) => [probe.textContent, probe.getAttribute('data-probe')])).toEqual([
+    const probes = (chunks: string[]) =>
+      [...stream(chunks).querySelectorAll('[data-probe]')].map((probe) => [
+        probe.textContent,
+        probe.getAttribute('data-probe'),
+      ])
+    expect(probes(['```ts\ndone\n```\n> ```ts\n> open'])).toEqual([
       ['done', 'done'],
       ['open', 'open'],
     ])
+    expect(probes(['```ts\n    ```'])).toEqual([['```', 'open']])
   } finally {
     installed.set([])
   }

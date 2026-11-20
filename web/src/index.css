@@ -360,8 +360,11 @@
   & strong {
     @apply font-semibold;
   }
-  & a:not([data-conversation-mention], [data-preview-link]) {
+  & :is(a, button.link):not([data-conversation-mention], [data-preview-link]) {
     @apply font-normal wrap-anywhere text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand;
+  }
+  & button.link {
+    @apply inline appearance-none text-left;
   }
   & ul {
     @apply list-inside list-disc;

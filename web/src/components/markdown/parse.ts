@@ -1,4 +1,5 @@
 import type { Element, ElementContent } from 'hast'
+import type { Code, Nodes as MdastNodes } from 'mdast'
 import { harden } from 'rehype-harden'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
@@ -32,39 +33,53 @@ const hardening = {
   allowDataImages: true,
 }
 
-const blocks = unified().use(remarkParse).use(remarkGfm)
+type CompileContext = { stack: MdastNodes[] }
+type FenceToken = { start: { line: number } }
+
+function remarkClosedFences(this: ReturnType<typeof unified>) {
+  const data = this.data() as { fromMarkdownExtensions?: unknown[] }
+  ;(data.fromMarkdownExtensions ??= []).push({
+    enter: {
+      codeFencedFence(this: CompileContext, token: FenceToken) {
+        const code = this.stack.findLast((node): node is Code => node.type === 'code')
+        if (code)
+          code.data = {
+            ...code.data,
+            fence: code.position!.start.line === token.start.line ? 'open' : 'closed',
+          }
+      },
+    },
+  })
+}
+
+declare module 'mdast' {
+  interface CodeData {
+    fence?: 'open' | 'closed'
+  }
+}
+
+const markdownTree = unified().use(remarkParse).use(remarkGfm).use(remarkClosedFences)
 const toHast = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
   .use(remarkMentions)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   .use(rehypeSanitize, schema)
   .use(harden, hardening)
 
-export function parse(markdown: string): ElementContent[] {
-  const tree = toHast.runSync(toHast.parse(markdown))
-  return tree.children.filter((node) => node.type !== 'doctype')
+function descendants(node: MdastNodes): MdastNodes[] {
+  return 'children' in node ? node.children.flatMap((child) => [child, ...descendants(child)]) : []
+}
+
+export function parse(markdown: string): { nodes: ElementContent[]; openFences: number[] } {
+  const mdast = markdownTree.parse(markdown)
+  const openFences = descendants(mdast)
+    .filter((node): node is Code => node.type === 'code' && node.data?.fence === 'open')
+    .map((node) => node.position!.start.offset!)
+  const tree = toHast.runSync(mdast, markdown)
+  return { nodes: tree.children.filter((node) => node.type !== 'doctype'), openFences }
 }
 
 export const closeUnfinished = (markdown: string) => remend(markdown)
-
-const fenceMarks = (line: string) => /^[ \t>]*(`{3,}|~{3,})/.exec(line)?.[1]
-
-export function fenceStillOpen(markdown: string, start: number, end: number) {
-  if (markdown.slice(end).trim()) return false
-  const lines = markdown.slice(start, end).trimEnd().split('\n')
-  const opener = fenceMarks(lines[0])
-  const last = lines.at(-1)!
-  const closer = /^[ \t>]*(`{3,}|~{3,})[ \t]*$/.exec(last)?.[1]
-  return !(
-    lines.length > 1 &&
-    opener &&
-    closer &&
-    closer[0] === opener[0] &&
-    closer.length >= opener.length
-  )
-}
 
 const voidTags = new Set([
   'area',
@@ -94,14 +109,14 @@ const endsAtBlankLine = /\n[ \t]*\n$/
 const startsUnindented = /^[^\s]/
 
 function split(markdown: string) {
-  const tree = blocks.parse(markdown)
-  const definesAcrossBlocks = tree.children.some(
+  const tree = markdownTree.parse(markdown)
+  const definesAcrossBlocks = descendants(tree).some(
     (node) => node.type === 'definition' || node.type === 'footnoteDefinition',
   )
   const starts = tree.children.map(
     (node) => markdown.lastIndexOf('\n', node.position!.start.offset! - 1) + 1,
   )
-  const parts: string[] = []
+  const parts: Part[] = []
   let open = 0
   for (const [index, start] of starts.entries()) {
     const text = markdown.slice(index === 0 ? 0 : start, starts[index + 1] ?? markdown.length)
@@ -110,28 +125,31 @@ function split(markdown: string) {
     const settled =
       previous !== undefined &&
       open === 0 &&
-      endsAtBlankLine.test(previous) &&
+      endsAtBlankLine.test(previous.text) &&
       startsUnindented.test(text)
-    if (previous === undefined || settled) parts.push(text)
-    else parts[parts.length - 1] += text
+    if (previous === undefined || settled) parts.push({ text, list: node.type === 'list' })
+    else parts[parts.length - 1] = { text: previous.text + text, list: node.type === 'list' }
     if (node.type === 'html') open = Math.max(0, open + openTags(node.value))
   }
-  return { parts: parts.length ? parts : [markdown], definesAcrossBlocks }
+  return { parts: parts.length ? parts : [{ text: markdown, list: false }], definesAcrossBlocks }
 }
 
+type Part = { text: string; list: boolean }
+
 export function blockSplitterKeepingFinishedBlocks() {
-  let kept: string[] = []
+  let kept: Part[] = []
   return (markdown: string) => {
-    const prefix = kept.join('')
+    const prefix = kept.map((part) => part.text).join('')
     const grows = kept.length > 0 && markdown.startsWith(prefix)
     const rest = split(grows ? markdown.slice(prefix.length) : markdown)
     const parts = rest.definesAcrossBlocks
-      ? [markdown]
+      ? [{ text: markdown, list: false }]
       : grows
         ? kept.concat(rest.parts)
         : rest.parts
     kept = parts.slice(0, -1)
-    return parts
+    if (kept.at(-1)?.list) kept.pop()
+    return parts.map((part) => part.text)
   }
 }
 
