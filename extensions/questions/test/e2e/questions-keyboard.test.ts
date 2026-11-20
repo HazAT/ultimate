@@ -2,7 +2,7 @@
 // questions, Enter sends; the reply reaches @ultimate in the message's own numbering, with the note field's text after it.
 // The card opens with the picks chosen; Send turns into Undo over the undo window, holding Send for a second sends at
 // once, and leaving the page inside the undo window still sends the answer. In a typed answer or the note, Enter breaks
-// a line and only ⌘/Ctrl+Enter sends.
+// a line and only ⌘/Ctrl+Enter sends; with a question unanswered, sending first asks "Send with N unanswered?".
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
@@ -198,11 +198,18 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
 })
 
-// The bug: Enter in a typed answer or the note sent the card while the user was still writing it.
-it('breaks a line on Enter in a typed answer, and sends on ⌘/Ctrl+Enter', async () => {
+// The bug: Enter in a typed answer or the note sent the card while the user was still writing it, with questions the
+// user had not even opened.
+it('breaks a line on Enter in a typed answer, and asks before sending with a question unanswered', async () => {
   const { log, asked, page, card } = await openCard([
     questions[0]!,
     { text: 'What should the tab say?', kind: 'text', ref: '2' },
+    {
+      text: 'Where does it go?',
+      kind: 'choice',
+      ref: '3',
+      options: [{ label: 'left' }, { label: 'right' }],
+    },
   ])
   const field = card.getByRole('textbox', { name: 'Your answer to question 2' })
   await field.click()
@@ -210,8 +217,16 @@ it('breaks a line on Enter in a typed answer, and sends on ⌘/Ctrl+Enter', asyn
   await page.keyboard.press('Enter')
   await page.keyboard.type('and their count')
   expect(await field.inputValue()).toBe('Open questions\nand their count')
-  expect(await card.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+  // ⌘/Ctrl+Enter sends, but question 3 is unanswered: the card asks first, and Keep answering opens question 3.
   await page.keyboard.press('ControlOrMeta+Enter')
+  const ask = card.getByRole('group', { name: 'Send with questions unanswered' })
+  await ask.getByText('Send with 1 unanswered?').waitFor()
+  expect(await card.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+  await ask.getByRole('button', { name: 'Keep answering' }).click()
+  await card.locator('fieldset').nth(2).and(card.locator('[data-current]')).waitFor()
+  // Send asks again; Send anyway sends what is answered, through the undo window.
+  await card.getByRole('button', { name: 'Send 2 of 3' }).click()
+  await ask.getByRole('button', { name: 'Send anyway' }).click()
   await card.getByRole('button', { name: 'Undo' }).waitFor()
   const answer = async () =>
     (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')

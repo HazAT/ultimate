@@ -370,6 +370,7 @@ function Card({
   const [phase, setPhase] = useState<Phase>('answering')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [asking, setAsking] = useState<{ immediately: boolean }>()
 
   const undoWindowSend = useRef<{
     cancel: Cancel
@@ -382,7 +383,9 @@ function Card({
   const hints = keys && !phone
   const words = questions.map((question, index) => answerOf(question, drafts[index]))
   const ready = answered(questions, drafts)
+  const unanswered = questions.length - ready.length
   const locked = phase !== 'answering'
+  const confirming = locked || !unanswered ? undefined : asking
 
   useEffect(() => {
     const flushWithKeepaliveOnPagehide = () => flushUndoWindowSend(undoWindowSend, true)
@@ -406,11 +409,13 @@ function Card({
     setState((old) => ({ ...old, current: next }))
     if (questions[next]?.kind === 'text') focusField(next)
   }
-  const draft = (index: number, change: (old: Draft) => Draft) =>
+  const draft = (index: number, change: (old: Draft) => Draft) => {
+    setAsking(undefined)
     setState((old) => ({
       ...old,
       drafts: { ...old.drafts, [index]: change(old.drafts[index] ?? { chosen: [] }) },
     }))
+  }
   const select = (index: number, option: number, click = false) => {
     const question = questions[index]
     const choice = question && choices(question)[option]
@@ -452,11 +457,13 @@ function Card({
       setBusy(false)
     }
   }
-  const send = (immediately = false) => {
+  const send = (immediately = false, anyway = false) => {
     const extra = note.trim()
     if ((!ready.length && !extra) || committed.current) return
-    committed.current = true
     cancelAdvanceAfterCheck.current?.()
+    if (unanswered && !anyway) return setAsking({ immediately })
+    setAsking(undefined)
+    committed.current = true
     setLockedIn({ drafts, note })
     const fire = (keepalive = false) => {
       undoWindowSend.current = undefined
@@ -493,8 +500,13 @@ function Card({
     if (current < questions.length - 1 && ready.length < questions.length) return go(current + 1)
     send()
   }
+  const keepAnswering = () => {
+    setAsking(undefined)
+    go(words.findIndex((word) => !word))
+  }
   const clear = () => {
     cancelAdvanceAfterCheck.current?.()
+    setAsking(undefined)
     setState((old) => ({ ...old, drafts: { ...old.drafts, [current]: { chosen: [] } } }))
   }
   const focusNote = () =>
@@ -535,6 +547,13 @@ function Card({
         outsideControlOwnsKeys(target)
       )
         return
+      if (confirming) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          keepAnswering()
+        }
+        return
+      }
       if (phase === 'undo') {
         if (event.key === 'Escape' || event.key === 'u') {
           event.preventDefault()
@@ -615,7 +634,6 @@ function Card({
 
   const shown = questions[current]
   const shownKeys = shown ? [0, 1].flatMap((i) => keyOf(shown, i) ?? []) : []
-  const unanswered = questions.length - ready.length
   return (
     <div className={className} data-questions-card={card} ref={root}>
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-1 font-mono text-[11px] text-muted-foreground">
@@ -670,7 +688,12 @@ function Card({
             </span>
           </span>
         )}
-        {hints && !locked && (
+        {hints && confirming && (
+          <span className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground/80 max-md:hidden">
+            <Key>esc</Key> keep answering
+          </span>
+        )}
+        {hints && !locked && !confirming && (
           <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[10px] text-muted-foreground/80 max-md:hidden">
             {shownKeys.length > 0 && (
               <span className="flex items-center gap-1">
@@ -697,33 +720,62 @@ function Card({
             )}
           </span>
         )}
-        <span className="ml-auto flex items-center gap-1.5">
-          {actions}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy || locked}
-            onClick={() => void run(dismiss)}
-            title="Close it without an answer; the agent gets a note"
-            className="max-md:h-11"
+        {confirming ? (
+          <span
+            role="group"
+            aria-label="Send with questions unanswered"
+            className="ml-auto flex flex-wrap items-center justify-end gap-1.5"
           >
-            Dismiss
-          </Button>
-          <SendButton
-            phase={phase}
-            disabled={(!locked && !ready.length && !note.trim()) || busy}
-            onSend={() => send()}
-            onSendNow={() => send(true)}
-            onUndo={undo}
-          >
-            {sendLabel ??
-              (!ready.length && note.trim()
-                ? 'Send note'
-                : unanswered && ready.length
-                  ? `Send ${ready.length} of ${questions.length}`
-                  : 'Send')}
-          </SendButton>
-        </span>
+            <span className="mr-1 text-[12px] text-muted-foreground max-md:w-full max-md:text-right">
+              Send with {unanswered} unanswered?
+            </span>
+            <Button
+              autoFocus
+              variant="ghost"
+              size="sm"
+              onClick={keepAnswering}
+              className="max-md:h-11"
+            >
+              Keep answering
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => send(confirming.immediately, true)}
+              className="max-md:h-11"
+            >
+              Send anyway
+            </Button>
+          </span>
+        ) : (
+          <span className="ml-auto flex items-center gap-1.5">
+            {actions}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy || locked}
+              onClick={() => void run(dismiss)}
+              title="Close it without an answer; the agent gets a note"
+              className="max-md:h-11"
+            >
+              Dismiss
+            </Button>
+            <SendButton
+              phase={phase}
+              disabled={(!locked && !ready.length && !note.trim()) || busy}
+              onSend={() => send()}
+              onSendNow={() => send(true)}
+              onUndo={undo}
+            >
+              {sendLabel ??
+                (!ready.length && note.trim()
+                  ? 'Send note'
+                  : unanswered && ready.length
+                    ? `Send ${ready.length} of ${questions.length}`
+                    : 'Send')}
+            </SendButton>
+          </span>
+        )}
         {error && (
           <p role="alert" className="w-full text-xs text-error">
             {error}
