@@ -27,8 +27,8 @@ rules below. An extension mounts a Solid component from its `web.tsx` with `isla
 component reads documents, UI state and client state as accessors from `@/sdk/solid`
 ([Solid facets](../../docs/extensions/sdk.md#solid-facets)). The Solid UI kit ships Button, Checkbox, Collapsible,
 Command, Dialog, DropdownMenu, HoverCard, Input and SecretInput (in `input.solid.tsx`), Kbd and KbdGroup, NumberInput,
-Popover, Row and Rows, SegmentedControl, Skeleton, Slider, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch
-and Tooltip. Import from
+Popover, Row and Rows, SegmentedControl, Skeleton, Slider, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch,
+Toast and Tooltip. Import from
 `@/components/ui/<name>.solid.tsx`, and check `web/src/components/ui/` before assuming a component exists.
 `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status chips of
 setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension renders
@@ -173,6 +173,16 @@ the agent surface, the panel tabs) or a `provide` hook. A slot item, a panel or 
   - A Tooltip trigger rendered as a `<span>` is not named by its text (only buttons and links are): give it an
     `aria-label` that names the item (`Context use`, `Server connection`), or the SDK warns and agents cannot find
     it.
+  - A list that comes and goes on its own (notices) is a kit `Toast` fed by a `createToaster()`, not a hand-made
+    clock, hover flag and dismissed set: the toaster owns each toast's `duration`, pauses while the pointer or focus is
+    in the region, caps `maxVisible`, and dismisses on Escape or swipe (`extensions/notices/toasts.solid.tsx`). The
+    agent sees one `toast` component for the whole region: its label is the region's name only when two or more show,
+    and it presses a toast's close button by name with `press` and the button's text as the argument.
+  - `aria-pressed` and other ARIA states take the strings `'true'`/`'false'` in Solid's JSX types, not a boolean.
+  - A one-time page effect (registering a service worker, reading a URL parameter once) goes in `onSettled` in the
+    component; it needs no refs or dependency lists as React's `useEffect` did (`extensions/share/receive.solid.tsx`).
+  - A facet that reads the conversation's model reads `useAgent()` (its `pi.agent`), not a whole conversation
+    replica.
 - **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
   errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a
   report to the coordinator, with the code and the rule.
