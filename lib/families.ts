@@ -2,10 +2,20 @@ import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 
 export type ModelRef = { provider: string; modelId: string }
 
-export type FamilySpec = { model?: string; thinking?: ModelThinkingLevel; color?: string }
+export type FamilySpec = {
+  model?: string
+  thinking?: ModelThinkingLevel
+  color?: string
+}
+
+export type FamiliesLayer = {
+  families: Record<string, FamilySpec>
+  assign: Record<string, string>
+  enforce?: true
+}
 
 export type Families = {
-  families: Record<string, FamilySpec & { color: string }>
+  families: Record<string, FamilySpec & { color: string; suggested?: string }>
   assign: Record<string, string>
 }
 
@@ -28,7 +38,11 @@ export type FamilyColor = keyof typeof FAMILY_COLORS
 
 export const BUILTIN_FAMILIES: Record<string, FamilySpec & { color: FamilyColor }> = {
   default: { color: 'sky' },
-  review: { model: 'openai-codex/gpt-6-astra', thinking: 'high', color: 'violet' },
+  review: {
+    model: 'openai-codex/gpt-6-astra',
+    thinking: 'high',
+    color: 'violet',
+  },
   fast: { model: 'openai-codex/gpt-6.1-sol', color: 'amber' },
   tiny: { model: 'openai-codex/gpt-6-luna', thinking: 'low', color: 'emerald' },
   design: { model: 'claude-code/claude-opus-5-5', color: 'pink' },
@@ -59,14 +73,13 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 export const isFamilyName = (name: string) => /^[a-z][a-z0-9-]{0,23}$/.test(name)
 const isRef = (value: string) => /^[^/\s]+\/\S+$/.test(value)
 
-export function parseFamilies(value: unknown): {
-  families: Record<string, FamilySpec>
-  assign: Record<string, string>
-} {
+export function parseFamilies(value: unknown): FamiliesLayer {
   if (value === undefined) return { families: {}, assign: {} }
   if (!isObject(value)) throw new Error('modelFamilies must be an object')
   const families: Record<string, FamilySpec> = {}
   const assign: Record<string, string> = {}
+  if (value.enforce !== undefined && typeof value.enforce !== 'boolean')
+    throw new Error('modelFamilies.enforce must be a boolean')
   if (value.families !== undefined && !isObject(value.families))
     throw new Error('modelFamilies.families must be an object')
   for (const [name, spec] of Object.entries(value.families ?? {})) {
@@ -97,17 +110,21 @@ export function parseFamilies(value: unknown): {
       throw new Error(`modelFamilies.assign.${user} must be a family name`)
     assign[user] = family
   }
-  return { families, assign }
+  return { families, assign, ...(value.enforce ? { enforce: true } : {}) }
 }
 
-export function mergeFamilies(...layers: ReturnType<typeof parseFamilies>[]): Families {
+export function mergeFamilies(...layers: FamiliesLayer[]): Families {
   const families: Families['families'] = structuredClone(BUILTIN_FAMILIES)
   const assign: Record<string, string> = {}
   const palette = Object.keys(FAMILY_COLORS)
   for (const layer of layers) {
     for (const [name, spec] of Object.entries(layer.families)) {
       const color = families[name]?.color ?? palette[Object.keys(families).length % palette.length]
-      families[name] = { ...families[name], ...spec, color: spec.color ?? color }
+      families[name] = {
+        ...families[name],
+        ...spec,
+        color: spec.color ?? color,
+      }
     }
     Object.assign(assign, layer.assign)
   }
@@ -133,16 +150,34 @@ export const familyColor = (color: string | undefined) =>
     : FAMILY_COLORS.slate
 
 export function definitionRuns(
-  definition: { model?: ModelRef; thinking?: ModelThinkingLevel; family?: string },
+  definition: {
+    model?: ModelRef
+    thinking?: ModelThinkingLevel
+    family?: string
+  },
   config: Families,
-): { family?: string; model?: ModelRef; thinking?: ModelThinkingLevel; via: 'pin' | 'family' } {
+): {
+  family?: string
+  model?: ModelRef
+  thinking?: ModelThinkingLevel
+  via: 'pin' | 'family'
+} {
   if (definition.model)
-    return { model: definition.model, thinking: definition.thinking, via: 'pin' }
+    return {
+      model: definition.model,
+      thinking: definition.thinking,
+      via: 'pin',
+    }
   const wanted = definition.family ?? DEFAULT_FAMILY
   const family = Object.hasOwn(config.families, wanted) ? wanted : DEFAULT_FAMILY
   const spec = config.families[family]
   const defaultFamilyInheritsParentModel = family === DEFAULT_FAMILY
   const model = defaultFamilyInheritsParentModel ? undefined : refOf(spec.model)
   const thinking = definition.thinking ?? spec.thinking
-  return { family, ...(model ? { model } : {}), ...(thinking ? { thinking } : {}), via: 'family' }
+  return {
+    family,
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
+    via: 'family',
+  }
 }

@@ -31,8 +31,8 @@ const label = 'section-label'
 const control =
   'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-2 font-mono text-[11.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50'
 
-const specOf = (family: FamilyView): Spec => ({
-  ...(family.model ? { model: family.model } : {}),
+const ownSpecOf = (family: FamilyView): Spec => ({
+  ...(family.own ? { model: family.own } : {}),
   ...(family.thinking ? { thinking: family.thinking } : {}),
   color: family.color,
 })
@@ -42,7 +42,7 @@ async function saveFeatureAssignmentsAndFamilies(
   change: Partial<Pick<SaveFamilies, 'families' | 'assign' | 'unpin'>>,
 ) {
   await api.action(SaveFamiliesAction, {
-    families: Object.fromEntries(view.families.map((family) => [family.name, specOf(family)])),
+    families: Object.fromEntries(view.families.map((family) => [family.name, ownSpecOf(family)])),
     assign: Object.fromEntries(
       Object.entries(view.assign).filter(([id]) => Object.hasOwn(FEATURES, id)),
     ),
@@ -95,11 +95,15 @@ function FamilyForm({
   close: () => void
 }) {
   const models = useModels()
-  const initial = specOf(family)
+  const initial: Spec = {
+    ...ownSpecOf(family),
+    ...(family.model ? { model: family.model } : {}),
+  }
   const [draft, setDraft] = useState(initial)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
   const model = draft.model ?? family.follows
+  const suggestion = family.suggested
   const info = models?.models.find((item) => `${item.provider}/${item.id}` === model)
   const levels = info?.reasoning ? info.thinkingLevels : info ? ['off'] : []
   const hasNoBuiltinThinking = !BUILTIN_FAMILIES[family.name]?.thinking
@@ -110,11 +114,15 @@ function FamilyForm({
     setError(undefined)
   }
   const families = (next?: Spec) => {
-    const all = Object.fromEntries(view.families.map((item) => [item.name, specOf(item)]))
+    const all = Object.fromEntries(view.families.map((item) => [item.name, ownSpecOf(item)]))
     if (next) all[family.name] = next
     else delete all[family.name]
     return all
   }
+  const edited = (spec: Spec): Spec => ({
+    ...spec,
+    model: spec.model === initial.model ? family.own : spec.model,
+  })
   async function apply(change: Parameters<typeof saveFeatureAssignmentsAndFamilies>[1]) {
     setPending(true)
     setError(undefined)
@@ -131,7 +139,11 @@ function FamilyForm({
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center gap-2">
         <span className="font-mono text-[12.5px] font-medium">{familyTitle(family.name)}</span>
-        {family.project && <span className={label}>· the project's settings change it</span>}
+        {family.enforced ? (
+          <span className={label}>· the project pins its model</span>
+        ) : (
+          family.project && <span className={label}>· the project's settings change it</span>
+        )}
         <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Color">
           {Object.keys(FAMILY_COLORS).map((name) => (
             <button
@@ -151,9 +163,37 @@ function FamilyForm({
           ))}
         </div>
       </div>
+      {suggestion && (
+        <div className="flex min-w-0 items-center gap-1">
+          <span className={label}>project suggests</span>
+          <span className="min-w-0 truncate font-mono text-[11.5px] text-muted-foreground">
+            {short(suggestion)}
+          </span>
+          {suggestion !== family.model && (
+            <Button
+              className="ml-auto h-5 shrink-0 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+              disabled={pending}
+              onClick={() =>
+                void apply({
+                  families: families({
+                    ...ownSpecOf(family),
+                    model: suggestion,
+                  }),
+                })
+              }
+              size="xs"
+              title="Run it on the model the project suggests; your choice stays your own"
+              variant="ghost"
+            >
+              Use
+            </Button>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-1">
         <div className={label}>Model</div>
         <ModelSelect
+          disabled={family.enforced}
           onChange={(next) => set({ model: next })}
           onClear={
             family.name === DEFAULT_FAMILY && draft.model && family.follows
@@ -216,7 +256,7 @@ function FamilyForm({
         <Button
           className="h-7 px-3 text-[12px]"
           disabled={!changed || pending}
-          onClick={() => void apply({ families: families(draft) })}
+          onClick={() => void apply({ families: families(edited(draft)) })}
           title="New conversations take it; open ones keep their model"
           size="sm"
         >
@@ -245,7 +285,7 @@ export function AddFamily({ view }: { view: FamiliesView }) {
     try {
       await saveFeatureAssignmentsAndFamilies(view, {
         families: {
-          ...Object.fromEntries(view.families.map((family) => [family.name, specOf(family)])),
+          ...Object.fromEntries(view.families.map((family) => [family.name, ownSpecOf(family)])),
           [name]: { color: colors[taken.length % colors.length] },
         },
       })
@@ -308,11 +348,13 @@ const LIMIT = 150
 function ModelSelect({
   value,
   placeholder = 'Pick a model',
+  disabled,
   onChange,
   onClear,
 }: {
   value: string | undefined
   placeholder?: string
+  disabled?: boolean
   onChange: (value: string) => void
   onClear?: () => void
 }) {
@@ -346,6 +388,7 @@ function ModelSelect({
       <PopoverTrigger asChild>
         <button
           className={cn(control, 'flex items-center gap-1 text-left')}
+          disabled={disabled}
           title={value}
           type="button"
         >

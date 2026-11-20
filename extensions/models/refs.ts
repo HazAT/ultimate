@@ -46,7 +46,11 @@ export const RefreshCatalogAction = actionRef<null, { errors: Record<string, str
  * `to`: the same model on another provider, its definition's pin or the default model. Without `to` nothing could
  * replace it (or only a pay-per-token login could replace a subscription), so it kept its model and needs the user.
  */
-export type Fallback = { from: string; to?: string; reason: 'same' | 'pin' | 'default' | 'none' }
+export type Fallback = {
+  from: string
+  to?: string
+  reason: 'same' | 'pin' | 'default' | 'none'
+}
 
 /**
  * A login or logout of model provider `provider` completed through Ultimate; react to it to drop what you knew about
@@ -75,6 +79,12 @@ export type FamilyView = {
   follows?: string
   followsThinking?: ModelThinkingLevel
   builtin: boolean
+  /** The model the person chose for it (`provider/id`); the effective `model` may be the project's suggestion or pin. */
+  own?: string
+  /** The project's model for it (`provider/id`), shown as its suggestion; `Use` in the popover adopts it. */
+  suggested?: string
+  /** The project pins its model (`enforce: true`), over the person's choice. */
+  enforced?: true
   /** A value from the project's settings is in effect for it: one the person's own families for the project don't set. */
   project?: true
 }
