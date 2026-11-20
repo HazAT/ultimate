@@ -66,8 +66,8 @@ The libraries ship skills that match the pinned versions: read them, not your me
   Solid renderer (`web/src/sdk/markdown.tsx`); a component an island mounts inside text takes `island(C, { inline:
   true })`, which mounts in a `<span>`. A test that renders React to static markup sees an island empty (it mounts in
   an effect): mock `web/src/sdk/markdown.tsx` there.
-- **What waits for the core switch:** the composer wrapper, `provide` hooks, and anything that hosts other extensions'
-  React. The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
+- **What waits for the core switch:** `provide` hooks and anything that hosts other extensions' React (the shell, panel
+  hosts). The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
 ## The transcript and points across frameworks
 
@@ -113,6 +113,14 @@ The libraries ship skills that match the pinned versions: read them, not your me
 - **A module several frameworks drive** (read-aloud's player) stays one plain module: `web.tsx` hands it to a Solid
   factory at module scope (`const Action = readAloudAction(player)`), and the factory's component subscribes to it.
   That keeps browser-only promises out of a `.ts` file the server lint would check.
+- **The composer is Solid (step C3).** A `composer` wrapper is `island(C)` with `C` typed `SolidComposerProps`, an
+  `inbox` renderer `island(C)` with `SolidInboxProps`; read the redirect target with `useContext(ComposerRedirect)`
+  (an accessor) and provide it with `<ComposerRedirect value={target}>` around `props.core`. A core host renders every
+  contribution only through `Contribution`/`Contributed`/`Slot` from `web/src/sdk/react-island.solid.tsx`, never by
+  calling a component itself, so React contributions (outside extensions included) keep mounting through the bridge.
+  Solid parts a React contribution places (`core`, `cancel`) go in `Contribution`'s `elements`: the bridge renders each
+  with Solid's `render` into the host React places it in, under the placement's conversation scope, and disposes it
+  (DOM included) when React removes or hides it. A part React never places never runs.
 
 ## The UI kit
 
@@ -171,7 +179,9 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   `lib/`. Never a local copy. A formatter called per row reuses one `Intl` object: `toLocaleTimeString` builds one per
   call, about 15 ms of a warm switch to a lander log before `formatTime` kept two.
 - **Writes after an `await`:** `writingAs` holds only for the synchronous call. Take `details.source` before the
-  `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). A write the
+  `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). Deep in a
+  helper the handler calls, take `writerNow()` instead (`send` in `web/src/app/composer.solid.tsx`, whose steer awaits
+  a withdrawal before it submits). A write the
   person didn't make with this action (a URL, a timer, an effect) runs in `writingAs('app', …)` and records nothing.
 - **Forms:** the kit `Form`, with the change started in its submit Button's `onClick`, which receives `details.source`.
   A native `onSubmit` has no source, so an agent's submit would be recorded as the person's. Enter in an Input and
@@ -230,9 +240,11 @@ Solid 2:
   window).
 - React mounted inside Solid commits in a later task unless `flushSync`: a Solid effect that measures the React part
   (a reveal finding a tool card inside its row) then sees it empty. The bridge's roots render with `flushSync`.
-- A Solid setter returns the value it set: as the arrow body of a React `useLayoutEffect(() => set(v))`, that value
-  becomes React's cleanup, and React calls it on the next render (`T is not a function` when `ParkedRuns` set a
-  `Set`). Give the effect a block body.
+- A Solid setter returns the value it set: as the arrow body of a React `useLayoutEffect(() => set(v))` or a Solid
+  effect's apply half, that value becomes a cleanup the framework calls later (`T is not a function` when `ParkedRuns`
+  set a `Set`). Give the effect a block body.
+- Unmounting a React root from Solid cleanup that runs inside a React commit (a part React hides) warns and defers:
+  unmount it on `nextTurn`.
 - A transcript row hides with the `empty-row` utility, which also hides a row whose only child is a React host that
   rendered nothing (`data-empty`); `:empty` alone no longer matches once the bridge wraps React.
 - A Web Animation started from a `ref` callback runs before the element is inserted and stays at its first frame in
@@ -254,9 +266,14 @@ Solid 2:
   (`status` in `extensions/workspaces/log-parts.solid.tsx`).
 - A part inside a collapsible trigger cannot be a kit `Button` (buttons do not nest): put it beside the trigger, as the
   subagent card's task chip sits next to its open button.
-- A Solid element handed to React for it to place is a real element made once (`document.createElement` plus `insert`),
-  never a component's JSX return rebuilt in a tracked callback: each rebuild is a new subtree, and React's
-  `node.remove()` breaks on a Solid return that is not one element.
+- A Solid part handed to React for it to place is a `SolidPart` (`solidPart` in `web/src/sdk/react-island.solid.tsx`),
+  mounted with `render` at React's host: a bare `insert` there misses event delegation once React portals it, and a
+  part built before React decides to place it keeps running hidden (a composer taking drops).
+- A kit `Textarea` takes `readonly` (lowercase) and `autoResize` with a CSS `max-h-*`; its agent `setValue` runs the
+  field's `onValueChange`, so an agent fill updates a draft store like typing does. Keyboard shortcuts on it
+  (Enter, Alt+Enter, ↑) stay a plain `onKeyDown`: `submitShortcut` knows only Enter and mod+Enter.
+- A capture-phase listener (`onKeyDownCapture` in React) is a ref callback:
+  `ref={(el) => el.addEventListener('keydown', handler, { capture: true })}` (side chat's Tab in `frame.solid.tsx`).
 - An attribute built from untrusted input is set as one property, never as a string another value can extend:
   `style={{ 'text-align': align }}`, not ``style={`text-align:${align}`}``.
 - `reconcile` by position adopts incoming objects: reconcile a `structuredClone` when the value shares rows with the
@@ -337,6 +354,8 @@ Tooling:
   write). For keyboard focus on a Tooltip, dispatch a Tab `keydown` before `.focus()`. Modal Tab wrapping, inertness
   and Enter submitting a form need a real browser. `switchConversation` and `showSurface` read `matchMedia`: stub it
   with `vi.stubGlobal` in a test that navigates.
+- **A root document in a test** (`ultimate.standing-agents`) reaches `server.of(1)` only once a mounted reader watches
+  it: mount first, then send it (`extensions/side-chat/test/web/frame.test.solid.tsx`).
 - **Who wrote it, in a preview:** a page the browser tool drives counts every write as the agent's, clicks and keys
   included. Prove a person's attribution in a jsdom test or by the user's own click, not through the browser tool.
 - **Whole page:** the browser tool's `ui` steps (`snapshot`, `query`, `act`) wait for the first render and every

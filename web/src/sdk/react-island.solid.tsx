@@ -1,23 +1,36 @@
 /** @jsxImportSource @solidjs/web */
-import { insert } from '@solidjs/web'
+import { insert, registerDelegatedRoot, unregisterDelegatedRoot } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import {
   createEffect,
   createMemo,
+  createRoot,
   createSignal,
   Errored,
   For,
+  getOwner,
   onCleanup,
   onSettled,
+  runWithOwner,
   untrack,
   useContext,
 } from 'solid-js'
 import type { Accessor, Component } from 'solid-js'
 import type { ReactNode } from 'react'
+import { nextTurn } from '../../../lib/timers.ts'
 import { islandSolid } from './island-mark.ts'
-import { chain, contribution, provided, reactRoot, renderedPoint, slot } from './react-island.tsx'
-import type { Rendered } from './react-island.tsx'
-import { ConversationScope, ExtensionName, Transcript } from './solid.ts'
+import {
+  allProvided,
+  chain,
+  contribution,
+  provided,
+  reactRoot,
+  renderedPoint,
+  slot,
+} from './react-island.tsx'
+import type { Rendered, SolidPart } from './react-island.tsx'
+import { slotItems } from './registry.ts'
+import { ConversationScope, ExtensionName, Transcript, useExtensions } from './solid.ts'
 import type { Point, SlotName } from './types.ts'
 
 function MountReact(props: { render: () => ReactNode }) {
@@ -27,7 +40,7 @@ function MountReact(props: { render: () => ReactNode }) {
     transcript: useContext(Transcript) ?? undefined,
   })
   const markEmpty = () => host.toggleAttribute('data-empty', !host.hasChildNodes())
-  onCleanup(root.unmount)
+  onCleanup(() => nextTurn(root.unmount))
   onSettled(() => {
     const children = new MutationObserver(markEmpty)
     children.observe(host, { childList: true })
@@ -43,11 +56,50 @@ function MountReact(props: { render: () => ReactNode }) {
   return host
 }
 
-const solidHost = (children: () => JSX.Element) => {
-  const host = document.createElement('div')
-  host.className = 'contents'
-  insert(host, children)
-  return host
+const solidPart = (children: () => JSX.Element): SolidPart => {
+  const owner = getOwner()
+  const scoped = useContext(ConversationScope)
+  return {
+    mount: (host, placed) => {
+      const rescoped = placed.conversation !== undefined && placed.conversation !== scoped
+      const framed = () =>
+        placed.transcript ? (
+          <Transcript value={placed.transcript}>{children()}</Transcript>
+        ) : rescoped ? (
+          <Transcript value={null}>{children()}</Transcript>
+        ) : (
+          children()
+        )
+      const view = () =>
+        rescoped ? (
+          <ConversationScope value={placed.conversation!}>{framed()}</ConversationScope>
+        ) : (
+          framed()
+        )
+      let dispose: (() => void) | undefined
+      const release = () => {
+        try {
+          dispose?.()
+        } finally {
+          unregisterDelegatedRoot(host)
+          host.textContent = ''
+        }
+      }
+      registerDelegatedRoot(host)
+      try {
+        runWithOwner(owner, () =>
+          createRoot((done) => {
+            dispose = done
+            insert(host, view)
+          }),
+        )
+      } catch (failure) {
+        release()
+        throw failure
+      }
+      return release
+    },
+  }
 }
 
 type Props = Record<string, unknown>
@@ -92,7 +144,7 @@ export function Contributed(props: {
     const inner = () => wrap(index - 1)
     if (!link.solid) {
       const run = link.run
-      const core = solidHost(inner)
+      const core = solidPart(inner)
       return <MountReact render={() => chain(run, { ...props.props }, core)} />
     }
     const Solid = link.solid
@@ -110,6 +162,7 @@ export function Contributed(props: {
 export function Contribution(props: {
   item: Rendered
   props: Props
+  elements?: Record<string, () => JSX.Element>
   fallback: (extension: string, error: unknown) => JSX.Element
 }) {
   const mounted = createMemo(() => props.item, {
@@ -119,12 +172,20 @@ export function Contribution(props: {
     <For each={[mounted()]}>
       {(current) => {
         const Solid = islandSolid(current.component) as Component<Props> | undefined
-        if (!Solid)
-          return <MountReact render={() => contribution(props.item, { ...props.props })} />
+        const elements = props.elements ?? {}
+        if (!Solid) {
+          const parts = Object.fromEntries(
+            Object.entries(elements).map(([key, element]) => [key, solidPart(element)]),
+          )
+          return <MountReact render={() => contribution(props.item, { ...props.props }, parts)} />
+        }
+        const solidElements = Object.fromEntries(
+          Object.keys(elements).map((key) => [key, elements[key]()]),
+        )
         return (
           <Errored fallback={(error) => props.fallback(current.extension, error())}>
             <ExtensionName value={current.extension}>
-              <Solid {...props.props} />
+              <Solid {...props.props} {...solidElements} />
             </ExtensionName>
           </Errored>
         )
@@ -137,28 +198,54 @@ export function ReactSlot(props: { name: SlotName }) {
   return <MountReact render={() => slot(props.name)} />
 }
 
+export function Slot(props: {
+  name: SlotName
+  fallback: (extension: string, error: unknown) => JSX.Element
+}) {
+  const extensions = useExtensions()
+  const items = createMemo(() => slotItems(extensions(), props.name), {
+    equals: (a, b) =>
+      a.length === b.length &&
+      a.every((item, at) => item.key === b[at].key && item.version === b[at].version),
+  })
+  return (
+    <For each={items()} keyed={(item) => `${item.key}:${item.version}`}>
+      {(item) => <Contribution fallback={props.fallback} item={item()} props={{}} />}
+    </For>
+  )
+}
+
 export function RenderedPoint<Input extends object>(props: {
   point: Point<Input & { core: ReactNode }, ReactNode>
   input: Input
   staticCore: () => JSX.Element
 }) {
-  const core = solidHost(props.staticCore)
+  const core = solidPart(props.staticCore)
   return <MountReact render={() => renderedPoint(props.point, { ...props.input }, core)} />
 }
 
-export function useProvided<Input, Value>(
-  point: Point<Input, Value>,
+function useReactReport<Input, Found>(
   input: Accessor<Input>,
-): Accessor<Value | undefined> {
+  initial: Found,
+  element: (input: Input, report: (found: Found) => void) => ReactNode,
+): Accessor<Found> {
   const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
-  const [found, setFound] = createSignal<Value | undefined>()
+  const [found, setFound] = createSignal<Found>(() => initial)
   const root = reactRoot(document.createElement('div'), {
     conversation: useContext(ConversationScope) ?? undefined,
     transcript: useContext(Transcript) ?? undefined,
   })
-  onCleanup(root.unmount)
-  createEffect(value, (next) =>
-    root.render(provided(point, next, (latest) => setFound(() => latest))),
-  )
+  onCleanup(() => nextTurn(root.unmount))
+  createEffect(value, (next) => root.render(element(next, (latest) => setFound(() => latest))))
   return found
 }
+
+export const useProvided = <Input, Value>(point: Point<Input, Value>, input: Accessor<Input>) =>
+  useReactReport<Input, Value | undefined>(input, undefined, (next, report) =>
+    provided(point, next, report),
+  )
+
+export const useAllProvided = <Input, Value>(point: Point<Input, Value>, input: Accessor<Input>) =>
+  useReactReport<Input, readonly Value[]>(input, [], (next, report) =>
+    allProvided(point, next, report),
+  )

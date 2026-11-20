@@ -4,7 +4,7 @@ import { agentsPanel } from '../models/ui.tsx'
 import { SubagentCall } from './call.solid.tsx'
 import { DefinitionDialog } from './definitions.tsx'
 import { useErrorReport } from './error-report.tsx'
-import { AgentInbox } from './inbox.tsx'
+import { AgentInbox } from './inbox.solid.tsx'
 import { LandOnUltimate } from './land-on-ultimate.solid.tsx'
 import { AgentInput, AgentMessages } from './messages.solid.tsx'
 import { AgentsOverview } from './overview.tsx'
@@ -16,7 +16,7 @@ export default defineWebExtension({
     { id: agentsPanel, title: 'Agents', icon: NetworkIcon, component: AgentsOverview, order: 3 },
   ],
   entries: { 'subagents.instruction': island(AgentInput), 'subagents.report': island(AgentInput) },
-  inbox: AgentInbox,
+  inbox: island(AgentInbox),
   provides: [provide(ErrorReport, useErrorReport)],
   slots: {
     overlay: [DefinitionDialog, island(LandOnUltimate)],

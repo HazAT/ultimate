@@ -34,18 +34,29 @@ its copy), lineage's transcript renderers (entries, tool cards, the rewind actio
 `pi.assistant` row are `island(C)`. Each React renderer mounts one React root per row it renders, again on every
 conversation switch; these were the most frequent ones.
 
-**Moves in:** C3 (the composer) or C4 (the shell, palette, boundary and slot hosts) is the step whose host frees the
+**Moves in:** C4 (the shell, palette, boundary and slot hosts) is the step whose host frees the
 row. "any (provider)" is a React hook provider no host blocks: it moves whenever its extension does, as
 `provide(Point, island(C))` or a plain value.
 
-**Summary (after P2 and P3):** 34 rows (a row is one part or a group of one extension's parts). By core host:
+**Done: the composer (C3).** `web/src/app/composer.solid.tsx` is the composer: the kit `Textarea` in the kit `Form`, kit
+Buttons for Send, Stop and each queued input's cancel, attachments in `attach.solid.tsx`, one Solid `FileChip` shared with
+user turns. Every contribution it hosts goes through `Contribution` or `Contributed` from `web/src/sdk/react-island.solid.tsx`:
+`composer` wrappers, `inbox` renderers and the `composer.*` slots render as Solid when contributed as `island(C)`
+(`SolidComposerProps`, `SolidInboxProps`) and mount through the bridge otherwise, so an outside React extension keeps
+working. `ComposerRedirect` is a Solid context in `@/sdk/solid`. Side chat's frame, read-aloud's strip, onboarding's
+Start card, lineage's history banner, workspaces' lander note and subagents' queued-input card moved with it.
+`ComposerPlaceholder` (conversations' `standing.tsx`) and `FileUpload` (attachments) are React data hooks the composer
+reads with `useProvided`; voice-live's `VoiceDock` wrapper and messages' `OpenMessages` status (listed under the
+transcript) stay React through the bridge until their extensions move.
+
+**Summary (after C3):** 33 rows (a row is one part or a group of one extension's parts). By core host:
 
 | Core host                                                       | Rows | Extensions |
 | --------------------------------------------------------------- | ---- | ---------- |
 | The transcript's points and overlays (host done in C2)          | 11   | 10         |
 | The sidebar (React rows and sections other extensions provide)  | 3    | 3          |
 | Panel and surface hosts, System's tab host, documents' views    | 11   | 8          |
-| The composer                                                    | 3    | 3          |
+| The composer (React parts the Solid host mounts)                | 2    | 2          |
 | React points of other extensions (onboarding, the Agents panel) | 6    | 6          |
 
 Transcript renderers still React, which no host blocks (they move with their extension, before C5): dream's four
@@ -99,11 +110,12 @@ breaks them unless they move to `island(C)` first.
 
 ## The composer
 
-| Extension     | Part                                            | Where                   | Moves in |
-| ------------- | ----------------------------------------------- | ----------------------- | -------- |
-| read-aloud    | composer wrapper `ReadingStrip`                 | `read-aloud/web.tsx`    | C3       |
-| subagents     | inbox renderer `AgentInbox` (`inbox.tsx`)       | `subagents/web.tsx`     | C3       |
-| conversations | provided `ComposerPlaceholder` (`standing.tsx`) | `conversations/web.tsx` | C3       |
+The host is Solid (C3); these React parts mount through the bridge and wait on their own extension's move.
+
+| Extension     | Part                                                    | Where                   | Moves in        |
+| ------------- | ------------------------------------------------------- | ----------------------- | --------------- |
+| conversations | provided `ComposerPlaceholder` (`standing.tsx`)         | `conversations/web.tsx` | any (provider)  |
+| voice-live    | composer wrapper `VoiceDock`, `composer.actions` button | `voice-live/web.tsx`    | with voice-live |
 
 ## Other extensions' React points
 

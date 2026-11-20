@@ -8,6 +8,7 @@ import {
   defineWebExtension,
   renderEntry,
   errorMessage,
+  island,
   useAction,
   useConversation,
   useDialog,
@@ -23,9 +24,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { settledChoice } from './choices.tsx'
 import { FirstRun, GitCard, ProjectCard, Recommended } from './pages.tsx'
 import { IsolationAction } from '../workspaces/ui.tsx'
-import { StartComposer } from './survey.tsx'
+import { StartComposer } from './survey.solid.tsx'
 import { ExtensionsPanel } from './panel.tsx'
-import { firstRunDialog, gitDialog, projectDialog } from './parts.tsx'
+import { firstRunDialog, gitDialog, projectDialog } from './dialogs.ts'
 import {
   ChooseAction,
   HelpAction,
@@ -311,7 +312,7 @@ function Instructions({ text }: { text: string }) {
 
 export default defineWebExtension({
   tools: { setup: attention(SetupCall) },
-  composer: StartComposer,
+  composer: island(StartComposer),
   entries: {
     'onboarding.choice': ChoiceCard,
     'onboarding.start': attention(

@@ -2,6 +2,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h, act, useContext, useEffect } from 'react'
 import { createSignal, flush } from 'solid-js'
+import { settle } from '@ui-sdk/core/testing'
 import { expect, it, vi } from 'vitest'
 
 vi.mock('../../web/src/sdk/client.ts', async () => {
@@ -29,7 +30,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const failed = (extension: string, error: unknown) => <i data-failed={extension}>{String(error)}</i>
 
-it('mounts a React contribution with its extension and scope, streams props without a remount, and unmounts it', () => {
+it('mounts a React contribution with its extension and scope, streams props without a remount, and unmounts it', async () => {
   const mounted = vi.fn<(label: string) => void>()
   const unmounted = vi.fn<(label: string) => void>()
   const Label = ({ note }: { note: string }) => {
@@ -71,8 +72,9 @@ it('mounts a React contribution with its extension and scope, streams props with
     setShown(false)
     flush()
   })
-  expect(unmounted).toHaveBeenCalledExactlyOnceWith('echo@7')
   expect(container.innerHTML).toBe('')
+  await act(() => settle())
+  expect(unmounted).toHaveBeenCalledExactlyOnceWith('echo@7')
 })
 
 it('marks an empty React result so its row collapses, renders island(C) as Solid, and swaps a replaced renderer', () => {

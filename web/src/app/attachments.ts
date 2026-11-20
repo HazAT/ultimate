@@ -1,4 +1,6 @@
 export type AttachedFile = { name: string; size: string; mimeType: string; path: string }
+export type DraftFile = AttachedFile & { id: string }
+export type PastedImage = { data: string; mimeType: string; note?: string }
 
 const plainTextAttachmentReference =
   /^Attached file: `([^`\n]+)` \(([^,\n]+), ([^)\n]+)\) at `([^`\n]+)`$/

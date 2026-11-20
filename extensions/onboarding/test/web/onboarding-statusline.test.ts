@@ -12,6 +12,7 @@ vi.mock('@/sdk', async () => ({
   Card: () => null,
   defineWebExtension: (facet: unknown) => facet,
   errorMessage: String,
+  island: (component: unknown) => component,
   // One answer for isolation and onboarding status alike.
   useAction: () => ({
     data: { reason: 'Not a Git repository', off: state.off },
@@ -27,7 +28,7 @@ vi.mock('@/sdk', async () => ({
   useUltimate: () => ({}),
 }))
 vi.mock('../../pages.tsx', () => ({}))
-vi.mock('../../survey.tsx', () => ({ StartComposer: () => null }))
+vi.mock('../../survey.solid.tsx', () => ({ StartComposer: () => null }))
 vi.mock('../../panel.tsx', () => ({ ExtensionsPanel: () => null }))
 vi.mock('../../../workspaces/ui.tsx', () => ({ IsolationAction: {} }))
 vi.mock('@/components/ui/tooltip', () => ({

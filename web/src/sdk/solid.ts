@@ -7,6 +7,7 @@ import type {
   ConversationId,
   EntryId,
   EntryRecord,
+  InboxItem,
   LiveState,
   UsageState,
 } from '@earendil-works/pi-durable'
@@ -19,6 +20,7 @@ import {
   createRoot,
   createSignal,
   createStore,
+  getOwner,
   onSettled,
   reconcile,
   runWithOwner,
@@ -45,7 +47,7 @@ import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
 import { compactDocs, compactTools } from './registry.ts'
-import type { CompactRow } from './types.ts'
+import type { CompactRow, ComposerTarget } from './types.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import type { TranscriptFrame } from './transcript-frame.ts'
@@ -61,6 +63,8 @@ export { events } from './events.ts'
  * the person. Kit controls run their change handlers in it; a write started after an `await` counts as the person's.
  */
 export { writingAs } from './writer.ts'
+/** Who the write being made now is attributed to, to carry past an `await`: `writingAs(who, …)` at the later write. */
+export { writerNow } from './writer.ts'
 export { ROOT } from './api.ts'
 export { actionRef, docRef } from '../../../shared/extension-api.ts'
 export {
@@ -75,11 +79,15 @@ export {
   prettyName,
   shortenPath,
 } from './format.ts'
-export { formatKeys } from './keys.ts'
+export { formatKeys, isMac } from './keys.ts'
+/** Whether the device types on a touch keyboard, which focusing an input would slide up over the page. */
+export { touchKeyboard } from './viewport.ts'
 /** The installed link, inline-code and code-block renderers of Markdown, in discovery order (`useExtensions()` records). */
 export {
   codeBlockRenderers,
+  composerRenderers,
   entryRenderers,
+  inboxRenderer,
   inlineCodeRenderers,
   linkRenderers,
   messageItems,
@@ -88,20 +96,44 @@ export {
   toolRenderers,
 } from './registry.ts'
 /** Typed props of Solid tool and entry renderers contributed as `island(Component)`. */
-export type { SolidEntryProps, SolidToolProps, ToolCallView } from './types.ts'
-/** The points the core reads: a run's start, the parked runs, a message's reference, the upload target, the empty transcript. */
-export { EmptyTranscript, FileUpload, MessageReference, ParkedRuns, RunStart } from './types.ts'
+export type {
+  ComposerTarget,
+  SolidComposerProps,
+  SolidInboxProps,
+  SolidEntryProps,
+  SolidToolProps,
+  ToolCallView,
+} from './types.ts'
+/**
+ * The points the core reads: a run's start, the parked runs, a message's reference, the upload target, the empty
+ * transcript, the composer's placeholder.
+ */
+export {
+  ComposerPlaceholder,
+  EmptyTranscript,
+  FileUpload,
+  MessageReference,
+  ParkedRuns,
+  RunStart,
+} from './types.ts'
 /** True while the previous page's picture still covers this one after a reload. */
 export { covered } from './resume.ts'
 /** A transcript's shared frame: its entries and scroll elements, for the contributions it renders. */
 export { createTranscriptFrame } from './transcript-frame.ts'
 export { keepLast } from '../../../lib/errors.ts'
 export { cn } from 'cn'
+/** The transcript's and composer's reading column classes, for a card that sits in that column. */
+export { column } from '../app/layout.ts'
 
 /** The extension whose contribution renders here; `island` provides it. */
 export const ExtensionName = createContext<string | null>(null)
 /** The conversation `useDoc` reads, as React's `ConversationScope` gives it; null reads the shown conversation. */
 export const ConversationScope = createContext<ConversationId | null>(null)
+/**
+ * Sends what the composer inside it submits somewhere else, such as a new side chat: `value` reads the target, or
+ * undefined to send to the conversation; a composer renderer provides it around its `core`.
+ */
+export const ComposerRedirect = createContext<Accessor<ComposerTarget | undefined>>(() => undefined)
 /** The transcript around a contribution: its loaded entries and its scroll elements; null outside one. */
 export const Transcript = createContext<TranscriptFrame | null>(null)
 
@@ -188,8 +220,13 @@ function createReplica() {
   }
 }
 
-let replica: ReturnType<typeof createReplica> | undefined
-const shared = () => (replica ??= runWithOwner(null, () => createRoot(createReplica)))
+const page = createRoot(() => getOwner())
+const once = <T>(make: () => T) => {
+  let made: { value: T } | undefined
+  return () => (made ??= { value: runWithOwner(page, () => createRoot(make)) }).value
+}
+
+const shared = once(createReplica)
 
 type DocAccessor<T> = Accessor<Readonly<T> | null | undefined>
 
@@ -363,41 +400,24 @@ export function useEvent(channel: string, handler: (data: unknown) => void) {
   onSettled(() => events.on(channel, handler))
 }
 
-let extensions: Accessor<readonly ExtensionRecord[]> | undefined
-
 /** Installed web facets, in folder order, as `useExtensions` from `@/sdk` reads them. */
-export function useExtensions() {
-  return (extensions ??= runWithOwner(null, () =>
-    createRoot(() => {
-      const [records, setRecords] = createSignal(registry.getSnapshot())
-      registry.subscribe(() => setRecords(registry.getSnapshot()))
-      return records
-    }),
-  ))
-}
-
-let commands: Accessor<CommandItem[]> | undefined
+export const useExtensions = once((): Accessor<readonly ExtensionRecord[]> => {
+  const [records, setRecords] = createSignal(registry.getSnapshot())
+  registry.subscribe(() => setRecords(registry.getSnapshot()))
+  return records
+})
 
 /** Core and extension commands, as the palette lists them. */
-export function useCommands() {
-  const records = useExtensions()
-  return (commands ??= runWithOwner(null, () =>
-    createRoot(() => createMemo(() => allCommands(records()))),
-  ))
-}
-
-let shownViewport: Accessor<Viewport> | undefined
+export const useCommands = once((): Accessor<CommandItem[]> =>
+  createMemo(() => allCommands(useExtensions()())),
+)
 
 /** How much room the window has, `phone`, `tablet` or `desktop`, as `useViewport` from `@/sdk` reads it. */
-export function useViewport() {
-  return (shownViewport ??= runWithOwner(null, () =>
-    createRoot(() => {
-      const [current, setCurrent] = createSignal(viewport())
-      subscribeViewport(() => setCurrent(viewport()))
-      return current
-    }),
-  ))
-}
+export const useViewport = once((): Accessor<Viewport> => {
+  const [current, setCurrent] = createSignal(viewport())
+  subscribeViewport(() => setCurrent(viewport()))
+  return current
+})
 
 /** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
 export const { switchConversation, showSurface, runCommand, openPanel, focusComposer } = actions
@@ -469,7 +489,8 @@ const noEntries: readonly EntryRecord[] = []
 /**
  * The conversation `ConversationScope` gives, or the shown one, as `useConversation` from `@/sdk` reads it: `id`,
  * `loading`, its streamed `entries` (oldest first), the `older` history cursor, `agent` (`pi.agent`), `usage`
- * (`pi.usage`), `live` (`pi.live`) and `busy` while a run is in progress.
+ * (`pi.usage`), `live` (`pi.live`), `inbox` (`pi.inbox`: queued steers, follow-ups and writes) and `busy` while a run is
+ * in progress.
  */
 export type ConversationState = {
   id?: ConversationId
@@ -479,6 +500,7 @@ export type ConversationState = {
   agent: AgentState
   usage: UsageState
   live: LiveState
+  inbox: readonly InboxItem[]
   busy: boolean
 }
 
@@ -501,10 +523,12 @@ export function useConversation(): Accessor<ConversationState> {
       agent: shown?.docs['pi.agent'] ?? {},
       usage: (shown?.docs['pi.usage'] ?? noUsage) as UsageState,
       live,
+      inbox: (shown?.docs['pi.inbox'] as { items?: InboxItem[] } | undefined)?.items ?? noInbox,
       busy: !!live.run,
     }
   })
 }
+const noInbox: readonly InboxItem[] = []
 
 /**
  * How the scoped or shown conversation folds when it uses compact mode (`compact` contributions), else undefined:

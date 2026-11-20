@@ -2,7 +2,6 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { ROOT, renderEntry } from '@/sdk'
 import { deadline } from '../../lib/timers.ts'
 import {
-  ArrowLeftIcon,
   ChevronDownIcon,
   GitForkIcon,
   LoaderCircleIcon,
@@ -13,22 +12,20 @@ import {
   Trash2Icon,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { MessageResponse } from '@/components/ai/message'
 import { Button } from '@/components/ui/button'
-import { Kbd } from '@/components/ui/kbd'
 import {
   api,
   Card,
   cn,
-  column,
-  ComposerRedirect,
   Conversation,
   ConversationScope,
   defineWebExtension,
   EmptyTranscript,
   errorMessage,
   formatTime,
+  island,
   provide,
   useConversation,
   useConversations,
@@ -38,8 +35,7 @@ import {
   useUltimate,
   useViewport,
 } from '@/sdk'
-import type { ComposerTarget } from '@/sdk'
-import { StandingDoc, talkToUltimate } from '../subagents/ui.tsx'
+import { talkToUltimate } from '../subagents/ui.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.tsx'
 import { MessagesDoc } from '../messages/ui.tsx'
 import {
@@ -59,7 +55,6 @@ import {
   frontSide,
   openQuestionSide,
   openSides,
-  togglesSideMode,
 } from './logic.ts'
 import {
   DiscardAction,
@@ -73,192 +68,18 @@ import { SideChatSummaryEntry } from './entries.ts'
 import type { SideChatIndex } from './refs.ts'
 import type { Reply } from '../questions/refs.ts'
 import { useSideChatFront as useFront } from './ui.tsx'
-
-let forkOnEnterInThisTab = false
-const listeners = new Set<() => void>()
-const setSide = (value: boolean) => {
-  forkOnEnterInThisTab = value
-  for (const listener of listeners) listener()
-}
-const useSideMode = () =>
-  useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener)
-      return () => void listeners.delete(listener)
-    },
-    () => forkOnEnterInThisTab,
-  )
+import { ComposerFrame, ease } from './frame.solid.tsx'
 
 const sideEndings = createEndings(errorMessage)
-
-function useMain() {
-  const main = useDocOf(ROOT, StandingDoc)?.ultimate
-  const index = useDocOf(main, SideChatsDoc) ?? undefined
-  return { main, index }
-}
 
 function useShownIndex() {
   const id = useConversation((conversation) => conversation.id)
   return { id, index: useDocOf(id, SideChatsDoc) ?? undefined }
 }
 
-const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 const sheetTransitionMs = 420
 const unmountAfterExitPaddingMs = 60
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
-
-function ModeSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      aria-label={`Composer sends to ${on ? 'a new side chat' : '@ultimate'} · Tab switches`}
-      aria-pressed={on}
-      data-ui="side-chat-switch"
-      className="relative flex h-5 cursor-pointer items-center rounded-full bg-muted/60 p-0.5 font-mono text-[10.5px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      onClick={onToggle}
-      type="button"
-    >
-      <span
-        aria-hidden
-        className={cn(
-          'absolute top-0.5 bottom-0.5 left-0.5 w-[4.75rem] rounded-full bg-background shadow-xs transition-transform duration-300 motion-reduce:transition-none',
-          on && 'translate-x-[4.75rem] ring-1 ring-brand/40',
-        )}
-        style={{ transitionTimingFunction: ease }}
-      />
-      <span
-        className={cn(
-          'relative z-10 w-[4.75rem] text-center whitespace-nowrap transition-colors',
-          on ? 'text-muted-foreground/70' : 'text-foreground',
-        )}
-      >
-        Normal
-      </span>
-      <span
-        className={cn(
-          'relative z-10 flex w-[4.75rem] items-center justify-center gap-1 whitespace-nowrap transition-colors',
-          on ? 'text-brand' : 'text-muted-foreground/70',
-        )}
-      >
-        <GitForkIcon className="size-2.5" />
-        Side chat
-      </span>
-    </button>
-  )
-}
-
-function StableComposerFrame({ core, dock }: { core: ReactNode; dock?: boolean }) {
-  const { id, index } = useShownIndex()
-  const { main } = useMain()
-  const active = id !== undefined && id === main && !dock
-  const hasSides = !dock && openSides(index).length > 0
-  const on = useSideMode() && active
-  const [front, setFront] = useFront()
-  const sideCoveringMainComposer = !dock ? frontSide(front, index) : undefined
-  const parked = (dock ? [] : openSides(index)).filter(
-    (item) => item.id !== sideCoveringMainComposer?.id,
-  )
-  const target: ComposerTarget | undefined = on
-    ? {
-        placeholder: 'Ask on the side — @ultimate keeps running…',
-        send: async (text) => {
-          const opened = await api.action(OpenAction, { text }, { conversationId: main })
-          setSide(false)
-          setFront(opened.id)
-        },
-      }
-    : undefined
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!active || !(event.target instanceof HTMLTextAreaElement)) return
-    const popup = event.target.getAttribute('aria-expanded') === 'true'
-    const key = { ...event, isComposing: event.nativeEvent.isComposing }
-    if (!togglesSideMode(key, { conversation: id, ultimate: main, popup })) return
-    event.preventDefault()
-    setSide(!on)
-  }
-  return (
-    <div
-      className="relative"
-      data-side-mode={active ? (on ? 'side' : 'normal') : undefined}
-      onKeyDownCapture={onKeyDown}
-    >
-      <div data-main-composer={active || undefined} inert={!!sideCoveringMainComposer}>
-        <div
-          className={cn(column(), 'flex items-center justify-between gap-2 pb-1.5')}
-          hidden={!active && !(hasSides && parked.length)}
-        >
-          <div
-            className="flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/70"
-            data-ui="side-chat-hint"
-          >
-            {parked.map((item) => (
-              <button
-                className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground hover:text-foreground"
-                key={item.id}
-                onClick={() => setFront(item.id)}
-                title="Bring this side chat back to the front"
-                type="button"
-              >
-                <GitForkIcon className="size-3 text-brand" />
-                {item.question === undefined ? 'Side chat' : 'Question side chat'} ·{' '}
-                {formatTime(item.openedAt)}
-                <span className="text-brand">show</span>
-              </button>
-            ))}
-            {active && parked.length === 0 && (
-              <span className="truncate pointer-coarse:hidden">
-                {on ? (
-                  <>
-                    <span className="text-brand">↵</span> forks @ultimate · <Kbd>Tab</Kbd> back to
-                    normal
-                  </>
-                ) : (
-                  <>
-                    <Kbd>Tab</Kbd> side chat
-                  </>
-                )}
-              </span>
-            )}
-          </div>
-          {active && <ModeSwitch on={on} onToggle={() => setSide(!on)} />}
-        </div>
-        <div
-          className={cn(
-            'relative transition-[padding] duration-300 motion-reduce:transition-none',
-            on ? 'sm:pl-6' : 'pl-0',
-            '[&_form]:transition-[border-color] [&_form]:duration-300',
-            on &&
-              '[&_form]:border-dashed [&_form]:border-brand/60 [&_form]:focus-within:border-brand/80',
-          )}
-          style={{ transitionTimingFunction: ease }}
-        >
-          <ComposerRedirect to={target}>{core}</ComposerRedirect>
-        </div>
-      </div>
-      {sideCoveringMainComposer && <MainBlocked onBack={() => setFront(null)} />}
-    </div>
-  )
-}
-
-function MainBlocked({ onBack }: { onBack: () => void }) {
-  return (
-    <div className="absolute inset-0 z-10 flex items-center bg-background/70 backdrop-blur-[1px]">
-      <div className={column()}>
-        <div className="flex w-fit items-center gap-3 rounded-lg border border-border bg-card px-3.5 py-2 font-mono text-[11.5px] text-muted-foreground shadow-sm">
-          <GitForkIcon className="size-3.5 text-brand" />
-          <span>Typing goes to the side chat</span>
-          <button
-            className="flex cursor-pointer items-center gap-1 rounded-sm px-1.5 py-0.5 text-foreground hover:bg-accent"
-            onClick={onBack}
-            type="button"
-          >
-            <ArrowLeftIcon className="size-3" />
-            Back to main
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function Stage() {
   const { id, index } = useShownIndex()
@@ -786,7 +607,7 @@ function useSideIds(main: ConversationId | undefined): ReadonlySet<number> {
 }
 
 export default defineWebExtension({
-  composer: StableComposerFrame,
+  composer: island(ComposerFrame),
   slots: { 'conversation.overlay': [Stage] },
   entries: { 'sidechat.summary': SummaryCard },
   provides: [

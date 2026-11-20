@@ -1,10 +1,10 @@
-import type { DraftFile } from '@/components/image-paste'
+import type { DraftFile, PastedImage } from './attachments.ts'
 import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
 import { spliced } from './queued.ts'
 
 export type Draft = {
   text: string
-  images: { data: string; mimeType: string }[]
+  images: PastedImage[]
   files: DraftFile[]
   error?: string
   sending: boolean

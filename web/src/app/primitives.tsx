@@ -28,7 +28,7 @@ import { panelBadges, slotItems } from '../sdk/registry.ts'
 import type { PanelItem } from '../sdk/registry.ts'
 import { overlays, useViewport } from '../sdk/viewport.ts'
 import { ExtensionBoundary, Slot } from './boundary.tsx'
-import { Composer } from './composer.tsx'
+import { Composer as SolidComposer } from './composer.solid.tsx'
 import { setStatusTarget } from './status-target.ts'
 import { IconButton } from './header.tsx'
 import { useSurfaceId } from './surface.ts'
@@ -36,6 +36,7 @@ import { island } from '../sdk/island.tsx'
 import { Transcript as SolidTranscript } from './transcript.solid.tsx'
 
 const Transcript = island(SolidTranscript)
+const Composer = island(SolidComposer)
 
 export function StatusLine() {
   const phone = useViewport() === 'phone'
