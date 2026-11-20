@@ -27,6 +27,10 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 | diagrams    | code block `mermaid`                                                | `extensions/diagrams/web.tsx:16`    | the transcript's Markdown      |
 | read-aloud  | message action                                                      | `extensions/read-aloud/web.tsx:146` | the transcript's message bar   |
 | status-line | message detail `MessageUsage`                                       | `extensions/status-line/web.tsx:97` | the transcript's message bar   |
+| context     | transcript slots `Start`, `PinnedPrompt` (reads `useTranscriptScroll`) | `extensions/context/web.tsx:147`    | the transcript's start and top |
+| context     | entries `pi.system`, `pi.reset`, `pi.compaction`, `pi.assistant`    | `extensions/context/web.tsx:148`    | the transcript's entries       |
+| context     | point `CacheRebuiltLine` (`<Rendered>` with React `core`)           | `extensions/context/ui.tsx:9`       | the transcript's entries       |
+| wire        | entry `pi.assistant` (`WireLink`)                                   | `extensions/wire/web.tsx`           | the transcript's entries       |
 
 ## Composer, panels and surfaces
 
