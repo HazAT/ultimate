@@ -72,7 +72,7 @@ function stillExtends(markdown: string, start: number) {
   const lineStart = markdown.lastIndexOf('\n', start - 1) + 1
   const container = markdown
     .slice(lineStart, start)
-    .replace(/[-*+]|\d+[.)]/g, (marker) => ' '.repeat(marker.length))
+    .replace(/\[\^[^\]]+\]:|[-*+]|\d+[.)]/g, (marker) => ' '.repeat(marker.length))
   const probed = `${markdown}${markdown.endsWith('\n') ? container : ''}${continuation}`
   const fence = descendants(markdownTree.parse(probed)).find(
     (node) => node.type === 'code' && node.position!.start.offset === start,
@@ -86,13 +86,12 @@ function descendants(node: MdastNodes): MdastNodes[] {
 
 export function parse(markdown: string): { nodes: ElementContent[]; openFences: number[] } {
   const mdast = markdownTree.parse(markdown)
-  const unclosed = (tree: MdastNodes) =>
-    descendants(tree).filter(
-      (node): node is Code => node.type === 'code' && node.data?.fence === 'open',
-    )
-  const openFences = unclosed(mdast)
-    .map((node) => node.position!.start.offset!)
-    .filter((start) => stillExtends(markdown, start))
+  const last = descendants(mdast).findLast((node): node is Code => node.type === 'code')
+  const start = last?.position!.start.offset
+  const openFences =
+    start !== undefined && last?.data?.fence === 'open' && stillExtends(markdown, start)
+      ? [start]
+      : []
   const tree = toHast.runSync(mdast, markdown)
   return { nodes: tree.children.filter((node) => node.type !== 'doctype'), openFences }
 }
