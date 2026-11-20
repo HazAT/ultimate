@@ -8,7 +8,7 @@ import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { afterEach, expect, it, vi } from 'vitest'
 import { obj } from '@earendil-works/pi-schema'
 import { defineDoc, defineExtension, defineTool, configure } from '@earendil-works/pi-durable'
-import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type {
   Conversation,
   ConversationId,
@@ -449,6 +449,24 @@ it("records the branches @ultimate's run read when it creates an ask automation"
     ultimate.id,
   )) as Automation
   expect(a.branches).toEqual({ ids: [7], by: ultimate.id })
+})
+
+it("starts the watcher in the project root, not in the creating branch's worktree", async () => {
+  const f = await fixture()
+  const branch = await f.opened.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(AgentDoc, branch.id)).cwd = '/removed/worktree'
+  }, context)
+  const a = (await f.action(
+    'create',
+    { name: 'Watch', ask: 'Watch a PR' },
+    branch.id,
+  )) as Automation
+  const watcher = (await f.opened.harness.conversation(a.script!.conversationId, context))!
+  expect((await watcher.agent(context)).cwd).toBe(f.prepared.projectRoot)
 })
 
 it('removes the prompt on an empty update only while subscribers remain', async () => {

@@ -228,7 +228,7 @@ export function supervisor(
               once: m.once,
               ...(m.secrets ? { secrets: m.secrets } : {}),
               to: m.to,
-              conversationId: await agentConversation(tx, prepared, id, m.name, host.projectRoot),
+              conversationId: await agentConversation(tx, prepared, id, m.name),
               state: 'stopped',
             },
             subscribers: [m.to],
@@ -267,13 +267,7 @@ export function supervisor(
     }, BACKGROUND_CONTEXT)
     for (const stop of removed) await apply(stop)
   }
-  async function agentConversation(
-    tx: Tx,
-    prepared: Prepared,
-    id: string,
-    name: string,
-    cwd: string,
-  ) {
+  async function agentConversation(tx: Tx, prepared: Prepared, id: string, name: string) {
     const child = await host.need(SubagentsApi).createChild(tx, {
       owner: { kind: 'ownerless' },
       definition: prepared.profile,
@@ -282,7 +276,7 @@ export function supervisor(
       metadata: host.metadata,
       label: WatcherLabel,
       title: `${id} · ${name}`,
-      cwd,
+      cwd: host.projectRoot,
     })
     return child.id
   }

@@ -10,7 +10,6 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { arr, bool, int, lit, map, num, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import {
-  AgentDoc,
   defineDoc,
   defineExtension,
   defineTool,
@@ -369,13 +368,7 @@ function backend(host: ExtensionHost) {
           ? []
           : [caller!]
       const owed = await owedAtCreation(tx, id, subscribers, runBy)
-      const conversationId = await agentConversation(
-        tx,
-        prepared,
-        id,
-        name,
-        (await tx.doc(AgentDoc, caller!)).cwd ?? host.projectRoot,
-      )
+      const conversationId = await agentConversation(tx, prepared, id, name)
       const now = Date.now()
       const sub: Automation = {
         id,
