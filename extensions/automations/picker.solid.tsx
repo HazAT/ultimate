@@ -10,7 +10,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
-import { cn, events, keepLast, useAction, useEvent } from '@/sdk/solid'
+import { cn, keepLast, useAction } from '@/sdk/solid'
 import { DefinitionsAction } from '../subagents/refs.ts'
 
 export function Picker(props: {
@@ -51,19 +51,15 @@ const model = (profile: Profile | undefined, fallback: string) =>
     ? `${profile.model.modelId}${profile.thinking ? ` · ${profile.thinking}` : ''}`
     : fallback
 
-export function AgentPicker(props: { value: string; onChange: (name: string) => void }) {
+export function AgentPicker(props: {
+  value: string
+  onChange: (name: string) => void
+  onConfigure: (name: string, source: string, refresh: () => void) => void
+}) {
   const { data, refetch } = useAction(DefinitionsAction, null, { onError: keepLast })
   const chosen = () => data()?.definitions.find((definition) => definition.name === props.value)
   const main = () => model(data()?.main, "the main conversation's model")
   const inherits = () => `inherits · ${data()?.main?.model?.modelId ?? 'main'}`
-  let configure: HTMLButtonElement | undefined
-  let openedHere = false
-  useEvent('subagents:definition-closed', () => {
-    if (!openedHere) return
-    openedHere = false
-    void refetch()
-    requestAnimationFrame(() => configure?.focus())
-  })
   return (
     <div class="flex gap-2">
       <Picker
@@ -118,11 +114,8 @@ export function AgentPicker(props: { value: string; onChange: (name: string) => 
         {(definition) => (
           <Button
             class="h-8 shrink-0 gap-1.5 px-2.5 text-[12px]"
-            onClick={() => {
-              openedHere = true
-              events.emit('subagents:open-definition', { name: definition().name })
-            }}
-            ref={configure}
+            data-automation-configure
+            onClick={(_, details) => props.onConfigure(definition().name, details.source, refetch)}
             size="sm"
             title={`Open the ${definition().name} definition: model, thinking, tools, and instructions`}
             variant="outline"

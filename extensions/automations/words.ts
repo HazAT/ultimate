@@ -1,6 +1,9 @@
 import { clock } from './looks.ts'
 import type { Automation, Schedule } from './refs.ts'
 
+export const automationLabel = (automation: Pick<Automation, 'name' | 'id'>) =>
+  `${automation.name} (${automation.id})`
+
 export const words = (
   schedule: Schedule,
   description: string,

@@ -20,7 +20,7 @@ import { ErrorLine, Toggle, useAct } from './row.solid.tsx'
 import { LogAction, RunAction, ScriptAction } from './refs.ts'
 import type { AutomationListItem } from './refs.ts'
 import { Source } from './source.solid.tsx'
-import { actions } from './words.ts'
+import { actions, automationLabel } from './words.ts'
 
 type Detail = { automation: AutomationListItem; live: boolean; now: number }
 export function ScriptDetail(props: Detail & { onBack: () => void }) {
@@ -138,7 +138,7 @@ function Script(props: Detail & { act: ReturnType<typeof useAct>['act'] }) {
           </SegmentedControl>
           <span class="mx-0.5 h-4 w-px bg-border/70" />
           <Button
-            aria-label={`Relaunch ${props.automation.name}`}
+            aria-label={`Relaunch ${automationLabel(props.automation)}`}
             class="h-6 gap-1 px-2 font-mono text-[11px]"
             disabled={script().state === 'writing'}
             onClick={restart}
