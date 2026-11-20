@@ -46,6 +46,7 @@ import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
 import { compactDocs, compactTools } from './registry.ts'
 import type { CompactRow } from './types.ts'
+import type { ConversationSummary } from '../../../shared/protocol.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import type { TranscriptFrame } from './transcript-frame.ts'
 import { subscribeViewport, viewport } from './viewport.ts'
@@ -86,6 +87,8 @@ export {
   toolLine,
   toolRenderers,
 } from './registry.ts'
+/** Typed props of Solid tool and entry renderers contributed as `island(Component)`. */
+export type { SolidEntryProps, SolidToolProps, ToolCallView } from './types.ts'
 /** The points the core reads: a run's start, the parked runs, a message's reference, the upload target, the empty transcript. */
 export { EmptyTranscript, FileUpload, MessageReference, ParkedRuns, RunStart } from './types.ts'
 /** True while the previous page's picture still covers this one after a reload. */
@@ -411,6 +414,34 @@ export function useConversationId(): Accessor<ConversationId | undefined> {
   const { state } = shared()
   const scoped = useContext(ConversationScope)
   return createMemo(() => scoped ?? state().view?.conversation.id)
+}
+
+/** Conversation `id()`'s summary (title, label, busy, parent), updating only when that row changes. */
+export function useConversationSummary(
+  id: Accessor<ConversationId | undefined>,
+): Accessor<ConversationSummary | undefined> {
+  const { state } = shared()
+  return createMemo(() => {
+    const wanted = id()
+    return wanted === undefined
+      ? undefined
+      : state().conversations.find((summary) => summary.id === wanted)
+  })
+}
+
+/**
+ * The transcript around a contribution, as `useTranscriptScroll` from `@/sdk`: its scroll element, the element whose
+ * children are its rows (`data-entry-id`), both once mounted, and whether it follows its newest row.
+ */
+export function useTranscriptScroll() {
+  const frame = useContext(Transcript)
+  const [atBottom, setAtBottom] = createSignal(frame?.atBottom() ?? true)
+  onSettled(() => frame?.subscribe(() => setAtBottom(frame.atBottom())))
+  return {
+    scroll: () => frame?.scroll.current ?? null,
+    content: () => frame?.content.current ?? null,
+    atBottom,
+  }
 }
 
 /** `pi.agent` of the conversation `ConversationScope` gives, or the shown one: model, thinking level, cwd, tools. */

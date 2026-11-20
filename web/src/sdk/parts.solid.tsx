@@ -1,9 +1,12 @@
 /** @jsxImportSource @solidjs/web */
-import { createMemo, For } from 'solid-js'
+import type { Entry, TypedEntry } from '@earendil-works/pi-durable'
+import type { JsonValue } from '@earendil-works/chord/json'
+import { createMemo, For, Show } from 'solid-js'
+import type { Component } from 'solid-js'
 import { ContributionError } from '../app/contribution-error.solid.tsx'
 import { Contribution } from './react-island.solid.tsx'
 import { provisionsOf, useExtensions } from './solid.ts'
-import type { Point } from './types.ts'
+import type { Point, SolidEntryProps } from './types.ts'
 
 /** The transcript's card: a bordered section with the brand accent on its left edge; `attention` while it waits on someone. */
 export { Card } from '../app/card.solid.tsx'
@@ -50,4 +53,22 @@ export function Provided<Input extends object>(props: {
       )}
     </For>
   )
+}
+
+/**
+ * Narrows a Solid entry renderer's entry with its writer's token, as `renderEntry` from `@/sdk`: `Card` renders a
+ * matching entry, any other renders `core`. Contribute it as `island(renderEntry(Token, Card))`.
+ */
+export function renderEntry<D extends JsonValue>(
+  token: Entry<D>,
+  Card: Component<Omit<SolidEntryProps, 'entry'> & { entry: TypedEntry<D> }>,
+): Component<SolidEntryProps> {
+  return function TypedEntryRenderer(props) {
+    const typed = createMemo(() => (token.is(props.entry) ? props.entry : undefined))
+    return (
+      <Show when={typed()} fallback={props.core}>
+        {(entry) => <Card blocks={props.blocks} core={props.core} entry={entry()} />}
+      </Show>
+    )
+  }
 }

@@ -99,6 +99,8 @@ export interface ToolCallView {
 
 /** `core` is the rendering so far, starting with the generic tool card. */
 export type ToolRenderer = ComponentType<{ call: ToolCallView; core: ReactNode }>
+export type SolidToolProps = { call: ToolCallView; core: SolidElement }
+export type SolidEntryProps = { entry: EntryRecord; core: SolidElement; blocks?: readonly number[] }
 /** A tool call as one short line of plain text, for a folded run's step list; hooks are allowed. */
 export type ToolLineRenderer = ComponentType<{ call: ToolCallView }>
 /**
