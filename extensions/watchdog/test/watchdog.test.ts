@@ -552,10 +552,18 @@ it('drops a pending continuation once the conversation ran again, even if that r
   const branch = await f.conversation('Moved on')
   await (await f.submit(branch, 'fail')).wait(context)
   await f.sleeping()
-  await (await f.submit(branch, 'manual')).wait(context)
+  await (await f.submit(branch, 'again')).wait(context)
+  // Both failures sleep until the same minute: only the newer one continues.
+  await until(async () => (await f.tasks()).length === 2)
   f.advance(60_000)
-  await until(async () => (await f.tasks()).every((task) => task.state.status === 'terminal'))
-  expect(seen).toEqual(['fail', 'manual'])
+  await until(async () => seen.length === 3)
+  await f.harness.waitForIdle(context)
+  expect(seen.slice(0, 2)).toEqual(['fail', 'again'])
+  expect(seen[2]).toContain('Your previous run stopped with a provider error')
+  const continuations = (
+    await f.host.scanSubmissions({ conversationId: branch }, 100, undefined, context)
+  ).items.filter((input) => input.requestId?.startsWith('watchdog-retry:'))
+  expect(continuations).toHaveLength(1)
 })
 
 it.each(['retry', 'report'] as const)(
