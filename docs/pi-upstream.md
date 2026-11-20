@@ -27,12 +27,12 @@
 - `extensions/goal/server.ts` — uses the patched transactional beforeInput hook to place an open hands-off goal's note before @ultimate's input. Drop the coupling when Pi ships input-placement hooks.
 - `extensions/pause/server.ts` — uses the patched Harness.hold()/release() for the user's soft pause. Drop the patch when Pi Durable ships a scheduler hold.
 - `extensions/dream/server.ts` — uses the patched Harness.hold() after approving a chapter switch so no new tasks start before the replacement core takes over. Drop the coupling when Pi Durable ships a scheduler hold.
-- `extensions/coding-tools/diff.tsx` — internal untyped details.patch/details.diff formats drive the diff renderer. Drop when Pi exports structured diff rows for rendering.
+- `extensions/coding-tools/diff.ts` — internal untyped details.patch/details.diff formats drive the diff renderer. Drop when Pi exports structured diff rows for rendering.
 - `extensions/prompt/server.ts` — tool guidance adapted from unexported prompt contributions, not Ultimate's personality. Drop when Pi exports buildSystemPromptSections and the per-tool system prompt contributions.
 - `web/src/app/model.ts` — internal trailing <harness> text block duplicates diagnostics and is stripped for display. Drop when Pi exports a diagnostic-free tool-result content accessor.
 - `web/src/sdk/format.ts` — copied formatTokens helper, not exported. Drop when Pi exports formatTokens.
 - `web/src/sdk/events.ts` — adapted Pi event bus using browser-safe sets instead of node:events, with Pi's exported EventBus type and handler-error semantics. Drop when Pi ships a browser-safe bus.
-- `extensions/coding-tools/web.tsx` — internal bash exit_code diagnostic message drives exitOf and untyped details.patch/details.diff drive Edit. Drop when Pi exports structured bash outcomes and structured diff rows for rendering.
+- `extensions/coding-tools/bash.solid.tsx` — internal bash exit_code diagnostic message drives exitOf. Drop when Pi exports structured bash outcomes.
 - `extensions/context/breakdown.ts` — internal remove-all pi.system entry immediately precedes a reordered re-add, folded into the re-add's diff here. Drop when Pi exposes prompt reorder metadata instead of requiring entry-sequence inference.
 - `extensions/fast/server.ts` — sets service_tier through onPayload because pi-ai's simple stream options drop serviceTier. Drop when buildBaseOptions forwards serviceTier and Pi Durable stream settings accept it.
 - `server/tool-arguments.ts` — ends degenerate tool-call argument streams with an error worded to match pi-ai's retryable error pattern, so the generation retries it. Drop the wording when Pi Durable lets a stream mark its error retryable.

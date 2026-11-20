@@ -2,6 +2,7 @@
 import type { ImageContent, TextContent } from '@earendil-works/pi-ai'
 import { ChevronRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
+import { createPatch } from 'diff'
 import { createMemo, For, Match, Show, Switch } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
@@ -24,15 +25,15 @@ import {
   useSystem,
   useTranscript,
 } from '@/sdk/solid'
+import { Diff, parsePatch } from '../coding-tools/ui.solid.tsx'
 import { DefinitionAction } from '../subagents/refs.ts'
 import { AgentMark } from '../conversations/ui.solid.tsx'
 import { modelLine } from './breakdown.ts'
-import type { Breakdown, Diff, Section, Tool } from './breakdown.ts'
-import { SectionDiff } from './section-diff.solid.tsx'
+import type { Breakdown, Diff as ContextDiff, Section, Tool } from './breakdown.ts'
 
 export const signed = (delta: number) =>
   delta === 0 ? '±0' : `${delta > 0 ? '+' : '−'}${formatTokens(Math.abs(delta))}`
-export const changeCounts = (diff: Diff) =>
+export const changeCounts = (diff: ContextDiff) =>
   [
     diff.sections.length && plural(diff.sections.length, 'section'),
     diff.tools.length && plural(diff.tools.length, 'tool'),
@@ -522,7 +523,13 @@ function ChangeName(props: { change: keyof typeof marks; name: string }) {
   )
 }
 
-export function DiffBody(props: { diff: Diff; label: string }) {
+function sectionRows(section: ContextDiff['sections'][number]) {
+  const before = unwrapSectionTags({ key: section.key, text: section.before ?? '' })
+  const after = unwrapSectionTags(section)
+  return parsePatch(createPatch('section', before, after, '', '', { context: 3 }))
+}
+
+export function DiffBody(props: { diff: ContextDiff; label: string }) {
   const sections = () => props.diff.sections
   const tools = () => props.diff.tools
   return (
@@ -544,10 +551,7 @@ export function DiffBody(props: { diff: Diff; label: string }) {
                   <Text text={unwrapSectionTags(section())} />
                 </Match>
                 <Match when={true}>
-                  <SectionDiff
-                    after={unwrapSectionTags(section())}
-                    before={unwrapSectionTags({ key: section().key, text: section().before! })}
-                  />
+                  <Diff class="max-h-96 rounded-sm text-[11.5px]" rows={sectionRows(section())} />
                 </Match>
               </Switch>
             </Row>
