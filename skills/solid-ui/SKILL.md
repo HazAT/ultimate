@@ -47,6 +47,9 @@ The libraries ship skills that match the pinned versions: read them, not your me
   actions) or its `ui.solid.tsx` (its Solid components, such as conversations' `ConversationRef`); its `ui.tsx` is
   React. A `.tsx` sibling counts as React even without JSX: data a Solid file shares goes in a `.ts` file or `lib/`
   (`lib/conversation-ref.ts`, `extensions/sounds/variants.ts`). Lint: `ultimate/api-only-imports`.
+- **Module stores** that both renderers read (a cache, a picker's target) live in a `.ts` file as one small cell with
+  `get`, `set` and `subscribe`; React reads it with `useSyncExternalStore`, Solid with a signal set from `subscribe`
+  (`extensions/models/state.ts`, `readers.solid.tsx`).
 - **What moves now:** slot items, panels and overlays of an extension's own (`component: island(SecretsPanel)`). A React
   point another extension renders stays React and returns an island (`provide(ExtensionDetails, …)` in
   `extensions/mcp/web.tsx`). A Solid part that needs what only React reads takes it as a prop from a small React
@@ -170,8 +173,12 @@ ui-sdk:
   `press` with an inner action's text opens it; a destructive item needs a `confirm` sentence, checked before the
   press.
 - `DropdownMenuLabel` goes inside `DropdownMenuGroup` or `DropdownMenuRadioGroup`; the SDK throws otherwise.
-- Menu and Command `onAction` details have an optional `event` and no `source`; item `onSelect` takes only an event.
-  Their open, radio value and query callbacks do carry `details.source`.
+- Start a menu's or a Command's write from its root's `onAction(value, details)`: the kit adds `details.source` and runs
+  the handler as that writer. Item `onSelect` takes only an event, so a write started there is always the person's.
+  A Command's `onValueChange` is the highlight moving, never activation.
+- Command with `filter={false}` and rows the app filters itself: set `autoHighlight={false}` and derive the highlighted
+  value (current row, else the first match), or typing leaves the highlight on a footer row
+  (`extensions/models/picker.solid.tsx`).
 - Command filters `fuzzy` by default, keywords included; items with long `keywords` want `filter="contains"` (the skill
   picker). `label` is what search matches; the bridge names an item by its rendered text. `CommandEmpty` stays mounted
   with `data-empty`; the kit hides it with `not-data-empty:hidden`.

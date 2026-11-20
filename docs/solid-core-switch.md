@@ -64,17 +64,17 @@ and the landing card render its message parts). Switch it first.
 
 ## Panel and surface hosts
 
-| Extension | Part                                                                                                 | Where               | Why it waits                                           |
-| --------- | ---------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------ |
-| agent     | the `agent` surface and the title bar's panel buttons                                                | `agent/web.tsx`     | is the conversation view: transcript, composer, panels |
-| documents | the Documents panel                                                                                  | `documents/web.tsx` | hosts other extensions' React document views           |
-| codemode  | document view `codemode.store`                                                                       | `codemode/web.tsx`  | a Documents view                                       |
-| inbox     | the surface frame (core `Sidebar`, `Header`, the `QuestionPane` takeover)                            | `inbox/web.tsx`     | the surface host; side-chat's React pane               |
-| inbox     | the reading pane: messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, items' `pane` | `inbox/reading.tsx` | hosts the transcript's message parts                   |
-| inbox     | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands            | `inbox/ui.tsx`      | React points other extensions provide                  |
-| wire      | the tab's wrapper, docking the core `Conversation`                                                   | `wire/web.tsx`      | System's tab host; the core dock                       |
-| wire      | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                 | `wire/web.tsx`      | a command cannot set UI state                          |
-| todos     | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                              | `todos/web.tsx`     | inbox's `Waiting` is React                             |
+| Extension   | Part                                                                                                                    | Where                 | Why it waits                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------- |
+| agent       | the `agent` surface and the title bar's panel buttons                                                                   | `agent/web.tsx`       | is the conversation view: transcript, composer, panels      |
+| documents   | the Documents panel                                                                                                     | `documents/web.tsx`   | hosts other extensions' React document views                |
+| codemode    | document view `codemode.store`                                                                                          | `codemode/web.tsx`    | a Documents view                                            |
+| inbox       | the surface frame (core `Sidebar`, `Header`, the `QuestionPane` takeover)                                               | `inbox/web.tsx`       | the surface host; side-chat's React pane                    |
+| inbox       | the reading pane: messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, items' `pane`                    | `inbox/reading.tsx`   | hosts the transcript's message parts                        |
+| inbox       | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands                               | `inbox/ui.tsx`        | React points other extensions provide                       |
+| wire        | the tab's wrapper, docking the core `Conversation`                                                                      | `wire/web.tsx`        | System's tab host; the core dock                            |
+| wire        | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                                    | `wire/web.tsx`        | a command cannot set UI state                               |
+| todos       | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                                                 | `todos/web.tsx`       | inbox's `Waiting` is React                                  |
 | automations | the panel's wrapper, passing `overlayOpen` (phone/tablet panel overlay) and `requested` (the conversation being loaded) | `automations/web.tsx` | the shell's open state and `requested` have no Solid reader |
 
 ## The composer
@@ -85,13 +85,13 @@ and the landing card render its message parts). Switch it first.
 
 ## Other extensions' React points
 
-| Extension  | Part                                 | Where                    | Called by                                      |
-| ---------- | ------------------------------------ | ------------------------ | ---------------------------------------------- |
-| mcp        | provided `ExtensionDetails`          | `mcp/web.tsx`            | onboarding's React details (returns an island) |
-| reel       | provided `LandingExtras`             | `reel/web.tsx`           | workspaces' React landing card                 |
-| workspaces | `CommitCount`, `LandingCard` (React) | `workspaces/landing.tsx` | the landing card in the transcript             |
-| models     | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/` | subagents' Agents panel and definition form, onboarding's Get ready |
-| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries | `automations/` | sidebar, system, its transcript entries |
+| Extension   | Part                                                                                                                                                | Where                    | Called by                                                           |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------- |
+| mcp         | provided `ExtensionDetails`                                                                                                                         | `mcp/web.tsx`            | onboarding's React details (returns an island)                      |
+| reel        | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`           | workspaces' React landing card                                      |
+| workspaces  | `CommitCount`, `LandingCard` (React)                                                                                                                | `workspaces/landing.tsx` | the landing card in the transcript                                  |
+| models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`                | subagents' Agents panel and definition form, onboarding's Get ready |
+| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries                                             | `automations/`           | sidebar, system, its transcript entries                             |
 
 ## Shared state and keys
 
