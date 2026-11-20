@@ -744,12 +744,13 @@ function BetweenLine(props: {
   )
   const fallback = () => <>{rows().length} updates</>
   return (
-    <button
+    <Button
       aria-expanded={props.open ? 'true' : 'false'}
-      class="my-1 flex w-full min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/60 transition-colors before:h-px before:w-6 before:shrink-0 before:bg-border/60 after:h-px after:flex-1 after:bg-border/60 hover:text-muted-foreground"
+      class="my-1 flex h-auto w-full min-w-0 justify-start gap-3 rounded-none p-0 font-mono text-[11px] font-normal text-muted-foreground/60 before:h-px before:w-6 before:shrink-0 before:bg-border/60 after:h-px after:flex-1 after:bg-border/60 hover:text-muted-foreground"
       data-between={rows().length}
       onClick={() => props.onOpen()}
-      type="button"
+      size={null}
+      variant={null}
     >
       <span class="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap">
         <Show when={compact()?.summary} fallback={fallback()}>
@@ -783,7 +784,7 @@ function BetweenLine(props: {
           class={cn('size-3 shrink-0 transition-transform', props.open && 'rotate-90')}
         />
       </span>
-    </button>
+    </Button>
   )
 }
 
@@ -893,10 +894,12 @@ function StepLines(props: {
   )
   return (
     <Show when={calls().length > 0}>
-      <button
-        class="mt-1.5 flex w-full min-w-0 flex-col gap-0.5 border-l border-border/70 pl-3 text-left font-mono text-[11.5px] leading-[1.6] text-muted-foreground hover:text-foreground/90"
+      <Button
+        aria-label={`Open ${calls().length} calls run #${props.run.work[0].entry.id}`}
+        class="mt-1.5 flex h-auto w-full min-w-0 flex-col items-stretch gap-0.5 rounded-none border-l border-border/70 py-0 pr-0 pl-3 text-left font-mono text-[11.5px] leading-[1.6] font-normal whitespace-normal text-muted-foreground hover:text-foreground/90"
         onClick={() => props.onOpen()}
-        type="button"
+        size={null}
+        variant={null}
       >
         <Show when={calls().length > shown().length}>
           <span class="text-muted-foreground/60">+{calls().length - shown().length} earlier</span>
@@ -930,7 +933,7 @@ function StepLines(props: {
             )
           }}
         </For>
-      </button>
+      </Button>
     </Show>
   )
 }

@@ -3,6 +3,7 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 import { Check, Copy, Link } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
+import { Button } from '@/components/ui/button.solid.tsx'
 import { createMemo, For, Show } from 'solid-js'
 import { formatTime, MessageReference, messageItems, useCopy, useExtensions } from '@/sdk/solid'
 import { Contribution, useProvided } from '../sdk/react-island.solid.tsx'
@@ -42,7 +43,7 @@ export function MessageActions(props: {
         {formatTime(date())}
       </time>
       <Show when={props.text}>
-        <CopyButton label="Copy message" value={props.text}>
+        <CopyButton label={`Copy message #${props.entry.id}`} value={props.text}>
           <Copy />
         </CopyButton>
       </Show>
@@ -69,16 +70,17 @@ export function MessageActions(props: {
 function CopyButton(props: { value: string; label: string; children: JSX.Element }) {
   const { copied, copy } = useCopy()
   return (
-    <button
+    <Button
       aria-label={props.label}
-      class="rounded p-0.5 transition-colors hover:text-foreground [&_svg]:size-3"
+      class="h-auto rounded p-0.5 font-normal hover:text-foreground [&_svg]:size-3"
       onClick={() => copy(props.value)}
+      size={null}
       title={props.label}
-      type="button"
+      variant={null}
     >
       <Show when={copied()} fallback={props.children}>
         <Check class="text-success" />
       </Show>
-    </button>
+    </Button>
   )
 }
