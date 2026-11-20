@@ -4,16 +4,16 @@ The React parts the Solid migration's batches (0.8 A–C, 0.9 D–F) left in ext
 the React core or is a React hook the core calls, so it can only move once that core is Solid. This is the input for
 planning the core switch; nothing here has moved. Keep it current when a batch leaves a part React.
 
-**Summary (0.9 step-back):** 44 rows (a row is one part or a group of one extension's parts) in 27 extensions. By
+**Summary (P1):** 50 rows (a row is one part or a group of one extension's parts) in 29 extensions. By
 core host:
 
 | Core host                                                                | Rows | Extensions |
 | ------------------------------------------------------------------------ | ---- | ---------- |
-| The transcript (tool and entry renderers, Markdown, message bar, bubble) | 28   | 22         |
+| The transcript (tool and entry renderers, Markdown, message bar, bubble) | 31   | 24         |
 | The sidebar (React rows and sections other extensions provide)           | 3    | 3          |
-| Panel and surface hosts, System's tab host, documents' views             | 9    | 6          |
+| Panel and surface hosts, System's tab host, documents' views             | 10   | 7          |
 | The composer                                                             | 1    | 1          |
-| React points of other extensions (onboarding, workspaces' landing card)  | 3    | 3          |
+| React points of other extensions (onboarding, workspaces' landing card)  | 5    | 5          |
 
 The transcript blocks the most: two thirds of the rows, and it hosts most of the rest indirectly (inbox's reading pane
 and the landing card render its message parts). Switch it first.
@@ -39,6 +39,9 @@ and the landing card render its message parts). Switch it first.
 | setup       | entry `setup.note` (model-only)                                                                    | `setup/web.tsx`             | entries                      |
 | todos       | entry `todos.note` (model-only)                                                                    | `todos/web.tsx`             | entries                      |
 | watchdog    | entry `watchdog.failure`                                                                           | `watchdog/web.tsx`          | entries                      |
+| models      | entries `pi.assistant` (model switch divider `Switched`), `models.fallback` (`FellBack`)           | `models/web.tsx`            | entries                      |
+| automations | tool renderer `automation`; entries `automations.fired`, `.failed`, `.escalated`, `.writing`       | `automations/web.tsx`       | tool calls, entries          |
+| automations | provided `WaitTimers` (`useWaitTimers`)                                                            | `automations/web.tsx`       | messages' wait timers        |
 | wire        | entry `pi.assistant` (`WireLink`)                                                                  | `wire/web.tsx`              | entries                      |
 | diagrams    | code block `mermaid`                                                                               | `diagrams/web.tsx`          | Markdown                     |
 | instance    | `link` (preview links in messages)                                                                 | `instance/web.tsx`          | Markdown                     |
@@ -72,6 +75,7 @@ and the landing card render its message parts). Switch it first.
 | wire      | the tab's wrapper, docking the core `Conversation`                                                   | `wire/web.tsx`      | System's tab host; the core dock                       |
 | wire      | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                 | `wire/web.tsx`      | a command cannot set UI state                          |
 | todos     | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                              | `todos/web.tsx`     | inbox's `Waiting` is React                             |
+| automations | the panel's wrapper, passing `overlayOpen` (phone/tablet panel overlay) and `requested` (the conversation being loaded) | `automations/web.tsx` | the shell's open state and `requested` have no Solid reader |
 
 ## The composer
 
@@ -86,6 +90,8 @@ and the landing card render its message parts). Switch it first.
 | mcp        | provided `ExtensionDetails`          | `mcp/web.tsx`            | onboarding's React details (returns an island) |
 | reel       | provided `LandingExtras`             | `reel/web.tsx`           | workspaces' React landing card                 |
 | workspaces | `CommitCount`, `LandingCard` (React) | `workspaces/landing.tsx` | the landing card in the transcript             |
+| models     | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/` | subagents' Agents panel and definition form, onboarding's Get ready |
+| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries | `automations/` | sidebar, system, its transcript entries |
 
 ## Shared state and keys
 
