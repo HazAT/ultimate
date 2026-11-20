@@ -1,17 +1,15 @@
 /** @jsxImportSource @solidjs/web */
-import { Brain } from '@lucide/solid'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
-import { Button } from '@/components/ui/button.solid.tsx'
-import { cn, showSurface, useDoc, useTranscript, useUiState } from '@/sdk/solid'
+import { cn, useDoc, useTranscript } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
+import { MemoryChip } from '../lineage/ui.solid.tsx'
 import { RecallDoc } from './refs.ts'
 import { RecalledEntry } from './types.ts'
 import type { Recalled } from './types.ts'
 
 function Chips(props: { recalled: Recalled; animate: boolean }) {
-  const [, setFocus] = useUiState<string | null>('ext.lineage.memoryFocus', null)
   let row!: HTMLDivElement
   createEffect(
     () => props.animate,
@@ -41,21 +39,12 @@ function Chips(props: { recalled: Recalled; animate: boolean }) {
     >
       <For each={props.recalled.memories} keyed={(memory) => memory.slug}>
         {(memory) => (
-          <Button
-            aria-label={`Open recalled memory ${memory().slug} from message #${props.recalled.input}`}
-            class="inline-flex h-5 max-w-full min-w-0 items-center justify-start gap-1 rounded-full border border-border/70 bg-background px-1.5 font-mono text-[10px] font-normal text-muted-foreground outline-none hover:border-brand/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          <MemoryChip
             data-recall-memory={memory().slug}
-            onClick={() => {
-              setFocus(memory().slug)
-              showSurface('memory')
-            }}
-            size={null}
+            name={`Open recalled memory ${memory().slug} from message #${props.recalled.input}`}
+            slug={memory().slug}
             title={`Recalled from memory: ${memory().line}`}
-            variant={null}
-          >
-            <Brain class="size-3 shrink-0 text-brand" />
-            <span class="truncate">{memory().slug}</span>
-          </Button>
+          />
         )}
       </For>
     </div>

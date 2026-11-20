@@ -21,10 +21,12 @@ export {
 } from './refs.ts'
 export type { MemoryItem } from './refs.ts'
 
-/** The id of lineage's Memory surface: every root's project memory, grouped by kind, in a reading column. */
-export const MEMORY_SURFACE = 'memory'
-/** The UI state key of the memory the Memory surface shows unfolded and scrolled into view. */
-export const MEMORY_FOCUS = 'ext.lineage.memoryFocus'
+/**
+ * `MEMORY_SURFACE` is the id of lineage's Memory surface (every root's project memory, grouped by kind);
+ * `MEMORY_FOCUS` the UI state key of the memory it shows unfolded and scrolled into view.
+ */
+export { MEMORY_FOCUS, MEMORY_SURFACE } from './memory-chip.ts'
+import { MEMORY_FOCUS, MEMORY_SURFACE, memoryChipClass } from './memory-chip.ts'
 
 /** A function that opens the Memory surface, on memory `slug` unfolded when given. */
 export function useOpenMemory() {
@@ -45,10 +47,7 @@ export function MemoryChip({
   const openMemory = useOpenMemory()
   return (
     <button
-      className={cn(
-        'inline-flex h-5 max-w-full min-w-0 cursor-pointer items-center gap-1 rounded-full border border-border/70 bg-background px-1.5 font-mono text-[10px] text-muted-foreground outline-none hover:border-brand/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
-        className,
-      )}
+      className={cn(memoryChipClass, className)}
       onClick={() => openMemory(slug)}
       title={`Open ${slug} in Memory`}
       type="button"
