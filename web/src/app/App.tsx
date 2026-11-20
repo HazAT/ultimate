@@ -129,6 +129,7 @@ export function App() {
   const home = surfaceItems(records).find((item) => item.id === HOME)
   const shown = useStore((state) => state.ui.surface)
   const viewed = useStore((state) => state.view !== undefined)
+  const chrome = useStore((state) => !embedded && state.system?.project.settings.titleBar !== false)
   useDocumentTitle(shown)
   const [outOfFlowErrorStack, setOutOfFlowErrorStack] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -158,11 +159,11 @@ export function App() {
   return (
     <TooltipProvider delayDuration={400}>
       <div className="safe-area flex">
-        {surfaceAndShortcutsReady && !embedded && (
+        {surfaceAndShortcutsReady && chrome && (
           <Slot errors={outOfFlowErrorStack} name="shell.rail" />
         )}
         <div className="flex min-w-0 flex-1 flex-col">
-          {surfaceAndShortcutsReady && !embedded && <TitleBar />}
+          {surfaceAndShortcutsReady && chrome && <TitleBar />}
           {surfaceAndShortcutsReady && !pending && <Surfaces surfaces={line} />}
         </div>
       </div>

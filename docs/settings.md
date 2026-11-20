@@ -63,6 +63,11 @@ accept Chrome's update prompt. `port` (an integer) is the supervisor's port when
 number. The supervisor reads `port` from the file directly, before the project decision applies; `app` goes through
 the gated project settings like every other key.
 
+A project can also shape the shell. `defaultSurface` (a surface id, for example `"commits"`) is the surface shown
+until the user picks one ([surfaces](extensions/surfaces.md)). `"titleBar": false` renders no title bar and no
+`shell.rail`, as when Ultimate is embedded in an iframe: no brand, project, surface tabs or palette button. ⌘K,
+`mod+1…9` and the default surface still work, so a single-surface app can fill the window.
+
 A project's `.ultimate/` applies only once it is chosen: its `extensions/`, the project `extensions` settings layer,
 `agents/`, and `skills/` load only when the project decision is local. Decisions are kept per project path with Pi's
 `ProjectTrustStore` in `~/.ultimate/trust.json`, and a linked git worktree shares its main checkout's; undecided behaves like global and is reported in system info
