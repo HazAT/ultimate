@@ -77,6 +77,7 @@ const getUserMedia = vi.fn<typeof microphone>(microphone)
 beforeEach(({ onTestFinished }) => {
   harness.sources.length = 0
   vi.clearAllMocks()
+  getUserMedia.mockReset()
   vi.stubGlobal('isSecureContext', true)
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
   vi.stubGlobal('MediaRecorder', FakeRecorder)
@@ -85,16 +86,27 @@ beforeEach(({ onTestFinished }) => {
   onTestFinished(() => clientStore.stop())
   harness.sources[0].open()
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
-async function mount(id: number, status: VoiceStatus) {
-  harness.status = status
+async function showConversation(id: number) {
+  const conversation = parseConversationId(id)
+  clientStore.show(conversation)
+  await settle()
   const view = {
-    conversation: { id: parseConversationId(id) },
+    conversation: { id: conversation },
     entries: [],
     docs: {},
   } as StreamedView
-  harness.server!.of()!.send('view', view)
+  harness.server!.of(id)!.send('view', view)
+  flush()
+}
+
+async function mount(id: number, status: VoiceStatus) {
+  harness.status = status
+  await showConversation(id)
   const container = renderSolid(() => <VoiceButton />)
   await settle()
   flush()
@@ -104,21 +116,29 @@ async function mount(id: number, status: VoiceStatus) {
 async function press(label: string) {
   const control = agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
   expect(control).toMatchObject({ component: 'button', label })
-  expect(await agent.act({ steps: [{ ref: control!.ref, action: 'press' }] })).toMatchObject({
-    ok: true,
-  })
-  await settle()
+  const result = agent.act({ steps: [{ ref: control!.ref, action: 'press' }] })
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(100)
+  expect(await result).toMatchObject({ ok: true })
+  if (!vi.isFakeTimers()) await settle()
   flush()
 }
 
-it('dims the mic and opens the key’s Secrets row when pressed', async ({ onTestFinished }) => {
+function expectPointerDownPrevented(container: HTMLElement, label: string) {
+  const button = container.querySelector(`button[aria-label="${label}"]`)
+  expect(button).not.toBeNull()
+  const event = new PointerEvent('pointerdown', { bubbles: true, cancelable: true })
+  button!.dispatchEvent(event)
+  expect(event.defaultPrevented).toBe(true)
+}
+
+it('opens the key’s Secrets row when the blocked mic is pressed', async ({ onTestFinished }) => {
   const reason = 'Voice needs an OpenAI API key: add OPENAI_API_KEY in ⌘K → Secrets'
   const opened = vi.fn<(data: unknown) => void>()
   onTestFinished(events.on('secrets:open', opened))
   const container = await mount(7, { available: false, reason })
   const mic = container.querySelector('button[data-voice="blocked"]')
   expect(mic?.getAttribute('aria-label')).toBe(reason)
-  expect(mic?.classList.contains('data-[voice=blocked]:opacity-50')).toBe(true)
+  expect(mic?.getAttribute('aria-disabled')).toBeNull()
   await press(reason)
   expect(opened).toHaveBeenCalledExactlyOnceWith({ name: 'OPENAI_API_KEY' })
   expect(getUserMedia).not.toHaveBeenCalled()
@@ -134,9 +154,11 @@ it('dims the mic and opens the key’s Secrets row when pressed', async ({ onTes
 
 it('records for an agent and transcribes into the same composer', async () => {
   const container = await mount(8, { available: true })
+  expectPointerDownPrevented(container, 'Voice input')
   await press('Voice input')
   expect(getUserMedia).toHaveBeenCalledTimes(1)
-  expect(container.querySelector('button[aria-label="Cancel recording"]')).not.toBeNull()
+  expectPointerDownPrevented(container, 'Cancel recording')
+  expectPointerDownPrevented(container, 'Stop and transcribe')
   await expectDistinctAgentNames(agent)
   await press('Stop and transcribe')
   expect(stopTrack).toHaveBeenCalledTimes(1)
@@ -148,6 +170,76 @@ it('records for an agent and transcribes into the same composer', async () => {
     'agent',
   )
   expect(getDraft(8).get().text).toBe('hello from the mic')
+})
+
+it('releases a late microphone stream without transcribing after a conversation switch', async () => {
+  const permission = Promise.withResolvers<Awaited<ReturnType<typeof microphone>>>()
+  getUserMedia.mockReturnValueOnce(permission.promise)
+  const container = await mount(9, { available: true })
+  const pressed = press('Voice input')
+  await settle()
+  expect(getUserMedia).toHaveBeenCalledTimes(1)
+
+  await showConversation(10)
+
+  const stopOtherTrack = vi.fn<() => void>()
+  permission.resolve({ getTracks: () => [{ stop: stopTrack }, { stop: stopOtherTrack }] })
+  await pressed
+  expect(stopTrack).toHaveBeenCalledTimes(1)
+  expect(stopOtherTrack).toHaveBeenCalledTimes(1)
+  expect(container.querySelector('button[data-voice="idle"]')).not.toBeNull()
+  expect(harness.transcribe).not.toHaveBeenCalled()
+})
+
+it('stops and transcribes automatically after five minutes', async () => {
+  const container = await mount(11, { available: true })
+  vi.useFakeTimers()
+  let startedAt = Date.now()
+  getUserMedia.mockImplementationOnce(() => {
+    startedAt = Date.now()
+    return microphone()
+  })
+  await press('Voice input')
+
+  await vi.advanceTimersByTimeAsync(startedAt + 5 * 60_000 - Date.now() - 1)
+  flush()
+  expect(container.querySelector('button[aria-label="Stop and transcribe"]')).not.toBeNull()
+  expect(stopTrack).not.toHaveBeenCalled()
+  expect(harness.transcribe).not.toHaveBeenCalled()
+
+  await vi.advanceTimersByTimeAsync(1)
+  flush()
+  expect(stopTrack).toHaveBeenCalledTimes(1)
+  expect(harness.transcribe).toHaveBeenCalledExactlyOnceWith(
+    {
+      args: { audio: 'YXVkaW8=', mimeType: 'audio/webm;codecs=opus' },
+      conversationId: 11,
+    },
+    'app',
+  )
+  expect(getDraft(11).get().text).toBe('hello from the mic')
+})
+
+it('shows a microphone permission alert for eight seconds', async () => {
+  const container = await mount(12, { available: true })
+  vi.useFakeTimers()
+  let deniedAt = Date.now()
+  getUserMedia.mockImplementationOnce(async () => {
+    deniedAt = Date.now()
+    throw new DOMException('Permission denied', 'NotAllowedError')
+  })
+  await press('Voice input')
+
+  const alert = () => container.querySelector('[role="alert"]')
+  expect(alert()?.textContent).toBe(
+    'Microphone access is blocked: allow it in the browser’s site settings',
+  )
+  await vi.advanceTimersByTimeAsync(deniedAt + 8000 - Date.now() - 1)
+  flush()
+  expect(alert()).not.toBeNull()
+  await vi.advanceTimersByTimeAsync(1)
+  flush()
+  expect(alert()).toBeNull()
 })
 
 it('spaces inserted words from their neighbours and puts the cursor after them', () => {
