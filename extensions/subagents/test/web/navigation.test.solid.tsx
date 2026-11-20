@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { createRoot, createSignal, flush } from 'solid-js'
+import { createRoot, createSignal, flush, For } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 
@@ -19,18 +19,23 @@ vi.mock('@/sdk/solid', async (importOriginal) => {
   }
 })
 
-import { events } from '@/sdk/solid'
+import { useEvent } from '@/sdk/solid'
 import type { ToolCallView } from '@/sdk/solid'
 import { SubagentCall } from '../../call.solid.tsx'
 import { AgentMessages } from '../../messages.solid.tsx'
 
 const agent = createAgent()
 
-it('opens the second of two calls to one child at its answer, then returns to that call', async ({
-  onTestFinished,
-}) => {
+it('opens the second of two calls to one child at its answer, then returns to that call', async () => {
   const revealed: unknown[] = []
-  onTestFinished(events.on('ultimate:reveal-entry', (value) => void revealed.push(value)))
+  const ShownTranscript = () => {
+    const conversation = shown.get()
+    useEvent('ultimate:reveal-entry', (value) => {
+      const target = value as { conversationId: number }
+      if (target.conversationId === conversation) revealed.push(value)
+    })
+    return null
+  }
   const call = (id: string, entry: number, answerId: number): ToolCallView => ({
     id,
     name: 'subagent',
@@ -43,6 +48,7 @@ it('opens the second of two calls to one child at its answer, then returns to th
   })
   renderSolid(() => (
     <>
+      <For each={[shown.get()]}>{() => <ShownTranscript />}</For>
       <AgentMessages />
       <div data-entry-id="41">
         <SubagentCall call={call('call-start1', 41, 17)} core={null} />
@@ -58,11 +64,13 @@ it('opens the second of two calls to one child at its answer, then returns to th
   }
   await press('Show conversation #34 (call l-steer2)')
   expect(shown.get()).toBe(34)
-  expect(revealed).toEqual([{ conversationId: 34, entryId: 23 }])
+  await vi.waitFor(() => expect(revealed).toEqual([{ conversationId: 34, entryId: 23 }]))
   await press('Return to conversation #1')
   expect(shown.get()).toBe(1)
-  expect(revealed).toEqual([
-    { conversationId: 34, entryId: 23 },
-    { conversationId: 1, entryId: 42 },
-  ])
+  await vi.waitFor(() =>
+    expect(revealed).toEqual([
+      { conversationId: 34, entryId: 23 },
+      { conversationId: 1, entryId: 42 },
+    ]),
+  )
 })

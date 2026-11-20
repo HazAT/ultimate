@@ -1,6 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { ArrowLeft, Bot, SquareArrowOutUpRight } from '@lucide/solid'
 import { createEffect, createSignal, Show } from 'solid-js'
+import { nextTurn } from '../../lib/timers.ts'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Card, Fold, Provided } from '@/sdk/parts.solid.tsx'
@@ -33,12 +34,12 @@ export function AgentMessages() {
     },
     (target) => {
       if (!target) return
-      if (target.entry !== undefined)
-        events.emit('ultimate:reveal-entry', {
-          conversationId: target.conversation,
-          entryId: target.entry,
-        })
       setNavigation((value) => ({ back: value.back }))
+      const entryId = target.entry
+      if (entryId === undefined) return
+      nextTurn(() =>
+        events.emit('ultimate:reveal-entry', { conversationId: target.conversation, entryId }),
+      )
     },
   )
   return (
