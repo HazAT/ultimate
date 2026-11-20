@@ -8,6 +8,7 @@ import {
   formatAgo,
   formatTokens,
   keepLast,
+  plural,
   ROOT,
   useAction,
   useDocOf,
@@ -15,6 +16,7 @@ import {
 } from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
 import { Committed } from '../coding-tools/refs.ts'
+import { ActivityAction } from '../conversations/refs.ts'
 import { AgentMark, ConversationPhase, FeatureTag } from '../conversations/ui.solid.tsx'
 import { MemoryDoc, TallyDoc } from '../lineage/refs.ts'
 import { MEMORY_SURFACE, useOpenMemory } from '../lineage/ui.solid.tsx'
@@ -134,9 +136,53 @@ function Edits(props: { id: ConversationId; count: number; spec: string }) {
   )
 }
 
+const silentTooLong = 10 * 60_000
+
+function ActivityLine(props: { id: ConversationId; activity: Activity }) {
+  const data = useData()
+  const working = () => data.working().has(props.id)
+  const idle = () => (props.activity.lastAt === undefined ? 0 : data.now() - props.activity.lastAt)
+  const workers = () => props.activity.workers
+  const company = () =>
+    workers() > 0
+      ? `with ${workers()} worker${workers() === 1 ? '' : 's'}`
+      : working()
+        ? 'alone'
+        : ''
+  return (
+    <span
+      class="flex min-w-0 items-center gap-1.5 pr-2 pb-0.5 pl-[30px] font-mono text-[10px] leading-4 text-muted-foreground/70"
+      data-flight-activity={props.id}
+      title={`#${props.id}: ${props.activity.turns} turns and ${props.activity.calls} tool calls of its own; ${formatCost(props.activity.cost)} with its subagents`}
+    >
+      <span class="min-w-0 truncate">
+        {plural(props.activity.turns, 'turn')} · {plural(props.activity.calls, 'call')} ·{' '}
+        {formatCost(props.activity.cost)}
+        <Show when={company()}> · {company()}</Show>
+      </span>
+      <Show when={props.activity.lastAt !== undefined && idle() >= 60_000}>
+        <span
+          class={cn(
+            'ml-auto shrink-0',
+            working() && idle() >= silentTooLong && 'text-amber-700 dark:text-amber-300',
+          )}
+          data-silent={(working() && idle() >= silentTooLong) || undefined}
+          title={`Last activity ${formatAgo(props.activity.lastAt!, data.now(), { ago: true })}`}
+        >
+          idle {formatAgo(props.activity.lastAt!, data.now())}
+        </span>
+      </Show>
+    </span>
+  )
+}
+
+const formatCost = (dollars: number) =>
+  `$${dollars < 10 ? dollars.toFixed(2) : Math.round(dollars)}`
+
 function PhasedFlightRow(props: {
   id: ConversationId
   work?: Work
+  activity?: Activity
   reviewing: boolean
   onConclude: (conclude: boolean) => void
 }) {
@@ -228,6 +274,9 @@ function PhasedFlightRow(props: {
           </Show>
         </span>
       </Show>
+      <Show when={props.activity}>
+        {(activity) => <ActivityLine activity={activity()} id={props.id} />}
+      </Show>
       <EpicLine id={props.id} working={data.working().get(props.id) === 'self'} />
       <FlightChildren id={props.id} depth={0} />
     </li>
@@ -281,6 +330,57 @@ function useFlightWork(branches: () => readonly ConversationId[]) {
   return (id: ConversationId) => workOf(id, data.index().items[id]?.branch, byId().get(id))
 }
 
+type Activity = { turns: number; calls: number; cost: number; lastAt?: number; workers: number }
+
+function useFlightActivity(branches: () => readonly ConversationId[]) {
+  const data = useData()
+  const below = (id: ConversationId): ConversationId[] =>
+    (data.subagents().get(id) ?? []).flatMap((child) => [child, ...below(child)])
+  const trees = createMemo(() => new Map(branches().map((id) => [id, below(id)])))
+  const keys = createMemo(() => {
+    const ids = [...trees()].flatMap(([id, children]) => [id, ...children])
+    return ids.length ? [ids.join(',')] : []
+  })
+  const moved = createMemo(() =>
+    [...trees()]
+      .flatMap(([id, children]) =>
+        [id, ...children].map((each) => {
+          const conversation = data.byConversation(each)
+          return `${each}:${conversation.busy}:${conversation.inputAt}:${conversation.answerAt}`
+        }),
+      )
+      .join(' '),
+  )
+  const anyBusy = createMemo(() => branches().some((id) => data.working().has(id)))
+  const reads = mapArray(keys, (key) =>
+    useAction(
+      ActivityAction,
+      { ids: key.split(',').map((id) => parseConversationId(Number(id))) },
+      {
+        conversation: ROOT,
+        onError: keepLast,
+        on: moved,
+        every: () => (anyBusy() ? 30_000 : undefined),
+      },
+    ),
+  )
+  return (id: ConversationId): Activity | undefined => {
+    const stats = reads()[0]?.data()
+    const own = stats?.[id]
+    if (!own) return undefined
+    const children = trees().get(id) ?? []
+    const subtree = [own, ...children.flatMap((child) => stats[child] ?? [])]
+    const times = subtree.flatMap((each) => (each.lastAt === undefined ? [] : [each.lastAt]))
+    return {
+      turns: own.turns,
+      calls: own.calls,
+      cost: subtree.reduce((sum, each) => sum + each.cost, 0),
+      lastAt: times.length ? Math.max(...times) : undefined,
+      workers: children.filter((child) => data.busy(child)).length,
+    }
+  }
+}
+
 export function InFlight(props: {
   ids: readonly ConversationId[]
   onConclude: (id: ConversationId, conclude: boolean) => void
@@ -288,6 +388,7 @@ export function InFlight(props: {
   const data = useData()
   const runs = useDocOf(() => ROOT, RunsDoc)
   const workOfId = useFlightWork(() => props.ids)
+  const activityOf = useFlightActivity(() => props.ids)
   const reviewing = (id: ConversationId) =>
     data.conversations().some((child) => {
       if (child.parentConversationId !== id || child.ownerTaskId === undefined || !child.busy)
@@ -304,6 +405,7 @@ export function InFlight(props: {
               <PhasedFlightRow
                 id={id}
                 onConclude={(conclude) => props.onConclude(id, conclude)}
+                activity={activityOf(id)}
                 reviewing={reviewing(id)}
                 work={workOfId(id)}
               />
@@ -315,11 +417,7 @@ export function InFlight(props: {
   )
 }
 
-const kinds = [
-  ['decision', 'decisions'],
-  ['fact', 'facts'],
-  ['lesson', 'lessons'],
-] as const
+const kinds = ['decision', 'fact', 'lesson'] as const
 
 export function useMemorySummary(id: () => ConversationId) {
   const tally = useDocOf(id, TallyDoc)
@@ -327,9 +425,9 @@ export function useMemorySummary(id: () => ConversationId) {
   return createMemo(() => {
     const memories = Object.values(memory()?.memories ?? {})
     const counts = kinds
-      .map(([kind, plural]) => {
+      .map((kind) => {
         const count = memories.filter((item) => item.kind === kind).length
-        return count ? `${count} ${count === 1 ? kind : plural}` : ''
+        return count ? plural(count, kind) : ''
       })
       .filter(Boolean)
     const context = tally()
