@@ -10,7 +10,6 @@ it('keeps its provider across a reload, persists no relay address, and leaves on
     agy,
     `#!${process.execPath}
 if (process.argv[2] === 'models') {
-  await fetch(process.env.CLOUD_CODE_URL + '/v1internal:loadCodeAssist', { method: 'POST', body: '{}' }).catch(() => {})
   console.log('Fetching available models...')
   console.log('gemini-x\\tGemini X')
 }
@@ -36,7 +35,8 @@ if (process.argv[2] === 'models') {
     const model = runtime.getModel('antigravity', 'gemini-x')!
     expect(model.name).toBe('Gemini X (Antigravity)')
     expect(model.baseUrl).not.toMatch(/127\.0\.0\.1/)
-    expect((await runtime.getAuth(model))?.auth.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/pi$/)
+    const relay = (await runtime.getAuth(model))?.auth.baseUrl
+    expect(relay).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/pi$/)
 
     const before = runtime.getProvider('antigravity')
     const file = join(server.host.ultimateRoot, 'extensions/antigravity/server.ts')
@@ -49,6 +49,11 @@ if (process.argv[2] === 'models') {
     await writeFile(settings, JSON.stringify({ extensions: { disable: ['antigravity'] } }))
     await until(() => !runtime.getProvider('antigravity'))
     expect(runtime.getAllModels().some((one) => one.provider === 'antigravity')).toBe(false)
+    const after = (await runtime.getAuth(model))?.auth.baseUrl
+    expect(after).toBeUndefined()
+    await expect(
+      fetch(`${relay}/models/gemini-x:streamGenerateContent`, { method: 'POST' }),
+    ).rejects.toThrow('fetch failed')
   } finally {
     await server.close()
   }

@@ -14,7 +14,10 @@ afterEach(async () => {
 
 type Seen = { path: string; authorization?: string; body: Record<string, unknown> }
 
-async function codeAssist(events: object[]) {
+async function codeAssist(
+  events: object[],
+  frame = (event: object) => `data: ${JSON.stringify({ response: event, traceId: 't' })}\r\n\r\n`,
+) {
   const seen: Seen[] = []
   const server = createServer((req, res) => {
     let raw = ''
@@ -27,8 +30,7 @@ async function codeAssist(events: object[]) {
       })
       if (req.url!.includes(':streamGenerateContent')) {
         res.writeHead(200, { 'content-type': 'text/event-stream' })
-        for (const event of events)
-          res.write(`data: ${JSON.stringify({ response: event, traceId: 't' })}\r\n\r\n`)
+        for (const event of events) res.write(frame(event))
         res.end()
       } else if (req.url!.includes(':fetchAvailableModels')) {
         res.writeHead(200, { 'content-type': 'application/json' })
@@ -218,5 +220,77 @@ it('reports an upstream failure by status only, without its body', async () => {
   const text = await answer.text()
   expect(text).toContain('sign in again')
   expect(text).not.toContain('ya29')
+  expect(aborted).toHaveLength(1)
+})
+
+const call = (relayUrl: string, key: string) =>
+  fetch(`${relayUrl}/models/gemini-x:streamGenerateContent?alt=sse`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': key },
+    body: '{}',
+  })
+
+it('splits events on mixed line endings and masks an in-stream error envelope', async () => {
+  const text = (word: string) => ({
+    candidates: [{ content: { role: 'model', parts: [{ text: word }] } }],
+  })
+  let n = 0
+  const upstream = await codeAssist(
+    [text('a'), text('b'), { error: { code: 401, message: 'token ya29.secret expired' } }],
+    (event) => {
+      const json = 'error' in event ? JSON.stringify(event) : JSON.stringify({ response: event })
+      return n++ === 0 ? `data: ${json}\n\r\n` : `data: ${json}\r\n\r\n`
+    },
+  )
+  const relay = await startRelay(fakeAgy([], []), upstream.url)
+  closers.push(() => relay.close())
+  const body = await (await call(relay.url, relay.key)).text()
+  const events = body
+    .split('\n\n')
+    .filter(Boolean)
+    .map((event) => JSON.parse(event.slice(5)) as Record<string, unknown>)
+  expect(events.slice(0, 2)).toEqual([text('a'), text('b')])
+  expect(events[2]).toMatchObject({ error: { code: 401 } })
+  expect(body).not.toContain('ya29')
+})
+
+it('stops agy and the upstream stream when Pi goes away mid-turn', async () => {
+  const upstreamClosed = Promise.withResolvers<void>()
+  const upstream = createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      if (!req.url!.includes(':streamGenerateContent')) {
+        res.end('{}')
+        return
+      }
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      const chunk = `data: ${JSON.stringify({ response: { candidates: [{ content: { role: 'model', parts: [{ text: 'x'.repeat(65536) }] } }] } })}\r\n\r\n`
+      const pump = () => {
+        while (res.write(chunk));
+        res.once('drain', pump)
+      }
+      pump()
+      res.on('close', () => upstreamClosed.resolve())
+    })
+  })
+  await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
+  closers.push(() => new Promise((resolve) => upstream.close(() => resolve())))
+  const aborted: AbortSignal[] = []
+  const relay = await startRelay(
+    fakeAgy([], aborted),
+    `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`,
+  )
+  closers.push(() => relay.close())
+  const stop = new AbortController()
+  const answer = await fetch(`${relay.url}/models/gemini-x:streamGenerateContent?alt=sse`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': relay.key },
+    body: '{}',
+    signal: stop.signal,
+  })
+  expect(answer.status).toBe(200)
+  stop.abort()
+  await upstreamClosed.promise
+  await relay.close()
   expect(aborted).toHaveLength(1)
 })

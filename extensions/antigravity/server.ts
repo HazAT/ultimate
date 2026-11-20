@@ -4,7 +4,7 @@ import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generati
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { rebuiltOnOpen, isMissing, inProcess } from '../../lib/errors.ts'
+import { rebuiltOnOpen, isMissing } from '../../lib/errors.ts'
 import { spawn } from '../../lib/spawn.ts'
 import { startRelay } from './relay.ts'
 import type { Discovery, Relay, RunAgy } from './relay.ts'
@@ -12,6 +12,7 @@ import { StatusAction } from './refs.ts'
 
 const PROVIDER_ID = 'antigravity'
 const RELAY_ON_DISPATCH = 'relay://antigravity'
+const LOOPBACK = '127.0.0.1'
 const NOT_INSTALLED: Discovery = { available: false, loggedIn: false, models: [] }
 
 export const runAgy: RunAgy = (args, env, signal) =>
@@ -32,6 +33,15 @@ export const runAgy: RunAgy = (args, env, signal) =>
     child.once('close', (code) => resolve({ code, stdout }))
   })
 
+function keepLoopbackOffProxies() {
+  if (!process.env.HTTP_PROXY && !process.env.http_proxy) return
+  for (const name of ['NO_PROXY', 'no_proxy']) {
+    const hosts = (process.env[name] ?? '').split(/[,\s]+/).filter(Boolean)
+    if (!hosts.includes(LOOPBACK) && !hosts.includes('*'))
+      process.env[name] = [...hosts, LOOPBACK].join(',')
+  }
+}
+
 function modelOf(found: Discovery['models'][number]): Model<'google-generative-ai'> {
   const info = found.info
   return {
@@ -48,39 +58,61 @@ function modelOf(found: Discovery['models'][number]): Model<'google-generative-a
   }
 }
 
+type Probe = { result: Promise<Discovery>; waiters: number; stop: AbortController }
 type Shared = {
   relay?: Promise<Relay>
   last?: Discovery
-  probe?: Promise<Discovery>
+  probe?: Probe
   facets: Set<symbol>
+  generation: number
 }
 
 function sharedOf(host: ExtensionHost) {
-  return host.resource<Shared>('antigravity.provider', () => ({ facets: new Set() }))
+  return host.resource<Shared>('antigravity.provider', () => ({ facets: new Set(), generation: 0 }))
 }
 
-const relayOf = (shared: Shared) => (shared.relay ??= startRelay(runAgy))
+function relayOf(shared: Shared) {
+  if (!shared.facets.size) throw new Error('Antigravity is disabled')
+  keepLoopbackOffProxies()
+  return (shared.relay ??= startRelay(runAgy))
+}
 
-function probe(shared: Shared): Promise<Discovery> {
-  shared.probe ??= relayOf(shared)
-    .then((relay) => relay.discover(new AbortController().signal))
+function startProbe(shared: Shared): Probe {
+  const generation = shared.generation
+  const stop = new AbortController()
+  const probe: Probe = { waiters: 0, stop, result: Promise.resolve(NOT_INSTALLED) }
+  probe.result = relayOf(shared)
+    .then((relay) => relay.discover(stop.signal))
     .catch((error: unknown) => {
       if (isMissing(error)) return NOT_INSTALLED
       throw error
     })
-    .then((found) => (shared.last = found))
-    .finally(() => (shared.probe = undefined))
-  return shared.probe
+    .then((found) => {
+      if (generation === shared.generation && !stop.signal.aborted) shared.last = found
+      return found
+    })
+    .finally(() => {
+      if (shared.probe === probe) shared.probe = undefined
+    })
+  return probe
 }
 
-function discover(shared: Shared, signal: AbortSignal): Promise<Discovery> {
+async function discover(shared: Shared, signal: AbortSignal): Promise<Discovery> {
   signal.throwIfAborted()
-  const aborted = Promise.withResolvers<never>()
-  const abort = () => aborted.reject(signal.reason)
-  signal.addEventListener('abort', abort, { once: true })
-  return Promise.race([probe(shared), aborted.promise]).finally(() =>
-    signal.removeEventListener('abort', abort),
-  )
+  const probe = (shared.probe ??= startProbe(shared))
+  probe.waiters++
+  const left = Promise.withResolvers<never>()
+  const leave = () => left.reject(signal.reason)
+  signal.addEventListener('abort', leave, { once: true })
+  try {
+    return await Promise.race([probe.result, left.promise])
+  } finally {
+    signal.removeEventListener('abort', leave)
+    if (--probe.waiters === 0 && signal.aborted) {
+      probe.stop.abort()
+      if (shared.probe === probe) shared.probe = undefined
+    }
+  }
 }
 
 export default function antigravity(host: ExtensionHost) {
@@ -115,16 +147,15 @@ export default function antigravity(host: ExtensionHost) {
   host.onClose(async () => {
     shared.facets.delete(facet)
     if (shared.facets.size) return
-    if (host.modelRuntime.getProvider(PROVIDER_ID) === provider)
+    if (host.modelRuntime.getRegisteredNativeProvider(PROVIDER_ID) === provider)
       host.modelRuntime.unregisterProvider(PROVIDER_ID)
+    shared.generation++
+    shared.probe?.stop.abort()
+    shared.probe = undefined
+    shared.last = undefined
     const relay = shared.relay
     shared.relay = undefined
-    shared.last = undefined
-    if (relay)
-      inProcess(
-        'agy runs belong to this process',
-        relay.then((open) => open.close()),
-      )
+    await (await relay)?.close()
   })
   host.modelRuntime.registerNativeProvider(provider)
   host.onOpen(async () => {
@@ -144,6 +175,8 @@ export default function antigravity(host: ExtensionHost) {
 
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host, signal }) => {
+    const shared = sharedOf(host)
+    shared.last = undefined
     const refreshed = await host.modelRuntime.refresh({
       allowNetwork: true,
       providers: [PROVIDER_ID],
@@ -151,7 +184,7 @@ export const actions = {
     })
     if (refreshed.aborted || refreshed.errors.has(PROVIDER_ID))
       throw new Error('Antigravity status refresh failed')
-    const found = sharedOf(host).last ?? NOT_INSTALLED
+    const found = shared.last ?? NOT_INSTALLED
     return {
       available: found.available,
       loggedIn: found.loggedIn,

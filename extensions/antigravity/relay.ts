@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { inProcess, settled } from '../../lib/errors.ts'
-import { deadline, within } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.ts'
 
 export const CODE_ASSIST = 'https://daily-cloudcode-pa.googleapis.com'
 
@@ -49,7 +49,7 @@ const HOP_HEADERS = new Set([
   'x-goog-api-key',
 ])
 const AGY_PROMPT = 'Reply with ok.'
-const AGY_REQUEST_TIMEOUT_MS = 120_000
+const AGY_SETUP_TIMEOUT_MS = 120_000
 const DISCOVERY_TIMEOUT_MS = 60_000
 const ANSWER_THAT_ENDS_AGYS_TURN = {
   candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
@@ -80,13 +80,17 @@ function forwardedHeaders(req: IncomingMessage) {
   return headers
 }
 
+function errorBody(status: number, message: string) {
+  return JSON.stringify({ error: { code: status, message, status: 'UNAVAILABLE' } })
+}
+
 function fail(res: ServerResponse, status: number, message: string) {
   if (res.headersSent) {
     res.destroy()
     return
   }
   res.writeHead(status, { 'content-type': 'application/json' })
-  res.end(JSON.stringify({ error: { code: status, message, status: 'UNAVAILABLE' } }))
+  res.end(errorBody(status, message))
 }
 
 function upstreamFailure(status: number) {
@@ -100,34 +104,57 @@ function upstreamFailure(status: number) {
   )
 }
 
-function write(res: ServerResponse, text: string) {
+function write(res: ServerResponse, text: string, signal: AbortSignal) {
+  if (res.destroyed || signal.aborted) return Promise.reject(new Error('Pi stopped reading'))
   if (res.write(text)) return Promise.resolve()
-  return new Promise<void>((resolve) => {
-    res.once('drain', resolve)
-    res.once('close', resolve)
+  return new Promise<void>((resolve, reject) => {
+    const done = (error?: Error) => {
+      res.off('drain', drained)
+      res.off('close', closed)
+      signal.removeEventListener('abort', closed)
+      if (error) reject(error)
+      else resolve()
+    }
+    const drained = () => done()
+    const closed = () => done(new Error('Pi stopped reading'))
+    res.on('drain', drained)
+    res.on('close', closed)
+    signal.addEventListener('abort', closed, { once: true })
   })
 }
 
-async function unwrapCodeAssistEvents(body: ReadableStream<Uint8Array>, res: ServerResponse) {
+function piEvent(data: string) {
+  const parsed = JSON.parse(data) as { response?: unknown; error?: { code?: unknown } }
+  if (parsed.response && typeof parsed.response === 'object') return JSON.stringify(parsed.response)
+  const code = typeof parsed.error?.code === 'number' ? parsed.error.code : 502
+  return errorBody(code >= 400 && code < 600 ? code : 502, `Antigravity stream error (${code})`)
+}
+
+async function unwrapCodeAssistEvents(
+  body: ReadableStream<Uint8Array>,
+  res: ServerResponse,
+  signal: AbortSignal,
+) {
   const decoder = new TextDecoder()
   let pending = ''
-  const event = async (block: string) => {
-    const data = block
-      .split(/\r\n|\r|\n/)
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5))
-      .join('\n')
-    if (!data.trim()) return
-    const parsed = JSON.parse(data) as { response?: unknown }
-    await write(res, `data: ${JSON.stringify(parsed.response ?? parsed)}\n\n`)
+  let data: string[] = []
+  const line = async (text: string) => {
+    if (text === '') {
+      if (data.length) await write(res, `data: ${piEvent(data.join('\n'))}\n\n`, signal)
+      data = []
+    } else if (text.startsWith('data:')) data.push(text.slice(5))
   }
   for await (const chunk of body) {
     pending += decoder.decode(chunk, { stream: true })
-    const blocks = pending.split(/\r\n\r\n|\n\n|\r\r/)
-    pending = blocks.pop()!
-    for (const block of blocks) await event(block)
+    let match: RegExpExecArray | null
+    while ((match = /\r\n|\n|\r(?!$)/.exec(pending))) {
+      const text = pending.slice(0, match.index)
+      pending = pending.slice(match.index + match[0].length)
+      await line(text)
+    }
   }
-  await event(pending)
+  await line(pending.replace(/\r$/, ''))
+  await line('')
 }
 
 function endAgysTurn(res: ServerResponse, streaming: boolean) {
@@ -149,25 +176,23 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
 
   async function withAgy<T>(
     args: string[],
-    outer: AbortSignal | undefined,
-    timeoutMs: number,
+    outer: AbortSignal,
     work: (visit: Visit, exited: Promise<{ code: number | null; stdout: string }>) => Promise<T>,
-    visit: Omit<Visit, 'signal' | 'stop'> = {},
+    visit: Pick<Visit, 'takeAgentRequest' | 'models'> = {},
   ) {
+    outer.throwIfAborted()
     const stop = new AbortController()
     const abort = () => stop.abort()
-    outer?.addEventListener('abort', abort, { once: true })
+    outer.addEventListener('abort', abort, { once: true })
     const token = randomBytes(12).toString('hex')
     const current: Visit = { ...visit, signal: stop.signal, stop: abort }
     visits.set(token, current)
     const exited = run(args, { CLOUD_CODE_URL: `${url}/agy/${token}` }, stop.signal)
     children.add(exited)
-    const cancelDeadline = deadline(timeoutMs, abort)
     try {
       return await work(current, exited)
     } finally {
-      cancelDeadline()
-      outer?.removeEventListener('abort', abort)
+      outer.removeEventListener('abort', abort)
       visits.delete(token)
       stop.abort()
       await settled(exited)
@@ -218,12 +243,21 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
     await withAgy(
       ['-p', AGY_PROMPT, '--output-format', 'json'],
       gone.signal,
-      AGY_REQUEST_TIMEOUT_MS,
       async (visit, exited) => {
         const exitedFirst = exited.then(({ code }) => {
           throw new RelayError(502, `agy exited (code ${code}) before sending a model request`)
         })
-        const sent = await Promise.race([agentRequest.promise, exitedFirst])
+        const stopped = new Promise<never>((_resolve, reject) =>
+          visit.signal.addEventListener(
+            'abort',
+            () => reject(new RelayError(504, 'agy sent no model request; is it signed in?')),
+            { once: true },
+          ),
+        )
+        const cancelSetupDeadline = deadline(AGY_SETUP_TIMEOUT_MS, visit.stop)
+        const sent = await Promise.race([agentRequest.promise, exitedFirst, stopped]).finally(
+          cancelSetupDeadline,
+        )
         const { sessionId, labels } = (sent.body.request ?? {}) as Record<string, unknown>
         const answer = await fetch(`${upstream}/v1internal:streamGenerateContent?alt=sse`, {
           method: 'POST',
@@ -236,7 +270,7 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
           throw upstreamFailure(answer.status)
         }
         res.writeHead(200, { 'content-type': 'text/event-stream' })
-        await unwrapCodeAssistEvents(answer.body, res)
+        await unwrapCodeAssistEvents(answer.body, res, visit.signal)
         res.end()
       },
       { takeAgentRequest: agentRequest.resolve },
@@ -274,9 +308,14 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
       const { code, stdout } = await withAgy(
         ['models'],
         signal,
-        DISCOVERY_TIMEOUT_MS,
-        (_visit, exited) =>
-          within(DISCOVERY_TIMEOUT_MS, exited, () => new Error('agy models gave no answer')),
+        async (visit, exited) => {
+          const cancel = deadline(DISCOVERY_TIMEOUT_MS, visit.stop)
+          try {
+            return await exited
+          } finally {
+            cancel()
+          }
+        },
         { models: (found) => (models = found) },
       )
       signal.throwIfAborted()
