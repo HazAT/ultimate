@@ -8,8 +8,8 @@ import type { ReactNode } from 'react'
 import { AllProvided, definePoint, useDocOf } from '@/sdk'
 import { emptyMessages, MessagesDoc } from '../messages/ui.tsx'
 import type { Message } from '../messages/refs.ts'
-import { inboxItems } from './items.tsx'
-import type { Entry } from './items.tsx'
+import { inboxItems } from './items.ts'
+import type { Entry } from './items.ts'
 
 /** Something that waits on the user, provided by another extension; it leaves when the provider stops listing it. */
 export type InboxItem = {
