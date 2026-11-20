@@ -48,7 +48,8 @@ await page.addInitScript(() => {
   // next task, the same window as its task time. Writes after that window (a later timer, an animation) count for no
   // event. One observer watches the app, so every transcript counts, side chats and freshly mounted ones included. A
   // record counts when its target is inside a transcript, or inside a subtree a counted record of the same batch
-  // removed (newest first, so an ancestor's removal is seen before the writes inside it).
+  // removed (newest first, so an ancestor's removal is seen before the writes inside it). A node moved in and out of a
+  // transcript within one batch can count a write made outside it; the transcript never does that.
   const transcript = '[data-ui="transcript"]'
   const inTranscript = (records: MutationRecord[]) => {
     const removed = new Set<Node>()
