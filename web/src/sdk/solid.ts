@@ -20,6 +20,7 @@ import {
   createRoot,
   createSignal,
   createStore,
+  getOwner,
   onSettled,
   reconcile,
   runWithOwner,
@@ -219,8 +220,13 @@ function createReplica() {
   }
 }
 
-let replica: ReturnType<typeof createReplica> | undefined
-const shared = () => (replica ??= runWithOwner(null, () => createRoot(createReplica)))
+const page = createRoot(() => getOwner())
+const once = <T>(make: () => T) => {
+  let made: { value: T } | undefined
+  return () => (made ??= { value: runWithOwner(page, () => createRoot(make)) }).value
+}
+
+const shared = once(createReplica)
 
 type DocAccessor<T> = Accessor<Readonly<T> | null | undefined>
 
@@ -394,41 +400,24 @@ export function useEvent(channel: string, handler: (data: unknown) => void) {
   onSettled(() => events.on(channel, handler))
 }
 
-let extensions: Accessor<readonly ExtensionRecord[]> | undefined
-
 /** Installed web facets, in folder order, as `useExtensions` from `@/sdk` reads them. */
-export function useExtensions() {
-  return (extensions ??= runWithOwner(null, () =>
-    createRoot(() => {
-      const [records, setRecords] = createSignal(registry.getSnapshot())
-      registry.subscribe(() => setRecords(registry.getSnapshot()))
-      return records
-    }),
-  ))
-}
-
-let commands: Accessor<CommandItem[]> | undefined
+export const useExtensions = once((): Accessor<readonly ExtensionRecord[]> => {
+  const [records, setRecords] = createSignal(registry.getSnapshot())
+  registry.subscribe(() => setRecords(registry.getSnapshot()))
+  return records
+})
 
 /** Core and extension commands, as the palette lists them. */
-export function useCommands() {
-  const records = useExtensions()
-  return (commands ??= runWithOwner(null, () =>
-    createRoot(() => createMemo(() => allCommands(records()))),
-  ))
-}
-
-let shownViewport: Accessor<Viewport> | undefined
+export const useCommands = once((): Accessor<CommandItem[]> =>
+  createMemo(() => allCommands(useExtensions()())),
+)
 
 /** How much room the window has, `phone`, `tablet` or `desktop`, as `useViewport` from `@/sdk` reads it. */
-export function useViewport() {
-  return (shownViewport ??= runWithOwner(null, () =>
-    createRoot(() => {
-      const [current, setCurrent] = createSignal(viewport())
-      subscribeViewport(() => setCurrent(viewport()))
-      return current
-    }),
-  ))
-}
+export const useViewport = once((): Accessor<Viewport> => {
+  const [current, setCurrent] = createSignal(viewport())
+  subscribeViewport(() => setCurrent(viewport()))
+  return current
+})
 
 /** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
 export const { switchConversation, showSurface, runCommand, openPanel, focusComposer } = actions

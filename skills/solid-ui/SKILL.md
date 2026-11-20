@@ -105,8 +105,9 @@ The libraries ship skills that match the pinned versions: read them, not your me
   (an accessor) and provide it with `<ComposerRedirect value={target}>` around `props.core`. A core host renders every
   contribution only through `Contribution`/`Contributed`/`Slot` from `web/src/sdk/react-island.solid.tsx`, never by
   calling a component itself, so React contributions (outside extensions included) keep mounting through the bridge.
-  Solid parts a React contribution places (`core`, `cancel`) go in `Contribution`'s `elements`: each is made once into
-  a host element the React side receives as a node.
+  Solid parts a React contribution places (`core`, `cancel`) go in `Contribution`'s `elements`: the bridge renders each
+  with Solid's `render` into the host React places it in, under the placement's conversation scope, and disposes it
+  (DOM included) when React removes or hides it. A part React never places never runs.
 - **What waits for the core switch:** `provide` hooks and anything that hosts other extensions' React (the shell, panel
   hosts). The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
@@ -215,9 +216,11 @@ Solid 2:
   11 remounts per row for one short reply with a DOM mutation observer).
 - React mounted inside Solid commits in a later task unless `flushSync`: a Solid effect that measures the React part
   (a reveal finding a tool card inside its row) then sees it empty. The bridge's roots render with `flushSync`.
-- A Solid setter returns the value it set: as the arrow body of a React `useLayoutEffect(() => set(v))`, that value
-  becomes React's cleanup, and React calls it on the next render (`T is not a function` when `ParkedRuns` set a
-  `Set`). Give the effect a block body.
+- A Solid setter returns the value it set: as the arrow body of a React `useLayoutEffect(() => set(v))` or a Solid
+  effect's apply half, that value becomes a cleanup the framework calls later (`T is not a function` when `ParkedRuns`
+  set a `Set`). Give the effect a block body.
+- Unmounting a React root from Solid cleanup that runs inside a React commit (a part React hides) warns and defers:
+  unmount it on `nextTurn`.
 - A transcript row hides with the `empty-row` utility, which also hides a row whose only child is a React host that
   rendered nothing (`data-empty`); `:empty` alone no longer matches once the bridge wraps React.
 - A control in the transcript is a kit `Button`, never a bare `<button>`: the agent bridge sees only kit parts. A
@@ -246,9 +249,9 @@ Solid 2:
   `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')`.
 - A part inside a collapsible trigger cannot be a kit `Button` (buttons do not nest): put it beside the trigger, as the
   subagent card's task chip sits next to its open button.
-- A Solid element handed to React for it to place is a real element made once (`document.createElement` plus `insert`),
-  never a component's JSX return rebuilt in a tracked callback: each rebuild is a new subtree, and React's
-  `node.remove()` breaks on a Solid return that is not one element.
+- A Solid part handed to React for it to place is a `SolidPart` (`solidPart` in `web/src/sdk/react-island.solid.tsx`),
+  mounted with `render` at React's host: a bare `insert` there misses event delegation once React portals it, and a
+  part built before React decides to place it keeps running hidden (a composer taking drops).
 - A kit `Textarea` takes `readonly` (lowercase) and `autoResize` with a CSS `max-h-*`; its agent `setValue` runs the
   field's `onValueChange`, so an agent fill updates a draft store like typing does. Keyboard shortcuts on it
   (Enter, Alt+Enter, ↑) stay a plain `onKeyDown`: `submitShortcut` knows only Enter and mod+Enter.

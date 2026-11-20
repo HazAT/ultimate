@@ -213,7 +213,9 @@ function Placeholder(props: {
   }))
   createEffect(
     () => answers().findLast((text) => text !== undefined),
-    (text) => props.report(text),
+    (text) => {
+      props.report(text)
+    },
   )
   onCleanup(() => props.report(undefined))
   return null

@@ -56,8 +56,17 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 import { getDraft } from '../../web/src/app/drafts.ts'
 import { Composer } from '../../web/src/app/composer.solid.tsx'
 import { registry, store } from '../../web/src/sdk/client.ts'
-import { createElement as h } from 'react'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { act as act_, Activity, createElement as h, useState } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { ConversationScope } from '../../web/src/sdk/conversation-scope.tsx'
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+const effects: (() => void)[] = []
+afterEach(() => {
+  for (const release of effects.splice(0)) release()
+})
 
 const faux = { provider: 'faux', id: 'faux-1', available: true }
 const agent = createAgent()
@@ -229,6 +238,71 @@ it('leaves no live editor when a React composer wrapper replaces the composer', 
   await settle()
   expect(getDraft(15).get().error).toBeUndefined()
   expect(getDraft(15).get().images).toEqual([])
+  await registry.setLoaders({})
+})
+
+it('runs a composer a React wrapper portals, scopes or hides as one live editor', async () => {
+  const [scope, hidden] = [{ id: undefined as number | undefined }, { on: false }]
+  const rerender: { now?: () => void } = {}
+  await registry.setLoaders({
+    '/extensions/wrap/web.tsx': async () => ({
+      default: {
+        composer: function Wrap({ core }: { core: ReactNode }) {
+          const [, tick] = useState(0)
+          rerender.now = () => tick((n) => n + 1)
+          const placed = h(Activity, { mode: hidden.on ? 'hidden' : 'visible', children: core })
+          return createPortal(
+            scope.id === undefined
+              ? placed
+              : h(ConversationScope, { id: scope.id as ConversationId, children: placed }),
+            document.body,
+          )
+        },
+      },
+    }),
+  })
+  await show(17)
+  effects.push(store.watchConversation(18 as ConversationId))
+  await settle()
+  harness.server!.of(18)!.send('view', {
+    conversation: { id: parseConversationId(18) },
+    entries: [],
+    docs: { 'pi.agent': { model: { provider: 'faux', modelId: 'faux-1' } } },
+  })
+  renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  const editors = () =>
+    document.querySelectorAll<HTMLTextAreaElement>('[data-ui="composer"] textarea')
+  const enter = async (text: string) => {
+    await act([{ ref: editors()[0].getAttribute('aria-label')!, action: 'setValue', args: [text] }])
+    editors()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await settle()
+    flush()
+  }
+  await enter('portaled')
+  act_(() => {
+    scope.id = 18
+    rerender.now!()
+  })
+  await settle()
+  flush()
+  await enter('scoped')
+  act_(() => {
+    hidden.on = true
+    rerender.now!()
+  })
+  act_(() => {
+    hidden.on = false
+    rerender.now!()
+  })
+  await settle()
+  flush()
+  expect(editors()).toHaveLength(1)
+  expect(submits().map((post) => [post.path, post.body])).toEqual([
+    ['/api/conversations/17/submit', { text: 'portaled', images: [] }],
+    ['/api/conversations/18/submit', { text: 'scoped', images: [] }],
+  ])
   await registry.setLoaders({})
 })
 

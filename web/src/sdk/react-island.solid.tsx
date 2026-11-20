@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { insert } from '@solidjs/web'
+import { insert, registerDelegatedRoot, unregisterDelegatedRoot } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import {
   createEffect,
@@ -17,6 +17,7 @@ import {
 } from 'solid-js'
 import type { Accessor, Component } from 'solid-js'
 import type { ReactNode } from 'react'
+import { nextTurn } from '../../../lib/timers.ts'
 import { islandSolid } from './island-mark.ts'
 import {
   allProvided,
@@ -57,14 +58,28 @@ function MountReact(props: { render: () => ReactNode }) {
 
 const solidPart = (children: () => JSX.Element): SolidPart => {
   const owner = getOwner()
+  const scoped = useContext(ConversationScope)
   return {
-    mount: (host) =>
-      runWithOwner(owner, () =>
-        createRoot((dispose) => {
-          insert(host, children)
-          return dispose
+    mount: (host, placed) => {
+      registerDelegatedRoot(host)
+      const dispose = runWithOwner(owner, () =>
+        createRoot((done) => {
+          insert(host, () =>
+            placed === undefined || placed === scoped ? (
+              children()
+            ) : (
+              <ConversationScope value={placed}>{children()}</ConversationScope>
+            ),
+          )
+          return done
         }),
-      ),
+      )
+      return () => {
+        dispose()
+        unregisterDelegatedRoot(host)
+        host.textContent = ''
+      }
+    },
   }
 }
 
@@ -190,36 +205,28 @@ export function RenderedPoint<Input extends object>(props: {
   return <MountReact render={() => renderedPoint(props.point, { ...props.input }, core)} />
 }
 
-export function useProvided<Input, Value>(
-  point: Point<Input, Value>,
+function useReactReport<Input, Found>(
   input: Accessor<Input>,
-): Accessor<Value | undefined> {
+  initial: Found,
+  element: (input: Input, report: (found: Found) => void) => ReactNode,
+): Accessor<Found> {
   const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
-  const [found, setFound] = createSignal<Value | undefined>()
+  const [found, setFound] = createSignal<Found>(() => initial)
   const root = reactRoot(document.createElement('div'), {
     conversation: useContext(ConversationScope) ?? undefined,
     transcript: useContext(Transcript) ?? undefined,
   })
-  onCleanup(root.unmount)
-  createEffect(value, (next) =>
-    root.render(provided(point, next, (latest) => setFound(() => latest))),
-  )
+  onCleanup(() => nextTurn(root.unmount))
+  createEffect(value, (next) => root.render(element(next, (latest) => setFound(() => latest))))
   return found
 }
 
-export function useAllProvided<Input, Value>(
-  point: Point<Input, Value>,
-  input: Accessor<Input>,
-): Accessor<readonly Value[]> {
-  const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
-  const [found, setFound] = createSignal<readonly Value[]>([])
-  const root = reactRoot(document.createElement('div'), {
-    conversation: useContext(ConversationScope) ?? undefined,
-    transcript: useContext(Transcript) ?? undefined,
-  })
-  onCleanup(root.unmount)
-  createEffect(value, (next) =>
-    root.render(allProvided(point, next, (latest) => setFound(() => latest))),
+export const useProvided = <Input, Value>(point: Point<Input, Value>, input: Accessor<Input>) =>
+  useReactReport<Input, Value | undefined>(input, undefined, (next, report) =>
+    provided(point, next, report),
   )
-  return found
-}
+
+export const useAllProvided = <Input, Value>(point: Point<Input, Value>, input: Accessor<Input>) =>
+  useReactReport<Input, readonly Value[]>(input, [], (next, report) =>
+    allProvided(point, next, report),
+  )

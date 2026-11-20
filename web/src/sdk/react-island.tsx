@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from 'react'
-import { useLayoutEffect, useRef } from 'react'
+import { useContext, useLayoutEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { ConversationId } from '@earendil-works/pi-durable'
@@ -38,11 +38,14 @@ export function reactRoot(
   }
 }
 
-export type SolidPart = { mount: (host: HTMLElement) => () => void }
+export type SolidPart = {
+  mount: (host: HTMLElement, conversation: ConversationId | undefined) => () => void
+}
 
 export function SolidNode({ part }: { part: SolidPart }) {
   const host = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => part.mount(host.current!), [part])
+  const conversation = useContext(ConversationIdContext)
+  useLayoutEffect(() => part.mount(host.current!, conversation), [part, conversation])
   return <div className="contents" ref={host} />
 }
 
