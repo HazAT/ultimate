@@ -42,7 +42,7 @@ import { ConversationScope } from '../../../../web/src/sdk/solid.ts'
 import { LoginDialog } from '../../login.solid.tsx'
 import { ModelPicker } from '../../picker.solid.tsx'
 import { ModelButton, ThinkingButton } from '../../toolbar.solid.tsx'
-import { dialogs, openLogin } from '../../state.ts'
+import { openLogin } from '../../state.ts'
 
 const agent = createAgent()
 const server = fakeSubscriptions(harness.sources)
@@ -270,10 +270,31 @@ it('lets an agent start a provider login and answer a streamed secret prompt wit
       source: 'agent',
     },
   ])
-  actions.close(dialogs.login)
-  await sync()
-  expect(writes().at(-1)).toMatchObject({
+  expect(await act('Log in to a provider', 'setOpen', false)).toMatchObject({ ok: true })
+  expect(writes().at(-1)).toEqual({
     path: '/api/extensions/models/actions/cancel',
     body: { args: { flowId: 'flow-1' }, conversationId: 1 },
+    source: 'agent',
+  })
+})
+
+it('attributes cancellation to the agent even when login returns its flow id after close', async () => {
+  const pending = Promise.withResolvers<Response>()
+  const mockResponse = harness.fetch.getMockImplementation()!
+  harness.fetch.mockImplementation((url, init) =>
+    url === '/api/extensions/models/actions/login' ? pending.promise : mockResponse(url, init),
+  )
+  renderSolid(() => <LoginDialog />)
+  openLogin(actions)
+  await sync()
+  expect(await act('Faux credentials (API key, faux)', 'press')).toMatchObject({ ok: true })
+  expect(await act('Log in to a provider', 'setOpen', false)).toMatchObject({ ok: true })
+  expect(writes().map(({ path }) => path)).toEqual(['/api/extensions/models/actions/login'])
+  pending.resolve(Response.json({ result: { flowId: 'late' } }))
+  await sync()
+  expect(writes().at(-1)).toEqual({
+    path: '/api/extensions/models/actions/cancel',
+    body: { args: { flowId: 'late' }, conversationId: 1 },
+    source: 'agent',
   })
 })

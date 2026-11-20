@@ -61,13 +61,20 @@ const small = 'h-7 text-[12px]'
 export function LoginDialog() {
   const [open, setOpen] = useDialog(dialogs.login)
   const [, setPicker] = useDialog(dialogs.picker)
+  let cancelAttempt: Attempt['cancel'] | undefined
   onSettled(() => {
     const reload = () => void refreshModels()
     addEventListener('focus', reload)
     return () => removeEventListener('focus', reload)
   })
   return (
-    <Dialog open={open()} onOpenChange={setOpen}>
+    <Dialog
+      open={open()}
+      onOpenChange={(next, details) => {
+        if (!next) cancelAttempt?.(details.source)
+        setOpen(next)
+      }}
+    >
       <DialogContent
         class="top-[16%] translate-y-0 grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0 font-mono sm:max-w-xl"
         showCloseButton={false}
@@ -78,6 +85,9 @@ export function LoginDialog() {
         </DialogDescription>
         <Show when={open()}>
           <LoginSession
+            onAttempt={(attempt) => {
+              cancelAttempt = attempt?.cancel
+            }}
             close={() => setOpen(false)}
             pick={() => {
               setOpen(false)
@@ -129,7 +139,11 @@ function beginLogin(method: Method, conversationId: ConversationId | undefined) 
 
 type Attempt = ReturnType<typeof beginLogin>
 
-function LoginSession(props: { close: () => void; pick: () => void }) {
+function LoginSession(props: {
+  close: () => void
+  pick: () => void
+  onAttempt: (attempt: Attempt | undefined) => void
+}) {
   const shown = useConversationId()
   const requested = useCell(loginProvider)
   const [attempt, setAttempt] = createSignal<Attempt>()
@@ -137,12 +151,16 @@ function LoginSession(props: { close: () => void; pick: () => void }) {
   function start(method: Method) {
     active?.cancel()
     active = beginLogin(method, pickerTarget.get() ?? shown())
+    props.onAttempt(active)
     setAttempt(active)
   }
   createEffect(shown, (id, previous) => {
     if (id !== previous && active) props.close()
   })
-  onSettled(() => () => active?.cancel())
+  onSettled(() => () => {
+    active?.cancel()
+    props.onAttempt(undefined)
+  })
   return (
     <Show
       when={attempt()}
@@ -154,6 +172,7 @@ function LoginSession(props: { close: () => void; pick: () => void }) {
           attempt={current}
           back={() => {
             active = undefined
+            props.onAttempt(undefined)
             setAttempt(undefined)
           }}
           close={props.close}
