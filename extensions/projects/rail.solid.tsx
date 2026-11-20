@@ -42,6 +42,8 @@ export function OpeningBar() {
   )
 }
 
+type Write = { pinned: boolean; savedOver?: { answer: { pinned: boolean } | undefined } }
+
 const [visible, setVisible] = createRoot(() => createSignal(true))
 const shownNow = () => document.visibilityState === 'visible'
 
@@ -85,16 +87,24 @@ function ProjectsRail() {
     { onError: keepLast, every: whileVisible(SHARED_PIN_POLL_MS) },
   )
   refetchWhenShown(list, shared)
-  const [writing, setWriting] = createSignal<{ pinned: boolean }>()
-  const pinned = () => writing()?.pinned ?? shared.data()?.pinned ?? false
+  const [write, setWrite] = createSignal<Write>()
+  const pinned = () => {
+    const pending = write()
+    const answer = shared.data()
+    const answeredSince = pending?.savedOver && answer !== pending.savedOver.answer
+    return pending && !answeredSince ? pending.pinned : (answer?.pinned ?? false)
+  }
   const pin = async (next: boolean) => {
-    const write = { pinned: next }
-    setWriting(write)
-    await api
-      .action(PinAction, write)
-      .then(() => shared.refetch())
-      .catch(keepLast)
-    if (writing() === write) setWriting()
+    const pending: Write = { pinned: next }
+    setWrite(pending)
+    const saved = await api.action(PinAction, { pinned: next }).then(() => true, keepLast)
+    if (write() !== pending) return
+    if (!saved) {
+      setWrite()
+      return
+    }
+    setWrite({ pinned: next, savedOver: { answer: shared.data() } })
+    await shared.refetch()
   }
 
   const [hover, setHover] = createSignal(false)

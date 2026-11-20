@@ -15,6 +15,7 @@ const harness = vi.hoisted(() => ({
   projects: [] as RunningProject[],
   slowPinReads: false,
   failPinWrites: false,
+  failPinReads: false,
   release: [] as (() => void)[],
   wide: true,
 }))
@@ -34,6 +35,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     const { args } = JSON.parse(init!.body as string) as { args: { pinned?: boolean } }
     if (args.pinned !== undefined && harness.failPinWrites)
       return Response.json({ error: 'pin file is read-only' }, { status: 500 })
+    if (args.pinned === undefined && harness.failPinReads)
+      return Response.json({ error: 'pin file is unreadable' }, { status: 500 })
     if (args.pinned !== undefined) {
       harness.pins.push({
         pinned: args.pinned,
@@ -99,6 +102,7 @@ beforeEach(async () => {
   harness.pinned = false
   harness.slowPinReads = false
   harness.failPinWrites = false
+  harness.failPinReads = false
   resize(true)
   harness.projects = [
     { name: 'ultimate', url: 'http://127.0.0.1:4747', current: true, busy: 1 },
@@ -200,6 +204,17 @@ it('keeps a pin over a shared-pin read that was still answering when it was pres
   expect(pinnedOpen(container)).toBe(true)
 })
 
+it('keeps a saved pin when the read after it fails', async () => {
+  const container = await mount()
+  harness.failPinReads = true
+  await openRail(container)
+  pinButton(container, 'Pin the projects rail open').click()
+  await advance(10)
+  await closeRail(container)
+  expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
+  expect(pinnedOpen(container)).toBe(true)
+})
+
 it('falls back to the stored pin when writing it fails', async () => {
   const container = await mount()
   harness.failPinWrites = true
@@ -234,8 +249,14 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
   await advance(10)
   expect(container.querySelectorAll('a[data-project]')).toHaveLength(2)
   expect([calls('list'), calls('pin')]).toEqual([hidden[0] + 1, hidden[1] + 1])
-  await advance(29_990)
-  expect([calls('list'), calls('pin')]).toEqual([hidden[0] + 8, hidden[1] + 2])
+  await advance(3_989)
+  expect(calls('list')).toBe(hidden[0] + 1)
+  await advance(1)
+  expect(calls('list')).toBe(hidden[0] + 2)
+  await advance(25_999)
+  expect(calls('pin')).toBe(hidden[1] + 1)
+  await advance(1)
+  expect(calls('pin')).toBe(hidden[1] + 2)
 
   visibility = 'hidden'
   document.dispatchEvent(new Event('visibilitychange'))
