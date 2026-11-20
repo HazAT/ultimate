@@ -125,6 +125,10 @@ export default defineConfig({
         rules: { 'ultimate/no-local-test-polling': 'error' },
       },
       {
+        files: ['test/web/**', 'extensions/*/test/web/**', '**/*.test.solid.tsx'],
+        rules: { 'ultimate/no-server-helpers-in-web-tests': 'error' },
+      },
+      {
         files: ['**/*'],
         excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/errors.ts'],
         rules: { 'ultimate/no-silent-catch': 'error' },
@@ -249,7 +253,8 @@ export default defineConfig({
         },
       },
       {
-        // Another extension at runtime only through its contract: api.ts from server code, ui.tsx from the browser.
+        // Another extension at runtime only through its contract: api.ts from server code, ui.tsx from React and
+        // refs.ts or ui.solid.tsx from Solid.
         // A core-tier extension (`export const tier = 'core'` in its api.ts) imports only the core tier.
         files: ['extensions/**/*.ts', 'extensions/**/*.tsx'],
         excludeFiles: ['extensions/*/test/**'],
@@ -261,7 +266,12 @@ export default defineConfig({
         rules: { 'ultimate/api-only-imports': 'error' },
       },
       {
-        files: ['extensions/*/api.ts', 'extensions/*/refs.ts', 'extensions/*/ui.tsx'],
+        files: [
+          'extensions/*/api.ts',
+          'extensions/*/refs.ts',
+          'extensions/*/ui.tsx',
+          'extensions/*/ui.solid.tsx',
+        ],
         rules: { 'ultimate/api-file-shape': 'error', 'ultimate/api-naming': 'error' },
       },
       {

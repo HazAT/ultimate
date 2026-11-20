@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { Hourglass, Pause, Play as PlayIcon } from '@lucide/solid'
-import { For, Match, Show, Switch, createMemo, createSignal } from 'solid-js'
+import { For, Match, Show, Switch, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
 import { NumberInput } from '@/components/ui/number-input.solid.tsx'
@@ -16,13 +16,11 @@ import {
   notify,
   switchConversation,
   useAction,
-  useConversations,
   useDocOf,
   useNow,
   useTasks,
 } from '@/sdk/solid'
-import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
-import { OverviewDoc } from '../conversations/refs.ts'
+import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { lasted, unwrappedProviderError } from './lasted.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type { PauseState, RunningTask } from './refs.ts'
@@ -30,18 +28,6 @@ import type { PauseState, RunningTask } from './refs.ts'
 const tasks = (count: number) => `${count} ${count === 1 ? 'task' : 'tasks'}`
 
 function TaskConversation(props: { task: RunningTask }) {
-  const overview = useDocOf(() => ROOT, OverviewDoc)
-  const conversations = useConversations()
-  const ref = createMemo(() => {
-    const id = props.task.conversationId
-    const summary = conversations().find((row) => row.id === id)
-    return conversationRefParts({
-      standing: summary?.label === 'agent' ? summary.title : undefined,
-      title: props.task.title,
-      feature: overview()?.conversations[id]?.feature,
-      live: summary?.title,
-    })
-  })
   return (
     <Button
       class="min-w-0 flex-1 justify-start text-left font-[family-name:inherit] text-[length:inherit] leading-[inherit] font-normal hover:underline"
@@ -49,30 +35,7 @@ function TaskConversation(props: { task: RunningTask }) {
       size={null}
       variant={null}
     >
-      <span
-        class="inline-flex max-w-full min-w-0 items-center gap-1.5"
-        data-conversation-ref={props.task.conversationId}
-      >
-        <Show when={ref().tag}>
-          {(tag) => (
-            <span
-              class={cn(featureTagClass, featureHue(tag()), 'shrink-0')}
-              data-feature={tag()}
-              title={tag()}
-            >
-              {tag()}
-            </span>
-          )}
-        </Show>
-        <Show when={ref().name}>
-          {(name) => (
-            <span class="min-w-0 truncate" title={name()}>
-              {name()}
-            </span>
-          )}
-        </Show>
-        <span class="shrink-0 text-muted-foreground/70">#{props.task.conversationId}</span>
-      </span>
+      <ConversationRef id={props.task.conversationId} title={props.task.title} />
     </Button>
   )
 }

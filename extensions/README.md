@@ -25,7 +25,7 @@ An extension is a folder `<name>/` in `extensions/` (built-in), `~/.ultimate/ext
 - `server.ts`: agent and server, a Pi Durable extension (tools, prompt sections, hooks, documents) and its `actions`.
   Reinstalled on save; running tool calls finish on old code.
 - `web.tsx`: UI, `export default defineWebExtension({ … })`. Rebuilt on save; open pages switch to the new bundle.
-- `api.ts`, `refs.ts`, `ui.tsx`: its [contracts](../docs/extensions/contracts.md) for other extensions; live with the
+- `api.ts`, `refs.ts`, `ui.tsx`, `ui.solid.tsx`: its [contracts](../docs/extensions/contracts.md) for other extensions; live with the
   facets that import them.
 - `README.md`: what it does; the first paragraph is shown in the UI, so open with a sentence, not a heading.
   Required; read on change.
@@ -65,7 +65,8 @@ No restart, no reload.
 
 - One feature per folder; the folder name is the extension name; a README is required. Keep it small.
 - Prefer documents, commands, events, or the SDK. Another extension's runtime code is reached only through its
-  `api.ts` on the server and its `ui.tsx` in the browser; type imports are free. Lint enforces both.
+  `api.ts` on the server, its `ui.tsx` from React and its `refs.ts` or `ui.solid.tsx` from Solid; type imports are
+  free. Lint enforces both.
 - Shared pure helpers live in the top-level `lib/`, not in another extension: `exec.ts` (run a program), `git.ts`
   (git and isolation checks), `json-file.ts` (read, atomic write, serialised update), `settings.ts`, `secrets.ts`
   (read-only), `cloud.ts` (the user's cloud settings), `project-identity.ts` (a project's GitHub key), `entries.ts`

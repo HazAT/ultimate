@@ -75,9 +75,9 @@ const resolved = (filename: string, source: string) =>
   path.relative(process.cwd(), path.resolve(path.dirname(filename), source)).split(path.sep)
 /**
  * An extension's contract files: `api.ts` for server code, `refs.ts` for the documents and actions the browser reads
- * and calls, `ui.tsx` for what other extensions' browser code imports.
+ * and calls, `ui.tsx` for what other extensions' React code imports and `ui.solid.tsx` for what their Solid code imports.
  */
-const contracts = ['api.ts', 'refs.ts', 'ui.tsx'] as const
+const contracts = ['api.ts', 'refs.ts', 'ui.tsx', 'ui.solid.tsx'] as const
 type Contract = (typeof contracts)[number]
 /** `extensions/<name>/<contract>`: the extension and which contract file it is. */
 const contractFile = (filename: string) => {
@@ -397,6 +397,14 @@ export default {
       create(context: Context) {
         if (uiKitFile(context.filename)) return {}
         return {
+          JSXOpeningElement(node: Node & { name?: Node }) {
+            if (node.name?.type === 'JSXIdentifier' && node.name.name === 'form')
+              context.report({
+                node,
+                message:
+                  "A native form submit carries no source, so a change an agent submits is recorded as the person's. Use the kit's Form from @/components/ui and start the change in its type=\"submit\" Button's onClick, which Enter in a field presses too.",
+              })
+          },
           JSXAttribute(node: Node & { name?: Node }) {
             if (node.name?.name !== 'role') return
             const role = staticString(node.value as Node | null | undefined)
@@ -519,6 +527,22 @@ export default {
               })
           },
         }
+      },
+    },
+    'no-server-helpers-in-web-tests': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const check = (node: ImportNode) => {
+          const source = node.source?.value
+          if (typeof source !== 'string' || !source.startsWith('.')) return
+          if (resolved(context.filename, source).join('/') === 'test/helpers.ts')
+            context.report({
+              node,
+              message:
+                "test/helpers.ts imports the server, and a web test is type-checked by tsconfig.web.json, which then fails as 'Invalid tsconfig'. Use the browser-safe helpers in test/web (solid-dom-setup.ts, fake-source.ts, agent-names.ts) and vi.advanceTimersByTimeAsync or settle() instead of until.",
+            })
+        }
+        return { ImportDeclaration: check, ImportExpression: check }
       },
     },
     'no-test-timeout': {
@@ -646,13 +670,11 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         if (!own) return {}
-        // Server code reaches another extension through its api.ts, React code through its ui.tsx, Solid code through
-        // its refs.ts until extensions grow a Solid ui contract.
         const solid = solidFile(context.filename)
         const browser = context.filename.endsWith('.tsx')
-        const allowed = solid ? 'refs.ts' : browser ? 'ui.tsx' : 'api.ts'
+        const allowed = solid ? ['refs.ts', 'ui.solid.tsx'] : browser ? ['ui.tsx'] : ['api.ts']
         const how = solid
-          ? 'its refs.ts (the refs of its documents and actions; its ui.tsx is React)'
+          ? 'its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its Solid components; its ui.tsx is React)'
           : browser
             ? 'its ui.tsx (components, hooks and the refs of its documents and actions)'
             : 'its api.ts (a service, document or event token)'
@@ -663,7 +685,7 @@ export default {
           const target = resolved(context.filename, source)
           const [directory, extension, ...file] =
             target[0] === '.ultimate' ? target.slice(1) : target
-          if (directory === 'extensions' && extension !== own && file.join('/') !== allowed)
+          if (directory === 'extensions' && extension !== own && !allowed.includes(file.join('/')))
             context.report({
               node,
               message: `Extensions meet only at their contracts, so each can change and reload on its own. ${own} imports ${extension}/${file.join('/')} at runtime; reach ${extension} through ${how}, import types with \`import type\`, or move a pure helper to lib/.`,
@@ -758,7 +780,7 @@ export default {
                 node,
                 `Start ${file} with a doc comment on what it offers; its first sentence is the one-line summary.`,
               )
-            if (file === 'ui.tsx') return
+            if (file === 'ui.tsx' || file === 'ui.solid.tsx') return
             const allowed = definers[file]
             const services = new Set<string>()
             const body = (node.body as Node[] | undefined) ?? []
@@ -832,7 +854,7 @@ export default {
       meta: { schema: [] },
       create(context: Context) {
         const contract = contractFile(context.filename)
-        if (!contract || contract.file === 'ui.tsx') return {}
+        if (!contract || contract.file === 'ui.tsx' || contract.file === 'ui.solid.tsx') return {}
         const own = contract.extension
         return {
           CallExpression(node: Node) {

@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
+import { Form } from '@/components/ui/form.solid.tsx'
 import { Input, SecretInput } from '@/components/ui/input.solid.tsx'
 import { ROOT, api, cn, errorMessage, useAction, useCopy, useDialog, useRestart } from '@/sdk/solid'
 import { JoinAction, JoinStateAction } from './refs.ts'
@@ -165,8 +166,7 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
   const ready = () =>
     !running() && [url(), machine(), token(), snapshotKey()].every((value) => value.trim())
 
-  async function submit(event: Event) {
-    event.preventDefault()
+  async function submit() {
     if (!ready()) return
     const earlierAttemptMayHaveWritten = mayHaveWrittenSecrets()
     setResult('running')
@@ -193,7 +193,7 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
   return (
     <div class="border-t border-border/60">
       <Show when={!done()}>
-        <form class="space-y-2 px-3 py-2" onSubmit={submit}>
+        <Form class="space-y-2 px-3 py-2">
           <p class="font-sans text-[12px] text-muted-foreground">
             Use the values your other machines have. They go into Secrets on this machine, never
             into a conversation.
@@ -255,7 +255,7 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
             </Show>
             Save cloud connection
           </Button>
-        </form>
+        </Form>
       </Show>
       <Show when={result()}>{(outcome) => <Steps result={outcome()} />}</Show>
       <Show when={done()}>{(outcome) => <Next projects={outcome().projects} />}</Show>

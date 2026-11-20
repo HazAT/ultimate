@@ -9,6 +9,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
+import { Form } from '@/components/ui/form.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import {
@@ -225,11 +226,8 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
   const [sending, setSending] = createSignal(false)
   const [stored, setOwner] = useExtensionUiState<Todo['owner']>('owner', 'user')
   const owner = (): Todo['owner'] => (stored() === 'ultimate' ? 'ultimate' : 'user')
-  let pressedBy: string | undefined
-  const submit = async () => {
+  const submit = async (source: string) => {
     const trimmed = text().trim()
-    const source = pressedBy
-    pressedBy = undefined
     if (!trimmed || sending()) return
     setSending(true)
     const add = props.add
@@ -238,20 +236,12 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
     setSending(false)
   }
   return (
-    <form
-      class="mx-2 flex items-center gap-1 rounded-md border border-border bg-background pl-1 focus-within:border-brand/60"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void submit()
-      }}
-    >
+    <Form class="mx-2 flex items-center gap-1 rounded-md border border-border bg-background pl-1 focus-within:border-brand/60">
       <Button
         aria-label="Add the to-do"
         class="-ml-1 size-6 text-muted-foreground hover:text-foreground"
         disabled={sending()}
-        onClick={(_, details) => {
-          pressedBy = details.source
-        }}
+        onClick={(_, details) => submit(details.source)}
         size="icon-xs"
         type="submit"
         variant="ghost"
@@ -279,6 +269,6 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
           @ultimate
         </SegmentedControlItem>
       </SegmentedControl>
-    </form>
+    </Form>
   )
 }

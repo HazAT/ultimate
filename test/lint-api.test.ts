@@ -298,17 +298,45 @@ export { TaskChip } from '../plan/chip.tsx'`
   ])
 })
 
-it('lets Solid code reach another extension through its refs.ts, since its ui.tsx is React', () => {
+const solidMessage = (file: string) =>
+  `echo imports ${file} at runtime; reach ${file.split('/')[0]} through its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its Solid components; its ui.tsx is React), import types with \`import type\`, or move a pure helper to lib/.`
+
+it('lets Solid code reach another extension through its refs.ts or ui.solid.tsx, since its ui.tsx is React', () => {
   const source = `import { ContextDoc } from '../conversations/refs.ts'
+import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { ContextBar } from '../conversations/ui.tsx'`
   expect(lint('api-only-imports', 'extensions/echo/status.solid.tsx', source)).toEqual([
-    'echo imports conversations/ui.tsx at runtime; reach conversations through its refs.ts (the refs of its documents and actions; its ui.tsx is React), import types with `import type`, or move a pure helper to lib/.',
+    solidMessage('conversations/ui.tsx'),
   ])
   const project = `import { BoardDoc } from '../board/refs.ts'
 import { columns } from '../board/columns.ts'`
   expect(lint('api-only-imports', '.ultimate/extensions/echo/status.solid.tsx', project)).toEqual([
-    'echo imports board/columns.ts at runtime; reach board through its refs.ts (the refs of its documents and actions; its ui.tsx is React), import types with `import type`, or move a pure helper to lib/.',
+    solidMessage('board/columns.ts'),
   ])
+})
+
+it('sends a Solid form to the kit Form, whose submit Button keeps who submitted it', () => {
+  const source = `export const Add = () => (
+  <form onSubmit={(event) => event.preventDefault()}>
+    <Form />
+  </form>
+)`
+  expect(lint('ui-kit-roles', 'extensions/todos/panel.solid.tsx', source)).toEqual([
+    `Use the kit's Form from @/components/ui and start the change in its type="submit" Button's onClick, which Enter in a field presses too.`,
+  ])
+  expect(lint('ui-kit-roles', 'web/src/components/ui/form.solid.tsx', source)).toEqual([])
+})
+
+it('keeps server helpers out of web tests, which the web tsconfig type-checks', () => {
+  const source = `import { until } from '../../../../test/helpers.ts'
+import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'`
+  expect(
+    lint(
+      'no-server-helpers-in-web-tests',
+      'extensions/fast/test/web/toggle.test.solid.tsx',
+      source,
+    ),
+  ).toHaveLength(1)
 })
 
 it('keeps React and Solid apart, and ui-sdk components behind the UI kit', () => {
