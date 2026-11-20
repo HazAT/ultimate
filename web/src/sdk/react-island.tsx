@@ -39,13 +39,20 @@ export function reactRoot(
 }
 
 export type SolidPart = {
-  mount: (host: HTMLElement, conversation: ConversationId | undefined) => () => void
+  mount: (
+    host: HTMLElement,
+    placed: { conversation?: ConversationId; transcript?: TranscriptFrame },
+  ) => () => void
 }
 
 export function SolidNode({ part }: { part: SolidPart }) {
   const host = useRef<HTMLDivElement>(null)
   const conversation = useContext(ConversationIdContext)
-  useLayoutEffect(() => part.mount(host.current!, conversation), [part, conversation])
+  const transcript = useContext(TranscriptContext)
+  useLayoutEffect(
+    () => part.mount(host.current!, { conversation, transcript }),
+    [part, conversation, transcript],
+  )
   return <div className="contents" ref={host} />
 }
 

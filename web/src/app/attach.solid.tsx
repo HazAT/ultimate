@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { X } from '@lucide/solid'
-import { createSignal, For, Show } from 'solid-js'
+import { createSignal, For, onCleanup, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { FileChip } from '@/components/file-chip.solid.tsx'
@@ -24,6 +24,10 @@ export function createAttach(options: {
 }) {
   const [reading, setReading] = createSignal(false)
   let pending = false
+  let alive = true
+  onCleanup(() => {
+    alive = false
+  })
 
   function send(files: readonly File[], { upload: put, maxBytes }: Upload) {
     const fitting = files.filter((file) => file.size <= maxBytes)
@@ -75,11 +79,12 @@ export function createAttach(options: {
       const failed = results.flatMap((result) =>
         result.status === 'rejected' ? [result.reason] : [],
       )
+      if (!alive) return
       options.setImages((current) => [...current, ...added])
       if (failed.length) options.setError([...problems, ...failed.map(errorMessage)].join(' '))
     } finally {
       pending = false
-      setReading(false)
+      if (alive) setReading(false)
     }
   }
 

@@ -60,7 +60,10 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { act as act_, Activity, createElement as h, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ConversationScope } from '../../web/src/sdk/conversation-scope.tsx'
+import type { EntryRecord } from '@earendil-works/pi-durable'
+import { ConversationScope, TranscriptContext } from '../../web/src/sdk/conversation-scope.tsx'
+import { island } from '../../web/src/sdk/island.tsx'
+import { createTranscriptFrame, useTranscript } from '../../web/src/sdk/solid.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const effects: (() => void)[] = []
@@ -241,20 +244,47 @@ it('leaves no live editor when a React composer wrapper replaces the composer', 
   await registry.setLoaders({})
 })
 
+const entry = (conversation: number, text: string) =>
+  ({
+    id: conversation * 100,
+    conversationId: conversation,
+    kind: 'pi.user',
+    model: [{ role: 'user', content: text, timestamp: 0 }],
+  }) as unknown as EntryRecord
+
+function TranscriptProbe() {
+  const entries = useTranscript()
+  return (
+    <span data-probe>
+      {(entries().at(-1)?.model?.[0] as { content?: string } | undefined)?.content}
+    </span>
+  )
+}
+
 it('runs a composer a React wrapper portals, scopes or hides as one live editor', async () => {
   const [scope, hidden] = [{ id: undefined as number | undefined }, { on: false }]
   const rerender: { now?: () => void } = {}
+  const reactWarnings = vi.spyOn(console, 'error')
+  const outerFrame = createTranscriptFrame([entry(17, 'from seventeen')])
+  const innerFrame = createTranscriptFrame([entry(18, 'from eighteen')])
   await registry.setLoaders({
     '/extensions/wrap/web.tsx': async () => ({
       default: {
+        slots: {
+          'composer.actions': () => h('span', { 'data-react-action': '' }),
+          'composer.toolbar': island(TranscriptProbe),
+        },
         composer: function Wrap({ core }: { core: ReactNode }) {
           const [, tick] = useState(0)
           rerender.now = () => tick((n) => n + 1)
           const placed = h(Activity, { mode: hidden.on ? 'hidden' : 'visible', children: core })
           return createPortal(
             scope.id === undefined
-              ? placed
-              : h(ConversationScope, { id: scope.id as ConversationId, children: placed }),
+              ? h(TranscriptContext, { value: outerFrame.frame }, placed)
+              : h(ConversationScope, {
+                  id: scope.id as ConversationId,
+                  children: h(TranscriptContext, { value: innerFrame.frame }, placed),
+                }),
             document.body,
           )
         },
@@ -287,6 +317,7 @@ it('runs a composer a React wrapper portals, scopes or hides as one live editor'
   })
   await settle()
   flush()
+  expect(document.querySelector('[data-probe]')?.textContent).toBe('from eighteen')
   await enter('scoped')
   act_(() => {
     hidden.on = true
@@ -299,10 +330,14 @@ it('runs a composer a React wrapper portals, scopes or hides as one live editor'
   await settle()
   flush()
   expect(editors()).toHaveLength(1)
+  expect(document.querySelectorAll('[data-react-action]')).toHaveLength(1)
   expect(submits().map((post) => [post.path, post.body])).toEqual([
     ['/api/conversations/17/submit', { text: 'portaled', images: [] }],
     ['/api/conversations/18/submit', { text: 'scoped', images: [] }],
   ])
+  expect(
+    reactWarnings.mock.calls.filter(([message]) => String(message).includes('unmount')),
+  ).toEqual([])
   await registry.setLoaders({})
 })
 

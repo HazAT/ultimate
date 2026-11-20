@@ -40,7 +40,7 @@ function MountReact(props: { render: () => ReactNode }) {
     transcript: useContext(Transcript) ?? undefined,
   })
   const markEmpty = () => host.toggleAttribute('data-empty', !host.hasChildNodes())
-  onCleanup(root.unmount)
+  onCleanup(() => nextTurn(root.unmount))
   onSettled(() => {
     const children = new MutationObserver(markEmpty)
     children.observe(host, { childList: true })
@@ -61,24 +61,37 @@ const solidPart = (children: () => JSX.Element): SolidPart => {
   const scoped = useContext(ConversationScope)
   return {
     mount: (host, placed) => {
-      registerDelegatedRoot(host)
-      const dispose = runWithOwner(owner, () =>
-        createRoot((done) => {
-          insert(host, () =>
-            placed === undefined || placed === scoped ? (
-              children()
-            ) : (
-              <ConversationScope value={placed}>{children()}</ConversationScope>
-            ),
-          )
-          return done
-        }),
-      )
-      return () => {
-        dispose()
-        unregisterDelegatedRoot(host)
-        host.textContent = ''
+      const rescoped = placed.conversation !== undefined && placed.conversation !== scoped
+      const view = () =>
+        rescoped ? (
+          <ConversationScope value={placed.conversation!}>
+            <Transcript value={placed.transcript ?? null}>{children()}</Transcript>
+          </ConversationScope>
+        ) : (
+          children()
+        )
+      let dispose: (() => void) | undefined
+      const release = () => {
+        try {
+          dispose?.()
+        } finally {
+          unregisterDelegatedRoot(host)
+          host.textContent = ''
+        }
       }
+      registerDelegatedRoot(host)
+      try {
+        runWithOwner(owner, () =>
+          createRoot((done) => {
+            dispose = done
+            insert(host, view)
+          }),
+        )
+      } catch (failure) {
+        release()
+        throw failure
+      }
+      return release
     },
   }
 }
