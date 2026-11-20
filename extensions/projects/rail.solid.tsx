@@ -102,6 +102,7 @@ function ProjectsRail() {
     return writing() ?? (ack && answer === ack.over ? ack.pinned : (answer?.pinned ?? false))
   }
   const pin = async (next: boolean) => {
+    if (writing() !== undefined) return
     setWriting(next)
     await api
       .action(PinAction, { pinned: next })

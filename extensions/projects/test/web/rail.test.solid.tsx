@@ -17,6 +17,8 @@ const harness = vi.hoisted(() => ({
   slowPinReads: false,
   failPinWrites: false,
   failUnpins: false,
+  slowWrites: [] as (() => void)[],
+  holdWrites: false,
   failPinReads: false,
   release: [] as (() => void)[],
   wide: true,
@@ -42,6 +44,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ error: 'pin file is read-only' }, { status: 500 })
     if (args.pinned === undefined && harness.failPinReads)
       return Response.json({ error: 'pin file is unreadable' }, { status: 500 })
+    if (args.pinned !== undefined && harness.holdWrites)
+      await new Promise<void>((resolve) => harness.slowWrites.push(resolve))
     if (args.pinned !== undefined) {
       harness.pins.push({
         pinned: args.pinned,
@@ -108,6 +112,8 @@ beforeEach(async () => {
   harness.slowPinReads = false
   harness.failPinWrites = false
   harness.failUnpins = false
+  harness.holdWrites = false
+  harness.slowWrites.length = 0
   harness.failPinReads = false
   resize(true)
   harness.projects = [
@@ -247,6 +253,44 @@ it('holds a pressed control until its write settles, so a second press waits for
   expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
   expect(pinnedOpen(container)).toBe(true)
   await closeRail(container)
+})
+
+it('keeps an acknowledged pin when the unpin after it fails', async () => {
+  const container = await mount()
+  await advance(30_000)
+  harness.failPinReads = true
+  await openRail(container)
+  pinButton(container, 'Pin the projects rail open').click()
+  await advance(10)
+  harness.failUnpins = true
+  pinButton(container, 'Unpin the projects rail').click()
+  await advance(10)
+  await closeRail(container)
+  expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
+  expect(pinnedOpen(container)).toBe(true)
+})
+
+it('ignores a press on a reopened rail while the last write is pending', async () => {
+  const container = await mount()
+  await openRail(container)
+  pinButton(container, 'Pin the projects rail open').click()
+  await advance(10)
+  harness.holdWrites = true
+  pinButton(container, 'Unpin the projects rail').click()
+  await advance(10)
+  await closeRail(container)
+  await openRail(container)
+  pinButton(container, 'Pin the projects rail open').click()
+  await advance(10)
+  expect(harness.slowWrites).toHaveLength(1)
+  for (const release of harness.slowWrites.splice(0)) release()
+  await advance(10)
+  await closeRail(container)
+  expect(harness.pins).toEqual([
+    { pinned: true, source: 'person' },
+    { pinned: false, source: 'person' },
+  ])
+  expect(pinnedOpen(container)).toBe(false)
 })
 
 it('reads the machine-wide pin once, whichever conversation is shown', async () => {
