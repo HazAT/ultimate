@@ -72,11 +72,13 @@ function descendants(node: MdastNodes): MdastNodes[] {
 
 export function parse(markdown: string): { nodes: ElementContent[]; openFences: number[] } {
   const mdast = markdownTree.parse(markdown)
-  const last = markdown.trimEnd().length
+  const nothingAfter = (offset: number) => !/[^>\s]/.test(markdown.slice(offset))
   const openFences = descendants(mdast)
     .filter(
       (node): node is Code =>
-        node.type === 'code' && node.data?.fence === 'open' && node.position!.end.offset! >= last,
+        node.type === 'code' &&
+        node.data?.fence === 'open' &&
+        nothingAfter(node.position!.end.offset!),
     )
     .map((node) => node.position!.start.offset!)
   const tree = toHast.runSync(mdast, markdown)

@@ -110,6 +110,7 @@ it('tells a code block renderer only its own fence is unfinished', () => {
       ['open', 'open'],
     ])
     expect(probes(['```ts\n    ```'])).toEqual([['```', 'open']])
+    expect(probes(['> ```ts\n> one', '\n>'])).toEqual([['one', 'open']])
     expect(probes(['> ```ts\n> one', '\noutside\n```ts\ntwo'])).toEqual([
       ['one', 'done'],
       ['two', 'open'],
