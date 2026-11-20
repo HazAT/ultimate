@@ -115,7 +115,7 @@ export function AgentInput(props: SolidEntryProps) {
               <span>{message().kind}</span>
               <Button
                 aria-label={`Open source of ${message().kind} #${props.entry.id}`}
-                class="ml-auto flex items-center gap-1 hover:text-foreground disabled:opacity-50"
+                class="ml-auto flex items-center gap-1 text-[11px] font-normal hover:text-foreground disabled:opacity-50"
                 disabled={!sender()}
                 onClick={() => {
                   const conversation = id()

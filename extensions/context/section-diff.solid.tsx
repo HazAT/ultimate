@@ -35,7 +35,7 @@ function diffHunks(before: string, after: string) {
 export function SectionDiff(props: { before: string; after: string }) {
   const hunks = createMemo(() => diffHunks(props.before, props.after))
   return (
-    <div class="max-h-96 overflow-auto rounded-sm bg-terminal py-1 font-mono text-[11.5px] leading-[1.6]">
+    <div class="max-h-96 overflow-auto rounded-sm bg-terminal py-1 font-mono text-[11.5px]">
       <div class="grid min-w-max grid-cols-[auto_auto_auto_1fr]">
         <For each={hunks()}>
           {(hunk) => (
