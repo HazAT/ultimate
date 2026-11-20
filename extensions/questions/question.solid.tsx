@@ -123,13 +123,13 @@ export function QuestionItem(props: {
               onPointerEnter={showPreview}
             >
               <Button
-                aria-label={`Option ${choice().label} · ${name()}`}
+                aria-label={`Option ${index + 1} · ${choice().label} · ${name()}`}
                 aria-pressed={chosen() ? 'true' : 'false'}
                 disabled={props.disabled}
                 onClick={() => props.onSelect(index)}
                 onFocus={showPreview}
                 class={cn(
-                  'group/option flex min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug motion-safe:active:scale-[0.995] max-md:min-h-11',
+                  'group/option flex h-auto min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug font-normal whitespace-normal motion-safe:active:scale-[0.995] max-md:min-h-11',
                   ring,
                 )}
                 size={null}
@@ -195,7 +195,7 @@ export function QuestionItem(props: {
         disabled={props.disabled}
         onClick={() => props.onOpen()}
         class={cn(
-          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left',
+          'flex h-auto w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left font-normal whitespace-normal',
           ring,
           props.current ? 'cursor-default' : 'hover:bg-muted/40',
         )}

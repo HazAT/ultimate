@@ -71,7 +71,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('shows a forwarded screenshot as a zoomable thumbnail from the loaded transcript', () => {
+it('shows a forwarded screenshot as a zoomable thumbnail from the loaded transcript', async () => {
   const shot = {
     id: imageEntry,
     conversationId: sender,
@@ -94,7 +94,12 @@ it('shows a forwarded screenshot as a zoomable thumbnail from the loaded transcr
   expect(view.querySelector('img[alt="Forwarded image 1"]')?.getAttribute('src')).toBe(
     'data:image/png;base64,AAAA',
   )
-  expect(view.querySelector('.cursor-zoom-in')).not.toBeNull()
+  expect(view.querySelector('[role="dialog"][data-open]')).toBeNull()
+  view.querySelector<HTMLButtonElement>('button[aria-label="Zoom Forwarded image 1"]')!.click()
+  await settle()
+  expect(view.querySelector('[role="dialog"][data-open] img')?.getAttribute('src')).toBe(
+    'data:image/png;base64,AAAA',
+  )
   expect(client.api.history).not.toHaveBeenCalled()
 })
 
