@@ -138,3 +138,28 @@ it('opens the delivered message in the recipient conversation from the agent con
   expect(uiState.get(shellKeys.surface)).toBe('agent')
   expect(received).toHaveBeenCalledExactlyOnceWith({ conversation: recipient, entry }, 'agent')
 })
+
+it('names each bubble of one codemode script by its board message, so an agent can copy either', async () => {
+  const entry = {
+    id: parseEntryId(54),
+    conversationId: sender,
+    kind: 'pi.assistant',
+    model: [{ role: 'assistant', content: [], timestamp: 0 }],
+  } as unknown as EntryRecord
+  renderSolid(() => (
+    <>
+      <Bubble entry={entry} from={sender} message={message} running={false} text="One" />
+      <Bubble
+        entry={entry}
+        from={sender}
+        message={{ ...message, id: 2 }}
+        running={false}
+        text="Two"
+      />
+    </>
+  ))
+  flush()
+  await settle()
+  expect(agent.snapshot().filter((entry) => entry.label?.startsWith('Copy board'))).toHaveLength(2)
+  await expectDistinctAgentNames(agent)
+})

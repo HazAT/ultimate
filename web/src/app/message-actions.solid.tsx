@@ -15,6 +15,7 @@ export function MessageActions(props: {
   timestamp: number
   class?: string
   bubble?: boolean
+  name?: string
 }) {
   const extensions = useExtensions()
   const details = createMemo(() => messageItems(extensions(), 'messageDetails'))
@@ -43,7 +44,7 @@ export function MessageActions(props: {
         {formatTime(date())}
       </time>
       <Show when={props.text}>
-        <CopyButton label={`Copy message #${props.entry.id}`} value={props.text}>
+        <CopyButton label={`Copy ${props.name ?? `message #${props.entry.id}`}`} value={props.text}>
           <Copy />
         </CopyButton>
       </Show>

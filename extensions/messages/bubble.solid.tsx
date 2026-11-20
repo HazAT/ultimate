@@ -47,6 +47,7 @@ export function Bubble(props: {
       data-ui="message-card"
     >
       <BubbleHeader
+        message={props.message?.id}
         at={props.at ?? props.message?.at}
         entry={props.entry}
         from={props.from}
@@ -99,6 +100,7 @@ export function BubbleHeader(props: {
   entry?: EntryRecord
   at?: number
   text?: string
+  message?: number
 }) {
   const name = useStandingName(() => props.from)
   const accent = useAccentOf(() => props.from)
@@ -140,6 +142,7 @@ export function BubbleHeader(props: {
             bubble
             class="ml-auto min-w-0 flex-nowrap justify-end overflow-hidden whitespace-nowrap"
             entry={entry()}
+            name={props.message === undefined ? undefined : `board message #${props.message}`}
             text={props.text ?? ''}
             timestamp={time()}
           />
