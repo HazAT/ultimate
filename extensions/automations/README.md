@@ -54,7 +54,8 @@ override either. Enabled automations add a line each to the prompt, such as `whe
 - `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
   scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
   New ids are `A<n>`; project scripts use slugs.
-- `update {id, …}` may switch between schedule, event and condition; a script stays a script.
+- `update {id, …}` may switch between schedule, event and condition; a script stays a script. `subscribers` replaces
+  the whole list; `subscribe` / `unsubscribe` change one.
 - `pause` / `resume`; `run` fires now, or relaunches a script; `runs {id}`; `abort {id, runId}`; `log {id, lines?}`
   (default 50, at most 2000); `subscribe` / `unsubscribe {id, to?}` (default the caller); `escalate {id, reason}`;
   `delete` keeps files and conversations.

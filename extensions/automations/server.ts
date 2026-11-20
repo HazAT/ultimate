@@ -170,6 +170,9 @@ function backend(host: ExtensionHost) {
     }
     throw new Error('subscribers must be #id or @name')
   }
+  const resolveAll = async (values: unknown[]) => [
+    ...new Set(await Promise.all(values.map(subscriber))),
+  ]
   async function prepareScript(args: Args, caller?: ConversationId): Promise<Prepared> {
     if (args.action === 'create') {
       if (!caller) throw new Error('create requires a caller conversation')
@@ -473,8 +476,6 @@ function backend(host: ExtensionHost) {
       if (args.ask !== undefined) required(args.ask, 'ask')
       if (!args.prompt && !args.subscribers?.length && !caller && args.scope !== 'project')
         throw new Error('At least one of prompt or subscribers is required')
-      if (args.subscribers !== undefined && !Array.isArray(args.subscribers))
-        throw new Error('subscribers must be #id or @name')
       if (args.key !== undefined && (typeof args.key !== 'string' || !args.key.trim()))
         throw new Error('key must be a non-empty string')
     }
@@ -500,6 +501,8 @@ function backend(host: ExtensionHost) {
       if (!target || !(await host.harness().conversation(target, BACKGROUND_CONTEXT)))
         throw new Error(`Unknown of: ${c.of}`)
     }
+    if (args.subscribers !== undefined && !Array.isArray(args.subscribers))
+      throw new Error('subscribers must be #id or @name')
     if (args.name !== undefined) required(args.name, 'name')
     const removesPromptRun = () => args.action !== 'create' && args.prompt === ''
     if (args.prompt !== undefined && !removesPromptRun()) required(args.prompt, 'prompt')
@@ -535,9 +538,7 @@ function backend(host: ExtensionHost) {
     if (existingKeyedCreate) return { keyed: true }
     await validate(args, caller)
     if (args.action === 'create') {
-      const subscribers = args.subscribers?.length
-        ? [...new Set(await Promise.all(args.subscribers.map(subscriber)))]
-        : undefined
+      const subscribers = args.subscribers?.length ? await resolveAll(args.subscribers) : undefined
       const prepared: Prepared = {
         ...(args.ask !== undefined ? await prepareScript(args, caller) : {}),
         ...(subscribers ? { subscribers } : {}),
@@ -551,6 +552,8 @@ function backend(host: ExtensionHost) {
     }
     if (args.action === 'events') return {}
     const prepared: Prepared = await prepareScript(args, caller)
+    if (args.action === 'update' && args.subscribers)
+      prepared.subscribers = await resolveAll(args.subscribers)
     const condition =
       args.condition ??
       (args.action === 'resume'
@@ -639,6 +642,7 @@ function backend(host: ExtensionHost) {
         if (args.prompt) a.prompt = required(args.prompt, 'prompt')
         else delete a.prompt
       }
+      if (args.action === 'update' && prepared.subscribers) a.subscribers = prepared.subscribers
       reachesSomeone(a)
       if (args.schedule !== undefined) {
         delete a.event
