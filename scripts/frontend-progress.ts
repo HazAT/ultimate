@@ -1,14 +1,5 @@
-import { constants } from 'node:fs'
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  writeFile,
-} from 'node:fs/promises'
+import { constants, renameSync } from 'node:fs'
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
@@ -171,11 +162,7 @@ function assertManualPause(database: string) {
   }
 }
 
-async function serve(
-  home: string,
-  agentDir: string,
-  use: (url: string, home: string) => Promise<unknown>,
-) {
+async function serve(home: string, agentDir: string, use: (url: string) => Promise<unknown>) {
   const userHome = join(home, 'user')
   await mkdir(join(userHome, '.ultimate'), { recursive: true })
   await writeFile(join(userHome, '.ultimate/onboarding.json'), '{"firstRunDone":true}')
@@ -222,7 +209,7 @@ async function serve(
       ready,
       () => new Error(`No server after ${readyMs} ms:\n${output}`),
     )
-    return await use(url, home)
+    return await use(url)
   } finally {
     stops.delete(stopOnInterrupt)
     if (group.child.pid) await (stopping ?? stop())
@@ -274,10 +261,10 @@ function measureStream(home: string, agentDir: string) {
 }
 
 function measurePreviews(home: string, agentDir: string) {
-  return serve(home, agentDir, async (url, served) => {
-    await writeFile(join(served, 'benchmark-host'), url)
+  return serve(home, agentDir, async (url) => {
+    await writeFile(join(home, 'benchmark-host'), url)
     return JSON.parse(
-      await node(join(here, 'scripts/preview-bench.ts'), [served, '--runs', String(runs)]),
+      await node(join(here, 'scripts/preview-bench.ts'), [home, '--runs', String(runs)]),
     ) as unknown
   })
 }
@@ -365,7 +352,7 @@ const staged = `${progressFile}.${process.pid}`
 try {
   await writeFile(staged, `${JSON.stringify(progress, null, 2)}\n`)
   stage()
-  await rename(staged, progressFile)
+  renameSync(staged, progressFile)
 } finally {
   await rm(staged, { force: true })
 }
