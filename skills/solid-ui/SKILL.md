@@ -189,6 +189,10 @@ ui-sdk:
   `open`, before the modal makes the page inert, and write to that element's own conversation
   (`dataset.conversation`). Focusing in `onOpenChangeComplete` loses to the SDK's own return to the trigger.
 - The installed Solid SDK documents agent permissions in `docs/agents.md#permissions`.
+- A Solid dialog opened from a React Radix modal (Get ready's Connect, an editor's Configure) sits under the modal's
+  focus trap and pointer lock. The opener steps aside while that one child is open (keyed on the child's dialog id, not
+  on any open dialog: a stale flag would hide it) and restores focus to its button
+  (`extensions/onboarding/pages.tsx`, `extensions/automations/form.solid.tsx`).
 - Tooltip keeps its content mounted (hidden) so it can name an icon-only trigger; keyboard focus opens it at once.
 - Packages shipping raw JSX under the `solid` condition (ui-sdk, `@lucide/solid`) belong in the Solid plugin's `include`
   in `vite.config.ts`; delete `node_modules/.vitest-cache` after changing it.
@@ -229,6 +233,8 @@ Tooling:
   write). For keyboard focus on a Tooltip, dispatch a Tab `keydown` before `.focus()`. Modal Tab wrapping, inertness
   and Enter submitting a form need a real browser. `switchConversation` and `showSurface` read `matchMedia`: stub it
   with `vi.stubGlobal` in a test that navigates.
+- **Who wrote it, in a preview:** a page the browser tool drives counts every write as the agent's, clicks and keys
+  included. Prove a person's attribution in a jsdom test or by the user's own click, not through the browser tool.
 - **Whole page:** the browser tool's `ui` steps (`snapshot`, `query`, `act`) wait for the first render and every
   mounted read's first answer, or its first network failure (it stays unsettled): ready to interact does not mean the
   server answered. A change is recorded only when it reaches stored state (`ui.changed`, see
