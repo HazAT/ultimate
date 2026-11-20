@@ -72,26 +72,34 @@ const linksOf = (renderers: readonly Rendered[]): Link[] => {
   return links
 }
 
+const sameLinks = (a: readonly Link[], b: readonly Link[]) =>
+  a.length === b.length &&
+  a.every(
+    (link, index) =>
+      link.solid === b[index].solid &&
+      link.run.length === b[index].run.length &&
+      link.run.every(
+        (item, at) =>
+          item.component === b[index].run[at].component &&
+          item.version === b[index].run[at].version,
+      ),
+  )
+
 export function Contributed(props: {
   renderers: readonly Rendered[]
   props: Props
   core: () => JSX.Element
   fallback: Fallback
 }) {
-  const links = createMemo(() => linksOf(props.renderers))
+  const links = createMemo(() => linksOf(props.renderers), { equals: sameLinks })
   const wrap = (index: number): JSX.Element => {
     if (index < 0) return props.core()
     const link = untrack(links)[index]
     const inner = () => wrap(index - 1)
     if (!link.solid) {
       const run = link.run
-      return (
-        <MountReact
-          render={() =>
-            chain(run, { ...props.props }, (<SolidHost>{inner()}</SolidHost>) as HTMLElement)
-          }
-        />
-      )
+      const core = (<SolidHost>{inner()}</SolidHost>) as HTMLElement
+      return <MountReact render={() => chain(run, { ...props.props }, core)} />
     }
     const Solid = link.solid
     return (
@@ -139,17 +147,8 @@ export function RenderedPoint<Input extends object>(props: {
   input: Input
   children: JSX.Element
 }) {
-  return (
-    <MountReact
-      render={() =>
-        renderedPoint(
-          props.point,
-          { ...props.input },
-          (<SolidHost>{props.children}</SolidHost>) as HTMLElement,
-        )
-      }
-    />
-  )
+  const core = (<SolidHost>{props.children}</SolidHost>) as HTMLElement
+  return <MountReact render={() => renderedPoint(props.point, { ...props.input }, core)} />
 }
 
 export function useProvided<Input, Value>(
