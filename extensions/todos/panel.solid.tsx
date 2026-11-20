@@ -61,7 +61,7 @@ export function TodoList(props: { inbox: number }) {
   const start = (todo: Todo, source: string) =>
     run(
       (async () => {
-        const id = await writingAs(source, () => api.action(StandingAction, { name: 'ultimate' }))
+        const id = await api.action(StandingAction, { name: 'ultimate' })
         events.emit('ultimate:sent', { conversationId: id })
         await writingAs(source, () =>
           api.submit(

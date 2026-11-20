@@ -82,27 +82,32 @@ it('hands React props to the Solid component and updates them without a remount'
 
 it('drops a prop React stops passing, and a scope remount starts from the props of that render', () => {
   const mounts = vi.fn<() => void>()
-  const Label = island((props: { note?: string }) => {
+  const setup: string[] = []
+  const stale = () => 'old'
+  const Label = island((props: { note?: string; toString?: () => string }) => {
     const scope = useContext(ConversationScope)
+    const first = { ...props }
+    setup.push(`${scope}:${first.note}`)
     onSettled(mounts)
     return (
       <span>
         {scope}:{props.note ?? 'none'}
+        {props.toString === stale ? '+stale' : ''}
       </span>
     )
   })
   const container = document.createElement('div')
   document.body.append(container)
   const react = createRoot(container)
-  const render = (conversation: number, props: { note?: string }) =>
+  const render = (conversation: number, props: { note?: string; toString?: () => string }) =>
     act(() =>
       react.render(
         h(ConversationIdContext, { value: conversation as ConversationId }, h(Label, props)),
       ),
     )
 
-  render(1, { note: 'a' })
-  expect(container.textContent).toBe('1:a')
+  render(1, { note: 'a', toString: stale })
+  expect(container.textContent).toBe('1:a+stale')
   render(1, {})
   flush()
   expect(container.textContent).toBe('1:none')
@@ -110,6 +115,7 @@ it('drops a prop React stops passing, and a scope remount starts from the props 
   render(2, { note: 'b' })
   expect(container.textContent).toBe('2:b')
   expect(mounts).toHaveBeenCalledTimes(2)
+  expect(setup).toEqual(['1:a', '2:b'])
 
   act(() => react.unmount())
   container.remove()

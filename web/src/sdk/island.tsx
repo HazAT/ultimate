@@ -1,7 +1,7 @@
 import { render } from '@solidjs/web'
 import { createComponent, createStore } from 'solid-js'
 import type { Component } from 'solid-js'
-import { useContext, useEffect, useRef } from 'react'
+import { useContext, useEffect, useEffectEvent, useRef } from 'react'
 import { ConversationIdContext } from './conversation-scope.tsx'
 import { ExtensionNameContext } from './hooks.ts'
 import { ConversationScope, ExtensionName } from './solid.ts'
@@ -20,15 +20,14 @@ export function island<P extends object = Record<string, never>>(component: Comp
     const host = useRef<HTMLDivElement>(null)
     const extension = useContext(ExtensionNameContext) ?? null
     const conversation = useContext(ConversationIdContext) ?? null
-    const latest = useRef(props as Props)
-    latest.current = props as Props
+    const committed = useEffectEvent(() => ({ ...(props as Props) }))
     const live = useRef<(next: Props) => void>(undefined)
     useEffect(() => live.current?.(props as Props))
     useEffect(() => {
-      const [store, setStore] = createStore<Props>({ ...latest.current })
+      const [store, setStore] = createStore<Props>(committed())
       live.current = (next) =>
         setStore((draft) => {
-          for (const key of Object.keys(draft)) if (!(key in next)) delete draft[key]
+          for (const key of Object.keys(draft)) if (!Object.hasOwn(next, key)) delete draft[key]
           Object.assign(draft, next)
         })
       const dispose = render(
