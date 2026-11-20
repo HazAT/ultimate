@@ -38,6 +38,7 @@ export const SeedState = defineDoc<{
   branches?: Record<string, ConversationId>
   scripts?: string[]
   questions?: string[]
+  announce?: true
 }>({
   kind: 'dream.seed',
   checkpointWhen: () => false,
@@ -205,6 +206,14 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
       names.add(name)
     }
     const branches = await carriedBranches(host, tx, ultimate)
+    const standingNames = new Map(
+      Object.entries(await tx.doc(Standing, ROOT_CONVERSATION_ID)).map(([name, id]) => [
+        id,
+        `@${name}`,
+      ]),
+    )
+    const portable = (subscriber: ConversationId | string) =>
+      typeof subscriber === 'string' ? subscriber : (standingNames.get(subscriber) ?? subscriber)
     const watchers = automations
       .filter((item) => item.enabled && item.script)
       .map(({ id, scope, name, script, prompt, agent, model, thinking, subscribers, folder }) => ({
@@ -214,10 +223,8 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
         ask: script!.ask,
         once: script!.once,
         ...(script!.secrets?.length ? { secrets: script!.secrets } : {}),
-        ...(subscribers?.some((s) => typeof s === 'number')
-          ? { subscribers: subscribers.filter((s): s is ConversationId => typeof s === 'number') }
-          : {}),
-        ...(folder ? { folder } : {}),
+        ...(subscribers?.length ? { subscribers: subscribers.map(portable) } : {}),
+        ...(folder && ['running', 'investigating'].includes(script!.state) ? { folder } : {}),
         ...(prompt ? { prompt } : {}),
         ...(agent ? { agent } : {}),
         ...(model ? { model } : {}),
@@ -280,7 +287,6 @@ export async function applySeed(host: ExtensionHost) {
     return undefined
   }
   if (state?.applied === undefined) {
-    const ultimate = await host.need(SubagentsApi).standing('ultimate', context)
     await harness.commit(async function seedDocumentsAndEntry(tx) {
       const receipt = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
       if (receipt.applied !== undefined) return
@@ -291,6 +297,10 @@ export async function applySeed(host: ExtensionHost) {
       const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
       const carried: Seed['todos'] = [
         ...seed.todos,
+        ...(seed.branches === undefined ? seed.questions : []).map(({ ref, text }) => ({
+          owner: 'user' as const,
+          text: `Open question (${seed.from.name}${ref}): ${text}`,
+        })),
         ...seed.scripts
           .filter((item) => item.scope !== 'project' && !item.folder)
           .map(({ id, name, ask, prompt, agent }) => ({
@@ -305,20 +315,8 @@ export async function applySeed(host: ExtensionHost) {
           })),
       ]
       for (const item of carried) todos.items.push({ ...item, id: todos.next++, at: Date.now() })
-      await deliver(host, tx, ultimate, {
-        type: 'input',
-        requestId: `dream.chapter:${host.chapter.name}`,
-        kind: 'dream.chapter',
-        data: {
-          from: seed.from,
-          number: host.chapter.number,
-          name: host.chapter.name,
-          learned: seed.learned,
-          carried: seed.counts,
-        },
-        content: chapterText(host, seed),
-      })
       receipt.applied = Date.now()
+      receipt.announce = true
     }, context)
   }
   const signal = new AbortController().signal
@@ -339,73 +337,120 @@ export async function applySeed(host: ExtensionHost) {
       if (!saved.automations.includes(automation.name)) saved.automations.push(automation.name)
     }, context)
   }
-  const branches = await carryBranches(host, seed)
-  const conversationOf = (id: ConversationId) => branches[String(id)]
-  for (const script of seed.scripts) {
+  const carriesWork = seed.branches !== undefined
+  const branches = carriesWork ? await carryBranches(host, seed) : {}
+  const ultimate = await host.need(SubagentsApi).standing('ultimate', context)
+  const subscriberHere = (subscriber: ConversationId | string) =>
+    typeof subscriber === 'string'
+      ? subscriber
+      : subscriber === seed.continues.conversation
+        ? '@ultimate'
+        : branches[String(subscriber)]
+  const leaveTodo = async (tx: Tx, text: string) => {
+    const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
+    todos.items.push({ owner: 'ultimate', text, id: todos.next++, at: Date.now() })
+  }
+  for (const script of carriesWork ? seed.scripts : []) {
     if (script.scope === 'project' || !script.folder) continue
-    if (
-      (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.scripts?.includes(
-        script.id,
+    const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
+    if (done?.scripts?.includes(script.id)) continue
+    const subscribers = [
+      ...new Set((script.subscribers ?? []).flatMap((s) => subscriberHere(s) ?? [])),
+    ]
+    const failure =
+      !script.prompt && !subscribers.length
+        ? 'none of its subscribers came along'
+        : await host
+            .invoke(
+              'automations',
+              'create',
+              {
+                name: script.name,
+                ask: script.ask,
+                once: script.once ?? true,
+                ...(script.secrets ? { secrets: script.secrets } : {}),
+                ...(script.prompt ? { prompt: script.prompt } : {}),
+                ...(script.agent ? { agent: script.agent } : {}),
+                ...(script.model ? { model: script.model } : {}),
+                ...(script.thinking ? { thinking: script.thinking } : {}),
+                ...(subscribers.length ? { subscribers } : {}),
+                adopt: script.folder,
+                key: `seed:${host.chapter.name}:script:${script.id}`,
+              },
+              signal,
+              ultimate,
+            )
+            .then(
+              () => undefined,
+              (error: unknown) => String(error),
+            )
+    const key = `seed:${host.chapter.name}:script:${script.id}`
+    const createdButLaunchFailed =
+      !!failure &&
+      ((await host.invoke('automations', 'list', null, signal)) as Automation[]).some(
+        (item) => item.key === key,
       )
-    )
-      continue
-    const subscribers = (script.subscribers ?? []).flatMap((id) => conversationOf(id) ?? [])
-    const runsSomething = !!script.prompt || subscribers.length > 0
-    if (runsSomething)
-      await host
-        .invoke(
-          'automations',
-          'create',
-          {
-            name: script.name,
-            ask: script.ask,
-            once: script.once ?? true,
-            ...(script.secrets ? { secrets: script.secrets } : {}),
-            ...(script.prompt ? { prompt: script.prompt } : {}),
-            ...(script.agent ? { agent: script.agent } : {}),
-            ...(script.model ? { model: script.model } : {}),
-            ...(script.thinking ? { thinking: script.thinking } : {}),
-            ...(subscribers.length ? { subscribers } : {}),
-            adopt: script.folder,
-            key: `seed:${host.chapter.name}:script:${script.id}`,
-          },
-          signal,
-          await host.need(SubagentsApi).standing('ultimate', context),
-        )
-        .catch((error: unknown) =>
-          host.notice(`Chapter seed: script ${script.id} (${script.name}): ${String(error)}`),
-        )
     await harness.commit(async (tx) => {
       const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
-      saved.scripts = [...new Set([...(saved.scripts ?? []), script.id])]
+      if (saved.scripts?.includes(script.id)) return
+      saved.scripts = [...(saved.scripts ?? []), script.id]
+      if (failure && !createdButLaunchFailed)
+        await leaveTodo(
+          tx,
+          `Recreate script ${script.id} (${script.name}), not carried (${failure}): ${script.ask} · its files: ${script.folder}`,
+        )
     }, context)
   }
-  for (const question of seed.questions) {
-    if (
-      (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.questions?.includes(
-        question.ref,
+  for (const question of carriesWork ? seed.questions : []) {
+    const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
+    if (done?.questions?.includes(question.ref)) continue
+    const asker = (question.from !== undefined && branches[String(question.from)]) || ultimate
+    const failure = await host
+      .need(MessagesApi)
+      .send(
+        asker,
+        {
+          to: 'user',
+          reply: true,
+          text: `Asked before the new chapter (${seed.from.name}${question.ref}), still open:\n\n${question.text}`,
+          ...(question.questions ? { questions: question.questions } : {}),
+        },
+        `seed:${host.chapter.name}:question:${question.ref}`,
+        context,
       )
-    )
-      continue
-    const asker =
-      (question.from !== undefined ? conversationOf(question.from) : undefined) ??
-      (await host.need(SubagentsApi).standing('ultimate', context))
-    await host.need(MessagesApi).send(
-      asker,
-      {
-        to: 'user',
-        reply: true,
-        text: `Asked before the new chapter (${seed.from.name}${question.ref}), still open:\n\n${question.text}`,
-        ...(question.questions ? { questions: question.questions } : {}),
+      .then(
+        () => undefined,
+        (error: unknown) => String(error),
+      )
+    await harness.commit(async (tx) => {
+      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+      if (saved.questions?.includes(question.ref)) return
+      saved.questions = [...(saved.questions ?? []), question.ref]
+      if (failure)
+        await leaveTodo(
+          tx,
+          `Ask the user again (${seed.from.name}${question.ref}, not carried: ${failure}): ${question.text}`,
+        )
+    }, context)
+  }
+  await harness.commit(async (tx) => {
+    const receipt = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+    if (!receipt.announce) return
+    delete receipt.announce
+    await deliver(host, tx, ultimate, {
+      type: 'input',
+      requestId: `dream.chapter:${host.chapter.name}`,
+      kind: 'dream.chapter',
+      data: {
+        from: seed.from,
+        number: host.chapter.number,
+        name: host.chapter.name,
+        learned: seed.learned,
+        carried: seed.counts,
       },
-      `seed:${host.chapter.name}:question:${question.ref}`,
-      context,
-    )
-    await harness.commit(async (tx) => {
-      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
-      saved.questions = [...new Set([...(saved.questions ?? []), question.ref])]
-    }, context)
-  }
+      content: chapterText(host, seed),
+    })
+  }, context)
   harness.resume()
   return seed
 }
@@ -418,7 +463,7 @@ function carriedPrompt(seed: Seed, branch: Seed['branches'][number]) {
     ...(branch.git
       ? [
           '',
-          `Its work was on git branch \`${branch.git}\`: switch your workspace to it (\`git switch ${branch.git}\`, or merge it) before you change anything.`,
+          `Its work is on git branch \`${branch.git}\` (its old worktree may still hold it): merge it into your workspace (\`git merge ${branch.git}\`) before you change anything.`,
         ]
       : []),
     '',
@@ -446,25 +491,39 @@ async function carryBranches(host: ExtensionHost, seed: Seed) {
     const root =
       (await harness.snapshot(Roots, ROOT_CONVERSATION_ID, context))?.roots[0] ??
       ROOT_CONVERSATION_ID
-    const { id } =
+    const forked =
       forkCommittedBeforeItsReceipt !== undefined
         ? { id: forkCommittedBeforeItsReceipt }
-        : await lineage.branch(
-            {
-              from: root,
-              prompt,
-              title: branch.title.slice(0, 60),
-              isolated: branch.git !== undefined,
-              ...(branch.model ? { model: branch.model } : {}),
-              ...(branch.thinking ? { thinkingLevel: branch.thinking } : {}),
-              deliver: false,
-            },
-            context,
-          )
+        : await lineage
+            .branch(
+              {
+                from: root,
+                prompt,
+                title: branch.title.slice(0, 60),
+                isolated: branch.git !== undefined,
+                ...(branch.model ? { model: branch.model } : {}),
+                ...(branch.thinking ? { thinkingLevel: branch.thinking } : {}),
+                deliver: false,
+              },
+              context,
+            )
+            .catch((error: unknown) => String(error))
     await harness.commit(async (tx) => {
       const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
       saved.branches ??= {}
       if (saved.branches[String(branch.id)] !== undefined) return
+      if (typeof forked === 'string') {
+        saved.branches[String(branch.id)] = 0 as ConversationId
+        const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
+        todos.items.push({
+          owner: 'ultimate',
+          text: `Start a branch again for ${seed.from.name}#${branch.id} (${branch.title}), not carried: ${forked}`,
+          id: todos.next++,
+          at: Date.now(),
+        })
+        return
+      }
+      const { id } = forked
       saved.branches[String(branch.id)] = id
       if (branch.instructions) await configure(tx, id, { instructions: branch.instructions })
       if (branch.label) (await tx.doc(host.metadata, id)).label = branch.label
@@ -477,5 +536,6 @@ async function carryBranches(host: ExtensionHost, seed: Seed) {
       })
     }, context)
   }
-  return (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.branches ?? {}
+  const carried = (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.branches ?? {}
+  return Object.fromEntries(Object.entries(carried).filter(([, id]) => id))
 }

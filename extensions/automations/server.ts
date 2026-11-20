@@ -270,6 +270,7 @@ function backend(host: ExtensionHost) {
       )
     }
     if ((args.action === 'resume' || args.action === 'run') && sub.script) {
+      if (sub.script.adopt) await scripts.adopt(sub.id, sub.script.adopt)
       try {
         await access(runPath(sub), constants.X_OK)
       } catch {
@@ -390,6 +391,7 @@ function backend(host: ExtensionHost) {
           conversationId,
           state: args.adopt ? 'running' : 'writing',
           ...(args.secrets ? { secrets: args.secrets } : {}),
+          ...(args.adopt ? { adopt: args.adopt } : {}),
         },
         subscribers,
         ...runProfile,
@@ -400,7 +402,7 @@ function backend(host: ExtensionHost) {
         ...owed,
       }
       state.automations[id] = sub
-      if (args.adopt) return { result: sub, effect: { id, action: 'resume', adopt: args.adopt } }
+      if (args.adopt) return { result: sub, effect: { id, action: 'resume' } }
       await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
       return { result: sub }
     }
@@ -482,6 +484,7 @@ function backend(host: ExtensionHost) {
         throw new Error('key must be a non-empty string')
       if (args.adopt !== undefined && (args.ask === undefined || args.scope === 'project'))
         throw new Error('adopt is only for user scripts')
+      if (args.adopt !== undefined) scripts.adoptable(args.adopt)
     }
     if (args.event !== undefined) {
       const event = TRIGGER_EVENTS.find(({ name }) => name === args.event!.name)

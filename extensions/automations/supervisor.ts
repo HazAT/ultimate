@@ -8,7 +8,7 @@ import type {
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { access, appendFile, cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -548,6 +548,7 @@ export function supervisor(
     const recorded = await readPid(id)
     if (recorded) await cleanup(id, recorded)
     const dir = folder(id)
+    if (sub.script!.adopt) await adopt(id, sub.script!.adopt)
     await mkdir(join(dir, 'state'), { recursive: true })
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -677,7 +678,14 @@ export function supervisor(
   function resetFailuresOnSuccessfulFire(sub: Automation) {
     delete sub.script!.failures
   }
+  const automationsRoot = () => join(host.userHome, '.ultimate/automations')
+  function adoptable(from: string) {
+    const inside = relative(automationsRoot(), resolve(from))
+    if (!inside || inside.startsWith('..') || isAbsolute(inside))
+      throw new Error(`adopt must name a script folder under ${automationsRoot()}`)
+  }
   async function adopt(id: string, from: string) {
+    adoptable(from)
     const dir = folder(id)
     await mkdir(dir, { recursive: true })
     await cp(join(from, 'run'), join(dir, 'run'), { force: false, errorOnExist: false })
@@ -692,7 +700,6 @@ export function supervisor(
   async function effect(value: Effect) {
     if (value.action === 'resume') {
       try {
-        if (value.adopt) await adopt(value.id, value.adopt)
         await launch(value.id, value.previousPid)
       } catch (error) {
         await finish(value.id, undefined, null, undefined, String(error))
@@ -800,6 +807,8 @@ export function supervisor(
     agentFor,
     projectDir,
     folder,
+    adoptable,
+    adopt,
     manifest,
     committedManifest,
     snapshot,
