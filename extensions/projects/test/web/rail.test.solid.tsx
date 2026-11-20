@@ -14,6 +14,7 @@ const harness = vi.hoisted(() => ({
   calls: [] as string[],
   projects: [] as RunningProject[],
   slowPinReads: false,
+  failPinWrites: false,
   release: [] as (() => void)[],
   wide: true,
 }))
@@ -31,6 +32,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     harness.calls.push(action)
     if (action === 'list') return Response.json({ result: harness.projects })
     const { args } = JSON.parse(init!.body as string) as { args: { pinned?: boolean } }
+    if (args.pinned !== undefined && harness.failPinWrites)
+      return Response.json({ error: 'pin file is read-only' }, { status: 500 })
     if (args.pinned !== undefined) {
       harness.pins.push({
         pinned: args.pinned,
@@ -95,6 +98,7 @@ beforeEach(async () => {
   harness.calls.length = 0
   harness.pinned = false
   harness.slowPinReads = false
+  harness.failPinWrites = false
   resize(true)
   harness.projects = [
     { name: 'ultimate', url: 'http://127.0.0.1:4747', current: true, busy: 1 },
@@ -144,9 +148,9 @@ it('lists each running project as a link with its state, opens on hover, and an 
   )
 
   rail(container)!.dispatchEvent(new MouseEvent('mouseenter'))
-  await advance(100)
+  await advance(149)
   expect(container.textContent).not.toContain('working')
-  await advance(50)
+  await advance(1)
   expect(container.textContent).toContain('2 for you · 1 working')
   await expectDistinctAgentNames(agent)
 
@@ -160,38 +164,66 @@ it('lists each running project as a link with its state, opens on hover, and an 
   expect(
     container.querySelector('[aria-label="Unpin the projects rail"]')?.getAttribute('aria-pressed'),
   ).toBe('true')
+  container.querySelector<HTMLButtonElement>('[aria-label="Unpin the projects rail"]')!.click()
+  await advance(10)
+  expect(harness.pins.at(-1)).toEqual({ pinned: false, source: 'person' })
 })
 
-it('keeps a pin while a shared-pin read that started before it is still answering', async () => {
-  const container = await mount()
-  harness.slowPinReads = true
-  visibility = 'hidden'
-  document.dispatchEvent(new Event('visibilitychange'))
-  visibility = 'visible'
-  document.dispatchEvent(new Event('visibilitychange'))
-  await advance(10)
+const pinButton = (container: HTMLElement, label: string) =>
+  container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+const pinnedOpen = (container: HTMLElement) => rail(container)!.className.includes('w-68')
+
+async function openRail(container: HTMLElement) {
   rail(container)!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
   await advance(10)
-  container.querySelector<HTMLButtonElement>('[aria-label="Pin the projects rail open"]')!.click()
-  await advance(10)
+}
+async function closeRail(container: HTMLElement) {
   rail(container)!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
   await advance(10)
-  expect(rail(container)!.className).toContain('w-68')
+}
+
+it('keeps a pin over a shared-pin read that was still answering when it was pressed', async () => {
+  harness.slowPinReads = true
+  const container = renderSolid(() => <Rail />)
+  await advance(100)
+  expect(harness.release).toHaveLength(1)
+  harness.slowPinReads = false
+  await openRail(container)
+  pinButton(container, 'Pin the projects rail open').click()
+  await advance(10)
+  await closeRail(container)
+  expect(pinnedOpen(container)).toBe(true)
 
   for (const release of harness.release.splice(0)) release()
   await advance(10)
   expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
-  expect(rail(container)!.className).toContain('w-68')
+  expect(pinnedOpen(container)).toBe(true)
 })
 
-it('polls only while the tab is shown, and asks again when it is', async () => {
+it('falls back to the stored pin when writing it fails', async () => {
+  const container = await mount()
+  harness.failPinWrites = true
+  await openRail(container)
+  pinButton(container, 'Pin the projects rail open').click()
+  await advance(10)
+  await closeRail(container)
+  expect(harness.pins).toEqual([])
+  expect(pinnedOpen(container)).toBe(false)
+
+  harness.failPinWrites = false
+  harness.pinned = true
+  await advance(30_000)
+  expect(pinnedOpen(container)).toBe(true)
+})
+
+it('polls the list every 4 s and the shared pin every 30 s, only while the tab is shown', async () => {
   visibility = 'hidden'
   harness.projects = harness.projects.slice(0, 1)
   const container = await mount()
   expect(container.querySelector('nav')).toBeNull()
-  const listed = calls('list')
+  const hidden = [calls('list'), calls('pin')]
   await advance(60_000)
-  expect(calls('list')).toBe(listed)
+  expect([calls('list'), calls('pin')]).toEqual(hidden)
 
   harness.projects = [
     ...harness.projects,
@@ -201,9 +233,15 @@ it('polls only while the tab is shown, and asks again when it is', async () => {
   document.dispatchEvent(new Event('visibilitychange'))
   await advance(10)
   expect(container.querySelectorAll('a[data-project]')).toHaveLength(2)
-  const shown = calls('list')
-  await advance(4_000)
-  expect(calls('list')).toBe(shown + 1)
+  expect([calls('list'), calls('pin')]).toEqual([hidden[0] + 1, hidden[1] + 1])
+  await advance(29_990)
+  expect([calls('list'), calls('pin')]).toEqual([hidden[0] + 8, hidden[1] + 2])
+
+  visibility = 'hidden'
+  document.dispatchEvent(new Event('visibilitychange'))
+  const stopped = [calls('list'), calls('pin')]
+  await advance(60_000)
+  expect([calls('list'), calls('pin')]).toEqual(stopped)
 })
 
 it('gives way to another extension’s rail and to a phone', async () => {
@@ -212,6 +250,9 @@ it('gives way to another extension’s rail and to a phone', async () => {
   resize(false)
   flush()
   expect(container.querySelector('nav')).toBeNull()
+  const suppressed = calls('list') + calls('pin')
+  await advance(60_000)
+  expect(calls('list') + calls('pin')).toBe(suppressed)
   resize(true)
   flush()
   expect(container.querySelector('nav')).not.toBeNull()
@@ -222,6 +263,9 @@ it('gives way to another extension’s rail and to a phone', async () => {
   })
   flush()
   expect(container.querySelector('nav')).toBeNull()
+  const beside = calls('list') + calls('pin')
+  await advance(60_000)
+  expect(calls('list') + calls('pin')).toBe(beside)
   await registry.setLoaders({})
 })
 
@@ -240,6 +284,8 @@ it('shows the opening bar after a click until the page is left, shown again, or 
 
   evalRow.click()
   flush()
-  await advance(15_000)
+  await advance(14_999)
+  expect(bar()).not.toBeNull()
+  await advance(1)
   expect(bar()).toBeNull()
 })

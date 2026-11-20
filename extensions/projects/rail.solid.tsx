@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { Pin, PinOff } from '@lucide/solid'
-import { createEffect, createMemo, createRoot, createSignal, For, onSettled, Show } from 'solid-js'
+import { createMemo, createRoot, createSignal, For, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
 import { api, cn, keepLast, prettyName, useAction, useExtensions, useViewport } from '@/sdk/solid'
@@ -85,15 +85,16 @@ function ProjectsRail() {
     { onError: keepLast, every: whileVisible(SHARED_PIN_POLL_MS) },
   )
   refetchWhenShown(list, shared)
-  const [pinnedHere, setPinnedHere] = createSignal<boolean>()
-  const stored = createMemo(() => shared.data()?.pinned)
-  createEffect(stored, (value) => {
-    if (value !== undefined) setPinnedHere(value)
-  })
-  const pinned = () => pinnedHere() ?? false
-  const pin = (next: boolean) => {
-    setPinnedHere(next)
-    return api.action(PinAction, { pinned: next }).catch(keepLast)
+  const [writing, setWriting] = createSignal<{ pinned: boolean }>()
+  const pinned = () => writing()?.pinned ?? shared.data()?.pinned ?? false
+  const pin = async (next: boolean) => {
+    const write = { pinned: next }
+    setWriting(write)
+    await api
+      .action(PinAction, write)
+      .then(() => shared.refetch())
+      .catch(keepLast)
+    if (writing() === write) setWriting()
   }
 
   const [hover, setHover] = createSignal(false)

@@ -152,15 +152,22 @@ it('opens the key’s Secrets row when the blocked mic is pressed', async ({ onT
   )
 })
 
-it('records for an agent and transcribes into the same composer', async () => {
+it('records for an agent and transcribes into the same composer, leaving the editor focused', async ({
+  onTestFinished,
+}) => {
   const container = await mount(8, { available: true })
+  const editor = document.body.appendChild(document.createElement('textarea'))
+  onTestFinished(() => editor.remove())
+  editor.focus()
   expectPointerDownPrevented(container, 'Voice input')
   await press('Voice input')
   expect(getUserMedia).toHaveBeenCalledTimes(1)
   expectPointerDownPrevented(container, 'Cancel recording')
   expectPointerDownPrevented(container, 'Stop and transcribe')
+  expect(document.activeElement).toBe(editor)
   await expectDistinctAgentNames(agent)
   await press('Stop and transcribe')
+  expect(document.activeElement).toBe(editor)
   expect(stopTrack).toHaveBeenCalledTimes(1)
   expect(harness.transcribe).toHaveBeenCalledExactlyOnceWith(
     {
