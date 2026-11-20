@@ -24,7 +24,7 @@ export function useTaskOf(
  * A task's key with its status dot; click shows its coordinator with the task open in its plan (`plan.open`). A
  * button: place it beside a row's button, not inside it.
  */
-export function TaskChip(props: { task: TaskLink; class?: string }) {
+export function TaskChip(props: { task: TaskLink; on?: string; class?: string }) {
   const [, setOpen] = useUiState<{ conversation: ConversationId; key: string } | null>(
     'plan.open',
     null,
@@ -35,7 +35,7 @@ export function TaskChip(props: { task: TaskLink; class?: string }) {
   }
   return (
     <Button
-      aria-label={`Open task #${props.task.coordinator}/${props.task.key}: ${props.task.title}`}
+      aria-label={`Open task #${props.task.coordinator}/${props.task.key}: ${props.task.title}${props.on ? ` (${props.on})` : ''}`}
       class={cn(
         'inline-flex shrink-0 items-center gap-1 rounded bg-muted/60 px-1.5 font-mono text-[10px] leading-4 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
         props.class,
@@ -58,7 +58,7 @@ export function TaskChip(props: { task: TaskLink; class?: string }) {
 }
 
 /** The chip of the task `conversation` works on, or nothing; plan provides it for `ConversationTaskChip`. */
-export function ConversationTaskChip(props: { conversation: ConversationId }) {
+export function ConversationTaskChip(props: { conversation: ConversationId; on: string }) {
   const task = useTaskOf(() => props.conversation)
-  return <Show when={task()}>{(link) => <TaskChip task={link()} />}</Show>
+  return <Show when={task()}>{(link) => <TaskChip on={props.on} task={link()} />}</Show>
 }

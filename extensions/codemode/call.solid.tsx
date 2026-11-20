@@ -240,7 +240,7 @@ export function CodemodeCall(props: SolidToolProps) {
           <ToolSection label="Returned">
             <JsonTree
               class="max-h-80 overflow-auto rounded-sm bg-terminal px-1.5 py-1.5"
-              name="Returned value"
+              name={`Returned value of call ${props.call.id.slice(-8)}`}
               value={details()?.value}
             />
           </ToolSection>

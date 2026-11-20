@@ -19,63 +19,44 @@ vi.mock('@/sdk/actions.ts', async (importOriginal) => {
 
 const agent = createAgent()
 
-it('lets an agent distinguish the two calls and open a child at its answer', async ({
+it('names each call to one child apart and opens the child at that call’s answer', async ({
   onTestFinished,
 }) => {
   const parent = parseConversationId(1)
-  const running = parseConversationId(12)
-  const finished = parseConversationId(34)
-  const base = {
-    name: 'subagent',
-    output: '',
-    images: [],
-    diagnostics: [],
-  } satisfies Partial<ToolCallView>
+  const child = parseConversationId(34)
+  const call = (id: string, entry: number, args: ToolCallView['args'], answerId?: number) => (
+    <div data-entry-id={entry}>
+      <SubagentCall
+        call={{
+          id,
+          name: 'subagent',
+          args,
+          status: 'done',
+          output: 'answer',
+          images: [],
+          diagnostics: [],
+          details: { conversationId: child, answerId },
+        }}
+        core={null}
+      />
+    </div>
+  )
   const navigated = vi.fn<(data: unknown) => void>()
   onTestFinished(events.on(sourceEvent, navigated))
-  const container = renderSolid(() => (
+  renderSolid(() => (
     <ConversationScope value={parent}>
-      <div data-entry-id="41">
-        <SubagentCall
-          call={{
-            ...base,
-            id: 'running',
-            args: { agent: 'scout', task: 'Read the guide' },
-            status: 'running',
-            details: { conversationId: running },
-          }}
-          core={null}
-        />
-      </div>
-      <div data-entry-id="42">
-        <SubagentCall
-          call={{
-            ...base,
-            id: 'finished',
-            args: { agent: 'worker', task: 'Count the sections' },
-            status: 'done',
-            details: { conversationId: finished, answerId: 17 },
-            output: 'Three sections',
-          }}
-          core={null}
-        />
-      </div>
+      {call('call-start1', 41, { agent: 'worker', task: 'Count the sections' }, 17)}
+      {call('call-steer2', 42, { action: 'message', id: 34, text: 'Also count lines' }, 23)}
     </ConversationScope>
   ))
-  expect(container.querySelector('[data-entry-id="41"]')?.textContent).toContain('scout')
-  expect(container.querySelector('[data-entry-id="42"]')?.textContent).toContain('worker')
   await expectDistinctAgentNames(agent)
-  const labels = agent
-    .snapshot()
-    .filter((entry) => !entry.offPage)
-    .map((entry) => entry.label)
-  expect(labels).toContain('Show conversation #12')
-  expect(labels).toContain('Show conversation #34')
-  const result = await agent.act({ steps: [{ ref: 'Show conversation #34', action: 'press' }] })
+  const result = await agent.act({
+    steps: [{ ref: 'Show conversation #34 (call l-steer2)', action: 'press' }],
+  })
   expect(result).toMatchObject({ ok: true })
-  expect(switchConversation).toHaveBeenCalledExactlyOnceWith(finished)
+  expect(switchConversation).toHaveBeenCalledExactlyOnceWith(child)
   expect(navigated).toHaveBeenCalledExactlyOnceWith({
-    target: { conversation: finished, entry: 17 },
+    target: { conversation: child, entry: 23 },
     back: { conversation: parent, entry: 42 },
   })
 })

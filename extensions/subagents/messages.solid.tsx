@@ -108,7 +108,10 @@ export function AgentInput(props: SolidEntryProps) {
                 <Sender label={sender()?.label} origin={message()} />
               </span>
               <Provided
-                input={{ conversation: message().sender }}
+                input={{
+                  conversation: message().sender,
+                  on: `${message().kind} #${props.entry.id}`,
+                }}
                 last
                 point={ConversationTaskChip}
               />

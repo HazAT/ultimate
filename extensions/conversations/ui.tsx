@@ -24,7 +24,8 @@ export const ConversationTask = definePoint<
 >('conversations.task')
 /**
  * The chip of the plan task `conversation` works on (`plan` provides it as `island(Chip)`); a Solid host renders it with
- * `Provided` from `@/sdk/parts.solid.tsx`. Nothing renders while it works on no task or plan is off.
+ * `Provided` from `@/sdk/parts.solid.tsx`, `on` naming where it sits (`call 3f2a`) so each chip's name is unique.
+ * Nothing renders while it works on no task or plan is off.
  */
 export { ConversationTaskChip } from './points.ts'
 /**

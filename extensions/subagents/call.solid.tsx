@@ -156,12 +156,18 @@ export function SubagentCall(props: SolidToolProps) {
           }
         />
         <Show when={childId()}>
-          {(id) => <Provided input={{ conversation: id() }} last point={ConversationTaskChip} />}
+          {(id) => (
+            <Provided
+              input={{ conversation: id(), on: `call ${call().id.slice(-8)}` }}
+              last
+              point={ConversationTaskChip}
+            />
+          )}
         </Show>
         <Show when={childId()}>
           {(child) => (
             <Button
-              aria-label={`Show conversation #${child()}`}
+              aria-label={`Show conversation #${child()} (call ${call().id.slice(-8)})`}
               class="mr-1 h-6 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
               onClick={(event) => {
                 const conversation = parentId()
