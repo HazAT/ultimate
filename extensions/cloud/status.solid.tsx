@@ -188,7 +188,7 @@ function CloudPopover(props: { state: CloudState; refetch: () => Promise<unknown
       : props.state.lastError
 
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => void (open && setFailure(undefined))}>
       <StatusPopoverTrigger
         aria-label="Cloud backup"
         class={cn(props.state.backup ? 'text-brand' : props.state.conflict && 'text-warning')}

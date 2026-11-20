@@ -162,12 +162,43 @@ it('lets an agent fill the four join fields and submits the exact JoinAction arg
     /fake-token|fake-key/,
   )
 
-  const join = control('Join')
-  expect(join?.actions).toContain('press')
-  expect((await agent.act({ steps: [{ ref: join!.ref, action: 'press' }] })).ok).toBe(true)
+  const saved = await agent.act({ steps: [{ ref: 'Save cloud connection', action: 'press' }] })
+  expect(saved.ok).toBe(true)
   expect(harness.requests).toContainEqual({ path: endpoint(JoinAction), args, source: 'agent' })
   expect(container.querySelector('[data-cloud-join-next]')?.textContent).toContain(
     '1 project in the cloud',
   )
   expect(container.querySelector('[data-cloud-join] input')).toBeNull()
+})
+
+it("refuses an agent replacing a joined machine's cloud settings without a person confirming", async () => {
+  harness.join = {
+    machine: 'old-machine',
+    missing: [],
+    joined: { url: 'wss://old.example.test', host: 'old.example.test', machine: 'old-machine' },
+  }
+  renderSolid(() => <JoinDialog />)
+  store.setUi({ dialogs: { [joinDialog]: true } })
+  flush()
+  await settle()
+  expect((await agent.act({ steps: [{ ref: 'Change cloud settings', action: 'press' }] })).ok).toBe(
+    true,
+  )
+  flush()
+  await settle()
+  const before = harness.requests.length
+  const filled = await agent.act({
+    steps: [
+      { ref: 'Cloud URL', action: 'setValue', args: ['wss://next.example.test'] },
+      { ref: 'ULTIMATE_CLOUD_TOKEN', action: 'setValue', args: ['fake-token'] },
+      { ref: 'ULTIMATE_CLOUD_SNAPSHOT_KEY', action: 'setValue', args: ['fake-key'] },
+    ],
+  })
+  expect(filled.ok).toBe(true)
+  flush()
+  const saved = await agent.act({ steps: [{ ref: 'Save cloud connection', action: 'press' }] })
+  expect(saved.ok).toBe(false)
+  expect(saved.error?.message).toContain("Replaces this machine's cloud URL")
+  await settle()
+  expect(harness.requests.slice(before).map(({ path }) => path)).not.toContain(endpoint(JoinAction))
 })

@@ -108,6 +108,7 @@ function Next(props: { projects: string[] }) {
         <Button
           aria-label="Restart Ultimate for cloud backups"
           class="h-7 shrink-0 text-[12px]"
+          data-agent-confirm="Restarts the shared Ultimate host."
           data-cloud-join-restart
           disabled={restart.busy()}
           onClick={restart.run}
@@ -231,7 +232,13 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
             )}
           </For>
           <Button
+            aria-label="Save cloud connection"
             class="h-7 font-sans text-[12px]"
+            data-agent-confirm={
+              props.state.joined
+                ? "Replaces this machine's cloud URL, name and both cloud secrets."
+                : undefined
+            }
             disabled={!ready()}
             onClick={submit}
             size="sm"

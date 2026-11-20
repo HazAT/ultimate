@@ -154,7 +154,13 @@ function Editor(props: {
                 : `Save secret ${name()}`
           }
           class={small}
-          data-agent-confirm={deleting() ? 'Deletes the stored secret' : undefined}
+          data-agent-confirm={
+            deleting()
+              ? 'Deletes the stored secret'
+              : props.replacing
+                ? 'Replaces the stored secret'
+                : undefined
+          }
           disabled={!ready()}
           onClick={commit}
           size="sm"
@@ -328,11 +334,13 @@ export function SecretsPanel() {
   }
 
   createEffect(
-    () => ({ target: requested(), rows: data(), waiting: loading() }),
-    ({ target, rows, waiting }) => {
+    () => ({ target: requested(), rows: data(), waiting: loading(), current: open() }),
+    ({ target, rows, waiting, current }) => {
       if (!target || !rows || waiting) return
       setRequested(undefined)
-      if (rows.some((secret) => secret.name === target)) setOpen({ kind: 'edit', name: target })
+      const alreadyEditing = current?.kind === 'edit' && current.name === target
+      if (!alreadyEditing && rows.some((secret) => secret.name === target))
+        setOpen({ kind: 'edit', name: target })
     },
   )
 

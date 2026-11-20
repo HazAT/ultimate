@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { createAgent } from '@ui-sdk/core/agent'
+import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
@@ -50,7 +50,7 @@ function refFor(label: string) {
   return matches[0].ref
 }
 
-it('lets an agent add a named secret without ever reading its value back', async ({
+it('lets an agent add a named secret without reading it back, but not replace one unconfirmed', async ({
   onTestFinished,
 }) => {
   store.start()
@@ -97,4 +97,21 @@ it('lets an agent add a named secret without ever reading its value back', async
   expect(new Headers(init!.headers).get(SOURCE_HEADER)).toBe('agent')
   expect(panel.querySelector('input[aria-label="Value"]')).toBeNull()
   expect(panel.querySelector('li[aria-label="DEMO_KEY"]')?.textContent).toContain('set')
+
+  const replace = await agent.act({ steps: [{ ref: refFor('Replace DEMO_KEY'), action: 'press' }] })
+  expect(replace.ok).toBe(true)
+  flush()
+  await settle()
+  await agent.act({
+    steps: [{ ref: refFor('New value for DEMO_KEY'), action: 'setValue', args: ['next'] }],
+  })
+  flush()
+  const unconfirmed = await agent.act({
+    steps: [{ ref: refFor('Save secret DEMO_KEY'), action: 'press' }],
+  })
+  expect(unconfirmed.ok).toBe(false)
+  await settle()
+  expect(
+    harness.request.mock.calls.filter(([path]) => path === '/api/extensions/secrets/actions/set'),
+  ).toHaveLength(1)
 })
