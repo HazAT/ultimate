@@ -1,6 +1,7 @@
 /** Models for other extensions' React code: family labels and editors, explicit picks, and login changes. */
 import { useSyncExternalStore } from 'react'
 import { picks } from './state.ts'
+export { dialogs as modelDialogs } from './state.ts'
 export { AddFamily, FamilyPopover, moveFeature } from './family-editor.tsx'
 export {
   agentsPanel,
