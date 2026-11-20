@@ -134,6 +134,8 @@ async function setup() {
 
 it('opens deep links and keeps scrolling and answer keys in the reading pane', async () => {
   const { server, browser, message } = await setup()
+  const clipped: string[] = []
+  const optionLines: Record<number, number> = {}
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 390, height: 844 },
@@ -164,6 +166,22 @@ it('opens deep links and keeps scrolling and answer keys in the reading pane', a
     // The message and its card make the pane scroll: without that this test could pass with nothing to overflow.
     expect(paneScrolls).toBe(true)
     expect(beyond).toBeLessThanOrEqual(0)
+    clipped.push(
+      ...(await pane
+        .locator('fieldset button')
+        .evaluateAll((buttons) =>
+          buttons
+            .filter((button) => button.scrollWidth > button.clientWidth)
+            .map((button) => button.textContent ?? ''),
+        )),
+    )
+    optionLines[viewport.width] = await pane
+      .getByText('in the sidebar, just under the project whose files')
+      .first()
+      .evaluate(
+        (span) =>
+          span.getBoundingClientRect().height / parseFloat(getComputedStyle(span).lineHeight),
+      )
     if (viewport.width === 390) {
       await pane.getByRole('button', { name: 'Back to the Inbox' }).click()
       await pane.waitFor({ state: 'hidden' })
@@ -179,4 +197,7 @@ it('opens deep links and keeps scrolling and answer keys in the reading pane', a
     }
     await page.close()
   }
+  expect(clipped).toEqual([])
+  expect(optionLines[1440]).toBeLessThan(1.5)
+  expect(optionLines[390]).toBeGreaterThan(1.5)
 })

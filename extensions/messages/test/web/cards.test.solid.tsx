@@ -13,6 +13,7 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { shellKeys } from '../../../../web/src/sdk/actions.ts'
 import * as client from '../../../../web/src/sdk/client.ts'
 import { writerNow } from '../../../../web/src/sdk/writer.ts'
+import { MessageReference, provide } from '../../../../web/src/sdk/types.ts'
 import { Bubble } from '../../bubble.solid.tsx'
 import { MessagesDoc } from '../../refs.ts'
 import type { Message } from '../../refs.ts'
@@ -146,6 +147,11 @@ it('names each bubble of one codemode script by its board message, so an agent c
     kind: 'pi.assistant',
     model: [{ role: 'assistant', content: [], timestamp: 0 }],
   } as unknown as EntryRecord
+  await client.registry.setLoaders({
+    'extensions/codemode/web.tsx': async () => ({
+      default: { provides: [provide(MessageReference, ({ id }) => `#43/${id}`)] },
+    }),
+  })
   renderSolid(() => (
     <>
       <Bubble entry={script} from={sender} message={message} running={false} text="One" />
@@ -160,6 +166,8 @@ it('names each bubble of one codemode script by its board message, so an agent c
   ))
   flush()
   await settle()
-  expect(agent.snapshot().filter((entry) => entry.label?.startsWith('Copy board'))).toHaveLength(2)
+  const labels = agent.snapshot().map((entry) => entry.label)
+  expect(labels.filter((label) => label?.startsWith('Copy board'))).toHaveLength(2)
+  expect(labels.filter((label) => label?.startsWith('Copy reference to board'))).toHaveLength(2)
   await expectDistinctAgentNames(agent)
 })

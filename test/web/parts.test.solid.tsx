@@ -86,7 +86,9 @@ it('renders every provider of a point in discovery order, Solid islands and Reac
   act(() => root.unmount())
 })
 
-const Status = definePoint<{ message: { state: string } }, unknown>('test.status')
+const Status = definePoint<{ message: { state: string }; onOpen?: () => void }, unknown>(
+  'test.status',
+)
 
 it('updates a React provider when a nested input field changes in place, and gives an island provider its own extension name under a React host', async () => {
   const Named = island((props: { message: { state: string } }) => (
@@ -99,17 +101,20 @@ it('updates a React provider when a nested input field changes in place, and giv
     'extensions/text/web.tsx': async () => ({
       default: {
         provides: [
-          provide(Status, (input: { message: { state: string } }) =>
-            h('i', null, `react:${input.message.state}`),
+          provide(Status, (input: { message: { state: string }; onOpen?: () => void }) =>
+            h('i', { onClick: input.onOpen }, `react:${input.message.state}`),
           ),
         ],
       },
     }),
   })
+  const opened = vi.fn<() => void>()
   const [board, setBoard] = createSolidStore({ message: { state: 'delivered' } })
   let container!: HTMLElement
   act(() => {
-    container = renderSolid(() => <Provided input={{ message: board.message }} point={Status} />)
+    container = renderSolid(() => (
+      <Provided input={{ message: board.message, onOpen: opened }} point={Status} />
+    ))
     flush()
   })
   expect(container.textContent).toBe('chip:deliveredreact:delivered')
@@ -120,6 +125,8 @@ it('updates a React provider when a nested input field changes in place, and giv
     flush()
   })
   expect(container.textContent).toBe('chip:answeredreact:answered')
+  act(() => container.querySelector('i')!.click())
+  expect(opened).toHaveBeenCalledOnce()
 
   const host = document.createElement('div')
   const root = createRoot(host)

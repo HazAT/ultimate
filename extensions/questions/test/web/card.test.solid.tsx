@@ -162,36 +162,6 @@ it('lets agents distinguish options whose labels fold to the same name', async (
   )
 })
 
-it('lets long headings and option prose wrap at normal weight', () => {
-  const label = 'A long option label that needs to wrap onto multiple lines in a narrow card'
-  const card = renderSolid(() => (
-    <MessageQuestions
-      message={{
-        ...message,
-        questions: [
-          {
-            text: 'What should we do when this question wraps onto multiple lines?',
-            kind: 'choice',
-            options: [{ label, detail: `${label}, including the detail.` }, { label: 'Short' }],
-          },
-        ],
-      }}
-      keys={false}
-      withActions={false}
-    />
-  ))
-  const heading = card.querySelector('fieldset button[aria-expanded="true"]')!
-  const option = card.querySelector('fieldset button[aria-pressed]')!
-  expect(option.textContent).toContain(label)
-  for (const button of [heading, option]) {
-    expect([...button.classList]).toEqual(
-      expect.arrayContaining(['whitespace-normal', 'font-normal', 'text-left', 'h-auto']),
-    )
-    expect(button.classList.contains('whitespace-nowrap')).toBe(false)
-    expect(button.classList.contains('font-medium')).toBe(false)
-  }
-})
-
 it('lets an agent choose, undo a send, send again, and dismiss another card', async () => {
   const card = renderSolid(() => (
     <>

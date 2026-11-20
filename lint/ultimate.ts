@@ -124,9 +124,10 @@ const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(
 const solidSdk = 'web/src/sdk/solid.ts'
 const solidParts = 'web/src/sdk/parts.solid.tsx'
 const solidSdkEntry = (file: string) => file === solidSdk || file === solidParts
+const frameworkNeutralSdk = new Set(['web/src/sdk/island-mark.ts'])
 const reactSdk = (module: string) => {
   const file = repositoryPath(module)
-  return file.startsWith('web/src/sdk/') && !solidSdkEntry(file)
+  return file.startsWith('web/src/sdk/') && !solidSdkEntry(file) && !frameworkNeutralSdk.has(file)
 }
 const islandHost = (filename: string) =>
   /^(\.ultimate\/)?extensions\/[^/]+\/(web|ui)\.tsx$/.test(repositoryPath(filename))

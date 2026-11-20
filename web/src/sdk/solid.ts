@@ -32,7 +32,6 @@ import type { EventData, EventRecord, EventToken } from '../../../shared/events.
 import { deadline, every } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import { actions, allCommands } from './actions.ts'
-import { islandSolid } from './island-mark.ts'
 import type { CommandItem, ExtensionRecord } from './registry.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
@@ -94,8 +93,6 @@ export { covered } from './resume.ts'
 /** A transcript's shared frame: its entries and scroll elements, for the contributions it renders. */
 export { createTranscriptFrame } from './transcript-frame.ts'
 export { keepLast } from '../../../lib/errors.ts'
-/** Whether `component` is an `island(C)`: a Solid host renders `C` directly. */
-export const isSolid = (component: unknown) => islandSolid(component) !== undefined
 export { cn } from 'cn'
 
 /** The extension whose contribution renders here; `island` provides it. */

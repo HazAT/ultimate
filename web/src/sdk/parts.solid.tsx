@@ -2,7 +2,8 @@
 import { createMemo, For, Show } from 'solid-js'
 import { ContributionError } from '../app/contribution-error.solid.tsx'
 import { Contribution } from './react-island.solid.tsx'
-import { isSolid, provisionsOf, useExtensions } from './solid.ts'
+import { islandSolid } from './island-mark.ts'
+import { provisionsOf, useExtensions } from './solid.ts'
 import type { Point } from './types.ts'
 
 export { Card } from '../app/card.solid.tsx'
@@ -34,16 +35,29 @@ export function Provided<Input extends object>(props: {
     }))
     return props.last ? all.slice(-1) : all
   })
-  const copy = createMemo(() => JSON.parse(JSON.stringify(props.input)) as Record<string, unknown>)
+  const copy = createMemo(() => readDeeply(props.input) as Record<string, unknown>)
   return (
     <For each={items()} keyed={(item) => `${item.extension}:${item.version}`}>
       {(item) => (
-        <Show fallback={<Provider item={item()} input={copy()} />} when={isSolid(item().component)}>
+        <Show
+          fallback={<Provider item={item()} input={copy()} />}
+          when={islandSolid(item().component) !== undefined}
+        >
           <Provider item={item()} input={props.input as Record<string, unknown>} />
         </Show>
       )}
     </For>
   )
+}
+
+const plain = (value: unknown): value is object =>
+  Array.isArray(value) ||
+  (typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype)
+
+function readDeeply(value: unknown): unknown {
+  if (!plain(value)) return value
+  if (Array.isArray(value)) return value.map(readDeeply)
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, readDeeply(item)]))
 }
 
 function Provider(props: {
