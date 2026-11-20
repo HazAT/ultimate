@@ -190,17 +190,14 @@ export function useExtensionUiState<T extends JsonValue>(key: string, initial: T
 }
 
 /**
- * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again,
- * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there,
- * and `timeout` the ms after which a call that has not answered is dropped. With a `timeout`, `data` is only ever the
- * serving process's answer: it is forgotten when a call times out or fails, and hidden from a restart until it answers.
+ * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again, and
+ * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there.
  */
 export type UseActionOptions<T = unknown> = {
   conversation?: ConversationId
   onError?: (error: ActionError) => void
   on?: Accessor<unknown>
   every?: number | ((data: T | undefined) => number | undefined)
-  timeout?: number
   focus?: boolean
 }
 
@@ -226,11 +223,7 @@ export function useAction<Args, T>(
       ? options.every(current().data as T | undefined)
       : options.every,
   )
-  const reader: Reader = {
-    onError: options.onError,
-    focus: options.focus,
-    timeout: options.timeout,
-  }
+  const reader: Reader = { onError: options.onError, focus: options.focus }
   createEffect(
     () => ({ ms: interval(), read: read() }),
     ({ ms, read: next }) => {
@@ -254,14 +247,8 @@ export function useAction<Args, T>(
       if (previous?.read === next.read && previous.on !== next.on) void next.read.refetch()
     },
   )
-  const serving = () => {
-    const process = state().system?.process
-    return process && `${process.pid}:${process.generation}`
-  }
-  const live = () =>
-    options.timeout === undefined || current().answeredBy === serving() ? current().data : undefined
   return {
-    data: () => live() as T | undefined,
+    data: () => current().data as T | undefined,
     error: () => current().error,
     loading: () => current().loading || !current().settled,
     refetch: () => read().refetch() as Promise<T | undefined>,

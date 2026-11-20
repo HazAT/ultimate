@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../../shared/extension-api.ts'
-import { deadline, retryAfter } from '../../../lib/timers.ts'
+import { retryAfter } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import { actionMessage } from './api.ts'
 import type { ActionArgs, ActionError, ActionOptions, Api } from './api.ts'
@@ -9,13 +9,11 @@ import type { Store } from './store.ts'
 export interface Reader {
   onError?: (error: ActionError) => void
   every?: number
-  timeout?: number
   focus?: boolean
 }
 
 export interface ReadState {
   data?: unknown
-  answeredBy?: string
   error?: ActionError
 
   loading: boolean
@@ -99,23 +97,8 @@ export function createReads(api: Api, store: Store) {
       for (const listener of listeners) listener()
       for (const listener of changed) listener()
     }
-    let callStartedAtMs = 0
-    let cancelTimeout: Cancel | undefined
-    const expiring = () => [...readers].some((reader) => reader.timeout !== undefined)
-    function retime() {
-      cancelTimeout?.()
-      cancelTimeout = undefined
-      const own = controller
-      const timeout = Math.min(...[...readers].map((reader) => reader.timeout ?? Infinity))
-      if (!own || timeout === Infinity) return
-      cancelTimeout = deadline(Math.max(0, callStartedAtMs + timeout - Date.now()), () => {
-        own.abort()
-        set({ data: undefined, loading: false })
-      })
-    }
     function repoll() {
       cancelPoll?.()
-      retime()
       const every = Math.min(...[...readers].map((reader) => reader.every ?? Infinity))
       if (every !== Infinity && !controller) cancelPoll = retryAfter(every, () => void run())
     }
@@ -124,9 +107,6 @@ export function createReads(api: Api, store: Store) {
       cancelPoll?.()
       const own = new AbortController()
       controller = own
-      callStartedAtMs = Date.now()
-      const answeringProcess = process
-      retime()
 
       const firstReaderErrorHandlerAtCallStart = [...readers].find(
         (reader) => reader.onError,
@@ -141,7 +121,7 @@ export function createReads(api: Api, store: Store) {
         answered = true
         lastAnswerAtMs = Date.now()
         networkFailedReads.delete(read)
-        set({ data, answeredBy: answeringProcess, error: undefined, loading: false, settled: true })
+        set({ data, error: undefined, loading: false, settled: true })
         return data
       } catch (error) {
         if (own.signal.aborted) return undefined
@@ -151,16 +131,11 @@ export function createReads(api: Api, store: Store) {
         const silentRetryableFailure = failure.status === 0
         if (silentRetryableFailure) {
           networkFailedReads.add(read)
-          set(expiring() ? { data: undefined, loading: false } : { loading: false })
+          set({ loading: false })
           return undefined
         }
         networkFailedReads.delete(read)
-        set({
-          ...(expiring() ? { data: undefined } : {}),
-          error: failure,
-          loading: false,
-          settled: true,
-        })
+        set({ error: failure, loading: false, settled: true })
 
         if (firstReaderErrorHandlerAtCallStart) firstReaderErrorHandlerAtCallStart(failure)
         else store.notify({ level: 'error', message: actionMessage(failure) })
@@ -188,9 +163,7 @@ export function createReads(api: Api, store: Store) {
         readers.add(reader)
 
         const needsFreshCallAfterRemount =
-          !controller &&
-          !sameTickRequest &&
-          (Date.now() - lastAnswerAtMs > REMOUNT_FRESHNESS_MS || state.answeredBy !== process)
+          !controller && !sameTickRequest && Date.now() - lastAnswerAtMs > REMOUNT_FRESHNESS_MS
         if (needsFreshCallAfterRemount) void read.refetch()
         else repoll()
         return function releaseReaderKeepingInFlightCall() {
@@ -198,7 +171,6 @@ export function createReads(api: Api, store: Store) {
           if (readers.size) return repoll()
 
           cancelPoll?.()
-          retime()
           networkFailedReads.delete(read)
           evictOldestIdleReads()
           for (const listener of changed) listener()

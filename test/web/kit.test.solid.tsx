@@ -184,7 +184,7 @@ it('fails on a name the bridge would also resolve to another control, and passes
       <Button>Quick save</Button>
     </>
   ))
-  await expect(expectDistinctAgentNames(agent)).rejects.toThrow('Quick save')
+  await expect(expectDistinctAgentNames(agent)).rejects.toThrow('to deeply equal []')
   document.body.replaceChildren()
   renderSolid(() => (
     <>

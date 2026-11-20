@@ -81,11 +81,12 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   `<Switch bind={digest} />`. Never call a hook inside a JSX prop: a Solid prop is a getter, so it runs again at every
   read. For an action: `bind={[() => state().on, (on) => void toggle(on)]}`.
 - **Reading the server:** `useAction(ref, args, options)` shares one call per action and args. `every` takes ms or
-  `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). With `timeout`, a call that does not
-  answer in time is dropped and `data` is only the serving process's answer: forgotten on a timeout or a failure,
-  hidden after a restart until the new process answers (`extensions/status-line/status.solid.tsx`). Every read in use
-  refetches after a restart, and a remounted one whose answer came from an earlier process; on reconnect only active
-  reads that failed with a network error retry. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
+  `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). Every read in use refetches after a
+  restart, keeping its last answer meanwhile; on reconnect only active reads that failed with a network error retry.
+  `useAction` has no deadline: a read that must give up on a hung request or show nothing from an earlier server
+  process keeps its own effect keyed on the connection and generation (`useRates` in
+  `extensions/status-line/status.solid.tsx`). A deadline on the shared read was tried in the 0.8 step-back and
+  dropped: one reader's timeout on a call other readers share kept breaking joins, departures, restarts and readiness. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
   since a plain read follows the shown conversation and starts unanswered when the view arrives. A read with getter
   args keeps the args its key was made from.
 - **The conversation's model:** `useAgent()`, not a whole conversation replica.
