@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { mkdir, readdir, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, matchesGlob } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { copyJson } from '@earendil-works/chord/json'
 import type { Context } from '@earendil-works/chord/context'
@@ -108,6 +108,7 @@ const starterLine = (
     ...(outcome.reason ? [outcome.reason] : []),
     ...(outcome.needsRestart ? ['needs restart'] : []),
     ...(outcome.flaky?.length ? [`flaky: ${outcome.flaky.join(', ')}`] : []),
+    ...(outcome.skipped?.length ? [`skipped: ${outcome.skipped.join(', ')}`] : []),
   ]
     .join(' · ')
     .replace(/\s*\n\s*/g, ' ')
@@ -117,7 +118,8 @@ type Host = Pick<
   'home' | 'ultimateRoot' | 'harness' | 'projectSettings' | 'doc' | 'metadata' | 'notice' | 'emit'
 >
 type Seconds = number
-type Check = { command: string; timeout?: Seconds }
+type PathGlob = string
+type Check = { command: string; timeout?: Seconds; skipWhenOnly?: PathGlob[] }
 type ConcurrentCheckGroup = Check[]
 type Settings = {
   checks: (Check | ConcurrentCheckGroup)[]
@@ -238,10 +240,23 @@ function createTempBeforeWatchdog(temp: string) {
 const parseCheck = (value: unknown): Check | undefined => {
   if (typeof value === 'string') return { command: value }
   if (!value || typeof value !== 'object') return undefined
-  const { command, timeout } = value as { command?: unknown; timeout?: unknown }
+  const { command, timeout, skipWhenOnly } = value as {
+    command?: unknown
+    timeout?: unknown
+    skipWhenOnly?: unknown
+  }
   if (typeof command !== 'string') return undefined
-  if (timeout === undefined) return { command }
-  return typeof timeout === 'number' && timeout > 0 ? { command, timeout } : undefined
+  if (timeout !== undefined && !(typeof timeout === 'number' && timeout > 0)) return undefined
+  if (
+    skipWhenOnly !== undefined &&
+    !(Array.isArray(skipWhenOnly) && skipWhenOnly.every((glob) => typeof glob === 'string'))
+  )
+    return undefined
+  return {
+    command,
+    ...(typeof timeout === 'number' ? { timeout } : {}),
+    ...(skipWhenOnly ? { skipWhenOnly } : {}),
+  }
 }
 export const landerSettings = async (host: Pick<Host, 'projectSettings'>): Promise<Settings> => {
   const lander = (await host.projectSettings()).lander as
@@ -259,7 +274,7 @@ export const landerSettings = async (host: Pick<Host, 'projectSettings'>): Promi
     : undefined
   if (!checks?.every((group) => (Array.isArray(group) ? group.every(Boolean) : group)))
     throw new Error(
-      'lander.checks must be an array of checks or check groups; a check is a command or { "command", "timeout" } with timeout in seconds',
+      'lander.checks must be an array of checks or check groups; a check is a command or { "command", "timeout", "skipWhenOnly" } with timeout in seconds and skipWhenOnly a list of path globs',
     )
   if (lander?.push !== undefined && typeof lander.push !== 'string')
     throw new Error('lander.push must be a remote name')
@@ -289,6 +304,7 @@ type CheckedIntegration = {
   base: string
   integrated: string
   flaky: string[]
+  skipped?: string[]
 }
 const landedOutcome = (landed: Landed): LanderOutcome => ({
   outcome: 'landed',
@@ -297,6 +313,7 @@ const landedOutcome = (landed: Landed): LanderOutcome => ({
   commits: landed.commits,
   paths: landed.paths,
   flaky: landed.flaky,
+  ...(landed.skipped?.length ? { skipped: landed.skipped } : {}),
   ...(landed.weight ? { weight: landed.weight } : {}),
 })
 type CommittedDeliveryDecision = {
@@ -502,6 +519,7 @@ export function createLander(
               : `had nothing new to land on ${entry.target}.`,
             ...(landed.commits.length ? [`Commits:\n${landed.commits.join('\n')}`] : []),
             ...landed.flaky.map((command) => `Flaky: ${command}`),
+            ...(landed.skipped ?? []).map((command) => `Skipped: ${command}`),
           ].join('\n')
         const fail = async (reason: string, output?: string, hint?: string) => {
           const landed = await recordedFirstFastForward()
@@ -663,8 +681,21 @@ export function createLander(
             await step('setting up')
             await setup(source, path, await host.projectSettings(), signal)
             const flaky: string[] = []
+            const skipped: string[] = []
+            const changed = lines(
+              await git(path, 'diff', '--name-only', base, mergedBeforeChecks.sha),
+            )
+            const onlyMatches = (globs: PathGlob[]) =>
+              changed.length > 0 &&
+              changed.every((file) => globs.some((glob) => matchesGlob(file, glob)))
             for (const [position, group] of settings.checks.entries()) {
-              const members = Array.isArray(group) ? group : [group]
+              const all = Array.isArray(group) ? group : [group]
+              const members = all.filter((check) => !onlyMatches(check.skipWhenOnly ?? []))
+              for (const check of all)
+                if (!members.includes(check)) {
+                  skipped.push(check.command)
+                  await step(`skipped: ${check.command}`)
+                }
               const commands = members.map((check) => check.command)
               const run = (command: string, member: number) =>
                 runLanderCheck(
@@ -766,11 +797,16 @@ export function createLander(
               )
             checkedIntegration = await runtime.memo<CheckedIntegration>(
               `prepared:${id}:${attempt}`,
-              { base, integrated: mergedBeforeChecks.sha, flaky },
+              {
+                base,
+                integrated: mergedBeforeChecks.sha,
+                flaky,
+                ...(skipped.length ? { skipped } : {}),
+              },
               context,
             )
           }
-          const { base, integrated, flaky } = checkedIntegration
+          const { base, integrated, flaky, skipped } = checkedIntegration
           await step('fast-forwarding')
           let refused: string | undefined
           const moved = await serializeSourceWrites(source, async () => {
@@ -810,6 +846,7 @@ export function createLander(
             commits: lines(await git(source, 'log', '--oneline', `${base}..${integrated}`)),
             paths: lines(await git(source, 'diff', '--name-only', base, integrated)),
             flaky,
+            ...(skipped?.length ? { skipped } : {}),
             ...(weight ? { weight } : {}),
           }
           let landed = firstFastForwardCandidate
