@@ -112,6 +112,20 @@ type Host = Pick<
   | 'notice'
   | 'emit'
 >
+async function unlanded(
+  path: string,
+  ...range: string[]
+): Promise<Pick<KeptWork, 'unlanded' | 'unknown'>> {
+  try {
+    return { unlanded: Number(await git(path, 'rev-list', '--count', ...range)) }
+  } catch (error) {
+    const object = /Could not read ([0-9a-f]{40,64})/.exec(String(error))?.[1]
+    if (!object) throw error
+    return { unlanded: 0, unknown: `unreadable object ${object}` }
+  }
+}
+const holdsWork = (work: Omit<KeptWork, 'id'>) =>
+  Boolean(work.uncommitted || work.unlanded || work.unknown)
 async function changes(
   id: ConversationId,
   workspace: WorkspaceIndex['items'][string],
@@ -120,15 +134,11 @@ async function changes(
     id,
     uncommitted: (await git(workspace.path, 'status', '--porcelain')).split('\n').filter(Boolean)
       .length,
-    unlanded: Number(
-      await git(
-        workspace.path,
-        'rev-list',
-        '--count',
-        `${workspace.target}..${workspace.branch}`,
-        `${workspace.target}..HEAD`,
-      ),
-    ),
+    ...(await unlanded(
+      workspace.path,
+      `${workspace.target}..${workspace.branch}`,
+      `${workspace.target}..HEAD`,
+    )),
   }
 }
 async function onDisk(path: string) {
@@ -149,17 +159,7 @@ async function workLostWithCheckout(
   return {
     uncommitted: (await git(workspace.path, 'status', '--porcelain')).split('\n').filter(Boolean)
       .length,
-    unlanded: Number(
-      await git(
-        workspace.path,
-        'rev-list',
-        '--count',
-        'HEAD',
-        '--not',
-        workspace.target,
-        ...branch,
-      ),
-    ),
+    ...(await unlanded(workspace.path, 'HEAD', '--not', workspace.target, ...branch)),
   }
 }
 const workHeldByRegisteredCheckout = (
@@ -503,7 +503,7 @@ export function workspaces(host: Host) {
       const checkout = await recordedCheckout(id, context)
       if (!checkout?.registered) continue
       const item = await changes(id, checkout.workspace)
-      if (item.uncommitted || item.unlanded) result.push(item)
+      if (holdsWork(item)) result.push(item)
     }
     return result
   }
@@ -516,7 +516,7 @@ export function workspaces(host: Host) {
     try {
       if (await listedBySource(workspace)) {
         item = { id, ...(await workLostWithCheckout(workspace)) }
-        if (item.uncommitted || item.unlanded) {
+        if (holdsWork(item)) {
           await host.harness().commit(async (tx) => {
             ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].state = 'ready'
           }, context)
@@ -602,14 +602,13 @@ export function workspaces(host: Host) {
               if (descendant.state !== 'removed') item.descendant = Number(child)
             }
           } while (size !== sources.size)
-          if (!item.uncommitted && !item.unlanded && !item.descendant)
-            index.items[String(id)].state = 'removed'
+          if (!holdsWork(item) && !item.descendant) index.items[String(id)].state = 'removed'
           else if (registered && index.items[String(id)].state === 'removed')
             index.items[String(id)].state = 'ready'
           return undefined
         }, context)
         if (reason) item.busy = reason
-        if (item.uncommitted || item.unlanded || item.busy || item.descendant) {
+        if (holdsWork(item) || item.busy || item.descendant) {
           kept.push(item)
           return
         }
@@ -670,7 +669,7 @@ export function workspaces(host: Host) {
           .find((line) => line.startsWith('branch refs/heads/'))
           ?.slice('branch refs/heads/'.length)
         const work = await workLostWithCheckout({ path, branch: branch ?? '', target })
-        if (work.uncommitted || work.unlanded) {
+        if (holdsWork(work)) {
           kept.push(path)
           return
         }
