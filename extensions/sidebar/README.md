@@ -66,6 +66,12 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
 - The `sidebar.top` slot: background work that optional extensions contribute without the sidebar importing them,
   automations' **Scheduled**, up to five compact rows with `+N more`, and its own
   bottom rule. Each hides while it has nothing active.
+- **Filter conversations** (`filter-box.tsx`, `filter.ts`): a quiet field above In flight. Typing keeps only the rows
+  whose title, `#id` or feature tag holds every word of the query, ignoring case and accents (a title's `PR #2287`
+  matches `#2287`), in In flight, Earlier and Concluded at once; a match nested under a source keeps that source, and
+  Earlier and Concluded unfold, with their matches pulled up under the field. Escape clears it, Enter opens the first
+  match, and `/` (the `sidebar.filter` command, "Find a conversation…" in the palette) focuses it, opening the
+  sidebar when it is closed. The query is not kept across reloads.
 - **In flight · N** (`InFlight`, `root.tsx`): every open branch of every tree, newest input first. A branch is open
   until it is concluded or it landed after its latest input (the lander's results, or a root landing note from it;
   a landed branch that gets new work is open again). Each shows its title, its feature tag, a state (`submitted` or
@@ -136,6 +142,6 @@ reply, a subagent report, an automation's message) resumes it and its concluded 
 the input, through the patched `GenerationTask.beforeInput` hook. Notes and other writes start no run and resume nothing.
 Concluding the shown subtree shows another live conversation when one exists.
 
-Commands, under Conversations: `conversations.summary-model` ("Summary model…", see [Summary model](#summary-model)). The UI state keeps concluded
+Commands, under Conversations: `sidebar.filter` ("Find a conversation…", `/`), `conversations.summary-model` ("Summary model…", see [Summary model](#summary-model)). The UI state keeps concluded
 ids in `ext.conversations.concluded` and, in `ext.conversations.seen`, the latest answer time seen per top-level
 conversation; a conversation not recorded there counts as seen.

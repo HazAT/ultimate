@@ -62,6 +62,8 @@ import { StandingPhase, WaitingOnUser } from './ultimate.tsx'
 import { useShell, useSidebarState } from './state.tsx'
 import { topLevelRows } from './listed.ts'
 import { UnderUltimate, Unlisted } from './ui.tsx'
+import { conversationFilter } from './filter.ts'
+import { FilterBox } from './filter-box.tsx'
 
 const useShownId = () => useStore((state) => state.view?.conversation.id ?? state.requested)
 
@@ -231,8 +233,29 @@ function Tree({
       !neverConcludedStandingAgent(conversation) &&
       !openBranches.includes(conversation),
   )
+  const [query, setQuery] = useState('')
+  const matches = conversationFilter(query)
+  /** Whether a row shows under the filter: it matches, or a branch nested under it in the same group does. */
+  const visible = (conversation: ConversationSummary, concluded: boolean): boolean =>
+    !matches ||
+    matches(conversation, overview[conversation.id]?.feature) ||
+    (branchesBySource.get(conversation.id) ?? []).some(
+      (branch) =>
+        hiddenIds.has(branch.id) === concluded &&
+        !openBranches.includes(branch) &&
+        visible(branch, concluded),
+    )
+  // The rest, with branches nested under their source when it is there too.
   const earlier = rest.filter(
-    (conversation) => !rest.some((source) => source.id === conversation.branchOf?.conversationId),
+    (conversation) =>
+      !rest.some((source) => source.id === conversation.branchOf?.conversationId) &&
+      visible(conversation, false),
+  )
+  const concludedRows = hidden.filter(
+    (conversation) =>
+      (roots.has(conversation.id) ||
+        !hidden.some((source) => source.id === conversation.branchOf?.conversationId)) &&
+      visible(conversation, true),
   )
 
   const [warning, setWarning] = useState<{
@@ -437,7 +460,10 @@ function Tree({
       roots.has(conversation.id) && !concluded
         ? []
         : (branchesBySource.get(conversation.id) ?? []).filter(
-            (branch) => hiddenIds.has(branch.id) === concluded && !openBranches.includes(branch),
+            (branch) =>
+              hiddenIds.has(branch.id) === concluded &&
+              !openBranches.includes(branch) &&
+              visible(branch, concluded),
           )
     const subagents = children.length > 0 && (
       <Collapsible
@@ -494,15 +520,17 @@ function Tree({
       />,
       ...subagentLines(child.id, depth + 1),
     ])
-  const flights: Flight[] = openBranches.map((branch) => ({
-    conversation: branch,
-    working: working.has(branch.id),
-    parked: parked.has(branch.id),
-    subagents: [
-      <EpicLine id={branch.id} key="epic" working={working.get(branch.id) === 'self'} />,
-      ...subagentLines(branch.id),
-    ],
-  }))
+  const flights: Flight[] = openBranches
+    .filter((branch) => !matches || matches(branch, overview[branch.id]?.feature))
+    .map((branch) => ({
+      conversation: branch,
+      working: working.has(branch.id),
+      parked: parked.has(branch.id),
+      subagents: [
+        <EpicLine id={branch.id} key="epic" working={working.get(branch.id) === 'self'} />,
+        ...subagentLines(branch.id),
+      ],
+    }))
 
   return (
     <div className="flex flex-1 flex-col pb-2">
@@ -598,6 +626,15 @@ function Tree({
           </div>
         )}
         <Slot name="sidebar.top" />
+        <FilterBox
+          empty={!!matches && !flights.length && !earlier.length && !concludedRows.length}
+          onChange={setQuery}
+          onOpenFirst={() => {
+            const first = flights[0]?.conversation ?? earlier[0] ?? concludedRows[0]
+            if (first) actions.switchConversation(first.id)
+          }}
+          query={query}
+        />
         <InFlight
           flights={flights}
           now={now}
@@ -633,9 +670,14 @@ function Tree({
             )}
           </section>
         )}
-      <div className="mt-auto pt-3">
+      {/* While filtering, matches follow the field instead of sitting at the bottom. */}
+      <div className={cn('pt-3', !matches && 'mt-auto')}>
         {earlier.length > 0 && (
-          <Collapsible className="pt-1" open={earlierOpen} onOpenChange={setEarlierOpen}>
+          <Collapsible
+            className="pt-1"
+            open={earlierOpen || !!matches}
+            onOpenChange={setEarlierOpen}
+          >
             <CollapsibleTrigger className="group/earlier flex w-full cursor-pointer items-center gap-1 px-4 py-1.5 section-label outline-none hover:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/earlier:rotate-90" />
               Earlier · {earlier.length}
@@ -645,29 +687,27 @@ function Tree({
               role="region"
               className="flex flex-col gap-0.5 pt-1"
             >
-              {earlierOpen && earlier.map((conversation) => tree(conversation))}
+              {(earlierOpen || matches) && earlier.map((conversation) => tree(conversation))}
             </CollapsibleContent>
           </Collapsible>
         )}
-        {hidden.length > 0 && (
-          <Collapsible className="pt-1" open={concludedOpen} onOpenChange={setConcludedOpen}>
+        {concludedRows.length > 0 && (
+          <Collapsible
+            className="pt-1"
+            open={concludedOpen || !!matches}
+            onOpenChange={setConcludedOpen}
+          >
             <CollapsibleTrigger className="group/concluded flex w-full cursor-pointer items-center gap-1 px-4 py-1.5 section-label outline-none hover:text-foreground focus-visible:text-foreground">
               <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/concluded:rotate-90" />
-              Concluded · {hidden.length}
+              Concluded · {matches ? concludedRows.length : hidden.length}
             </CollapsibleTrigger>
             <CollapsibleContent
               aria-label="Concluded"
               className="flex flex-col gap-0.5 pt-1"
               role="region"
             >
-              {concludedOpen &&
-                hidden
-                  .filter(
-                    (conversation) =>
-                      roots.has(conversation.id) ||
-                      !hidden.some((source) => source.id === conversation.branchOf?.conversationId),
-                  )
-                  .map((conversation) => tree(conversation, false, true))}
+              {(concludedOpen || matches) &&
+                concludedRows.map((conversation) => tree(conversation, false, true))}
             </CollapsibleContent>
           </Collapsible>
         )}
