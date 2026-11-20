@@ -200,7 +200,7 @@ function CopyCode(props: { code: string }) {
   )
 }
 
-export function HighlightedCode(props: { code: string; language: string }) {
+export function HighlightedCode(props: { code: string; language: string; lineNumbers?: boolean }) {
   const [loaded, setLoaded] = createSignal<{ code: string; lines: Line[] }>()
   const lines = createMemo(() => {
     const code = props.code.replace(/\n+$/, '')
@@ -211,11 +211,21 @@ export function HighlightedCode(props: { code: string; language: string }) {
       plainLines(code)
     )
   })
+  const gutter = () => `${String(lines().length).length + 1}ch`
   return (
     <code>
       <For each={lines()} keyed={false}>
-        {(line) => (
+        {(line, index) => (
           <span class="block">
+            <Show when={props.lineNumbers}>
+              <span
+                aria-hidden="true"
+                class="mr-3 inline-block pr-1 text-right text-muted-foreground/50 select-none"
+                style={{ width: gutter() }}
+              >
+                {index + 1}
+              </span>
+            </Show>
             <Show when={line().length} fallback={'\n'}>
               <For each={line()} keyed={false}>
                 {(token) => <span style={token().htmlStyle}>{token().content}</span>}

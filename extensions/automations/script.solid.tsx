@@ -1,6 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { ArrowLeft, RotateCw } from '@lucide/solid'
 import { createEffect, For, Show } from 'solid-js'
+import { HighlightedCode } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import {
@@ -19,7 +20,6 @@ import { Dot, Tag } from './parts.solid.tsx'
 import { ErrorLine, Toggle, useAct } from './row.solid.tsx'
 import { LogAction, RunAction, ScriptAction } from './refs.ts'
 import type { AutomationListItem } from './refs.ts'
-import { Source } from './source.solid.tsx'
 import { actions, automationLabel } from './words.ts'
 
 type Detail = { automation: AutomationListItem; live: boolean; now: number }
@@ -196,7 +196,14 @@ function Script(props: Detail & { act: ReturnType<typeof useAct>['act'] }) {
               </Show>
             }
           >
-            {(text) => <Source code={text()} language={scriptLanguage(text())} />}
+            {(text) => (
+              <pre
+                aria-label="Script source"
+                class="shiki min-w-max px-3 py-2 leading-[1.55] text-foreground/85"
+              >
+                <HighlightedCode code={text()} language={scriptLanguage(text())} lineNumbers />
+              </pre>
+            )}
           </Show>
         </div>
       </Show>
