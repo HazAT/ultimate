@@ -194,11 +194,9 @@ it('leaves keys a native control takes to it', () => {
   const range = document.createElement('input')
   range.type = 'range'
   document.body.append(range)
-  for (const target of [range]) {
-    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
-    view.resize(view.top() + 760)
-    view.moveTo(view.top() - 40)
-    layout()
-    expect(pinned.following()).toBe(true)
-  }
+  range.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+  view.resize(view.top() + 760)
+  view.moveTo(view.top() - 40)
+  layout()
+  expect(pinned.following()).toBe(true)
 })
