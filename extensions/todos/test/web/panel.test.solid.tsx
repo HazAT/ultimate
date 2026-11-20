@@ -135,7 +135,7 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   expect(ticked).toMatchObject({ ok: true })
   expect(harness.actions).toContainEqual({ name: 'done', args: { id: 3 }, source: 'agent' })
 
-  const owner = control('New to-do for', 'segmented-control')
+  const owner = control('To-do owner', 'segmented-control')
   expect(owner).toMatchObject({ value: 'user' })
   const picked = await agent.act({
     steps: [{ ref: owner.ref, action: 'setValue', args: ['ultimate'] }],
@@ -150,7 +150,7 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
 
   const added = await agent.act({
     steps: [
-      { ref: control('New to-do', 'input').ref, action: 'setValue', args: ['Ship it'] },
+      { ref: control('To-do text', 'input').ref, action: 'setValue', args: ['Ship it'] },
       { ref: control('Add the to-do', 'button').ref, action: 'press' },
     ],
   })
@@ -162,7 +162,9 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
     args: { text: 'Ship it', owner: 'ultimate' },
     source: 'agent',
   })
-  expect(container.querySelector<HTMLInputElement>('input[aria-label="New to-do"]')!.value).toBe('')
+  expect(container.querySelector<HTMLInputElement>('input[aria-label="To-do text"]')!.value).toBe(
+    '',
+  )
 
   const started = await agent.act({
     steps: [

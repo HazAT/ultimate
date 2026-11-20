@@ -151,6 +151,14 @@ the agent surface, the panel tabs). A slot item, a panel or an overlay of its ow
   - Collapsible unmounts the panel's children when closed by default. Keep local state that should survive a collapse
     in the owner outside the panel, or use `keepMounted` when the children themselves must survive.
   - An inline `<svg>` drawing is named by `aria-label` and a `<title>`, not `role="img"` (`jsx-a11y/prefer-tag-over-role`).
+  - The bridge resolves a label by prefix: "New to-do" also named "New to-do for", and `act` refused both. No
+    control's name may start with another's on the same page; jsdom tests with one component miss it, so act on the
+    whole page once in the preview.
+  - A form's submit runs from the native `submit` event, which carries no source: remember `details.source` in the
+    submit Button's `onClick` and run the write in `writingAs(source, …)` (`extensions/todos/panel.solid.tsx`).
+  - `useAction`'s `every` polls only after an answer and keeps the last data across a restart; a read that must give
+    up on a hung request or reset per server generation keeps its own effect keyed on them
+    (`extensions/status-line/status.solid.tsx`, `useRates`).
   - A Tooltip trigger rendered as a `<span>` is not named by its text (only buttons and links are): give it an
     `aria-label` that names the item (`Context use`, `Server connection`), or the SDK warns and agents cannot find
     it.

@@ -259,7 +259,7 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
         <Plus class="size-3.5" />
       </Button>
       <Input
-        aria-label="New to-do"
+        aria-label="To-do text"
         class="h-8 flex-1 border-0 bg-transparent px-1 font-sans text-[13px] focus-visible:ring-0"
         disabled={sending()}
         maxlength={300}
@@ -268,7 +268,7 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
         value={text()}
       />
       <SegmentedControl
-        aria-label="New to-do for"
+        aria-label="To-do owner"
         bind={[owner, setOwner]}
         class="mr-1 rounded border-border/70 p-px"
       >
