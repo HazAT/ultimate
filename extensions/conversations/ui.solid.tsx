@@ -10,6 +10,9 @@ import { ROOT, cn, useConversations, useDocOf } from '@/sdk/solid'
 import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
 import { MarksDoc, OverviewDoc } from './refs.ts'
 
+import type { Point } from '@/sdk'
+
+export const Unsummarized: Point<ConversationId, boolean> = { point: 'conversations.unsummarized' }
 export { hiddenConversationIds } from './visible.ts'
 
 export function useAgentTitle(name: () => string) {
