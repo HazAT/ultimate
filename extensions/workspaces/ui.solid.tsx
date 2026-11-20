@@ -1,9 +1,11 @@
 /** @jsxImportSource @solidjs/web */
-/** Workspaces for other extensions' Solid code: a landing's commit count, opening Review or DiffsHub. */
+/** Workspaces for Solid code: Info's checkout summary and a landing's links to Review or DiffsHub. */
 import { ArrowUpRight } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
 import { cn, events, useAction, useExtensions } from '@/sdk/solid'
 import { GithubAction } from './refs.ts'
+
+export { Workspaces, useWorkspacesMeta } from './panel.solid.tsx'
 
 /** The project's GitHub `owner/repo`, null when `origin` is not on GitHub, undefined until known. */
 export function useGithubRepo() {

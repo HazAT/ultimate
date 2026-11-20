@@ -1,3 +1,3 @@
 What this Ultimate runs on, in the right panel's Info tab: the shown conversation's workspace (its checkout, the lander queue and every checkout counted, from workspaces' `Workspaces`), its model and usage, code (branch, sha, dirty, build, "core changed · restart pending"), execution environment, machine, process (uptime, generation, restart), persistence, skills and context files. Extensions and their load errors live in the Extensions tab.
 
-Everything comes from `useSystem()` (the server's `system` event), `useConversation()` and `useModels()`. Paths copy on click; which sections are collapsed is kept in durable UI state. `rows.tsx` holds the section, row, and copy primitives.
+The Solid panel reads the server's `system` event, the shown conversation and its model. Paths copy on click. The `closed` list in Info's durable UI state keeps sections collapsed across reloads.
