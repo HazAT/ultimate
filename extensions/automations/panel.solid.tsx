@@ -11,7 +11,6 @@ import {
   useConversationId,
   useExtensionUiState,
   useNow,
-  writingAs,
 } from '@/sdk/solid'
 import { AutomationForm } from './form.solid.tsx'
 import { refreshList, useAutomations, useLive, useShown } from './live.solid.tsx'
@@ -46,12 +45,8 @@ export function AutomationsPanel(props: { overlayOpen: boolean; requested?: Conv
   const fastClock = useNow(1000, fast)
   const slowClock = useNow(15000, () => !fast())
   const now = () => (fast() ? fastClock() : slowClock())
-  useLive(
-    () =>
-      shown() &&
-      list().some(
-        (item) => item.enabled && item.nextAt !== undefined && now() - item.nextAt > 1500,
-      ),
+  useLive(() =>
+    list().some((item) => item.enabled && item.nextAt !== undefined && now() - item.nextAt > 1500),
   )
   const watcher = () =>
     listing() !== conversation()
@@ -166,9 +161,7 @@ export function AutomationsPanel(props: { overlayOpen: boolean; requested?: Conv
                       }}
                       onEdit={(opener) => edit(opener, item())}
                       onDeleted={(id) => {
-                        writingAs('app', () =>
-                          setExpanded((previous) => previous.filter((key) => key !== id)),
-                        )
+                        setExpanded((previous) => previous.filter((key) => key !== id))
                         requestAnimationFrame(() => newButton?.focus())
                       }}
                       onOpenScript={() => {

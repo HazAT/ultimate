@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { CalendarClock, ChevronRight, Radar, Zap } from '@lucide/solid'
 import { Dynamic } from '@solidjs/web'
-import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createMemo, createSignal, For, Show } from 'solid-js'
 import {
   Collapsible,
   CollapsibleContent,
@@ -32,7 +32,7 @@ import {
 } from './looks.ts'
 import type { Look } from './looks.ts'
 import { openAutomation, openAutomationsPanel } from './navigation.ts'
-import { get, subscribe, want } from './poll.ts'
+import { useAutomations } from './live.solid.tsx'
 import type { Automation } from './refs.ts'
 
 const FIRST = 5
@@ -48,24 +48,14 @@ function short(automation: Automation, now: number) {
 }
 
 export function AutomationsSection() {
-  const [data, setData] = createSignal(get().data)
-  onSettled(() => {
-    const update = () => setData(get().data)
-    const unsubscribe = subscribe(update)
-    const release = want(5000, api.action)
-    update()
-    return () => {
-      unsubscribe()
-      release()
-    }
-  })
+  const polled = useAutomations(() => 5000)
   const now = useNow(10_000)
   const expanded = useExtensionUiState('sidebarOpen', true)
   const [all, setAll] = createSignal(false)
   const list = createMemo(() => {
     const at = now()
     return worstFirst(
-      (data() ?? []).filter((automation) => active(automation, at)),
+      (polled().data ?? []).filter((automation) => active(automation, at)),
       at,
     )
   })

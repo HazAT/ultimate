@@ -3,7 +3,7 @@ import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { ExtensionName } from '@/sdk/solid'
+import { events, ExtensionName } from '@/sdk/solid'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { SOURCE_HEADER, UI_REVISION } from '../../../../shared/protocol.ts'
 import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
@@ -24,6 +24,8 @@ const harness = vi.hoisted(() => ({
   actions: [] as { name: string; args: unknown; source: string | null }[],
   writes: [] as { key: string; value: unknown; source: string | null }[],
   confirm: false,
+  listReads: 0,
+  revision: 0,
 }))
 
 const reports: AutomationListItem = {
@@ -50,7 +52,7 @@ const checks: AutomationListItem = {
   script: { ask: 'Watch CI', once: false, conversationId: watcher, state: 'running' },
 }
 const confirmation =
-  'Deletes Morning reports. Future runs stop. Its conversations and files are kept.'
+  'Deletes Morning reports (A1). Future runs stop. Its conversations and files are kept.'
 
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -64,20 +66,34 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     if (path === '/api/ui') {
       const { ops } = JSON.parse(init!.body as string) as UiUpdateRequest
       for (const { key, value } of ops) harness.writes.push({ key, value, source })
-      return Response.json({ ok: true, rev: 1 })
+      return Response.json({ ok: true, rev: ++harness.revision })
     }
     if (path.endsWith('/subagents/actions/definitions'))
-      return Response.json({ result: { definitions: [] } })
+      return Response.json({
+        result: {
+          definitions: [
+            {
+              name: 'reviewer',
+              description: 'Review the work',
+              path: '/agents/reviewer.md',
+              source: 'builtin',
+            },
+          ],
+        },
+      })
     const action = /^\/api\/extensions\/automations\/actions\/(\w+)$/.exec(path)?.[1]
     switch (action) {
       case 'list':
+        harness.listReads++
         return Response.json({ result: harness.list })
       case 'describe':
         return Response.json({
           result: { description: 'Every 15 minutes', schedule: reports.schedule, next: [] },
         })
       case 'log':
-        return Response.json({ result: { text: 'checking <img src=x>\nFIRE build green' } })
+        return Response.json({
+          result: { text: 'checking \x1b]52;c;hidden payload\x07<img src=x>\nFIRE build green' },
+        })
       case 'script':
         return Response.json({
           result: { path: '/automations/A2/run', text: '#!/bin/sh\necho OK' },
@@ -149,7 +165,7 @@ beforeEach(async ({ onTestFinished }) => {
     removeEventListener() {},
   }))
   await uiState.flush()
-  uiState.receive({ [UI_REVISION]: 1 })
+  uiState.receive({ [UI_REVISION]: ++harness.revision })
   harness.writes.length = 0
   store.start()
   harness.sources.at(-1)!.open()
@@ -164,29 +180,50 @@ it('pauses, runs, and requires a person’s confirmation before deleting', async
   const view = panel()
   await settle()
   await expectDistinctAgentNames(agent)
-  expect((await act('Enable Morning reports', 'setChecked', false)).ok).toBe(true)
+  expect((await act('Enable Morning reports (A1)', 'setChecked', false)).ok).toBe(true)
   await settle()
   expect(harness.actions).toEqual([{ name: 'pause', args: { id: 'A1' }, source: 'agent' }])
-  expect(control('Enable Morning reports')).toMatchObject({ checked: false })
+  expect(control('Enable Morning reports (A1)')).toMatchObject({ checked: false })
 
-  expect((await act('Actions for Morning reports', 'press', 'Run now')).ok).toBe(true)
+  expect((await act('Actions for Morning reports (A1)', 'press', 'Run now')).ok).toBe(true)
   expect(harness.actions.at(-1)).toEqual({ name: 'run', args: { id: 'A1' }, source: 'agent' })
   await settle()
   expect(view.textContent).toContain('No runs yet')
 
-  expect((await act('Actions for Morning reports', 'press', 'Delete…')).ok).toBe(true)
-  expect(control('Delete Morning reports').confirm).toBe(confirmation)
-  expect((await act('Delete Morning reports', 'press')).ok).toBe(false)
+  await uiState.flush()
+  expect(uiState.get('ext.automations.expanded')).toEqual(['A1'])
+  expect((await act('Actions for Morning reports (A1)', 'press', 'Delete…')).ok).toBe(true)
+  expect(control('Delete Morning reports (A1)').confirm).toBe(confirmation)
+  expect((await act('Delete Morning reports (A1)', 'press')).ok).toBe(false)
   expect(allow).toHaveBeenCalledWith(
     expect.objectContaining({ confirm: confirmation }),
     expect.anything(),
   )
   expect(harness.actions.map(({ name }) => name)).toEqual(['pause', 'run'])
   harness.confirm = true
-  expect((await act('Delete Morning reports', 'press')).ok).toBe(true)
+  expect((await act('Delete Morning reports (A1)', 'press')).ok).toBe(true)
   await settle()
+  await uiState.flush()
   expect(harness.actions.at(-1)).toEqual({ name: 'delete', args: { id: 'A1' }, source: 'agent' })
+  expect(harness.writes.at(-1)).toEqual({
+    key: 'ext.automations.expanded',
+    value: [],
+    source: 'agent',
+  })
   expect(view.querySelector('[data-automation="A1"]')).toBeNull()
+})
+
+it('distinguishes the controls of two same-named automations, including delete confirmation', async () => {
+  harness.list = [reports, { ...checks, name: reports.name }]
+  await refreshList()
+  panel()
+  await settle()
+  for (const id of ['A1', 'A2']) {
+    expect((await act(`Run history for Morning reports (${id})`, 'setOpen', true)).ok).toBe(true)
+    expect((await act(`Actions for Morning reports (${id})`, 'press', 'Delete…')).ok).toBe(true)
+    expect(control(`Delete Morning reports (${id})`).confirm).toContain(`(${id})`)
+  }
+  await expectDistinctAgentNames(agent)
 })
 
 it('creates an automation through the form as the agent', async () => {
@@ -213,11 +250,52 @@ it('creates an automation through the form as the agent', async () => {
   ])
 })
 
+it('suspends the editor for a definition and restores the draft and Configure focus', async ({
+  onTestFinished,
+}) => {
+  harness.list = [{ ...reports, agent: 'reviewer' }]
+  await refreshList()
+  const view = panel()
+  await settle()
+  expect((await act('Actions for Morning reports (A1)', 'press', 'Edit')).ok).toBe(true)
+  expect((await act('Name', 'setValue', 'Unsubmitted name')).ok).toBe(true)
+  expect((await act('Prompt', 'setValue', 'Unsubmitted prompt')).ok).toBe(true)
+  const dialog = () => view.querySelector('[data-slot="dialog-content"]')
+  const opened: { data: unknown; editorOpen?: boolean }[] = []
+  onTestFinished(
+    events.on('subagents:open-definition', (data) => {
+      opened.push({ data, editorOpen: dialog()?.hasAttribute('data-open') })
+    }),
+  )
+  expect((await act('Configure', 'press')).ok).toBe(true)
+  await settle()
+  expect(opened).toEqual([{ data: { name: 'reviewer' }, editorOpen: false }])
+  events.emit('subagents:definition-closed', { name: 'reviewer' })
+  await settle()
+  expect(control('Name').value).toBe('Unsubmitted name')
+  expect(control('Prompt').value).toBe('Unsubmitted prompt')
+  expect(document.activeElement).toBe(view.querySelector('[data-automation-configure]'))
+})
+
+it('refreshes an overdue automation while the panel is hidden', async ({ onTestFinished }) => {
+  vi.useFakeTimers()
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  harness.list = [{ ...reports, nextAt: Date.now() - 5000 }]
+  await refreshList()
+  panel()
+  await vi.advanceTimersByTimeAsync(0)
+  const reads = harness.listReads
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(harness.listReads).toBe(reads + 1)
+})
+
 it('persists which run history is expanded', async () => {
   const view = panel()
   await settle()
   expect(view.textContent).not.toContain('No runs yet')
-  expect((await act('Run history for Morning reports', 'setOpen', true)).ok).toBe(true)
+  expect((await act('Run history for Morning reports (A1)', 'setOpen', true)).ok).toBe(true)
   flush()
   expect(view.textContent).toContain('No runs yet')
   await uiState.flush()
@@ -234,6 +312,7 @@ it('shows watcher output and safely switches to its durable source pane', async 
   const detail = view.querySelector('[data-automation-script="A2"]')!
   expect(detail.textContent).toContain('FIRE build green')
   expect(detail.textContent).toContain('<img src=x>')
+  expect(detail.textContent).not.toContain('hidden payload')
   expect(detail.querySelector('img')).toBeNull()
   expect(detail.textContent).toContain('/automations/A2/run')
   expect((await act('Watcher pane', 'setValue', 'script')).ok).toBe(true)

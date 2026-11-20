@@ -35,13 +35,14 @@ import {
   useAction,
   useConversationId,
   useConversations,
+  writingAs,
 } from '@/sdk/solid'
 import { refreshList } from './live.solid.tsx'
 import { attention, clock, lookOf, looks, spent, stateLine, statusLabel } from './looks.ts'
 import { BusyDot, Dot, KindIcon, RunIcon, Tag } from './parts.solid.tsx'
 import { DeleteAction, DescribeAction, PauseAction, ResumeAction, RunAction } from './refs.ts'
 import type { Automation, Run, Schedule } from './refs.ts'
-import { actions, full, triggerWords, words } from './words.ts'
+import { actions, automationLabel, full, triggerWords, words } from './words.ts'
 
 export function useAct() {
   const [error, setError] = createSignal<string>()
@@ -97,7 +98,7 @@ export function Toggle(props: { automation: Automation; now: number; act: Act })
   }
   return (
     <Switch
-      aria-label={`Enable ${props.automation.name}`}
+      aria-label={`Enable ${automationLabel(props.automation)}`}
       bind={[checked, toggle]}
       disabled={passed() || pending() !== undefined}
       title={title()}
@@ -173,6 +174,7 @@ export function AutomationRow(props: {
 }) {
   const { error, act } = useAct()
   const item = () => props.automation
+  const label = () => automationLabel(item())
   const script = () => item().script
   const look = createMemo(() => lookOf(item(), props.now))
   const running = () => item().runs.some((run) => run.status === 'running')
@@ -198,14 +200,14 @@ export function AutomationRow(props: {
     if (!script()) props.onExpand(true)
     return act(api.action(RunAction, { id: item().id }))
   }
-  const remove = async () => {
+  const remove = async (source: string) => {
     const id = item().id
     const deleted = props.onDeleted
-    if (await act(api.action(DeleteAction, { id }))) deleted(id)
+    if (await act(api.action(DeleteAction, { id }))) writingAs(source, () => deleted(id))
   }
   return (
     <li
-      aria-label={item().name}
+      aria-label={label()}
       class="border-b border-border/50 last:border-b-0"
       data-automation={item().id}
       data-look={look()}
@@ -256,14 +258,14 @@ export function AutomationRow(props: {
         <span class="truncate">{line()}</span>
       </p>
       <Collapsible
-        aria-label={`Run history for ${item().name}`}
+        aria-label={`Run history for ${label()}`}
         bind={[() => props.expanded, (open) => props.onExpand(open)]}
       >
         <div class="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
           <Show when={script()}>
             {(watcher) => (
               <Button
-                aria-label={`Open watcher for ${item().name}`}
+                aria-label={`Open watcher for ${label()}`}
                 class="h-6 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
                 onClick={() => props.onOpenScript()}
                 size="xs"
@@ -274,7 +276,10 @@ export function AutomationRow(props: {
               </Button>
             )}
           </Show>
-          <CollapsibleTrigger class="group/runs flex h-6 items-center gap-1 rounded-md px-1.5 font-mono text-[11px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
+          <CollapsibleTrigger
+            aria-label={`Show runs for ${label()}`}
+            class="group/runs flex h-6 items-center gap-1 rounded-md px-1.5 font-mono text-[11px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          >
             <ChevronRight
               aria-hidden="true"
               class="size-3 transition-transform group-data-open/runs:rotate-90"
@@ -296,7 +301,7 @@ export function AutomationRow(props: {
             }}
           >
             <DropdownMenuTrigger
-              aria-label={`Actions for ${item().name}`}
+              aria-label={`Actions for ${label()}`}
               class="ml-auto grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-open:bg-accent"
               ref={menu}
             >
@@ -335,11 +340,11 @@ export function AutomationRow(props: {
         <Show when={confirming()}>
           <div class="mx-3 mb-2 flex flex-col gap-1.5 rounded-md border border-error/40 bg-error/6 px-2.5 py-2">
             <p class="text-[12px] leading-snug text-foreground/90">
-              Delete <span class="font-medium">{item().name}</span>? {confirmation()}
+              Delete <span class="font-medium">{label()}</span>? {confirmation()}
             </p>
             <div class="flex justify-end gap-1.5">
               <Button
-                aria-label={`Keep ${item().name}`}
+                aria-label={`Keep ${label()}`}
                 class="h-6 text-[11.5px]"
                 onClick={cancel}
                 onKeyDown={escape}
@@ -350,10 +355,10 @@ export function AutomationRow(props: {
                 Cancel
               </Button>
               <Button
-                aria-label={`Delete ${item().name}`}
+                aria-label={`Delete ${label()}`}
                 class="h-6 text-[11.5px] text-error hover:bg-error/10 hover:text-error"
-                data-agent-confirm={`Deletes ${item().name}. ${confirmation()}`}
-                onClick={remove}
+                data-agent-confirm={`Deletes ${label()}. ${confirmation()}`}
+                onClick={(_, details) => remove(details.source)}
                 onKeyDown={escape}
                 size="xs"
                 variant="outline"
@@ -365,7 +370,7 @@ export function AutomationRow(props: {
         </Show>
         <ErrorLine error={error()} />
         <CollapsibleContent>
-          <Runs name={item().name} runs={item().runs} now={props.now} />
+          <Runs label={label()} runs={item().runs} now={props.now} />
         </CollapsibleContent>
       </Collapsible>
     </li>
@@ -373,7 +378,7 @@ export function AutomationRow(props: {
 }
 
 const FIRST = 8
-function Runs(props: { name: string; runs: Run[]; now: number }) {
+function Runs(props: { label: string; runs: Run[]; now: number }) {
   const [all, setAll] = createSignal(false)
   const newest = createMemo(() => props.runs.toReversed())
   return (
@@ -386,14 +391,14 @@ function Runs(props: { name: string; runs: Run[]; now: number }) {
       }
     >
       <div class="pr-1.5 pb-2 pl-6">
-        <ol aria-label="Runs">
+        <ol aria-label={`Runs for ${props.label}`}>
           <For each={all() ? newest() : newest().slice(0, FIRST)} keyed={(run) => run.id}>
-            {(run) => <RunRow now={props.now} run={run()} />}
+            {(run) => <RunRow label={props.label} now={props.now} run={run()} />}
           </For>
         </ol>
         <Show when={newest().length > FIRST}>
           <Button
-            aria-label={`Show ${all() ? 'fewer' : 'more'} runs for ${props.name}`}
+            aria-label={`Show ${all() ? 'fewer' : 'more'} runs for ${props.label}`}
             class="mt-0.5 ml-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
             onClick={() => setAll(!all())}
             size={null}
@@ -408,7 +413,7 @@ function Runs(props: { name: string; runs: Run[]; now: number }) {
 }
 
 const plain = (line: string) => line.replace(/^[\s#>*+-]+/, '').replace(/[*_`]+/g, '')
-function RunRow(props: { run: Run; now: number }) {
+function RunRow(props: { label: string; run: Run; now: number }) {
   const conversations = useConversations()
   const shown = useConversationId()
   const run = () => props.run
@@ -458,6 +463,7 @@ function RunRow(props: { run: Run; now: number }) {
       <Show when={conversationId()}>
         {(id) => (
           <Button
+            aria-label={`Open run #${id()} for ${props.label}`}
             class="h-5 shrink-0 gap-1 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
             onClick={() => switchConversation(id())}
             size="xs"

@@ -19,10 +19,12 @@ import {
   api,
   cn,
   errorMessage,
+  events,
   formatKeys,
   keepLast,
   useAction,
   useConversationId,
+  useEvent,
   writingAs,
 } from '@/sdk/solid'
 import { contextCondition, draftOf, scheduleOf, triggerOf, zone } from './form-draft.ts'
@@ -71,26 +73,57 @@ export function AutomationForm(props: {
   finalFocus: () => HTMLElement | null
   onSaved: () => void
 }) {
+  const [definition, setDefinition] = createSignal<{
+    name: string
+    source: string
+    refresh: () => void
+  }>()
+  const [returning, setReturning] = createSignal(false)
+  useEvent('subagents:definition-closed', () => {
+    const suspended = definition()
+    if (!suspended) return
+    suspended.refresh()
+    setReturning(true)
+    setDefinition(undefined)
+  })
   return (
     <Dialog
-      open={props.open}
+      open={props.open && !definition()}
       onOpenChange={(open, details) => {
         if (details.reason === 'outside-press') details.cancel()
-        else if (!open) props.close()
+        else if (!open && !definition()) props.close()
+      }}
+      onOpenChangeComplete={(open) => {
+        const suspended = definition()
+        if (!open && suspended)
+          writingAs(suspended.source, () =>
+            events.emit('subagents:open-definition', { name: suspended.name }),
+          )
       }}
     >
       <DialogContent
         class="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
-        initialFocus="[data-automation-name]"
-        finalFocus={props.finalFocus}
+        keepMounted={props.open}
+        initialFocus={returning() ? '[data-automation-configure]' : '[data-automation-name]'}
+        finalFocus={definition() ? 'none' : props.finalFocus}
       >
-        <Editor automation={props.automation} close={props.close} onSaved={props.onSaved} />
+        <Editor
+          automation={props.automation}
+          close={props.close}
+          onConfigure={(name, source, refresh) => setDefinition({ name, source, refresh })}
+          onSaved={props.onSaved}
+        />
       </DialogContent>
     </Dialog>
   )
 }
 
-function Editor(props: { automation?: Automation; close: () => void; onSaved: () => void }) {
+function Editor(props: {
+  automation?: Automation
+  close: () => void
+  onConfigure: (name: string, source: string, refresh: () => void) => void
+  onSaved: () => void
+}) {
   const [draft, setDraft] = createStore(() => draftOf(props.automation))
   const set: Change = (patch) =>
     setDraft((next) => {
@@ -273,7 +306,11 @@ function Editor(props: { automation?: Automation; close: () => void; onSaved: ()
         </Show>
         <Show when={!wakeable() || !!promptText()}>
           <Field label="Agent">
-            <AgentPicker value={draft.agent} onChange={(agent) => set({ agent })} />
+            <AgentPicker
+              value={draft.agent}
+              onChange={(agent) => set({ agent })}
+              onConfigure={props.onConfigure}
+            />
           </Field>
         </Show>
         <Show when={error()}>
