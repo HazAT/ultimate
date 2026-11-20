@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { createEffect, createMemo, createSignal, onSettled } from 'solid-js'
-import { api, useConversations, useTasks, useUiState, useViewport } from '@/sdk/solid'
+import { api, useConversations, useStore, useTasks, useUiState, useViewport } from '@/sdk/solid'
 import { every, retryAfter } from '../../lib/timers.ts'
 import { RunLabel, WatcherLabel } from './types.ts'
 import { get, refreshAutomations, subscribe, want } from './poll.ts'
@@ -19,18 +19,22 @@ export function useAutomations(rate: () => number) {
   return list
 }
 
-export function useShown(overlayOpen: () => boolean) {
+export function useShown() {
   const isVisible = () => document.visibilityState === 'visible'
   const [visible, setVisible] = createSignal(isVisible())
   const viewport = useViewport()
   const [docked] = useUiState('shell.panelOpen', false)
+  const overlays = useStore((state) => state.ui.open)
   onSettled(() => {
     const update = () => setVisible(isVisible())
     document.addEventListener('visibilitychange', update)
     update()
     return () => document.removeEventListener('visibilitychange', update)
   })
-  return () => visible() && (viewport() === 'desktop' ? docked() : overlayOpen())
+  return () => {
+    const on = viewport()
+    return visible() && (on === 'desktop' ? docked() : (overlays()?.[on]?.panels ?? false))
+  }
 }
 
 export function useLive(overdue: () => boolean) {

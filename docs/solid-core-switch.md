@@ -46,18 +46,22 @@ user turns. Every contribution it hosts goes through `Contribution` or `Contribu
 working. `ComposerRedirect` is a Solid context in `@/sdk/solid`. Side chat's frame, read-aloud's strip, onboarding's
 Start card, lineage's history banner, workspaces' lander note and subagents' queued-input card moved with it.
 `ComposerPlaceholder` (conversations' `standing.tsx`) and `FileUpload` (attachments) are React data hooks the composer
-reads with `useProvided`; voice-live's `VoiceDock` wrapper and messages' `OpenMessages` status (listed under the
-transcript) stay React through the bridge until their extensions move.
+reads with `useProvided`; voice-live's `VoiceDock` wrapper stays React through the bridge until its extension moves.
 
-**Summary (after C3):** 33 rows (a row is one part or a group of one extension's parts). By core host:
+**Done in C4a:** messages' `OffscreenQuestions`, `MessageNavigation` and `OpenMessages`, questions' draft sweep and
+review's link overlay are `island(C)`. Review's `workspaces.review` point provides a callback with no React hooks.
+Conversations' standing empty state and MCP's extension details are island providers; the Automations panel reads the
+shell's panel and requested conversation state directly in Solid.
+
+**Remaining:** 26 rows (a row is one part or a group of one extension's parts). By core host:
 
 | Core host                                                       | Rows | Extensions |
 | --------------------------------------------------------------- | ---- | ---------- |
-| The transcript's points and overlays (host done in C2)          | 11   | 10         |
+| The transcript's points and overlays (host done in C2)          | 6    | 6          |
 | The sidebar (React rows and sections other extensions provide)  | 3    | 3          |
-| Panel and surface hosts, System's tab host, documents' views    | 11   | 8          |
+| Panel and surface hosts, System's tab host, documents' views    | 10   | 7          |
 | The composer (React parts the Solid host mounts)                | 2    | 2          |
-| React points of other extensions (onboarding, the Agents panel) | 6    | 6          |
+| React points of other extensions (onboarding, the Agents panel) | 5    | 5          |
 
 Transcript renderers still React, which no host blocks (they move with their extension, before C5): dream's four
 cards, onboarding's `setup` tool and three cards, plan's `plan` tool, side-chat's summary card, and voice-live's seven
@@ -70,19 +74,14 @@ breaks them unless they move to `island(C)` first.
 
 ## The transcript
 
-| Extension     | Part                                                                                            | Where                   | Hook in the transcript       | Moves in       |
-| ------------- | ----------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------- | -------------- |
-| automations   | provided `WaitTimers` (`useWaitTimers`)                                                         | `automations/web.tsx`   | messages' wait timers        | any (provider) |
-| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                     | `conversations/web.tsx` | empty transcript             | C4             |
-| codemode      | provided `MessageReference`                                                                     | `codemode/web.tsx`      | message actions              | any (provider) |
-| reel          | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card) | `reel/web.tsx`          | message cards, inbox's cards | any (provider) |
-| tasks         | provided `RunStart` (a data hook)                                                               | `tasks/web.tsx`         | the run timer                | any (provider) |
-| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                     | `pause/web.tsx`         | parked runs                  | C4             |
-| subagents     | provided `ErrorReport` (a data hook the React boundary reads)                                   | `subagents/web.tsx`     | error cards                  | C4             |
-| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`   | `review/web.tsx`        | the sidebar                  | C4             |
-| messages      | slot `OffscreenQuestions` (reads the React `useTranscriptScroll` refs to find cards offscreen)  | `messages/web.tsx`      | top                          | C4             |
-| messages      | `MessageNavigation` overlay, `OpenMessages` (composer status)                                   | `messages/web.tsx`      | overlay, composer            | C4             |
-| questions     | overlay `CrossSurfaceDraftSweep` (no controls)                                                  | `questions/web.tsx`     | overlay                      | C4             |
+| Extension   | Part                                                                                            | Where                 | Hook in the transcript       | Moves in       |
+| ----------- | ----------------------------------------------------------------------------------------------- | --------------------- | ---------------------------- | -------------- |
+| automations | provided `WaitTimers` (`useWaitTimers`)                                                         | `automations/web.tsx` | messages' wait timers        | any (provider) |
+| codemode    | provided `MessageReference`                                                                     | `codemode/web.tsx`    | message actions              | any (provider) |
+| reel        | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card) | `reel/web.tsx`        | message cards, inbox's cards | any (provider) |
+| tasks       | provided `RunStart` (a data hook)                                                               | `tasks/web.tsx`       | the run timer                | any (provider) |
+| pause       | provided `ParkedRuns` (also read by the sidebar and System)                                     | `pause/web.tsx`       | parked runs                  | C4             |
+| subagents   | provided `ErrorReport` (a data hook the React boundary reads)                                   | `subagents/web.tsx`   | error cards                  | C4             |
 
 ## The sidebar
 
@@ -94,19 +93,18 @@ breaks them unless they move to `island(C)` first.
 
 ## Panel and surface hosts
 
-| Extension   | Part                                                                                                                    | Where                 | Why it waits                                                    | Moves in |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------- | -------- |
-| agent       | the `agent` surface and the title bar's panel buttons                                                                   | `agent/web.tsx`       | is the conversation view: transcript, composer, panels          | C4       |
-| documents   | the Documents panel                                                                                                     | `documents/web.tsx`   | hosts other extensions' React document views                    | C4       |
-| codemode    | document view `codemode.store`                                                                                          | `codemode/web.tsx`    | a Documents view                                                | C4       |
-| subagents   | the Agents panel (`overview.tsx`) and the definition dialog (`definitions.tsx`, `fields.tsx`)                           | `subagents/web.tsx`   | uses models' React family editor (`FamilyPopover`, `AddFamily`) | C4       |
-| inbox       | the surface frame (core `Sidebar`, `Header`, the `QuestionPane` takeover)                                               | `inbox/web.tsx`       | the surface host; side-chat's React pane                        | C4       |
-| inbox       | the reading pane: messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, items' `pane`                    | `inbox/reading.tsx`   | hosts the transcript's message parts                            | C4       |
-| inbox       | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands                               | `inbox/ui.tsx`        | React points other extensions provide                           | C4       |
-| wire        | the tab's wrapper, docking the core `Conversation`                                                                      | `wire/web.tsx`        | System's tab host; the core dock                                | C4       |
-| wire        | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                                    | `wire/web.tsx`        | a command cannot set UI state                                   | C4       |
-| todos       | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                                                 | `todos/web.tsx`       | inbox's `Waiting` is React                                      | C4       |
-| automations | the panel's wrapper, passing `overlayOpen` (phone/tablet panel overlay) and `requested` (the conversation being loaded) | `automations/web.tsx` | the shell's open state and `requested` have no Solid reader     | C4       |
+| Extension | Part                                                                                                 | Where               | Why it waits                                                    | Moves in |
+| --------- | ---------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------- | -------- |
+| agent     | the `agent` surface and the title bar's panel buttons                                                | `agent/web.tsx`     | is the conversation view: transcript, composer, panels          | C4       |
+| documents | the Documents panel                                                                                  | `documents/web.tsx` | hosts other extensions' React document views                    | C4       |
+| codemode  | document view `codemode.store`                                                                       | `codemode/web.tsx`  | a Documents view                                                | C4       |
+| subagents | the Agents panel (`overview.tsx`) and the definition dialog (`definitions.tsx`, `fields.tsx`)        | `subagents/web.tsx` | uses models' React family editor (`FamilyPopover`, `AddFamily`) | C4       |
+| inbox     | the surface frame (core `Sidebar`, `Header`, the `QuestionPane` takeover)                            | `inbox/web.tsx`     | the surface host; side-chat's React pane                        | C4       |
+| inbox     | the reading pane: messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, items' `pane` | `inbox/reading.tsx` | hosts the transcript's message parts                            | C4       |
+| inbox     | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands            | `inbox/ui.tsx`      | React points other extensions provide                           | C4       |
+| wire      | the tab's wrapper, docking the core `Conversation`                                                   | `wire/web.tsx`      | System's tab host; the core dock                                | C4       |
+| wire      | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                 | `wire/web.tsx`      | a command cannot set UI state                                   | C4       |
+| todos     | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                              | `todos/web.tsx`     | inbox's `Waiting` is React                                      | C4       |
 
 ## The composer
 
@@ -121,7 +119,6 @@ The host is Solid (C3); these React parts mount through the bridge and wait on t
 
 | Extension   | Part                                                                                                                                                | Where               | Called by                                                           | Moves in       |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- | -------------- |
-| mcp         | provided `ExtensionDetails`                                                                                                                         | `mcp/web.tsx`       | onboarding's React details (returns an island)                      | C4             |
 | reel        | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
 | side-chat   | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    | any (provider) |
 | plan        | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |

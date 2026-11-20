@@ -146,10 +146,10 @@ const control = (label: string) => {
 }
 const act = (label: string, action: string, ...args: unknown[]) =>
   agent.act({ steps: [{ ref: control(label).ref, action, args }] })
-const panel = (requested?: typeof watcher) =>
+const panel = () =>
   renderSolid(() => (
     <ExtensionName value="automations">
-      <AutomationsPanel overlayOpen={false} requested={requested} />
+      <AutomationsPanel />
     </ExtensionName>
   ))
 
@@ -167,6 +167,7 @@ beforeEach(async ({ onTestFinished }) => {
   await uiState.flush()
   uiState.receive({ [UI_REVISION]: ++harness.revision })
   harness.writes.length = 0
+  store.show(undefined)
   store.start()
   harness.sources.at(-1)!.open()
   onTestFinished(() => {
@@ -307,7 +308,8 @@ it('persists which run history is expanded', async () => {
 })
 
 it('shows watcher output and safely switches to its durable source pane', async () => {
-  const view = panel(watcher)
+  const view = panel()
+  store.show(watcher)
   await settle()
   const detail = view.querySelector('[data-automation-script="A2"]')!
   expect(detail.textContent).toContain('FIRE build green')

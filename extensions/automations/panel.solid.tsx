@@ -11,6 +11,7 @@ import {
   useConversationId,
   useExtensionUiState,
   useNow,
+  useStore,
 } from '@/sdk/solid'
 import { AutomationForm } from './form.solid.tsx'
 import { refreshList, useAutomations, useLive, useShown } from './live.solid.tsx'
@@ -20,8 +21,8 @@ import { AutomationRow } from './row.solid.tsx'
 import { ScriptDetail } from './script.solid.tsx'
 import type { Automation } from './refs.ts'
 
-export function AutomationsPanel(props: { overlayOpen: boolean; requested?: ConversationId }) {
-  const shown = useShown(() => props.overlayOpen)
+export function AutomationsPanel() {
+  const shown = useShown()
   const polled = useAutomations(() => (shown() ? 2000 : 15000))
   const list = () => polled().data ?? []
   const commands = useCommands()
@@ -32,7 +33,8 @@ export function AutomationsPanel(props: { overlayOpen: boolean; requested?: Conv
   }>()
   const [formOpen, setFormOpen] = createSignal(false)
   const conversationId = useConversationId()
-  const conversation = () => props.requested ?? conversationId()
+  const requested = useStore((state) => state.requested)
+  const conversation = createMemo(() => requested() ?? conversationId())
   const [listing, setListing] = createSignal<ConversationId>()
   createEffect(conversation, () => setListing(undefined))
   const fast = () =>
