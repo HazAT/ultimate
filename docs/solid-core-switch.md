@@ -27,6 +27,7 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 | diagrams    | code block `mermaid`                                                | `extensions/diagrams/web.tsx:16`    | the transcript's Markdown      |
 | read-aloud  | message action                                                      | `extensions/read-aloud/web.tsx:146` | the transcript's message bar   |
 | status-line | message detail `MessageUsage`                                       | `extensions/status-line/web.tsx:97` | the transcript's message bar   |
+| parallel    | tool renderers `web_search`, `web_fetch`                            | `extensions/parallel/web.tsx:393`   | the transcript's tool calls    |
 
 ## Composer, panels and surfaces
 
@@ -42,13 +43,15 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 
 A provided value is a React hook the core or another React extension calls during its render.
 
-| Extension | Point               | Where                             | Called by                                      |
-| --------- | ------------------- | --------------------------------- | ---------------------------------------------- |
-| phase     | `ConversationPhase` | `extensions/phase/web.tsx:17`     | the React sidebar's rows, voice-live           |
-| codemode  | `MessageReference`  | `extensions/codemode/web.tsx:253` | the transcript's message actions               |
-| instance  | `PreviewUp`         | `extensions/instance/web.tsx:267` | the React sidebar's preview marks              |
-| pause     | `ParkedRuns`        | `extensions/pause/web.tsx:186`    | the transcript, the React sidebar, system      |
-| mcp       | `ExtensionDetails`  | `extensions/mcp/web.tsx:10`       | onboarding's React details (returns an island) |
+| Extension | Point               | Where                             | Called by                                                                        |
+| --------- | ------------------- | --------------------------------- | -------------------------------------------------------------------------------- |
+| phase     | `ConversationPhase` | `extensions/phase/web.tsx:17`     | the React sidebar's rows, voice-live                                             |
+| codemode  | `MessageReference`  | `extensions/codemode/web.tsx:253` | the transcript's message actions                                                 |
+| instance  | `PreviewUp`         | `extensions/instance/web.tsx:267` | the React sidebar's preview marks                                                |
+| pause     | `ParkedRuns`        | `extensions/pause/web.tsx:186`    | the transcript, the React sidebar, system                                        |
+| mcp       | `ExtensionDetails`  | `extensions/mcp/web.tsx:10`       | onboarding's React details (returns an island)                                   |
+| reel      | `MessageExtras`     | `extensions/reel/web.tsx:126`     | messages' and inbox's React cards; its player shows questions' React answer card |
+| reel      | `LandingExtras`     | `extensions/reel/web.tsx:138`     | workspaces' React landing card                                                   |
 
 ## Contracts that stay React until then
 
