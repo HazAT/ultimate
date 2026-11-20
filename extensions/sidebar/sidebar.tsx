@@ -575,7 +575,7 @@ function Tree({
       <nav aria-label="Conversations" className="flex flex-col gap-0.5">
         <div className="mb-2 flex flex-col gap-0.5 border-b border-border/60 pb-2">
           {ultimate ? tree(ultimate) : standingRow(undefined)}
-          <AllProvided input={ultimateId} point={UnderUltimate}>
+          <AllProvided input={{ conversation: ultimateId }} point={UnderUltimate}>
             {(rows) => rows}
           </AllProvided>
         </div>

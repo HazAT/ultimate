@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { useProvided } from '@/sdk/parts.solid.tsx'
 import { ROOT, cn, plural, useAction } from '@/sdk/solid'
 import { Review } from './landing-points.ts'
-import { GithubAction } from './refs.ts'
+import { GithubAction, RepoAction } from './refs.ts'
 
+export { Review } from './landing-points.ts'
 export { Open } from './landing.solid.tsx'
 export { Workspaces, useWorkspacesMeta } from './panel.solid.tsx'
 
@@ -18,6 +19,11 @@ const short = (range: string) => range.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g,
 export function useGithubRepo() {
   const repo = useAction(GithubAction, null, { conversation: ROOT })
   return repo.data
+}
+
+/** The project's GitHub repository and its visibility, null when `origin` is not on GitHub. */
+export function useProjectRepo() {
+  return useAction(RepoAction, null, { conversation: ROOT }).data
 }
 
 function External(props: {

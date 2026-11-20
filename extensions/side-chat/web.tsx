@@ -549,7 +549,11 @@ const SummaryCard = renderEntry(SideChatSummaryEntry, function SummaryCard({ ent
   )
 })
 
-function useSideRows(main: ConversationId | undefined): ReactNode {
+function useSideRows({
+  conversation: main,
+}: {
+  conversation: ConversationId | undefined
+}): ReactNode {
   const index = useDocOf(main, SideChatsDoc) ?? undefined
   const [front, setFront] = useFront()
   const actions = useUltimate()
