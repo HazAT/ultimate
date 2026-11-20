@@ -33,7 +33,7 @@ An extension is a folder `<name>/` in `extensions/` (built-in), `~/.ultimate/ext
   stylesheet, and its imports are free of the import rules and stay out of the dependency graph. See [Tests](#tests).
 
 Files ending in `.ts` belong to the server facet, files ending in `.tsx` to the web facet: split a large `web.tsx` into
-more `.tsx` files in the same folder (see `coding-tools/diff.tsx`). The folder name is the extension name; a
+more `.tsx` files in the same folder (see `coding-tools/diff.solid.tsx`). The folder name is the extension name; a
 `server.ts` extension must use it as its `name`.
 
 Each web facet loads on its own. If it fails to compile, throws, or exports a contribution of the wrong shape (such as

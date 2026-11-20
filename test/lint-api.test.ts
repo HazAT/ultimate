@@ -327,6 +327,17 @@ it('sends a Solid form to the kit Form, whose submit Button keeps who submitted 
   expect(lint('ui-kit-roles', 'web/src/components/ui/form.solid.tsx', source)).toEqual([])
 })
 
+it('sends a Solid bare button to the kit Button, which the agent bridge can see and press', () => {
+  const source = `export const Open = () => (
+  <button onClick={() => switchConversation(42)} type="button">
+    #42
+  </button>
+)`
+  expect(lint('ui-kit-roles', 'extensions/instance/link.solid.tsx', source)).toHaveLength(1)
+  expect(lint('ui-kit-roles', 'extensions/instance/web.tsx', source)).toEqual([])
+  expect(lint('ui-kit-roles', 'web/src/components/ui/button.solid.tsx', source)).toEqual([])
+})
+
 it('keeps server helpers out of web tests, which the web tsconfig type-checks', () => {
   const source = `import { until } from '../../../../test/helpers.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'`

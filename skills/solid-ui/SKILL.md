@@ -66,6 +66,11 @@ The libraries ship skills that match the pinned versions: read them, not your me
   Solid renderer (`web/src/sdk/markdown.tsx`); a component an island mounts inside text takes `island(C, { inline:
   true })`, which mounts in a `<span>`. A test that renders React to static markup sees an island empty (it mounts in
   an effect): mock `web/src/sdk/markdown.tsx` there.
+- **What waits for the core switch:** `provide` hooks and anything that hosts other extensions' React (the shell, panel
+  hosts). The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
+
+## The transcript and points across frameworks
+
 - **The transcript is Solid (step C2).** Its renderer points keep their framework: a tool, entry, tool-line, message
   action, message detail, answer label, user bubble or compact summary contributed as `island(C)` renders as plain
   Solid there (`islandSolid` in `web/src/sdk/island-mark.ts`); any other is React and mounts through the temporary
@@ -76,9 +81,17 @@ The libraries ship skills that match the pinned versions: read them, not your me
   and `useTranscriptElements()` (the scroll element and the container whose children are rows, no follow state) from `@/sdk/solid`. An entry narrowed by
   its token is `island(renderEntry(Token, Card))` with `renderEntry` from `@/sdk/parts.solid.tsx`; a model-only entry
   still gets a Solid null renderer (a `.solid.tsx` returning `null`), or it mounts React to render nothing.
-- **Transcript parts for Solid renderers** come from `@/sdk/parts.solid.tsx` (P2): `Card`, `Fold` (its `label` names
-  the toggle), `MessageActions` (`name` names its copy button when several cards share an entry), `UserText`,
-  `UserView`, `useToolDuration`. `@/sdk/solid` cannot re-export them: they import it, and `import/no-cycle` fails.
+- **Transcript parts for Solid renderers** come from `@/sdk/parts.solid.tsx`: `Card`, `Fold` (its `label` names the
+  toggle), `MessageActions` (`name` names its copy button when several cards share an entry), `UserText`, `UserView`,
+  `useToolDuration`, `renderEntry`, `Provided`, `useProvided`. It is a second entry because these parts and the kit
+  components they render import `@/sdk/solid`, so `@/sdk/solid` re-exporting them would be an import cycle. One of each
+  part: before writing a card, fold, diff or agent mark, use the shared one (coding-tools' `Diff` from its
+  `ui.solid.tsx`, conversations' `AgentMark`).
+- **Every React renderer costs a React root per row.** The bridge mounts one with `flushSync` for each row a React
+  tool, entry or message action renders, and a warm conversation switch mounts them all again: a React message action
+  or a React `pi.assistant` wrapper is one root per reply. The step-back after P3 found the warm switch 60 ms slower
+  than the React transcript, about half of it in such roots (lineage's go-back action, voice-live's quiet row,
+  coding-tools' cards). Move the renderer, even a one-line wrapper, rather than leaving it on the bridge.
 - **Points across frameworks.** Read another extension's point in Solid with `Provided` (all providers, or `last`) or
   `useProvided` from `@/sdk/parts.solid.tsx`. A provider written `provide(Point, island(C))` renders as Solid with the
   point's input as props, in Solid hosts and React ones (`<Provided>`, `<AllProvided>`), under its own extension name;
@@ -108,15 +121,15 @@ The libraries ship skills that match the pinned versions: read them, not your me
   Solid parts a React contribution places (`core`, `cancel`) go in `Contribution`'s `elements`: the bridge renders each
   with Solid's `render` into the host React places it in, under the placement's conversation scope, and disposes it
   (DOM included) when React removes or hides it. A part React never places never runs.
-- **What waits for the core switch:** `provide` hooks and anything that hosts other extensions' React (the shell, panel
-  hosts). The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
 
 ## The UI kit
 
 ui-sdk is reached only through `web/src/components/ui/*.solid.tsx`, which wraps it once with our theme. Check the folder
 before assuming a component exists; for a behaviour the kit lacks, build it with `definePrimitive` from `@ui-sdk/core`
-and add it to the kit. Lint: `ultimate/ui-framework-boundaries`, `ultimate/ui-kit-roles` (hand-made widget roles and
-bare `<form>`s).
+and add it to the kit. Lint: `ultimate/ui-framework-boundaries`, `ultimate/ui-kit-roles` (hand-made widget roles, bare
+`<form>`s and bare `<button>`s: the agent bridge sees only kit parts). An unstyled control is `Button` with
+`size={null} variant={null}`, which still has the base `inline-flex font-medium whitespace-nowrap`: add `font-normal`
+and, for prose or a link in text, `h-auto whitespace-normal text-left` (`inline` for a link), or it changes look.
 
 | Component                                                                      | Notes                                                                                                                                                |
 | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -161,9 +174,10 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   hangs off one `AbortController`: listeners take its `signal`, the effect keyed on what ends it calls `abort()`
   (`extensions/voice/button.solid.tsx`), instead of a ref mirroring state for a cleanup to read.
 - **The conversation's model:** `useAgent()`, not a whole conversation replica.
-- **Formatting:** `formatAgo`, `formatDuration`, `formatBytes`, `formatTokens`, `plural`, `shortenPath`, `elidePath` and
-  `prettyName` come from `@/sdk/solid`; a shared `.ts` helper takes `formatAgo` and `plural` from `lib/`. Never a local
-  copy.
+- **Formatting:** `formatAgo`, `formatDuration`, `formatTime`, `formatBytes`, `formatTokens`, `plural`, `shortenPath`,
+  `elidePath` and `prettyName` come from `@/sdk/solid`; a shared `.ts` helper takes `formatAgo` and `plural` from
+  `lib/`. Never a local copy. A formatter called per row reuses one `Intl` object: `toLocaleTimeString` builds one per
+  call, about 15 ms of a warm switch to a lander log before `formatTime` kept two.
 - **Writes after an `await`:** `writingAs` holds only for the synchronous call. Take `details.source` before the
   `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). Deep in a
   helper the handler calls, take `writerNow()` instead (`send` in `web/src/app/composer.solid.tsx`, whose steer awaits
@@ -192,8 +206,13 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **Names:** every control has a visible label or `aria-label` naming its action (`Play paused work`, `Pause: stop
   starting new work`). The bridge resolves a name as whole words of a label or row text, regardless of case and
   accents, so no name on the page may appear as whole words in another ("New to-do" also named "New to-do for";
-  "Finished" also named "Play Finished"; a popover trigger and its switch were both "Sounds"). A Tooltip trigger
-  rendered as a `<span>` is not named by its text: give it an `aria-label`.
+  "Finished" also named "Play Finished"; a popover trigger and its switch were both "Sounds"; "Resume" and "Résumé").
+  Cards repeat (two `subagent` calls to one child, a start and a list card of one preview, two codemode results, every
+  reply's copy button), so a card's controls name the call or entry they sit on (`Show conversation #34 (call
+  1a2b3c4d)`, `Go back to message #812`), options their position (`Option 2 · question 2 · message 2`), and a shared
+  part takes an `on` (`TaskChip`) or `name` (`JsonTree`) prop to carry it. A tree names nodes by a path that cannot
+  collide: `doc["a.b"]`, not `doc.a.b`. A Tooltip trigger rendered as a `<span>` is not named by its text: give it an
+  `aria-label`. Both P2 and P3 reviews found repeated names in every round.
 - **Styling:** our tokens (`text-muted-foreground`, `bg-muted`, `border-border/70`, `text-brand`) and ui-sdk's state
   attributes (`data-pressed:`, `data-checked:`, `data-open:`, `data-disabled:`), never inline styles for state. Dense
   and quiet, `font-mono` for meta. The pointer cursor is a base rule in `web/src/index.css`; never add
@@ -214,6 +233,11 @@ Solid 2:
 - A memo over a list a registry rebuilds on every read (`entryRenderers(...)`, `toolRenderers(...)`) changes identity
   each time: give it `equals` comparing the items, or every row below it remounts on each streamed update (C2 found
   11 remounts per row for one short reply with a DOM mutation observer).
+- Scroll position is the reader's only when the reader steers: a scroll event alone cannot tell a reader from the
+  browser anchoring the view while rows settle after a switch, which once left warm revisits 95 px above the end. The
+  transcript's `follow()` (`web/src/app/follow.ts`) unpins only on a scroll that follows a wheel, a pointer or touch on
+  the transcript, or a scroll key outside a text field (focus stays on the body after a click, so keys are read on the
+  window).
 - React mounted inside Solid commits in a later task unless `flushSync`: a Solid effect that measures the React part
   (a reveal finding a tool card inside its row) then sees it empty. The bridge's roots render with `flushSync`.
 - A Solid setter returns the value it set: as the arrow body of a React `useLayoutEffect(() => set(v))` or a Solid
@@ -223,19 +247,9 @@ Solid 2:
   unmount it on `nextTurn`.
 - A transcript row hides with the `empty-row` utility, which also hides a row whose only child is a React host that
   rendered nothing (`data-empty`); `:empty` alone no longer matches once the bridge wraps React.
-- A control in the transcript is a kit `Button`, never a bare `<button>`: the agent bridge sees only kit parts. A
-  `Button` with `size={null} variant={null}` used for prose (an answer option, a question heading) still has the base
-  `whitespace-nowrap font-medium`: add `h-auto whitespace-normal font-normal text-left`, or long text stops wrapping.
-- Names repeat across cards: include the card (`Dismiss message 3`, `Send: answer to message 3`) and, for options, the
-  position (`Option 2 · Answered · question 2 · message 2`): labels equal after case and accent folding ("Resume",
-  "Résumé") resolve to the same control.
 - A Web Animation started from a `ref` callback runs before the element is inserted and stays at its first frame in
   Chromium: start it in `onSettled` (`extensions/questions/send.solid.tsx`).
 - `expectDistinctAgentNames` is async: `await` it, or the test passes whatever the names.
-- A card name repeats when two cards show the same thing: two `subagent` calls to one child, a start and a list card
-  of one preview, two codemode results. Name a card's controls by the call or entry they sit on
-  (`Show conversation #34 (call 1a2b3c4d)`), and give a shared part an `on` (`TaskChip`) or `name` (`JsonTree`) prop to
-  carry it. A tree names nodes by a path that cannot collide: `doc["a.b"]`, not `doc.a.b`.
 - React refused `javascript:` URLs in `href`; Solid sets the attribute as given. A link built from tool output or a
   provider's data parses the URL and links only `http(s):`, showing anything else as text
   (`extensions/parallel/calls.solid.tsx`).
@@ -244,9 +258,12 @@ Solid 2:
   (`web/src/components/json-tree.solid.tsx`). Then the row is an accessor (`entry()`).
 - A `group` state class on a recursive part (`group-data-open/json`) reaches every descendant: an open ancestor
   restyles closed children. Put the group on the node's own trigger and read its `aria-expanded`.
-- `import('@lucide/solid/icons')` put the whole icon set (about 190 KB gzipped, measured before P2 landed) in the page's
-  entry even though it is dynamic; conversations' `AgentMark` imports `icons` statically today, which C5 trims. Name icons statically, or load one by name from
-  `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')`.
+- `import('@lucide/solid/icons')` put the whole icon set (about 190 KB gzipped, measured before P2 landed) in the
+  page's entry even though it is dynamic; conversations' `AgentMark` imports `icons` statically today, which C5 trims.
+  Name icons statically, or load one by name from `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')`.
+- `dynamic(() => table[key()][0])` over a plain function rebuilds the component whenever anything it read changes, even
+  to the same icon: a lander log's 109 check icons were replaced once more after mount. Make the lookup a `createMemo`
+  (`status` in `extensions/workspaces/log-parts.solid.tsx`).
 - A part inside a collapsible trigger cannot be a kit `Button` (buttons do not nest): put it beside the trigger, as the
   subagent card's task chip sits next to its open button.
 - A Solid part handed to React for it to place is a `SolidPart` (`solidPart` in `web/src/sdk/react-island.solid.tsx`),
@@ -353,6 +370,11 @@ Tooling:
 `docs/frontend-baseline.md` holds the baseline and how each number is measured (`node scripts/frontend-weight.ts`, the
 `measure-switch` skill); each step appends its entry to `docs/frontend-progress.json` with
 `scripts/frontend-progress.ts` and reports its delta.
+
+A slower switch is found by what one warm switch does, not by guessing: the `measure-switch` skill's `--profile`, a
+DevTools trace of one switch (forced layouts and their stacks, `Commit` time), and a count of React roots the bridge
+mounts. Compare against the parent commit in the same session: one run's warm median moves 30–50 ms with machine
+load, so read three runs of each tree, interleaved.
 
 ## Done means
 

@@ -132,27 +132,107 @@ it('follows, escapes, returns and keeps the read row in place while history page
   await until(async () => (await place()).distance <= 1 && !(await place()).button, 5_000)
 
   // Earlier history pages in above the row the reader looks at without moving it.
-  const anchor = await page.evaluate(async () => {
-    const scroll = document.querySelector('[data-ui="transcript"]')!.parentElement!
-    const rows = () => [...document.querySelectorAll('[data-ui="transcript"] > [data-entry-id]')]
-    const first = rows()[0].getAttribute('data-entry-id')
-    scroll.scrollTop = 40
-    const row = rows().find((element) => element.getBoundingClientRect().top > 150)!
-    const top = row.getBoundingClientRect().top
-    const deadline = performance.now() + 8000
-    while (rows()[0].getAttribute('data-entry-id') === first && performance.now() < deadline)
-      await new Promise((tick) => setTimeout(tick, 50))
-    await new Promise((tick) => setTimeout(tick, 300))
-    return {
-      paged: rows()[0].getAttribute('data-entry-id') !== first,
-      drift: row.getBoundingClientRect().top - top,
-    }
+  let releaseHistory: (() => void) | undefined
+  await page.route('**/api/conversations/*/history*', async (request) => {
+    await new Promise<void>((resume) => (releaseHistory = resume))
+    await request.continue()
   })
-  expect(anchor.paged).toBe(true)
-  expect(Math.abs(anchor.drift)).toBeLessThan(2)
+  await page.locator('[data-ui="transcript"]').hover()
+  await page.mouse.wheel(0, -100_000)
+  await until(async () => releaseHistory !== undefined, 5_000)
+  await until(async () => (await place()).top < 50, 5_000)
+  const read = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('[data-ui="transcript"] > [data-entry-id]')].find(
+      (element) => element.getBoundingClientRect().top > 150,
+    )!
+    return { row: row.getAttribute('data-entry-id'), top: row.getBoundingClientRect().top }
+  })
+  const rows = await page.locator('[data-ui="transcript"] > [data-entry-id]').count()
+  releaseHistory!()
+  await until(
+    async () => (await page.locator('[data-ui="transcript"] > [data-entry-id]').count()) > rows,
+    8_000,
+  )
+  await page.waitForTimeout(300)
+  const drift = await page.evaluate(
+    ({ row, top }) =>
+      document
+        .querySelector(`[data-ui="transcript"] > [data-entry-id="${row}"]`)!
+        .getBoundingClientRect().top - top,
+    read,
+  )
+  expect(Math.abs(drift)).toBeLessThan(2)
+  await page.unroute('**/api/conversations/*/history*')
 
   // A sent message brings the view back to its end.
   await page.locator('textarea').fill('last')
   await page.keyboard.press('Enter')
   await until(async () => (await place()).distance <= 1, 10_000)
+})
+
+// Rows that settle their size after a conversation shows (a summary row hiding, a card measuring late) once moved the
+// view up before the follow saw them, and the follow took that for the reader leaving: a warm revisit stayed 95 px
+// short of the end on real data.
+it('opens every conversation at its end, cold and warm, until the reader scrolls', async () => {
+  const home = await temp('ultimate-transcript-open-')
+  cleanup.push(() => removeTemp(home))
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot: resolve('.'),
+    userHome: home,
+    home: join(home, 'state'),
+    port: 0,
+  })
+  cleanup.push(() => server.close())
+  const answer: FauxResponseFactory = async () => {
+    server.host.faux!.appendResponses([answer])
+    return fauxAssistantMessage(paragraph(1))
+  }
+  server.host.faux!.setResponses([answer])
+  const ids: ConversationId[] = []
+  for (const turns of [2, 9, 30]) {
+    const id = (await post(server, '/api/conversations', {})).data.id as ConversationId
+    const conversation = (await server.harness.conversation(id, context))!
+    for (let n = 0; n < turns; n++) {
+      await (
+        await conversation.submit({ type: 'input', content: `turn ${n}` }, context)
+      ).wait(context)
+      await server.harness.commit(
+        (tx) =>
+          tx.appendEntry(id, {
+            kind: 'conversations.title-changed',
+            data: { from: '', to: `Turn ${n}` },
+          }),
+        context,
+      )
+    }
+    ids.push(id)
+  }
+
+  const browser = await chromium.launch({
+    executablePath: await browserBinary(),
+    headless: true,
+    env: { ...process.env, TMPDIR: undefined },
+  })
+  cleanup.push(() => browser.close())
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  await page.goto(`${server.url}/?conversation=${ids[0]}`)
+  const distance = () =>
+    page.evaluate(() => {
+      const scroll = document.querySelector('[data-ui="transcript"]')!.parentElement!
+      return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight
+    })
+  for (const id of [...ids, ...ids, ...ids.toReversed()]) {
+    await page.evaluate((shown) => {
+      history.pushState(null, '', `/?conversation=${shown}`)
+      dispatchEvent(new PopStateEvent('popstate'))
+    }, id)
+    await page
+      .locator(`[data-ui="transcript"] [data-conversation-id="${id}"]`)
+      .last()
+      .waitFor({ state: 'attached' })
+    await page.waitForTimeout(800)
+    expect({ id, distance: await distance() }).toEqual({ id, distance: 0 })
+    expect(await page.locator('[aria-label="Scroll to bottom"]').count()).toBe(0)
+  }
 })

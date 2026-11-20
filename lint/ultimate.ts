@@ -425,6 +425,17 @@ export default {
                 message:
                   "A native form submit carries no source, so a change an agent submits is recorded as the person's. Use the kit's Form from @/components/ui and start the change in its type=\"submit\" Button's onClick, which Enter in a field presses too.",
               })
+            if (
+              node.name?.type === 'JSXIdentifier' &&
+              node.name.name === 'button' &&
+              solidFile(context.filename) &&
+              !context.filename.endsWith('.test.solid.tsx')
+            )
+              context.report({
+                node,
+                message:
+                  "The agent bridge sees only kit parts, so an agent can neither find nor press a bare <button>, and its click is recorded without a source. Use the kit's Button from @/components/ui (size={null} variant={null} for an unstyled one) with a name unique on the page.",
+              })
           },
           JSXAttribute(node: Node & { name?: Node }) {
             if (node.name?.name !== 'role') return

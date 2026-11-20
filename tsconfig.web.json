@@ -27,6 +27,8 @@
     ".ultimate/extensions/*/refs.ts",
     "extensions/*/entries.ts",
     "extensions/activity/events.ts",
+    "extensions/coding-tools/bash-command.ts",
+    "extensions/coding-tools/diff.ts",
     "extensions/automations/form-draft.ts",
     "extensions/automations/looks.ts",
     "extensions/automations/navigation.ts",

@@ -9,6 +9,7 @@ import { ROOT, cn, plural, useAction } from '@/sdk/solid'
 import { Review } from './landing-points.ts'
 import { GithubAction } from './refs.ts'
 
+export { Open } from './landing.solid.tsx'
 export { Workspaces, useWorkspacesMeta } from './panel.solid.tsx'
 
 const short = (range: string) => range.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g, '$1')
