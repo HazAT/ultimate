@@ -45,7 +45,7 @@ export function Copy(props: { value: string; field: string; children?: JSX.Eleme
   return (
     <Button
       aria-label={`Copy ${props.field}: ${props.value}`}
-      class="group/copy flex min-w-0 max-w-full shrink items-center gap-1 rounded-sm text-left hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      class="group/copy flex min-w-0 max-w-full shrink items-center justify-start gap-1 rounded-sm text-left font-[inherit] text-[length:inherit] leading-[inherit] font-normal hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
       onClick={() => copy(props.value)}
       size={null}
       title={`${props.value}\nclick to copy`}
