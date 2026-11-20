@@ -325,3 +325,15 @@ export function Play() {
     </Show>
   )
 }
+
+export function Hint() {
+  const doc = useDocOf(() => ROOT, PauseDoc)
+  return (
+    <Show when={doc()?.paused}>
+      <span class="flex items-center gap-1.5 text-warning" data-pause-hint>
+        <Pause class="size-3" />
+        Paused — your message runs on Play
+      </span>
+    </Show>
+  )
+}

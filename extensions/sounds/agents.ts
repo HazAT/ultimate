@@ -1,5 +1,4 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { CheckRan } from '../workspaces/ui.tsx'
 import type { EventRecord } from '../../shared/events.ts'
 
 export type Role = 'ultimate' | 'coordinator' | 'worker' | 'scout' | 'reviewer' | 'lander' | 'other'
@@ -70,7 +69,8 @@ export function tracker() {
           ? 'commit'
           : event.kind === 'event.workspaces.landed'
             ? 'landed'
-            : CheckRan.is(event) && event.data.result === 'failed'
+            : event.kind === 'event.workspaces.check' &&
+                (event.data as { result?: string }).result === 'failed'
               ? 'failed'
               : undefined
       if (kind && markHeardAndShouldPlay(`event:${event.id}`)) happenings.push({ kind })

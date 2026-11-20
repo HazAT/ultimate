@@ -1,10 +1,8 @@
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
-import { expect, it, vi } from 'vitest'
-import { demo, demoPlayer, tracker } from '../../agents.tsx'
-import type { Snapshot } from '../../agents.tsx'
+import { expect, it } from 'vitest'
+import { demo, demoPlayer, tracker } from '../../agents.ts'
+import type { Snapshot } from '../../agents.ts'
 import type { EventRecord } from '../../../../shared/events.ts'
-
-vi.mock('../../../workspaces/ui.tsx', async () => import('../../../workspaces/refs.ts'))
 
 const event = (id: number, kind: string, data: EventRecord['data'] = {}): EventRecord => ({
   id: id as EntryId,
