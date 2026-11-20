@@ -1,7 +1,8 @@
 // Answers a three-question card in a real browser with only the keyboard: letter keys choose, ↑/↓ move between
 // questions, Enter sends; the reply reaches @ultimate in the message's own numbering, with the note field's text after it.
 // The card opens with the picks chosen; Send turns into Undo over the undo window, holding Send for a second sends at
-// once, and leaving the page inside the undo window still sends the answer.
+// once, and leaving the page inside the undo window still sends the answer. In a typed answer or the note, Enter breaks
+// a line and only ⌘/Ctrl+Enter sends.
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
@@ -51,7 +52,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-async function openCard() {
+async function openCard(asking: JsonValue[] = questions) {
   const home = await temp('ultimate-questions-keys-')
   cleanup.push(() => removeTemp(home))
   const server = await fauxServer({
@@ -68,7 +69,13 @@ async function openCard() {
     const last = transcript.messages.at(-1)!
     return last.role === 'user' && last.content === 'ask'
       ? fauxAssistantMessage(
-          [fauxToolCall('message', { to: 'user', text: 'The preview is ready.', questions })],
+          [
+            fauxToolCall('message', {
+              to: 'user',
+              text: 'The preview is ready.',
+              questions: asking,
+            }),
+          ],
           {
             stopReason: 'toolUse',
           },
@@ -97,7 +104,10 @@ async function openCard() {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(`${server.url}/?conversation=${ultimate}`)
   const card = page.locator(`[data-questions-card="message:${asked.id}"]`)
-  await card.locator('fieldset').nth(2).waitFor()
+  await card
+    .locator('fieldset')
+    .nth(asking.length - 1)
+    .waitFor()
   return { conversation, log, ask, asked, page, card }
 }
 
@@ -122,12 +132,12 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
     expect.stringContaining('assess a way to add tools'),
     expect.stringContaining('no, change something first'),
   ])
-  // `/` opens the note field without choosing anything; Enter there sends, past the undo window.
+  // `/` opens the note field without choosing anything; Enter there breaks a line, ⌘/Ctrl+Enter sends, past the undo window.
   await page.keyboard.press('/')
   await page.keyboard.type('Also rename the tab.')
-  await page.keyboard.press('Shift+Enter')
-  await page.keyboard.type('And soon.')
   await page.keyboard.press('Enter')
+  await page.keyboard.type('And soon.')
+  await page.keyboard.press('ControlOrMeta+Enter')
   // Send becomes Undo and fills over the undo window by itself, without a @starting-style transition; the picks stay.
   const undo = card.getByRole('button', { name: 'Undo' })
   const fill = undo.locator('[data-fill]')
@@ -186,6 +196,27 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
     (await log())?.messages.filter((m) => m.re === second.id && m.from === 'user'),
   ).toHaveLength(1)
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
+})
+
+// The bug: Enter in a typed answer or the note sent the card while the user was still writing it.
+it('breaks a line on Enter in a typed answer, and sends on ⌘/Ctrl+Enter', async () => {
+  const { log, asked, page, card } = await openCard([
+    questions[0]!,
+    { text: 'What should the tab say?', kind: 'text', ref: '2' },
+  ])
+  const field = card.getByRole('textbox', { name: 'Your answer to question 2' })
+  await field.click()
+  await page.keyboard.type('Open questions')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('and their count')
+  expect(await field.inputValue()).toBe('Open questions\nand their count')
+  expect(await card.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+  await page.keyboard.press('ControlOrMeta+Enter')
+  await card.getByRole('button', { name: 'Undo' }).waitFor()
+  const answer = async () =>
+    (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
+  await until(async () => !!(await answer()))
+  expect((await answer())!.text).toMatch(/^1a\. .+\n\n2: Open questions\nand their count$/)
 })
 
 it('sends a held answer when the page is left inside the undo window', async () => {

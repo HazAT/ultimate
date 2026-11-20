@@ -14,6 +14,7 @@ import {
   api,
   cn,
   errorMessage,
+  formatKeys,
   Provided,
   useConversation,
   useDocOf,
@@ -56,6 +57,8 @@ const fillOver = (durationMs: number) => (fill: HTMLSpanElement | null) => {
 }
 const fillUndoWindow = fillOver(ANSWER_UNDO_WINDOW_MS)
 const fillHold = fillOver(HOLD_TO_SEND_MS)
+const sendFromField = (event: ReactKeyboardEvent) =>
+  event.key === 'Enter' && (event.metaKey || event.ctrlKey)
 
 function useKeys(card: string) {
   const messages = useDocOf(ROOT, MessagesDoc)?.messages ?? []
@@ -315,7 +318,7 @@ function Note({
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return
-          if (event.key === 'Enter' && !event.shiftKey) {
+          if (sendFromField(event)) {
             event.preventDefault()
             event.stopPropagation()
             onSend()
@@ -324,11 +327,14 @@ function Note({
             event.currentTarget.blur()
           }
         }}
-        className="field-sizing-content max-h-40 min-h-9 w-full resize-none rounded-md border border-border/70 bg-background/40 px-2.5 py-2 pr-8 text-[13px] leading-snug transition-colors outline-none placeholder:text-muted-foreground/60 hover:border-border focus:border-brand/60 focus:bg-background disabled:opacity-60 max-md:min-h-11"
+        className={cn(
+          'field-sizing-content max-h-40 min-h-9 w-full resize-none rounded-md border border-border/70 bg-background/40 px-2.5 py-2 text-[13px] leading-snug transition-colors outline-none placeholder:text-muted-foreground/60 hover:border-border focus:border-brand/60 focus:bg-background disabled:opacity-60 max-md:min-h-11',
+          hint && value ? 'pr-12' : 'pr-8',
+        )}
       />
-      {hint && !value && (
+      {hint && (
         <Key className="pointer-events-none absolute top-2.5 right-2.5 bg-transparent text-muted-foreground/60">
-          /
+          {value ? (formatKeys('mod+enter')[0] ?? []).join('') : '/'}
         </Key>
       )}
     </div>
@@ -391,7 +397,7 @@ function Card({
   const focusField = (index: number) =>
     requestAnimationFrame(() =>
       root.current
-        ?.querySelector<HTMLInputElement>(`[data-question="${index}"] input`)
+        ?.querySelector<HTMLTextAreaElement>(`[data-question="${index}"] textarea`)
         ?.focus({ preventScroll: true }),
     )
   const go = (index: number) => {
@@ -493,19 +499,22 @@ function Card({
   }
   const focusNote = () =>
     root.current?.querySelector<HTMLTextAreaElement>('textarea[data-note]')?.focus()
-  const fieldKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+  const fieldKey = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return
-    if (event.key === 'Enter') {
+    const field = event.currentTarget
+    const leavesField =
+      (event.key === 'ArrowUp' && field.selectionEnd === 0) ||
+      (event.key === 'ArrowDown' && field.selectionStart === field.value.length)
+    if (sendFromField(event)) {
       event.preventDefault()
       event.stopPropagation()
-      if (event.shiftKey) send(true)
-      else enter()
+      send()
     } else if (event.key === 'Escape') {
       event.preventDefault()
-      event.currentTarget.blur()
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      field.blur()
+    } else if (leavesField) {
       event.preventDefault()
-      event.currentTarget.blur()
+      field.blur()
       go(current + (event.key === 'ArrowDown' ? 1 : -1))
     }
   }

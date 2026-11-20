@@ -11,6 +11,7 @@ vi.mock('@/sdk', () => ({
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
   definePoint: (point: string) => ({ point }),
   errorMessage: (error: unknown) => String(error),
+  formatKeys: () => [['⌘', '↵']],
   Provided: () => null,
   useConversation: () => undefined,
   useDocOf: () => undefined,

@@ -47,21 +47,22 @@ function Field({
   placeholder: string
   autoFocus?: boolean
   onChange: (value: string) => void
-  onKey: (event: KeyboardEvent<HTMLInputElement>) => void
+  onKey: (event: KeyboardEvent<HTMLTextAreaElement>) => void
 }) {
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     if (autoFocus) input.current?.focus()
   }, [autoFocus])
   return (
-    <input
+    <textarea
       ref={input}
       aria-label={label}
       placeholder={placeholder}
+      rows={1}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={onKey}
-      className="min-h-9 w-full min-w-0 rounded-md border border-border bg-background px-2.5 py-1.5 text-[13px] transition-colors outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
+      className="field-sizing-content max-h-40 min-h-9 w-full min-w-0 resize-none rounded-md border border-border bg-background px-2.5 py-1.5 text-[13px] leading-snug transition-colors outline-none placeholder:text-muted-foreground/70 focus:border-brand/60 max-md:min-h-11"
     />
   )
 }
@@ -206,7 +207,7 @@ export function QuestionItem({
   onOpen: () => void
   onSelect: (choice: number) => void
   onText: (text: string) => void
-  onFieldKey: (event: KeyboardEvent<HTMLInputElement>) => void
+  onFieldKey: (event: KeyboardEvent<HTMLTextAreaElement>) => void
 }) {
   const list = choices(question)
   const [active, setActive] = useState<number>()
