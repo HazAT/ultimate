@@ -330,7 +330,7 @@ describe('durable UI state', () => {
   })
 
   it('blocks each refused app value until a write goes through, and drops a queued copy', async () => {
-    const { state, requests, start } = setup()
+    const { state, requests, start, commit } = setup()
     start({ selected: 'b' })
     writingAs('app', () => state.set('selected', 'a'))
     await wait()
@@ -349,6 +349,7 @@ describe('durable UI state', () => {
 
     state.set('other', 1)
     await wait()
+    commit(2)
     requests[2].ack()
     await wait()
     writingAs('app', () => state.set('selected', 'a'))
