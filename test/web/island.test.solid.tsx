@@ -79,3 +79,38 @@ it('hands React props to the Solid component and updates them without a remount'
   act(() => react.unmount())
   container.remove()
 })
+
+it('drops a prop React stops passing, and a scope remount starts from the props of that render', () => {
+  const mounts = vi.fn<() => void>()
+  const Label = island((props: { note?: string }) => {
+    const scope = useContext(ConversationScope)
+    onSettled(mounts)
+    return (
+      <span>
+        {scope}:{props.note ?? 'none'}
+      </span>
+    )
+  })
+  const container = document.createElement('div')
+  document.body.append(container)
+  const react = createRoot(container)
+  const render = (conversation: number, props: { note?: string }) =>
+    act(() =>
+      react.render(
+        h(ConversationIdContext, { value: conversation as ConversationId }, h(Label, props)),
+      ),
+    )
+
+  render(1, { note: 'a' })
+  expect(container.textContent).toBe('1:a')
+  render(1, {})
+  flush()
+  expect(container.textContent).toBe('1:none')
+
+  render(2, { note: 'b' })
+  expect(container.textContent).toBe('2:b')
+  expect(mounts).toHaveBeenCalledTimes(2)
+
+  act(() => react.unmount())
+  container.remove()
+})

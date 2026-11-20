@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import type { JSX } from '@solidjs/web'
-import { For, Show, createMemo } from 'solid-js'
+import { For, Show, createEffect, createMemo, createSignal } from 'solid-js'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import {
   ROOT,
@@ -8,9 +8,8 @@ import {
   elidePath,
   formatTime,
   formatTokens,
-  keepLast,
+  api,
   shortenPath,
-  useAction,
   useConnection,
   useConversation,
   useConversations,
@@ -24,7 +23,10 @@ import { lastAssistant, promptTokens } from '../../lib/context-usage.ts'
 import { ContextDoc } from '../conversations/refs.ts'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import { usageTotals } from './context.ts'
+import { deadline, retryAfter } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import { RatesAction } from './refs.ts'
+import type { RateSample } from './refs.ts'
 
 function Item(props: { name: string; tip: JSX.Element; class?: string; children: JSX.Element }) {
   return (
@@ -197,10 +199,39 @@ export function Context() {
   )
 }
 
-export function GlobalUsage() {
+function useRates() {
   const connection = useConnection()
-  const rates = useAction(RatesAction, null, { onError: keepLast, every: 1000 })
-  const sample = () => (connection().status === 'open' && !rates.error() ? rates.data() : null)
+  const system = useSystem()
+  const [sample, setSample] = createSignal<RateSample | null>(null)
+  const session = createMemo(() =>
+    connection().status === 'open' ? system()?.process.generation : undefined,
+  )
+  createEffect(session, (generation) => {
+    setSample(null)
+    if (generation === undefined) return undefined
+    let request: AbortController | undefined
+    let cancel: Cancel | undefined
+    const poll = async () => {
+      const own = (request = new AbortController())
+      const expire = deadline(5000, () => own.abort())
+      const next = await api.action(RatesAction, null, { signal: own.signal }).catch(() => null)
+      expire()
+      if (request !== own) return
+      setSample(own.signal.aborted ? null : next)
+      cancel = retryAfter(1000, () => void poll())
+    }
+    void poll()
+    return () => {
+      request?.abort()
+      request = undefined
+      cancel?.()
+    }
+  })
+  return sample
+}
+
+export function GlobalUsage() {
+  const sample = useRates()
   const rate = (pick: (value: NonNullable<ReturnType<typeof sample>>) => number) => {
     const value = sample()
     return value ? pick(value).toFixed(1) : '?'

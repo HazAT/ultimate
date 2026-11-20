@@ -9,6 +9,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
+import { Input } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import {
   ROOT,
@@ -22,6 +23,7 @@ import {
   useDocOf,
   useExtensionUiState,
   useNow,
+  writingAs,
 } from '@/sdk/solid'
 import { StandingAction } from '../subagents/refs.ts'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
@@ -56,18 +58,22 @@ export function TodoList(props: { inbox: number }) {
   }
   const toggle = (todo: Todo) =>
     run(api.action(todo.done ? ReopenAction : DoneAction, { id: todo.id }))
-  const start = (todo: Todo) =>
+  const start = (todo: Todo, source: string) =>
     run(
       (async () => {
-        const id = await api.action(StandingAction, { name: 'ultimate' })
+        const id = await writingAs(source, () => api.action(StandingAction, { name: 'ultimate' }))
         events.emit('ultimate:sent', { conversationId: id })
-        await api.submit(
-          `${todo.owner === 'user' ? 'Help me with' : 'Work on'} to-do #${todo.id}: ${todo.text}`,
-          'followUp',
-          id,
+        await writingAs(source, () =>
+          api.submit(
+            `${todo.owner === 'user' ? 'Help me with' : 'Work on'} to-do #${todo.id}: ${todo.text}`,
+            'followUp',
+            id,
+          ),
         )
-        showSurface('agent')
-        switchConversation(id)
+        writingAs(source, () => {
+          showSurface('agent')
+          switchConversation(id)
+        })
       })(),
     )
 
@@ -163,7 +169,7 @@ function TodoRow(props: {
   todo: Todo
   now: number
   toggle: (todo: Todo) => Promise<boolean>
-  start?: (todo: Todo) => Promise<boolean>
+  start?: (todo: Todo, source: string) => Promise<boolean>
 }) {
   const at = () => props.todo.done ?? props.todo.at
   const help = () =>
@@ -172,7 +178,7 @@ function TodoRow(props: {
     <li class="group/todo flex items-start rounded hover:bg-muted/50" data-todo={props.todo.id}>
       <label class="flex min-w-0 flex-1 items-start gap-2.5 py-1.5 pl-2">
         <Checkbox
-          aria-label={`${props.todo.done ? 'Reopen' : 'Done'}: ${props.todo.text}`}
+          aria-label={`${props.todo.done ? 'Reopen' : 'Done'} #${props.todo.id}: ${props.todo.text}`}
           bind={[() => !!props.todo.done, () => void props.toggle(props.todo)]}
           class={cn(
             'mt-0.5',
@@ -199,10 +205,10 @@ function TodoRow(props: {
       </label>
       <Show when={props.start && !props.todo.done} fallback={<span class="w-2 shrink-0" />}>
         <Button
-          aria-label={`${help()}: ${props.todo.text}`}
+          aria-label={`${help()} #${props.todo.id}: ${props.todo.text}`}
           class="mt-1 mr-2 ml-1 size-5 rounded text-muted-foreground opacity-0 group-hover/todo:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
           data-todo-start
-          onClick={() => props.start?.(props.todo)}
+          onClick={(_, details) => props.start?.(props.todo, details.source)}
           size="icon-xs"
           title={help()}
           variant="ghost"
@@ -219,28 +225,45 @@ function AddTodo(props: { add: (text: string, owner: Todo['owner']) => Promise<b
   const [sending, setSending] = createSignal(false)
   const [stored, setOwner] = useExtensionUiState<Todo['owner']>('owner', 'user')
   const owner = (): Todo['owner'] => (stored() === 'ultimate' ? 'ultimate' : 'user')
+  let pressedBy: string | undefined
   const submit = async () => {
     const trimmed = text().trim()
+    const source = pressedBy
+    pressedBy = undefined
     if (!trimmed || sending()) return
     setSending(true)
-    if (await props.add(trimmed, owner())) setText('')
+    const add = props.add
+    const forWhom = owner()
+    if (await writingAs(source, () => add(trimmed, forWhom))) setText('')
     setSending(false)
   }
   return (
     <form
-      class="mx-2 flex items-center gap-1 rounded-md border border-border bg-background pl-2 focus-within:border-brand/60"
+      class="mx-2 flex items-center gap-1 rounded-md border border-border bg-background pl-1 focus-within:border-brand/60"
       onSubmit={(event) => {
         event.preventDefault()
         void submit()
       }}
     >
-      <Plus class="size-3.5 shrink-0 text-muted-foreground" />
-      <input
+      <Button
+        aria-label="Add the to-do"
+        class="-ml-1 size-6 text-muted-foreground hover:text-foreground"
+        disabled={sending()}
+        onClick={(_, details) => {
+          pressedBy = details.source
+        }}
+        size="icon-xs"
+        type="submit"
+        variant="ghost"
+      >
+        <Plus class="size-3.5" />
+      </Button>
+      <Input
         aria-label="New to-do"
-        class="min-h-8 min-w-0 flex-1 bg-transparent px-1 py-1 text-[13px] outline-none placeholder:text-muted-foreground/70"
+        class="h-8 flex-1 border-0 bg-transparent px-1 font-sans text-[13px] focus-visible:ring-0"
         disabled={sending()}
         maxlength={300}
-        onInput={(event) => setText(event.currentTarget.value)}
+        onValueChange={setText}
         placeholder="Add a to-do…"
         value={text()}
       />

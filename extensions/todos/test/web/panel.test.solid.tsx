@@ -15,6 +15,7 @@ const harness = vi.hoisted(() => ({
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
   actions: [] as { name: string; args: unknown; source: string | null }[],
   writes: [] as { key: string; value: unknown; source: string | null }[],
+  submits: [] as { text: string; source: string | null }[],
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -29,6 +30,19 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       const { ops } = JSON.parse(init!.body as string) as UiUpdateRequest
       for (const { key, value } of ops) harness.writes.push({ key, value, source })
       return Response.json({ ok: true, rev: 1 })
+    }
+    if (path === '/api/conversations/69/submit') {
+      const { text } = JSON.parse(init!.body as string) as { text: string }
+      harness.submits.push({ text, source })
+      return Response.json({ ok: true })
+    }
+    if (path === '/api/extensions/subagents/actions/standing') {
+      harness.actions.push({
+        name: 'standing',
+        args: JSON.parse(init!.body as string).args,
+        source,
+      })
+      return Response.json({ result: 69 })
     }
     const action = /^\/api\/extensions\/todos\/actions\/(\w+)$/.exec(path)
     if (!action) return harness.server?.handle(path, init) ?? Response.json({ ok: true })
@@ -73,7 +87,7 @@ const control = (label: string, component: string) => {
   return found
 }
 
-it('lets an agent tick a to-do and add one for @ultimate, each sent as the agent’s', async ({
+it('lets an agent tick the right one of two same-text to-dos, add one for @ultimate and start one, each sent as the agent’s', async ({
   onTestFinished,
 }) => {
   store.start()
@@ -88,14 +102,21 @@ it('lets an agent tick a to-do and add one for @ultimate, each sent as the agent
   await settle()
   harness.server!.of(1)!.send('doc', {
     kind: 'todos',
-    value: { next: 3, items: [todo(1, 'user', 'Renew the cert'), todo(2, 'ultimate', 'Tidy')] },
+    value: {
+      next: 4,
+      items: [
+        todo(1, 'user', 'Renew the cert'),
+        todo(2, 'ultimate', 'Tidy'),
+        todo(3, 'user', 'Renew the cert'),
+      ],
+    },
   })
   await settle()
   flush()
   expect(container.querySelector('[data-todos-section="user"]')?.textContent).toContain(
     'Renew the cert',
   )
-  expect(container.textContent).toContain('2 open')
+  expect(container.textContent).toContain('3 open')
 
   setInbox(2)
   flush()
@@ -104,11 +125,15 @@ it('lets an agent tick a to-do and add one for @ultimate, each sent as the agent
 
   const ticked = await agent.act({
     steps: [
-      { ref: control('Done: Renew the cert', 'checkbox').ref, action: 'setChecked', args: [true] },
+      {
+        ref: control('Done #3: Renew the cert', 'checkbox').ref,
+        action: 'setChecked',
+        args: [true],
+      },
     ],
   })
   expect(ticked).toMatchObject({ ok: true })
-  expect(harness.actions).toContainEqual({ name: 'done', args: { id: 1 }, source: 'agent' })
+  expect(harness.actions).toContainEqual({ name: 'done', args: { id: 3 }, source: 'agent' })
 
   const owner = control('New to-do for', 'segmented-control')
   expect(owner).toMatchObject({ value: 'user' })
@@ -123,17 +148,36 @@ it('lets an agent tick a to-do and add one for @ultimate, each sent as the agent
     source: 'agent',
   })
 
-  const input = container.querySelector<HTMLInputElement>('input[aria-label="New to-do"]')!
-  input.value = 'Ship it'
-  input.dispatchEvent(new Event('input', { bubbles: true }))
-  flush()
-  input.form!.requestSubmit()
+  const added = await agent.act({
+    steps: [
+      { ref: control('New to-do', 'input').ref, action: 'setValue', args: ['Ship it'] },
+      { ref: control('Add the to-do', 'button').ref, action: 'press' },
+    ],
+  })
+  expect(added).toMatchObject({ ok: true })
   await settle()
   flush()
   expect(harness.actions).toContainEqual({
     name: 'add',
     args: { text: 'Ship it', owner: 'ultimate' },
-    source: 'person',
+    source: 'agent',
   })
-  expect(input.value).toBe('')
+  expect(container.querySelector<HTMLInputElement>('input[aria-label="New to-do"]')!.value).toBe('')
+
+  const started = await agent.act({
+    steps: [
+      {
+        ref: control('Have @ultimate work on this #2: Tidy', 'button').ref,
+        action: 'press',
+      },
+    ],
+  })
+  expect(started).toMatchObject({ ok: true })
+  await settle()
+  expect(harness.actions).toContainEqual({
+    name: 'standing',
+    args: { name: 'ultimate' },
+    source: 'agent',
+  })
+  expect(harness.submits).toEqual([{ text: 'Work on to-do #2: Tidy', source: 'agent' }])
 })

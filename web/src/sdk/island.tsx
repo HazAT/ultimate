@@ -1,10 +1,12 @@
 import { render } from '@solidjs/web'
 import { createComponent, createStore } from 'solid-js'
 import type { Component } from 'solid-js'
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef } from 'react'
 import { ConversationIdContext } from './conversation-scope.tsx'
 import { ExtensionNameContext } from './hooks.ts'
 import { ConversationScope, ExtensionName } from './solid.ts'
+
+type Props = Record<string, unknown>
 
 /**
  * A React component that mounts the Solid `component` (from a `*.solid.tsx`) in place, so a `web.tsx` can contribute it
@@ -18,29 +20,37 @@ export function island<P extends object = Record<string, never>>(component: Comp
     const host = useRef<HTMLDivElement>(null)
     const extension = useContext(ExtensionNameContext) ?? null
     const conversation = useContext(ConversationIdContext) ?? null
-    const [[live, setLive]] = useState(() =>
-      createStore<Record<string, unknown>>({ ...(props as Record<string, unknown>) }),
-    )
-    useEffect(() => setLive((draft) => void Object.assign(draft, props)))
-    useEffect(
-      () =>
-        render(
-          () =>
-            createComponent(ExtensionName, {
-              value: extension,
-              get children() {
-                return createComponent(ConversationScope, {
-                  value: conversation,
-                  get children() {
-                    return createComponent(component, live as P)
-                  },
-                })
-              },
-            }),
-          host.current!,
-        ),
-      [extension, conversation, live],
-    )
+    const latest = useRef(props as Props)
+    latest.current = props as Props
+    const live = useRef<(next: Props) => void>(undefined)
+    useEffect(() => live.current?.(props as Props))
+    useEffect(() => {
+      const [store, setStore] = createStore<Props>({ ...latest.current })
+      live.current = (next) =>
+        setStore((draft) => {
+          for (const key of Object.keys(draft)) if (!(key in next)) delete draft[key]
+          Object.assign(draft, next)
+        })
+      const dispose = render(
+        () =>
+          createComponent(ExtensionName, {
+            value: extension,
+            get children() {
+              return createComponent(ConversationScope, {
+                value: conversation,
+                get children() {
+                  return createComponent(component, store as P)
+                },
+              })
+            },
+          }),
+        host.current!,
+      )
+      return () => {
+        live.current = undefined
+        dispose()
+      }
+    }, [extension, conversation])
     return <div ref={host} className="contents" />
   }
 }
