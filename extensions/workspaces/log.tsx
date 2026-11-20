@@ -17,6 +17,7 @@ import {
   formatDuration,
   formatTime,
   formatTokens,
+  plural,
   useConversation,
   useNow,
   useToolDuration,
@@ -261,7 +262,7 @@ function Steps({
     <Collapsible className="group/steps" onOpenChange={onOpenChange} open={open}>
       <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
         <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]/steps:rotate-90" />
-        {rows.length ? `${rows.length} step${rows.length === 1 ? '' : 's'}` : 'Steps'}
+        {rows.length ? plural(rows.length, 'step') : 'Steps'}
       </CollapsibleTrigger>
       <CollapsibleContent className="pt-1">
         {rows.map((row, index) => (

@@ -16,6 +16,7 @@ import {
   api,
   definePoint,
   Fold,
+  plural,
   Provided,
   useConversationSummary,
   useUltimate,
@@ -121,7 +122,7 @@ export function CommitCount({
   range?: string
   className?: string
 }) {
-  const label = `${count} commit${count === 1 ? '' : 's'}`
+  const label = plural(count, 'commit')
   const plain = href ? (
     external(href, label, className)
   ) : (

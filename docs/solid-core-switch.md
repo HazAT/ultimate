@@ -10,8 +10,8 @@ core host:
 | Core host                                                                | Rows | Extensions |
 | ------------------------------------------------------------------------ | ---- | ---------- |
 | The transcript (tool and entry renderers, Markdown, message bar, bubble) | 28   | 22         |
-| The sidebar (React rows and sections other extensions provide)           | 4    | 4          |
-| Panel and surface hosts, System's tab host, documents' views             | 8    | 5          |
+| The sidebar (React rows and sections other extensions provide)           | 3    | 3          |
+| Panel and surface hosts, System's tab host, documents' views             | 9    | 6          |
 | The composer                                                             | 1    | 1          |
 | React points of other extensions (onboarding, workspaces' landing card)  | 3    | 3          |
 
@@ -53,12 +53,11 @@ and the landing card render its message parts). Switch it first.
 
 ## The sidebar
 
-| Extension | Part                                        | Where              | Notes                      |
-| --------- | ------------------------------------------- | ------------------ | -------------------------- |
-| phase     | provided `ConversationPhase`                | `phase/web.tsx`    | also read by voice-live    |
-| instance  | provided `PreviewUp`                        | `instance/web.tsx` | preview marks              |
-| inbox     | provided `UnderUltimate`                    | `inbox/web.tsx`    | returns an island          |
-| todos     | the panel wrapper reading inbox's `Waiting` | `todos/web.tsx`    | inbox's `Waiting` is React |
+| Extension | Part                         | Where              | Notes                   |
+| --------- | ---------------------------- | ------------------ | ----------------------- |
+| phase     | provided `ConversationPhase` | `phase/web.tsx`    | also read by voice-live |
+| instance  | provided `PreviewUp`         | `instance/web.tsx` | preview marks           |
+| inbox     | provided `UnderUltimate`     | `inbox/web.tsx`    | returns an island       |
 
 ## Panel and surface hosts
 
@@ -72,6 +71,7 @@ and the landing card render its message parts). Switch it first.
 | inbox     | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands            | `inbox/ui.tsx`      | React points other extensions provide                  |
 | wire      | the tab's wrapper, docking the core `Conversation`                                                   | `wire/web.tsx`      | System's tab host; the core dock                       |
 | wire      | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                 | `wire/web.tsx`      | a command cannot set UI state                          |
+| todos     | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                              | `todos/web.tsx`     | inbox's `Waiting` is React                             |
 
 ## The composer
 

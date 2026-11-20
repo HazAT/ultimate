@@ -95,8 +95,8 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **A durable selection names what is shown.** When the selected row leaves, store the row that took its place, not
   just a rule for finding it again, or a later arrival takes over the pane under the person's cursor
   (`selectionAfterChange` in `extensions/inbox/items.ts`). Order rows with a tie-breaker, never by time alone. An
-  effect that repairs stored state writes in `writingAs('app', …)`; UI state never resends an `app` write the server
-  refused until that key changes, so the effect needs no guard of its own.
+  effect that repairs stored state writes in `writingAs('app', …)`; UI state never resends an `app` value the server
+  refused until a write goes through, the key changes or someone writes it, so the effect needs no guard of its own.
 - **Reading the server:** `useAction(ref, args, options)` shares one call per action, args and conversation. `every` takes ms or
   `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). Every read in use refetches after a
   restart, keeping its last answer meanwhile; on reconnect only active reads that failed with a network error retry.

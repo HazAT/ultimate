@@ -345,9 +345,9 @@ const merged: Entry = {
     ? { previews: { ...previous.previews, ...measured.previews } }
     : {}),
 }
-progress.entries = [...progress.entries.filter((item) => !same(item)), merged].toSorted(
-  (a, b) => a.committedAt - b.committedAt,
-)
+progress.entries = previous
+  ? progress.entries.map((item) => (same(item) ? merged : item))
+  : [...progress.entries, merged]
 const staged = `${progressFile}.${process.pid}`
 try {
   await writeFile(staged, `${JSON.stringify(progress, null, 2)}\n`)
