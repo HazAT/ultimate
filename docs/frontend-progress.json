@@ -4354,7 +4354,7 @@
       },
       "bundleGzipKB": 3012,
       "entryGzipKB": 458,
-      "summary": "Step-back after 0.8: useAction timeout replaces status-line's poller, a Solid ConversationRef contract (self's toast moves), kit Form, two lint rules, agent-name helper, 38→29 Solid test files, skill rewrite"
+      "summary": "Step-back after 0.8: a Solid ConversationRef contract (self's toast moves), kit Form, two lint rules, agent-name helper, 38→29 Solid test files, skill rewrite. Measured with a useAction timeout that review then dropped (status-line keeps its poll); the numbers barely move without it"
     }
   ],
   "previewUsage": [

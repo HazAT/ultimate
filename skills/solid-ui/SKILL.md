@@ -80,7 +80,7 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **Durable state:** `const digest = useExtensionUiState('digest', false)` once in the body, then
   `<Switch bind={digest} />`. Never call a hook inside a JSX prop: a Solid prop is a getter, so it runs again at every
   read. For an action: `bind={[() => state().on, (on) => void toggle(on)]}`.
-- **Reading the server:** `useAction(ref, args, options)` shares one call per action and args. `every` takes ms or
+- **Reading the server:** `useAction(ref, args, options)` shares one call per action, args and conversation. `every` takes ms or
   `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). Every read in use refetches after a
   restart, keeping its last answer meanwhile; on reconnect only active reads that failed with a network error retry.
   `useAction` has no deadline: a read that must give up on a hung request or show nothing from an earlier server
@@ -195,7 +195,8 @@ Tooling:
   write). For keyboard focus on a Tooltip, dispatch a Tab `keydown` before `.focus()`. Modal Tab wrapping, inertness
   and Enter submitting a form need a real browser.
 - **Whole page:** the browser tool's `ui` steps (`snapshot`, `query`, `act`) wait for the first render and every
-  mounted read's first answer. A change is recorded only when it reaches stored state (`ui.changed`, see
+  mounted read's first answer, or its first network failure (it stays unsettled): ready to interact does not mean the
+  server answered. A change is recorded only when it reaches stored state (`ui.changed`, see
   `extensions/ui/README.md`); opening, closing, hover and focus never are. The browser tool sends pending UI-state
   writes before it closes the page, whatever the last step was. Act on the whole page once in a preview to catch name
   clashes between extensions.
