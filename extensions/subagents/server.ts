@@ -203,10 +203,10 @@ function createReporter() {
                 },
               }
             }
-            const providerFailureBelongsToWatchdog =
+            const failureBelongsToWatchdog =
               settled.status === 'unanswered' &&
-              (settled.reason === 'model_error' || settled.reason === 'no_model')
-            if (providerFailureBelongsToWatchdog) {
+              ['model_error', 'no_model', 'interrupted', 'restart_limit'].includes(settled.reason)
+            if (failureBelongsToWatchdog) {
               action.status = 'failed'
               return { status: 'running', checkpoint: { phase: 'report' } }
             }
