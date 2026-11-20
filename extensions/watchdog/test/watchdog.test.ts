@@ -29,6 +29,7 @@ import {
 import { afterEach, expect, it } from 'vitest'
 import watchdog, { diagnose } from '../server.ts'
 import type { WatchdogService } from '../api.ts'
+import type { ProviderHealth } from '../../health/api.ts'
 import { Messages } from '../../messages/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
 import { Roots, Tally } from '../../lineage/api.ts'
@@ -90,6 +91,7 @@ async function fixture(
   const onOpen: (() => Promise<void>)[] = []
   const onClose: (() => Promise<void>)[] = []
   const notices: string[] = []
+  const health: ProviderHealth[] = []
   let service: WatchdogService | undefined
   const host = {
     implement: (_api: unknown, implementation: WatchdogService) => {
@@ -105,6 +107,8 @@ async function fixture(
       storage.scanSubmissions(...args),
     need: (api: { name: string }) =>
       api.name === 'conversations' ? { concludedIn } : { doc: Workspaces },
+    want: (api: { name: string }) =>
+      api.name === 'health' ? { providers: async () => health } : undefined,
   } as unknown as ExtensionHost
   const original = watchdog(host)
   const backend = {
@@ -242,6 +246,7 @@ async function fixture(
     failures: (since: number) => service!.failures(since),
     ultimate,
     notices,
+    health,
     conversation,
     entries,
     tasks,
@@ -326,7 +331,7 @@ it('reports a branch failure once, with its title, error and last tool step; rep
     title: 'Fix the build',
     error: 'invalid model configuration',
     step: 'read',
-    retried: false,
+    retries: 0,
   })
   await f.reopen()
   await f.open()
@@ -340,7 +345,7 @@ it('reports a branch failure once, with its title, error and last tool step; rep
       title: 'Fix the build',
       error: 'invalid model configuration',
       step: 'read',
-      retried: false,
+      retries: 0,
       at: 1_000_000,
     },
   ])
@@ -504,7 +509,7 @@ it.each([false, true])('waits 60 s, retries once; retry failure: %s', async (ret
   await f.harness.waitForIdle(context)
   await f.detach()
   expect(await f.entries()).toHaveLength(retryFails ? 1 : 0)
-  const retryCard = expect.objectContaining({ retried: true })
+  const retryCard = expect.objectContaining({ retries: 1 })
   expect((await f.entries()).map((entry) => entry.data)).toEqual(retryFails ? [retryCard] : [])
   await f.open()
   await f.reopen()
@@ -512,6 +517,38 @@ it.each([false, true])('waits 60 s, retries once; retry failure: %s', async (ret
   expect(seen).toHaveLength(2)
   expect(await f.entries()).toHaveLength(retryFails ? 1 : 0)
 })
+
+it.each([true, false])(
+  'retries a network error after 1, 2 and 5 minutes while health says its provider is down: %s',
+  async (down) => {
+    // A proxy's DNS name stopped resolving for hours; the one retry after 60 s failed too, and 4 runs needed a resume.
+    const dns = 'Connection error.: getaddrinfo ENOTFOUND proxy.example.com'
+    const seen: string[] = []
+    const f = await fixture((transcript) => {
+      const text = inputText(transcript)
+      if (text !== 'fail' && !text.startsWith('Your previous run'))
+        return fauxAssistantMessage('ok')
+      seen.push(text)
+      return error(dns)
+    })
+    if (down) f.health.push({ provider: 'faux', state: 'failing', cause: 'transient' })
+    const branch = await f.conversation('Offline')
+    await (await f.submit(branch, 'fail')).wait(context)
+    const delays = down ? [60_000, 120_000, 300_000] : [60_000]
+    for (const [index, delay] of delays.entries()) {
+      await f.sleeping()
+      f.advance(delay - 1)
+      await f.harness.waitForIdle(context)
+      expect(seen).toHaveLength(index + 1)
+      f.advance(1)
+      await until(async () => seen.length === index + 2)
+    }
+    await until(async () => (await f.entries()).length === 1)
+    expect((await f.entries())[0].data).toMatchObject({ error: dns, retries: delays.length })
+    await f.harness.waitForIdle(context)
+    expect(seen).toHaveLength(delays.length + 1)
+  },
+)
 
 it.each(['retry', 'report'] as const)(
   'deduplicates %s after a crash between submit and its checkpoint',
@@ -635,7 +672,7 @@ it('reports a faulted message delivery to its sender, once', async () => {
       branch +
       ' was not delivered: messages needs subagents, which no enabled extension provides',
     step: 'message delivery',
-    retried: false,
+    retries: 0,
   })
   await f.reopen()
   await f.harness.waitForIdle(context)
@@ -751,7 +788,7 @@ it.each([false, true])(
     expect((await f.entries())[0].data).toMatchObject({
       conversation: branch,
       step: 'read',
-      retried: false,
+      retries: 0,
       error: noModel ? 'Model missing/missing is not available' : 'invalid configuration',
     })
     f.advance(60_000)
@@ -797,14 +834,14 @@ it('recovers no-model failures separately from earlier reply-expecting inputs an
       title: 'Missing provider',
       error: 'Model missing/missing is not available',
       step: 'model request',
-      retried: true,
+      retries: 1,
     },
     {
       conversation: branch,
       title: 'Missing provider',
       error: 'Model missing/missing is not available',
       step: 'model request',
-      retried: false,
+      retries: 0,
     },
   ])
   expect(await f.tasks()).toHaveLength(2)
@@ -831,7 +868,7 @@ it('reports a broken login at once, with a hint to log in again and no retry', a
   await (await f.submit(branch, 'fail')).wait(context)
   await until(async () => (await f.entries()).length === 1)
   expect((await f.entries())[0].data).toMatchObject({
-    retried: false,
+    retries: 0,
     hint: 'Run `claude auth login` in a terminal',
   })
   const inputs = (await f.host.scanSubmissions({ conversationId: branch }, 100, undefined, context))

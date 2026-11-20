@@ -151,6 +151,7 @@ async function fixture(
         metadata: Metadata,
         implement: () => {},
         need: idleNeed,
+        want: () => undefined,
         notice: (message: string) => errors.push(message),
         onOpen: (callback: () => Promise<void>) => {
           onOpen.push(callback)
@@ -683,7 +684,7 @@ describe('provider error recovery', () => {
     expect((await failures())[0].data).toMatchObject({
       conversation: (await children(f.opened))[0].conversationId,
       error: 'invalid model configuration',
-      retried: false,
+      retries: 0,
     })
     // Reported, not retried: the action is final, not left `failed` for a retry that never comes.
     expect(

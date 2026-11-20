@@ -25,6 +25,8 @@ import { Messages } from '../messages/api.ts'
 import type { Message } from '../messages/api.ts'
 import { Standing, Subagents } from '../subagents/api.ts'
 import { Roots, Tally } from '../lineage/api.ts'
+import { HealthApi } from '../health/api.ts'
+import type { ProviderHealth } from '../health/api.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
@@ -35,8 +37,42 @@ async function isTally(tx: Tx, id: ConversationId) {
   return (await tx.doc(Tally, id)).since !== undefined
 }
 
-const TEMPORARY_FAILURE_RETRY_DELAY_MS = 60_000
+const RETRY_DELAYS_MS = [60_000, 120_000, 300_000]
 export const FAILURE_LIMIT = 20
+
+const transport = (error: string) =>
+  /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|getaddrinfo|connection error|fetch failed|socket hang up|network error|timed out/i.test(
+    error,
+  )
+
+function retryDelay(
+  error: string,
+  temporary: boolean,
+  retries: number,
+  provider: ProviderHealth | undefined,
+) {
+  if (!temporary || retries >= RETRY_DELAYS_MS.length) return undefined
+  if (retries === 0) return RETRY_DELAYS_MS[0]
+  const down = provider?.state === 'failing' && provider.cause === 'transient'
+  return transport(error) && down ? RETRY_DELAYS_MS[retries] : undefined
+}
+
+async function retriesBefore(tx: Tx, recipient: ConversationId, requestId: string) {
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanTasks(
+      { conversationId: recipient, kind: 'watchdog.failure' },
+      500,
+      cursor,
+    )
+    const retried = page.items.find(
+      (task) => `watchdog-retry:${(task.input as { failedTask: number }).failedTask}` === requestId,
+    )
+    if (retried) return (retried.input as { retries: number }).retries + 1
+    cursor = page.next
+  } while (cursor)
+  return 1
+}
 
 const Reported = defineDoc<{ failures: ReportedFailure[] }>({
   kind: 'watchdog.reported',
@@ -201,8 +237,8 @@ export default function watchdog(host: ExtensionHost) {
     Failure & {
       failedTask: number
       recipient: ConversationId
-      temporary: boolean
-      until: number
+      at: number
+      until?: number
       delivery?: true
     },
     { phase: 'wait' } | { phase: 'retry' } | { phase: 'report' },
@@ -210,9 +246,9 @@ export default function watchdog(host: ExtensionHost) {
   >({
     name: 'watchdog.failure',
     version: 1,
-    initial: (input) => ({ phase: input.temporary && !input.retried ? 'wait' : 'report' }),
+    initial: (input) => ({ phase: input.until === undefined ? 'report' : 'wait' }),
     phases: {
-      wait: (task, runtime, ctx) => runtime.sleepUntil(task.input.until, { phase: 'retry' }, ctx),
+      wait: (task, runtime, ctx) => runtime.sleepUntil(task.input.until!, { phase: 'retry' }, ctx),
       retry: async (task, runtime, ctx) => {
         const { conversation, failedTask, error } = task.input
         const child = (await runtime.conversation(conversation, ctx))!
@@ -238,17 +274,17 @@ export default function watchdog(host: ExtensionHost) {
         await runtime.commit(() => terminal, ctx)
       },
       report: async (task, runtime, ctx) => {
-        const { conversation, title, error, step, hint, retried, failedTask, recipient } =
+        const { conversation, title, error, step, hint, retries, failedTask, recipient } =
           task.input
         const data: Failure = {
           conversation,
           title,
           error,
           step,
-          retried,
+          retries,
           ...(hint ? { hint } : {}),
         }
-        const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retried ? ' After one automatic retry.' : ''}${hint ? ` ${hint}.` : ''}`
+        const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retries ? ` After ${retries === 1 ? 'one automatic retry' : `${retries} automatic retries`}.` : ''}${hint ? ` ${hint}.` : ''}`
         if (recipient === conversation && !task.input.delivery) {
           host.notice(content)
         } else {
@@ -266,10 +302,7 @@ export default function watchdog(host: ExtensionHost) {
         }
         await runtime.commit(async (tx) => {
           const reported = await tx.doc(Reported, ROOT_CONVERSATION_ID)
-          reported.failures.push({
-            ...data,
-            at: task.input.until - TEMPORARY_FAILURE_RETRY_DELAY_MS,
-          })
+          reported.failures.push({ ...data, at: task.input.at })
           reported.failures.sort((a, b) => b.at - a.at)
           reported.failures.splice(FAILURE_LIMIT)
           const actions = Object.values((await tx.doc(Subagents, recipient)).actions)
@@ -316,10 +349,9 @@ export default function watchdog(host: ExtensionHost) {
           title,
           error: `Message ${message.id} to ${typeof message.to === 'number' ? `#${message.to}` : message.to} was not delivered: ${task.state.outcome.error.message}`,
           step: 'message delivery',
-          retried: false,
-          temporary: false,
+          retries: 0,
           delivery: true,
-          until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
+          at: task.endedAt ?? Date.now(),
         },
         { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
       )
@@ -332,6 +364,7 @@ export default function watchdog(host: ExtensionHost) {
   ) {
     if (faultedDelivery(task)) return detectFaultedDelivery(task)
     if (!failed(task)) return
+    const health = await host.want(HealthApi)?.providers()
     let submissions = inputs
     if (!submissions) {
       submissions = []
@@ -377,6 +410,11 @@ export default function watchdog(host: ExtensionHost) {
       if (task.state.status !== 'terminal' || task.state.outcome.status !== 'failed') return
       const error = task.state.outcome.error.message
       const { hint, temporary } = diagnose(error, info.assistant)
+      const retry = runInputs.find((input) => input.requestId?.startsWith('watchdog-retry:'))
+      const retries = retry ? await retriesBefore(tx, recipient, retry.requestId!) : 0
+      const provider = health?.find((entry) => entry.provider === info.assistant?.provider)
+      const delay = retryDelay(error, temporary, retries, provider)
+      const at = task.endedAt ?? Date.now()
       await tx.createTask(
         Watchdog,
         {
@@ -387,9 +425,9 @@ export default function watchdog(host: ExtensionHost) {
           error,
           step: info.step,
           ...(hint ? { hint } : {}),
-          retried: runInputs.some((input) => input.requestId?.startsWith('watchdog-retry:')),
-          temporary,
-          until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
+          retries,
+          at,
+          ...(delay === undefined ? {} : { until: at + delay }),
         },
         { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
       )
@@ -405,6 +443,7 @@ export default function watchdog(host: ExtensionHost) {
   }
   host.onClose(close)
   host.onRelease(close)
+  host.want(HealthApi)
   host.implement(WatchdogApi, {
     failures: async (since) =>
       (
