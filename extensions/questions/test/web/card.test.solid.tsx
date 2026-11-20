@@ -130,47 +130,36 @@ it('shows the saved picks, note and open question on a fresh mount', () => {
   ).toContain('Yes')
 })
 
-it('lets agents distinguish options whose labels fold to the same name', async () => {
-  renderSolid(() => (
-    <MessageQuestions
-      message={{
-        ...message,
-        questions: [
-          {
-            text: 'Which label should it use?',
-            kind: 'choice',
-            options: [{ label: 'Resume' }, { label: 'Résumé' }],
-          },
-        ],
-      }}
-      keys={false}
-      withActions={false}
-    />
-  ))
-  await vi.advanceTimersByTimeAsync(10)
-  await expectDistinctAgentNames(agent)
-  expect(
-    agent
-      .snapshot()
-      .filter((entry) => !entry.offPage)
-      .map((entry) => entry.label),
-  ).toEqual(
-    expect.arrayContaining([
-      'Option 1 · Resume · question 1 · message 5',
-      'Option 2 · Résumé · question 1 · message 5',
-    ]),
-  )
-})
-
 it('lets an agent choose, undo a send, send again, and dismiss another card', async () => {
+  const folded: Message = {
+    ...message,
+    id: 6,
+    questions: [
+      {
+        text: 'Which label should it use?',
+        kind: 'choice',
+        options: [{ label: 'Resume' }, { label: 'Résumé' }],
+      },
+    ],
+  }
   const card = renderSolid(() => (
     <>
       <MessageQuestions message={message} keys={false} withActions={false} />
-      <MessageQuestions message={{ ...message, id: 6 }} keys={false} withActions={false} />
+      <MessageQuestions message={folded} keys={false} withActions={false} />
     </>
   ))
   await vi.advanceTimersByTimeAsync(10)
   await expectDistinctAgentNames(agent)
+  const labels = agent
+    .snapshot()
+    .filter((entry) => !entry.offPage)
+    .map((entry) => entry.label)
+  expect(labels).toEqual(
+    expect.arrayContaining([
+      'Option 1 · Resume · question 1 · message 6',
+      'Option 2 · Résumé · question 1 · message 6',
+    ]),
+  )
   const option = 'Option 2 · Status line · question 1 · message 5'
   await press(option)
   expect(card.querySelector(`[aria-label="${option}"]`)?.getAttribute('aria-pressed')).toBe('true')
