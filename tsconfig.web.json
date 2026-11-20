@@ -26,6 +26,7 @@
     "extensions/*/refs.ts",
     ".ultimate/extensions/*/refs.ts",
     "extensions/*/entries.ts",
+    "extensions/activity/events.ts",
     "extensions/automations/looks.ts",
     "extensions/automations/navigation.ts",
     "extensions/automations/poll.ts",
