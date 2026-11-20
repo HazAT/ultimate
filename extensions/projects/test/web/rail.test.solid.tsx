@@ -220,17 +220,6 @@ it('keeps a pin over a shared-pin read that was still answering when it was pres
   expect(pinnedOpen(container)).toBe(true)
 })
 
-it('keeps a saved pin when the read after it fails', async () => {
-  const container = await mount()
-  harness.failPinReads = true
-  await openRail(container)
-  pinButton(container, 'Pin the projects rail open').click()
-  await advance(10)
-  await closeRail(container)
-  expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
-  expect(pinnedOpen(container)).toBe(true)
-})
-
 it('falls back to the stored pin when writing it fails', async () => {
   const container = await mount()
   harness.failPinWrites = true
@@ -247,25 +236,17 @@ it('falls back to the stored pin when writing it fails', async () => {
   expect(pinnedOpen(container)).toBe(true)
 })
 
-it('holds a pressed control until its write settles, so a second press waits for the first', async () => {
-  const container = await mount()
-  await openRail(container)
-  const button = pinButton(container, 'Pin the projects rail open')
-  button.click()
-  button.click()
-  await advance(10)
-  expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
-  expect(pinnedOpen(container)).toBe(true)
-  await closeRail(container)
-})
-
-it('keeps an acknowledged pin when the unpin after it fails', async () => {
+it('keeps a saved pin when the read after it fails, and when the unpin after it fails', async () => {
   const container = await mount()
   await advance(30_000)
   harness.failPinReads = true
   await openRail(container)
   pinButton(container, 'Pin the projects rail open').click()
   await advance(10)
+  await closeRail(container)
+  expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
+  expect(pinnedOpen(container)).toBe(true)
+  await openRail(container)
   harness.failUnpins = true
   pinButton(container, 'Unpin the projects rail').click()
   await advance(10)
@@ -275,11 +256,14 @@ it('keeps an acknowledged pin when the unpin after it fails', async () => {
   expect(pinnedOpen(container)).toBe(true)
 })
 
-it('ignores a press on a reopened rail while the last write is pending', async () => {
+it('holds a pressed control until its write settles, also on a reopened rail', async () => {
   const container = await mount()
   await openRail(container)
-  pinButton(container, 'Pin the projects rail open').click()
+  const button = pinButton(container, 'Pin the projects rail open')
+  button.click()
+  button.click()
   await advance(10)
+  expect(harness.pins).toEqual([{ pinned: true, source: 'person' }])
   harness.holdWrites = true
   pinButton(container, 'Unpin the projects rail').click()
   await advance(10)

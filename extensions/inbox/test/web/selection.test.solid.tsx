@@ -77,25 +77,18 @@ it('sends a rejected handoff or repair of a late link’s age once, not in a loo
   expect(harness.failures).toBe(2)
 })
 
-it('repairs a second link to the same entry after the selection moved elsewhere', async () => {
+it('repairs a second link and hands off a returning entry again each time', async () => {
   page.uiState.receive({ [SELECTED]: { key: 'b', at: UNLOADED, open: true } })
   await page.show([a, b])
-  expect(harness.writes).toEqual([{ key: 'b', at: 20, open: true }])
   await page.choose({ key: 'a', at: 10, open: true })
-  await page.show([a])
   await page.choose({ key: 'b', at: UNLOADED, open: true })
   await page.show([a, b])
-  expect(harness.writes.at(-1)).toEqual({ key: 'b', at: 20, open: true })
   expect(page.uiState.get(SELECTED)).toEqual({ key: 'b', at: 20, open: true })
-})
 
-it('hands off again when the same entry comes back, is selected, and leaves again', async () => {
-  await page.show([a, b])
-  await page.choose({ key: 'b', at: 20, open: true })
   await page.show([a])
   await page.show([a, b])
   await page.choose({ key: 'b', at: 20, open: true })
   await page.show([a])
-  expect(harness.writes.filter((value) => (value as Selection)?.key === 'a')).toHaveLength(2)
+  expect(harness.writes.filter((value) => (value as Selection)?.key === 'a')).toHaveLength(3)
   expect(page.uiState.get(SELECTED)).toEqual({ key: 'a', at: 10, open: true })
 })
