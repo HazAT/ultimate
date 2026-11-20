@@ -91,7 +91,10 @@ export function Read(props: SolidToolProps) {
           <Match when={image()}>
             {(result) => (
               <ToolSection>
-                <ToolImage alt={shown()} image={result()} />
+                <ToolImage
+                  alt={`${shown()} (call ${props.call.id.slice(0, 8)})`}
+                  image={result()}
+                />
               </ToolSection>
             )}
           </Match>

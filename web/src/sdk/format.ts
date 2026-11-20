@@ -78,5 +78,8 @@ const clockWithSeconds = new Intl.DateTimeFormat([], {
 
 /** The app's one clock format, 24-hour: `21:45`, or `21:45:08` with seconds. */
 export function formatTime(at: number | string | Date, seconds = false): string {
-  return (seconds ? clockWithSeconds : clock).format(new Date(at))
+  const date = new Date(at)
+  return Number.isNaN(date.getTime())
+    ? date.toString()
+    : (seconds ? clockWithSeconds : clock).format(date)
 }

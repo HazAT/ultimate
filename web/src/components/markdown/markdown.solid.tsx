@@ -130,6 +130,7 @@ function ConfirmedLink(props: {
     >
       <Button
         {...omitHref(props.attributes)}
+        aria-label={`Open link ${props.href}`}
         class="link inline h-auto rounded-none p-0 align-baseline text-[length:inherit] [font-weight:inherit] whitespace-normal"
         data-href={props.href}
         onClick={() => setOpen(true)}
@@ -188,7 +189,7 @@ function CopyCode(props: { code: string }) {
   const { copied, copy } = useCopy()
   return (
     <Button
-      aria-label="Copy code"
+      aria-label={`Copy code: ${props.code.trim().split('\n')[0]?.slice(0, 80) ?? ''}`}
       class="h-auto rounded-none p-1 font-normal text-muted-foreground hover:text-foreground"
       onClick={() => copy(props.code)}
       size={null}

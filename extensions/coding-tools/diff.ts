@@ -10,13 +10,15 @@ export function parsePatch(patch: string): DiffRow[] {
   const rows: DiffRow[] = []
   let oldLine = 0
   let newLine = 0
+  let inHunk = false
   for (const line of patch.split('\n')) {
     const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(line)
     if (hunk) {
       oldLine = Number(hunk[1])
       newLine = Number(hunk[2])
+      inHunk = true
       rows.push({ type: 'hunk', text: line })
-    } else if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\')) continue
+    } else if (!inHunk || line.startsWith('\\')) continue
     else if (line.startsWith('+')) rows.push({ type: 'add', text: line.slice(1), new: newLine++ })
     else if (line.startsWith('-')) rows.push({ type: 'del', text: line.slice(1), old: oldLine++ })
     else if (line.startsWith(' '))
