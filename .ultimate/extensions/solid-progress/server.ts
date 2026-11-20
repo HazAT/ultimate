@@ -113,7 +113,11 @@ async function series(
     previewUsage?: PreviewWeek[]
   }
   return {
-    entries: await Promise.all(entries.map((entry) => step(root, entry))),
+    entries: await Promise.all(
+      entries
+        .toSorted((a, b) => (a.committedAt ?? 0) - (b.committedAt ?? 0))
+        .map((entry) => step(root, entry)),
+    ),
     previewUsage,
   }
 }

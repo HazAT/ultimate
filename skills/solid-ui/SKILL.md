@@ -27,7 +27,8 @@ The libraries ship skills that match the pinned versions: read them, not your me
 - **Durable by default.** State that should survive a reload, a restart or a second tab is a document or UI state, not
   a local signal. Kit controls take it whole through `bind`.
 - **Who acted is part of every change.** Kit controls run their handlers in `writingAs(details.source, …)`, so a write
-  an agent starts is recorded as the agent's. Keep that path: start writes from a kit control's handler.
+  an agent starts is recorded as the agent's. Keep that path: start writes from a kit control's handler. The page bus
+  (`events.emit`) runs its handlers as the writer of the moment, so an event emitted from a handler needs no `source`.
 - **Agents are users.** Every control has a unique name, says when it needs a person, and hides what agents must not
   read.
 - **Lint is the floor.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set, accessibility rules and ours on every
@@ -51,7 +52,7 @@ The libraries ship skills that match the pinned versions: read them, not your me
   `extensions/mcp/web.tsx`). A Solid part that needs what only React reads takes it as a prop from a small React
   wrapper in `web.tsx`; `island` passes props on live, without a remount (`extensions/todos/web.tsx`). A React point
   a moved part would render (`Review` in a commit count) gets a page-bus event its provider also listens to
-  (`events.emit('review:open', { spec, source })`), never a Solid copy of the point.
+  (`events.emit('review:open', { spec })`), never a Solid copy of the point.
 - **Contracts:** `ui.solid.tsx` holds only what other extensions use; parts an extension keeps to itself live in their
   own file (`extensions/workspaces/panel.solid.tsx`, re-exported). A pure `.ts` helper counts as server code to
   `ultimate/api-only-imports`: it imports other extensions' refs only as types, or takes their tokens as arguments
@@ -70,8 +71,9 @@ bare `<form>`s).
 | Component                                                                      | Notes                                                                                                                                                |
 | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Button                                                                         | `onClick(event, details)`; return the Promise so it shows pending. `render` replaces `asChild`.                                                      |
-| Form                                                                           | Never navigates; its `type="submit"` Button's `onClick` submits, which Enter in a field presses too.                                                 |
-| Input, SecretInput, Textarea (`input.solid.tsx`)                               | A secret field agents may fill but never read; Textarea takes `submitShortcut`.                                                                      |
+| Form                                                                           | Never navigates; its `type="submit"` Button's `onClick` submits, which Enter in a field and a Textarea's `submitShortcut` press too.                 |
+| Input, SecretInput, Textarea (`input.solid.tsx`)                               | A secret field agents may fill but never read; Textarea's `submitShortcut` presses its form's submit Button.                                         |
+| CopyValue                                                                      | A value in a row that copies itself when pressed; `field` names it.                                                                                  |
 | Checkbox, Switch, SegmentedControl, Slider, NumberInput                        | Take `bind`. Checkbox may report `"indeterminate"`; NumberInput's agent `setValue` fires `onValueChange`; Slider's agent acts on its labelled thumb. |
 | Collapsible                                                                    | Unmounts its panel when closed; `keepMounted` keeps it.                                                                                              |
 | Popover, StatusPopoverTrigger (`status-trigger.solid.tsx`), HoverCard, Tooltip | Popups in the top layer; Tooltip needs no provider.                                                                                                  |
@@ -92,7 +94,9 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   from a `.ts` file that its React and Solid sides share (`extensions/wire/state.ts`).
 - **A durable selection names what is shown.** When the selected row leaves, store the row that took its place, not
   just a rule for finding it again, or a later arrival takes over the pane under the person's cursor
-  (`selectionAfterChange` in `extensions/inbox/items.ts`). Order rows with a tie-breaker, never by time alone.
+  (`selectionAfterChange` in `extensions/inbox/items.ts`). Order rows with a tie-breaker, never by time alone. An
+  effect that repairs stored state writes in `writingAs('app', …)`; UI state never resends an `app` write the server
+  refused until that key changes, so the effect needs no guard of its own.
 - **Reading the server:** `useAction(ref, args, options)` shares one call per action, args and conversation. `every` takes ms or
   `(data) => ms` (`extensions/mcp/chip.solid.tsx` polls fast while connecting). Every read in use refetches after a
   restart, keeping its last answer meanwhile; on reconnect only active reads that failed with a network error retry.
@@ -107,13 +111,15 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   hangs off one `AbortController`: listeners take its `signal`, the effect keyed on what ends it calls `abort()`
   (`extensions/voice/button.solid.tsx`), instead of a ref mirroring state for a cleanup to read.
 - **The conversation's model:** `useAgent()`, not a whole conversation replica.
+- **Formatting:** `formatAgo`, `formatDuration`, `formatBytes`, `formatTokens`, `plural`, `shortenPath`, `elidePath` and
+  `prettyName` come from `@/sdk/solid`; a shared `.ts` helper takes `formatAgo` and `plural` from `lib/`. Never a local
+  copy.
 - **Writes after an `await`:** `writingAs` holds only for the synchronous call. Take `details.source` before the
   `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). A write the
   person didn't make with this action (a URL, a timer, an effect) runs in `writingAs('app', …)` and records nothing.
 - **Forms:** the kit `Form`, with the change started in its submit Button's `onClick`, which receives `details.source`.
-  A native `onSubmit` has no source, so an agent's submit would be recorded as the person's. A `Textarea` with
-  `submitShortcut` submits the form, which skips the Button's `onClick`: pass `onSubmit={() => submit?.click()}` with a
-  ref to the submit Button (`extensions/goal/dialog.solid.tsx`).
+  A native `onSubmit` has no source, so an agent's submit would be recorded as the person's. Enter in an Input and
+  `submitShortcut` in a Textarea press that Button (`extensions/goal/dialog.solid.tsx`).
 - **One row per id:** `mapArray(ids, (id) => …)` gives each id its own owner and reads, disposed when it leaves. A
   polled list whose objects are replaced on each fetch keeps its DOM with `<For keyed={(row) => row.id}>`; with a key
   function both the item and the index are accessors (`index()`).
