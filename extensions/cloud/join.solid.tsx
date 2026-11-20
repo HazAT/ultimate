@@ -168,7 +168,9 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
   async function submit(event: Event) {
     event.preventDefault()
     if (!ready()) return
+    const earlierAttemptMayHaveWritten = mayHaveWrittenSecrets()
     setResult('running')
+    setMayHaveWrittenSecrets(true)
     try {
       const outcome = await api.action(
         JoinAction,
@@ -176,7 +178,8 @@ function JoinForm(props: { state: JoinState; onJoined: () => void }) {
         { conversationId: ROOT },
       )
       setResult(outcome)
-      if (outcome.ok || outcome.step !== 'check') setMayHaveWrittenSecrets(true)
+      const nothingWritten = !outcome.ok && outcome.step === 'check'
+      if (nothingWritten && !earlierAttemptMayHaveWritten) setMayHaveWrittenSecrets(false)
       if (outcome.ok) {
         setToken('')
         setSnapshotKey('')

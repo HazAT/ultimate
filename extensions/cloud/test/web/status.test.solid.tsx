@@ -16,7 +16,7 @@ const harness = vi.hoisted(() => ({
   requests: [] as { path: string; args: unknown; source: string | null }[],
   state: { status: 'on', name: 'example' } as CloudState,
   join: undefined as unknown as JoinState,
-  joinFails: [] as ('secrets' | 'settings' | 'check')[],
+  joinFails: [] as ('secrets' | 'settings' | 'check' | 'lost')[],
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
@@ -49,6 +49,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       const step = harness.joinFails.shift()
       if (step) {
         if (step !== 'check') harness.join = { ...harness.join, missing: [] }
+        if (step === 'lost') return Response.json({ error: 'Bad gateway' }, { status: 502 })
         return Response.json({ result: { ok: false, step, error: `Failed at ${step}` } })
       }
       const joined = { url, machine, host: new URL(url).host }
@@ -210,7 +211,7 @@ it('lets an agent fill the four join fields and submits the exact JoinAction arg
   expect(container.querySelector('[data-cloud-join] input')).toBeNull()
 })
 
-it.each(['secrets', 'settings'] as const)(
+it.each(['secrets', 'settings', 'lost'] as const)(
   'keeps asking a person before an agent retries a join that failed at %s, after any later failure',
   async (step) => {
     harness.joinFails = [step, 'check']
