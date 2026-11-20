@@ -6,6 +6,10 @@ import { cn, ROOT, useDocOf } from '@/sdk/solid'
 import type { MarkTint } from '../../lib/marks.ts'
 import { MarksDoc } from '../conversations/refs.ts'
 
+const iconModules = import.meta.glob<{ default: typeof Bot }>(
+  '../../node_modules/@lucide/solid/dist/source/icons/*.jsx',
+)
+
 const defaultTint = 'bg-muted text-muted-foreground ring-border'
 const tints: Record<MarkTint, string> = {
   violet: 'bg-violet-500/12 text-violet-600 ring-violet-500/25 dark:text-violet-300',
@@ -36,12 +40,8 @@ export function AgentMark(props: { name: string }) {
   const Icon = dynamic(() => {
     const icon = iconName()
     if (!icon) return builtin()?.icon ?? Bot
-    return import('@lucide/solid/icons').then(({ icons }) => {
-      const key = icon.replace(/(^|-)([a-z0-9])/g, (_, _dash: string, letter: string) =>
-        letter.toUpperCase(),
-      )
-      return icons[key as keyof typeof icons] ?? Bot
-    })
+    const load = iconModules[`../../node_modules/@lucide/solid/dist/source/icons/${icon}.jsx`]
+    return load ? load().then((module) => module.default) : Bot
   })
   return (
     <span
