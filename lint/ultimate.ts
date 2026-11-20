@@ -122,12 +122,14 @@ const rendererBridges = new Set([
 ])
 const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
 const solidSdk = 'web/src/sdk/solid.ts'
+const solidParts = 'web/src/sdk/parts.solid.tsx'
+const solidSdkEntry = (file: string) => file === solidSdk || file === solidParts
 const reactSdk = (module: string) => {
   const file = repositoryPath(module)
-  return file.startsWith('web/src/sdk/') && file !== solidSdk
+  return file.startsWith('web/src/sdk/') && !solidSdkEntry(file)
 }
-const extensionWebFacet = (filename: string) =>
-  /^(\.ultimate\/)?extensions\/[^/]+\/web\.tsx$/.test(repositoryPath(filename))
+const islandHost = (filename: string) =>
+  /^(\.ultimate\/)?extensions\/[^/]+\/(web|ui)\.tsx$/.test(repositoryPath(filename))
 const uiKitFile = (filename: string) =>
   repositoryPath(filename).startsWith('web/src/components/ui/')
 const reactOnly =
@@ -266,13 +268,13 @@ const hasBody = (statement: Node) =>
   (statement.declaration?.declarations ?? []).some((declarator) =>
     functionTypes.includes(declarator.init?.type ?? ''),
   )
-/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` for Solid. */
+/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` and `@/sdk/parts.solid.tsx` for Solid. */
 const sdkEntry = (filename: string) =>
-  ['web/src/sdk/index.ts', solidSdk].includes(repositoryPath(filename))
+  ['web/src/sdk/index.ts', solidSdk, solidParts].includes(repositoryPath(filename))
 /** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */
 function contractStatements(filename: string, statements: Node[]) {
   if (contractFile(filename)) return statements
-  if (repositoryPath(filename) === solidSdk)
+  if (solidSdkEntry(repositoryPath(filename)))
     return statements.filter((statement) => statement.type === 'ExportNamedDeclaration')
   if (!inSdk(filename)) return []
   const names = publicSdk()
@@ -345,12 +347,12 @@ export default {
           }
           const localReact = local?.endsWith('.tsx') === true && !solidFile(local)
           const localSolid =
-            local !== undefined && (solidFile(local) || repositoryPath(local) === solidSdk)
+            local !== undefined && (solidFile(local) || solidSdkEntry(repositoryPath(local)))
           const islandComponent =
             local !== undefined &&
             solidFile(local) &&
             node.type === 'ImportDeclaration' &&
-            extensionWebFacet(context.filename)
+            islandHost(context.filename)
           if (rendererBridge(context.filename) && (localReact || reactSdk(local ?? ''))) return
           if (solid && (reactOnly.test(source) || localReact))
             context.report({

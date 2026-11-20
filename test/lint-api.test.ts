@@ -403,6 +403,15 @@ import type { Accessor } from '@/sdk/solid'`
   ])
 })
 
+it('gives Solid files the transcript parts, and lets a ui.tsx wrap its own Solid parts in island', () => {
+  const parts = `import { Card } from '@/sdk/parts.solid.tsx'`
+  expect(lint('ui-framework-boundaries', 'extensions/echo/card.solid.tsx', parts)).toEqual([])
+  expect(lint('ui-framework-boundaries', 'extensions/echo/cards.tsx', parts)).toHaveLength(1)
+  const own = `import { Card } from './card.solid.tsx'`
+  expect(lint('ui-framework-boundaries', 'extensions/echo/ui.tsx', own)).toEqual([])
+  expect(lint('ui-framework-boundaries', 'extensions/echo/cards.tsx', own)).toHaveLength(1)
+})
+
 it('lets only the core hosts in web/src/app import the temporary React bridge', () => {
   const source = `import { Contribution } from '@/sdk/react-island.solid.tsx'
 const later = import(\`@/sdk/react-island.solid.tsx\`)`
