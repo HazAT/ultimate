@@ -1,41 +1,92 @@
-import { createEffect, onCleanup, useContext } from 'solid-js'
-import type { Component } from 'solid-js'
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
+import { useLayoutEffect, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
-import { ExtensionBoundary } from '../app/boundary.tsx'
-import { ConversationIdContext } from './conversation-scope.tsx'
-import { ConversationScope, ExtensionName } from './solid.ts'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { ExtensionBoundary, Provided, Rendered as RenderedPoint, Slot } from '../app/boundary.tsx'
+import { TooltipProvider } from '../components/ui/tooltip.tsx'
+import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
+import type { Point, SlotName } from './types.ts'
+import type { TranscriptFrame } from './transcript-frame.ts'
 
-/**
- * Temporary, for the core switch only: C5 deletes it with React. The reverse of `island`: a Solid component that mounts
- * the React `component` in place, so a Solid core host (the transcript, the shell) can render an extension's leftover
- * React renderer. It renders inside an `ExtensionName`; the React tree gets that name and the conversation scope, sits
- * in an `ExtensionBoundary` so a throw stays inside it, and re-renders with each change of the Solid props without a
- * remount. Only `web/src/app` imports it.
- */
-export function reactIsland<P extends object = Record<string, never>>(
-  component: ComponentType<P>,
-): Component<P> {
-  const Rendered = component as ComponentType<object>
-  return function ReactIsland(props: P) {
-    const extension = useContext(ExtensionName)
-    if (extension === null) throw new Error('reactIsland renders only inside an ExtensionName')
-    const conversation = useContext(ConversationScope) ?? undefined
-    const host = document.createElement('div')
-    host.className = 'contents'
-    const root = createRoot(host)
-    onCleanup(() => root.unmount())
-    createEffect(
-      () => ({ ...props }),
-      (current) =>
+export type Rendered = { extension: string; version: number; component: unknown }
+
+export function reactRoot(
+  host: HTMLElement,
+  context: { conversation?: ConversationId; transcript?: TranscriptFrame },
+) {
+  const root = createRoot(host)
+  return {
+    render: (element: ReactNode) => {
+      flushSync(() =>
         root.render(
-          <ConversationIdContext value={conversation}>
-            <ExtensionBoundary extension={extension} version={0}>
-              <Rendered {...current} />
-            </ExtensionBoundary>
-          </ConversationIdContext>,
+          <TooltipProvider delayDuration={400}>
+            <ConversationIdContext value={context.conversation}>
+              <TranscriptContext value={context.transcript}>{element}</TranscriptContext>
+            </ConversationIdContext>
+          </TooltipProvider>,
         ),
-    )
-    return host
+      )
+    },
+    unmount: () => root.unmount(),
   }
+}
+
+export function SolidNode({ node }: { node: HTMLElement }) {
+  const host = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    host.current!.append(node)
+    return () => node.remove()
+  }, [node])
+  return <div className="contents" ref={host} />
+}
+
+export function contribution(item: Rendered, props: object, fallback: ReactNode = null) {
+  const Renderer = item.component as ComponentType<object>
+  return (
+    <ExtensionBoundary
+      extension={item.extension}
+      fallback={fallback}
+      key={item.extension}
+      version={item.version}
+    >
+      <Renderer {...props} />
+    </ExtensionBoundary>
+  )
+}
+
+export function chain(run: readonly Rendered[], props: object, core: HTMLElement) {
+  return run.reduce<ReactNode>(
+    (inner, item) => contribution(item, { ...props, core: inner }, inner),
+    <SolidNode node={core} />,
+  )
+}
+
+export const slot = (name: SlotName) => <Slot name={name} />
+
+export const renderedPoint = <Input extends object>(
+  point: Point<Input & { core: ReactNode }, ReactNode>,
+  input: Input,
+  core: HTMLElement,
+) => (
+  <RenderedPoint input={input} point={point}>
+    <SolidNode node={core} />
+  </RenderedPoint>
+)
+
+export const provided = <Input, Value>(
+  point: Point<Input, Value>,
+  input: Input,
+  report: (value: Value | undefined) => void,
+) => (
+  <Provided input={input} point={point}>
+    {(value) => <Report report={report} value={value} />}
+  </Provided>
+)
+
+function Report<Value>({ value, report }: { value: Value; report: (value: Value) => void }) {
+  useLayoutEffect(() => {
+    report(value)
+  })
+  return null
 }

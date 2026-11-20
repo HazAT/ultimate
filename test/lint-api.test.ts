@@ -403,9 +403,9 @@ import type { Accessor } from '@/sdk/solid'`
   ])
 })
 
-it('lets only the core hosts in web/src/app import the temporary reactIsland', () => {
-  const source = `import { reactIsland } from '@/sdk/react-island'
-const later = import(\`@/sdk/react-island\`)`
+it('lets only the core hosts in web/src/app import the temporary React bridge', () => {
+  const source = `import { Contribution } from '@/sdk/react-island.solid.tsx'
+const later = import(\`@/sdk/react-island.solid.tsx\`)`
   const moveIt =
     'Move this part to Solid, or keep it React and contribute it where a core host renders React.'
   expect(lint('ui-framework-boundaries', 'web/src/app/transcript.solid.tsx', source)).toEqual([])

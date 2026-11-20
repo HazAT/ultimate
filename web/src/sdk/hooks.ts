@@ -32,7 +32,7 @@ import type { EventData, EventRecord, EventToken } from '../../../shared/events.
 import type { ActionArgs, ActionError } from './api.ts'
 import { docRef } from '../../../shared/extension-api.ts'
 import type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
-import { api, reads, registry, store, uiState } from './client.ts'
+import { api, reads, registry, reportCompact, store, uiState } from './client.ts'
 import type { Reader } from './reads.ts'
 import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
@@ -289,11 +289,34 @@ export type { Widen } from './ui-state.ts'
  * history the reader paged in. Entry renderers and message contributions relate an entry to its neighbours with it.
  */
 export function useTranscript(): readonly EntryRecord[] {
-  const entries = useContext(TranscriptContext)
+  const frame = useContext(TranscriptContext)
   const scoped = useContext(ConversationIdContext)
   const active = useConversation((conversation) => conversation.entries)
-  return entries ?? (scoped === undefined ? empty.entries : active)
+  const framed = useSyncExternalStore(
+    frame?.subscribe ?? noFrame,
+    frame?.entries ?? (() => undefined),
+  )
+  return framed ?? (scoped === undefined ? empty.entries : active)
 }
+const noFrame = () => () => {}
+
+/**
+ * The transcript around a contribution: its scroll element, the element whose children are its rows, once mounted, and
+ * whether it follows its newest row.
+ */
+export function useTranscriptScroll() {
+  const frame = useContext(TranscriptContext)
+  const atBottom = useSyncExternalStore(
+    frame?.subscribe ?? noFrame,
+    frame?.atBottom ?? (() => true),
+  )
+  return {
+    scrollRef: frame?.scroll ?? noElement,
+    contentRef: frame?.content ?? noElement,
+    atBottom,
+  }
+}
+const noElement = { current: null }
 
 export const ExtensionNameContext = createContext<string | undefined>(undefined)
 
@@ -314,15 +337,6 @@ export function useDialog(id: string): [boolean, (open: boolean) => void] {
 /** Installed web facets, in folder order. */
 export function useExtensions() {
   return useSyncExternalStore(registry.subscribe, registry.getSnapshot)
-}
-const compactFailures = new Set<string>()
-
-function reportCompact(extension: string, error: unknown) {
-  const message = `extension ${extension}: compact is off, its when() threw: ${errorMessage(error)}`
-  if (compactFailures.has(message)) return
-  compactFailures.add(message)
-
-  queueMicrotask(() => store.notify({ level: 'error', message }))
 }
 const noDocs = {}
 /**

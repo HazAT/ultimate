@@ -14,7 +14,7 @@ import {
   useExtensionUiState,
   useSystem,
 } from '@/sdk/solid'
-import { AnsiOutput } from './ansi.solid.tsx'
+import { AnsiOutput } from '@/components/ai/ansi-output.solid.tsx'
 import { looks, since } from './looks.ts'
 import { Dot, Tag } from './parts.solid.tsx'
 import { ErrorLine, Toggle, useAct } from './row.solid.tsx'

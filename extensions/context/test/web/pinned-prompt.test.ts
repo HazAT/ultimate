@@ -17,14 +17,6 @@ vi.mock('react', async (original) => ({
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
   useEffect: (effect: EffectCallback) => harness.effects.push(effect),
 }))
-vi.mock('use-stick-to-bottom', async (original) => ({
-  ...(await original<typeof import('use-stick-to-bottom')>()),
-  useStickToBottomContext: () => ({
-    scrollRef: { current: null },
-    contentRef: { current: null },
-    isAtBottom: true,
-  }),
-}))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
   const { createApi } = await import('../../../../web/src/sdk/api.ts')

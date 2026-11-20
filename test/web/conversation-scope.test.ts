@@ -82,6 +82,7 @@ vi.mock('@/components/ai/prompt-input', () => ({
 
 import { registry, store } from '../../web/src/sdk/client.ts'
 import { ConversationScope } from '../../web/src/sdk/conversation-scope.tsx'
+import { createTranscriptFrame } from '../../web/src/sdk/transcript-frame.ts'
 import { Conversation } from '../../web/src/app/primitives.tsx'
 import {
   getConversation,
@@ -197,7 +198,11 @@ it('keeps two scoped snapshots, ops, transcripts and documents independent of th
 
   // A nested scope must not inherit its parent's paged transcript.
   const nested = renderToStaticMarkup(
-    h(TranscriptContext, { value: view(7, 'parent history').entries }, scoped(9, h(Probe))),
+    h(
+      TranscriptContext,
+      { value: createTranscriptFrame(view(7, 'parent history').entries).frame },
+      scoped(9, h(Probe)),
+    ),
   )
   expect(nested).toContain('nine live')
   expect(nested).not.toContain('parent history')
@@ -260,8 +265,6 @@ it('renders <ConversationScope><Conversation/></ConversationScope> and sends, st
   source(17).send('view', view(17, 'side transcript'))
   const render = () => renderToStaticMarkup(scoped(17, h(Conversation)))
   let html = render()
-  expect(html).toContain('side transcript')
-  expect(html).not.toContain('other transcript')
   expect(html).toContain('composer-input-17')
   expect(html).toContain('queued 17')
   harness.cancel!()

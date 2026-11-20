@@ -169,6 +169,13 @@
   }
 }
 
+@utility empty-row {
+  &:empty,
+  &:has(> [data-empty]:only-child) {
+    display: none;
+  }
+}
+
 /* A section or group heading in the chrome (panels, sidebar sections, picker groups): quiet sentence-case mono. */
 @utility section-label {
   @apply font-mono text-[11px] font-normal tracking-normal text-muted-foreground normal-case;
@@ -264,15 +271,10 @@
     --gutter: 0.75rem;
     padding-inline: var(--gutter);
   }
-  /* use-stick-to-bottom reserves a scrollbar gutter on both edges inline; a phone's scrollbar overlays the content, so
-     the reserved 10px would keep every row off the screen's edges. */
-  :has(> [data-ui='transcript']) {
-    scrollbar-gutter: auto !important;
-  }
   /* Rows that reach the screen's edges: a transcript entry's tool call, card, message card, final answer. Inside an
      opened step list they stay in its indented column, only losing their rounded box. The user's own bubble stays. */
   :is(
-    [data-ui='transcript'] [data-tool-call-id] > [data-ui='tool'],
+    [data-ui='transcript'] [data-tool-call-id] [data-ui='tool']:not([data-ui='tool'] *),
     [data-ui='transcript'] [data-ui='card'],
     [data-ui='transcript'] [data-ui='message-card-body'],
     [data-ui='transcript'] [data-ui='message-card'][data-message-input],
@@ -293,8 +295,8 @@
   }
   /* Back-to-back tool calls form one list: the gap closes and their hairlines overlap. */
   :is([data-ui='transcript'], [data-ui='transcript-steps'])
-    > :has(> [data-from] > [data-tool-call-id]:only-child > [data-ui='tool'])
-    + :has(> [data-from] > [data-tool-call-id]:first-child > [data-ui='tool']) {
+    > :has([data-from] > [data-tool-call-id]:only-child [data-ui='tool'])
+    + :has([data-from] > [data-tool-call-id]:first-child [data-ui='tool']) {
     margin-top: calc(-0.75rem - 1px);
   }
   [data-ui='pinned-prompt'] [data-ui='turn-header'] {

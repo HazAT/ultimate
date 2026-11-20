@@ -147,7 +147,9 @@ function Pointers({ questions }: { questions: Question[] }) {
     const resize = new ResizeObserver(measureBottomFromPinnedStripOffset)
     resize.observe(scroll)
 
-    if (strip.parentElement) resize.observe(strip.parentElement)
+    let pinned = strip.parentElement
+    while (pinned && getComputedStyle(pinned).display === 'contents') pinned = pinned.parentElement
+    if (pinned) resize.observe(pinned)
     return () => resize.disconnect()
   }, [scrollRef])
 
