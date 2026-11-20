@@ -68,7 +68,7 @@ After it reports:
 
 Before ending a turn while children run, name the ones you wait for; their answers wake you. Never report done while they run.
 
-Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does.
+Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does. When your work waits on another branch's landing, call `notify {id, on: 'land'}` before you end the turn: notes don't wake you, its landing does.
 
 For review, start one `reviewer` with the immutable `base..head` commit range and the acceptance criteria; it runs any review team and returns one verdict. Verify its findings yourself. The lander runs every check on the merged result. Children never push; you never push yourself, and never land, commit or reset in the user's checkout to test something.
 

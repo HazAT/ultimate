@@ -43,7 +43,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
 import { Branch, Branched, LineageApi, MemorySearch, Rooted, Roots, Tally } from './api.ts'
-import { ConversationsApi, Trees } from '../conversations/api.ts'
+import { Concluded, ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing, Started } from '../subagents/api.ts'
 import { spawn } from 'node:child_process'
 import {
@@ -404,14 +404,105 @@ function lineage(host: ExtensionHost) {
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
   })
   const Notify = defineTask<
-    { target: ConversationId; wake: boolean },
-    { phase: 'wait' } | { phase: 'deliver'; title?: string; text: string; answer: EntryId | 0 },
+    { target: ConversationId; wake: boolean; on?: 'land' },
+    | { phase: 'wait' }
+    | { phase: 'deliver'; title?: string; text: string; answer: EntryId | 0 }
+    | { phase: 'waitForLanding' }
+    | { phase: 'deliverLanding'; title?: string; text: string; landed?: string },
     null
   >({
     name: 'lineage.notify',
     version: 1,
-    initial: () => ({ phase: 'wait' }),
+    initial: (input) => ({ phase: input.on === 'land' ? 'waitForLanding' : 'wait' }),
     phases: {
+      waitForLanding: async (task, runtime, ctx) => {
+        const { target } = task.input
+        const caller = runtime.conversationId
+        for (;;) {
+          const landedOrConcludedAfterSubscription = Promise.withResolvers<void>()
+          const unsubscribe = onCommit(host.harness(), (publication) => {
+            if (
+              publication.changes.some(
+                (change) =>
+                  change.type === 'entry' &&
+                  (change.value.kind === SubmissionLanded.kind ||
+                    change.value.kind === Concluded.kind),
+              )
+            )
+              landedOrConcludedAfterSubscription.resolve()
+          })
+          try {
+            const concluded = await host.need(ConversationsApi).concluded(ctx)
+            if (concluded.has(caller)) {
+              await runtime.commit(
+                () => ({ status: 'terminal', outcome: { status: 'aborted' } }),
+                ctx,
+              )
+              return
+            }
+            const workspace = (
+              await host.harness().snapshot(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID, ctx)
+            )?.items[String(target)]
+            const landed = workspace?.landed
+            if (landed || concluded.has(target)) {
+              const title = host.conversations().find((summary) => summary.id === target)?.title
+              await runtime.commit(
+                () => ({
+                  status: 'running',
+                  checkpoint: {
+                    phase: 'deliverLanding',
+                    ...(title ? { title } : {}),
+                    ...(landed ? { landed } : {}),
+                    text: landed
+                      ? `Landed on ${workspace.target} at ${landed}.`
+                      : 'It was concluded without landing.',
+                  },
+                }),
+                ctx,
+              )
+              return
+            }
+            await awaitWithContext(landedOrConcludedAfterSubscription.promise, ctx)
+          } finally {
+            unsubscribe()
+          }
+        }
+      },
+      deliverLanding: async (task, runtime, ctx) => {
+        const { target, wake } = task.input
+        const { title, text, landed } = task.state.checkpoint as {
+          title?: string
+          text: string
+          landed?: string
+        }
+        const caller = runtime.conversationId
+        const requestId = `lineage:notify:${target}:landed:${task.id}`
+        const content = `#${target} ${landed ? 'landed' : 'concluded'}${title ? ` · ${title}` : ''}\n\n${text}`
+        if (wake)
+          await (await runtime.conversation(caller, ctx))!.submit(
+            {
+              type: 'input',
+              content,
+              whenBusy: 'followUp',
+              requestId,
+              entry: {
+                kind: FinishedEntry.kind,
+                data: {
+                  from: target,
+                  text,
+                  ...(title ? { title } : {}),
+                  ...(landed ? { landed } : {}),
+                },
+              },
+            },
+            ctx,
+          )
+        else await leaveNote(host, caller, content, { from: target, requestId })
+        await runtime.commit(
+          () => ({ status: 'terminal', outcome: { status: 'completed', result: null } }),
+          ctx,
+        )
+      },
       wait: async (task, runtime, ctx) => {
         const { target } = task.input
         let said = ''
@@ -1434,15 +1525,16 @@ export default function lineageExtension(host: ExtensionHost) {
       defineTool({
         name: 'notify',
         description:
-          'Get told when conversation `id` finishes: once it and its subagents are idle (at once if it already is), you receive "#id finished" with its title and last answer. An answer you already received is not sent again: you are told when it next finishes. `wake` (default true) starts your next run with it; `wake: false` leaves it as a note you read with your next input. Calling it again for the same id replaces the earlier request.',
+          'Get told when conversation `id` finishes: once it and its subagents are idle (at once if it already is), you receive "#id finished" with its title and last answer. An answer you already received is not sent again: you are told when it next finishes. With `on: "land"` you are told instead when branch `id` lands (at once if it already has), with the landed sha; use it when your work depends on that branch. It is dropped when you are concluded. `wake` (default true) starts your next run with it; `wake: false` leaves it as a note you read with your next input. Calling it again for the same id and `on` replaces the earlier request.',
         parameters: obj({
           id: int({ minimum: 1 }),
           wake: opt(bool()),
+          on: opt(strEnum(['finish', 'land'])),
         }),
         ...safeToRerun(
           'The transactional receipt reuses the task; cancellations and the request-id note tolerate replay.',
         ),
-        async execute({ id, wake = true }, api, ctx) {
+        async execute({ id, wake = true, on = 'finish' }, api, ctx) {
           const target = parseConversationId(id)
           const from = await actingAs(host, api.conversationId, ctx)
           if (target === from) throw new Error('A conversation cannot notify on itself')
@@ -1461,14 +1553,15 @@ export default function lineageExtension(host: ExtensionHost) {
               for (const task of page.items)
                 if (
                   task.state.status !== 'terminal' &&
-                  (task.input as { target: ConversationId }).target === target
+                  (task.input as { target: ConversationId }).target === target &&
+                  ((task.input as { on?: 'land' }).on ?? 'finish') === on
                 )
                   pending.push(task.id)
               cursor = page.next
             } while (cursor)
             await tx.createTask(
               Notify,
-              { target, wake },
+              { target, wake, ...(on === 'land' ? { on } : {}) },
               { conversationId: from, ownership: { kind: 'conversation' }, background: true },
             )
             receipt.calls[api.callId] = pending
@@ -1479,7 +1572,7 @@ export default function lineageExtension(host: ExtensionHost) {
             await leaveNote(
               host,
               from,
-              `Side chat #${api.conversationId} requested notification for #${target} (report comes here).`,
+              `Side chat #${api.conversationId} requested notification for #${target}${on === 'land' ? ' landing' : ''} (report comes here).`,
               {
                 from: api.conversationId,
                 requestId: `sidechat:notify:${api.taskId}:${api.callId}`,
@@ -1490,7 +1583,7 @@ export default function lineageExtension(host: ExtensionHost) {
             output: [
               {
                 type: 'text',
-                text: `You will ${wake ? 'be woken' : 'get a note'} when #${target} finishes.`,
+                text: `You will ${wake ? 'be woken' : 'get a note'} when #${target} ${on === 'land' ? 'lands' : 'finishes'}.`,
               },
             ],
           }
