@@ -118,15 +118,20 @@ it('places hook entries before a follow-up queued while an onYield task decides'
   const home = await temp()
   const gate = Promise.withResolvers<void>()
   let deciding = false
+  const decided = {
+    status: 'terminal' as const,
+    outcome: { status: 'completed' as const, result: null },
+  }
   const Decide = defineTask<null, { phase: 'decide' }, null>({
     name: 'input-test.decide',
     version: 1,
     initial: () => ({ phase: 'decide' }),
+    abort: async (_task, runtime, ctx) => runtime.commit(() => decided, ctx),
     phases: {
       decide: async (_task, runtime, ctx) => {
         deciding = true
         await gate.promise
-        await runtime.complete(null, ctx)
+        await runtime.commit(() => decided, ctx)
       },
     },
   })

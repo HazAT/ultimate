@@ -59,7 +59,7 @@ export function toolCallView(
   if (result) status = result.message.isError ? 'error' : 'done'
   else if (slot)
     status =
-      slot.status === 'done' ? 'interrupted' : slot.status === 'pending' ? 'pending' : 'running'
+      slot.status === 'done' ? 'interrupted' : slot.status === 'running' ? 'running' : 'pending'
   else if (streaming) status = 'streaming'
   else status = busy ? 'pending' : 'interrupted'
 
