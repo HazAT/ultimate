@@ -55,6 +55,7 @@ const SAFE_ERROR_WORDS = new Set([
   'timeout',
   'aborted',
   'quota',
+  'premium_limit',
   'unavailable',
   'ECONNREFUSED',
   'ECONNRESET',
@@ -67,6 +68,7 @@ export function sanitize(error: string) {
   const parts: string[] = []
   const status = /^\s*([45]\d\d)\b|\b(?:status|http)[\s:=]*([45]\d\d)\b/i.exec(error)
   if (status) parts.push(status[1] ?? status[2])
+  if (/premium model limit/i.test(error)) parts.push('premium_limit')
   for (const word of error.split(/[^A-Za-z_]+/)) {
     const known = SAFE_ERROR_WORDS.has(word)
       ? word
@@ -105,6 +107,7 @@ const CAPACITY = new Set([
   'usage_limit_reached',
   'insufficient_quota',
   'quota',
+  'premium_limit',
 ])
 
 export function failureKind(error: string): 'auth' | 'billing' | 'capacity' | 'transient' {

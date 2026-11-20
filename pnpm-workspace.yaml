@@ -53,3 +53,4 @@ patchedDependencies:
   '@earendil-works/chord@1.5.2': patches/@earendil-works__chord@1.5.2.patch
   '@earendil-works/pi-claude-code@0.1.0': patches/@earendil-works__pi-claude-code@0.1.0.patch
   '@earendil-works/pi-durable@1.5.2': patches/@earendil-works__pi-durable@1.5.2.patch
+  'openai@7.19.0': patches/openai@7.19.0.patch

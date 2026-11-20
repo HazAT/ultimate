@@ -119,6 +119,15 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
     }
   if (/not logged in/i.test(error))
     return { hint: 'Run `claude auth login` in a terminal', temporary: false }
+  const cap =
+    /daily premium model limit: (.+?)(?=, (?:counted|resetting)).*?resetting at ([^."]+)/i.exec(
+      error,
+    )
+  if (cap)
+    return {
+      hint: `The daily premium model limit is used up (${cap[1]}) until ${cap[2]}. Resume this conversation with a message after that, or move it to a non-premium model`,
+      temporary: false,
+    }
   const missing = /Provider is not configured: ([\w-]+)|No API key (?:found )?for "?([\w-]+)/i.exec(
     error,
   )
