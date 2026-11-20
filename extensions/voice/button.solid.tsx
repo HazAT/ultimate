@@ -225,7 +225,7 @@ export function VoiceButton() {
         <div class="flex min-w-0 shrink items-center gap-1.5">
           {error() && (
             <span
-              class="min-w-0 truncate font-mono text-[11px] text-error"
+              class="line-clamp-3 min-w-0 font-mono text-[11px] leading-tight text-error"
               role="alert"
               title={error()}
             >
