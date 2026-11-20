@@ -19,7 +19,7 @@ actions, folds, work runs, the live status) are Solid, with its own scroll-to-bo
 renderer points keep their framework: a tool, entry, tool-line, message-action, message-detail, answer-label,
 user-bubble or compact-summary renderer contributed as `island(C)` renders as Solid directly; any other is React and
 mounts through the temporary bridge in `web/src/sdk/react-island*.tsx`, which C5 deletes. The rows below under "The
-transcript" are what P2 and P3 move, each by writing `island(C)` in its `web.tsx`: `rg -n "(tools|entries|toolLines|
+transcript" were what P2 and P3 moved, each by writing `island(C)` in its `web.tsx`: `rg -n "(tools|entries|toolLines|
 messageActions|messageDetails|answerLabels|userBubble):" extensions/*/web.tsx` lists what is left. Points the host reads
 (`ParkedRuns`, `RunStart`, `MessageReference`, `FileUpload`, `EmptyTranscript`) and the `transcript.*` slots run their
 React providers through the same bridge until C4.
@@ -30,15 +30,15 @@ Solid host reads is filled with `provide(Point, island(C))` and rendered with `P
 (`ConversationTaskChip`, which plan fills). context keeps a local Solid copy of coding-tools' `Diff`
 (`section-diff.solid.tsx`): move it to coding-tools' `ui.solid.tsx` when coding-tools moves, and delete the copy.
 
-**Summary (after P3, before P2):** 39 rows (a row is one part or a group of one extension's parts). By core host:
+**Summary (after P2 and P3):** 34 rows (a row is one part or a group of one extension's parts). By core host:
 
-| Core host                                                               | Rows | Extensions |
-| ----------------------------------------------------------------------- | ---- | ---------- |
-| The transcript's renderers and points (P2; host done in C2)             | 17   | 14         |
-| The sidebar (React rows and sections other extensions provide)          | 3    | 3          |
-| Panel and surface hosts, System's tab host, documents' views            | 11   | 8          |
-| The composer                                                            | 3    | 3          |
-| React points of other extensions (onboarding, workspaces' landing card) | 5    | 5          |
+| Core host                                                       | Rows | Extensions |
+| --------------------------------------------------------------- | ---- | ---------- |
+| The transcript's points and overlays (host done in C2)          | 11   | 10         |
+| The sidebar (React rows and sections other extensions provide)  | 3    | 3          |
+| Panel and surface hosts, System's tab host, documents' views    | 11   | 8          |
+| The composer                                                    | 3    | 3          |
+| React points of other extensions (onboarding, the Agents panel) | 6    | 6          |
 
 User extensions outside this repository (`~/.ultimate/extensions`) contribute React renderers too: pr-triage's
 `pr-triage.request` entry, shell's `shell` tool and `shell.result` entry. They mount through the bridge unchanged; C5
@@ -101,7 +101,7 @@ breaks them unless they move to `island(C)` first.
 | side-chat   | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    |
 | plan        | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  |
 | models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`           | subagents' Agents panel and definition form, onboarding's Get ready |
-| automations | `useAutomations`, `timerWaits` (`ui.tsx`); `Dot`, `useOpenAutomation` (`parts.tsx`) for its own entries                                             | `automations/`      | sidebar, system, its transcript entries                             |
+| automations | `useAutomations`, `timerWaits` (`ui.tsx`)                                                                                                           | `automations/`      | sidebar, system                                                     |
 
 ## Shared state and keys
 
