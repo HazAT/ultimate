@@ -47,7 +47,7 @@ dropped, so the file keeps every step. Per entry:
   - `taskMs`, `taskP95Ms` (from C0): time from the event until the next task: the handler, render and commit of either
     framework, plus any work already queued ahead of it, so it is latency rather than time spent on the event alone.
     The median is the steady cost; the p95 is the slow events a reader feels as jank. One run's p95 can jump with
-    machine load (28.6 ms in one of three C0 runs, about 7 ms in the other two), so read the median of runs.
+    machine load (30 ms in one of three C0 runs, 6–11 ms in the other two), so read the median of runs.
 - `previews` (`scripts/preview-bench.ts`) runs three status-line tasks (keep-warm, pause, reading the setup issues)
   three times each from a fresh page, once with CSS selectors and screenshots and once with `ui` steps (`null` before
   `ui` steps existed at `1c5d056`). `tokens` estimates what the agent reads back: text at 4 bytes a token, a

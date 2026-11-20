@@ -5718,15 +5718,15 @@
     },
     {
       "switch": {
-        "cold": 564,
-        "warm": 143.5
+        "cold": 632,
+        "warm": 184.5
       },
       "stream": {
         "median": 92,
         "p95": 94,
         "max": 583,
-        "taskMs": 4.9,
-        "taskP95Ms": 7.3,
+        "taskMs": 5,
+        "taskP95Ms": 10.7,
         "mutations": 1,
         "mutationsP95": 2,
         "events": 23
@@ -5740,7 +5740,7 @@
               "screenshots": 2,
               "kb": 126,
               "tokens": 3461,
-              "ms": 206,
+              "ms": 204,
               "ok": true
             },
             "ui": {
@@ -5749,7 +5749,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 395,
-              "ms": 90,
+              "ms": 85,
               "ok": true
             }
           },
@@ -5760,7 +5760,7 @@
               "screenshots": 2,
               "kb": 132,
               "tokens": 3461,
-              "ms": 222,
+              "ms": 211,
               "ok": true
             },
             "ui": {
@@ -5769,7 +5769,7 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 531,
-              "ms": 127,
+              "ms": 133,
               "ok": true
             }
           },
@@ -5778,9 +5778,9 @@
               "calls": 2,
               "steps": 1,
               "screenshots": 2,
-              "kb": 140,
+              "kb": 141,
               "tokens": 3459,
-              "ms": 163,
+              "ms": 156,
               "ok": true
             },
             "ui": {
@@ -5789,17 +5789,17 @@
               "screenshots": 0,
               "kb": 2,
               "tokens": 391,
-              "ms": 59,
+              "ms": 57,
               "ok": true
             }
           }
         }
       },
-      "commit": "b2a17734",
-      "sha": "b2a1773459e760b552a4e38b3c28420ad96267ec",
+      "commit": "da4f7d76",
+      "sha": "da4f7d766db3a7c7c78cf036c05545d57a12063a",
       "label": "C0",
       "date": "2026-11-20",
-      "committedAt": 1795152134,
+      "committedAt": 1795152586,
       "lines": {
         "total": 51896,
         "solid": 9707,
