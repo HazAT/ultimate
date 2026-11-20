@@ -146,6 +146,7 @@ function backend(host: ExtensionHost) {
     agentConversation,
     deliver,
     tail,
+    folder,
     MANIFEST,
   } = scripts
   async function subscriber(value: unknown): Promise<Subscriber> {
@@ -318,6 +319,7 @@ function backend(host: ExtensionHost) {
         result: Object.values(state.automations).map((s) => ({
           ...s,
           alive: groupAlive(s.script?.pid),
+          ...(s.script && s.scope !== 'project' ? { folder: folder(s.id) } : {}),
         })),
       }
     if (args.action === 'create') {
@@ -386,7 +388,7 @@ function backend(host: ExtensionHost) {
           ask: required(args.ask, 'ask'),
           once: args.once ?? true,
           conversationId,
-          state: 'writing',
+          state: args.adopt ? 'running' : 'writing',
           ...(args.secrets ? { secrets: args.secrets } : {}),
         },
         subscribers,
@@ -398,6 +400,7 @@ function backend(host: ExtensionHost) {
         ...owed,
       }
       state.automations[id] = sub
+      if (args.adopt) return { result: sub, effect: { id, action: 'resume', adopt: args.adopt } }
       await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
       return { result: sub }
     }
@@ -477,6 +480,8 @@ function backend(host: ExtensionHost) {
         throw new Error('subscribers must be #id or @name')
       if (args.key !== undefined && (typeof args.key !== 'string' || !args.key.trim()))
         throw new Error('key must be a non-empty string')
+      if (args.adopt !== undefined && (args.ask === undefined || args.scope === 'project'))
+        throw new Error('adopt is only for user scripts')
     }
     if (args.event !== undefined) {
       const event = TRIGGER_EVENTS.find(({ name }) => name === args.event!.name)
@@ -724,8 +729,7 @@ function backend(host: ExtensionHost) {
       .harness()
       .commit(async (tx) => json(await change(tx, args, prepared, caller)), BACKGROUND_CONTEXT)
     await apply(receipt)
-    if (receipt.effect?.action === 'resume')
-      return json(await scripts.status(required(args.id, 'id')))
+    if (receipt.effect?.action === 'resume') return json(await scripts.status(receipt.effect.id))
     return receipt.result
   }
   async function eventActivationCursor(tx: Tx) {

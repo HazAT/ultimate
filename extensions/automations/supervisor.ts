@@ -7,7 +7,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { access, appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { access, appendFile, cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -677,9 +677,22 @@ export function supervisor(
   function resetFailuresOnSuccessfulFire(sub: Automation) {
     delete sub.script!.failures
   }
+  async function adopt(id: string, from: string) {
+    const dir = folder(id)
+    await mkdir(dir, { recursive: true })
+    await cp(join(from, 'run'), join(dir, 'run'), { force: false, errorOnExist: false })
+    await cp(join(from, 'state'), join(dir, 'state'), {
+      recursive: true,
+      force: false,
+      errorOnExist: false,
+    }).catch((error: unknown) => {
+      if (!isMissing(error)) throw error
+    })
+  }
   async function effect(value: Effect) {
     if (value.action === 'resume') {
       try {
+        if (value.adopt) await adopt(value.id, value.adopt)
         await launch(value.id, value.previousPid)
       } catch (error) {
         await finish(value.id, undefined, null, undefined, String(error))
@@ -786,6 +799,7 @@ export function supervisor(
     trusted,
     agentFor,
     projectDir,
+    folder,
     manifest,
     committedManifest,
     snapshot,

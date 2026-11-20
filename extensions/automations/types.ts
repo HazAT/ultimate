@@ -71,7 +71,7 @@ export type Automation = {
   fires: number
   lastFireAt?: number
 }
-export type AutomationListItem = Automation & { alive: boolean }
+export type AutomationListItem = Automation & { alive: boolean; folder?: string }
 export type CreateArgs = {
   name: string
   schedule?: string | Schedule
@@ -95,6 +95,7 @@ export type CreateArgs = {
   slug?: string
   to?: string
   key?: string
+  adopt?: string
 }
 export type Args = Partial<CreateArgs> & {
   action: string
@@ -107,7 +108,7 @@ export type Args = Partial<CreateArgs> & {
 export type Manifest = { name: string; ask: string; once: boolean; secrets?: string[]; to: string }
 export const STANDING = /^@[a-zA-Z0-9_-]+$/
 export const FAILURE_LIMIT = 3
-export type Effect = { id: string; action: string; previousPid?: number }
+export type Effect = { id: string; action: string; previousPid?: number; adopt?: string }
 export const isSlug = (id: string) => /^[a-z][a-z0-9-]{0,62}$/.test(id) && !(id in Object.prototype)
 export const isId = (id: string) => /^A[1-9]\d*$/.test(id) || isSlug(id)
 
