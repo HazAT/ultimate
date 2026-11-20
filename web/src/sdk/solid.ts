@@ -82,6 +82,7 @@ export {
   inlineCodeRenderers,
   linkRenderers,
   messageItems,
+  provisionsOf,
   toolLine,
   toolRenderers,
 } from './registry.ts'
