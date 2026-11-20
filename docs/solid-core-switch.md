@@ -4,7 +4,7 @@ The React parts the Solid migration's batches (0.8 A–C, 0.9 D–F) left in ext
 the React core or is a React hook the core calls, so it can only move once that core is Solid. This is the input for
 planning the core switch; nothing here has moved. Keep it current when a batch leaves a part React.
 
-**Summary (P1):** 52 rows (a row is one part or a group of one extension's parts) in 30 extensions. By
+**Summary (P1):** 53 rows (a row is one part or a group of one extension's parts) in 30 extensions. By
 core host:
 
 | Core host                                                                | Rows | Extensions |
@@ -12,7 +12,7 @@ core host:
 | The transcript (tool and entry renderers, Markdown, message bar, bubble) | 33   | 25         |
 | The sidebar (React rows and sections other extensions provide)           | 3    | 3          |
 | Panel and surface hosts, System's tab host, documents' views             | 10   | 7          |
-| The composer                                                             | 1    | 1          |
+| The composer                                                             | 2    | 2          |
 | React points of other extensions (onboarding, workspaces' landing card)  | 5    | 5          |
 
 The transcript blocks the most: two thirds of the rows, and it hosts most of the rest indirectly (inbox's reading pane
@@ -43,7 +43,7 @@ and the landing card render its message parts). Switch it first.
 | automations   | tool renderer `automation`; entries `automations.fired`, `.failed`, `.escalated`, `.writing`       | `automations/web.tsx`       | tool calls, entries          |
 | automations   | provided `WaitTimers` (`useWaitTimers`)                                                            | `automations/web.tsx`       | messages' wait timers        |
 | conversations | entries `conversations.*` (`SummaryAction`), `link` (`MentionLink`)                                | `conversations/web.tsx`     | entries, Markdown            |
-| conversations | provided `ComposerPlaceholder`, `EmptyTranscript` (`standing.tsx`)                                 | `conversations/web.tsx`     | composer, empty transcript   |
+| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                        | `conversations/web.tsx`     | empty transcript             |
 | wire          | entry `pi.assistant` (`WireLink`)                                                                  | `wire/web.tsx`              | entries                      |
 | diagrams      | code block `mermaid`                                                                               | `diagrams/web.tsx`          | Markdown                     |
 | instance      | `link` (preview links in messages)                                                                 | `instance/web.tsx`          | Markdown                     |
@@ -81,9 +81,10 @@ and the landing card render its message parts). Switch it first.
 
 ## The composer
 
-| Extension  | Part                            | Where                |
-| ---------- | ------------------------------- | -------------------- |
-| read-aloud | composer wrapper `ReadingStrip` | `read-aloud/web.tsx` |
+| Extension     | Part                                            | Where                   |
+| ------------- | ----------------------------------------------- | ----------------------- |
+| read-aloud    | composer wrapper `ReadingStrip`                 | `read-aloud/web.tsx`    |
+| conversations | provided `ComposerPlaceholder` (`standing.tsx`) | `conversations/web.tsx` |
 
 ## Other extensions' React points
 
