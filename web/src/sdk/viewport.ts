@@ -20,7 +20,7 @@ export function viewport(): Viewport {
   return desktop.matches ? 'desktop' : tablet.matches ? 'tablet' : 'phone'
 }
 
-function subscribe(listener: () => void) {
+export function subscribeViewport(listener: () => void) {
   const { tablet, desktop } = media()
   tablet.addEventListener('change', listener)
   desktop.addEventListener('change', listener)
@@ -30,7 +30,7 @@ function subscribe(listener: () => void) {
   }
 }
 
-export const useViewport = () => useSyncExternalStore(subscribe, viewport)
+export const useViewport = () => useSyncExternalStore(subscribeViewport, viewport)
 
 /** Whether the device types on a touch keyboard, which focusing an input would slide up over the page. */
 export const touchKeyboard = () => matchMedia('(pointer: coarse)').matches
