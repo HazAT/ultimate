@@ -1,5 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { children, createMemo, createSignal, Match, onSettled, Switch } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
 import type { LinkRenderer } from '@/sdk'
 import { cn, useSystem } from '@/sdk/solid'
 import { at, label } from './links.ts'
@@ -86,16 +87,20 @@ export const PreviewLink: LinkRenderer = (props) => {
         </span>
       </Match>
       <Match when={target()}>
-        <button
-          class={cn(chipClass, 'text-left text-foreground transition-colors hover:bg-accent')}
+        <Button
+          class={cn(
+            chipClass,
+            'h-auto justify-start font-normal whitespace-normal text-left text-foreground transition-colors hover:bg-accent',
+          )}
           data-preview-link={target()?.kind}
           onClick={open}
+          size={null}
           title={target()?.kind === 'tailnet' ? `Open ${target()?.href}` : 'Show preview'}
-          type="button"
+          variant={null}
         >
           <span class="size-1.5 shrink-0 rounded-full bg-brand" />
           {text()}
-        </button>
+        </Button>
       </Match>
     </Switch>
   )

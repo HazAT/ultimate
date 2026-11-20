@@ -128,15 +128,16 @@ function ConfirmedLink(props: {
         </a>
       }
     >
-      <button
+      <Button
         {...omitHref(props.attributes)}
-        class="link"
+        class="link inline h-auto rounded-none p-0 align-baseline text-[length:inherit] [font-weight:inherit] whitespace-normal"
         data-href={props.href}
         onClick={() => setOpen(true)}
-        type="button"
+        size={null}
+        variant={null}
       >
         {props.children}
-      </button>
+      </Button>
       <Dialog onOpenChange={setOpen} open={open()}>
         <DialogContent class="sm:max-w-md">
           <DialogHeader>
@@ -186,17 +187,18 @@ function InlineCode(props: { code: string; attributes: Record<string, unknown> }
 function CopyCode(props: { code: string }) {
   const { copied, copy } = useCopy()
   return (
-    <button
+    <Button
       aria-label="Copy code"
-      class="p-1 text-muted-foreground transition-colors hover:text-foreground"
+      class="h-auto rounded-none p-1 font-normal text-muted-foreground hover:text-foreground"
       onClick={() => copy(props.code)}
+      size={null}
       title="Copy code"
-      type="button"
+      variant={null}
     >
       <Show when={copied()} fallback={<Copy class="size-3.5" />}>
         <Check class="size-3.5" />
       </Show>
-    </button>
+    </Button>
   )
 }
 

@@ -7,6 +7,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
+import { Button } from '@/components/ui/button.solid.tsx'
 import {
   api,
   cn,
@@ -76,10 +77,10 @@ export function AutomationsSection() {
             <ChevronRight class="size-3 transition-transform group-data-open/automations:rotate-90" />
             Automations
           </CollapsibleTrigger>
-          <button
+          <Button
             aria-label={`${list().length} active${failing() ? `, ${failing()} need attention` : ''}: show all automations`}
             class={cn(
-              'rounded-sm px-0.5 font-mono text-[11px] tabular-nums outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
+              'h-auto rounded-sm px-0.5 font-mono text-[11px] font-normal tabular-nums outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
               failing() ? 'text-error' : 'text-muted-foreground/60',
             )}
             data-automations-open
@@ -89,23 +90,25 @@ export function AutomationsSection() {
                 ? `${failing()} need attention · show all automations`
                 : 'Show all automations'
             }
-            type="button"
+            size={null}
+            variant={null}
           >
             {list().length}
-          </button>
+          </Button>
         </div>
         <CollapsibleContent class="flex flex-col gap-px">
           <For each={all() ? list() : list().slice(0, FIRST)} keyed={(automation) => automation.id}>
             {(automation) => <Row automation={automation()} now={now()} />}
           </For>
           <Show when={list().length > FIRST}>
-            <button
-              class="mx-2 h-5 rounded-md pl-[26px] text-left font-mono text-[10px] text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            <Button
+              class="mx-2 h-5 justify-start rounded-md pl-[26px] text-left font-mono text-[10px] font-normal text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => setAll((on) => !on)}
-              type="button"
+              size={null}
+              variant={null}
             >
               {all() ? 'fewer' : `+${list().length - FIRST} more`}
-            </button>
+            </Button>
           </Show>
         </CollapsibleContent>
       </Collapsible>
@@ -116,8 +119,8 @@ export function AutomationsSection() {
 function Row(props: { automation: Automation; now: number }) {
   const look = createMemo(() => lookOf(props.automation, props.now))
   return (
-    <button
-      class="group/row mx-2 flex h-7 min-w-0 items-center gap-2 rounded-md pr-2 pl-2.5 text-left outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+    <Button
+      class="group/row mx-2 flex h-7 min-w-0 justify-start gap-2 rounded-md pr-2 pl-2.5 text-left font-normal outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
       data-sidebar-automation={props.automation.id}
       onClick={() => {
         const automation = props.automation
@@ -129,8 +132,9 @@ function Row(props: { automation: Automation; now: number }) {
         showSurface('agent')
         switchConversation(run)
       }}
+      size={null}
       title={`${props.automation.id} · ${props.automation.name}\n${looks[look()].word} · ${stateLine(props.automation, props.now, formatTime, formatDuration)}`}
-      type="button"
+      variant={null}
     >
       <Dot look={look()} />
       <span class="min-w-0 flex-1 truncate text-[12.5px] text-foreground/85">
@@ -147,7 +151,7 @@ function Row(props: { automation: Automation; now: number }) {
       >
         {short(props.automation, props.now)}
       </span>
-    </button>
+    </Button>
   )
 }
 
