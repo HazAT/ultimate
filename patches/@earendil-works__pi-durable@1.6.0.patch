@@ -75,9 +75,18 @@ index 54f3ef34ddf1bf85e3ad9c41bdbd216c081a476f..8a63b529154f0e896edb585fc20d3d43
                  firstKept,
              };
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
-index 56f3055ab58e51d429f91c90c9286531f3086106..104b6981e3145208bed89d5a83fde4cacb2e627b 100644
+index 56f3055ab58e51d429f91c90c9286531f3086106..68a2539dfd4c7dd7182c59d134a7c7abb3d09db2 100644
 --- a/dist/harness/generation.js
 +++ b/dist/harness/generation.js
+@@ -294,7 +294,7 @@ export const GenerationTask = defineTask({
+             const continuation = outcomes.map(yieldContinuation).find((input) => input !== undefined);
+             const afterRun = await asksAfterRun(runtime, context);
+             await runtime.commit(async (tx) => {
+-                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings);
++                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings, "final", runtime.now());
+                 const live = await tx.doc(LiveDoc, runtime.conversationId);
+                 if (live.run?.taskId === runtime.taskId)
+                     delete live.run.yield;
 @@ -503,7 +503,7 @@ async function prepareFailure(tx, runtime) {
      const policy = settings.afterFailedRun;
      if (policy !== "continue")
