@@ -11,18 +11,45 @@ import {
   Command as CommandRoot,
   CommandShortcut as CommandShortcutRoot,
 } from '@ui-sdk/solid/command'
+import { dispatch } from '@ui-sdk/core'
+import type { ChangeSource } from '@ui-sdk/core'
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
 import { writingAs } from '@/sdk/solid'
 import { commandStyles } from './command-styles.ts'
 
-function Command(props: ComponentProps<typeof CommandRoot> & { class?: string }) {
-  const rest = omit(props, 'class', 'onQueryChange', 'onValueChange', 'onPagesChange')
+type CommandAction = (value: string, details: { event?: Event; source: ChangeSource }) => unknown
+
+function Command(
+  props: Omit<ComponentProps<typeof CommandRoot>, 'onAction'> & {
+    class?: string
+    onAction?: CommandAction
+  },
+) {
+  const rest = omit(props, 'class', 'onQueryChange', 'onValueChange', 'onPagesChange', 'onAction')
   return (
     <CommandRoot
       {...rest}
       class={cn(commandStyles.root, props.class)}
+      onAction={(value, details) => {
+        const action = props.onAction
+        let result: unknown
+        dispatch(
+          {
+            options: () => ({
+              onAction: (ran: string, resolved: { source: ChangeSource }) =>
+                writingAs(resolved.source, () => {
+                  result = action?.(ran, { event: details.event, source: resolved.source })
+                }),
+            }),
+          },
+          'onAction',
+          value,
+          { reason: 'item-press', event: details.event },
+        )
+        return result
+      }}
       onQueryChange={(query, details) => {
         const changed = props.onQueryChange
         writingAs(details.source, () => changed?.(query, details))

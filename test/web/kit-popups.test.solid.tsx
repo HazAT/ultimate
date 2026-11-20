@@ -145,9 +145,12 @@ it('opens DropdownMenu to press an item by text', async ({ onTestFinished }) => 
 
 it('filters Command and runs the match as the agent', async ({ onTestFinished }) => {
   const queried = vi.fn<(query: string, source: string) => void>()
-  const ran = vi.fn<(value: string, details: { event?: Event }) => void>()
+  const ran = vi.fn<(value: string, source: string) => void>()
   const container = renderSolid(() => (
-    <Command onQueryChange={(query, details) => queried(query, details.source)} onAction={ran}>
+    <Command
+      onQueryChange={(query, details) => queried(query, details.source)}
+      onAction={(value, details) => ran(value, details.source)}
+    >
       <CommandInput aria-label="Search project commands" />
       <CommandEmpty>No matching commands</CommandEmpty>
       <CommandList>
@@ -180,7 +183,9 @@ it('filters Command and runs the match as the agent', async ({ onTestFinished })
   expect(queried).toHaveBeenCalledExactlyOnceWith('logs', 'agent')
   const run = await agent.act({ steps: [{ ref, action: 'run', args: ['logs'] }] })
   expect(run.ok).toBe(true)
-  expect(ran).toHaveBeenCalledExactlyOnceWith('logs', expect.any(Object))
+  expect(ran).toHaveBeenCalledExactlyOnceWith('logs', 'agent')
+  container.querySelector<HTMLElement>('[role="option"][data-highlighted]')?.click()
+  expect(ran).toHaveBeenLastCalledWith('logs', 'programmatic')
   expect(changes).toHaveBeenCalledWith(
     expect.objectContaining({ key: 'query', value: 'logs', source: 'agent' }),
   )
