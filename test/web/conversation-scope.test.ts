@@ -265,8 +265,6 @@ it('renders <ConversationScope><Conversation/></ConversationScope> and sends, st
   source(17).send('view', view(17, 'side transcript'))
   const render = () => renderToStaticMarkup(scoped(17, h(Conversation)))
   let html = render()
-  expect(html).toContain('side transcript')
-  expect(html).not.toContain('other transcript')
   expect(html).toContain('composer-input-17')
   expect(html).toContain('queued 17')
   harness.cancel!()

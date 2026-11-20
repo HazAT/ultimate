@@ -131,7 +131,7 @@ const extensionWebFacet = (filename: string) =>
 const uiKitFile = (filename: string) =>
   repositoryPath(filename).startsWith('web/src/components/ui/')
 const reactOnly =
-  /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|use-stick-to-bottom|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
+  /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
 const solidOnly = /^(solid-js|@solidjs\/.*|@ui-sdk\/solid)(\/|$)/
 const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
 const solidJsxPragma = '@jsxImportSource @solidjs/web'

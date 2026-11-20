@@ -1,4 +1,5 @@
 /** @jsxImportSource @solidjs/web */
+import { insert } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import {
   createEffect,
@@ -35,8 +36,11 @@ function MountReact(props: { render: () => ReactNode }) {
   return host
 }
 
-function SolidHost(props: { children: JSX.Element }) {
-  return <div class="contents">{props.children}</div>
+const solidHost = (children: () => JSX.Element) => {
+  const host = document.createElement('div')
+  host.className = 'contents'
+  insert(host, children)
+  return host
 }
 
 /**
@@ -98,7 +102,7 @@ export function Contributed(props: {
     const inner = () => wrap(index - 1)
     if (!link.solid) {
       const run = link.run
-      const core = (<SolidHost>{inner()}</SolidHost>) as HTMLElement
+      const core = solidHost(inner)
       return <MountReact render={() => chain(run, { ...props.props }, core)} />
     }
     const Solid = link.solid
@@ -147,7 +151,7 @@ export function RenderedPoint<Input extends object>(props: {
   input: Input
   children: JSX.Element
 }) {
-  const core = (<SolidHost>{props.children}</SolidHost>) as HTMLElement
+  const core = solidHost(() => props.children)
   return <MountReact render={() => renderedPoint(props.point, { ...props.input }, core)} />
 }
 

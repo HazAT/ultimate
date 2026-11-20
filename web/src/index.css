@@ -264,10 +264,10 @@
     --gutter: 0.75rem;
     padding-inline: var(--gutter);
   }
-  /* use-stick-to-bottom reserves a scrollbar gutter on both edges inline; a phone's scrollbar overlays the content, so
-     the reserved 10px would keep every row off the screen's edges. */
+  /* The transcript reserves a scrollbar gutter on both edges; a phone's scrollbar overlays the content, so the reserved
+     10px would keep every row off the screen's edges. */
   :has(> [data-ui='transcript']) {
-    scrollbar-gutter: auto !important;
+    scrollbar-gutter: auto;
   }
   /* Rows that reach the screen's edges: a transcript entry's tool call, card, message card, final answer. Inside an
      opened step list they stay in its indented column, only losing their rounded box. The user's own bubble stays. */
