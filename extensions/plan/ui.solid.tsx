@@ -2,6 +2,7 @@
 /** The plan for other extensions' Solid code: the task chip of a conversation that works on a plan task. */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
 import { ROOT, cn, switchConversation, useDocOf, useUiState } from '@/sdk/solid'
 import { statusDots } from './status.ts'
 import { TaskIndexDoc } from './refs.ts'
@@ -32,7 +33,7 @@ export function TaskChip(props: { task: TaskLink; class?: string }) {
     setOpen({ conversation: props.task.coordinator, key: props.task.key })
   }
   return (
-    <button
+    <Button
       aria-label={`Open task ${props.task.key}: ${props.task.title}`}
       class={cn(
         'inline-flex shrink-0 items-center gap-1 rounded bg-muted/60 px-1.5 font-mono text-[10px] leading-4 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
@@ -40,7 +41,8 @@ export function TaskChip(props: { task: TaskLink; class?: string }) {
       )}
       data-task={props.task.key}
       onClick={open}
-      type="button"
+      size={null}
+      variant={null}
       title={`#${props.task.coordinator}/${props.task.key} · ${props.task.title} · ${props.task.status.replace('_', ' ')}`}
     >
       <span
@@ -50,6 +52,6 @@ export function TaskChip(props: { task: TaskLink; class?: string }) {
         )}
       />
       {props.task.key}
-    </button>
+    </Button>
   )
 }
