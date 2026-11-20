@@ -192,7 +192,7 @@ function metrics(entries: Entry[]): Metric[] {
       'median in the transcript; counts Solid and React alike',
     ),
     series(
-      'DOM mutations p95 / streamed event',
+      'mutations p95 / streamed event',
       'records',
       (entry) => entry.stream?.mutationsP95,
       'the busiest streamed events; from C0 on',
