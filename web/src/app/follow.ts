@@ -1,29 +1,9 @@
-export interface ScrollPlace {
-  top: number
-  seen: number
-  placed?: number
-  distance: number
-}
-
-export function readerLeft({
-  top: currentTopPx,
-  seen: topAtLastScrollEventPx,
-  placed: programPlacedTopPx,
-  distance: distanceFromBottomPx,
-}: ScrollPlace): boolean {
-  const highestTopBeforeCoalescedScroll = Math.max(topAtLastScrollEventPx, programPlacedTopPx ?? 0)
-  const readerMovedUp = currentTopPx < highestTopBeforeCoalescedScroll - 1
-  const awayFromBottom = () => distanceFromBottomPx > 1
-  return readerMovedUp && awayFromBottom()
-}
-
 const nearBottomPx = 70
 
 export function follow(scroll: HTMLElement, content: HTMLElement, changed: () => void) {
   let following = true
   let atBottom = true
   let seen = scroll.scrollTop
-  let placed: number | undefined
   const distance = () => scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight
   const report = (next: { following?: boolean }) => {
     const nextFollowing = next.following ?? following
@@ -35,28 +15,24 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   }
   const place = (top: number) => {
     scroll.scrollTop = top
-    placed = scroll.scrollTop
-    seen = placed
+    seen = scroll.scrollTop
   }
   const bottom = () => scroll.scrollHeight - scroll.clientHeight
-  const left = () => readerLeft({ top: scroll.scrollTop, seen, placed, distance: distance() })
   let pressed = false
-  const press = () => {
-    pressed = true
-  }
-  const release = () => {
-    pressed = false
-  }
+  let touching = false
+  let keying = false
+  let wheeled = false
+  const steering = () => pressed || touching || keying || wheeled
+  const left = () => steering() && scroll.scrollTop < seen - 1 && distance() > 1
   const selecting = () => pressed && !!getSelection()?.toString()
   const onScroll = () => {
     const top = scroll.scrollTop
-    const readerMoved = placed === undefined || Math.abs(top - placed) > 1
-    if (readerMoved && left()) report({ following: false })
-    else if (readerMoved && !following && top > seen + 1 && distance() <= 1)
+    if (left()) report({ following: false })
+    else if (steering() && !following && top > seen + 1 && distance() <= 1)
       report({ following: true })
     else report({})
     seen = top
-    placed = undefined
+    wheeled = false
   }
   const scrollsItself = (element: Element) =>
     element.scrollHeight > element.clientHeight &&
@@ -71,8 +47,20 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     return null
   }
   const onWheel = (event: WheelEvent) => {
-    if (event.deltaY < 0 && ownerOf(event.target) === scroll && scrollsItself(scroll))
-      report({ following: false })
+    if (ownerOf(event.target) !== scroll || !scrollsItself(scroll)) return
+    wheeled = true
+    if (event.deltaY < 0) report({ following: false })
+  }
+  const inputs = {
+    pointerdown: () => (pressed = true),
+    touchstart: () => (touching = true),
+    touchend: () => (touching = false),
+    touchcancel: () => (touching = false),
+    keydown: () => (keying = true),
+    keyup: () => (keying = false),
+  }
+  const release = () => {
+    pressed = false
   }
   const grow = new ResizeObserver(() => {
     if (following && !selecting()) place(bottom())
@@ -80,7 +68,8 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   })
   scroll.addEventListener('scroll', onScroll, { passive: true })
   scroll.addEventListener('wheel', onWheel, { passive: true })
-  scroll.addEventListener('pointerdown', press, { passive: true })
+  for (const [type, listener] of Object.entries(inputs))
+    scroll.addEventListener(type, listener, { passive: true })
   window.addEventListener('pointerup', release, { passive: true })
   grow.observe(scroll)
   grow.observe(content)
@@ -94,16 +83,14 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     toBottom: (instant = false) => {
       report({ following: true })
       if (instant) place(bottom())
-      else {
-        placed = undefined
-        scroll.scrollTo({ top: bottom(), behavior: 'smooth' })
-      }
+      else scroll.scrollTo({ top: bottom(), behavior: 'smooth' })
     },
     dispose: () => {
       grow.disconnect()
       scroll.removeEventListener('scroll', onScroll)
       scroll.removeEventListener('wheel', onWheel)
-      scroll.removeEventListener('pointerdown', press)
+      for (const [type, listener] of Object.entries(inputs))
+        scroll.removeEventListener(type, listener)
       window.removeEventListener('pointerup', release)
     },
   }
