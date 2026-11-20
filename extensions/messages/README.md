@@ -46,6 +46,8 @@ report.**
 - **Everything else wakes:** reply-enabled messages and one-way messages from anyone who is not the recipient's child or
   branch.
 
+A final answer without text is routed nowhere, up or down, and sends no result to an asker (a reply-expected input
+still gets a failed reply): the prompts use it to end a turn that has nothing to say.
 Routing cannot loop: an answer to a routed answer is an `echo`, placed as a note that wakes no one and routes no
 further. Conversation waits are derived from existing records: work, an open user question, an open agent or remote
 request, a subscribed timer, then an unconcluded branch's starter. Rows name the wait (`waits on @ultimate`,

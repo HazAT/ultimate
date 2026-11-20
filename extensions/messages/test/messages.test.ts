@@ -286,6 +286,7 @@ async function fixture(
       )
     if (last.role === 'user' && text.startsWith('Message from') && text.includes('NOANSWER'))
       return fauxAssistantMessage([])
+    if (last.role === 'user' && text === 'QUIET') return fauxAssistantMessage([])
     // A branch's reply that keeps @ultimate busy, so another branch's reply steers into the same run.
     if (last.role === 'user' && text.startsWith('Reply from #') && text.includes('STALL'))
       return fauxAssistantMessage([fauxToolCall('hold', {})], { stopReason: 'toolUse' })
@@ -1659,6 +1660,24 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
   await until(async () => (await b.from()).length === 2)
   expect((await b.from())[1].report).toBeUndefined()
   pendingReport.resolve()
+})
+it('sends nothing for an empty final answer, up from a branch or down from @ultimate', async () => {
+  // A branch woken every 15 minutes by its automation reported "nothing changed" each time; @ultimate's one-line
+  // answer went down and woke it, and its "No reply needed" came back as a note. The coordinator and @ultimate
+  // prompts now end such turns without text, which relies on this.
+  const f = await fixture()
+  const b = await branched(f)
+  const down = async () =>
+    (await f.log())!.messages.filter((m) => m.from === 1 && m.to === b.id).length
+  const sentDown = await down()
+  await b.later('Deploy finished')
+  await f.opened.root.waitForIdle(context)
+  await b.settled()
+  expect((await b.from()).at(-1)).toMatchObject({ text: 'Answer: Deploy finished', report: true })
+  expect(await down()).toBe(sentDown)
+  const reported = (await b.from()).length
+  await b.later('QUIET')
+  expect(await b.from()).toHaveLength(reported)
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()
