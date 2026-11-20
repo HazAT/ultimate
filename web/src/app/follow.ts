@@ -19,20 +19,16 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   }
   const bottom = () => scroll.scrollHeight - scroll.clientHeight
   let pressed = false
-  let touching = false
-  let keying = false
-  let wheeled = false
-  const steering = () => pressed || touching || keying || wheeled
-  const left = () => steering() && scroll.scrollTop < seen - 1 && distance() > 1
+  let steered = false
+  const left = () => steered && scroll.scrollTop < seen - 1 && distance() > 1
   const selecting = () => pressed && !!getSelection()?.toString()
   const onScroll = () => {
     const top = scroll.scrollTop
     if (left()) report({ following: false })
-    else if (steering() && !following && top > seen + 1 && distance() <= 1)
-      report({ following: true })
+    else if (steered && !following && top > seen + 1 && distance() <= 1) report({ following: true })
     else report({})
     seen = top
-    wheeled = false
+    steered = pressed
   }
   const scrollsItself = (element: Element) =>
     element.scrollHeight > element.clientHeight &&
@@ -48,16 +44,19 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   }
   const onWheel = (event: WheelEvent) => {
     if (ownerOf(event.target) !== scroll || !scrollsItself(scroll)) return
-    wheeled = true
+    steered = true
     if (event.deltaY < 0) report({ following: false })
   }
-  const inputs = {
-    pointerdown: () => (pressed = true),
-    touchstart: () => (touching = true),
-    touchend: () => (touching = false),
-    touchcancel: () => (touching = false),
-    keydown: () => (keying = true),
-    keyup: () => (keying = false),
+  const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
+  const typing = (target: EventTarget | null) =>
+    target instanceof HTMLElement &&
+    (target.isContentEditable || !!target.closest('input, textarea'))
+  const steer = (event: Event) => {
+    steered = true
+    if (event.type === 'pointerdown') pressed = true
+  }
+  const onKey = (event: KeyboardEvent) => {
+    if (scrollKeys.has(event.key) && !typing(event.target)) steered = true
   }
   const release = () => {
     pressed = false
@@ -68,9 +67,10 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   })
   scroll.addEventListener('scroll', onScroll, { passive: true })
   scroll.addEventListener('wheel', onWheel, { passive: true })
-  for (const [type, listener] of Object.entries(inputs))
-    scroll.addEventListener(type, listener, { passive: true })
+  scroll.addEventListener('pointerdown', steer, { passive: true })
+  scroll.addEventListener('touchstart', steer, { passive: true })
   window.addEventListener('pointerup', release, { passive: true })
+  window.addEventListener('keydown', onKey, { passive: true })
   grow.observe(scroll)
   grow.observe(content)
   place(bottom())
@@ -89,9 +89,10 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
       grow.disconnect()
       scroll.removeEventListener('scroll', onScroll)
       scroll.removeEventListener('wheel', onWheel)
-      for (const [type, listener] of Object.entries(inputs))
-        scroll.removeEventListener(type, listener)
+      scroll.removeEventListener('pointerdown', steer)
+      scroll.removeEventListener('touchstart', steer)
       window.removeEventListener('pointerup', release)
+      window.removeEventListener('keydown', onKey)
     },
   }
 }
