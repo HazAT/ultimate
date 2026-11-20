@@ -2543,6 +2543,7 @@ it.concurrent('release leaves a folder that a failed preparation found at the pa
   await writeFile(join(workspace.path, 'foreign.txt'), 'not ours')
   await f.service.ready(id, context)
   expect((await f.service.get(id, context))!.state).toBe('failed')
+  await (await f.opened.harness.conversation(id, context))!.waitForIdle(context)
   expect(await f.service.release([id], context)).toEqual([
     {
       id,
