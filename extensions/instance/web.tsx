@@ -1,6 +1,5 @@
 import { ChevronRightIcon, ExternalLinkIcon } from 'lucide-react'
 import { useEffect, useSyncExternalStore } from 'react'
-import type { MouseEvent, ReactNode } from 'react'
 import { Shimmer } from '@/components/ai/shimmer'
 import { Tool, ToolContent, ToolHeader, ToolOutput, ToolSection } from '@/components/ai/tool'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -18,12 +17,12 @@ import {
 } from '@/sdk'
 import type { ToolCallView } from '@/sdk'
 import { PreviewUp } from '../sidebar/ui.tsx'
-import { at, label } from './links.ts'
+import { PreviewLink, previewTarget } from './link.solid.tsx'
+import { label } from './links.ts'
 import {
   canFrameLoopbackPreviews,
   getPreviews,
   getShown,
-  isLoopback,
   polled,
   show,
   subscribe,
@@ -48,7 +47,7 @@ function result(output: string): unknown {
 
 function Card({ instance, status }: { instance: Instance; status: string }) {
   const system = useSystem()
-  const target = usePreviewTarget(instance.url, true)
+  const target = previewTarget(instance.url, usePreviews(), system?.process.url, true)
   return (
     <div className="flex flex-col gap-0.5 rounded-sm border border-border/70 bg-terminal px-2.5 py-1.5">
       <div className="flex items-center gap-2">
@@ -167,81 +166,6 @@ function Poll() {
     if (data) polled(data, () => void again())
   }, [data, again])
   return null
-}
-
-type Target =
-  | { kind: 'self' | 'tailnet'; href: string; open?: undefined }
-  | { kind: 'frame'; href: string; open: (event: MouseEvent) => void }
-  | { kind: 'off'; reason: string; href?: undefined; open?: undefined }
-function usePreviewTarget(href: string, isPreviewOwnUrl = false): Target | undefined {
-  const list = usePreviews()
-  const system = useSystem()
-  const url = URL.parse(href)
-  if (!url || !/^https?:$/.test(url.protocol) || !isLoopback(url.hostname) || !url.port)
-    return undefined
-  if (system && url.port === new URL(system.process.url).port)
-    return { kind: 'self', href: at(location.origin, url) }
-  const known = list?.filter((item) => new URL(item.url).port === url.port) ?? []
-  const live = known.find((item) => item.running)
-  if (!live)
-    return known.length || isPreviewOwnUrl ? { kind: 'off', reason: 'Not running' } : undefined
-  if (!canFrameLoopbackPreviews)
-    return live.tailnet
-      ? { kind: 'tailnet', href: at(live.tailnet, url) }
-      : { kind: 'off', reason: 'Only on this machine' }
-  const frame = at(live.url, url)
-  return {
-    kind: 'frame',
-    href: frame,
-    open: (event) => {
-      event.preventDefault()
-      show(live, frame)
-    },
-  }
-}
-
-function PreviewLink({
-  href,
-  children,
-  core,
-}: {
-  href: string
-  children: ReactNode
-  core: ReactNode
-}) {
-  const target = usePreviewTarget(href)
-  if (!target) return core
-  if (target.kind === 'self') return <a href={target.href}>{children}</a>
-  const buttonChipStyles =
-    'inline-flex max-w-full items-center gap-1.5 rounded-sm bg-muted/60 px-1.5 align-baseline font-mono text-[11.5px] leading-5 wrap-anywhere'
-  if (target.kind === 'off')
-    return (
-      <span
-        className={cn(buttonChipStyles, 'text-muted-foreground')}
-        data-preview-link="off"
-        title={target.reason}
-      >
-        <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
-        {children}
-      </span>
-    )
-  return (
-    <button
-      className={cn(
-        buttonChipStyles,
-        'text-left text-foreground transition-colors hover:bg-accent',
-      )}
-      data-preview-link={target.kind}
-      onClick={target.open ?? (() => window.open(target.href, '_blank', 'noreferrer'))}
-      title={target.kind === 'tailnet' ? `Open ${target.href}` : 'Show preview'}
-      type="button"
-    >
-      <span className="size-1.5 shrink-0 rounded-full bg-brand" />
-      {target.kind === 'tailnet' && typeof children === 'string'
-        ? label(children, href, target.href)
-        : children}
-    </button>
-  )
 }
 
 function Embedded() {

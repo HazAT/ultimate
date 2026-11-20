@@ -1,8 +1,8 @@
 import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, provide } from '@/sdk'
 import { SummaryModelDialog, summaryModelDialog } from './dialogs.tsx'
+import { MentionLink } from './mention.solid.tsx'
 import { useStandingEmpty, useStandingPlaceholder } from './standing.tsx'
 import { SummaryAction } from './summary-entry.tsx'
-import { MentionLink } from './mention.tsx'
 
 export default defineWebExtension({
   provides: [

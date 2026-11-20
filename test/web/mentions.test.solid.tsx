@@ -1,24 +1,28 @@
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
+/** @jsxImportSource @solidjs/web */
 import { expect, it, vi } from 'vitest'
+import { MentionLink } from '../../extensions/conversations/mention.solid.tsx'
 import {
   mentionHref,
   parseMention,
   remarkMentions,
   splitMentions,
 } from '../../web/src/components/ai/mentions.ts'
+import { renderSolid } from './solid-dom-setup.ts'
 
-const known = vi.hoisted(() => [{ id: 157029, title: 'Sidebar polish landed' }])
-vi.mock('@/sdk', () => ({
+const { openEntry, switchConversation, showSurface } = vi.hoisted(() => ({
+  openEntry: vi.fn<(event: string, data: unknown) => void>(),
+  switchConversation: vi.fn<(id: number) => void>(),
+  showSurface: vi.fn<(surface: string) => void>(),
+}))
+vi.mock('@/sdk/solid', () => ({
   ROOT: 1,
   cn: (...names: unknown[]) => names.filter(Boolean).join(' '),
-  events: { emit: () => {} },
-  useDocOf: () => ({ conversations: { '157029': { feature: 'Sidebar' } } }),
-  useConversations: () => known,
-  useConversationSummary: (id?: number) => known.find((item: { id: number }) => item.id === id),
-  useUltimate: () => ({ switchConversation: () => {}, showSurface: () => {} }),
+  events: { emit: openEntry },
+  useDocOf: () => () => ({ conversations: { 157029: { feature: 'Sidebar' } } }),
+  useConversations: () => () => [{ id: 157029, title: 'Sidebar polish landed' }],
+  switchConversation,
+  showSurface,
 }))
-const { MentionLink } = await import('../../extensions/conversations/mention.tsx')
 
 const mentions = (text: string) =>
   splitMentions(text).flatMap((part) => (typeof part === 'string' ? [] : [part.text]))
@@ -75,22 +79,28 @@ it('turns text mentions into links but never inside code or existing links', () 
 })
 
 it('renders a known mention as its chip and an unknown one as its text', () => {
-  const chip = renderToStaticMarkup(
-    createElement(MentionLink, {
-      href: mentionHref('157029', '158003'),
-      children: '#157029/158003',
-      core: 'core',
-    }),
-  )
-  expect(chip).toContain('data-conversation-mention="157029"')
-  expect(chip).toContain('data-feature="Sidebar"')
-  expect(chip).toContain('/158003')
-  const unknown = renderToStaticMarkup(
-    createElement(MentionLink, {
-      href: mentionHref('999999'),
-      children: '#999999',
-      core: '#999999',
-    }),
-  )
-  expect(unknown).toBe('#999999')
+  const known = renderSolid(() => (
+    <MentionLink core="core" href={mentionHref('157029', '158003')}>
+      #157029/158003
+    </MentionLink>
+  ))
+  const chip = known.querySelector<HTMLAnchorElement>('a[data-conversation-mention="157029"]')!
+  expect(chip.querySelector('[data-feature="Sidebar"]')).not.toBeNull()
+  expect(chip.textContent).toContain('/158003')
+  expect(chip.title).toBe('Open #157029 at entry 158003: Sidebar polish landed')
+  chip.click()
+  expect(openEntry).toHaveBeenCalledExactlyOnceWith('messages:open', {
+    conversation: 157029,
+    entry: 158003,
+  })
+  expect(showSurface).toHaveBeenCalledExactlyOnceWith('agent')
+  expect(switchConversation).toHaveBeenCalledExactlyOnceWith(157029)
+
+  const unknown = renderSolid(() => (
+    <MentionLink core="#999999" href={mentionHref('999999')}>
+      #999999
+    </MentionLink>
+  ))
+  expect(unknown.textContent).toBe('#999999')
+  expect(unknown.querySelector('a')).toBeNull()
 })
