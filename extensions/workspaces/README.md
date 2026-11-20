@@ -110,7 +110,9 @@ full log in `ultimate.lander` entries and refuses every input.
 request (new agreements, different approach or library, changed scope), or "None" when it matches. It queues a
 top-level main's clean tip in the root document's `queue` and returns its position and lander conversation at once;
 the main keeps working. The submission saves `divergence` and `at`, the submitter's latest visible entry at submit
-time, as a breadcrumb. One `workspaces.lander` task per source checkout (`landers`) processes that source's entries
+time, as a breadcrumb. A resubmit replaces the conversation's other entries still `queued`
+(never a landing one), keeping an entry of the same tip, and takes the first one's place in line; it logs `replaced
+<sha> (queued) with <sha>` for each and says `replacing <sha>` in its result. One `workspaces.lander` task per source checkout (`landers`) processes that source's entries
 in order.
 
 The task runs in that source's lander conversation (`landerConversations`): ownerless, titled "@lander",
