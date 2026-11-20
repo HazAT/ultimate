@@ -30,7 +30,7 @@ import { parseConversationId } from '../../lib/ids.ts'
 import { ConversationTaskChip } from '../conversations/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import type { LandResult } from '../workspaces/types.ts'
-import { openAgentSource, RunName } from './ui.solid.tsx'
+import { openAgentSource, RunName } from './run-name.solid.tsx'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 const workspaceLabels = { preparing: 'Setting up…', failed: 'Setup failed', removed: 'Removed' }

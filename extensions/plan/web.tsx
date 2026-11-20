@@ -62,7 +62,7 @@ import type { Epic, Estimate, Plan, Task, TaskLink } from './refs.ts'
 import { StatusIcon, TaskChip, statusOf, useOpenTask, useTaskOf } from './ui.tsx'
 import { PLAN_OPEN } from './status.ts'
 import type { PlanOpen } from './status.ts'
-import { ConversationTaskChip as TaskChipOf } from './ui.solid.tsx'
+import { ConversationTaskChip as TaskChipOf } from './task-chip.solid.tsx'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 

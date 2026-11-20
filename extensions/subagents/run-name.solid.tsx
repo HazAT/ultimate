@@ -1,5 +1,4 @@
 /** @jsxImportSource @solidjs/web */
-/** Subagent run names and source navigation for Solid UI. */
 import { WandSparkles } from '@lucide/solid'
 import { Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'
@@ -7,7 +6,6 @@ import { ROOT, events, useDocOf } from '@/sdk/solid'
 import { RunsDoc } from './refs.ts'
 import { agentSource } from './source.ts'
 
-/** Show a run's label, the model it started on, and a wand for an ad hoc agent. */
 export function RunName(props: { id?: number; label: JSX.Element }) {
   const runs = useDocOf(() => ROOT, RunsDoc)
   const run = () => runs()?.[String(props.id)]
@@ -29,5 +27,4 @@ export function RunName(props: { id?: number; label: JSX.Element }) {
   )
 }
 
-/** Open an agent's source conversation and remember where to return. */
 export const openAgentSource = agentSource(events)

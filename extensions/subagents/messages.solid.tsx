@@ -18,7 +18,7 @@ import { InstructionEntry, ReportEntry } from './refs.ts'
 import { senderAgent, sourceEvent } from './source.ts'
 import type { SourceNavigation } from './source.ts'
 import type { AgentOrigin } from './types.ts'
-import { openAgentSource } from './ui.solid.tsx'
+import { openAgentSource } from './run-name.solid.tsx'
 
 export function AgentMessages() {
   const conversation = useConversation()
