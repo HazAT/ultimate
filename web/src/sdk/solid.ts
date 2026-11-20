@@ -29,7 +29,7 @@ import type { EventData, EventRecord, EventToken } from '../../../shared/events.
 import { deadline, every } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import { actions, allCommands } from './actions.ts'
-import type { CommandItem } from './registry.ts'
+import type { CommandItem, ExtensionRecord } from './registry.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
 import { api as client, reads, registry, store, uiState } from './client.ts'
@@ -41,6 +41,8 @@ import type { ReadState, Reader } from './reads.ts'
 import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
+import { subscribeViewport, viewport } from './viewport.ts'
+import type { Viewport } from './viewport.ts'
 
 export { api, bundle, switched } from './client.ts'
 /** The page's event bus: `events.emit('secrets:open', { name })`; subscribe for a component's life with `useEvent`. */
@@ -61,6 +63,7 @@ export {
   formatDuration,
   formatTime,
   formatTokens,
+  prettyName,
   shortenPath,
 } from './format.ts'
 export { formatKeys } from './keys.ts'
@@ -310,15 +313,38 @@ export function useEvent(channel: string, handler: (data: unknown) => void) {
   onSettled(() => events.on(channel, handler))
 }
 
+let extensions: Accessor<readonly ExtensionRecord[]> | undefined
+
+/** Installed web facets, in folder order, as `useExtensions` from `@/sdk` reads them. */
+export function useExtensions() {
+  return (extensions ??= runWithOwner(null, () =>
+    createRoot(() => {
+      const [records, setRecords] = createSignal(registry.getSnapshot())
+      registry.subscribe(() => setRecords(registry.getSnapshot()))
+      return records
+    }),
+  ))
+}
+
 let commands: Accessor<CommandItem[]> | undefined
 
 /** Core and extension commands, as the palette lists them. */
 export function useCommands() {
+  const records = useExtensions()
   return (commands ??= runWithOwner(null, () =>
+    createRoot(() => createMemo(() => allCommands(records()))),
+  ))
+}
+
+let shownViewport: Accessor<Viewport> | undefined
+
+/** How much room the window has, `phone`, `tablet` or `desktop`, as `useViewport` from `@/sdk` reads it. */
+export function useViewport() {
+  return (shownViewport ??= runWithOwner(null, () =>
     createRoot(() => {
-      const [records, setRecords] = createSignal(registry.getSnapshot())
-      registry.subscribe(() => setRecords(registry.getSnapshot()))
-      return createMemo(() => allCommands(records()))
+      const [current, setCurrent] = createSignal(viewport())
+      subscribeViewport(() => setCurrent(viewport()))
+      return current
     }),
   ))
 }

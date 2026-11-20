@@ -52,6 +52,14 @@ export function elidePath(path: string, max = 40): string {
   return `${head}/…/${tail}`
 }
 
+export function prettyName(folder: string) {
+  return folder
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 /** `1 page`, `3 pages`: a count with its noun, plural by `s`. */
 export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`

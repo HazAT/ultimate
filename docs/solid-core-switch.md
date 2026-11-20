@@ -27,6 +27,7 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 | diagrams    | code block `mermaid`                                                   | `extensions/diagrams/web.tsx:16`    | the transcript's Markdown      |
 | read-aloud  | message action                                                         | `extensions/read-aloud/web.tsx:146` | the transcript's message bar   |
 | status-line | message detail `MessageUsage`                                          | `extensions/status-line/web.tsx:97` | the transcript's message bar   |
+| parallel    | tool renderers `web_search`, `web_fetch`                               | `extensions/parallel/web.tsx:393`   | the transcript's tool calls    |
 | context     | transcript slots `Start`, `PinnedPrompt` (reads `useTranscriptScroll`) | `extensions/context/web.tsx:147`    | the transcript's start and top |
 | context     | entries `pi.system`, `pi.reset`, `pi.compaction`, `pi.assistant`       | `extensions/context/web.tsx:148`    | the transcript's entries       |
 | context     | point `CacheRebuiltLine` (`<Rendered>` with React `core`)              | `extensions/context/ui.tsx:9`       | the transcript's entries       |
@@ -51,14 +52,16 @@ Line numbers are those of each `web.tsx` at the 0.8 step-back.
 
 A provided value is a React hook the core or another React extension calls during its render.
 
-| Extension | Point               | Where                             | Called by                                      |
-| --------- | ------------------- | --------------------------------- | ---------------------------------------------- |
-| phase     | `ConversationPhase` | `extensions/phase/web.tsx:17`     | the React sidebar's rows, voice-live           |
-| codemode  | `MessageReference`  | `extensions/codemode/web.tsx:253` | the transcript's message actions               |
-| instance  | `PreviewUp`         | `extensions/instance/web.tsx:267` | the React sidebar's preview marks              |
-| pause     | `ParkedRuns`        | `extensions/pause/web.tsx:186`    | the transcript, the React sidebar, system      |
-| mcp       | `ExtensionDetails`  | `extensions/mcp/web.tsx:10`       | onboarding's React details (returns an island) |
-| inbox     | `UnderUltimate`     | `extensions/inbox/web.tsx:85`     | the React sidebar (returns an island)          |
+| Extension | Point               | Where                             | Called by                                                                        |
+| --------- | ------------------- | --------------------------------- | -------------------------------------------------------------------------------- |
+| phase     | `ConversationPhase` | `extensions/phase/web.tsx:17`     | the React sidebar's rows, voice-live                                             |
+| codemode  | `MessageReference`  | `extensions/codemode/web.tsx:253` | the transcript's message actions                                                 |
+| instance  | `PreviewUp`         | `extensions/instance/web.tsx:267` | the React sidebar's preview marks                                                |
+| pause     | `ParkedRuns`        | `extensions/pause/web.tsx:186`    | the transcript, the React sidebar, system                                        |
+| mcp       | `ExtensionDetails`  | `extensions/mcp/web.tsx:10`       | onboarding's React details (returns an island)                                   |
+| reel      | `MessageExtras`     | `extensions/reel/web.tsx:126`     | messages' and inbox's React cards; its player shows questions' React answer card |
+| reel      | `LandingExtras`     | `extensions/reel/web.tsx:138`     | workspaces' React landing card                                                   |
+| inbox     | `UnderUltimate`     | `extensions/inbox/web.tsx:85`     | the React sidebar (returns an island)                                            |
 
 ## Contracts that stay React until then
 
@@ -66,3 +69,7 @@ Every `ui.tsx` stays React while React code imports it. A Solid part reaches ano
 or through a `ui.solid.tsx` once that extension has one: `conversations` does (`ConversationRef`), so `pause` and
 `self` dropped their React or copied references. Give an extension a `ui.solid.tsx` when a moved part needs one of its
 components, not ahead of time.
+
+`sidebar` has one since 0.9 E (`ProjectSwatch`, `RepoLabel` for the projects rail), sharing `colour.ts` with its React
+`tile.tsx`. The core's `web/src/app/titlebar.tsx` keeps its own `prettyName`; both SDKs export the one in
+`web/src/sdk/format.ts`, so the switch drops the title bar's copy.
