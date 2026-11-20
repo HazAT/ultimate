@@ -2,24 +2,30 @@ import { NetworkIcon } from 'lucide-react'
 import { defineWebExtension, ErrorReport, island, provide } from '@/sdk'
 import { agentsPanel } from '../models/ui.tsx'
 import { SubagentCall } from './call.solid.tsx'
-import { DefinitionDialog } from './definitions.tsx'
+import { DefinitionDialog } from './definitions.solid.tsx'
 import { useErrorReport } from './error-report.tsx'
 import { AgentInbox } from './inbox.solid.tsx'
 import { LandOnUltimate } from './land-on-ultimate.solid.tsx'
 import { AgentInput, AgentMessages } from './messages.solid.tsx'
-import { AgentsOverview } from './overview.tsx'
+import { AgentsPanel } from './overview.solid.tsx'
 import { talkToUltimate } from './ui.tsx'
 
 export default defineWebExtension({
   tools: { subagent: island(SubagentCall) },
   panels: [
-    { id: agentsPanel, title: 'Agents', icon: NetworkIcon, component: AgentsOverview, order: 3 },
+    {
+      id: agentsPanel,
+      title: 'Agents',
+      icon: NetworkIcon,
+      component: island(AgentsPanel),
+      order: 3,
+    },
   ],
   entries: { 'subagents.instruction': island(AgentInput), 'subagents.report': island(AgentInput) },
   inbox: island(AgentInbox),
   provides: [provide(ErrorReport, useErrorReport)],
   slots: {
-    overlay: [DefinitionDialog, island(LandOnUltimate)],
+    overlay: [island(DefinitionDialog), island(LandOnUltimate)],
     'header.right': [island(AgentMessages)],
   },
   commands: [
