@@ -38,6 +38,7 @@ import {
   useStore,
 } from '../sdk/hooks.ts'
 import { isMac } from '../sdk/keys.ts'
+import { createTranscriptFrame } from '../sdk/transcript-frame.ts'
 import { touchKeyboard, useViewport } from '../sdk/viewport.ts'
 import { createPortal } from 'react-dom'
 import { useStatusTarget } from './status-target.ts'
@@ -194,7 +195,9 @@ export function Composer({ dock }: { dock?: boolean }) {
     },
     <ConversationComposer dock={dock} key={loadingAwareMountKey} />,
   )
-  return <TranscriptContext value={entries}>{core}</TranscriptContext>
+  const [transcript] = useState(() => createTranscriptFrame(entries))
+  useLayoutEffect(() => transcript.setEntries(entries), [transcript, entries])
+  return <TranscriptContext value={transcript.frame}>{core}</TranscriptContext>
 }
 
 type Upload = typeof FileUpload.value

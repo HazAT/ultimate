@@ -100,8 +100,8 @@ function ToolTrigger(props: Omit<ToolHeaderProps, 'action'>) {
       <ToolStatusIcon aria-hidden="true" icon={props.icon} state={props.state} />
       <Show when={props.name}>
         <span class="shrink-0 font-medium text-foreground">{props.name}</span>
-      </Show>
-      <span class="min-w-0 flex-1 truncate text-muted-foreground">{props.title}</span>
+      </Show>{' '}
+      <span class="min-w-0 flex-1 truncate text-muted-foreground">{props.title}</span>{' '}
       <Show when={props.meta}>
         {(meta) => (
           <span class="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground tabular-nums">

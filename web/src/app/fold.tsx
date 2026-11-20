@@ -1,18 +1,11 @@
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { cn } from 'cn'
 import { ChevronRightIcon } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useCompact, useConversation } from '../sdk/hooks.ts'
+import { foldKey, readFold, writeFold } from './fold-state.ts'
 
-export const foldKey = (conversation: ConversationId | undefined, card: string | number) =>
-  `ultimate.fold.${conversation ?? 0}.${card}`
-
-export const readFold = (key: string) => localStorage.getItem(key) === 'open'
-export function writeFold(key: string, open: boolean) {
-  if (open) localStorage.setItem(key, 'open')
-  else localStorage.removeItem(key)
-}
+export { foldKey, writeFold } from './fold-state.ts'
 
 export function useFold(card: string | number, always = false) {
   const compact = !!useCompact()

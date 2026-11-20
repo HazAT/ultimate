@@ -32,7 +32,10 @@ import { Composer } from './composer.tsx'
 import { setStatusTarget } from './status-target.ts'
 import { IconButton } from './header.tsx'
 import { useSurfaceId } from './surface.ts'
-import { Transcript } from './transcript.tsx'
+import { island } from '../sdk/island.tsx'
+import { Transcript as SolidTranscript } from './transcript.solid.tsx'
+
+const Transcript = island(SolidTranscript)
 
 export function StatusLine() {
   const phone = useViewport() === 'phone'

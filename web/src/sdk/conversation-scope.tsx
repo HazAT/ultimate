@@ -1,12 +1,13 @@
 import { parseConversationId } from '../../../lib/ids.ts'
-import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { createContext, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { store } from './client.ts'
+import type { TranscriptFrame } from './transcript-frame.ts'
 
 export const ConversationIdContext = createContext<ConversationId | undefined>(undefined)
 
-export const TranscriptContext = createContext<readonly EntryRecord[] | undefined>(undefined)
+export const TranscriptContext = createContext<TranscriptFrame | undefined>(undefined)
 
 export const scopeAttribute = 'data-conversation-scope'
 

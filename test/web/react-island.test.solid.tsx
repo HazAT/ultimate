@@ -18,7 +18,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 
 import { ConversationIdContext } from '../../web/src/sdk/conversation-scope.tsx'
 import { ExtensionNameContext } from '../../web/src/sdk/hooks.ts'
-import { reactIsland } from '../../web/src/sdk/react-island.tsx'
+import { reactIsland } from '../../web/src/sdk/react-island.solid.tsx'
 import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 

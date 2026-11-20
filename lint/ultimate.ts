@@ -110,11 +110,14 @@ const membersOf = (declaration: Node): Node[] =>
 const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
-const reactIslandFile = 'web/src/sdk/react-island.tsx'
+const reactIslandFile = 'web/src/sdk/react-island.solid.tsx'
 const rendererBridges = new Set([
   'web/src/sdk/island.tsx',
   'web/src/sdk/solid.ts',
   'web/src/sdk/markdown.tsx',
+  'web/src/sdk/react-island.tsx',
+  'web/src/app/transcript-parts.tsx',
+  'web/src/app/primitives.tsx',
   reactIslandFile,
 ])
 const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
@@ -337,7 +340,7 @@ export default {
           if (node.importKind === 'type' || node.exportKind === 'type') return
           const local = localModule(context.filename, source)
           if (local !== undefined && repositoryPath(local) === reactIslandFile) {
-            if (!repositoryPath(context.filename).startsWith('web/src/app/'))
+            if (!/^web\/src\/(app|sdk)\//.test(repositoryPath(context.filename)))
               context.report({
                 node,
                 message: `reactIsland is a temporary bridge for the core switch: only the core hosts in web/src/app mount leftover React in Solid, and C5 deletes it with React. Move this part to Solid, or keep it React and contribute it where a core host renders React.`,
@@ -352,6 +355,7 @@ export default {
             solidFile(local) &&
             node.type === 'ImportDeclaration' &&
             extensionWebFacet(context.filename)
+          if (rendererBridge(context.filename) && (localReact || reactSdk(local ?? ''))) return
           if (solid && (reactOnly.test(source) || localReact))
             context.report({
               node,

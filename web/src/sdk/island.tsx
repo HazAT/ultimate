@@ -4,6 +4,7 @@ import type { Component } from 'solid-js'
 import { useContext, useEffect, useEffectEvent, useRef } from 'react'
 import { ConversationIdContext } from './conversation-scope.tsx'
 import { ExtensionNameContext } from './hooks.ts'
+import { markIsland } from './island-mark.ts'
 import { ConversationScope, ExtensionName } from './solid.ts'
 
 type Props = Record<string, unknown>
@@ -14,13 +15,15 @@ type Props = Record<string, unknown>
  * and the conversation scope around it, and remounts when either changes. React props reach the Solid component as
  * live props: a React wrapper can hand it what only React reads (`<Panel count={entries.length} />` with
  * `const Panel = island(List)`), and a new value updates it without a remount. It mounts in a `display: contents`
- * `<div>`, or a `<span>` with `{ inline: true }` for a component that renders inside text.
+ * `<div>`, or a `<span>` with `{ inline: true }` for a component that renders inside text. A Solid host (the
+ * transcript) renders an island's component directly: a tool, entry or message renderer contributed as `island(Card)`
+ * is plain Solid there.
  */
 export function island<P extends object = Record<string, never>>(
   component: Component<P>,
   { inline = false }: { inline?: boolean } = {},
 ) {
-  return function Island(props: P) {
+  function Island(props: P) {
     const host = useRef<HTMLElement>(null)
     const extension = useContext(ExtensionNameContext) ?? null
     const conversation = useContext(ConversationIdContext) ?? null
@@ -57,4 +60,6 @@ export function island<P extends object = Record<string, never>>(
     const Host = inline ? 'span' : 'div'
     return <Host ref={host as never} className="contents" />
   }
+  markIsland(Island, component)
+  return Island
 }
