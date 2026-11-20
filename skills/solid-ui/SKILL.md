@@ -88,7 +88,11 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   `extensions/status-line/status.solid.tsx`). A deadline on the shared read was tried in the 0.8 step-back and
   dropped: one reader's timeout on a call other readers share kept breaking joins, departures, restarts and readiness. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
   since a plain read follows the shown conversation and starts unanswered when the view arrives. A read with getter
-  args keeps the args its key was made from.
+  args keeps the args its key was made from. A poll that pauses while the tab is hidden is `every: () => (visible() ?
+  ms : undefined)` on a visibility signal, refetching when the tab is shown (`extensions/projects/rail.solid.tsx`).
+- **Many owners, one lifetime:** a recording, a capture or a subscription that several handlers and effects must end
+  hangs off one `AbortController`: listeners take its `signal`, the effect keyed on what ends it calls `abort()`
+  (`extensions/voice/button.solid.tsx`), instead of a ref mirroring state for a cleanup to read.
 - **The conversation's model:** `useAgent()`, not a whole conversation replica.
 - **Writes after an `await`:** `writingAs` holds only for the synchronous call. Take `details.source` before the
   `await` and re-enter `writingAs(source, …)` at the write (`start` in `extensions/todos/panel.solid.tsx`). A write the
@@ -96,7 +100,8 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **Forms:** the kit `Form`, with the change started in its submit Button's `onClick`, which receives `details.source`.
   A native `onSubmit` has no source, so an agent's submit would be recorded as the person's.
 - **One row per id:** `mapArray(ids, (id) => …)` gives each id its own owner and reads, disposed when it leaves. A
-  polled list whose objects are replaced on each fetch keeps its DOM with `<For keyed={(row) => row.id}>`.
+  polled list whose objects are replaced on each fetch keeps its DOM with `<For keyed={(row) => row.id}>`; with a key
+  function both the item and the index are accessors (`index()`).
 - **Derived values:** a value that depends on an answer is a function of it, never a signal an effect copies it into.
 - **Effects:** the apply half is untracked, so reading an accessor there trips `STRICT_READ_UNTRACKED` and never
   updates. Read each field you use in the compute half and hand the apply half a plain value
