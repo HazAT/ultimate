@@ -190,14 +190,16 @@ export function useExtensionUiState<T extends JsonValue>(key: string, initial: T
 }
 
 /**
- * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again, and
- * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there.
+ * Options of `useAction`: as in `@/sdk`, with `on` an accessor whose value (compared as JSON) calls again,
+ * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there,
+ * and `timeout` the ms after which a call that has not answered is dropped and `data` forgets the last answer.
  */
 export type UseActionOptions<T = unknown> = {
   conversation?: ConversationId
   onError?: (error: ActionError) => void
   on?: Accessor<unknown>
   every?: number | ((data: T | undefined) => number | undefined)
+  timeout?: number
   focus?: boolean
 }
 
@@ -223,7 +225,11 @@ export function useAction<Args, T>(
       ? options.every(current().data as T | undefined)
       : options.every,
   )
-  const reader: Reader = { onError: options.onError, focus: options.focus }
+  const reader: Reader = {
+    onError: options.onError,
+    focus: options.focus,
+    timeout: options.timeout,
+  }
   createEffect(
     () => ({ ms: interval(), read: read() }),
     ({ ms, read: next }) => {

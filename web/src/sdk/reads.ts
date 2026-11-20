@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { actionRef } from '../../../shared/extension-api.ts'
-import { retryAfter } from '../../../lib/timers.ts'
+import { deadline, retryAfter } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import { actionMessage } from './api.ts'
 import type { ActionArgs, ActionError, ActionOptions, Api } from './api.ts'
@@ -9,6 +9,7 @@ import type { Store } from './store.ts'
 export interface Reader {
   onError?: (error: ActionError) => void
   every?: number
+  timeout?: number
   focus?: boolean
 }
 
@@ -97,6 +98,11 @@ export function createReads(api: Api, store: Store) {
       for (const listener of listeners) listener()
       for (const listener of changed) listener()
     }
+    function forget() {
+      answered = true
+      set({ data: undefined, loading: false, settled: true })
+      return undefined
+    }
     function repoll() {
       cancelPoll?.()
       const every = Math.min(...[...readers].map((reader) => reader.every ?? Infinity))
@@ -111,20 +117,29 @@ export function createReads(api: Api, store: Store) {
       const firstReaderErrorHandlerAtCallStart = [...readers].find(
         (reader) => reader.onError,
       )?.onError
+      const timeout = Math.min(...[...readers].map((reader) => reader.timeout ?? Infinity))
+      let timedOut = false
+      const expire =
+        timeout === Infinity
+          ? undefined
+          : deadline(timeout, () => {
+              timedOut = true
+              own.abort()
+            })
       set({ loading: true })
       try {
         const data = await api.action(
           actionRef<unknown, unknown>(extension, name),
           ...([args, { signal: own.signal, conversationId }] as ActionArgs<unknown, ActionOptions>),
         )
-        if (own.signal.aborted) return undefined
+        if (own.signal.aborted) return timedOut ? forget() : undefined
         answered = true
         lastAnswerAtMs = Date.now()
         networkFailedReads.delete(read)
         set({ data, error: undefined, loading: false, settled: true })
         return data
       } catch (error) {
-        if (own.signal.aborted) return undefined
+        if (own.signal.aborted) return timedOut ? forget() : undefined
         answered = true
         const failure = error as ActionError
 
@@ -141,6 +156,7 @@ export function createReads(api: Api, store: Store) {
         else store.notify({ level: 'error', message: actionMessage(failure) })
         return undefined
       } finally {
+        expire?.()
         if (controller === own) {
           controller = undefined
           repoll()
