@@ -48,10 +48,17 @@ import { ShareTarget } from '../../receive.solid.tsx'
 const shared = new Map<string, Response>([
   ['/share/s1', Response.json({ title: '', text: 'Look at this', url: '', files: [] })],
 ])
+const cache = { read: Promise.resolve() }
 beforeEach(({ onTestFinished }) => {
+  cache.read = Promise.resolve()
+  harness.sources.length = 0
+  harness.actions.length = 0
   vi.stubGlobal('caches', {
     open: async () => ({
-      match: async (key: string) => shared.get(key)?.clone(),
+      match: async (key: string) => {
+        await cache.read
+        return shared.get(key)?.clone()
+      },
       delete: async () => true,
     }),
   })
@@ -77,5 +84,23 @@ it('shares into the existing @ultimate once its id arrives, without reconfigurin
   await settle()
   flush()
   expect(getDraft(7).get().text).toBe('Look at this')
+  expect(harness.actions).toEqual([])
+})
+
+it('uses an @ultimate created while the shared content was still being read', async () => {
+  let release = () => {}
+  cache.read = new Promise((resolve) => (release = resolve))
+  getDraft(8).set({ text: '', revision: 0 })
+  renderSolid(() => <ShareTarget />)
+  await settle()
+  flush()
+  harness.server!.of(1)!.send('doc', { kind: 'ultimate.standing-agents', value: {} })
+  await settle()
+  harness.server!.of(1)!.send('doc', { kind: 'ultimate.standing-agents', value: { ultimate: 8 } })
+  await settle()
+  release()
+  await settle()
+  flush()
+  expect(getDraft(8).get().text).toBe('Look at this')
   expect(harness.actions).toEqual([])
 })

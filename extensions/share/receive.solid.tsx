@@ -53,10 +53,10 @@ async function dropOnceConversationComposerShows(id: number, files: File[]) {
   document.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
 }
 
-async function receive(id: string, standing: Promise<ConversationId | undefined>) {
+async function receive(id: string, ultimate: () => Promise<ConversationId | undefined>) {
   const { share, files } = await take(id)
   const conversation =
-    (await standing) ??
+    (await ultimate()) ??
     (await writingAs('app', () => api.action(StandingAction, { name: 'ultimate' })))
   showSurface('agent')
   switchConversation(conversation)
@@ -67,11 +67,15 @@ async function receive(id: string, standing: Promise<ConversationId | undefined>
 
 export function ShareTarget() {
   const standing = useDocOf(() => ROOT, StandingDoc)
-  let arrived: (ultimate: ConversationId | undefined) => void = () => {}
-  const ultimate = new Promise<ConversationId | undefined>((resolve) => (arrived = resolve))
+  let arrived = () => {}
+  const loaded = new Promise<void>((resolve) => (arrived = resolve))
   createEffect(standing, (doc) => {
-    if (doc !== undefined) arrived(doc?.ultimate)
+    if (doc !== undefined) arrived()
   })
+  const ultimate = async () => {
+    await loaded
+    return standing()?.ultimate
+  }
   onSettled(() => {
     navigator.serviceWorker
       ?.register('/sw.js')
