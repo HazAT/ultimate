@@ -29,7 +29,11 @@ export const Failure = renderEntry(FailureEntry, (props) => {
         <p class="font-mono text-[11px] text-muted-foreground">last step: {failure().step}</p>
         <Show when={failure().hint}>{(hint) => <Markdown text={hint()} />}</Show>
         <Show when={failure().retried}>
-          <p class="text-[11px] text-muted-foreground">after one automatic retry</p>
+          <p class="text-[11px] text-muted-foreground">
+            {failure().retries
+              ? `after ${failure().retries} automatic retries`
+              : 'after one automatic retry'}
+          </p>
         </Show>
       </div>
     </section>
