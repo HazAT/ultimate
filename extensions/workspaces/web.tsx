@@ -3,6 +3,7 @@ import { WorkspaceCall } from './call.solid.tsx'
 import { LanderComposer } from './lander-composer.solid.tsx'
 import { LandingNote } from './landing-note.solid.tsx'
 import { LanderLogEntry, LanderReport } from './log.solid.tsx'
+import { SetupFailed } from './setup-failed.solid.tsx'
 
 export default defineWebExtension({
   composer: island(LanderComposer),
@@ -11,5 +12,6 @@ export default defineWebExtension({
     'lineage.note': island(LandingNote),
     'ultimate.lander': island(LanderLogEntry),
     'workspaces.lander-report': island(LanderReport),
+    'workspaces.setup-failed': island(SetupFailed),
   },
 })

@@ -19,7 +19,7 @@ import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Branches } from './api.ts'
-import { WorkspacesDoc } from './refs.ts'
+import { SetupFailedEntry, WorkspacesDoc } from './refs.ts'
 import { setup } from './setup.ts'
 import {
   addCheckout,
@@ -309,7 +309,7 @@ export function workspaces(host: Host) {
   const get = async (id: ConversationId, context: Context) =>
     (await host.harness().snapshot(Workspaces, ROOT_CONVERSATION_ID, context))?.items[String(id)]
   const Preparation = defineTask<
-    { id: ConversationId; reset?: boolean; preserve?: boolean },
+    { id: ConversationId; reset?: boolean; preserve?: boolean; retried?: boolean },
     { phase: 'prepare' },
     null
   >({
@@ -413,12 +413,23 @@ export function workspaces(host: Host) {
                 await git(workspace.source, 'branch', '-D', workspace.branch).catch(overshadowed)
             }
           })
+          const reason = (error instanceof Error ? error.message : String(error)).slice(-4000)
+          const owner = task.input.retried
+            ? undefined
+            : await runtime.conversation(task.input.id, context)
           await runtime.commit(async (tx) => {
             const saved = (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[
               String(task.input.id)
             ]
+            await owner?.submit(tx, {
+              type: 'input',
+              requestId: `workspaces.setup-failed:${task.id}`,
+              content: `Workspace setup failed:\n${reason}\nEvery tool but \`message\` and \`workspace\` is blocked and does not retry it. Report the cause to whoever started you; once it is fixed, \`workspace status\` retries the setup.`,
+              entry: { kind: SetupFailedEntry.kind, data: { error: reason } },
+              whenBusy: 'followUp',
+            })
             saved.state = 'failed'
-            saved.error = (error instanceof Error ? error.message : String(error)).slice(-4000)
+            saved.error = reason
             return { status: 'terminal', outcome: { status: 'completed', result: null } }
           }, context)
         }
@@ -819,15 +830,17 @@ export function workspaces(host: Host) {
     host.harness().resume()
     return result
   }
-  async function unavailable(id: ConversationId, context: Context) {
+  async function unavailable(id: ConversationId, context: Context, retrySetup = false) {
     let workspace = await get(id, context)
     if (!workspace) return undefined
     if (workspace.state === 'failed') {
+      if (!retrySetup)
+        return `Workspace setup failed: ${workspace.error}; fix the cause, then call \`workspace status\` to retry the setup`
       const kept = await ready(id, context, true)
       if (kept) return `Workspace setup failed and its checkout keeps changes: ${kept.reason ?? ''}`
       workspace = (await get(id, context))!
       if (workspace.state === 'failed')
-        return `Workspace setup failed: ${workspace.error}; fix the cause, then call a tool again to retry the setup`
+        return `Workspace setup failed: ${workspace.error}; fix the cause, then call \`workspace status\` to retry the setup`
     }
     if (workspace.state === 'removed') {
       const kept = await ready(id, context)
@@ -913,7 +926,7 @@ export function workspaces(host: Host) {
           delete saved.landed
           await tx.createTask(
             Preparation,
-            { id, reset: true, preserve },
+            { id, reset: true, preserve, ...(retryFailed ? { retried: true } : {}) },
             { conversationId: id, ownership: { kind: 'conversation' }, background: true },
           )
           return false

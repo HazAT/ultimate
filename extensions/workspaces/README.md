@@ -56,7 +56,11 @@ commits is checked out unchanged, with its tip as the new base; a merged or miss
 target tip. Nested isolates prepare their source ancestor checkouts first.
 The existing `workspace_workflow` prompt section starts and waits for the same durable preparation task used
 on creation; setup commands run again before the model can use tools.
-Failed setup keeps its output tail and never force-removes dirty output. The conversation's next tool call retries it (checkout and setup again), so fixing the cause, such as a PATH without `pnpm`, takes effect in the same conversation; until it succeeds every tool call is blocked with the setup's error.
+Failed setup keeps its output tail and never force-removes dirty output. It runs once: the failure wakes the
+conversation once with its error (a `workspaces.setup-failed` card), and every tool call but `message` and `workspace`
+is blocked with that error without rerunning setup. The next `workspace` call retries it (checkout and setup again), so
+fixing the cause, such as a PATH without `pnpm` or a rejected install, takes effect in the same conversation; a retry
+that fails again blocks the same way without another wake.
 
 Info's Workspace section (`Workspaces` in `ui.solid.tsx`) shows the lander queue, the shown conversation's checkout and
 statistics over every checkout, read-only: landing goes through agents. Concluding a conversation can release its clean, landed checkout.

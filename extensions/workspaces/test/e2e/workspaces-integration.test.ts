@@ -480,21 +480,40 @@ it.concurrent('failed setup keeps its output tail, removes its empty branch, and
   const result = await f.call(id, 'write_commit')
   expect(result?.role === 'toolResult' && result.isError).toBe(true)
   expect(JSON.stringify(result)).toContain('Workspace setup failed:')
-  expect(JSON.stringify(result)).toContain('call a tool again to retry the setup')
+  expect(JSON.stringify(result)).toContain('call `workspace status` to retry the setup')
   expect(f.writes).toBe(0)
   await expect(access(join(f.projectRoot, 'change.txt'))).rejects.toThrow('ENOENT')
 })
-it.concurrent('retries a failed setup on the next tool call, so a fixed environment takes effect without a new conversation', async () => {
-  // The setup fails until the environment is fixed, as a unit PATH without pnpm did.
-  const f = await fixture(['test -f "$ULTIMATE_SOURCE/fixed" || { echo NOT_FIXED >&2; exit 1; }'])
+it.concurrent('runs a failing setup once and wakes its conversation once; only `workspace` retries it', async () => {
+  // A rejected `pnpm install` used to rerun on every tool call and fail each one, until the branch was fixed from outside.
+  const f = await fixture([
+    'echo run >> "$ULTIMATE_SOURCE/../setup-runs"; test -f "$ULTIMATE_SOURCE/fixed" || { echo NOT_FIXED >&2; exit 1; }',
+  ])
+  const runs = async () =>
+    (await readFile(join(f.directory, 'setup-runs'), 'utf8')).trim().split('\n').length
+  const wakes = async () =>
+    (await (await f.opened.harness.conversation(id, context))!.context(context)).entries.filter(
+      (entry) => entry.kind === 'workspaces.setup-failed',
+    )
   const id = await f.create()
   await f.service.ready(id, context)
   expect((await f.service.get(id, context))!.state).toBe('failed')
-  const failed = await f.call(id, 'write_commit')
-  expect(JSON.stringify(failed)).toContain('NOT_FIXED')
+  for (let call = 0; call < 2; call++) {
+    const blocked = await f.call(id, 'write_commit')
+    expect(JSON.stringify(blocked)).toContain('NOT_FIXED')
+  }
   expect(f.writes).toBe(0)
+  expect(await runs()).toBe(1)
+  expect(await wakes()).toMatchObject([{ data: { error: expect.stringContaining('NOT_FIXED') } }])
+
+  const retried = await f.call(id, 'workspace', { action: 'status' })
+  expect(JSON.stringify(retried)).toContain('NOT_FIXED')
+  expect(await runs()).toBe(2)
+  expect(await wakes()).toHaveLength(1)
 
   await writeFile(join(f.projectRoot, 'fixed'), '')
+  await f.call(id, 'workspace', { action: 'status' })
+  expect(await runs()).toBe(3)
   const result = await f.call(id, 'write_commit')
   expect(result?.role === 'toolResult' && result.isError).toBe(false)
   const workspace = (await f.service.get(id, context))!
@@ -2524,6 +2543,7 @@ it.concurrent('release leaves a folder that a failed preparation found at the pa
   await writeFile(join(workspace.path, 'foreign.txt'), 'not ours')
   await f.service.ready(id, context)
   expect((await f.service.get(id, context))!.state).toBe('failed')
+  await (await f.opened.harness.conversation(id, context))!.waitForIdle(context)
   expect(await f.service.release([id], context)).toEqual([
     {
       id,

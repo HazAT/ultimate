@@ -206,7 +206,8 @@ export default function workspaceExtension(host: ExtensionHost) {
         beforeTool: async (call, api, caller) => {
           const reportsWithoutTouchingCheckout = call.name === 'message'
           if (reportsWithoutTouchingCheckout) return undefined
-          const reason = await service.unavailable(api.conversationId, caller)
+          const retriesFailedSetup = call.name === 'workspace'
+          const reason = await service.unavailable(api.conversationId, caller, retriesFailedSetup)
           return reason ? { block: `${reason}. \`message\` still works, to report it.` } : undefined
         },
       }),

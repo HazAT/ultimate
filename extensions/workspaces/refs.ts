@@ -105,6 +105,9 @@ export const CheckRan = defineEvent<{
   ms: number
 }>('workspaces.check')
 
+/** The input that wakes a conversation once when its workspace setup fails, with the setup's error. */
+export const SetupFailedEntry = defineEntry<{ error: string }>('workspaces.setup-failed')
+
 /** A submission's outcome card, shared with its starter. */
 export const LanderReportEntry = defineEntry<{
   id: string
