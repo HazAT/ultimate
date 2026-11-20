@@ -46,6 +46,8 @@ import {
 } from './registry.ts'
 import type { State } from './store.ts'
 import { errorMessage, formatDuration } from './format.ts'
+import { restartAccepted, restartPhase, restartTimedOut } from './restart.ts'
+import type { RestartPhase } from './restart.ts'
 import type { CompactRow, ToolCallView, UltimateContext } from './types.ts'
 import { useViewport } from './viewport.ts'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
@@ -384,56 +386,26 @@ export interface Restart {
  */
 export function useRestart(timeoutMs = 120000): Restart {
   const system = useStore((state) => state.system)
-  const connection = useStore((state) => state.connection.status)
-  const [state, setState] = useState<{
-    phase: 'idle' | 'asking' | 'swapping'
-    target?: number
-
-    systemSnapshotAtStreamDrop?: object
-    error?: string
-  }>({ phase: 'idle' })
-  const serving = system?.process.generation ?? 0
+  const open = useStore((state) => state.connection.status === 'open')
+  const [state, setState] = useState<RestartPhase>({ phase: 'idle' })
   useEffect(() => {
-    if (state.phase !== 'swapping' || state.target === undefined) return undefined
-    if (serving >= state.target) {
-      setState({ phase: 'idle' })
-      return undefined
-    }
-    if (connection !== 'open' && !state.systemSnapshotAtStreamDrop) {
-      setState({ ...state, systemSnapshotAtStreamDrop: system ?? {} })
-      return undefined
-    }
-    if (
-      state.systemSnapshotAtStreamDrop &&
-      connection === 'open' &&
-      system &&
-      system !== state.systemSnapshotAtStreamDrop
-    ) {
-      setState({
-        phase: 'idle',
-        error: `Generation ${state.target} failed to activate and was rolled back; generation ${serving} keeps serving. The reason is in the supervisor's output.`,
-      })
-      return undefined
-    }
-    return deadline(timeoutMs, () =>
-      setState({
-        phase: 'idle',
-        error: `Generation ${state.target} did not start serving within ${Math.round(timeoutMs / 1000)} s.`,
-      }),
-    )
-  }, [state, serving, connection, system, timeoutMs])
+    const next = restartPhase(state, system, open)
+    if (next !== state) setState(next)
+  }, [state, system, open])
+  const pending = state.phase === 'swapping' ? state.target : undefined
+  useEffect(() => {
+    if (pending === undefined) return undefined
+    return deadline(timeoutMs, () => setState(restartTimedOut(pending, timeoutMs)))
+  }, [pending, timeoutMs])
   return {
-    pending: state.phase === 'swapping' ? state.target : undefined,
+    pending,
     busy: state.phase !== 'idle',
-    error: state.error,
+    error: state.phase === 'idle' ? state.error : undefined,
     clear: () => setState({ phase: 'idle' }),
     run: () => {
       setState({ phase: 'asking' })
       api.restart().then(
-        (result) => {
-          const target = (result as { generation?: number } | undefined)?.generation
-          setState(target === undefined ? { phase: 'idle' } : { phase: 'swapping', target })
-        },
+        (result) => setState(restartAccepted(result)),
         (error: unknown) => setState({ phase: 'idle', error: errorMessage(error) }),
       )
     },

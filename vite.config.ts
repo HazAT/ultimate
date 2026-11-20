@@ -11,7 +11,7 @@ const lucideSolidSource = /\/@lucide\/solid\/dist\/source\/.*\.jsx$/
 const solidPlugin = () => solid({ include: [solidFiles, uiSdkSolidBuild, lucideSolidSource] })
 const alias = { '@': fileURLToPath(new URL('web/src', import.meta.url)) }
 const excludeE2e = ['test/e2e/**', 'extensions/*/test/e2e/**']
-const maxWorkers = 16
+const maxWorkers = 8
 const solidRules = Object.fromEntries(
   Object.entries(solidV2Strict.rules as Record<string, number>)
     .filter(([rule, level]) => rule.startsWith('solid/') && level > 0)
@@ -294,8 +294,8 @@ export default defineConfig({
         },
       },
       {
-        files: ['web/src/**', 'extensions/**/*.tsx'],
-        excludeFiles: ['extensions/*/test/**', '**/*.solid.tsx'],
+        files: ['web/src/**', 'extensions/**/*.tsx', '.ultimate/extensions/**/*.tsx'],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**', '**/*.solid.tsx'],
         rules: {
           'react/rules-of-hooks': 'error',
           'react/exhaustive-deps': 'error',
@@ -321,7 +321,7 @@ export default defineConfig({
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [
             'error',
-            { controlComponents: ['Switch', 'Checkbox'] },
+            { controlComponents: ['Switch', 'Checkbox', 'Slider'] },
           ],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',
@@ -382,7 +382,11 @@ export default defineConfig({
         test: {
           name: 'solid-dom',
           environment: 'jsdom',
-          include: ['test/**/*.test.solid.tsx', 'extensions/*/test/**/*.test.solid.tsx'],
+          include: [
+            'test/**/*.test.solid.tsx',
+            'extensions/*/test/**/*.test.solid.tsx',
+            '.ultimate/extensions/*/test/**/*.test.solid.tsx',
+          ],
           exclude: excludeE2e,
           setupFiles: ['test/web/solid-dom-setup.ts'],
           maxWorkers,

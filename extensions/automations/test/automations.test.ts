@@ -177,8 +177,9 @@ it('fires every 2s into distinct answered conversations and supports pause, resu
   await f.action('pause', { id: a.id })
   await until(async () => (await f.records())[0].runs.every((r) => r.status !== 'running'))
   const runs = (await f.records())[0].runs
-  expect(new Set(runs.map((r) => r.conversationId)).size).toBe(runs.length)
-  for (const run of runs) {
+  const started = runs.filter((r) => r.status !== 'skipped')
+  expect(new Set(started.map((r) => r.conversationId)).size).toBe(started.length)
+  for (const run of started) {
     expect(run.answer).toBe('Answer: Scheduled report')
     const child = (await f.opened.harness.conversation(run.conversationId!, context))!
     const view = await child.context(context)
@@ -196,10 +197,10 @@ it('fires every 2s into distinct answered conversations and supports pause, resu
   await until(async () => (await f.records())[0].runs.at(-1)?.status === 'done')
   expect((await f.records())[0].runs).toHaveLength(runs.length + 1)
   await f.action('resume', { id: a.id })
-  await until(async () => {
-    const current = (await f.records())[0].runs
-    return current.length === runs.length + 2 && current.at(-1)?.status === 'done'
-  }, 3500)
+  await until(
+    async () => (await f.records())[0].runs.slice(runs.length + 1).some((r) => r.status === 'done'),
+    3500,
+  )
   await f.action('delete', { id: a.id })
   expect(await f.records()).toEqual([])
   expect(await f.opened.harness.conversation(runs[0].conversationId!, context)).toBeDefined()

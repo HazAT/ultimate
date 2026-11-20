@@ -8,6 +8,7 @@ import {
   formatBytes,
   formatTime,
   formatTokens,
+  island,
   shortenPath,
   useConversation,
   useModels,
@@ -19,7 +20,7 @@ import type { SystemInfo, Usage } from '@/sdk'
 import { Row, Rows } from '@/components/ui/rows'
 import { useWorkspacesMeta, Workspaces as WorkspaceRows } from '../workspaces/ui.tsx'
 import { Copy, ErrorText, Meter, Section } from './ui.tsx'
-import { SkillPicker, skillDialog } from './skill-picker.tsx'
+import { SkillPicker, skillDialog } from './skill-picker.solid.tsx'
 
 const pad = (value: number) => String(value).padStart(2, '0')
 
@@ -459,7 +460,7 @@ function InfoPanel() {
 
 export default defineWebExtension({
   panels: [{ id: 'info', title: 'Info', icon: InfoIcon, component: InfoPanel, order: 5 }],
-  slots: { overlay: [SkillPicker] },
+  slots: { overlay: [island(SkillPicker)] },
   commands: [
     {
       id: 'info.open',

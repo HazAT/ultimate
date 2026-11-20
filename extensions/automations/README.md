@@ -101,7 +101,7 @@ exported as a document.
 
 ## UI
 
-States share one word and colour (`parts.tsx` `lookOf`), worst first: failed (red), investigating (yellow), writing or
+States share one word and colour (`looks.ts` `lookOf`), worst first: failed (red), investigating (yellow), writing or
 working (purple), watching or scheduled (green), paused and done (grey).
 
 - **Automations tab** (right panel, after Activity; palette "Automations…"): every automation, worst first, with its
