@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-/** Model catalog rows for other extensions' Solid command pickers. The Command owns selection and attribution. */
+/** Use inside a Solid Command list with `provider/model-id` values. `current` marks the saved model, not the keyboard highlight. */
 import { Brain, Check } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { CommandItem } from '@/components/ui/command.solid.tsx'
