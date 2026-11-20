@@ -477,13 +477,13 @@ it.each(['queued', 'running'] as const)(
   },
 )
 
-it.each([false, true])('waits 60 s, then continues; continuation fails: %s', async (retryFails) => {
+it('waits 60 s, then continues once, and a reopen repeats nothing', async () => {
   const seen: string[] = []
   const f = await fixture((transcript) => {
     const text = inputText(transcript)
     if (text === 'fail' || text.startsWith('Your previous run')) {
       seen.push(text)
-      return text === 'fail' || retryFails
+      return text === 'fail'
         ? error(
             'Incomplete Claude Code upstream response (status unknown, capture incomplete, relay failure Error)',
           )

@@ -166,7 +166,8 @@ async function retriesBefore(tx: Tx, recipient: ConversationId, runInputs: Submi
     if (previous) return retriesOf(previous.input as { retried: boolean; retries?: number }) + 1
     cursor = page.next
   } while (cursor)
-  return 1
+  const continuationOfAnUnknownFailureReportsRatherThanLoops = RETRY_DELAYS_MS.length
+  return continuationOfAnUnknownFailureReportsRatherThanLoops
 }
 
 type Generation = TaskRecord<JsonValue, JsonValue, JsonValue>
