@@ -140,16 +140,18 @@ it('keeps system messages behind every leading user message Claude Code sends', 
       ANTHROPIC_BASE_URL: '',
     },
   }
+  let replayed: Awaited<ReturnType<typeof runClaudeRequest>> | undefined
   try {
     const first = await runClaudeRequest({ ...input, frames: [user] })
-    await runClaudeRequest({
+    replayed = await runClaudeRequest({
       ...input,
       frames: [
         { ...user, shouldQuery: false },
         { type: 'assistant', message: { role: 'assistant', content: [toolUse] } },
         { type: 'user', message: { role: 'user', content: [toolResult] } },
       ],
-      initialUserPrefix: first.initialUserPrefix,
+      // A prefix stored before the relay dropped the account reminder still carries it.
+      initialUserPrefix: [account, ...first.initialUserPrefix!],
       initialSystemMessages: first.initialSystemMessages,
     })
   } finally {
@@ -168,6 +170,9 @@ it('keeps system messages behind every leading user message Claude Code sends', 
     'user',
   ])
   expect(JSON.stringify(second).split('# Environment').length - 1).toBe(1)
+  // The account reminder Claude Code adds never leaves the relay, on the first request or a replay (#243625).
+  expect(JSON.stringify(relayed)).not.toContain('# userEmail')
+  expect(JSON.stringify(replayed.initialUserPrefix)).not.toContain('# userEmail')
   // The start of the request is the first request again, so its prompt cache still applies.
   const plain = (messages: Message[]) =>
     JSON.parse(
