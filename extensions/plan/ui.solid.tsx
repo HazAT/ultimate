@@ -1,6 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 /** The plan for other extensions' Solid code: the task chip of a conversation that works on a plan task. */
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { ROOT, cn, switchConversation, useDocOf, useUiState } from '@/sdk/solid'
@@ -54,4 +55,10 @@ export function TaskChip(props: { task: TaskLink; class?: string }) {
       {props.task.key}
     </Button>
   )
+}
+
+/** The chip of the task `conversation` works on, or nothing; plan provides it for `ConversationTaskChip`. */
+export function ConversationTaskChip(props: { conversation: ConversationId }) {
+  const task = useTaskOf(() => props.conversation)
+  return <Show when={task()}>{(link) => <TaskChip task={link()} />}</Show>
 }

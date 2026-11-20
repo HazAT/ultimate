@@ -39,6 +39,7 @@
     "extensions/cloud/types.ts",
     "extensions/conversations/types.ts",
     "extensions/conversations/visible.ts",
+    "extensions/conversations/points.ts",
     "extensions/dream/stage.ts",
     "extensions/dream/types.ts",
     "extensions/lineage/types.ts",

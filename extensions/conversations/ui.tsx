@@ -23,6 +23,11 @@ export const ConversationTask = definePoint<
   { chip: ReactNode; title: string } | undefined
 >('conversations.task')
 /**
+ * The chip of the plan task `conversation` works on (`plan` provides it as `island(Chip)`); a Solid host renders it with
+ * `Provided` from `@/sdk/parts.solid.tsx`. Nothing renders while it works on no task or plan is off.
+ */
+export { ConversationTaskChip } from './points.ts'
+/**
  * The epic coordinator `id` works itself (`plan` provides it): its newest open epic, else its newest, when none of its
  * tasks went to a subagent; `progress` counts its acceptance criteria confirmed or estimated done (`5/8`) when it has
  * no tasks, and `open` shows it in the plan panel.

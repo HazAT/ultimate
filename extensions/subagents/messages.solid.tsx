@@ -3,7 +3,7 @@ import { ArrowLeft, Bot, SquareArrowOutUpRight } from '@lucide/solid'
 import { createEffect, createSignal, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card, Fold } from '@/sdk/parts.solid.tsx'
+import { Card, Fold, Provided } from '@/sdk/parts.solid.tsx'
 import {
   events,
   switchConversation,
@@ -13,7 +13,7 @@ import {
   useEvent,
 } from '@/sdk/solid'
 import type { SolidEntryProps } from '@/sdk/solid'
-import { ConversationRef } from '../conversations/ui.solid.tsx'
+import { ConversationRef, ConversationTaskChip } from '../conversations/ui.solid.tsx'
 import { InstructionEntry, ReportEntry } from './refs.ts'
 import { senderAgent, sourceEvent } from './source.ts'
 import type { SourceNavigation } from './source.ts'
@@ -107,6 +107,11 @@ export function AgentInput(props: SolidEntryProps) {
               <span class="min-w-0 text-foreground">
                 <Sender label={sender()?.label} origin={message()} />
               </span>
+              <Provided
+                input={{ conversation: message().sender }}
+                last
+                point={ConversationTaskChip}
+              />
               <span>{message().kind}</span>
               <Button
                 aria-label={`Open source of ${message().kind} #${props.entry.id}`}

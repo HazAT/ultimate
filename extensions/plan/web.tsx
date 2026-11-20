@@ -31,6 +31,7 @@ import {
   defineWebExtension,
   errorMessage,
   formatTime,
+  island,
   provide,
   useAction,
   useConversations,
@@ -42,7 +43,7 @@ import {
   writingAs,
 } from '@/sdk'
 import type { ConversationSummary, ToolCallView } from '@/sdk'
-import { ConversationEpic, ConversationTask } from '../conversations/ui.tsx'
+import { ConversationEpic, ConversationTask, ConversationTaskChip } from '../conversations/ui.tsx'
 import { InfoAction, LandedNote, stateLabel, useWorkspaces } from '../workspaces/ui.tsx'
 import { meansNone } from '../../lib/errors.ts'
 import { criteriaOf, sectionsOf, verbatim } from './body.ts'
@@ -59,6 +60,7 @@ import {
 import { PlanDoc, ProgressDoc } from './refs.ts'
 import type { Epic, Estimate, Plan, Task, TaskLink } from './refs.ts'
 import { StatusIcon, TaskChip, statusOf, useOpenTask, useTaskOf } from './ui.tsx'
+import { ConversationTaskChip as TaskChipOf } from './ui.solid.tsx'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 
@@ -958,6 +960,7 @@ export default defineWebExtension({
   slots: { overlay: PlanOverlay },
   provides: [
     provide(ConversationTask, useConversationTask),
+    provide(ConversationTaskChip, island(TaskChipOf)),
     provide(ConversationEpic, useConversationEpic),
     provide(LandedNote, useLandedNote),
   ],

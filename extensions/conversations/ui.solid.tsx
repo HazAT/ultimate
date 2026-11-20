@@ -9,6 +9,7 @@ import { conversationRefParts, featureHue, featureTagClass } from '../../lib/con
 import { OverviewDoc } from './refs.ts'
 
 export { hiddenConversationIds } from './visible.ts'
+export { ConversationTaskChip } from './points.ts'
 
 /** A conversation's feature, as a small tag in the feature's hue. */
 export function FeatureTag(props: { feature: string; class?: string }) {

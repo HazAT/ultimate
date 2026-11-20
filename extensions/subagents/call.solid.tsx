@@ -15,7 +15,7 @@ import {
 } from '@/components/ai/tool.solid.tsx'
 import { Markdown, MentionText } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
+import { Provided, useToolDuration } from '@/sdk/parts.solid.tsx'
 import {
   ROOT,
   cn,
@@ -27,6 +27,7 @@ import {
 } from '@/sdk/solid'
 import type { SolidToolProps } from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
+import { ConversationTaskChip } from '../conversations/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import type { LandResult } from '../workspaces/types.ts'
 import { openAgentSource, RunName } from './ui.solid.tsx'
@@ -118,6 +119,11 @@ export function SubagentCall(props: SolidToolProps) {
           class="min-w-0 flex-1"
           meta={
             <>
+              <Show when={childId()}>
+                {(id) => (
+                  <Provided input={{ conversation: id() }} last point={ConversationTaskChip} />
+                )}
+              </Show>
               <IsolateBadge childId={childId()} />
               <Show when={background()}>
                 <Tag>bg</Tag>
