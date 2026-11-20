@@ -2105,6 +2105,29 @@ it.concurrent('release handles failed checkouts but never removes detached unlan
   expect(await git(workspace.path, 'rev-parse', 'HEAD')).toBe(tip)
 })
 
+it.concurrent('pending and release keep a checkout whose commits git cannot read, naming the object', async () => {
+  const f = await fixture()
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  await git(workspace.path, 'checkout', '--detach')
+  const lost = await commit(workspace.path, 'lost.txt')
+  await commit(workspace.path, 'tip.txt')
+  const objects = await git(
+    workspace.path,
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-path',
+    'objects',
+  )
+  await unlink(join(objects, lost.slice(0, 2), lost.slice(2)))
+  const expected = [{ id, uncommitted: 0, unlanded: 0, unknown: `unreadable object ${lost}` }]
+  expect(await f.service.pending([id], context)).toEqual(expected)
+  expect(await f.service.release([id], context)).toEqual(expected)
+  expect((await f.service.get(id, context))!.state).toBe('ready')
+  expect(await readFile(join(workspace.path, 'tip.txt'), 'utf8')).toBe('tip.txt')
+})
+
 it.concurrent('aborting release finishes the current checkout and leaves the remaining batch untouched', async () => {
   const f = await fixture()
   const ids = [await f.create(), await f.create(), await f.create()]

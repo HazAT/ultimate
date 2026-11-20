@@ -524,6 +524,9 @@ function Tree({
                 <>
                   {warning?.work
                     ?.map((item) => {
+                      const who = `#${item.id}${item.id !== warning.id ? ', a subagent,' : ''}`
+                      if (item.unknown)
+                        return `${who} has commits that can't be counted (unknown: ${item.unknown}).`
                       const parts = [
                         item.uncommitted > 0
                           ? `${item.uncommitted} uncommitted ${item.uncommitted === 1 ? 'file' : 'files'}`
@@ -532,7 +535,7 @@ function Tree({
                           ? `${item.unlanded} unlanded ${item.unlanded === 1 ? 'commit' : 'commits'}`
                           : undefined,
                       ].filter(Boolean)
-                      return `#${item.id}${item.id !== warning.id ? ', a subagent,' : ''} has ${parts.join(' and ')}.`
+                      return `${who} has ${parts.join(' and ')}.`
                     })
                     .join(' ')}{' '}
                   Its checkout is kept until that work lands or is discarded.

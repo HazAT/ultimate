@@ -45,6 +45,7 @@ export type KeptWork = {
   id: number
   uncommitted: number
   unlanded: number
+  unknown?: string
   busy?: string
   reason?: string
   descendant?: number
