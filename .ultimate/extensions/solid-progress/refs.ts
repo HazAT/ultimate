@@ -13,7 +13,6 @@ export type Entry = {
   commit: string
   label: string
   date: string
-  committedAt?: number
   lines: Lines
   perExtension: Record<string, { react: number; solid: number }> | null
   bundleGzipKB: number | null
