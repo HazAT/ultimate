@@ -877,6 +877,8 @@ it.each([
     undefined,
   ],
   [overloaded, true, undefined],
+  // A provider that went silent: no silent retries from Pi, one visible retry here.
+  ['Model stream stalled: proxy/shopify/dev sent nothing for 300 s', true, undefined],
   [
     "Incomplete Claude Code upstream response (status 429, capture incomplete, upstream said: This request would exceed your account's rate limit. Please try again later.)",
     false,
