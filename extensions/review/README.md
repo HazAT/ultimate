@@ -35,7 +35,8 @@ Links: `/?review=<spec>` opens Review at that spec, and the address carries `?re
 `&file=<path>&line=<n>` (and `&side=old`) scrolls to that line and marks it.
 `openReview(spec, at?)` from `link.tsx` does the same from code. Review provides the `workspaces.review` point, so the
 landing card, the Activity feed and a root's landed list open a landing's commit count here (DiffsHub stays as a small
-↗ beside it), and a branch row's menu has **Review changes**. Without review those stay plain DiffsHub links.
+↗ beside it), and a branch row's menu has **Review changes**. Without review those stay plain DiffsHub links. Solid
+code, which cannot read a React point, emits `events.emit('review:open', spec)` on the page bus instead.
 
 Actions (`refs.ts`):
 
