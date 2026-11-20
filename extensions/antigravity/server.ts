@@ -36,7 +36,7 @@ export const runAgy: RunAgy = (args, env, signal) =>
 export function noProxyWithLoopback(env: NodeJS.ProcessEnv): string | undefined {
   if (!env.HTTP_PROXY && !env.http_proxy) return undefined
   const effective = env.no_proxy ?? env.NO_PROXY ?? ''
-  if (effective.trim() === '*') return undefined
+  if (effective === '*') return undefined
   const hosts = effective.split(/[,\s]+/).filter(Boolean)
   return hosts.includes(LOOPBACK) ? undefined : [...hosts, LOOPBACK].join(',')
 }
@@ -149,8 +149,8 @@ export default function antigravity(host: ExtensionHost) {
       },
     },
     models: [],
-    async fetchModels({ signal }) {
-      const found = state.last ?? (await state.discover(signal))
+    async fetchModels({ signal, force }) {
+      const found = (!force && state.last) || (await state.discover(signal))
       return found.loggedIn ? found.models.map(modelOf) : []
     },
     api: googleGenerativeAIApi(),

@@ -225,8 +225,13 @@ it('reports an upstream failure by status only, without its body', async () => {
 })
 
 it('splits events on mixed line endings and ends a turn with an in-stream error as an error', async () => {
-  const text = (word: string) => ({
-    candidates: [{ content: { role: 'model', parts: [{ text: word }] } }],
+  const text = (word: string, finishReason?: string) => ({
+    candidates: [
+      {
+        content: { role: 'model', parts: [{ text: word }] },
+        ...(finishReason ? { finishReason } : {}),
+      },
+    ],
   })
   let n = 0
   const upstream = await codeAssist(
@@ -245,7 +250,7 @@ it('splits events on mixed line endings and ends a turn with an in-stream error 
   expect(message.stopReason).toBe('error')
   expect(message.errorMessage).not.toContain('ya29')
   n = 0
-  const clean = await codeAssist([text('a'), text('b')], (event) =>
+  const clean = await codeAssist([text('a'), text('b', 'STOP')], (event) =>
     n++ === 0
       ? `data: ${JSON.stringify({ response: event })}\n\r\n`
       : `data: ${JSON.stringify({ response: event })}\r\n\r\n`,
@@ -253,7 +258,43 @@ it('splits events on mixed line endings and ends a turn with an in-stream error 
   const second = await startRelay(fakeAgy([], []), clean.url)
   closers.push(() => second.close())
   const ok = await streamSimple(model(second.url), context, { apiKey: second.key }).result()
+  expect(ok.stopReason).toBe('stop')
   expect(ok.content).toMatchObject([{ type: 'text', text: 'ab' }])
+})
+
+it('lets a turn accepted before close finish while refusing new ones', async () => {
+  const upstream = await codeAssist([
+    {
+      candidates: [{ content: { role: 'model', parts: [{ text: 'done' }] }, finishReason: 'STOP' }],
+    },
+  ])
+  const release = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const agy = fakeAgy([], [])
+  const relay = await startRelay(async (args, env, signal) => {
+    if (args[0] !== 'models') {
+      started.resolve()
+      await release.promise
+    }
+    return agy(args, env, signal)
+  }, upstream.url)
+  const context = normalizeContext({
+    messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+  } as never)
+  const turn = streamSimple(model(relay.url), context, { apiKey: relay.key }).result()
+  await started.promise
+  const closed = relay.close({ finishActiveTurns: true })
+  const refused = await fetch(`${relay.url}/models/gemini-x:streamGenerateContent?alt=sse`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': relay.key },
+    body: '{}',
+  })
+  expect(refused.status).toBe(503)
+  release.resolve()
+  const message = await turn
+  expect(message.stopReason).toBe('stop')
+  expect(message.content).toMatchObject([{ type: 'text', text: 'done' }])
+  await closed
 })
 
 it('reports a discovery that runs out of time as a failure, not a sign-out', async () => {
@@ -292,6 +333,7 @@ it('adds the loopback relay to the proxy exclusions without dropping any', () =>
     }),
   ).toBe('a.example,127.0.0.1')
   expect(noProxyWithLoopback({ HTTP_PROXY: 'http://proxy', NO_PROXY: '*' })).toBeUndefined()
+  expect(noProxyWithLoopback({ HTTP_PROXY: 'http://proxy', NO_PROXY: ' * ' })).toBe('*,127.0.0.1')
   expect(noProxyWithLoopback({ HTTP_PROXY: 'http://proxy', NO_PROXY: 'x.example,*' })).toBe(
     'x.example,*,127.0.0.1',
   )

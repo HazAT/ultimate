@@ -46,7 +46,11 @@ if (process.argv[2] === 'models') {
     await until(() => !!runtime.getProvider('antigravity'))
     expect(await status()).toMatchObject({ loggedIn: true })
     const reloaded = (await runtime.getAuth(model))?.auth.baseUrl
+    expect(reloaded).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/pi$/)
     expect(reloaded).not.toBe(relay)
+    expect(
+      (await fetch(`${reloaded}/models/gemini-x:streamGenerateContent`, { method: 'POST' })).status,
+    ).toBe(401)
     await until(() =>
       fetch(`${relay}/models/gemini-x:streamGenerateContent`, { method: 'POST' }).then(
         () => false,
@@ -60,7 +64,7 @@ if (process.argv[2] === 'models') {
     const after = (await runtime.getAuth(model))?.auth.baseUrl
     expect(after).toBeUndefined()
     await expect(
-      fetch(`${relay}/models/gemini-x:streamGenerateContent`, { method: 'POST' }),
+      fetch(`${reloaded}/models/gemini-x:streamGenerateContent`, { method: 'POST' }),
     ).rejects.toThrow('fetch failed')
   } finally {
     await server.close()

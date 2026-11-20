@@ -176,6 +176,8 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
   const keyBytes = Buffer.from(key)
   const visits = new Map<string, Visit>()
   const children = new Set<Promise<unknown>>()
+  const turns = new Set<Promise<unknown>>()
+  let draining = false
 
   async function withAgy<T>(
     args: string[],
@@ -288,7 +290,14 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
     if (!fromPiPath) throw new RelayError(404, 'Unknown relay path')
     if (!sameSecret(req.headers['x-goog-api-key'] as string | undefined, keyBytes))
       throw new RelayError(401, 'Unknown caller')
-    return fromPi(req, res, decodeURIComponent(fromPiPath[1]))
+    if (draining) throw new RelayError(503, 'Antigravity relay was replaced; retry')
+    const turn = fromPi(req, res, decodeURIComponent(fromPiPath[1]))
+    turns.add(turn)
+    try {
+      return await turn
+    } finally {
+      turns.delete(turn)
+    }
   }
   const server = createServer((req, res) =>
     inProcess(
@@ -336,11 +345,10 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
       return { available: true, loggedIn: listed.length > 0, models: listed }
     },
     async close({ finishActiveTurns = false } = {}) {
-      if (finishActiveTurns) server.closeIdleConnections()
-      else {
-        for (const visit of visits.values()) visit.stop()
-        server.closeAllConnections()
-      }
+      draining = true
+      if (finishActiveTurns) await Promise.all([...turns].map(settled))
+      for (const visit of visits.values()) visit.stop()
+      server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))
       await Promise.all([...children].map(settled))
     },
