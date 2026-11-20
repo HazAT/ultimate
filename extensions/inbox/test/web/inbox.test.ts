@@ -1,12 +1,8 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { expect, it, vi } from 'vitest'
-import { inboxItems, keyOf, selection } from '../../items.tsx'
+import { expect, it } from 'vitest'
+import { inboxItems, keyOf, shown } from '../../items.ts'
 import type { InboxItem } from '../../ui.tsx'
 import type { Message } from '../../../messages/refs.ts'
-
-// questions' ui.tsx also exports its answer card, whose imports need the running app.
-vi.mock('../../../questions/card.tsx', () => ({ MessageQuestions: () => null }))
-vi.mock('../../../questions/points.tsx', () => ({ CardActions: {} }))
 
 const ask = (id: number, at: number, fields: Partial<Message> = {}): Message => ({
   id,
@@ -51,14 +47,25 @@ it('lists the open questions to the user and the provided items, oldest first', 
 
 it('moves on to the next oldest when the shown item is answered', () => {
   const before = inboxItems(log)
-  expect(selection(before, 'message:3', 1)).toBe('message:3')
-  const after = inboxItems(log.map((m) => (m.id === 3 ? { ...m, state: 'answered' as const } : m)))
-  // Item 3 stood at index 1; item 7 now stands there.
-  expect(selection(after, 'message:3', 1)).toBe('message:7')
-  // The newest answered: the one before it shows; the last answered: nothing.
-  expect(selection(after, 'message:7', 1)).toBe('message:7')
-  expect(selection([after[0]], 'message:7', 1)).toBe('message:1')
-  expect(selection([], 'message:1', 0)).toBeUndefined()
+  const selected = { key: 'message:3', at: 300, open: true }
+  expect(shown(before, null)?.key).toBe('message:1')
+  expect(shown(before, selected)?.key).toBe('message:3')
+  const after = inboxItems(
+    log.map((m) => (m.id === 3 ? { ...m, state: 'answered' as const } : m)),
+    [[item('shell:old', 200)]],
+  )
+  expect(shown(after, selected)?.key).toBe('message:7')
+  expect(shown(after.slice(0, -1), { key: 'message:7', at: 700, open: false })?.key).toBe(
+    'shell:old',
+  )
+  expect(shown([], selected)).toBeUndefined()
+})
+
+it('shows the linked key when it loads, even without its timestamp', () => {
+  const linked = { key: 'message:7', at: 0, open: true }
+  const entries = inboxItems(log)
+  expect(shown(entries.slice(0, -1), linked)?.key).toBe('message:1')
+  expect(shown(entries, linked)?.key).toBe('message:7')
 })
 
 it('reads a link as a key, a plain number as a message id', () => {

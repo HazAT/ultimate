@@ -1,0 +1,110 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
+import { openQuestion } from '../../lib/message-state.ts'
+import type { Message } from '../messages/refs.ts'
+import type { InboxItem } from './ui.tsx'
+
+export const SURFACE = 'inbox'
+export const SELECTED = 'ext.inbox.selected'
+export const WAIT_WARNING_AFTER_MS = 60 * 60_000
+export const amber = 'text-amber-700 dark:text-amber-300'
+
+export type Anchor = { key: string; at: number }
+export type Selection = (Anchor & { open: boolean }) | null
+export type Entry = Anchor &
+  ({ message: Message; item?: undefined } | { item: InboxItem; message?: undefined })
+type Sender = { conversation?: ConversationId; from?: string }
+export type Row = Anchor &
+  Sender & {
+    tag: string
+    title: string
+    gist?: string
+    more?: number
+    message?: number
+  }
+export type Answered = Sender & { id: number; at: number; title: string }
+
+const messageKey = (id: number) => `message:${id}`
+
+export function keyOf(value: unknown): string | undefined {
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? messageKey(value) : undefined
+  if (typeof value !== 'string' || !value) return undefined
+  return /^\d+$/.test(value) ? messageKey(Number(value)) : value
+}
+
+export const inboxItems = (
+  messages: readonly Message[],
+  provided: readonly (readonly InboxItem[])[] = [],
+): Entry[] =>
+  [
+    ...messages
+      .filter(openQuestion)
+      .toReversed()
+      .map((message) => ({
+        key: messageKey(message.id),
+        at: message.at,
+        message,
+      })),
+    ...provided.flat().map((item) => ({ key: item.key, at: item.at, item })),
+  ].toSorted((a, b) => a.at - b.at)
+
+export function shown<T extends Anchor>(entries: readonly T[], selected: Selection): T | undefined {
+  if (!selected) return entries[0]
+  return (
+    entries.find((entry) => entry.key === selected.key) ??
+    entries.find((entry) => entry.at >= selected.at) ??
+    entries.at(-1)
+  )
+}
+
+export const previewUrl = (text: string) =>
+  /https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/[^\s)<>\]`*]*)?/.exec(text)?.[0]
+
+export function lead(text: string) {
+  const trimmed = text.trimStart()
+  const bold = /^\*\*(.+?)\*\*[:.]?\s*/.exec(trimmed)
+  if (bold) return { title: bold[1].trim(), body: trimmed.slice(bold[0].length) }
+  const [first = '', ...rest] = trimmed.split('\n')
+  return {
+    title: first
+      .replace(/^[#>\-*\s]+/, '')
+      .replace(/[*_`]/g, '')
+      .trim(),
+    body: rest.join('\n').trim(),
+  }
+}
+
+export const tagOf = (entry: Entry) =>
+  entry.message ? (previewUrl(entry.message.text) ? 'preview' : 'question') : entry.item.tag
+
+const sender = (from: Message['from'] | undefined): Sender =>
+  typeof from === 'number' ? { conversation: from } : { from }
+
+export const senderOf = (entry: Entry): Sender =>
+  sender(entry.message ? entry.message.from : entry.item.conversation)
+
+export function toRow(entry: Entry): Row {
+  const { key, at, message, item } = entry
+  return {
+    key,
+    at,
+    ...senderOf(entry),
+    tag: tagOf(entry),
+    title: message ? lead(message.text).title : item.title,
+    gist: message ? message.questions?.[0]?.text : item.gist,
+    more: Math.max(0, (message?.questions?.length ?? 0) - 1),
+    message: message?.id,
+  }
+}
+
+export function answeredToday(messages: readonly Message[], now: number): Answered[] {
+  const midnight = new Date(now).setHours(0, 0, 0, 0)
+  return messages
+    .filter((m) => m.to === 'user' && (m.state === 'answered' || m.state === 'dismissed'))
+    .flatMap((m) => {
+      const reply = messages.find((r) => r.from === 'user' && r.re === m.id)
+      return reply && reply.at >= midnight
+        ? [{ ...sender(m.from), id: m.id, at: reply.at, title: lead(m.text).title }]
+        : []
+    })
+    .toSorted((a, b) => b.at - a.at)
+}
