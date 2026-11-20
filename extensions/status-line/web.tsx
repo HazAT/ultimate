@@ -1,262 +1,28 @@
-import { deadline, retryAfter } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
-  api,
-  cn,
   defineWebExtension,
-  elidePath,
   formatDuration,
-  formatTime,
   formatTokens,
-  shortenPath,
-  useConnection,
-  useConversation,
-  useConversations,
+  island,
   useModels,
-  useSystem,
-  useDoc,
   useTranscript,
 } from '@/sdk'
-import type { AssistantMessage, EntryRecord, Usage } from '@/sdk'
-import { useWorkspaces } from '../workspaces/ui.tsx'
-import { ContextDoc } from '../conversations/ui.tsx'
-import { lastAssistant, promptTokens as prompt } from '../../lib/context-usage.ts'
-import { usageTotals } from './context.ts'
-import { RatesAction } from './refs.ts'
-import type { RateSample } from './refs.ts'
+import type { AssistantMessage, EntryRecord } from '@/sdk'
+import { promptTokens as prompt } from '../../lib/context-usage.ts'
+import { Connection, Context, Cwd, GlobalUsage, Tokens } from './status.solid.tsx'
 import { responseAfter, turnOf } from './turns.ts'
 
-function Item({
-  children,
-  tip,
-  className,
-}: {
-  children: ReactNode
-  tip?: ReactNode
-  className?: string
-}) {
-  const content = <span className={cn('flex items-center gap-1.5', className)}>{children}</span>
-  if (!tip) return content
+function Item({ children, tip }: { children: ReactNode; tip: ReactNode }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipTrigger asChild>
+        <span className="flex min-w-0 items-center gap-1.5">{children}</span>
+      </TooltipTrigger>
       <TooltipContent className="font-mono text-[11px]" side="top">
         {tip}
       </TooltipContent>
     </Tooltip>
-  )
-}
-
-function Cwd() {
-  const system = useSystem()
-  const { agent, id } = useConversation()
-  const workspace = useWorkspaces()[String(id)]
-  if (!system) return null
-  const cwd = agent.cwd ?? system.execution.defaultCwd
-  const shown = workspace ? `#${id}` : shortenPath(cwd, { home: system.machine.home })
-  const { branch, dirty, sha } = system.code
-  const inRepo = !workspace && cwd === system.code.ultimateRoot
-  return (
-    <Item
-      className="min-w-0 overflow-hidden text-foreground/80"
-      tip={
-        <>
-          {workspace?.path ?? cwd}
-          {workspace && <div>{workspace.branch}</div>}
-          {inRepo && branch && (
-            <div>
-              {branch} @ {sha}
-              {dirty ? ' · uncommitted changes' : ''}
-            </div>
-          )}
-        </>
-      }
-    >
-      <span className="truncate">{elidePath(shown, 40)}</span>
-      {inRepo && branch && (
-        <span className="max-w-96 shrink-[9] truncate text-muted-foreground">
-          ({branch}
-          {dirty && <span className="text-warning">*</span>})
-        </span>
-      )}
-    </Item>
-  )
-}
-
-function useTokenRates() {
-  const connection = useConnection()
-  const system = useSystem()
-  const generation = system?.process.generation
-  const key = `${connection.status}:${connection.since}:${generation}`
-  const [observed, setObserved] = useState<{ key: string; sample: RateSample | null }>()
-  useEffect(() => {
-    let cancelled = false
-    let cancelPoll: Cancel | undefined
-    let cancelRequestTimeout: Cancel | undefined
-    let request: AbortController | undefined
-    setObserved({ key, sample: null })
-    if (connection.status !== 'open' || generation === undefined) return undefined
-    async function poll() {
-      request = new AbortController()
-      cancelRequestTimeout = deadline(5000, () => request?.abort())
-      try {
-        const sample = await api.action(RatesAction, null, {
-          signal: request.signal,
-        })
-        request.signal.throwIfAborted()
-        if (!cancelled) setObserved({ key, sample })
-      } catch {
-        if (!cancelled) {
-          setObserved({ key, sample: null })
-        }
-      } finally {
-        cancelRequestTimeout?.()
-        if (!cancelled) cancelPoll = retryAfter(1000, poll)
-      }
-    }
-    void poll()
-    return () => {
-      cancelled = true
-      cancelPoll?.()
-      cancelRequestTimeout?.()
-      request?.abort()
-    }
-  }, [key, connection.status, generation])
-  return observed?.key === key ? observed.sample : null
-}
-
-function Tokens() {
-  const { usage, entries, agent } = useConversation()
-  const models = useModels()
-  const total = usageTotals(usage)
-  const latest = lastAssistant(entries).message?.usage
-  const hit =
-    (total.cacheRead > 0 || total.cacheWrite > 0) && latest && prompt(latest) > 0
-      ? (latest.cacheRead / prompt(latest)) * 100
-      : undefined
-  const subscription = !!models?.providers.find((provider) => provider.id === agent.model?.provider)
-    ?.isUsingSubscription
-  const parts: ReactNode[] = []
-  if (total.input) parts.push(`↑${formatTokens(total.input)}`)
-  if (total.output) parts.push(`↓${formatTokens(total.output)}`)
-  if (total.cacheRead) parts.push(`R${formatTokens(total.cacheRead)}`)
-  if (total.cacheWrite) parts.push(`W${formatTokens(total.cacheWrite)}`)
-  if (hit !== undefined) parts.push(`CH${hit.toFixed(1)}%`)
-  const hasSpendOrSubscriptionUsage = total.cost || (subscription && parts.length > 0)
-  if (hasSpendOrSubscriptionUsage)
-    parts.push(
-      <span className="text-foreground/80">
-        ${total.cost.toFixed(3)}
-        {subscription && <span className="text-muted-foreground"> (sub)</span>}
-      </span>,
-    )
-  if (!parts.length) return null
-  return (
-    <Item
-      className="max-md:hidden"
-      tip={
-        <>
-          <div className="grid grid-cols-[auto_auto] gap-x-3">
-            {Object.entries(usage.models).map(([model, bucket]) => (
-              <ModelRow bucket={bucket} key={model} label={model} />
-            ))}
-            {Object.entries(usage.tools).map(([tool, bucket]) => (
-              <ModelRow bucket={bucket} key={tool} label={`tool ${tool}`} />
-            ))}
-          </div>
-        </>
-      }
-    >
-      {parts.map((part, index) => (
-        <span key={index}>{part}</span>
-      ))}
-    </Item>
-  )
-}
-
-function GlobalUsage() {
-  const speed = useTokenRates()
-  const running = useConversations().filter((conversation) => conversation.busy).length
-  return (
-    <>
-      <Item
-        tip={
-          <>
-            <div>
-              Input ↑{speed ? speed.rates.input.toFixed(1) : '?'} · Output ↓
-              {speed ? speed.rates.output.toFixed(1) : '?'}
-            </div>
-            <div>
-              Cache read {speed ? speed.rates.cacheRead.toFixed(1) : '?'} · Cache write{' '}
-              {speed ? speed.rates.cacheWrite.toFixed(1) : '?'}
-            </div>
-            <div className="mt-1 max-w-72">
-              Model tokens per second across all conversations, averaged over the last 30 seconds.
-              Provider reports may arrive late, and tool usage is excluded.
-            </div>
-            <div className="mt-1 max-w-72">
-              Running agents across all conversations in this project, including subagents.
-            </div>
-          </>
-        }
-      >
-        <span aria-label="Output token rate">
-          ↓{speed ? Math.round(speed.rates.output) : '?'} tok/s
-        </span>
-        <span aria-label="Running agents" className="tabular-nums">
-          {running} {running === 1 ? 'agent' : 'agents'}
-        </span>
-      </Item>
-      <Item tip="Tokens and cost across all conversations in this project">
-        <span aria-label="Global spend">
-          ↑{speed ? formatTokens(speed.totals.input) : '?'} ↓
-          {speed ? formatTokens(speed.totals.output) : '?'} $
-          {speed ? speed.totals.cost.toFixed(3) : '?'}
-        </span>
-      </Item>
-    </>
-  )
-}
-
-function ModelRow({ label, bucket }: { label: string; bucket: Usage }) {
-  return (
-    <>
-      <span>{label}</span>
-      <span className="text-right">
-        ↑{formatTokens(bucket.input)} ↓{formatTokens(bucket.output)} ${bucket.cost.total.toFixed(4)}
-      </span>
-    </>
-  )
-}
-
-function Context() {
-  const { tokens: used, window, percent, estimated } = useDoc(ContextDoc) ?? {}
-  if (!window) return null
-  return (
-    <Item
-      className={cn(
-        percent !== undefined && percent > 90
-          ? 'text-error'
-          : percent !== undefined && percent > 70
-            ? 'text-warning'
-            : undefined,
-      )}
-      tip={
-        used === undefined
-          ? 'Context size is known after the next response'
-          : `${estimated ? 'About ' : ''}${used.toLocaleString()} of ${window.toLocaleString()} tokens in context${estimated ? ', estimated until the next response' : ''}`
-      }
-    >
-      <span className="relative h-1.5 w-8 overflow-hidden rounded-full bg-muted">
-        <span
-          className="absolute inset-y-0 left-0 rounded-full bg-current opacity-70"
-          style={{ width: `${Math.min(100, percent ?? 0)}%` }}
-        />
-      </span>
-      {percent === undefined ? '?' : `${percent.toFixed(1)}%`}/{formatTokens(window)}
-    </Item>
   )
 }
 
@@ -293,7 +59,6 @@ function MessageUsage({ entry }: { entry: EntryRecord }) {
   ]
   return (
     <Item
-      className="min-w-0"
       tip={
         <div className="grid grid-cols-[auto_auto] gap-x-3">
           <span>Response</span>
@@ -328,43 +93,11 @@ function MessageUsage({ entry }: { entry: EntryRecord }) {
   )
 }
 
-function Connection() {
-  const connection = useConnection()
-  const system = useSystem()
-  const open = connection.status === 'open'
-  return (
-    <Item
-      tip={
-        system && (
-          <>
-            {system.process.url} · pid {system.process.pid} · node {system.process.node}
-            <div>
-              generation {system.process.generation} · since{' '}
-              {formatTime(system.process.startedAt, true)}
-            </div>
-          </>
-        )
-      }
-    >
-      <span
-        className={cn(
-          'size-1.5 rounded-full',
-          open ? 'bg-success' : 'animate-pulse-dot bg-warning',
-        )}
-      />
-      <span className={open ? undefined : 'text-warning'}>
-        {open ? 'live' : connection.status === 'connecting' ? 'connecting…' : 'reconnecting…'}
-      </span>
-      {system && <span className="text-muted-foreground/70">gen {system.process.generation}</span>}
-    </Item>
-  )
-}
-
 export default defineWebExtension({
   messageDetails: [MessageUsage],
   slots: {
-    'composer.status': [Cwd, Tokens, Context],
-    'statusline.left': [GlobalUsage],
-    'statusline.right': [{ component: Connection, phone: true }],
+    'composer.status': [island(Cwd), island(Tokens), island(Context)],
+    'statusline.left': [island(GlobalUsage)],
+    'statusline.right': [{ component: island(Connection), phone: true }],
   },
 })

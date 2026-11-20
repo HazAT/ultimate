@@ -1,0 +1,96 @@
+/** @jsxImportSource @solidjs/web */
+import { settle } from '@ui-sdk/core/testing'
+import { flush } from 'solid-js'
+import { expect, it, vi } from 'vitest'
+import type { StreamedView } from '../../../../shared/protocol.ts'
+import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
+import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
+import type { RateSample } from '../../refs.ts'
+
+const harness = vi.hoisted(() => ({
+  sources: [] as FakeSource[],
+  server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
+  rates: null as RateSample | null,
+}))
+vi.mock('../../../../web/src/sdk/client.ts', async () => {
+  const { createStore } = await import('../../../../web/src/sdk/store.ts')
+  const { createApi } = await import('../../../../web/src/sdk/api.ts')
+  const { createReads } = await import('../../../../web/src/sdk/reads.ts')
+  const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
+  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = input as string
+    if (path === '/api/extensions/status-line/actions/rates')
+      return Response.json({ result: harness.rates })
+    return harness.server?.handle(path, init) ?? Response.json({ ok: true })
+  }
+  const store = createStore({
+    eventSource: (url) => {
+      const stream = new FakeSource(url)
+      harness.sources.push(stream)
+      return stream
+    },
+    fetch,
+  })
+  const api = createApi(store, { fetch })
+  return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
+})
+
+import { store } from '../../../../web/src/sdk/client.ts'
+import { Connection, Context, GlobalUsage, Tokens } from '../../status.solid.tsx'
+
+harness.server = fakeSubscriptions(harness.sources)
+const usage = (input: number, output: number, cost: number) => ({
+  input,
+  output,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: input + output,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: cost },
+})
+
+it('shows the conversation’s spend, its context fill, the project’s rate and the connection', async ({
+  onTestFinished,
+}) => {
+  harness.rates = {
+    rates: { input: 10, output: 42.4, cacheRead: 0, cacheWrite: 0 },
+    elapsed: 30,
+    totals: { input: 1500, output: 2500, cacheRead: 0, cacheWrite: 0, cost: 1.25 },
+  }
+  store.start()
+  onTestFinished(() => store.stop())
+  harness.sources[0].open()
+  const container = renderSolid(() => (
+    <>
+      <Tokens />
+      <Context />
+      <GlobalUsage />
+      <Connection />
+    </>
+  ))
+  expect(container.querySelector('[aria-label="Output token rate"]')?.textContent).toBe('↓? tok/s')
+
+  const view = {
+    conversation: { id: 7 },
+    entries: [],
+    docs: {
+      'pi.usage': { models: { 'claude-x': usage(1200, 300, 0.5) }, tools: {} },
+    },
+  } as unknown as StreamedView
+  harness.server!.of()!.send('view', view)
+  harness.server!.of()!.send('doc', {
+    kind: 'conversations.context',
+    value: { tokens: 160_000, window: 200_000, percent: 80, at: 1 },
+  })
+  await settle()
+  flush()
+
+  expect(container.textContent).toContain('↑1.2k↓300$0.500')
+  const meter = container.querySelector('[aria-label="Context use"]')
+  expect(meter?.textContent).toBe('80.0%/200k')
+  expect(meter?.className).toContain('text-warning')
+  expect(container.querySelector('[aria-label="Output token rate"]')?.textContent).toBe('↓42 tok/s')
+  expect(container.querySelector('[aria-label="Global spend"]')?.textContent).toBe(
+    '↑1.5k ↓2.5k $1.250',
+  )
+  expect(container.textContent).toContain('live')
+})

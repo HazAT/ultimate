@@ -1,9 +1,15 @@
 import { ListTodoIcon } from 'lucide-react'
-import { defineWebExtension } from '@/sdk'
+import { defineWebExtension, island } from '@/sdk'
+import { Waiting } from '../inbox/ui.tsx'
 import { TodoCall } from './call.tsx'
-import { Todos } from './panel.tsx'
+import { TodoList } from './panel.solid.tsx'
 
 const ModelOnlyTodoReminder = () => null
+const List = island(TodoList)
+
+function Todos() {
+  return <Waiting>{(entries) => <List inbox={entries.length} />}</Waiting>
+}
 
 export default defineWebExtension({
   tools: { todo: TodoCall },
