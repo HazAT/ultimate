@@ -97,17 +97,10 @@ export async function send(
 
   const parent = from === 'user' ? undefined : await parentOf(host, from, ctx)
   const starter = parent ?? (await starterOf(host, from, ctx))
-  if (input.to === 'user') {
-    if (parent !== undefined)
-      throw new Error(
-        `A subagent answers the conversation that started it: give your final answer, or message #${parent}.`,
-      )
-    const isStanding = from !== 'user' && Object.values(standing ?? {}).includes(from)
-    if (!isStanding && starter === undefined)
-      throw new Error(
-        'Only @ultimate, standing agents and branches message the user; send this to the conversation that started you.',
-      )
-  }
+  if (input.to === 'user' && parent !== undefined)
+    throw new Error(
+      `A subagent answers the conversation that started it: give your final answer, or message #${parent}.`,
+    )
   if (!input.text.trim()) throw new Error('Message text must not be empty')
   if (input.questions !== undefined && (input.to !== 'user' || input.reply === false))
     throw new Error('questions go only with a reply-expected message to the user')

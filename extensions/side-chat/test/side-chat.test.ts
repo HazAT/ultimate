@@ -335,11 +335,8 @@ describe('side chats', () => {
     expect(JSON.stringify(await entries(f.server, side))).toContain(
       'Added 1 for user: from the side',
     )
-    await f.call(side, 'message', { to: 'user', text: 'must fail' })
+    await f.call(side, 'message', { to: 'user', text: 'to the user' })
     expect((await f.server.harness.snapshot(Side, side, context))!.effects).toBe(true)
-    expect(JSON.stringify(await entries(f.server, side))).toContain(
-      'Only @ultimate, standing agents and branches message the user',
-    )
     expect((await f.action('discard', { id: side })).data.error).toMatch(/has effects/)
     servers.splice(servers.indexOf(f.server), 1)
     await f.server.close()
@@ -353,7 +350,7 @@ describe('side chats', () => {
     expect(refused.data.error).toMatch(/has effects/)
   })
 
-  it('attributes messages and notes to main, returns replies there, refuses messaging self/user, and leaves one provenance note', async () => {
+  it('attributes messages and notes to main, returns replies there, refuses messaging self, sends to user as itself, and leaves one provenance note', async () => {
     const f = await fixture()
     const target = await f.server.harness.createConversation(
       {
@@ -390,9 +387,11 @@ describe('side chats', () => {
     await f.call(side, 'message', { to: '@ultimate', text: 'self' })
     expect(JSON.stringify(await entries(f.server, side))).toContain('You cannot message yourself')
     await f.call(side, 'message', { to: 'user', text: 'user' })
-    expect(JSON.stringify(await entries(f.server, side))).toContain(
-      'Only @ultimate, standing agents and branches message the user',
-    )
+    expect(
+      (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages.find(
+        (message) => message.text === 'user',
+      ),
+    ).toMatchObject({ from: side, to: 'user' })
   })
 
   it.each([
