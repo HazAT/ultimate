@@ -249,6 +249,30 @@ it('shows a microphone permission alert for eight seconds', async () => {
   expect(alert()).toBeNull()
 })
 
+it('tells an Android system block apart from a blocked site', async () => {
+  vi.stubGlobal('navigator', {
+    mediaDevices: { getUserMedia },
+    userAgent: 'Mozilla/5.0 (Linux; Android 15)',
+  })
+  const container = await mount(13, { available: true })
+  const deny = (message: string) =>
+    getUserMedia.mockImplementationOnce(async () => {
+      throw new DOMException(message, 'NotAllowedError')
+    })
+  const alert = () => container.querySelector('[role="alert"]')?.textContent
+
+  deny('Permission denied by system')
+  await press('Voice input')
+  expect(alert()).toBe(
+    'Android blocks the mic for Chrome: allow it in Settings → Apps → Chrome → Permissions',
+  )
+  deny('Permission denied')
+  await press('Voice input')
+  expect(alert()).toBe(
+    'Mic blocked for this site: allow it in Chrome → Settings → Site settings → Microphone',
+  )
+})
+
 it('spaces inserted words from their neighbours and puts the cursor after them', () => {
   expect(spliced('', 0, 0, 'Hello')).toEqual({ text: 'Hello', cursor: 5 })
   expect(spliced('Fix the', 7, 7, 'login bug')).toEqual({ text: 'Fix the login bug', cursor: 17 })

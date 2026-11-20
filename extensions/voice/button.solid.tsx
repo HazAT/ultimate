@@ -31,6 +31,17 @@ type Recording = {
   stop: (source?: string) => void
 }
 
+function blockedMicrophone(reason: string) {
+  const android = /Android/.test(navigator.userAgent)
+  if (reason === 'Permission denied by system')
+    return android
+      ? 'Android blocks the mic for Chrome: allow it in Settings → Apps → Chrome → Permissions'
+      : 'The system blocks the mic for this browser: allow it in the system’s privacy settings'
+  if (android)
+    return 'Mic blocked for this site: allow it in Chrome → Settings → Site settings → Microphone'
+  return 'Microphone access is blocked: allow it in the browser’s site settings'
+}
+
 function unsupported() {
   if (!window.isSecureContext) return 'Voice needs HTTPS: open Ultimate over its tailnet URL'
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined')
@@ -188,10 +199,11 @@ export function VoiceButton() {
     } catch (failure) {
       if (signal.aborted) return
       cancelCapture()
-      const name = failure instanceof DOMException ? failure.name : ''
+      const { name, message } =
+        failure instanceof DOMException ? failure : { name: '', message: '' }
       setError(
         name === 'NotAllowedError'
-          ? 'Microphone access is blocked: allow it in the browser’s site settings'
+          ? blockedMicrophone(message)
           : name === 'NotFoundError'
             ? 'No microphone found'
             : `Could not start recording: ${errorMessage(failure)}`,
