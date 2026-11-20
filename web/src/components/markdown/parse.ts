@@ -66,20 +66,28 @@ const toHast = unified()
   .use(rehypeSanitize, schema)
   .use(harden, hardening)
 
+const continuation = 'C1STREAMPROBE'
+
 function descendants(node: MdastNodes): MdastNodes[] {
   return 'children' in node ? node.children.flatMap((child) => [child, ...descendants(child)]) : []
 }
 
 export function parse(markdown: string): { nodes: ElementContent[]; openFences: number[] } {
   const mdast = markdownTree.parse(markdown)
-  const nothingAfter = (offset: number) => !/[^>\s]/.test(markdown.slice(offset))
-  const openFences = descendants(mdast)
-    .filter(
-      (node): node is Code =>
-        node.type === 'code' &&
-        node.data?.fence === 'open' &&
-        nothingAfter(node.position!.end.offset!),
+  const unclosed = (tree: MdastNodes) =>
+    descendants(tree).filter(
+      (node): node is Code => node.type === 'code' && node.data?.fence === 'open',
     )
+  const lastLine = markdown.trimEnd().split('\n').at(-1) ?? ''
+  const prefix = markdown.endsWith('\n') ? (/^[ \t>]*/.exec(lastLine)?.[0] ?? '') : ''
+  const growing = new Map(
+    unclosed(markdownTree.parse(`${markdown}${prefix}${continuation}`)).map((node) => [
+      node.position!.start.offset!,
+      node.value,
+    ]),
+  )
+  const openFences = unclosed(mdast)
+    .filter((node) => growing.get(node.position!.start.offset!)?.includes(continuation))
     .map((node) => node.position!.start.offset!)
   const tree = toHast.runSync(mdast, markdown)
   return { nodes: tree.children.filter((node) => node.type !== 'doctype'), openFences }

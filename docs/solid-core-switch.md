@@ -4,12 +4,12 @@ The React parts the Solid migration's batches (0.8 A–C, 0.9 D–F) left in ext
 the React core or is a React hook the core calls, so it can only move once that core is Solid. This is the input for
 planning the core switch; nothing here has moved. Keep it current when a batch leaves a part React.
 
-**Summary (C1):** 51 rows (a row is one part or a group of one extension's parts) in 30 extensions. By
+**Summary (C1):** 51 rows (a row is one part or a group of one extension's parts) in 29 extensions. By
 core host:
 
 | Core host                                                               | Rows | Extensions |
 | ----------------------------------------------------------------------- | ---- | ---------- |
-| The transcript (tool and entry renderers, message bar, bubble)          | 31   | 23         |
+| The transcript (tool and entry renderers, message bar, bubble)          | 31   | 24         |
 | The sidebar (React rows and sections other extensions provide)          | 3    | 3          |
 | Panel and surface hosts, System's tab host, documents' views            | 10   | 7          |
 | The composer                                                            | 2    | 2          |
