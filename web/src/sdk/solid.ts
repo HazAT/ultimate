@@ -2,7 +2,7 @@
  * The extension SDK for Solid facets (`*.solid.tsx`): live documents, durable UI state and client state as accessors.
  * Mount a Solid component from a `web.tsx` with `island` from `@/sdk`; docs/extensions/sdk.md#solid-facets.
  */
-import type { ConversationId } from '@earendil-works/pi-durable'
+import type { AgentState, ConversationId } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import {
   createContext,
@@ -113,7 +113,12 @@ function createReplica() {
     watch(target: Target, kind: string) {
       const release = target === 'shown' ? store.watchDoc(kind) : store.watchDocOf(target, kind)
       const key = replicaKey(target, kind)
-      const reader = watched.get(key) ?? { target, kind, readers: 0, seen: undefined }
+      const reader = watched.get(key) ?? {
+        target,
+        kind,
+        readers: 0,
+        seen: undefined,
+      }
       if (reader.readers++ === 0) {
         watched.set(key, reader)
         reader.seen = immutableDoc(store.getState(), target, kind)
@@ -320,8 +325,11 @@ export function useCommands() {
 export const { switchConversation, showSurface, runCommand, openPanel, focusComposer } = actions
 /** The composer input a person can type into now (the main one or a side chat's); `dataset.conversation` is its conversation. */
 export { uncoveredComposer } from './actions.ts'
-/** Replaces the draft in conversation `id`'s composer with `text`, as `fillComposer` from `@/sdk` does. */
-export { fillComposer } from '../app/drafts.ts'
+/**
+ * `fillComposer(id, text)` replaces conversation `id`'s composer draft, `insertIntoComposer(id, text)` inserts at its
+ * cursor, as in `@/sdk`.
+ */
+export { fillComposer, insertIntoComposer } from '../app/drafts.ts'
 
 /** The conversation `ConversationScope` gives, or the shown one once known. */
 export function useConversationId(): Accessor<ConversationId | undefined> {
@@ -329,6 +337,22 @@ export function useConversationId(): Accessor<ConversationId | undefined> {
   const scoped = useContext(ConversationScope)
   return createMemo(() => scoped ?? state().view?.conversation.id)
 }
+
+/** `pi.agent` of the conversation `ConversationScope` gives, or the shown one: model, thinking level, cwd, tools. */
+export function useAgent(): Accessor<AgentState> {
+  const { state } = shared()
+  const scoped = useContext(ConversationScope)
+  return createMemo(() => {
+    const { view, viewsOf } = state()
+    const docs = (scoped === null ? view : viewsOf[scoped])?.docs
+    return (docs?.['pi.agent'] ?? {}) as AgentState
+  })
+}
+
+/** The page's notice stack, oldest first, as `useNotices` from `@/sdk` reads it. */
+export const useNotices = selected((state) => state.notices)
+/** Fetches the model list again, as `refreshModels` from `@/sdk` does, such as after a login changed it. */
+export const refreshModels = () => store.refreshModels()
 
 /** Whether dialog `id` is open, and a setter, as `useDialog` from `@/sdk` gives them. */
 export function useDialog(id: string): [Accessor<boolean>, (open: boolean) => void] {
@@ -366,7 +390,11 @@ export function useRestart(timeoutMs = 120_000) {
   const connection = useConnection()
   const [state, setState] = createSignal<RestartPhase>({ phase: 'idle' })
   createEffect(
-    () => ({ current: state(), system: system(), open: connection().status === 'open' }),
+    () => ({
+      current: state(),
+      system: system(),
+      open: connection().status === 'open',
+    }),
     ({ current, system: info, open }) => {
       const next = restartPhase(current, info, open)
       if (next !== current) setState(next)

@@ -59,7 +59,9 @@ A contribution can render with Solid 2 instead of React. Write the component in 
 import { defineWebExtension, island } from '@/sdk'
 import { Status } from './status.solid.tsx'
 
-export default defineWebExtension({ slots: { 'statusline.left': island(Status) } })
+export default defineWebExtension({
+  slots: { 'statusline.left': island(Status) },
+})
 ```
 
 The island renders inside a `display: contents` element and remounts when its extension or conversation scope
@@ -70,6 +72,9 @@ changes. Solid code imports `@/sdk/solid`, never `@/sdk` (types excepted), and g
 | `useDoc(ref)`, `useDocOf(() => conversation, ref)`                                | An accessor of the document; a memo or JSX reading `doc()?.columns[0].title` reruns only when that path changes. `useDoc` follows the scope                                                                 |
 | `useUiState(key, initial)`, `useExtensionUiState(…)`                              | `[value, set]`: `value` is an accessor, `set` takes a value or an updater, as in React                                                                                                                      |
 | `useConnection()`, `useSystem()`, `useConversations()`                            | Accessors of the same client state the React hooks read                                                                                                                                                     |
+| `useAgent()`                                                                      | An accessor of `pi.agent` (model, thinking level, cwd) of the scoped or shown conversation, as `useConversation().agent`                                                                                    |
+| `useNotices()`                                                                    | An accessor of the page's notice stack                                                                                                                                                                      |
+| `fillComposer`, `insertIntoComposer`, `refreshModels`                             | As in `@/sdk`: replace or insert into a composer draft, fetch the model list again                                                                                                                          |
 | `useAction(ref, args?, options?)`                                                 | `{ data, error, loading, refetch }`, the first three accessors, sharing React's call and result; `on` takes an accessor, such as a document's; `conversation: ROOT` calls it on the root, not the shown one |
 | `useNow(ms, () => active)`                                                        | An accessor of the current time, ticking every `ms` while `active`                                                                                                                                          |
 | `useEvents(options?)`, `useCommands()`                                            | Accessors of the durable event feed and the command list, as the React hooks read them                                                                                                                      |
