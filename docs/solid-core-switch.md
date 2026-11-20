@@ -46,19 +46,19 @@ breaks them unless they move to `island(C)` first.
 
 ## The transcript
 
-| Extension     | Part                                                                                           | Where                   | Hook in the transcript       |
-| ------------- | ---------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------- |
-| automations   | provided `WaitTimers` (`useWaitTimers`)                                                        | `automations/web.tsx`   | messages' wait timers        |
-| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                    | `conversations/web.tsx` | empty transcript             |
-| codemode      | provided `MessageReference`                                                                    | `codemode/web.tsx`      | message actions              |
+| Extension     | Part                                                                                            | Where                   | Hook in the transcript       |
+| ------------- | ----------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------- |
+| automations   | provided `WaitTimers` (`useWaitTimers`)                                                         | `automations/web.tsx`   | messages' wait timers        |
+| conversations | provided `EmptyTranscript` (`standing.tsx`)                                                     | `conversations/web.tsx` | empty transcript             |
+| codemode      | provided `MessageReference`                                                                     | `codemode/web.tsx`      | message actions              |
 | reel          | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card) | `reel/web.tsx`          | message cards, inbox's cards |
-| tasks         | provided `RunStart` (a data hook)                                                              | `tasks/web.tsx`         | the run timer                |
-| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                    | `pause/web.tsx`         | parked runs                  |
-| subagents     | provided `ErrorReport` (a data hook the React boundary reads)                                  | `subagents/web.tsx`     | error cards                  |
-| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`  | `review/web.tsx`        | the sidebar                  |
-| messages      | slot `OffscreenQuestions` (reads the React `useTranscriptScroll` refs to find cards offscreen) | `messages/web.tsx`      | top                          |
-| messages      | `MessageNavigation` overlay, `OpenMessages` (composer status)                                  | `messages/web.tsx`      | overlay, composer            |
-| questions     | overlay `CrossSurfaceDraftSweep` (no controls)                                                 | `questions/web.tsx`     | overlay                      |
+| tasks         | provided `RunStart` (a data hook)                                                               | `tasks/web.tsx`         | the run timer                |
+| pause         | provided `ParkedRuns` (also read by the sidebar and System)                                     | `pause/web.tsx`         | parked runs                  |
+| subagents     | provided `ErrorReport` (a data hook the React boundary reads)                                   | `subagents/web.tsx`     | error cards                  |
+| review        | provided `workspaces.review` (`Review`) and the `ReviewLink` overlay that takes `review:open`   | `review/web.tsx`        | the sidebar                  |
+| messages      | slot `OffscreenQuestions` (reads the React `useTranscriptScroll` refs to find cards offscreen)  | `messages/web.tsx`      | top                          |
+| messages      | `MessageNavigation` overlay, `OpenMessages` (composer status)                                   | `messages/web.tsx`      | overlay, composer            |
+| questions     | overlay `CrossSurfaceDraftSweep` (no controls)                                                  | `questions/web.tsx`     | overlay                      |
 
 ## The sidebar
 
