@@ -109,9 +109,12 @@ it('opens Dialog and presses its inner button as the agent', async ({ onTestFini
 
 it('opens DropdownMenu to press an item by text', async ({ onTestFinished }) => {
   const opened = vi.fn<(open: boolean, source: string) => void>()
-  const acted = vi.fn<(value: string, details: { event?: Event }) => void>()
+  const acted = vi.fn<(value: string, source: string) => void>()
   const container = renderSolid(() => (
-    <DropdownMenu onOpenChange={(open, details) => opened(open, details.source)} onAction={acted}>
+    <DropdownMenu
+      onOpenChange={(open, details) => opened(open, details.source)}
+      onAction={(value, details) => acted(value, details.source)}
+    >
       <DropdownMenuTrigger>File actions</DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuGroup>
@@ -137,7 +140,7 @@ it('opens DropdownMenu to press an item by text', async ({ onTestFinished }) => 
     'Rename file',
   )
   expect(opened).toHaveBeenCalledExactlyOnceWith(true, 'agent')
-  expect(acted).toHaveBeenCalledExactlyOnceWith('rename', expect.any(Object))
+  expect(acted).toHaveBeenCalledExactlyOnceWith('rename', 'agent')
   expect(changes).toHaveBeenCalledWith(
     expect.objectContaining({ key: 'open', value: true, source: 'agent' }),
   )
