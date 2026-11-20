@@ -2,6 +2,7 @@ import { render } from '@solidjs/web'
 import { createComponent, createStore } from 'solid-js'
 import type { Component } from 'solid-js'
 import { useContext, useEffect, useEffectEvent, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
 import { ExtensionNameContext } from './hooks.ts'
 import { markIsland } from './island-mark.ts'
@@ -67,5 +68,5 @@ export function island<P extends object = Record<string, never>>(
     return <Host ref={host as never} className="contents" />
   }
   markIsland(Island, component)
-  return Island
+  return Island as (props: Omit<P, 'core'> & { core?: unknown }) => ReactNode
 }
