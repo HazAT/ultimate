@@ -53,12 +53,9 @@ await page.addInitScript(() => {
   const inTranscript = (records: MutationRecord[]) => {
     const removed = new Set<Node>()
     const counts = (record: MutationRecord) => {
-      let node: Node = record.target
-      while (node.parentNode) {
-        if (node instanceof Element && node.matches(transcript)) return true
-        node = node.parentNode
-      }
-      return removed.has(node)
+      for (let node: Node | null = record.target; node; node = node.parentNode)
+        if ((node instanceof Element && node.matches(transcript)) || removed.has(node)) return true
+      return false
     }
     let count = 0
     for (const record of records.toReversed())
