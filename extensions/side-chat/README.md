@@ -48,7 +48,7 @@ All three actions are user-only (`userActions`); agents cannot call them. Inputs
   - `SideChatDoc` gains `question` and `tokens`: the asker's context at the fork, shown in the sheet header as the cost of the first turn.
   - `SideChatsDoc` sits on the asker.
   - `QuestionSidesDoc` (`sidechat.questions`, on conversation 1) lists every question side chat, so a card or the Inbox finds its own with one subscription.
-- **Lineage:** lineage skips its catch-up note for any side chat, so a branch's copy is not flooded with the tally. Side chats stay out of the sidebar's lists through `Unlisted`.
+- **Lineage:** lineage skips its catch-up note for any side chat, so a quick question is not preceded by the commits that landed since. Side chats stay out of the sidebar's lists through `Unlisted`.
 
 ## Safety and attribution
 
