@@ -1,5 +1,5 @@
-// Measure what each server event costs a page: main-thread time until the next task, DOM mutations in the transcript
-// (any framework), React components rendered, and the components whose own update started those renders. Watches an open conversation, or sends one prompt and waits.
+// Measure what each server event costs a page: time until the next task, DOM mutations in the transcript in that
+// window (any framework), React components rendered, and the components whose own update started those renders. Watches an open conversation, or sends one prompt and waits.
 // Usage: node renders.ts <url> <id> [--seconds 45] [--send "prompt"] [--profile out.cpuprofile]
 // With --send the page needs `window.ultimate` (web/src/sdk/test-hook.ts); it measures until that turn is idle.
 import { writeFileSync } from 'node:fs'
@@ -44,26 +44,38 @@ await page.addInitScript(() => {
   const events: Measured[] = []
   let current: Measured | undefined
   let on = false
-  // Mutation records count toward the latest event, like commits: the observer delivers them in a microtask after the
-  // DOM changed, and each event's clock takes the rest before it stops.
-  // The transcript may mount after measuring starts, so the observer watches the app and counts what lands inside it.
-  const inTranscript = (records: MutationRecord[]) =>
-    records.filter((record) => {
-      const node = record.target instanceof Element ? record.target : record.target.parentElement
-      return node?.closest('[data-ui="transcript"]')
-    }).length
+  // DOM mutation records in the transcript count toward the event whose window is open: from its dispatch until its
+  // next task, the same window as its task time. Writes after that window (a later timer, an animation) count for no
+  // event. The transcript may mount or be replaced while measuring, so a second observer rebinds to the current one.
+  let mutating: Measured | undefined
+  let observed: Element | null = null
   const mutations = new MutationObserver((records) => {
-    if (current) current.mutations += inTranscript(records)
+    if (mutating) mutating.mutations += records.length
   })
-  w.renders = {
-    events,
-    start: () => {
-      mutations.observe(document.getElementById('app')!, {
+  const drain = () => {
+    const records = mutations.takeRecords().length
+    if (mutating) mutating.mutations += records
+  }
+  const bind = () => {
+    const transcript = document.querySelector('[data-ui="transcript"]')
+    if (transcript === observed) return
+    drain()
+    mutations.disconnect()
+    observed = transcript
+    if (transcript)
+      mutations.observe(transcript, {
         subtree: true,
         childList: true,
         attributes: true,
         characterData: true,
       })
+  }
+  const transcriptMounts = new MutationObserver(bind)
+  w.renders = {
+    events,
+    start: () => {
+      transcriptMounts.observe(document.getElementById('app')!, { subtree: true, childList: true })
+      bind()
       on = true
     },
   }
@@ -108,7 +120,8 @@ await page.addInitScript(() => {
       }
     },
   }
-  // React renders a store change in a microtask, so the time until the next task covers the handler, render and commit.
+  // React renders a store change in a microtask, so the time until the next task covers the handler, render and commit,
+  // plus any task already queued ahead of it: latency, not the event's own cost alone.
   const channel = new MessageChannel()
   const waiting: (() => void)[] = []
   channel.port1.addEventListener('message', () => waiting.shift()?.())
@@ -135,11 +148,16 @@ await page.addInitScript(() => {
             renders: 0,
             owners: {},
           }
-          if (current) current.mutations += inTranscript(mutations.takeRecords())
+          drain()
           current = measured
+          mutating = measured
           afterNextTask(() => {
             measured.task = performance.now() - started
-            measured.mutations += inTranscript(mutations.takeRecords())
+            bind()
+            if (mutating === measured) {
+              drain()
+              mutating = undefined
+            }
             if (on) events.push(measured)
           })
         })

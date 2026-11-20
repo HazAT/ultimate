@@ -404,12 +404,13 @@ import type { Accessor } from '@/sdk/solid'`
 })
 
 it('lets only the core hosts in web/src/app import the temporary reactIsland', () => {
-  const source = `import { reactIsland } from '@/sdk/react-island'`
+  const source = `import { reactIsland } from '@/sdk/react-island'
+const later = import(\`@/sdk/react-island\`)`
+  const moveIt =
+    'Move this part to Solid, or keep it React and contribute it where a core host renders React.'
   expect(lint('ui-framework-boundaries', 'web/src/app/transcript.solid.tsx', source)).toEqual([])
   for (const file of ['extensions/echo/web.tsx', 'extensions/echo/panel.solid.tsx'])
-    expect(lint('ui-framework-boundaries', file, source)).toEqual([
-      'Move this part to Solid, or keep it React and contribute it where a core host renders React.',
-    ])
+    expect(lint('ui-framework-boundaries', file, source)).toEqual([moveIt, moveIt])
 })
 
 it('gives Solid files the Solid SDK, and types alone from the React one', () => {

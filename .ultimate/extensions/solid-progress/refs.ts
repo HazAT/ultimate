@@ -27,8 +27,8 @@ export type Entry = {
 
 /**
  * What one `ops` event of the scripted 40-chunk stream costs the page, medians of 3 runs: React components rendered
- * (`median`, `p95`, `max`), main-thread task ms, and DOM mutation records in the transcript, which count Solid and React
- * alike. The task p95 and mutations exist from C0 on.
+ * (`median`, `p95`, `max`), ms until the next task (its handler, render and commit plus any queued work), and DOM
+ * mutation records in the transcript in that window, which count Solid and React alike. The task p95 and mutations exist from C0 on.
  */
 export type StreamCost = {
   median: number

@@ -1,4 +1,4 @@
-import { createEffect, onSettled, useContext } from 'solid-js'
+import { createEffect, onCleanup, useContext } from 'solid-js'
 import type { Component } from 'solid-js'
 import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -24,6 +24,7 @@ export function reactIsland<P extends object = Record<string, never>>(
     const host = document.createElement('div')
     host.className = 'contents'
     const root = createRoot(host)
+    onCleanup(() => root.unmount())
     createEffect(
       () => ({ ...props }),
       (current) =>
@@ -35,7 +36,6 @@ export function reactIsland<P extends object = Record<string, never>>(
           </ConversationIdContext>,
         ),
     )
-    onSettled(() => () => root.unmount())
     return host
   }
 }

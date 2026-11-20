@@ -5,7 +5,7 @@ import { coreTier } from '../shared/extension-api.ts'
 
 interface ImportNode {
   type?: string
-  source?: { value?: unknown }
+  source?: Node
   importKind?: string
   exportKind?: string
 }
@@ -262,15 +262,16 @@ const hasBody = (statement: Node) =>
 const sdkEntry = (filename: string) =>
   ['web/src/sdk/index.ts', solidSdk].includes(repositoryPath(filename))
 /**
- * Where JSDoc is a contract: the statements of a contract file, the exports of the Solid SDK and of the core's
- * temporary `reactIsland`, or the exports of the React SDK entry's public names.
+ * Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names, and the
+ * core's temporary `reactIsland`, which no SDK entry exports.
  */
 function contractStatements(filename: string, statements: Node[]) {
   if (contractFile(filename)) return statements
-  if ([solidSdk, reactIslandFile].includes(repositoryPath(filename)))
+  if (repositoryPath(filename) === solidSdk)
     return statements.filter((statement) => statement.type === 'ExportNamedDeclaration')
   if (!inSdk(filename)) return []
-  const names = publicSdk()
+  const names =
+    repositoryPath(filename) === reactIslandFile ? new Set(['reactIsland']) : publicSdk()
   return statements.filter(
     (statement) =>
       statement.type === 'ExportNamedDeclaration' &&
@@ -326,7 +327,7 @@ export default {
       create(context: Context) {
         const solid = solidFile(context.filename)
         const check = (node: ImportNode) => {
-          const source = node.source?.value
+          const source = staticString(node.source)
           if (typeof source !== 'string') return
           if (node.importKind === 'type' || node.exportKind === 'type') return
           const local = localModule(context.filename, source)
