@@ -25,7 +25,7 @@ import { OpenAction, SideChatsDoc, useSideChatFront } from '../side-chat/ui.tsx'
 import { StandingDoc } from '../subagents/ui.tsx'
 import { BusyBlocker, chapterLabel, Refusal, switchChapter, useBusyElsewhere } from './chapters.tsx'
 import type { Seed } from './types.ts'
-import { ChapterStarted } from './entries.ts'
+import { BranchCarried, ChapterStarted } from './entries.ts'
 import type { ChapterEntry } from './refs.ts'
 
 export const AWAKE_PROMPT = [
@@ -45,6 +45,25 @@ const nouns: Record<keyof Seed['counts'], [string, string]> = {
   questions: ['question', 'questions'],
   automations: ['automation', 'automations'],
   scripts: ['script', 'scripts'],
+  branches: ['session', 'sessions'],
+}
+
+export function CarriedCard({ entry }: { entry: EntryRecord }) {
+  if (!BranchCarried.is(entry)) return null
+  const { from, conversation, title } = entry.data
+  return (
+    <Card data-dream-carried-branch={conversation}>
+      <header className="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <SunriseIcon className="size-3.5 text-brand" />
+        <span>continues</span>
+        <span className="text-foreground">
+          {from.name}#{conversation}
+        </span>
+        <span className="min-w-0 truncate">{title}</span>
+        <span>from {chapterLabel(from.number, from.name)}</span>
+      </header>
+    </Card>
+  )
 }
 
 export function MorningCard({ entry }: { entry: EntryRecord }) {
@@ -85,7 +104,7 @@ export function MorningCard({ entry }: { entry: EntryRecord }) {
 
 function Carried({ counts }: { counts: Seed['counts'] }) {
   const parts = (Object.keys(nouns) as (keyof Seed['counts'])[])
-    .filter((kind) => counts[kind] > 0)
+    .filter((kind) => (counts[kind] ?? 0) > 0)
     .map((kind) => `${counts[kind]} ${nouns[kind][counts[kind] === 1 ? 0 : 1]}`)
   return (
     <p className="font-mono text-[11px] text-muted-foreground" data-dream-carried>

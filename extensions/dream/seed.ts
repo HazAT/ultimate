@@ -1,22 +1,44 @@
 import type { Tx } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { configure, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readJson, writeJson } from '../../lib/json-file.ts'
 import { openQuestion } from '../../lib/message-state.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
 import type { Todo } from '../todos/refs.ts'
-import { Roots } from '../lineage/api.ts'
-import { Messages } from '../messages/api.ts'
+import { Branch, LineageApi, Roots, Tally } from '../lineage/api.ts'
+import { Messages, MessagesApi } from '../messages/api.ts'
+import { ConversationsApi } from '../conversations/api.ts'
+import { WorkspacesApi } from '../workspaces/api.ts'
+import { AgentDoc } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import type { AutomationListItem } from '../automations/types.ts'
 import type { Automation } from '../automations/types.ts'
 import { BuiltInDoc, PauseDoc } from './built-ins.ts'
 import { deliver } from './delivery.ts'
-import type { Prepared } from './refs.ts'
+import { DreamDoc } from './refs.ts'
+import type { Dream, Prepared, Sleep } from './refs.ts'
 import type { Seed } from './types.ts'
 
-export const SeedState = defineDoc<{ applied?: number; automations: string[] }>({
+export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>({
+  kind: DreamDoc.kind,
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})
+
+export const SeedState = defineDoc<{
+  applied?: number
+  automations: string[]
+  branches?: Record<string, ConversationId>
+  scripts?: string[]
+  questions?: string[]
+}>({
   kind: 'dream.seed',
   checkpointWhen: () => false,
   version: 1,
@@ -62,11 +84,54 @@ async function exportedDocument<T>(
   return (await tx.doc(token, id)) as unknown as T
 }
 
+const STANDING_OR_RUN_LABELS = new Set(['watcher', 'automation', 'agent', 'lander'])
+
+async function carriedBranches(host: ExtensionHost, tx: Tx, ultimate: ConversationId) {
+  const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
+  const standing = new Set(Object.values(await tx.doc(Standing, ROOT_CONVERSATION_ID)))
+  const concluded = await host.need(ConversationsApi).concludedIn(tx)
+  const workspaces = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).items
+  const dream = (await tx.doc(Next, ROOT_CONVERSATION_ID)).dream?.branch
+  const abstracts: Record<string, { text: string }> = {}
+  for (const root of roots) Object.assign(abstracts, (await tx.doc(Tally, root)).abstracts)
+  const branches: Seed['branches'] = []
+  let cursor
+  do {
+    const page = await tx.scanConversations({}, 100, cursor)
+    for (const record of page.items) {
+      const id = record.id
+      if (record.owner || roots.includes(id) || standing.has(id) || id === ultimate) continue
+      if (concluded.has(id) || id === dream || !(await tx.doc(Branch, id)).branch) continue
+      const metadata = await tx.doc(host.metadata, id)
+      if (metadata.label && STANDING_OR_RUN_LABELS.has(metadata.label)) continue
+      const agent = await tx.doc(AgentDoc, id)
+      const workspace = workspaces[String(id)]
+      branches.push({
+        id,
+        title: metadata.title ?? `#${id}`,
+        ...(metadata.label ? { label: metadata.label } : {}),
+        ...(agent.instructions ? { instructions: agent.instructions } : {}),
+        ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.thinkingLevel ? { thinking: agent.thinkingLevel } : {}),
+        ...(workspace?.branch && workspace.state !== 'removed' ? { git: workspace.branch } : {}),
+        ...(abstracts[String(id)] ? { abstract: abstracts[String(id)].text } : {}),
+      })
+    }
+    cursor = page.next
+  } while (cursor)
+  return branches
+}
+
 const prototypeFreeMemoryIndex = () => Object.create(null) as Record<string, MemoryItem>
 const detachTransactionOverlays = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promise<Seed> {
   const signal = new AbortController().signal
-  const automations = (await host.invoke('automations', 'list', null, signal)) as Automation[]
+  const automations = (await host.invoke(
+    'automations',
+    'list',
+    null,
+    signal,
+  )) as AutomationListItem[]
   return host.harness().commit(async (tx) => {
     const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
     const memories = prototypeFreeMemoryIndex()
@@ -84,9 +149,12 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
     for (const message of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages) {
       if (!openQuestion(message)) continue
       const ref = `#${message.id}`
-      if (message.questions?.length)
-        for (const { text } of message.questions) questions.push({ text, ref })
-      else questions.push({ text: message.text, ref })
+      questions.push({
+        text: message.text,
+        ref,
+        ...(typeof message.from === 'number' ? { from: message.from } : {}),
+        ...(message.questions?.length ? { questions: message.questions } : {}),
+      })
     }
     for (const slug of about)
       if (!memories[slug]) throw new Error(`Chapter seed lost user memory ${slug}`)
@@ -136,13 +204,20 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
       if (names.has(name)) throw new Error(`Chapter seed needs unique automation names: ${name}`)
       names.add(name)
     }
+    const branches = await carriedBranches(host, tx, ultimate)
     const watchers = automations
       .filter((item) => item.enabled && item.script)
-      .map(({ id, scope, name, script, prompt, agent, model, thinking }) => ({
+      .map(({ id, scope, name, script, prompt, agent, model, thinking, subscribers, folder }) => ({
         id,
         ...(scope ? { scope } : {}),
         name,
         ask: script!.ask,
+        once: script!.once,
+        ...(script!.secrets?.length ? { secrets: script!.secrets } : {}),
+        ...(subscribers?.some((s) => typeof s === 'number')
+          ? { subscribers: subscribers.filter((s): s is ConversationId => typeof s === 'number') }
+          : {}),
+        ...(folder ? { folder } : {}),
         ...(prompt ? { prompt } : {}),
         ...(agent ? { agent } : {}),
         ...(model ? { model } : {}),
@@ -156,12 +231,14 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
       questions,
       automations: triggers,
       scripts: watchers,
+      branches,
       counts: {
         memories: Object.keys(memories).length,
         todos: todos.length,
         questions: questions.length,
         automations: triggers.length,
         scripts: watchers.length,
+        branches: branches.length,
       },
       builtIn: builtInOf(builtIn),
       builtInPause: builtInOf(builtInPause),
@@ -214,12 +291,8 @@ export async function applySeed(host: ExtensionHost) {
       const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
       const carried: Seed['todos'] = [
         ...seed.todos,
-        ...seed.questions.map(({ ref, text }) => ({
-          owner: 'user' as const,
-          text: `Open question (${seed.from.name}${ref}): ${text}`,
-        })),
         ...seed.scripts
-          .filter((item) => item.scope !== 'project')
+          .filter((item) => item.scope !== 'project' && !item.folder)
           .map(({ id, name, ask, prompt, agent }) => ({
             owner: 'ultimate' as const,
             text: `Recreate script ${id} (${name}): ${ask}${prompt ? ` · prompt: ${prompt}${agent ? ` (agent ${agent})` : ''}` : ''}`,
@@ -266,6 +339,143 @@ export async function applySeed(host: ExtensionHost) {
       if (!saved.automations.includes(automation.name)) saved.automations.push(automation.name)
     }, context)
   }
+  const branches = await carryBranches(host, seed)
+  const conversationOf = (id: ConversationId) => branches[String(id)]
+  for (const script of seed.scripts) {
+    if (script.scope === 'project' || !script.folder) continue
+    if (
+      (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.scripts?.includes(
+        script.id,
+      )
+    )
+      continue
+    const subscribers = (script.subscribers ?? []).flatMap((id) => conversationOf(id) ?? [])
+    const runsSomething = !!script.prompt || subscribers.length > 0
+    if (runsSomething)
+      await host
+        .invoke(
+          'automations',
+          'create',
+          {
+            name: script.name,
+            ask: script.ask,
+            once: script.once ?? true,
+            ...(script.secrets ? { secrets: script.secrets } : {}),
+            ...(script.prompt ? { prompt: script.prompt } : {}),
+            ...(script.agent ? { agent: script.agent } : {}),
+            ...(script.model ? { model: script.model } : {}),
+            ...(script.thinking ? { thinking: script.thinking } : {}),
+            ...(subscribers.length ? { subscribers } : {}),
+            adopt: script.folder,
+            key: `seed:${host.chapter.name}:script:${script.id}`,
+          },
+          signal,
+          await host.need(SubagentsApi).standing('ultimate', context),
+        )
+        .catch((error: unknown) =>
+          host.notice(`Chapter seed: script ${script.id} (${script.name}): ${String(error)}`),
+        )
+    await harness.commit(async (tx) => {
+      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+      saved.scripts = [...new Set([...(saved.scripts ?? []), script.id])]
+    }, context)
+  }
+  for (const question of seed.questions) {
+    if (
+      (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.questions?.includes(
+        question.ref,
+      )
+    )
+      continue
+    const asker =
+      (question.from !== undefined ? conversationOf(question.from) : undefined) ??
+      (await host.need(SubagentsApi).standing('ultimate', context))
+    await host.need(MessagesApi).send(
+      asker,
+      {
+        to: 'user',
+        reply: true,
+        text: `Asked before the new chapter (${seed.from.name}${question.ref}), still open:\n\n${question.text}`,
+        ...(question.questions ? { questions: question.questions } : {}),
+      },
+      `seed:${host.chapter.name}:question:${question.ref}`,
+      context,
+    )
+    await harness.commit(async (tx) => {
+      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+      saved.questions = [...new Set([...(saved.questions ?? []), question.ref])]
+    }, context)
+  }
   harness.resume()
   return seed
+}
+
+function carriedPrompt(seed: Seed, branch: Seed['branches'][number]) {
+  const { from } = seed
+  return [
+    `You continue ${from.name}#${branch.id} « ${branch.title} » from Chapter ${from.number} · ${from.name}, which the project left for a new chapter. That conversation stays on disk: read it with codemode \`ultimate.entries(${branch.id}, { chapter: '${from.name}' })\` and \`ultimate.search(text, { chapter: '${from.name}' })\` before acting.`,
+    ...(branch.abstract ? ['', 'Its last abstract:', branch.abstract] : []),
+    ...(branch.git
+      ? [
+          '',
+          `Its work was on git branch \`${branch.git}\`: switch your workspace to it (\`git switch ${branch.git}\`, or merge it) before you change anything.`,
+        ]
+      : []),
+    '',
+    'Automations that woke it now wake you, and its open questions to the user are asked again from here. Pick up where it left off; if nothing is left to do, say so in one line and stop.',
+  ].join('\n')
+}
+
+async function carryBranches(host: ExtensionHost, seed: Seed) {
+  const harness = host.harness()
+  const lineage = host.need(LineageApi)
+  for (const branch of seed.branches ?? []) {
+    const receipt = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
+    if (receipt?.branches?.[String(branch.id)] !== undefined) continue
+    const prompt = carriedPrompt(seed, branch)
+    const forkCommittedBeforeItsReceipt = await harness.commit(async (tx) => {
+      let cursor
+      do {
+        const page = await tx.scanConversations({}, 100, cursor)
+        for (const record of page.items)
+          if ((await tx.doc(Branch, record.id)).branch?.intent === prompt) return record.id
+        cursor = page.next
+      } while (cursor)
+      return undefined
+    }, context)
+    const root =
+      (await harness.snapshot(Roots, ROOT_CONVERSATION_ID, context))?.roots[0] ??
+      ROOT_CONVERSATION_ID
+    const { id } =
+      forkCommittedBeforeItsReceipt !== undefined
+        ? { id: forkCommittedBeforeItsReceipt }
+        : await lineage.branch(
+            {
+              from: root,
+              prompt,
+              title: branch.title.slice(0, 60),
+              isolated: branch.git !== undefined,
+              ...(branch.model ? { model: branch.model } : {}),
+              ...(branch.thinking ? { thinkingLevel: branch.thinking } : {}),
+              deliver: false,
+            },
+            context,
+          )
+    await harness.commit(async (tx) => {
+      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+      saved.branches ??= {}
+      if (saved.branches[String(branch.id)] !== undefined) return
+      saved.branches[String(branch.id)] = id
+      if (branch.instructions) await configure(tx, id, { instructions: branch.instructions })
+      if (branch.label) (await tx.doc(host.metadata, id)).label = branch.label
+      await deliver(host, tx, id, {
+        type: 'input',
+        requestId: `dream.carried:${host.chapter.name}:${branch.id}`,
+        kind: 'dream.carried',
+        data: { from: seed.from, conversation: branch.id, title: branch.title },
+        content: prompt,
+      })
+    }, context)
+  }
+  return (await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.branches ?? {}
 }

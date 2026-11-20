@@ -1,8 +1,9 @@
 import type { Tx, ConversationId } from '@earendil-works/pi-durable'
-import { join } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
-import { configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { AgentDoc, configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
 import { requestChapter } from '../../../lib/chapters.ts'
 import { writeJson } from '../../../lib/json-file.ts'
@@ -13,7 +14,14 @@ import type { ActionContext } from '../../../server/actions.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
+import type { MessagesService } from '../../messages/api.ts'
+import { Branch } from '../../lineage/api.ts'
+import type { BranchInput } from '../../lineage/server.ts'
+import { concludedIn } from '../../conversations/server.ts'
+import { Workspaces } from '../../workspaces/workspaces.ts'
+import { UiState } from '../../../shared/ui-state.ts'
 import { Todos } from '../../todos/server.ts'
+import { createChild } from '../../subagents/children.ts'
 import { Standing, SubagentsApi } from '../../subagents/api.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
 import type { Automation } from '../../automations/types.ts'
@@ -39,24 +47,47 @@ async function fixture() {
   })
   let opened: OpenHost
   let opener: () => Promise<void>
-  let scripts: (Seed['scripts'][number] & { enabled: boolean })[] = []
+  let scripts: (Omit<Seed['scripts'][number], 'subscribers'> & {
+    enabled: boolean
+    subscribers?: (ConversationId | string)[]
+  })[] = []
   /** A faked `CloudApi`: never the real Worker. */
   let cloud: CloudService | undefined
   const tokens = [...lineageDocs, Messages, Todos, Next]
   const resources = new Map<string, unknown>()
-  const invoke = vi.fn<ExtensionHost['invoke']>(async (extension, action, args) => {
-    if (extension !== 'automations' || !['list', 'create', 'describe'].includes(action))
-      throw new Error(`Unexpected action ${extension}/${action}`)
-    const result = await automationActions[action as 'list' | 'create' | 'describe'](args, {
-      host,
-    } as ActionContext)
-    return action === 'list'
-      ? [
-          ...(result as Automation[]),
-          ...scripts.map(({ ask, ...item }) => ({ ...item, script: { ask } })),
-        ]
-      : result
-  })
+  const invoke = vi.fn<ExtensionHost['invoke']>(
+    async (extension, action, args, _signal, conversationId) => {
+      if (extension !== 'automations' || !['list', 'create', 'describe'].includes(action))
+        throw new Error(`Unexpected action ${extension}/${action}`)
+      const result = await automationActions[action as 'list' | 'create' | 'describe'](args, {
+        host,
+        conversationId,
+      } as ActionContext)
+      return action === 'list'
+        ? [
+            ...(result as Automation[]),
+            ...scripts.map(({ ask, once, ...item }) => ({
+              subscribers: [],
+              ...item,
+              script: { ask, once: once ?? true },
+            })),
+          ]
+        : result
+    },
+  )
+  const sent = vi.fn<MessagesService['send']>(async () => 1)
+  const branch = async (input: BranchInput) =>
+    opened.harness.commit(async (tx) => {
+      const fork = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, fork.id, {})
+      ;(await tx.doc(Branch, fork.id)).branch = {
+        from: input.from,
+        at: 0 as never,
+        intent: input.prompt,
+      }
+      ;(await tx.doc(Metadata, fork.id)).title = input.title
+      return { id: fork.id }
+    }, context)
   const host = {
     ...prepared,
     get chapter() {
@@ -83,18 +114,26 @@ async function fixture() {
     react: () => {},
     notice: () => {},
     want: (api: { name: string }) => (api.name === CloudApi.name ? cloud : undefined),
-    need: () => ({
-      standing: async () =>
-        opened.harness.commit(async (tx) => {
-          const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
-          if (!standing.ultimate) {
-            const created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
-            await configure(tx, created.id, {})
-            standing.ultimate = created.id
-          }
-          return standing.ultimate
-        }, context),
-    }),
+    need: (api: { name: string }) =>
+      ({
+        conversations: { concludedIn },
+        workspaces: { doc: Workspaces },
+        lineage: { branch: (input: BranchInput) => branch(input) },
+        messages: { send: sent, owed: async () => ({}) },
+      })[api.name] ?? {
+        createChild: (tx: Tx, options: Parameters<typeof createChild>[2]) =>
+          createChild(host, tx, options),
+        standing: async () =>
+          opened.harness.commit(async (tx) => {
+            const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
+            if (!standing.ultimate) {
+              const created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+              await configure(tx, created.id, {})
+              standing.ultimate = created.id
+            }
+            return standing.ultimate
+          }, context),
+      },
     invoke,
   } as unknown as ExtensionHost
   prepared.registry.install(automations(host))
@@ -120,7 +159,12 @@ async function fixture() {
     get harness() {
       return opened.harness
     },
-    scripts: (items: (Seed['scripts'][number] & { enabled: boolean })[]) => {
+    sent,
+    todos: async () =>
+      JSON.stringify((await opened.harness.snapshot(Todos, ROOT_CONVERSATION_ID, context))?.items),
+    folder: (id: string) =>
+      join(home, '.ultimate/automations', `${basename(home)}@${prepared.chapter.name}`, id),
+    scripts: (items: typeof scripts) => {
       scripts = items
     },
     cloud: (service: CloudService | undefined) => {
@@ -212,6 +256,7 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
     questions: 2,
     automations: 1,
     scripts: 2,
+    branches: 0,
   })
   expect(seed.memories.constructor).toMatchObject({ line: 'Builds' })
   expect(seed.continues).toEqual({
@@ -219,8 +264,13 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
     handoff: PREPARED.handoff,
   })
   expect(seed.questions).toEqual([
-    { text: 'Choose 100?', ref: '#100' },
-    { text: 'Question 103', ref: '#103' },
+    {
+      text: 'Question 100',
+      ref: '#100',
+      from: 1,
+      questions: [{ text: 'Choose 100?', kind: 'confirm' }],
+    },
+    { text: 'Question 103', ref: '#103', from: 1 },
   ])
   expect(seed.todos).toEqual([{ text: 'Keep this', owner: 'ultimate' }])
   expect(seed.automations).toEqual([
@@ -245,14 +295,35 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
   expect((after.memory.memories as typeof seed.memories)['about-daniel'].source).toBe('#123/456')
   expect(after.todos.items.map(({ text, owner }) => ({ text, owner }))).toEqual([
     { text: 'Keep this', owner: 'ultimate' },
-    { text: 'Open question (the-beginning#100): Choose 100?', owner: 'user' },
-    { text: 'Open question (the-beginning#103): Question 103', owner: 'user' },
     {
       text: 'Recreate script A1 (Watch it): Watch the build · prompt: Summarise',
       owner: 'ultimate',
     },
   ])
-  expect(after.todos.next).toBe(5)
+  expect(after.todos.next).toBe(3)
+  // Questions come back as cards: #1 was not carried, so this chapter's @ultimate asks them.
+  const ultimateHere = (await f.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate
+  expect(f.sent.mock.calls.map(([from, input, requestId]) => [from, input, requestId])).toEqual([
+    [
+      ultimateHere,
+      {
+        to: 'user',
+        reply: true,
+        text: 'Asked before the new chapter (the-beginning#100), still open:\n\nQuestion 100',
+        questions: [{ text: 'Choose 100?', kind: 'confirm' }],
+      },
+      'seed:fresh-roots:question:#100',
+    ],
+    [
+      ultimateHere,
+      {
+        to: 'user',
+        reply: true,
+        text: 'Asked before the new chapter (the-beginning#103), still open:\n\nQuestion 103',
+      },
+      'seed:fresh-roots:question:#103',
+    ],
+  ])
   expect(after.seed.applied).toBeGreaterThan(0)
   expect(after.seed.automations).toEqual(['Daily'])
   const chapterEntries = async () => {
@@ -279,7 +350,7 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
   expect(JSON.stringify(entry.model)).toContain(PREPARED.handoff)
   expect(JSON.stringify(entry.model)).toContain('continue that work')
   expect(JSON.stringify(entry.model)).toContain(
-    '3 memories, 1 todos, 2 questions, 1 automations, 2 scripts',
+    '3 memories, 1 todos, 2 questions, 1 automations, 2 scripts, 0 branches',
   )
   // Simulate the crash window: creation committed but dream did not record its automation receipt.
   await f.harness.commit(async (tx) => {
@@ -553,4 +624,129 @@ it('merges root memories by updated, maps automation options, and rejects duplic
     records.A2 = { ...records.A1, id: 'A2' }
   }, context)
   await expect(buildSeed(f.host, PREPARED)).rejects.toThrow('unique automation names: Review')
+})
+
+it('recreates each open card session with a pointer back, its watcher resumed from its files, and its questions as cards', async () => {
+  const f = await fixture()
+  await mkdir(join(f.home, 'agents'), { recursive: true })
+  await writeFile(
+    join(f.home, 'agents/watcher.md'),
+    '---\nname: watcher\ndescription: Watches\ntools: []\n---\nShort.\n',
+  )
+  await f.source()
+  const ids = await f.harness.commit(async (tx) => {
+    const make = async (title: string, label?: string) => {
+      const created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, created.id, { instructions: 'Coordinate one card.' })
+      ;(await tx.doc(Branch, created.id)).branch = {
+        from: 1 as ConversationId,
+        at: 1 as never,
+        intent: title,
+      }
+      Object.assign(await tx.doc(Metadata, created.id), { title, ...(label ? { label } : {}) })
+      return created.id
+    }
+    const card = await make('Card 2311: substitute texts', 'coordinator')
+    const done = await make('Concluded card', 'coordinator')
+    const watcher = await make('A37 · PR #2342', 'watcher')
+    ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(card)] = {
+      path: '/tmp/wt',
+      branch: 'card-2311',
+      base: 'abc',
+      source: '/tmp/project',
+      target: 'master',
+      state: 'ready',
+    }
+    ;(await tx.doc(f.host.doc('lineage.tally')!, ROOT_CONVERSATION_ID)).abstracts = {
+      [String(card)]: { anchor: 1, at: 1, text: '- Now: waiting on CI for PR #2342' },
+    }
+    const ui = await tx.doc(UiState, ROOT_CONVERSATION_ID)
+    ui['ext.conversations.concluded'] = [done]
+    const board = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    board.messages.push({
+      id: 104,
+      from: card,
+      to: 'user',
+      text: 'Merge it?',
+      at: 1,
+      reply: true,
+      state: 'delivered',
+      questions: [{ text: 'Merge PR #2342?', kind: 'confirm' }],
+    })
+    return { card, done, watcher }
+  }, context)
+  const folder = join(f.home, 'old-chapter', 'A37')
+  await mkdir(join(folder, 'state'), { recursive: true })
+  await writeFile(join(folder, 'run'), '#!/bin/sh\nsleep 3600\n', { mode: 0o644 })
+  await writeFile(join(folder, 'state', 'pr-watch.json'), '{"sha":"abc"}')
+  f.scripts([
+    {
+      id: 'A37',
+      name: 'PR #2342',
+      ask: 'Watch PR 2342',
+      once: false,
+      enabled: true,
+      subscribers: [ids.card],
+      folder,
+    },
+  ])
+  const seed = await buildSeed(f.host, PREPARED)
+  expect(seed.branches).toEqual([
+    {
+      id: ids.card,
+      title: 'Card 2311: substitute texts',
+      label: 'coordinator',
+      instructions: 'Coordinate one card.',
+      git: 'card-2311',
+      abstract: '- Now: waiting on CI for PR #2342',
+    },
+  ])
+  await writeSeed(join(f.home, 'chapters', 'fresh-roots'), seed)
+  await f.close()
+  await requestChapter(f.home, 'fresh-roots')
+  f.scripts([])
+  await f.open()
+  const carried = (await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))!.branches!
+  const next = carried[String(ids.card)]
+  expect(Object.keys(carried)).toEqual([String(ids.card)])
+  expect((await f.harness.snapshot(Metadata, next, context))?.label).toBe('coordinator')
+  expect((await f.harness.snapshot(AgentDoc, next, context))?.instructions).toBe(
+    'Coordinate one card.',
+  )
+  const first = async () =>
+    f.harness.commit(
+      async (tx) =>
+        (await tx.scanEntries({ conversationId: next }, 50)).items.find(
+          (entry) => entry.kind === 'dream.carried',
+        ),
+      context,
+    )
+  await until(async () => (await first()) !== undefined)
+  const text = JSON.stringify((await first())!.model)
+  expect(text).toContain(`the-beginning#${ids.card}`)
+  expect(text).toContain('waiting on CI for PR #2342')
+  expect(text).toContain('git switch card-2311')
+  const [watch] = Object.values((await f.harness.snapshot(Automations, context))!.automations)
+  expect(watch).toMatchObject({
+    name: 'PR #2342',
+    subscribers: [next],
+    script: { ask: 'Watch PR 2342', once: false },
+  })
+  expect(await f.todos()).not.toContain('Recreate script A37')
+  expect(await readFile(join(f.folder(watch.id), 'run'), 'utf8')).toBe('#!/bin/sh\nsleep 3600\n')
+  expect(await readFile(join(f.folder(watch.id), 'state', 'pr-watch.json'), 'utf8')).toBe(
+    '{"sha":"abc"}',
+  )
+  expect(
+    f.sent.mock.calls.find(
+      ([, , requestId]) => requestId === 'seed:fresh-roots:question:#104',
+    )?.[0],
+  ).toBe(next)
+  // Reopening carries nothing twice.
+  await f.close()
+  await f.open()
+  expect((await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))!.branches).toEqual(
+    carried,
+  )
+  expect(Object.keys((await f.harness.snapshot(Automations, context))!.automations)).toHaveLength(1)
 })

@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { rebuiltOnOpen, meansNone, settled } from '../../lib/errors.ts'
 import {
@@ -23,28 +23,19 @@ import {
   AsleepAction,
   ChaptersAction,
   DismissAction,
-  DreamDoc,
   PrepareAction,
   ReadyAction,
   StartAction,
   StatsAction,
   SwitchAction,
 } from './refs.ts'
-import type { Dream, Prepared, Sleep, ToolStats } from './refs.ts'
+import type { Prepared, Sleep, ToolStats } from './refs.ts'
 import { busyElsewhere } from './types.ts'
 import { deliver, deliverTask } from './delivery.ts'
-import { applySeed, buildSeed, SeedState, writeSeed } from './seed.ts'
+import { applySeed, buildSeed, Next, SeedState, writeSeed } from './seed.ts'
 import { BuiltInDoc, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
 
-export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>({
-  kind: DreamDoc.kind,
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({}),
-})
+export { Next }
 export const docs = [Next, SeedState, BuiltInDoc, PauseDoc]
 export const userActions = ['start', 'ready', 'dismiss', 'asleep', 'switch']
 

@@ -4,13 +4,24 @@ import type { MemoryItem } from '../lineage/refs.ts'
 import type { Todo } from '../todos/refs.ts'
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { CreateArgs, Schedule } from '../automations/refs.ts'
+import type { Question } from '../messages/api.ts'
 
 export type Seed = {
   from: { name: string; number: number }
   learned: string[]
   memories: Record<string, MemoryItem>
   todos: Pick<Todo, 'text' | 'owner'>[]
-  questions: { text: string; ref: string }[]
+  questions: { text: string; ref: string; from?: ConversationId; questions?: Question[] }[]
+  branches: {
+    id: ConversationId
+    title: string
+    label?: string
+    instructions?: string
+    model?: { provider: string; modelId: string }
+    thinking?: ModelThinkingLevel
+    git?: string
+    abstract?: string
+  }[]
   automations: {
     name: string
     prompt?: string
@@ -27,6 +38,10 @@ export type Seed = {
     scope?: 'project'
     name: string
     ask: string
+    once?: boolean
+    secrets?: string[]
+    subscribers?: ConversationId[]
+    folder?: string
     prompt?: string
     agent?: string
     model?: { provider: string; modelId: string }
@@ -38,6 +53,7 @@ export type Seed = {
     questions: number
     automations: number
     scripts: number
+    branches?: number
   }
   builtIn?: BuiltInSeed | null
   builtInPause?: BuiltInSeed | null
