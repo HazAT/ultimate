@@ -23,7 +23,6 @@ const icons = {
 export function Toasts() {
   const notices = useNotices()
   const toast = createToaster()
-  const shown: string[] = []
   let seen = 0
   createEffect(notices, (all) => {
     for (const notice of all) {
@@ -31,15 +30,9 @@ export function Toasts() {
       seen = notice.id
       const duration = lifetimeMs[notice.level] - (Date.now() - notice.at)
       if (duration <= 0) continue
-      const id = toast({
-        title: notice.message,
-        type: notice.level,
-        duration,
-        data: notice,
-        onDismiss: () => shown.splice(shown.indexOf(id), 1),
-      })
-      shown.push(id)
-      if (shown.length > shownAtOnce) toast.dismiss(shown[0])
+      const full = toast.toasts()[shownAtOnce - 1]
+      if (full) toast.dismiss(full.id)
+      toast({ title: notice.message, type: notice.level, duration, data: notice })
     }
   })
   onSettled(() => () => toast.dismiss())

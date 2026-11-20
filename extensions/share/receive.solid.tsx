@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { onSettled } from 'solid-js'
+import { createEffect, onSettled } from 'solid-js'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   ROOT,
@@ -53,10 +53,11 @@ async function dropOnceConversationComposerShows(id: number, files: File[]) {
   document.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
 }
 
-async function receive(id: string, ultimate: () => ConversationId | undefined) {
+async function receive(id: string, standing: Promise<ConversationId | undefined>) {
   const { share, files } = await take(id)
   const conversation =
-    ultimate() ?? (await writingAs('app', () => api.action(StandingAction, { name: 'ultimate' })))
+    (await standing) ??
+    (await writingAs('app', () => api.action(StandingAction, { name: 'ultimate' })))
   showSurface('agent')
   switchConversation(conversation)
   const text = distinctSharedText(share)
@@ -66,6 +67,11 @@ async function receive(id: string, ultimate: () => ConversationId | undefined) {
 
 export function ShareTarget() {
   const standing = useDocOf(() => ROOT, StandingDoc)
+  let arrived: (ultimate: ConversationId | undefined) => void = () => {}
+  const ultimate = new Promise<ConversationId | undefined>((resolve) => (arrived = resolve))
+  createEffect(standing, (doc) => {
+    if (doc !== undefined) arrived(doc?.ultimate)
+  })
   onSettled(() => {
     navigator.serviceWorker
       ?.register('/sw.js')
@@ -75,9 +81,7 @@ export function ShareTarget() {
     if (!id) return
     url.searchParams.delete('share')
     history.replaceState(history.state, '', url)
-    receive(id, () => standing()?.ultimate).catch((error: unknown) =>
-      console.warn('Shared content', error),
-    )
+    receive(id, ultimate).catch((error: unknown) => console.warn('Shared content', error))
   })
   return null
 }
