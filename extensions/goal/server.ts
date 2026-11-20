@@ -55,6 +55,8 @@ export async function start(tx: Tx, words: unknown, now: number, proposal?: unkn
   const goals = await tx.doc(Goals, ROOT_CONVERSATION_ID)
   const open = goals.goals.find((goal) => !goal.ended)
   if (open) throw new Error(`Goal ${open.id} is still open; end it first`)
+  const earlier = goals.goals.find((goal) => proposal !== undefined && goal.proposal === proposal)
+  if (earlier) throw new Error(`This proposal already started goal ${earlier.id}`)
   const goalText = text(words, 'The goal')
   const goal: Goal = {
     id: goals.next++,
@@ -312,7 +314,7 @@ export default function goalExtension(host: ExtensionHost) {
         deferred: true,
         replay: 'unsafe',
         description:
-          "propose {text} shows the user a card with a hands-off goal they start with one press, never starting it yourself. The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked', summary} ends the goal and leaves the report card; pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
+          "propose {text} shows the user a card with a hands-off goal they start with one press, never starting it yourself; call it directly, not from codemode, or no card shows. The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked', summary} ends the goal and leaves the report card; pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
         parameters: obj({
           action: strEnum([
             'propose',

@@ -121,6 +121,8 @@ it('proposes without starting, and a start from the card names its proposal', as
   await expect(act(tx, ULTIMATE, { action: 'propose', text: 'Ship it' }, 0)).resolves.toBeTruthy()
   expect(await openGoal(tx)).toBeUndefined()
   expect(await start(tx, 'Ship it', 0, 'call-1')).toMatchObject({ id: 1, proposal: 'call-1' })
+  await end(tx, { at: 1, by: 'user', outcome: 'ended' })
+  await expect(start(tx, 'Ship it', 2, 'call-1')).rejects.toThrow('already started goal 1')
 })
 
 it('blocks a criterion after repeated failed tries and finishes with the outcome', async () => {

@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/input.solid.tsx'
 import { Card } from '@/sdk/parts.solid.tsx'
 import { ROOT, api, errorMessage, formatTime, useDocOf } from '@/sdk/solid'
 import type { ToolCallView } from '@/sdk'
-import { openUltimate } from './chip.solid.tsx'
+import { openUltimate, useOpenGoal } from './chip.solid.tsx'
 import { GoalDoc, StartAction } from './refs.ts'
 
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
@@ -15,7 +15,7 @@ const words = (value: unknown) => (typeof value === 'string' ? value.trim() : ''
 export function ProposedGoal(props: { call: ToolCallView }) {
   const doc = useDocOf(() => ROOT, GoalDoc)
   const started = () => doc()?.goals.find((goal) => goal.proposal === props.call.id)
-  const open = () => doc()?.goals.find((goal) => !goal.ended)
+  const open = useOpenGoal()
   const proposed = () => words(props.call.args.text)
   return (
     <Card data-goal-proposal={props.call.id}>
@@ -31,7 +31,7 @@ export function ProposedGoal(props: { call: ToolCallView }) {
         </Show>
       </header>
       <Show
-        when={!started() && props.call.status === 'done'}
+        when={doc() && !started() && props.call.status === 'done'}
         fallback={
           <p class="px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground">
             {started()?.text ?? proposed()}
