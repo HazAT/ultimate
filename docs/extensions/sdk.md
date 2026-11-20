@@ -48,7 +48,7 @@ for everything above are exported too (`EntryRecord`, `AssistantMessage`, `Syste
 
 Keep UI state that should survive a reload in `useExtensionUiState`; keep throwaway state (hover, an open menu) in
 `useState`. The shell keeps its own layout there too (`shell.conversation`, `shell.surface`, `shell.shownSurface`,
-`shell.panel`, `shell.panelOpen`, `shell.sidebarOpen`, `shell.dock.<surface>.<side>`).
+`shell.panel`, `shell.panelOpen`, `shell.panelWidth`, `shell.sidebarOpen`, `shell.sidebarWidth`, `shell.dock.<surface>.<side>`).
 
 ## Solid facets
 
