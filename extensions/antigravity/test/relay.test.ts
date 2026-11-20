@@ -110,7 +110,7 @@ it('discovers models through agy and runs a Pi turn with Piâ€™s request and agyâ
   const agentAnswers: string[] = []
   const aborted: AbortSignal[] = []
   const relay = await startRelay(fakeAgy(agentAnswers, aborted), upstream.url)
-  closers.push(relay.close)
+  closers.push(() => relay.close())
 
   const found = await relay.discover(new AbortController().signal)
   expect(found).toEqual({
@@ -137,7 +137,7 @@ it('discovers models through agy and runs a Pi turn with Piâ€™s request and agyâ
     messages: [{ role: 'user', content: 'remember x', timestamp: 0 }],
     tools,
   } as never)
-  const message = await streamSimple(model(relay.url), context, { apiKey: 'unused' }).result()
+  const message = await streamSimple(model(relay.url), context, { apiKey: relay.key }).result()
 
   expect(message.stopReason).toBe('toolUse')
   expect(message.content).toMatchObject([
@@ -162,10 +162,61 @@ it('discovers models through agy and runs a Pi turn with Piâ€™s request and agyâ
 it('reports agy as signed out when it lists no models', async () => {
   const upstream = await codeAssist([])
   const relay = await startRelay(async () => ({ code: 1, stdout: 'Please sign in' }), upstream.url)
-  closers.push(relay.close)
+  closers.push(() => relay.close())
   expect(await relay.discover(new AbortController().signal)).toEqual({
     available: true,
     loggedIn: false,
     models: [],
   })
+})
+
+it('refuses a model call without the relay key and survives a malformed model path', async () => {
+  const upstream = await codeAssist([])
+  let started = 0
+  const relay = await startRelay(async () => {
+    started++
+    return { code: 0, stdout: '' }
+  }, upstream.url)
+  closers.push(() => relay.close())
+  const call = (path: string, key?: string) =>
+    fetch(`${relay.url}/models/${path}:streamGenerateContent?alt=sse`, {
+      method: 'POST',
+      headers: key ? { 'x-goog-api-key': key } : {},
+      body: '{}',
+    })
+  expect((await call('gemini-x')).status).toBe(401)
+  expect((await call('gemini-x', 'wrong')).status).toBe(401)
+  expect((await call('%E0%A4%A', relay.key)).status).toBe(502)
+  expect(started).toBe(0)
+  expect(upstream.seen).toHaveLength(0)
+})
+
+it('reports an upstream failure by status only, without its body', async () => {
+  const failing = createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      if (req.url!.includes(':streamGenerateContent')) {
+        res.writeHead(401, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: 'token ya29.secret is invalid' } }))
+      } else res.end('{}')
+    })
+  })
+  await new Promise<void>((resolve) => failing.listen(0, '127.0.0.1', resolve))
+  closers.push(() => new Promise((resolve) => failing.close(() => resolve())))
+  const aborted: AbortSignal[] = []
+  const relay = await startRelay(
+    fakeAgy([], aborted),
+    `http://127.0.0.1:${(failing.address() as AddressInfo).port}`,
+  )
+  closers.push(() => relay.close())
+  const answer = await fetch(`${relay.url}/models/gemini-x:streamGenerateContent?alt=sse`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': relay.key },
+    body: '{}',
+  })
+  expect(answer.status).toBe(401)
+  const text = await answer.text()
+  expect(text).toContain('sign in again')
+  expect(text).not.toContain('ya29')
+  expect(aborted).toHaveLength(1)
 })
