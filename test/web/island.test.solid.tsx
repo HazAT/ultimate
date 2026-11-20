@@ -2,7 +2,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h, act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { onSettled, useContext } from 'solid-js'
+import { flush, onSettled, useContext } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
 vi.mock('../../web/src/sdk/client.ts', async () => {
@@ -55,5 +55,27 @@ it('mounts a Solid component in React with its extension and conversation, and d
   act(() => react.unmount())
   expect(disposed).toHaveBeenLastCalledWith('echo@9')
   expect(container.innerHTML).toBe('')
+  container.remove()
+})
+
+it('hands React props to the Solid component and updates them without a remount', () => {
+  const mounted = vi.fn<() => void>()
+  const Count = island((props: { count: number }) => {
+    onSettled(mounted)
+    return <span>{props.count}</span>
+  })
+  const container = document.createElement('div')
+  document.body.append(container)
+  const react = createRoot(container)
+
+  act(() => react.render(h(Count, { count: 1 })))
+  expect(container.textContent).toBe('1')
+
+  act(() => react.render(h(Count, { count: 2 })))
+  flush()
+  expect(container.textContent).toBe('2')
+  expect(mounted).toHaveBeenCalledOnce()
+
+  act(() => react.unmount())
   container.remove()
 })
