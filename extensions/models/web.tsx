@@ -1,143 +1,27 @@
-import { BrainIcon, CheckIcon, ChevronDownIcon, CpuIcon } from 'lucide-react'
-import { useState } from 'react'
+import { BrainIcon, CpuIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Kbd } from '@/components/ui/kbd'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   api,
-  cn,
   defineWebExtension,
   errorMessage,
   getConversation,
   getState,
+  island,
   refreshModels,
-  useDialog,
   useTranscript,
   useUltimate,
 } from '@/sdk'
 import type { EntryRecord } from '@/sdk'
-import { LoginDialog } from './login.tsx'
-import { familyTitle } from '../../lib/families.ts'
-import { agentsPanel, FamilyDot, familyOf, useFamilies } from './families.tsx'
-import { ModelPicker } from './picker.tsx'
-import { nextThinking, openLogin, openPicker, thinkingDialog, useCurrentModel } from './state.tsx'
-import type { ThinkingLevel } from './state.tsx'
-import { switchAt } from './switches.ts'
 import { store } from '@/sdk/client'
+import { FallbackEntry } from './entries.ts'
+import { agentsPanel } from './family-state.ts'
+import { LoginDialog } from './login.solid.tsx'
+import { ModelPicker } from './picker.solid.tsx'
 import { RefreshCatalogAction } from './refs.ts'
 import type { Fallback } from './refs.ts'
-import { FallbackEntry } from './entries.ts'
-
-const toolbarButton =
-  'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground'
-
-function ModelButton() {
-  const { ref, thinking, family: recorded, loading } = useCurrentModel()
-  const family = familyOf(useFamilies(), ref, thinking, recorded)
-  const actions = useUltimate()
-  return (
-    <button
-      className={cn(toolbarButton, 'min-w-0 shrink')}
-      disabled={loading}
-      aria-label={loading ? 'Loading model' : undefined}
-      onClick={() => openPicker(actions)}
-      title={
-        loading
-          ? 'Loading model'
-          : ref
-            ? `${ref.modelId} · ${ref.provider} — pick a model`
-            : 'Pick a model'
-      }
-      type="button"
-    >
-      {family && !loading ? (
-        <FamilyDot color={family.color} className="mx-0.5" />
-      ) : (
-        <CpuIcon className="size-3.5 shrink-0" />
-      )}
-      <span
-        className={cn(
-          'truncate',
-          loading ? undefined : ref ? 'text-foreground/85' : 'text-warning',
-        )}
-      >
-        {loading
-          ? 'model…'
-          : family
-            ? `${familyTitle(family.name)} (${ref!.modelId})`
-            : (ref?.modelId ?? 'no model')}
-      </span>
-      <ChevronDownIcon className="size-3 shrink-0 opacity-60 @max-md:hidden" />
-    </button>
-  )
-}
-
-function ThinkingButton() {
-  const { id, model, thinking, loading } = useCurrentModel()
-  const [open, setOpen] = useDialog(thinkingDialog(id))
-  const [error, setError] = useState<string>()
-  if (loading)
-    return (
-      <button
-        className={toolbarButton}
-        disabled
-        aria-label="Loading thinking level"
-        title="Loading thinking level"
-        type="button"
-      >
-        <BrainIcon className="size-3.5 shrink-0" />
-        <span>thinking…</span>
-        <ChevronDownIcon className="size-3 shrink-0 opacity-60 @max-md:hidden" />
-      </button>
-    )
-  if (!model?.reasoning) return null
-  const levels = model.thinkingLevels
-  const current = thinking ?? 'off'
-  const choose = (level: ThinkingLevel) => {
-    setError(undefined)
-    api.configure({ thinkingLevel: level }, id).then(
-      () => setOpen(false),
-      (failure: unknown) => setError(errorMessage(failure)),
-    )
-  }
-  return (
-    <Popover onOpenChange={setOpen} open={open}>
-      <PopoverTrigger asChild>
-        <button className={toolbarButton} title="Thinking level (Shift+Tab cycles)" type="button">
-          <BrainIcon className={cn('size-3.5 shrink-0', current !== 'off' && 'text-brand')} />
-          <span className={current !== 'off' ? 'text-foreground/85' : undefined}>{current}</span>
-          <ChevronDownIcon className="size-3 shrink-0 opacity-60 @max-md:hidden" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-48 p-1 font-mono" side="top">
-        <div className="px-2 pt-1 pb-1.5 section-label">Thinking</div>
-        {levels.map((level) => (
-          <button
-            className={cn(
-              'flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-[12px] transition-colors hover:bg-accent',
-              level === current && 'text-brand',
-            )}
-            key={level}
-            onClick={() => choose(level)}
-            type="button"
-          >
-            <CheckIcon className={cn('size-3.5', level !== current && 'opacity-0')} />
-            {level}
-          </button>
-        ))}
-        <div className="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
-          {error ? (
-            <span className="text-error">{error}</span>
-          ) : (
-            <>
-              <Kbd>⇧ Tab</Kbd> cycles
-            </>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
-}
+import { nextThinking, openLogin, openPicker, thinkingDialog } from './state.ts'
+import { switchAt } from './switches.ts'
+import { ModelButton, ThinkingButton } from './toolbar.solid.tsx'
 
 function Switched({ entry, core }: { entry: EntryRecord; core: ReactNode }) {
   const change = switchAt(useTranscript(), entry)
@@ -227,7 +111,10 @@ function FellBack({ entry }: { entry: EntryRecord }) {
 
 export default defineWebExtension({
   entries: { 'pi.assistant': Switched, 'models.fallback': FellBack },
-  slots: { 'composer.toolbar': [ModelButton, ThinkingButton], overlay: [ModelPicker, LoginDialog] },
+  slots: {
+    'composer.toolbar': [island(ModelButton), island(ThinkingButton)],
+    overlay: [island(ModelPicker), island(LoginDialog)],
+  },
   commands: [
     {
       id: 'model.families',
