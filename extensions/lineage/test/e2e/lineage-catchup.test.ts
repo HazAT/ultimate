@@ -321,11 +321,20 @@ const land = (
   sha: string,
   divergence: string,
   paths: string[] = [],
+  base?: string,
 ) =>
   leaveNote({ harness: () => server.harness }, 'root', `Landed ${sha.slice(0, 7)}`, {
     from,
     source: 'lander',
-    data: { at: 7, divergence, sha, target: 'main', title: `Landing of #${from}`, paths },
+    data: {
+      at: 7,
+      divergence,
+      sha,
+      target: 'main',
+      title: `Landing of #${from}`,
+      paths,
+      ...(base ? { base } : {}),
+    },
   })
 const collapsedOnly = (...lines: string[]) =>
   [
@@ -490,6 +499,7 @@ it('tells a branch its tree’s root was distilled into a tally after it forked'
     ),
   )
   expect(text).not.toContain('<tally')
+  expect(text).not.toContain('Check whether')
 })
 
 it('catches a branch up from the tally position it inherited: an older fork point, a branch of a branch', async () => {
@@ -560,4 +570,35 @@ it('keeps in full only the siblings whose landings touch the branch’s files, a
   const noted = ((await catchups(f.server, own)).at(-1)!.data as { text: string }).text
   expect(noted).toContain(`**#${far}**`)
   expect(noted).toContain('- Note: Schema is frozen.')
+})
+
+it('finds an overlap past the eight paths a landing note lists, and lists every update in full when the files cannot be read', async () => {
+  const f = await catchupFixture()
+  const own = await branchFrom(f.server, { from: 1, prompt: 'Own feature', isolated: true })
+  const workspace = (await (await f.server.harness.conversation(own, context))!.agent(context)).cwd!
+  await writeFile(join(workspace, 'schema.ts'), 'own change\n')
+  const wide = await branchFrom(f.server, { from: 1, prompt: 'Wide feature' })
+  const base = repoGit(f.projectRoot, 'rev-parse', 'HEAD')
+  for (let i = 0; i < 9; i++) await writeFile(join(f.projectRoot, `a${i}.ts`), `${i}\n`)
+  await writeFile(join(f.projectRoot, 'schema.ts'), 'wide change\n')
+  repoGit(f.projectRoot, 'add', '.')
+  repoGit(f.projectRoot, 'commit', '-m', 'Wide landing')
+  const sha = repoGit(f.projectRoot, 'rev-parse', 'HEAD')
+  const listed = Array.from({ length: 8 }, (_, i) => `a${i}.ts`)
+  await writeAbstract(f.server, wide, 'Ask: wide\nState: landed', 'Wide')
+  await land(f.server, wide, sha, 'None', listed, base)
+  await ask(f.server, own, 'continue')
+  const text = ((await catchups(f.server, own)).at(-1)!.data as { text: string }).text
+  expect(text).toContain(`**#${wide} Wide** · Tally — state at landing`)
+  expect(text).toContain('Check whether')
+
+  // A workspace git cannot read: no catch-up is lost, every update is listed in full.
+  const broken = await branchFrom(f.server, { from: 1, prompt: 'Broken checkout', isolated: true })
+  const brokenCwd = (await (await f.server.harness.conversation(broken, context))!.agent(context))
+    .cwd!
+  await writeFile(join(brokenCwd, '.git'), 'gitdir: /nowhere\n')
+  const later = await branchFrom(f.server, { from: 1, prompt: 'Later feature' })
+  await ask(f.server, broken, 'continue broken')
+  const full = ((await catchups(f.server, broken)).at(-1)!.data as { text: string }).text
+  expect(full).toContain(`**#${later}** started: Later feature`)
 })
