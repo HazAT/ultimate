@@ -68,12 +68,15 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+const clock = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const clockWithSeconds = new Intl.DateTimeFormat([], {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+
 /** The app's one clock format, 24-hour: `21:45`, or `21:45:08` with seconds. */
 export function formatTime(at: number | string | Date, seconds = false): string {
-  return new Date(at).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    ...(seconds ? { second: '2-digit' } : {}),
-    hourCycle: 'h23',
-  })
+  return (seconds ? clockWithSeconds : clock).format(new Date(at))
 }
