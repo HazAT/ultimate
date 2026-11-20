@@ -110,6 +110,10 @@ it('tells a code block renderer only its own fence is unfinished', () => {
       ['open', 'open'],
     ])
     expect(probes(['```ts\n    ```'])).toEqual([['```', 'open']])
+    expect(probes(['> ```ts\n> one', '\noutside\n```ts\ntwo'])).toEqual([
+      ['one', 'done'],
+      ['two', 'open'],
+    ])
   } finally {
     installed.set([])
   }
@@ -142,6 +146,27 @@ it('aligns table cells without letting the alignment carry other CSS', () => {
   const cell = view.querySelector('td')!
   expect(cell.style.length).toBeLessThanOrEqual(1)
   expect(cell.style.backgroundImage).toBe('')
+})
+
+it('resolves a reference whose definition sits in a quote', () => {
+  const view = renderSolid(() => <Markdown text={'[x][r]\n\n> [r]: https://example.com/target'} />)
+  flush()
+  expect(view.querySelector('button.link')?.getAttribute('data-href')).toBe(
+    'https://example.com/target',
+  )
+})
+
+it('asks before opening an external link, which has no live destination', () => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null)
+  const view = renderSolid(() => <Markdown text="See [docs](https://example.com/docs)." />)
+  flush()
+  const link = view.querySelector<HTMLButtonElement>('button.link')!
+  expect(link.hasAttribute('href')).toBe(false)
+  link.click()
+  flush()
+  expect(open).not.toHaveBeenCalled()
+  expect(document.body.textContent).toContain('Open external link?')
+  open.mockRestore()
 })
 
 it('leaves a finished message as written', () => {

@@ -129,7 +129,7 @@ function ConfirmedLink(props: {
       }
     >
       <button
-        {...props.attributes}
+        {...omitHref(props.attributes)}
         class="link"
         data-href={props.href}
         onClick={() => setOpen(true)}
@@ -168,6 +168,9 @@ function ConfirmedLink(props: {
     </Show>
   )
 }
+
+const omitHref = (attributes: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(attributes).filter(([name]) => name !== 'href'))
 
 function InlineCode(props: { code: string; attributes: Record<string, unknown> }) {
   const renderers = createMemo(() => inlineCodeRenderers(useExtensions()()) as Rendered[])
