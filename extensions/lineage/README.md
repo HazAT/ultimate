@@ -37,9 +37,13 @@ documents, tools and model-facing text.
   waits for the target's next one.
 - **Catch-up on resume.** When an idle conversation gets input, a "Meanwhile in #R's tree" note goes in before it: new
   or updated abstracts, prompts without one, landings with divergence and breadcrumbs, notes, and any tally compaction,
-  excluding its own activity. Within about 6000 tokens the newest stay in full and older ones collapse to one line.
-  The note also lists up to 30 new target commits, overlaps first, with conversation trailers and an isolate's behind
-  count. Nothing new means no note; mid-run inputs and tallies get none. `lineage.seen` `{ main?, at?, tally? }` keeps
+  excluding its own activity. Only conversations that left a note, or whose landing touched a file the reader changed
+  (its workspace diff, else its own edit and write calls), stay in full; the others are one line each. Within about
+  6000 tokens the newest full ones stay and older ones collapse too. New target commits that touch none of its files
+  are one line; otherwise up to 30 are listed, overlaps first, with conversation trailers. An isolate also gets its
+  behind count. The note asks the reader to check its plan only when something touched its files or a note was left.
+  @ultimate gets every conversation in full and no commit section. Nothing new means no note; mid-run inputs and
+  tallies get none. `lineage.seen` `{ main?, at?, tally? }` keeps
   the baseline.
 - **Prompt.** Branches are told their origin, intent, tree root and inherited tally (or, with a brief, the memory index
   and where the full tally is), and how to follow `#conversation/entry` breadcrumbs with `ultimate.entries(id)` and

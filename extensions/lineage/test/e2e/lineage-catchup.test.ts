@@ -264,8 +264,7 @@ it('counts a merged upstream as the one merge that landed it, not its every comm
       entry.kind === 'lineage.note' && (entry.data as { source?: string }).source === 'main',
   )
   const text = (notes.at(-1)!.data as { text: string }).text
-  expect(text).toContain('1 commits landed on main')
-  expect(text).toMatch(/Merge upstream/)
+  expect(text).toContain('1 commits landed on main, none touching your files')
   expect(text).not.toContain('Upstream 1')
   expect(text).not.toContain('up1.ts')
 })
@@ -316,12 +315,26 @@ const writeAbstract = (server: Server, id: ConversationId, text: string, title?:
       abstract(tx, id, { text, at: 1 as EntryId, ...(title ? { title, feature: 'Tally' } : {}) }),
     context,
   )
-const land = (server: Server, from: ConversationId, sha: string, divergence: string) =>
+const land = (
+  server: Server,
+  from: ConversationId,
+  sha: string,
+  divergence: string,
+  paths: string[] = [],
+) =>
   leaveNote({ harness: () => server.harness }, 'root', `Landed ${sha.slice(0, 7)}`, {
     from,
     source: 'lander',
-    data: { at: 7, divergence, sha, target: 'main', title: `Landing of #${from}` },
+    data: { at: 7, divergence, sha, target: 'main', title: `Landing of #${from}`, paths },
   })
+const collapsedOnly = (...lines: string[]) =>
+  [
+    "Meanwhile in #1's tree:",
+    [
+      'Not touching your files, one line each (read them in full with codemode `ultimate.entries(1)`):',
+      ...lines,
+    ].join('\n'),
+  ].join('\n\n')
 const catchups = async (server: Server, id: ConversationId) =>
   (await (await server.harness.conversation(id, context))!.context(context)).entries.filter(
     (entry) =>
@@ -356,13 +369,11 @@ it('catches a resumed branch up on what its tree learned, then on commits, once 
   const [note] = await catchups(f.server, own)
   const text = (note.data as { text: string }).text
   expect(text).toBe(
-    [
-      "Meanwhile in #1's tree:",
-      `**#${fourth}** started: Fourth feature`,
-      `**#${third} Third** · Tally — abstract as of #${third}/1:\n- Ask: third\n- State: in progress`,
-      `**#${second} Second** · Tally — state at landing, as of #${second}/1:\n- Ask: second\n- Diverged: none\n- State: landed\n- Landed \`abcdef1\` on main (#${second}/7). Diverged: Used SQLite instead of JSON files`,
-      'Check whether any of this already covers or changes what you are about to do.',
-    ].join('\n\n'),
+    collapsedOnly(
+      `- #${fourth} Fourth feature — in progress`,
+      `- #${third} Third · Tally — in progress`,
+      `- #${second} Second · Tally — landed \`abcdef1\``,
+    ),
   )
   expect(f.requests.at(-1)!.slice(-2)).toEqual([text, 'continue'])
   expect((await f.server.harness.snapshot(Seen, own, context))?.tally).toBe(await tipOf(f.server))
@@ -378,18 +389,17 @@ it('catches a resumed branch up on what its tree learned, then on commits, once 
   await ask(f.server, own, 'after a commit')
   const commitOnly = (await catchups(f.server, own)).at(-1)!.data as { text: string }
   expect(commitOnly.text).not.toContain('Meanwhile')
-  expect(commitOnly.text).toContain('1 commits landed on main')
+  expect(commitOnly.text).toContain('1 commits landed on main, none touching your files')
+  expect(commitOnly.text).not.toContain('Check whether')
   await writeAbstract(f.server, fourth, 'Ask: fourth\nState: blocked', 'Fourth')
   // An abstract opened before the last catch-up and updated after it reads as it is now.
   await writeAbstract(f.server, third, 'Ask: third\nState: done', 'Third')
   repoGit(f.projectRoot, 'commit', '--allow-empty', '-m', 'Another commit')
   await ask(f.server, own, 'after both')
   const both = ((await catchups(f.server, own)).at(-1)!.data as { text: string }).text
-  expect(both.indexOf(`**#${fourth} Fourth**`)).toBeGreaterThan(0)
-  expect(both.indexOf(`**#${fourth} Fourth**`)).toBeLessThan(both.indexOf('Another commit'))
-  expect(both).toContain(
-    `**#${third} Third** · Tally — abstract as of #${third}/1:\n- Ask: third\n- State: done`,
-  )
+  expect(both.indexOf(`- #${fourth} Fourth`)).toBeGreaterThan(0)
+  expect(both.indexOf(`- #${fourth} Fourth`)).toBeLessThan(both.indexOf('commits landed on main'))
+  expect(both).toContain(`- #${third} Third · Tally — in progress`)
   expect(both).not.toContain('Second')
   expect(await catchups(f.server, own)).toHaveLength(3)
 })
@@ -431,11 +441,11 @@ it('collapses the oldest conversations to one line each when the tree outgrew th
   ])
   expect(kept[1]).toContain('- Landed `abcdef1` on main')
 
-  // At the real budget the whole backlog fits and the note carries it verbatim.
+  // A real catch-up lists siblings that touch none of the branch's files one line each.
   await ask(f.server, own, 'resume far behind')
   const note = ((await catchups(f.server, own))[0].data as { text: string }).text
-  expect(note).not.toContain('collapsed')
-  for (const id of others) expect(note).toContain(`**#${id} F`)
+  expect(note).not.toContain('State:')
+  for (const id of others) expect(note).toContain(`- #${id} F`)
 })
 
 it('catches up a conversation without a tally baseline from the tally’s start', async () => {
@@ -447,13 +457,7 @@ it('catches up a conversation without a tally baseline from the tally’s start'
   }, context)
   await ask(f.server, own, 'resume old')
   const text = ((await catchups(f.server, own))[0].data as { text: string }).text
-  expect(text).toBe(
-    [
-      "Meanwhile in #1's tree:",
-      `**#${other}** started: Newer work`,
-      'Check whether any of this already covers or changes what you are about to do.',
-    ].join('\n\n'),
-  )
+  expect(text).toBe(collapsedOnly(`- #${other} Newer work — in progress`))
   expect((await f.server.harness.snapshot(Seen, own, context))?.tally).toBe(await tipOf(f.server))
 })
 
@@ -499,11 +503,7 @@ it('catches a branch up from the tally position it inherited: an older fork poin
   const c = await branchFrom(f.server, { from: 1, at: nodeA.id, prompt: 'Feature C' })
   const [early] = await catchups(f.server, c)
   expect((early.data as { text: string }).text).toBe(
-    [
-      "Meanwhile in #1's tree:",
-      `**#${b} B** · Tally — abstract as of #${b}/1:\n- Ask: b\n- State: in progress`,
-      'Check whether any of this already covers or changes what you are about to do.',
-    ].join('\n\n'),
+    collapsedOnly(`- #${b} B · Tally — in progress`),
   )
   expect(early.data).toMatchObject({ tally: await tipOf(f.server) })
 
@@ -515,11 +515,7 @@ it('catches a branch up from the tally position it inherited: an older fork poin
   const nested = await branchFrom(f.server, { from: a, prompt: 'Nested in A' })
   const [late] = await catchups(f.server, nested)
   expect((late.data as { text: string }).text).toBe(
-    [
-      "Meanwhile in #1's tree:",
-      `**#${d}** started: Feature D`,
-      'Check whether any of this already covers or changes what you are about to do.',
-    ].join('\n\n'),
+    collapsedOnly(`- #${d} Feature D — in progress`),
   )
 })
 
@@ -531,10 +527,37 @@ it('names a source branch’s prompt when the fork was made before that prompt',
   const early = await branchFrom(f.server, { from: a, at: forkedAt, prompt: 'Before A asked' })
   const [note] = await catchups(f.server, early)
   expect((note.data as { text: string }).text).toBe(
+    collapsedOnly(`- #${a} Feature A — in progress`),
+  )
+})
+
+it('keeps in full only the siblings whose landings touch the branch’s files, and notes left for the tree', async () => {
+  const f = await catchupFixture()
+  const own = await branchFrom(f.server, { from: 1, prompt: 'Own feature' })
+  f.release()
+  await ask(f.server, own, 'edit schema')
+  const near = await branchFrom(f.server, { from: 1, prompt: 'Near feature' })
+  const far = await branchFrom(f.server, { from: 1, prompt: 'Far feature' })
+  await writeAbstract(f.server, near, 'Ask: near\nState: landed', 'Near')
+  await writeAbstract(f.server, far, 'Ask: far\nState: landed', 'Far')
+  await land(f.server, far, 'fa12345678901', 'None', ['other.ts'])
+  await land(f.server, near, 'ab12345678901', 'Renamed a column', ['schema.ts'])
+  await ask(f.server, own, 'continue')
+  const text = ((await catchups(f.server, own)).at(-1)!.data as { text: string }).text
+  expect(text).toBe(
     [
       "Meanwhile in #1's tree:",
-      `**#${a}** started: Feature A`,
+      [
+        'Not touching your files, one line each (read them in full with codemode `ultimate.entries(1)`):',
+        `- #${far} Far · Tally — landed \`fa12345\``,
+      ].join('\n'),
+      `**#${near} Near** · Tally — state at landing, as of #${near}/1:\n- Ask: near\n- State: landed\n- Landed \`ab12345\` on main (#${near}/7). Diverged: Renamed a column`,
       'Check whether any of this already covers or changes what you are about to do.',
     ].join('\n\n'),
   )
+  await leaveNote({ harness: () => f.server.harness }, 'root', 'Schema is frozen.', { from: far })
+  await ask(f.server, own, 'after a note')
+  const noted = ((await catchups(f.server, own)).at(-1)!.data as { text: string }).text
+  expect(noted).toContain(`**#${far}**`)
+  expect(noted).toContain('- Note: Schema is frozen.')
 })
