@@ -72,7 +72,7 @@ function stillExtends(markdown: string, start: number) {
   const lineStart = markdown.lastIndexOf('\n', start - 1) + 1
   const container = markdown
     .slice(lineStart, start)
-    .replace(/^\s*\[\^(?:\\.|[^\]\\])+\]:[ \t]*/, '    ')
+    .replace(/\[\^(?:\\.|[^\]\\])+\]:[ \t]*/, '    ')
     .replace(/[-*+]|\d+[.)]/g, (marker) => ' '.repeat(marker.length))
   const probed = `${markdown}${markdown.endsWith('\n') ? container : ''}${continuation}`
   const fence = descendants(markdownTree.parse(probed)).find(
