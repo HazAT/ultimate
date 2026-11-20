@@ -1,21 +1,11 @@
 /** Automation subscriptions and upcoming times for other extensions' browser code. */
-export { useAutomations } from './parts.tsx'
+import { useEffect, useSyncExternalStore } from 'react'
+import { api } from '@/sdk'
+import { get, subscribe, want } from './poll.ts'
 
-import type { AutomationListItem } from './refs.ts'
+export { timerWaits } from './waits.ts'
 
-export function timerWaits(
-  automations: readonly AutomationListItem[] | undefined,
-  standing: Readonly<Record<string, number>> | null | undefined,
-) {
-  return (automations ?? [])
-    .filter((a) => a.enabled)
-    .map((a) => ({
-      name: a.name,
-      nextAt: a.nextAt,
-      subscribers: a.subscribers.flatMap((subscriber) => {
-        const id =
-          typeof subscriber === 'number' ? subscriber : standing?.[subscriber.replace(/^@/, '')]
-        return id === undefined ? [] : [id]
-      }),
-    }))
+export function useAutomations(ms: number | false) {
+  useEffect(() => want(ms, api.action), [ms])
+  return useSyncExternalStore(subscribe, get)
 }
