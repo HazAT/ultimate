@@ -99,3 +99,6 @@ export type AutomationInput = {
 
 /** Fired trigger delivered to a subscriber. */
 export const FiredEntry = defineEntry<AutomationInput>('automations.fired')
+
+/** A prompt run's answer, or its failure, delivered to a subscriber when the run ends. */
+export const FinishedEntry = defineEntry<AutomationInput>('automations.finished')
