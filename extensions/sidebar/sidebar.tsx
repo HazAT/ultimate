@@ -1,5 +1,5 @@
 import { ROOT } from '@/sdk'
-import { ChevronRightIcon } from 'lucide-react'
+import { ChevronRightIcon, CircleXIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
@@ -344,9 +344,14 @@ function Tree({
             {state === 'working' && conversation ? (
               <StandingPhase id={conversation.id} />
             ) : (
-              <span className={cn('min-w-0 truncate', stateTone[state])} title={label}>
-                {stateWord(state, 0, label)}
-              </span>
+              <>
+                {facts?.runState === 'error' && (
+                  <CircleXIcon aria-hidden className={cn('size-3 shrink-0', stateTone.failed)} />
+                )}
+                <span className={cn('min-w-0 truncate', stateTone[state])} title={label}>
+                  {stateWord(state, 0, label)}
+                </span>
+              </>
             )}
             {latest > 0 && (
               <span

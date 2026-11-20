@@ -28,7 +28,7 @@ import { Roots, Tally } from '../lineage/api.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
-import { FailureEntry } from './entries.ts'
+import { FailureEntry, StandingFailureEntry } from './entries.ts'
 
 async function isTally(tx: Tx, id: ConversationId) {
   if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id)) return false
@@ -250,7 +250,15 @@ export default function watchdog(host: ExtensionHost) {
         }
         const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retried ? ' After one automatic retry.' : ''}${hint ? ` ${hint}.` : ''}`
         if (recipient === conversation && !task.input.delivery) {
-          host.notice(content)
+          const own = (await runtime.conversation(conversation, ctx))!
+          await own.submit(
+            {
+              type: 'write',
+              requestId: `watchdog-report:${failedTask}`,
+              entry: { kind: StandingFailureEntry.kind, data },
+            },
+            ctx,
+          )
         } else {
           const target = (await runtime.conversation(recipient, ctx))!
           await target.submit(
