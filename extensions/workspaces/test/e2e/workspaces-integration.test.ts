@@ -1,4 +1,5 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
+import { execFileSync } from 'node:child_process'
 import { cp, mkdir, readdir, readFile, writeFile, access, realpath, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { obj } from '@earendil-works/pi-schema'
@@ -12,7 +13,7 @@ import {
 } from '@earendil-works/pi-durable'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import type { ConversationId, JsonObject, Submission, Tx } from '@earendil-works/pi-durable'
-import { afterAll, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../../server/harness.ts'
 import { Metadata } from '../../../../server/metadata.ts'
 import { eventLog } from '../../../../server/events.ts'
@@ -56,6 +57,35 @@ vi.setConfig({ maxConcurrency: 16 })
 const cleanup: (() => Promise<void>)[] = []
 afterAll(async () => {
   await Promise.all(cleanup.splice(0).map((close) => close()))
+})
+
+const gitShim = (real: string) => `#!/bin/sh
+real='${real}'
+gate=''
+pending_branch=0
+for arg in "$@"; do
+  case "$arg" in
+    worktree|merge|push) gate="$arg"; break ;;
+    branch) pending_branch=1 ;;
+    -D|-d) [ "$pending_branch" = 1 ] && { gate='branch'; break; } ;;
+    *) pending_branch=0 ;;
+  esac
+done
+[ -n "$gate" ] || exec "$real" "$@"
+common=$("$real" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exec "$real" "$@"
+if [ -f "$common/ultimate-fail-now-$gate" ]; then exit 1; fi
+if [ -f "$common/ultimate-gate-$gate" ]; then
+  touch "$common/ultimate-started-$gate"
+  while [ ! -f "$common/ultimate-release-$gate" ]; do sleep 0.02; done
+  if [ -f "$common/ultimate-fail-$gate" ]; then exit 1; fi
+fi
+exec "$real" "$@"
+`
+const realGit = execFileSync('sh', ['-c', 'command -v git']).toString().trim()
+beforeAll(async () => {
+  const dir = await temp('ultimate-git-shim-')
+  await writeFile(join(dir, 'git'), gitShim(realGit), { mode: 0o755 })
+  process.env.PATH = `${dir}:${process.env.PATH}`
 })
 /** A repository with base.txt and a worktree `worker` definition, made once and copied for each test. */
 let template: Promise<string> | undefined
@@ -265,27 +295,14 @@ async function commit(path: string, name = 'change.txt') {
   await git(path, 'commit', '-m', name)
   return git(path, 'rev-parse', 'HEAD')
 }
-/**
- * Hold the first `git <command>` in the repository at `path` (and its worktrees) at its first ref update, with a
- * reference-transaction hook, until `release`; with `fail`, that update then fails, after the command changed the files.
- * The command may show as `/path/to/git`: Apple's `/usr/bin/git` runs Xcode's git by its full path.
- */
 async function holdGit(path: string, command: string, fail = false) {
-  const started = join(path, `.git/${command}-started`)
-  const gate = join(path, `.git/${command}-gate`)
-  await writeFile(
-    join(path, '.git/hooks/reference-transaction'),
-    `#!/bin/sh
-cat >/dev/null
-[ "$1" = prepared ] && [ ! -f '${started}' ] || exit 0
-case "$(ps -ww -p "$PPID" -o args=)" in "git ${command} "* | */"git ${command} "*) ;; *) exit 0 ;; esac
-mkfifo '${gate}'
-touch '${started}'
-read release < '${gate}'
-${fail ? 'exit 1' : ''}
-`,
-    { mode: 0o755 },
-  )
+  const dir = join(path, '.git')
+  const gate = join(dir, `ultimate-gate-${command}`)
+  const started = join(dir, `ultimate-started-${command}`)
+  const release = join(dir, `ultimate-release-${command}`)
+  const failure = join(dir, `ultimate-fail-${command}`)
+  await writeFile(gate, '')
+  if (fail) await writeFile(failure, '')
   return {
     started: () =>
       until(() =>
@@ -294,7 +311,10 @@ ${fail ? 'exit 1' : ''}
           () => false,
         ),
       ),
-    release: () => writeFile(gate, 'ready\n'),
+    release: async () => {
+      await writeFile(release, '')
+      await unlink(gate).catch(() => undefined)
+    },
   }
 }
 it.concurrent('serializes concurrent lander checkout creation', async () => {
@@ -1020,6 +1040,20 @@ it.concurrent('lands and reports a submission without a lineage provider', async
   expect(await readFile(join(f.projectRoot, 'no-lineage.txt'), 'utf8')).toBe('no-lineage.txt')
   expect(await rootNotes(f)).toHaveLength(0)
 })
+it.concurrent('lands through its merge-and-checks path without running a repo fsmonitor command', async () => {
+  const f = await lander({ checks: ['test -f base.txt'] })
+  const marker = join(f.directory, 'fsmonitor')
+  await git(f.projectRoot, 'config', 'core.fsmonitor', `touch ${marker}`)
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  await commit(workspace.path, 'hardened.txt')
+  await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed as')
+  expect(await readFile(join(f.projectRoot, 'hardened.txt'), 'utf8')).toBe('hardened.txt')
+  await expect(access(marker)).rejects.toThrow('ENOENT')
+})
 it.concurrent('records neither the submission nor the landing report in the message log', async () => {
   const f = await lander({}, undefined, true)
   const id = await f.create()
@@ -1595,25 +1629,8 @@ async function withRemote() {
   await git(paths.projectRoot, 'push', '-q', 'origin', 'main')
   return { paths, bare }
 }
-/** Hold the lander's pushes from the project checkout with a pre-push hook until `release`. */
 async function holdPush(f: Awaited<ReturnType<typeof fixture>>) {
-  const started = join(f.directory, 'push-started')
-  const gate = join(f.directory, 'push-gate')
-  await writeFile(
-    join(f.projectRoot, '.git/hooks/pre-push'),
-    `#!/bin/sh\ncat >/dev/null\ntouch '${started}'\nwhile [ ! -f '${gate}' ]; do sleep 0.02; done\n`,
-    { mode: 0o755 },
-  )
-  return {
-    started: () =>
-      until(() =>
-        access(started).then(
-          () => true,
-          () => false,
-        ),
-      ),
-    release: () => writeFile(gate, ''),
-  }
+  return holdGit(f.projectRoot, 'push')
 }
 it.concurrent('resumes a landing interrupted before its push: pushes and reports what it landed, not the moved target', async () => {
   const { paths, bare } = await withRemote()
@@ -2379,15 +2396,7 @@ it.concurrent('a persistent branch deletion failure blocks tools with its reason
   const id = await f.create()
   await f.service.ready(id, context)
   const workspace = (await f.service.get(id, context))!
-  await writeFile(
-    join(f.projectRoot, '.git/hooks/reference-transaction'),
-    `#!/bin/sh
-cat >/dev/null
-[ "$1" = prepared ] || exit 0
-case "$(ps -ww -p "$PPID" -o args=)" in "git branch -D "* | */"git branch -D "*) exit 1 ;; esac
-`,
-    { mode: 0o755 },
-  )
+  await writeFile(join(f.projectRoot, '.git', 'ultimate-fail-now-branch'), '')
   const kept = await f.service.release([id], context)
   expect(kept).toEqual([{ id, uncommitted: 0, unlanded: 0, reason: expect.any(String) }])
   const result = await f.call(id, 'write_commit')
