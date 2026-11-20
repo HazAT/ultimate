@@ -32,7 +32,14 @@ Skeleton, Slider, StatusPopoverTrigger (in `status-trigger.solid.tsx`), Switch a
 `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test beside it; the status chips of
 setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React point that another extension renders
 (mcp's `ExtensionDetails`) stays React and returns an island: `provide(Point, () => <McpDetails />)` with
-`const McpDetails = island(Details)`. Icons come from `@lucide/solid`.
+`const McpDetails = island(Details)`. Icons come from `@lucide/solid`. A Solid part that needs what only React reads
+(another extension's React point, such as inbox's `Waiting`) takes it as a prop: the `web.tsx` keeps a small React
+wrapper that reads it and renders `<List inbox={entries.length} />` with `const List = island(TodoList)`; island
+passes its props on live, without a remount (`extensions/todos/web.tsx`).
+
+What cannot move before the core switch: tool, entry and document renderers, message actions and details, the
+`composer` wrapper, `link`, and anything that renders other extensions' React contributions (the Documents panel,
+the agent surface, the panel tabs). A slot item, a panel or an overlay of its own can move.
 
 ## Ultimate's rules (on top of those skills)
 
@@ -144,6 +151,9 @@ setup, mcp, tailscale, push, update, self, pause and sounds followed it. A React
   - Collapsible unmounts the panel's children when closed by default. Keep local state that should survive a collapse
     in the owner outside the panel, or use `keepMounted` when the children themselves must survive.
   - An inline `<svg>` drawing is named by `aria-label` and a `<title>`, not `role="img"` (`jsx-a11y/prefer-tag-over-role`).
+  - A Tooltip trigger rendered as a `<span>` is not named by its text (only buttons and links are): give it an
+    `aria-label` that names the item (`Context use`, `Server connection`), or the SDK warns and agents cannot find
+    it.
 - **Lint is the floor, not the bar.** `pnpm check` runs eslint-plugin-solid's `v2-strict` set (Solid 2 semantics) as
   errors, plus accessibility rules and ours, on every `*.solid.tsx`. Never disable a rule inline. A false positive is a
   report to the coordinator, with the code and the rule.
