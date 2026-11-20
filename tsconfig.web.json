@@ -67,6 +67,7 @@
     "extensions/subagents/landing.ts",
     "extensions/onboarding/onboarded.ts",
     "extensions/tasks/kinds.ts",
+    "extensions/tasks/tree.ts",
     "extensions/sidebar/listed.ts",
     "extensions/side-chat/logic.ts",
     "extensions/voice-live/relay.ts",
