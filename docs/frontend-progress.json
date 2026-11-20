@@ -7758,15 +7758,15 @@
       "switch": null,
       "stream": null,
       "previews": null,
-      "commit": "31f934da",
-      "sha": "31f934da618bb37761eb93792e7d2fcb42fc46a6",
+      "commit": "1f2d7b05",
+      "sha": "1f2d7b0538d413f8b07a47b9bf47f0557da31f74",
       "label": "C3: composer",
       "date": "2026-11-20",
-      "committedAt": 1795205771,
+      "committedAt": 1795208289,
       "lines": {
-        "total": 54439,
-        "solid": 25403,
-        "react": 29036
+        "total": 54538,
+        "solid": 25498,
+        "react": 29040
       },
       "perExtension": {
         "activity": {
@@ -7859,7 +7859,7 @@
         },
         "lineage": {
           "react": 1176,
-          "solid": 141
+          "solid": 146
         },
         "mcp": {
           "react": 9,
@@ -7878,8 +7878,8 @@
           "solid": 54
         },
         "onboarding": {
-          "react": 1697,
-          "solid": 128
+          "react": 1689,
+          "solid": 125
         },
         "parallel": {
           "react": 5,
@@ -7947,7 +7947,7 @@
         },
         "side-chat": {
           "react": 609,
-          "solid": 190
+          "solid": 191
         },
         "sidebar": {
           "react": 2550,
@@ -8020,7 +8020,7 @@
       },
       "bundleGzipKB": 3186,
       "entryGzipKB": 491,
-      "summary": "The composer, its attachments and its wrappers (side chat, read-aloud, onboarding, lineage, workspaces, subagents' inbox) are Solid"
+      "summary": "The composer, its attachments and its wrappers (side chat, read-aloud, onboarding, lineage, workspaces, subagents' inbox) are Solid; React contributions mount through the bridge at their placement"
     }
   ],
   "previewUsage": [
