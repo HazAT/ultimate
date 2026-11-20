@@ -177,6 +177,8 @@ function provided(
   which: (records: readonly ExtensionRecord[]) => ReturnType<typeof provisionsOf>,
 ): Accessor<readonly unknown[]> {
   const records = useExtensions()
+  const current = createMemo(() => which(records()))
+  const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
   const [values, setValues] = createSignal<readonly unknown[]>([])
   const root = reactRoot(document.createElement('div'), {
     conversation: useContext(ConversationScope) ?? undefined,
@@ -184,8 +186,9 @@ function provided(
   })
   onCleanup(root.unmount)
   createEffect(
-    () => ({ current: which(records()), value: input() }),
-    ({ current, value }) => root.render(provisions(current, value, (next) => setValues(next))),
+    () => ({ providers: current(), input: value() }),
+    ({ providers, input: next }) =>
+      root.render(provisions(providers, next, (found) => setValues(found))),
   )
   return values
 }
