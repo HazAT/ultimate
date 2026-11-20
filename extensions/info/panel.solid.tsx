@@ -2,6 +2,7 @@
 import { RotateCw } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { CopyValue } from '@/components/ui/copy-value.solid.tsx'
 import { Row, Rows } from '@/components/ui/rows.solid.tsx'
 import type { SystemInfo, Usage } from '@/sdk'
 import {
@@ -19,7 +20,7 @@ import {
   useSystem,
 } from '@/sdk/solid'
 import { Workspaces, useWorkspacesMeta } from '../workspaces/ui.solid.tsx'
-import { Copy, ErrorText, Meter, Section, Tag } from './parts.solid.tsx'
+import { ErrorText, Meter, Section, Tag } from './parts.solid.tsx'
 
 export function InfoPanel() {
   const system = useSystem()
@@ -49,7 +50,7 @@ function WorkspaceSection() {
   const meta = useWorkspacesMeta()
   return (
     <Section id="workspaces" meta={meta()} title="Workspace">
-      <Workspaces Copy={Copy} />
+      <Workspaces />
     </Section>
   )
 }
@@ -182,17 +183,17 @@ function Code(props: { system: SystemInfo }) {
     >
       <Rows>
         <Row label="repo">
-          <Copy field="repository path" value={code().ultimateRoot}>
+          <CopyValue field="repository path" value={code().ultimateRoot}>
             {displayPath(props.system, code().ultimateRoot)}
-          </Copy>
+          </CopyValue>
         </Row>
         <Row label="branch">
           <Show when={code().branch} fallback="—">
-            {(branch) => <Copy field="host branch" value={branch()} />}
+            {(branch) => <CopyValue field="host branch" value={branch()} />}
           </Show>
         </Row>
         <Row label="sha">
-          <Copy field="commit SHA" value={code().sha} />
+          <CopyValue field="commit SHA" value={code().sha} />
           {code().dirty ? (
             <span class="text-warning">uncommitted changes</span>
           ) : (
@@ -200,9 +201,9 @@ function Code(props: { system: SystemInfo }) {
           )}
         </Row>
         <Row label="build">
-          <Copy field="build ID" value={build().id}>
+          <CopyValue field="build ID" value={build().id}>
             {build().id.slice(0, 7)}
-          </Copy>
+          </CopyValue>
           <span class="truncate text-muted-foreground/60">
             {build().changed.length
               ? `changed ${build().changed.join(', ')}`
@@ -235,15 +236,15 @@ function Execution(props: { system: SystemInfo }) {
       <Rows>
         <Row label="env">{execution().kind === 'node-local' ? 'local Node' : execution().kind}</Row>
         <Row label="cwd">
-          <Copy field="working directory" value={cwd()}>
+          <CopyValue field="working directory" value={cwd()}>
             {displayPath(props.system, cwd())}
-          </Copy>
+          </CopyValue>
         </Row>
         <Show when={cwd() !== execution().defaultCwd}>
           <Row label="default">
-            <Copy field="default directory" value={execution().defaultCwd}>
+            <CopyValue field="default directory" value={execution().defaultCwd}>
               {displayPath(props.system, execution().defaultCwd)}
-            </Copy>
+            </CopyValue>
           </Row>
         </Show>
       </Rows>
@@ -323,7 +324,7 @@ function Process(props: { process: SystemInfo['process'] }) {
           <RestartButton section="Process" restart={restart} />
         </Row>
         <Row label="url">
-          <Copy field="host URL" value={process().url} />
+          <CopyValue field="host URL" value={process().url} />
         </Row>
       </Rows>
       <ErrorText>{restart.error()}</ErrorText>
@@ -366,9 +367,9 @@ function Persistence(props: { system: SystemInfo }) {
       <Rows>
         <Row label="storage">{persistence().kind}</Row>
         <Row label="path">
-          <Copy field="storage path" value={persistence().path}>
+          <CopyValue field="storage path" value={persistence().path}>
             {displayPath(props.system, persistence().path)}
-          </Copy>
+          </CopyValue>
         </Row>
         <Row label="size">
           {formatBytes(persistence().sizeBytes)}
@@ -388,9 +389,9 @@ function Skills(props: { system: SystemInfo }) {
           {(skill) => (
             <div class="min-w-0 font-mono text-[11px]">
               <div class="flex min-w-0 items-center gap-1.5 text-foreground/90">
-                <Copy field="skill path" value={skill().path}>
+                <CopyValue field="skill path" value={skill().path}>
                   {skill().name}
-                </Copy>
+                </CopyValue>
                 <Tag>{skill().scope}</Tag>
                 <span class="truncate text-muted-foreground/60">
                   {skill().manual && 'manual'}
@@ -442,9 +443,9 @@ function ContextFiles(props: { system: SystemInfo }) {
       <div class="flex flex-col gap-0.5 font-mono text-[11.5px] text-foreground/85">
         <For each={props.system.contextFiles} fallback={<Empty>no AGENTS.md or CLAUDE.md</Empty>}>
           {(file) => (
-            <Copy field="context file" value={file}>
+            <CopyValue field="context file" value={file}>
               {displayPath(props.system, file, 52)}
-            </Copy>
+            </CopyValue>
           )}
         </For>
       </div>

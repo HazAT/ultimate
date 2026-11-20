@@ -1,14 +1,13 @@
 /** @jsxImportSource @solidjs/web */
-import { Check, ChevronRight, Copy as CopyIcon } from '@lucide/solid'
+import { ChevronRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { Show } from 'solid-js'
-import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { useCopy, useExtensionUiState } from '@/sdk/solid'
+import { useExtensionUiState } from '@/sdk/solid'
 
 export function Section(props: {
   id: string
@@ -37,30 +36,6 @@ export function Section(props: {
       </CollapsibleTrigger>
       <CollapsibleContent class="px-3 pb-3">{props.children}</CollapsibleContent>
     </Collapsible>
-  )
-}
-
-export function Copy(props: { value: string; field: string; children?: JSX.Element }) {
-  const { copied, copy } = useCopy()
-  return (
-    <Button
-      aria-label={`Copy ${props.field}: ${props.value}`}
-      class="group/copy flex min-w-0 max-w-full shrink items-center justify-start gap-1 rounded-sm text-left font-[inherit] text-[length:inherit] leading-[inherit] font-normal hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-      onClick={() => copy(props.value)}
-      size={null}
-      title={`${props.value}\nclick to copy`}
-      variant={null}
-    >
-      <span class="truncate">{props.children ?? props.value}</span>
-      <Show
-        when={copied()}
-        fallback={
-          <CopyIcon class="size-3 shrink-0 opacity-0 transition-opacity group-hover/copy:opacity-50 group-focus-visible/copy:opacity-50" />
-        }
-      >
-        <Check class="size-3 shrink-0 text-success" />
-      </Show>
-    </Button>
   )
 }
 

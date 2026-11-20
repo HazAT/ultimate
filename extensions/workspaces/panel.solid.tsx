@@ -1,10 +1,9 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { RefreshCw } from '@lucide/solid'
-import type { JSX } from '@solidjs/web'
 import { For, Show, createMemo } from 'solid-js'
-import type { Component } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { CopyValue } from '@/components/ui/copy-value.solid.tsx'
 import { Row, Rows } from '@/components/ui/rows.solid.tsx'
 import {
   ROOT,
@@ -30,8 +29,6 @@ const stateLabels = {
   failed: 'Setup failed',
   removed: 'Removed',
 }
-type CopyValue = Component<{ field: string; value: string; children?: JSX.Element }>
-
 function useWorkspaceView() {
   const index = useDocOf(() => ROOT, WorkspacesDoc)
   const id = useConversationId()
@@ -55,7 +52,7 @@ export function useWorkspacesMeta() {
   }
 }
 
-export function Workspaces(props: { Copy: CopyValue }) {
+export function Workspaces() {
   const { index, shown, workspace, queue } = useWorkspaceView()
   return (
     <div class="flex flex-col gap-3" data-workspaces>
@@ -71,7 +68,6 @@ export function Workspaces(props: { Copy: CopyValue }) {
       >
         {(id) => (
           <Checkout
-            Copy={props.Copy}
             busy={shown()!.busy}
             id={id}
             queued={queue().find((item) => item.conversationId === id)}
@@ -85,7 +81,6 @@ export function Workspaces(props: { Copy: CopyValue }) {
 }
 
 function Checkout(props: {
-  Copy: CopyValue
   busy: boolean
   id: ConversationId
   queued?: QueueEntry
@@ -148,12 +143,12 @@ function Checkout(props: {
       </div>
       <Rows>
         <Row label="path">
-          <props.Copy field="checkout path" value={workspace().path}>
+          <CopyValue field="checkout path" value={workspace().path}>
             {elidePath(shortenPath(workspace().path, { home: system()?.machine.home }), 34)}
-          </props.Copy>
+          </CopyValue>
         </Row>
         <Row label="branch">
-          <props.Copy field="checkout branch" value={workspace().branch} />
+          <CopyValue field="checkout branch" value={workspace().branch} />
         </Row>
         <Row label="target">
           <span class="truncate">

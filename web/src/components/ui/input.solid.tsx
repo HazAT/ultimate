@@ -40,7 +40,6 @@ const pressSubmit = (event?: Event) => {
   form?.querySelector<HTMLButtonElement>('button[type="submit"]')?.click()
 }
 
-/** `submitShortcut` presses its form's submit Button, so the Button's `onClick` runs with who pressed. */
 function Textarea(props: TextareaProps) {
   const rest = omit(props, 'class', 'onValueChange')
   return (
