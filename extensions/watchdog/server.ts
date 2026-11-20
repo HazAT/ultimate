@@ -156,7 +156,7 @@ async function retriesBefore(tx: Tx, recipient: ConversationId, runInputs: Submi
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanTasks(
-      { conversationId: recipient, kind: 'watchdog.failure' },
+      { conversationId: recipient, kind: 'watchdog.failure', order: 'descending' },
       500,
       cursor,
     )
