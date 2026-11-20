@@ -46,36 +46,45 @@ await page.addInitScript(() => {
   let on = false
   // DOM mutation records in the transcript count toward the event whose window is open: from its dispatch until its
   // next task, the same window as its task time. Writes after that window (a later timer, an animation) count for no
-  // event. The transcript may mount or be replaced while measuring, so a second observer rebinds to the current one.
+  // event. One observer watches the app, so every transcript counts, side chats and freshly mounted ones included. A
+  // record counts when its target is inside a transcript, or inside a subtree a counted record of the same batch
+  // removed (newest first, so an ancestor's removal is seen before the writes inside it).
+  const transcript = '[data-ui="transcript"]'
+  const inTranscript = (records: MutationRecord[]) => {
+    const removed = new Set<Node>()
+    const counts = (record: MutationRecord) => {
+      let node: Node = record.target
+      while (node.parentNode) {
+        if (node instanceof Element && node.matches(transcript)) return true
+        node = node.parentNode
+      }
+      return removed.has(node)
+    }
+    let count = 0
+    for (const record of records.toReversed())
+      if (counts(record)) {
+        count++
+        for (const node of record.removedNodes) removed.add(node)
+      }
+    return count
+  }
   let mutating: Measured | undefined
-  let observed: Element | null = null
   const mutations = new MutationObserver((records) => {
-    if (mutating) mutating.mutations += records.length
+    if (mutating) mutating.mutations += inTranscript(records)
   })
   const drain = () => {
-    const records = mutations.takeRecords().length
+    const records = inTranscript(mutations.takeRecords())
     if (mutating) mutating.mutations += records
   }
-  const bind = () => {
-    const transcript = document.querySelector('[data-ui="transcript"]')
-    if (transcript === observed) return
-    drain()
-    mutations.disconnect()
-    observed = transcript
-    if (transcript)
-      mutations.observe(transcript, {
+  w.renders = {
+    events,
+    start: () => {
+      mutations.observe(document.getElementById('app')!, {
         subtree: true,
         childList: true,
         attributes: true,
         characterData: true,
       })
-  }
-  const transcriptMounts = new MutationObserver(bind)
-  w.renders = {
-    events,
-    start: () => {
-      transcriptMounts.observe(document.getElementById('app')!, { subtree: true, childList: true })
-      bind()
       on = true
     },
   }
@@ -153,7 +162,6 @@ await page.addInitScript(() => {
           mutating = measured
           afterNextTask(() => {
             measured.task = performance.now() - started
-            bind()
             if (mutating === measured) {
               drain()
               mutating = undefined
