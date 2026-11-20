@@ -1,4 +1,8 @@
+import { deadline } from '../../../lib/timers.ts'
+import type { Cancel } from '../../../lib/timers.ts'
+
 const nearBottomPx = 70
+const keyScrollStartsWithinMs = 250
 
 export function follow(scroll: HTMLElement, content: HTMLElement, changed: () => void) {
   let following = true
@@ -21,11 +25,14 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
   let pressed = false
   let touching = false
   let key: KeyboardEvent | undefined
-  const keyScrolls = () => !!key && !key.defaultPrevented && !activates(key.target)
+  let keyMoved = false
+  let cancelKeyIntent: Cancel = () => {}
+  const keyScrolls = () => !!key && !key.defaultPrevented && !consumedBy(key)
   const steering = () => pressed || touching || keyScrolls()
   const left = () => steering() && scroll.scrollTop < seen - 1 && distance() > 1
   const selecting = () => pressed && !!getSelection()?.toString()
   const onScroll = () => {
+    if (key) keyMoved = true
     const top = scroll.scrollTop
     if (left()) report({ following: false })
     else if (!following && top > seen && distance() <= 1) report({ following: true })
@@ -47,10 +54,13 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     if (event.deltaY < 0 && scroll.scrollHeight > scroll.clientHeight && !innerTakes(event.target))
       report({ following: false })
   }
-  const activates = (target: EventTarget | null) =>
-    target instanceof HTMLElement &&
-    (target.isContentEditable ||
-      !!target.closest('input, textarea, select, button, a[href], [role="button"]'))
+  const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']
+  const consumedBy = (event: KeyboardEvent) => {
+    const target = event.target instanceof HTMLElement ? event.target : null
+    if (!target) return false
+    if (target.isContentEditable || target.closest('input, textarea, select')) return true
+    return event.key === ' ' && !!target.closest('button, a[href], [role="button"]')
+  }
   const reader = {
     pointerdown: () => (pressed = true),
     pointerup: () => (pressed = false),
@@ -58,7 +68,18 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     touchstart: () => (touching = true),
     touchend: () => (touching = false),
     touchcancel: () => (touching = false),
-    keydown: (event: Event) => (key = event as KeyboardEvent),
+    keydown: (event: Event) => {
+      const pressedKey = event as KeyboardEvent
+      if (!scrollKeys.includes(pressedKey.key)) return
+      key = pressedKey
+      keyMoved = false
+    },
+    keyup: () => {
+      cancelKeyIntent()
+      cancelKeyIntent = deadline(keyScrollStartsWithinMs, () => {
+        if (!keyMoved) key = undefined
+      })
+    },
   }
   const onTranscript = new Set(['pointerdown', 'touchstart'])
   const grow = new ResizeObserver(() => {
@@ -66,7 +87,10 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
     report({})
   })
   scroll.addEventListener('scroll', onScroll, { passive: true })
-  const keyScrolled = () => (key = undefined)
+  const keyScrolled = () => {
+    key = undefined
+    keyMoved = false
+  }
   scroll.addEventListener('scrollend', keyScrolled, { passive: true })
   scroll.addEventListener('wheel', onWheel, { passive: true })
   for (const [type, listener] of Object.entries(reader))
@@ -86,6 +110,7 @@ export function follow(scroll: HTMLElement, content: HTMLElement, changed: () =>
       else scroll.scrollTo({ top: bottom(), behavior: 'smooth' })
     },
     dispose: () => {
+      cancelKeyIntent()
       grow.disconnect()
       scroll.removeEventListener('scroll', onScroll)
       scroll.removeEventListener('scrollend', keyScrolled)

@@ -298,6 +298,10 @@ function attributesOf(node: Element) {
 }
 
 let unpositioned = 0
+const placeOf = (node: Element, context: Context) => {
+  const at = node.position
+  return `${context.block}.${at ? `${at.start.offset}-${at.end.offset}` : `x${++unpositioned}`}`
+}
 
 type Context = { openFences: readonly number[]; without?: readonly string[]; block: string }
 
@@ -359,7 +363,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       <Match when={fencedCode(props.node)}>
         {(block) => (
           <CodeBlock
-            at={`${props.context.block}.${props.node.position?.start.offset ?? `x${++unpositioned}`}`}
+            at={placeOf(props.node, props.context)}
             code={block().code}
             incomplete={fenceIncomplete(props.node, props.context)}
             language={block().language}
@@ -368,7 +372,7 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
       </Match>
       <Match when={props.node.tagName === 'a'}>
         <Anchor
-          at={`${props.context.block}.${props.node.position?.start.offset ?? `x${++unpositioned}`}`}
+          at={placeOf(props.node, props.context)}
           attributes={attributes()}
           href={hrefOf(props.node)}
           text={textOf(props.node)}
