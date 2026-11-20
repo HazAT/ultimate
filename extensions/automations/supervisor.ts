@@ -707,7 +707,8 @@ export function supervisor(
     const copiedRunMarksAFinishedAdoption = join(dir, 'run')
     if (await present(copiedRunMarksAFinishedAdoption)) return
     const source = await adoptable(from)
-    if (source === resolve(dir)) throw new Error(`Automation ${id} cannot adopt its own folder`)
+    if (source === (await realpath(dir).catch(() => resolve(dir))))
+      throw new Error(`Automation ${id} cannot adopt its own folder`)
     await mkdir(dir, { recursive: true })
     await cp(join(source, 'state'), join(dir, 'state'), { recursive: true, force: true }).catch(
       (error: unknown) => {
