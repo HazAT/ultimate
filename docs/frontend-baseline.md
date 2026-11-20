@@ -16,13 +16,17 @@ the median of three runs, the range after it is the spread of those runs (the no
 
 ### The series: `docs/frontend-progress.json`
 
-Every migration step adds one entry, measured the same way on one machine:
+Every migration step adds one entry with its lines and bundle, which come from files and do not depend on machine load:
 
 ```bash
 git worktree add --detach ~/fw/<sha> <sha> && (cd ~/fw/<sha> && pnpm install --frozen-lockfile --prefer-offline)
-node .ultimate/skills/measure-switch/copy-paused.ts ~/.ultimate/projects/<home>/state.sqlite ~/fw/snap
-node scripts/frontend-progress.ts ~/fw/<sha> --label 0.8 --summary "<what the step did, one line>" --snapshot ~/fw/snap/state.sqlite
+node scripts/frontend-progress.ts ~/fw/<sha> --label 0.8 --summary "<what the step did, one line>"
 ```
+
+Timing (`switch`, `stream`, `previews`) is measured on main only, on a quiet machine, after C2 (transcript), C4
+(shell) and C5 (React removed): add `--only switch,stream,previews --snapshot ~/fw/snap/state.sqlite`, the snapshot
+copied with `node .ultimate/skills/measure-switch/copy-paused.ts ~/.ultimate/projects/<home>/state.sqlite ~/fw/snap`.
+Other entries keep `null` there, which the progress page shows as not measured.
 
 Run it from the newest checkout: it measures the given tree with today's scripts, starts each server on a scratch home
 outside the real home, with a scripted model, `claude-code` disabled and no provider credentials, refuses a snapshot

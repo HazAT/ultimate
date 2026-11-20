@@ -17,7 +17,7 @@ import { pace, within } from '../lib/timers.ts'
 import { median, runsFlag } from './measure.ts'
 
 const usage =
-  'Usage: node scripts/frontend-progress.ts <tree> --label <label> [--summary <one line>] [--snapshot <paused state.sqlite>] [--runs 3] [--only switch,stream,previews]'
+  'Usage: node scripts/frontend-progress.ts <tree> --label <label> [--summary <one line>] [--only switch,stream,previews] [--snapshot <paused state.sqlite>] [--runs 3]'
 const args = process.argv.slice(2)
 const flag = (name: string) => {
   const index = args.indexOf(name)
@@ -29,7 +29,7 @@ const summary = flag('--summary')
 if (!tree || !label) throw new Error(usage)
 const snapshot = flag('--snapshot')
 const runs = runsFlag(args)
-const only = new Set((flag('--only') ?? 'switch,stream,previews').split(','))
+const only = new Set(flag('--only')?.split(','))
 const here = resolve(import.meta.dirname, '..')
 const skill = join(here, '.ultimate/skills/measure-switch')
 const progressFile = join(here, 'docs/frontend-progress.json')
@@ -305,7 +305,8 @@ try {
   })
   const agentDir = join(scratch, 'pi')
   await writeAgentDir(agentDir, (model.address() as AddressInfo).port)
-  if (only.has('switch') && snapshot) {
+  if (only.has('switch')) {
+    if (!snapshot) throw new Error(`--only switch needs --snapshot\n${usage}`)
     const home = join(scratch, 'switch')
     await mkdir(home)
     await copyFile(snapshot, join(home, 'state.sqlite'), constants.COPYFILE_FICLONE)
