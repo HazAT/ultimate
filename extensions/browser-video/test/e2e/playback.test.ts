@@ -15,6 +15,7 @@ import { branchProbe, fauxServer, sourceCopy, temp, until } from '../../../../te
 import { browserBinary } from '../../../browser/server.ts'
 import { Started } from '../../../messages/addresses.ts'
 import { Messages } from '../../../messages/api.ts'
+import { append } from '../../../messages/log.ts'
 import type { WorkspaceInfo } from '../../../workspaces/types.ts'
 
 const demoUrl = (name: string) =>
@@ -198,7 +199,7 @@ it('records only opted-in browser calls and plays the earlier, agent-selected cl
     text: 'Review the Lemon recipe change.',
   })
 
-  const clip = `/api/extensions/browser-video/files/${earlier}/video`
+  const clip = `/api/extensions/browser/files/${earlier}/video`
   const browser = await chromium.launch({
     executablePath: await browserBinary(),
     headless: true,
@@ -219,7 +220,7 @@ it('records only opted-in browser calls and plays the earlier, agent-selected cl
   const asked = await browser.newPage({ viewport: { width: 390, height: 844 } })
   const requests: string[] = []
   asked.on('request', (req) => {
-    if (new URL(req.url()).pathname.startsWith('/api/extensions/browser-video/files/'))
+    if (new URL(req.url()).pathname.startsWith('/api/extensions/browser/files/'))
       requests.push(req.url())
   })
   await asked.goto(`${server.url}/?conversation=${id}`)
@@ -241,6 +242,18 @@ it('records only opted-in browser calls and plays the earlier, agent-selected cl
     async () =>
       (await log())?.messages.some((m) => m.re === message.id && m.from === 'user') === true,
   )
+
+  await server.harness.commit(async (tx) => {
+    for (let i = 0; i < 300; i++)
+      await append(tx, {
+        from: id,
+        to: 'user',
+        text: 'Fixture note',
+        reply: false,
+        state: 'delivered',
+      })
+  }, context)
+  expect((await log())?.messages.some((item) => item.id === message.id)).toBe(false)
 
   const worktree = (await server.extensions.invoke(
     'workspaces',
@@ -264,6 +277,9 @@ it('records only opted-in browser calls and plays the earlier, agent-selected cl
   const report = await browser.newPage()
   await report.goto(`${server.url}/?conversation=${starter.id}`)
   const landing = report.locator('[data-lander-report="landed"] [data-landing="landed"]')
-  const landingClip = landing.locator(`[data-browser-clip="${earlier}"]`)
+  await landing.getByRole('button', { name: /Show browser videos for landing/ }).click()
+  const landingClip = landing.locator('[data-browser-clip]').first()
+  await landingClip.waitFor()
+  expect(await landingClip.getAttribute('data-browser-clip')).toBe(earlier)
   await play(report, landingClip, landingClip.getByRole('button', { name: /Play video/i }), clip)
 })

@@ -42,7 +42,7 @@ it('loads only the recording whose play button is pressed, and shows when it is 
   expect(view.querySelectorAll('video')).toHaveLength(1)
   const video = view.querySelector('video')!
   expect(video.controls).toBe(true)
-  expect(video.getAttribute('src')).toBe(`/api/extensions/browser-video/files/${id}/video`)
+  expect(video.getAttribute('src')).toBe(`/api/extensions/browser/files/${id}/video`)
 
   video.dispatchEvent(new Event('error'))
   flush()

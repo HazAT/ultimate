@@ -66,6 +66,17 @@ export const Messages = defineDoc<{ messages: Message[]; next: number }>({
   initial: () => ({ messages: [], next: 1 }),
 })
 
+/** Clip IDs the conversation attached to review questions, retained after closed messages are trimmed. */
+export const QuestionVideos = defineDoc<{ ids: string[] }>({
+  kind: 'board.question-videos',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ ids: [] }),
+})
+
 export type MessagesService = {
   /**
    * Reply `text` from the user to open message `messageId`, from browser `device`; returns the reply's message

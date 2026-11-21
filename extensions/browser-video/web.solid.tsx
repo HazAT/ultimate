@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { ChevronUp, Play } from '@lucide/solid'
+import { ChevronUp, Film, Play } from '@lucide/solid'
 import { For, Show, createMemo, createSignal, createUniqueId } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
@@ -35,7 +35,7 @@ function Player(props: { id: string; label: string }) {
         onLoadedMetadata={(event) => void event.currentTarget.play().catch(meansNone)}
         playsinline
         preload="metadata"
-        src={extensionFileUrl('browser-video', props.id, 'video')}
+        src={extensionFileUrl('browser', props.id, 'video')}
       />
     </Show>
   )
@@ -128,7 +128,30 @@ function MessageVideo(props: { message: Message }) {
 }
 
 function LandingVideos(props: { conversation: ConversationId; card: number }) {
-  const { data, error } = useAction(
+  const [opened, setOpened] = createSignal(false)
+  return (
+    <Show
+      when={opened()}
+      fallback={
+        <Button
+          aria-label={`Show browser videos for landing #${props.card}`}
+          class="gap-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+          onClick={() => setOpened(true)}
+          size={null}
+          variant={null}
+        >
+          <Film aria-hidden="true" class="size-3 text-brand" />
+          Browser videos
+        </Button>
+      }
+    >
+      <LandingClips conversation={props.conversation} card={props.card} />
+    </Show>
+  )
+}
+
+function LandingClips(props: { conversation: ConversationId; card: number }) {
+  const { data, error, loading } = useAction(
     LandingClipsAction,
     {
       get conversation() {
@@ -148,8 +171,14 @@ function LandingVideos(props: { conversation: ConversationId; card: number }) {
           />
         )}
       </For>
-      <Show when={error() && !data()}>
-        <output class="block text-xs text-muted-foreground">Could not load videos.</output>
+      <Show when={loading() || !data()?.length}>
+        <output class="block text-xs text-muted-foreground">
+          {loading()
+            ? 'Looking for videos…'
+            : error()
+              ? 'Could not load videos.'
+              : 'No browser videos.'}
+        </output>
       </Show>
     </>
   )

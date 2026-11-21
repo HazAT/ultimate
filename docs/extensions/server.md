@@ -21,7 +21,7 @@ from a `beforeInput` hook instead. For example, `todos/server.ts` does not list 
 
 ## Private files
 
-An installed server facet may export `files: ExtensionFiles` (a type from `server/private-files.ts`) to serve private
+An installed server facet may export `files: ExtensionFiles` (a type from `server/extensions.ts`) to serve private
 WebM recordings. The async resolver receives `(id, key, { host })`. Look up the opaque identifiers in your own records,
 never as filesystem paths. Return `undefined` for unknown files, otherwise `{ file, name, type: 'video/webm' }` with a
 fresh, validated `FileHandle` to a regular file. The server takes ownership of the returned handle and closes it,

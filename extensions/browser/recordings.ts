@@ -1,13 +1,28 @@
 import { constants, renameSync } from 'node:fs'
-import { lstat, mkdir, mkdtemp, open, readdir, rename, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, open, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import type { Context } from '@earendil-works/chord/context'
+import {
+  ToolResultEntry,
+  ToolTask,
+  type TaskId,
+  type ToolTaskResult,
+} from '@earendil-works/pi-durable'
 import type { Page } from 'playwright-core'
+import { browserVideoId, browserVideoOf } from '../../lib/browser-video.ts'
+import { errnoCode, isMissing } from '../../lib/errors.ts'
+import type { ExtensionHost } from '../../server/extensions.ts'
 
 const videoName = 'video.webm'
+const receiptName = 'receipt.json'
+
+function recordingRoot(home: string) {
+  return join(home, 'browser-videos')
+}
 
 export async function stageRecording(home: string) {
-  const root = join(home, 'browser-videos')
+  const root = recordingRoot(home)
   await mkdir(root, { recursive: true, mode: 0o700 })
   const stat = await lstat(root)
   if (
@@ -67,6 +82,81 @@ export async function verifyPlayback(page: Page, file: string) {
   if (!playable) throw new Error('Chromium could not decode and seek the recorded WebM video')
 }
 
-export function publishRecording(staging: string, id: string) {
+export async function finalizeRecording(staging: string, id: string, taskId: TaskId, ctx: Context) {
+  await writeFile(join(staging, receiptName), JSON.stringify(taskId), { flag: 'wx', mode: 0o600 })
+  ctx.abortSignal?.throwIfAborted()
   renameSync(staging, join(dirname(staging), id))
+}
+
+export async function discardRecording(home: string, id: string) {
+  if (browserVideoId.test(id))
+    await rm(join(recordingRoot(home), id), { force: true, recursive: true })
+}
+
+function ownerOnly(stat: { uid: number; mode: number }) {
+  return stat.uid === (process.getuid?.() ?? stat.uid) && !(stat.mode & 0o077)
+}
+
+async function openPrivateFile(path: string) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+  let keep = false
+  try {
+    const stat = await file.stat()
+    keep = stat.isFile() && stat.size > 0 && ownerOnly(stat)
+    if (keep) return file
+  } finally {
+    if (!keep) await file.close()
+  }
+  return undefined
+}
+
+async function readReceipt(path: string) {
+  const file = await openPrivateFile(path)
+  if (!file) return undefined
+  try {
+    const receipt: unknown = JSON.parse(await file.readFile('utf8'))
+    if (typeof receipt === 'number' && Number.isSafeInteger(receipt) && receipt > 0)
+      return receipt as TaskId<ToolTaskResult>
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error
+  } finally {
+    await file.close()
+  }
+  return undefined
+}
+
+export async function openRecording(host: ExtensionHost, id: string, ctx: Context) {
+  if (!browserVideoId.test(id)) return undefined
+  const root = recordingRoot(host.home)
+  const directory = join(root, id)
+  try {
+    for (const path of [root, directory]) {
+      const stat = await lstat(path)
+      if (!stat.isDirectory() || !ownerOnly(stat)) return undefined
+    }
+    const receipt = await readReceipt(join(directory, receiptName))
+    if (!receipt) return undefined
+    const harness = host.harness()
+    const task = await harness.getTask(receipt, ctx)
+    if (
+      task?.kind !== ToolTask.definition.name ||
+      task.state.status !== 'terminal' ||
+      task.state.outcome.status !== 'completed' ||
+      task.state.outcome.result.kind !== 'model'
+    )
+      return undefined
+    const { entryId } = task.state.outcome.result
+    const entry = await harness.commit((tx) => tx.entry(ToolResultEntry, entryId), ctx)
+    if (entry?.conversationId !== task.conversationId) return undefined
+    const message = entry.model?.[0]
+    if (message?.role !== 'toolResult' || message.toolName !== 'browser_video' || message.isError)
+      return undefined
+    const clip = browserVideoOf(message.details)
+    if (clip?.id !== id) return undefined
+    const file = await openPrivateFile(join(directory, videoName))
+    if (file) return { file, clip, conversation: task.conversationId }
+  } catch (error) {
+    if (!isMissing(error) && errnoCode(error) !== 'ELOOP') throw error
+  }
+  return undefined
 }

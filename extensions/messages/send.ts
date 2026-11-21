@@ -3,7 +3,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
-import { Messages, MessageSent, QuestionVideo } from './api.ts'
+import { Messages, MessageSent, QuestionVideo, QuestionVideos } from './api.ts'
 import type { Message, Question } from './api.ts'
 import type { Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
@@ -212,6 +212,10 @@ export async function send(
       ...(options.echo ? { echo: true as const } : {}),
       ...(via ? { via } : {}),
     })
+    if (video && from !== 'user') {
+      const selected = await tx.doc(QuestionVideos, from)
+      if (!selected.ids.includes(video.id)) selected.ids.push(video.id)
+    }
     await host.emit(tx, MessageSent, {
       message: message.id,
       from,

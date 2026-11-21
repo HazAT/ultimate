@@ -1,15 +1,6 @@
-import type { FileHandle } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { pipeline } from 'node:stream/promises'
-import type { ExtensionHost } from './extensions.ts'
-
-type PrivateFile = { file: FileHandle; name: string; type: 'video/webm' }
-
-export type ExtensionFiles = (
-  id: string,
-  key: string,
-  ctx: { host: ExtensionHost },
-) => Promise<PrivateFile | undefined>
+import type { ExtensionFiles } from './extensions.ts'
 
 export const privateFilesPath = /^\/api\/extensions\/[^/]+\/files(?:\/|$)/
 const filePath =

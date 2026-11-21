@@ -5,7 +5,7 @@ import type {
   Harness,
   JsonObject,
 } from '@earendil-works/pi-durable'
-import { readFile, realpath } from 'node:fs/promises'
+import { readFile, realpath, type FileHandle } from 'node:fs/promises'
 import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
 import { compareExtensions, discoverExtensions, webFacet } from '../lib/discovery.ts'
 import {
@@ -22,7 +22,6 @@ import { extensionSettingsFiles } from '../lib/extension-settings.ts'
 import { watchRoots } from './watch-roots.ts'
 import { actionExec } from './actions.ts'
 import type { ExtensionAction } from './actions.ts'
-import type { ExtensionFiles } from './private-files.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { join, resolve } from 'node:path'
 import type { ViteDevServer } from 'vite-plus'
@@ -93,6 +92,13 @@ export type ExtensionHost = Pick<
   doc(kind: string): ConversationDocToken<JsonObject> | undefined
   metadata: typeof Metadata
 } & EventHost
+
+export type ExtensionFiles = (
+  id: string,
+  key: string,
+  ctx: { host: ExtensionHost },
+) => Promise<{ file: FileHandle; name: string; type: 'video/webm' } | undefined>
+
 const runOpener = (callback: () => Promise<void>) =>
   callback().catch((error: unknown) => console.error('Extension onOpen:', error))
 const runReleaser = (callback: () => Promise<void>) =>

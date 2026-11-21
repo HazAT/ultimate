@@ -17,23 +17,42 @@ import {
 } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
-import type { Context } from '@earendil-works/chord/context'
+import { BACKGROUND_CONTEXT, type Context } from '@earendil-works/chord/context'
 import {
   defineExtension,
   defineTool,
+  hook,
   section,
+  ToolTask,
   type ToolExecutionApi,
 } from '@earendil-works/pi-durable'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { groupTarget, identify } from '../../lib/process-group.ts'
-import type { ExtensionHost } from '../../server/extensions.ts'
+import type { ExtensionFiles, ExtensionHost } from '../../server/extensions.ts'
 import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { within as withinDeadline } from '../../lib/timers.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { errnoCode, inProcess, ignoring, meansNone } from '../../lib/errors.ts'
-import type { BrowserClip } from '../../lib/browser-video.ts'
-import { prepareRecording, publishRecording, stageRecording, verifyPlayback } from './recordings.ts'
+import { browserVideoOf, type BrowserClip } from '../../lib/browser-video.ts'
+import { BrowserRecordings } from './api.ts'
+import {
+  discardRecording,
+  finalizeRecording,
+  openRecording,
+  prepareRecording,
+  stageRecording,
+  verifyPlayback,
+} from './recordings.ts'
+
+const recordingIdMemo = 'browser-video-id'
+
+export const files: ExtensionFiles = async (id, key, { host }) => {
+  if (key !== 'video') return undefined
+  const recording = await openRecording(host, id, BACKGROUND_CONTEXT)
+  if (recording) return { file: recording.file, name: 'browser-video.webm', type: 'video/webm' }
+  return undefined
+}
 
 export async function playwrightChromiums(
   home: string,
@@ -151,6 +170,14 @@ async function capture(page: Page, file: string, selector?: string, fullPage = f
 }
 
 export default function browserExtension(host: ExtensionHost) {
+  host.implement(BrowserRecordings, {
+    async find(id, ctx) {
+      const recording = await openRecording(host, id, ctx)
+      if (!recording) return undefined
+      await recording.file.close()
+      return { ...recording.clip, conversation: recording.conversation }
+    },
+  })
   const state = host.resource('browser', () => {
     const resource: { launched?: Promise<Browser>; browser?: Browser } = {}
     host.onClose(async () => {
@@ -231,6 +258,16 @@ export default function browserExtension(host: ExtensionHost) {
   )
   return defineExtension({
     name: 'browser',
+    hooks: [
+      hook(ToolTask, {
+        async afterTool(call, result, api, ctx) {
+          if (call.name !== 'browser_video') return
+          const id = await api.memo<string>(recordingIdMemo, ctx)
+          if (id && (result.isError || browserVideoOf(result.details)?.id !== id))
+            await discardRecording(host.home, id)
+        },
+      }),
+    ],
     sections: [
       section(
         'visual_verification',
@@ -272,6 +309,7 @@ export default function browserExtension(host: ExtensionHost) {
       }),
       defineTool({
         name: 'browser_video',
+        callers: ['model'],
         description:
           'Drive a fresh, isolated browser page with the same steps as browser and save a private WebM. Use it when motion or interaction needs to be shown. Record only an isolated demo with synthetic data, never a personal session or real user data. Reports step outcomes and returns a playable clip ID on success.',
         parameters: obj({
@@ -462,8 +500,8 @@ export default function browserExtension(host: ExtensionHost) {
       timeoutMs?: number
     },
     waits: number,
-    api: { output(text: string): void; env?: { cwd: string } },
-    context: { abortSignal?: AbortSignal },
+    api: ToolExecutionApi,
+    context: Context,
     action: (
       page: Page,
       outcomes: string[],
@@ -631,8 +669,9 @@ export default function browserExtension(host: ExtensionHost) {
         if (!(await close())) throw new Error('The browser did not finish verifying the recording')
         isolated = undefined
         context.abortSignal?.throwIfAborted()
-        video = { id: randomUUID(), title }
-        publishRecording(staging, video.id)
+        const id = await api.memo(recordingIdMemo, randomUUID(), context)
+        await finalizeRecording(staging, id, api.taskId, context)
+        video = { id, title }
         staging = undefined
       }
       return {
