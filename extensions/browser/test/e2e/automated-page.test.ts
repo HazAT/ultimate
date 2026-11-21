@@ -1,13 +1,13 @@
 // An automated browser (an agent's own Playwright script, not only the browser tools) on `?conversation=` must not
 // move the user's tabs: it once wrote its selection into the shared UI state and the user's tab followed it.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../server.ts'
 import { context } from '../../../../server/harness.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
-import { fauxServer, post, removeTemp, temp } from '../../../../test/helpers.ts'
+import { prebuiltServer, post, removeTemp, temp } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -17,9 +17,7 @@ afterEach(async () => {
 it('leaves the shared selection alone when a plain Playwright page opens another conversation', async () => {
   const home = await temp('ultimate-automated-page-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,
