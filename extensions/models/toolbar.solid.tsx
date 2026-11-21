@@ -43,12 +43,25 @@ export function ModelButton() {
       <Show when={!loading() && family()} fallback={<Cpu class="size-3.5 shrink-0" />}>
         {(current) => <FamilyDot color={current().color} class="mx-0.5" />}
       </Show>
-      <span class={cn('truncate', !loading() && (ref() ? 'text-foreground/85' : 'text-warning'))}>
-        {loading()
-          ? 'model…'
-          : family()
-            ? `${familyTitle(family()!.name)} (${ref()!.modelId})`
-            : (ref()?.modelId ?? 'no model')}
+      <span
+        class={cn(
+          'flex min-w-0 whitespace-pre',
+          !loading() && (ref() ? 'text-foreground/85' : 'text-warning'),
+        )}
+      >
+        <Show
+          when={!loading() && family()}
+          fallback={
+            <span class="truncate">{loading() ? 'model…' : (ref()?.modelId ?? 'no model')}</span>
+          }
+        >
+          {(current) => (
+            <>
+              <span class="truncate">{familyTitle(current().name)}</span>
+              <span class="min-w-0 shrink-[0.2] truncate">{` (${ref()!.modelId})`}</span>
+            </>
+          )}
+        </Show>
       </span>
       <Down />
     </Button>
