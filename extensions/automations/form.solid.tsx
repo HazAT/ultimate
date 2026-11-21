@@ -381,7 +381,9 @@ function ScheduleFields(props: FieldsProps) {
                 ([key, value]) => draft()[key as keyof Draft] === value,
               )}
               class="group/preset h-6 gap-1 rounded-full border-border/80 px-2.5 text-[11.5px] font-normal text-muted-foreground data-pressed:border-brand/60 data-pressed:bg-brand/10 data-pressed:text-foreground"
-              onPressedChange={() => props.set(preset.patch)}
+              onPressedChange={(pressed, details) =>
+                pressed ? props.set(preset.patch) : details.cancel()
+              }
               size="xs"
               variant="outline"
             >
