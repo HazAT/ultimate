@@ -5,7 +5,12 @@ import { setImmediate as yieldIO } from 'node:timers/promises'
 import { join, resolve, sep } from 'node:path'
 import { applyImmutable } from '@earendil-works/chord/delta'
 import type { Op } from '@earendil-works/chord/delta'
-import type { ConversationId, ConversationView, Harness } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  ConversationView,
+  Harness,
+  TaskGraph,
+} from '@earendil-works/pi-durable'
 import { afterAll, vi } from 'vitest'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
@@ -272,6 +277,7 @@ export async function attach(
   let system: SystemInfo | undefined
   let view: ConversationView | undefined
   let conversations: ConversationSummary[] = []
+  let tasks: TaskGraph | undefined
   let connections = 0
   const task = (async () => {
     while (!controller.signal.aborted) {
@@ -310,6 +316,8 @@ export async function attach(
             if (name === 'conversations') conversations = parsed as ConversationSummary[]
             if (name === 'conversationsOps')
               conversations = applyImmutable(conversations, parsed as Op[])
+            if (name === 'tasks') tasks = parsed as TaskGraph
+            if (name === 'tasksOps' && tasks) tasks = applyImmutable(tasks, parsed as Op[])
           }
         }
       } catch (error) {
@@ -327,6 +335,8 @@ export async function attach(
     view: () => view!,
     /** The conversation list as the stream's snapshot and ops build it. */
     conversations: () => conversations,
+    /** The task graph as the stream's snapshot and ops build it. */
+    tasks: () => tasks!,
     connections: () => connections,
     async close() {
       controller.abort()

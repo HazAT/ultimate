@@ -59,14 +59,35 @@ export function fakeSubscriptions(sources: FakeSource[]) {
   const refusals = new Map<number | undefined, number>()
   return {
     subscriptions,
-    /** The newest open subscription of a conversation (undefined: the server's root), or only its view's or documents'. */
-    of: (conversation?: number, view?: boolean) =>
-      subscriptions.findLast(
+    /**
+     * A conversation's subscriptions (undefined: the server's root) as one: `view` and `ops` go to its newest open view
+     * subscription, `doc` and `docOps` to the open one watching that kind. With `view`, only the newest open view (true)
+     * or document (false) subscription.
+     */
+    of(conversation?: number, view?: boolean): FakeSubscription | undefined {
+      const open = subscriptions.filter(
         (item) =>
           !item.closed &&
           item.conversation === conversation &&
           (view === undefined || item.view === view),
-      ),
+      )
+      const newest = open.at(-1)
+      if (!newest || view !== undefined) return newest
+      return {
+        ...newest,
+        get closed() {
+          return open.every((item) => item.closed)
+        },
+        send: (name, data) => {
+          const kind = (data as { kind?: string }).kind
+          const target =
+            kind === undefined
+              ? open.findLast((item) => item.view)
+              : open.findLast((item) => item.docs.includes(kind))
+          ;(target ?? newest).send(name, data)
+        },
+      }
+    },
     refuse(conversation: number | undefined, status: number | undefined) {
       if (status === undefined) refusals.delete(conversation)
       else refusals.set(conversation, status)
@@ -95,18 +116,7 @@ export function fakeSubscriptions(sources: FakeSource[]) {
           get closed() {
             return deleted.has(`${stream}/${sub}`) || source.closed || source.id !== stream
           },
-          send: (name, data) => {
-            const kind = (data as { kind?: string }).kind
-            const carrier = subscriptions.findLast(
-              (item) =>
-                !item.closed &&
-                item.stream === stream &&
-                item.conversation === spec.conversation &&
-                kind !== undefined &&
-                item.docs.includes(kind),
-            )
-            source.send(name, data, carrier?.sub ?? sub)
-          },
+          send: (name, data) => source.send(name, data, sub),
         })
       }
       return Response.json({ ok: true, refused: failed })

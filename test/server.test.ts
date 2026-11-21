@@ -848,6 +848,31 @@ export default host => { host.resource('cleanup.process',()=>{
     )
     await stream.close()
   })
+  it('sends conversations and tasks once whole, then as ops that rebuild what a fresh stream gets', async () => {
+    const { server } = await fixture()
+    const stream = await attach(server)
+    const created = (await post(server, '/api/conversations', { title: 'Another' })).data
+      .id as ConversationId
+    server.host.faux!.setResponses([fauxAssistantMessage('Done')])
+    await post(server, `/api/conversations/${created}/submit`, { text: 'work' })
+    await server.harness.waitForIdle(context)
+    await until(() => stream.conversations().some((item) => item.id === created))
+    const fresh = await attach(server)
+    try {
+      const sent = (name: string) => stream.events.filter((event) => event.name === name).length
+      expect([sent('conversations'), sent('tasks')]).toEqual([1, 1])
+      expect(sent('conversationsOps')).toBeGreaterThan(0)
+      await until(
+        () =>
+          JSON.stringify(stream.conversations()) === JSON.stringify(fresh.conversations()) &&
+          JSON.stringify(stream.tasks()) === JSON.stringify(fresh.tasks()),
+      )
+      expect(stream.conversations()).toEqual(server.api.conversations())
+    } finally {
+      await fresh.close()
+      await stream.close()
+    }
+  })
   it('serves published titles and activity to clients and server facets without deriving entries', async () => {
     const { server } = await fixture(false, {
       summaries: `import { defineExtension } from '@earendil-works/pi-durable'

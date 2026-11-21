@@ -102,13 +102,13 @@ describe('web replica store', () => {
   it('streams extension documents of the shown conversation', async () => {
     const { store, sources, server, latest } = setup()
     latest().open()
-    const first = server.of()!
+    const first = server.of(undefined, true)!
     const release = store.watchDoc('test.counter')
     await tick()
     // Documents get their own subscription on the same stream; the view's stays, so it is not sent again.
     expect(sources).toHaveLength(1)
     expect(first.closed).toBe(false)
-    const main = server.of()!
+    const main = server.of(undefined, false)!
     expect(main).toMatchObject({ docs: ['test.counter'], view: false })
 
     main.send('doc', { kind: 'test.counter', value: { count: 0 } })
@@ -121,54 +121,67 @@ describe('web replica store', () => {
     main.send('doc', { kind: 'other', value: { x: 1 } })
     expect(store.getState().docs.other).toBeUndefined()
 
+    // Released and watched again in the same tick: the subscription and its replica carry on, and its ops apply.
     release()
-    expect(store.getState().docs['test.counter']).toBeUndefined()
-    main.send('docOps', {
-      kind: 'test.counter',
-      ops: [['s', ['count'], 2]],
-    })
-    expect(store.getState().docs['test.counter']).toBeUndefined()
-    // Watched again: the old subscription's ops wait for the new subscription's snapshot.
-    store.watchDoc('test.counter')
-    main.send('docOps', {
-      kind: 'test.counter',
-      ops: [['s', ['count'], 3]],
-    })
-    expect(store.getState().docs['test.counter']).toBeUndefined()
+    const again = store.watchDoc('test.counter')
     await tick()
-    server.of()!.send('doc', { kind: 'test.counter', value: { count: 3 } })
+    expect(main.closed).toBe(false)
+    main.send('docOps', { kind: 'test.counter', ops: [['s', ['count'], 2]] })
+    expect(store.getState().docs['test.counter']).toEqual({ count: 2 })
+
+    // Released for good: the subscription closes, the replica goes, and late ops are ignored.
+    again()
+    await tick()
+    expect(main.closed).toBe(true)
+    expect(store.getState().docs['test.counter']).toBeUndefined()
+    main.send('docOps', { kind: 'test.counter', ops: [['s', ['count'], 3]] })
+    expect(store.getState().docs['test.counter']).toBeUndefined()
+
+    // Watched again later: a new subscription's snapshot.
+    store.watchDoc('test.counter')
+    await tick()
+    const reopened = server.of(undefined, false)!
+    expect(reopened).not.toBe(main)
+    reopened.send('doc', { kind: 'test.counter', value: { count: 3 } })
     expect(store.getState().docs['test.counter']).toEqual({ count: 3 })
     store.stop()
   })
 
-  it('streams documents of given conversations, adding kinds without resending what is already open', async () => {
-    const { store, sources, server, latest } = setup()
+  it('streams documents of given conversations, one subscription per kind, opened together in one request', async () => {
+    const { store, sources, server, latest, fetch } = setup()
     latest().open()
+    await tick()
+    const posts = () =>
+      fetch.mock.calls.filter(([path]) => (path as string).startsWith('/api/events/')).length
+    const before = posts()
     const tasks = store.watchDocOf(1 as ConversationId, 'test.tasks')
     const tasksAgain = store.watchDocOf(1 as ConversationId, 'test.tasks')
     const overview = store.watchDocOf(1 as ConversationId, 'test.overview')
     const plan = store.watchDocOf(7 as ConversationId, 'test.plan')
+    const counter = store.watchDoc('test.counter')
+    const branches = Array.from({ length: 20 }, (_, index) =>
+      store.watchDocOf((100 + index) as ConversationId, 'board.started'),
+    )
     await tick()
-    // All on the tab's one stream: the shown conversation, then the kinds watched in one tick, per conversation.
+    // Everything watched in one tick goes to the server in one request, all on the tab's one stream.
+    expect(posts() - before).toBe(1)
     expect(sources).toHaveLength(1)
-    const open = () =>
-      server.subscriptions
-        .filter((item) => !item.closed)
-        .map((item) => ({ conversation: item.conversation, docs: item.docs, view: item.view }))
-    expect(open()).toEqual([
-      { docs: [], view: true },
-      { conversation: 1, docs: ['test.overview', 'test.tasks'], view: false },
-      { conversation: 7, docs: ['test.plan'], view: false },
-    ])
-    const root = server.of(1)!
-    const coordinator = server.of(7)!
+    const doc = (conversation: number | undefined, kind: string) =>
+      server.subscriptions.findLast(
+        (item) => !item.closed && item.conversation === conversation && item.docs.includes(kind),
+      )!
+    expect(doc(1, 'test.tasks').docs).toEqual(['test.tasks'])
+    expect(doc(1, 'test.overview').docs).toEqual(['test.overview'])
+    expect(doc(undefined, 'test.counter').docs).toEqual(['test.counter'])
+    const root = doc(1, 'test.tasks')
+    const coordinator = doc(7, 'test.plan')
 
     root.send('docOps', { kind: 'test.tasks', ops: [['s', ['n'], 0]] })
     expect(store.getState().docsOf[1]).toEqual({})
     root.send('doc', { kind: 'test.tasks', value: { n: 1 } })
     root.send('docOps', { kind: 'test.tasks', ops: [['s', ['n'], 2]] })
     coordinator.send('doc', { kind: 'test.plan', value: { epics: {} } })
-    expect(store.getState().docsOf).toEqual({
+    expect(store.getState().docsOf).toMatchObject({
       1: { 'test.tasks': { n: 2 } },
       7: { 'test.plan': { epics: {} } },
     })
@@ -180,48 +193,36 @@ describe('web replica store', () => {
     await tick()
     expect([root.closed, coordinator.closed]).toEqual([false, false])
 
-    // Releasing one kind keeps the subscription; its late events are ignored.
+    // Releasing one kind closes only its subscription on the server.
+    const overviewSub = doc(1, 'test.overview')
     overview()
     await tick()
-    expect(root.closed).toBe(false)
-    root.send('doc', { kind: 'test.overview', value: { late: true } })
-    expect(store.getState().docsOf[1]).toEqual({ 'test.tasks': { n: 2 } })
+    expect([overviewSub.closed, root.closed]).toEqual([true, false])
 
-    // A kind watched later gets a subscription of its own, so nothing open is sent again.
-    const watched = store.watchDocOf(1 as ConversationId, 'test.overview')
-    await tick()
-    expect(root.closed).toBe(false)
-    const added = server.of(1)!
-    expect(added.docs).toEqual(['test.overview'])
-    added.send('doc', { kind: 'test.overview', value: { fresh: true } })
-    expect(store.getState().docsOf[1]['test.overview']).toEqual({ fresh: true })
-
-    // A refused subscription is tried again.
-    watched()
-    await tick()
-    expect(added.closed).toBe(true)
+    // A refused subscription is tried again, alone.
     server.refuse(1, 500)
     const retried = store.watchDocOf(1 as ConversationId, 'test.overview')
     await tick()
-    expect(server.of(1)).toBe(root)
+    expect(
+      server.subscriptions.some((item) => !item.closed && item.docs.includes('test.overview')),
+    ).toBe(false)
     server.refuse(1, undefined)
     await tick()
-    expect(server.of(1)!.docs).toEqual(['test.overview'])
+    expect(doc(1, 'test.overview').docs).toEqual(['test.overview'])
+    expect(root.closed).toBe(false)
 
-    // A new stream (a restart) gets every kind again; the value stays until its snapshot.
+    // A new stream (a restart) gets every subscription again; the value stays until its snapshot.
     latest().drop()
     latest().open()
-    const reopened = server.subscriptions.find(
-      (item) => !item.closed && item.conversation === 1 && item.docs.includes('test.tasks'),
-    )!
+    const reopened = doc(1, 'test.tasks')
     expect(reopened.stream).toBe(latest().id)
     expect(store.getState().docsOf[1]['test.tasks']).toEqual({ n: 2 })
     reopened.send('doc', { kind: 'test.tasks', value: { n: 3 } })
     root.send('doc', { kind: 'test.tasks', value: { n: 0 } })
     expect(store.getState().docsOf[1]['test.tasks']).toEqual({ n: 3 })
-    expect(server.of(7)!.stream).toBe(latest().id)
+    expect(doc(7, 'test.plan').stream).toBe(latest().id)
 
-    // The last kind of a conversation closes its subscriptions.
+    // The last reader of a kind closes its subscription.
     tasks()
     await tick()
     expect(reopened.closed).toBe(false)
@@ -231,10 +232,13 @@ describe('web replica store', () => {
     expect(reopened.closed).toBe(true)
     expect(store.getState().docsOf[1]).toBeUndefined()
     plan()
+    counter()
+    for (const release of branches) release()
     await tick()
-    // Only the shown conversation's own subscription of 7 is left.
-    const seven = server.subscriptions.filter((item) => !item.closed && item.conversation === 7)
-    expect(seven.map((item) => item.docs)).toEqual([[]])
+    // Only the shown conversation's view is left.
+    expect(
+      server.subscriptions.filter((item) => !item.closed).map((item) => item.conversation),
+    ).toEqual([7])
     expect(store.getState().docsOf[7]).toBeUndefined()
 
     store.stop()
@@ -255,6 +259,29 @@ describe('web replica store', () => {
     expect(server.of()!.closed).toBe(false)
     expect(server.subscriptions.filter((item) => !item.closed)).toHaveLength(1)
     expect(sources).toHaveLength(1)
+    store.stop()
+  })
+
+  it('retires an open whose answer was lost before retrying it, so one watch never has two subscriptions', async () => {
+    const { store, server, latest, fetch } = setup()
+    latest().open()
+    await tick()
+    fetch.mockImplementationOnce(async (path, init) => {
+      server.handle(path as string, init)
+      throw new Error('connection reset')
+    })
+    store.watchDoc('test.counter')
+    await tick()
+    fetch.mockImplementationOnce(async (path, init) => {
+      server.handle(path as string, init)
+      return new Response('not json')
+    })
+    await tick()
+    await tick()
+    const open = server.subscriptions.filter((item) => !item.closed && item.docs.length)
+    expect(open).toHaveLength(1)
+    open[0].send('doc', { kind: 'test.counter', value: { count: 1 } })
+    expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
     store.stop()
   })
 
