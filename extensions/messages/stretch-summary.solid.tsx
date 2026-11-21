@@ -2,7 +2,7 @@
 import { Check } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'
 import { ROOT, formatTokens, plural, useDocOf, useTranscript } from '@/sdk/solid'
-import type { CompactSummaryProps } from '@/sdk'
+import type { CompactSummaryProps } from '@/sdk/solid'
 import { cacheBusts } from '../../lib/context-usage.ts'
 import { backgroundRow, counterparts, emptyMessages, landed, landedSha } from './data.ts'
 import { MessagesDoc } from './refs.ts'

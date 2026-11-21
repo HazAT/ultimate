@@ -16,7 +16,7 @@ import {
   useUiState,
 } from '@/sdk/solid'
 import { useAllProvided, useProvided } from '@/sdk/parts.solid.tsx'
-import type { JsonValue } from '@/sdk'
+import type { JsonValue } from '@/sdk/solid'
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import { useAutomations, timerWaits } from '../automations/ui.solid.tsx'
 import { OverviewDoc } from '../conversations/refs.ts'

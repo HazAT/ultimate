@@ -107,7 +107,13 @@ export type {
   CompactRow,
   Contribution,
   DocumentProps,
+  CodeBlockRenderer,
+  CompactSummaryProps,
+  InlineCodeRenderer,
+  LinkRenderer,
   Point,
+  UltimateActions,
+  UltimateContext,
   WebExtension,
   ComposerTarget,
   SolidComposerProps,
@@ -706,3 +712,13 @@ export function useRestart(timeoutMs = 120_000) {
     },
   }
 }
+export type { DocumentItem } from './registry.ts'
+export type {
+  ConversationSummary,
+  ModelsResponse,
+  Notice,
+  SystemInfo,
+} from '../../../shared/protocol.ts'
+export type { EntryRecord, LiveState } from '@earendil-works/pi-durable'
+export type { JsonValue } from '@earendil-works/chord/json'
+export type { AuthEvent, AuthPrompt, Usage } from '@earendil-works/pi-ai'

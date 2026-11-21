@@ -1,5 +1,8 @@
 /** @jsxImportSource @solidjs/web */
-/** Messages for Solid code: message parts, addresses and waiting state. */
+/**
+ * Messages for other extensions' browser code: its document and sent event, what waits on the user's answer, the pieces
+ * a message card is drawn from, and the points where an optional extension adds to a message (its answer card).
+ */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Globe } from '@lucide/solid'
 import { Match, Show, Switch } from 'solid-js'
@@ -14,11 +17,16 @@ export {
   conversationState,
   conversationWait,
   emptyMessages,
+  isOpen,
+  isOwed,
+  openQuestion,
   stateTone,
   stateWord,
   waitLabel,
   waitingOnUser,
 } from './data.ts'
+export { MessagesDoc, MessageSent } from './refs.ts'
+export { accentOf } from './accent.ts'
 export type { ConversationState } from './data.ts'
 export { useRemoteProgress } from './progress.solid.tsx'
 export { useStarters, useUnderway } from './started.solid.tsx'

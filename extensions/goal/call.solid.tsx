@@ -4,7 +4,7 @@ import type { JSX } from '@solidjs/web'
 import { For, Show, createMemo } from 'solid-js'
 import { Tool, ToolContent, ToolHeader, ToolSection } from '@/components/ai/tool.solid.tsx'
 import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import type { ToolCallView } from '@/sdk'
+import type { ToolCallView } from '@/sdk/solid'
 import { ProposedGoal } from './propose.solid.tsx'
 
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')

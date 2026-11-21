@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { children, createMemo, createSignal, Match, onSettled, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import type { LinkRenderer } from '@/sdk'
+import type { LinkRenderer } from '@/sdk/solid'
 import { cn, useSystem } from '@/sdk/solid'
 import { at, label } from './links.ts'
 import { canFrameLoopbackPreviews, getPreviews, isLoopback, show, subscribe } from './previews.ts'
