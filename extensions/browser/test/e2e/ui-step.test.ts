@@ -200,29 +200,34 @@ it('acts on the one control with the exact label, also one an earlier step broug
   expect(value(2)).toBe('archive')
   expect(value(3)).toMatchObject({ ok: true, steps: [{ step: 0 }, { step: 1 }] })
   expect(value(4)).toBe('popover archive')
+  const closed = await drive([
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [false] },
+      ],
+    },
+  ])
+  expect(closed(1)).toMatchObject({ ok: true, appeared: [] })
+  expect(closed(1)).not.toHaveProperty('open')
 })
 
-it('until a control’s state wakes on its change, by label or by ref', async () => {
+it('until a control’s state wakes on its change, by label or by ref, and a missing ref is never a label', async () => {
   const { drive } = await serve()
+  const waitThenToggle = (target: string) =>
+    `(async () => { const ui = window.ultimate.ui; const [{ ref }] = await ui.query({ text: 'Weekly digest' }); const target = ${target}; let toggled = false; let early = false; const waiting = window.ultimate.until({ ui: target, is: { checked: !document.querySelector('[aria-label="Weekly digest"]').matches('[aria-checked="true"]') } }, { timeoutMs: 5000 }).then((found) => { early = !toggled; return found }); await new Promise((later) => setTimeout(later, 300)); toggled = true; document.querySelector('[aria-label="Weekly digest"]').click(); const found = await waiting; return { early, same: found.ref === ref, checked: found.checked } })()`
   const value = await drive([
-    { ui: 'query', text: 'Weekly digest' },
-    {
-      eval: '(() => { window.ultimate.ui.ready().then(() => requestAnimationFrame(() => setTimeout(() => document.querySelector(\'[aria-label="Weekly digest"]\').click(), 200))); return 1 })()',
-    },
-    { until: { ui: 'Weekly digest', is: { checked: true } }, timeoutMs: 5000 },
-    {
-      eval: "document.querySelector('[aria-label=\"Weekly digest\"]').getAttribute('aria-checked')",
-    },
+    { eval: waitThenToggle("'Weekly digest'") },
+    { eval: waitThenToggle('ref') },
+    { ui: 'act', steps: [{ ref: 'c9999', action: 'press' }] },
   ])
-  const [{ ref }] = value(1) as Component[]
-  expect(value(4)).toBe('true')
-  expect(value(3)).toMatchObject({ ref, checked: true })
-  const live = (await drive([{ ui: 'query', text: 'Weekly digest' }]))(1) as Component[]
-  const waited = await drive([
-    { ui: 'query', text: 'Weekly digest' },
-    { until: { ui: live[0].ref, is: { checked: true } }, timeoutMs: 5000 },
-  ])
-  expect(waited(2)).toMatchObject({ ref: live[0].ref, label: 'Weekly digest', checked: true })
+  expect(value(1)).toEqual({ early: false, same: true, checked: true })
+  expect(value(2)).toEqual({ early: false, same: true, checked: false })
+  expect(value(3)).toMatchObject({
+    ok: false,
+    error: { step: 0, message: 'No component c9999 on the page.' },
+  })
 })
 
 it('records nothing from the agent when it opens and closes a popover', async () => {

@@ -31,6 +31,9 @@ interface Sent {
 const SENT_KEY = 'ultimate.sent'
 
 type UiComponent = ReturnType<UiAgent['snapshot']>[number]
+type ActResult = Awaited<ReturnType<UiAgent['act']>>
+
+const isRef = (name: string) => /^c\d+$/.test(name)
 
 const fold = (text: string) =>
   text.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase()
@@ -99,14 +102,14 @@ export function createTestHook(
     })
   }
 
-  const controlsMounted = () => {
+  const controlsMounted = (timeoutMs = 30_000) => {
     const gaveUp = new AbortController()
     return within(
-      30_000,
+      timeoutMs,
       rendered.then(() => readsSettled(gaveUp.signal)),
       () => {
         const error = new Error(
-          'Timed out after 30s: the page never rendered its surface with the data its components read',
+          `Timed out after ${timeoutMs / 1000}s: the page never rendered its surface with the data its components read`,
         )
         gaveUp.abort(error)
         return error
@@ -123,9 +126,11 @@ export function createTestHook(
 
   async function named(name: string): Promise<UiComponent | undefined> {
     const bridge = agent.bridge()
-    if (/^c\d+$/.test(name)) {
+    if (isRef(name)) {
       const byRef = await bridge.query({ within: name })
-      return Array.isArray(byRef) ? byRef[0] : undefined
+      return Array.isArray(byRef) && byRef[0]?.ref === name && !byRef[0].offPage
+        ? byRef[0]
+        : undefined
     }
     const found = await bridge.query({ text: name })
     const exact = Array.isArray(found)
@@ -136,23 +141,42 @@ export function createTestHook(
 
   async function act({ steps }: Parameters<UiAgent['act']>[0]) {
     const bridge = agent.bridge()
-    const done: Awaited<ReturnType<UiAgent['act']>>['steps'] = []
-    const appeared: UiComponent[] = []
-    let last: Awaited<ReturnType<UiAgent['act']>> | undefined
+    const done: ActResult['steps'] = []
+    const appeared = new Map<string, UiComponent>()
+    const values: ActResult['values'] = {}
+    const touched = new Set<string>()
+    let error: ActResult['error']
     for (const [index, step] of steps.entries()) {
-      const ref = (await named(step.ref))?.ref ?? step.ref
-      last = await bridge.act({ steps: [{ ...step, ref }] })
-      done.push(...last.steps.map((item) => ({ ...item, step: index })))
-      appeared.push(...last.appeared)
-      if (!last.ok)
-        return {
-          ...last,
-          steps: done,
-          appeared,
-          error: last.error && { ...last.error, step: index },
-        }
+      const found = await named(step.ref)
+      if (!found && isRef(step.ref)) {
+        error = { step: index, message: `No component ${step.ref} on the page.` }
+        break
+      }
+      const one = await bridge.act({ steps: [{ ...step, ref: found?.ref ?? step.ref }] })
+      done.push(...one.steps.map((item) => ({ ...item, step: index })))
+      for (const item of one.appeared) appeared.set(item.ref, item)
+      Object.assign(values, one.values)
+      for (const item of one.steps) touched.add(item.ref)
+      if (!one.ok) {
+        error = one.error && { ...one.error, step: index }
+        break
+      }
     }
-    return { ...last!, steps: done, appeared }
+    const now = async (ref: string) => named(ref)
+    const live = (await Promise.all([...appeared.keys()].map(now))).filter(
+      (item): item is UiComponent => !!item,
+    )
+    const open = (await Promise.all([...touched].map(now))).filter(
+      (item): item is UiComponent => item?.open === true,
+    )
+    return {
+      ok: !error,
+      ...(error && { error }),
+      steps: done,
+      ...(open.length ? { open } : {}),
+      appeared: live,
+      values,
+    }
   }
 
   const same = (a: unknown, b: unknown): boolean => {
@@ -224,7 +248,7 @@ export function createTestHook(
           reject(error instanceof Error ? error : new Error(String(error)))
         })
       }
-      controlsMounted().then(
+      controlsMounted(timeoutMs).then(
         () => {
           if (stopped) return
           ready = true
