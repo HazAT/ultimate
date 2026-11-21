@@ -30,14 +30,13 @@ import {
   useUiState,
 } from '@/sdk/solid'
 import { useAutomations, timerWaits } from '../automations/ui.solid.tsx'
-import { useConcludedSince, useOverview } from '../conversations/ui.solid.tsx'
+import { useOverview } from '../conversations/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
 import {
   conversationState,
   conversationWait,
   emptyMessages,
   useRemoteProgress,
-  useStarters,
   useUnderway,
   waitLabel,
 } from '../messages/ui.solid.tsx'
@@ -70,9 +69,7 @@ function useStates() {
   const primary = () => standing()?.ultimate
   const automations = useAutomations(() => 5000)
   const timers = createMemo(() => timerWaits(automations().data, standing()))
-  const starterOf = useStarters()
   const underway = useUnderway()
-  const concludedSince = useConcludedSince()
   const primaryWait = createMemo(() => {
     const id = primary()
     if (id !== undefined)
@@ -101,8 +98,6 @@ function useStates() {
       runState: overview()[id]?.runState,
       busy: own?.ownerTaskId !== undefined ? own.busy : underway(id),
       parked: parked()?.has(id) ?? false,
-      starter: starterOf(id),
-      concludedSince: concludedSince(id),
     }
     return {
       state: laneState(
