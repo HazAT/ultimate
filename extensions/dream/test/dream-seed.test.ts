@@ -57,6 +57,14 @@ async function fixture() {
     async (extension, action, args, _signal, conversationId) => {
       if (extension !== 'automations' || !['list', 'create', 'describe'].includes(action))
         throw new Error(`Unexpected action ${extension}/${action}`)
+      if (action === 'create' && (args as { adopt?: string }).adopt && !deliveredAtFirstCreate)
+        deliveredAtFirstCreate = await opened.harness.commit(
+          async (tx) =>
+            (await tx.scanTasks({ kind: 'dream.deliver' }, 50)).items.map(
+              (task) => (task.input as { kind: string }).kind,
+            ),
+          context,
+        )
       const result = await automationActions[action as 'list' | 'create' | 'describe'](args, {
         host,
         conversationId,
@@ -73,6 +81,7 @@ async function fixture() {
         : result
     },
   )
+  let deliveredAtFirstCreate: string[] | undefined
   const sent = vi.fn<MessagesService['send']>(async () => 1)
   const branch = async (input: BranchInput) =>
     opened.harness.commit(async (tx) => {
@@ -158,6 +167,7 @@ async function fixture() {
       return opened.harness
     },
     sent,
+    handedOffAtFirstCreate: () => deliveredAtFirstCreate,
     todos: async () =>
       JSON.stringify((await opened.harness.snapshot(Todos, ROOT_CONVERSATION_ID, context))?.items),
     folder: (id: string) =>
@@ -748,12 +758,13 @@ it('recreates each open card session with a pointer back, its watcher resumed fr
     context,
   )
   expect(deliveries).toEqual(['dream.carried', 'dream.chapter'])
-  const lastCreate = Math.max(
+  const firstCreate = Math.min(
     ...f.invoke.mock.calls.flatMap(([, action], index) =>
       action === 'create' ? [f.invoke.mock.invocationCallOrder[index]] : [],
     ),
   )
-  expect(lastCreate).toBeLessThan(f.sent.mock.invocationCallOrder[0])
+  expect(Math.max(...f.sent.mock.invocationCallOrder)).toBeLessThan(firstCreate)
+  expect(f.handedOffAtFirstCreate()).toEqual(['dream.carried'])
   const first = async () =>
     f.harness.commit(
       async (tx) =>

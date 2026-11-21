@@ -86,9 +86,10 @@ new ones. Each running user script is then created again with `adopt`: automatio
 and runs it at once, with no watcher turn. Its subscribers follow: `@name` stays, the old @ultimate becomes
 `@ultimate`, a carried branch its new id. Each open question then comes back as a reply-expected card from its
 carried asker, or from @ultimate. A branch, script or question that cannot come back (a fork or create that throws,
-no subscriber left, a refused card) becomes an @ultimate-owned to-do instead. Branches, scripts and questions keep
-receipts in `dream.seed`, and @ultimate's `dream.chapter` input goes out last, so its first turn sees all of them;
-a reopen repeats none. A seed from before branches were carried still turns its questions into to-dos.
+no subscriber left, a refused card) becomes an @ultimate-owned to-do instead. Questions come back first, then each
+carried branch gets its `dream.carried` input, then the watchers start (so a watcher that fires at once finds its
+branch handed off), and @ultimate's `dream.chapter` input goes out last. Branches, scripts and questions keep receipts
+in `dream.seed`, so a reopen repeats none. A seed from before branches were carried still turns its questions into to-dos.
 
 Automations are recreated through their create action after the commit, with per-name receipts in `dream.seed`.
 A seed carries at most one enabled automation per name: building rejects duplicates. The destination starts empty;

@@ -39,6 +39,7 @@ export const SeedState = defineDoc<{
   uncarried?: ConversationId[]
   scripts?: string[]
   questions?: string[]
+  handedOff?: true
   announce?: true
 }>({
   kind: 'dream.seed',
@@ -351,6 +352,54 @@ export async function applySeed(host: ExtensionHost) {
     const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
     todos.items.push({ owner: 'ultimate', text, id: todos.next++, at: Date.now() })
   }
+  for (const question of carriesWork ? seed.questions : []) {
+    const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
+    if (done?.questions?.includes(question.ref)) continue
+    const asker = (question.from !== undefined && branches[String(question.from)]) || ultimate
+    const failure = await host
+      .need(MessagesApi)
+      .send(
+        asker,
+        {
+          to: 'user',
+          reply: true,
+          text: `Asked before the new chapter (${seed.from.name}${question.ref}), still open:\n\n${question.text}`,
+          ...(question.questions ? { questions: question.questions } : {}),
+        },
+        `seed:${host.chapter.name}:question:${question.ref}`,
+        context,
+      )
+      .then(
+        () => undefined,
+        (error: unknown) => String(error),
+      )
+    await harness.commit(async (tx) => {
+      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+      if (saved.questions?.includes(question.ref)) return
+      saved.questions = [...(saved.questions ?? []), question.ref]
+      if (failure)
+        await leaveTodo(
+          tx,
+          `Ask the user again (${seed.from.name}${question.ref}, not carried: ${failure}): ${question.text}`,
+        )
+    }, context)
+  }
+  await harness.commit(async (tx) => {
+    const receipt = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+    if (receipt.handedOff) return
+    receipt.handedOff = true
+    for (const branch of seed.branches ?? []) {
+      const id = receipt.branches?.[String(branch.id)]
+      if (id === undefined) continue
+      await deliver(host, tx, id, {
+        type: 'input',
+        requestId: `dream.carried:${host.chapter.name}:${branch.id}`,
+        kind: 'dream.carried',
+        data: { from: seed.from, conversation: branch.id, title: branch.title },
+        content: carriedPrompt(seed, branch),
+      })
+    }
+  }, context)
   for (const script of carriesWork ? seed.scripts : []) {
     if (script.scope === 'project' || !script.folder) continue
     const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
@@ -402,53 +451,10 @@ export async function applySeed(host: ExtensionHost) {
         )
     }, context)
   }
-  for (const question of carriesWork ? seed.questions : []) {
-    const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
-    if (done?.questions?.includes(question.ref)) continue
-    const asker = (question.from !== undefined && branches[String(question.from)]) || ultimate
-    const failure = await host
-      .need(MessagesApi)
-      .send(
-        asker,
-        {
-          to: 'user',
-          reply: true,
-          text: `Asked before the new chapter (${seed.from.name}${question.ref}), still open:\n\n${question.text}`,
-          ...(question.questions ? { questions: question.questions } : {}),
-        },
-        `seed:${host.chapter.name}:question:${question.ref}`,
-        context,
-      )
-      .then(
-        () => undefined,
-        (error: unknown) => String(error),
-      )
-    await harness.commit(async (tx) => {
-      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
-      if (saved.questions?.includes(question.ref)) return
-      saved.questions = [...(saved.questions ?? []), question.ref]
-      if (failure)
-        await leaveTodo(
-          tx,
-          `Ask the user again (${seed.from.name}${question.ref}, not carried: ${failure}): ${question.text}`,
-        )
-    }, context)
-  }
   await harness.commit(async (tx) => {
     const receipt = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
     if (!receipt.announce) return
     delete receipt.announce
-    for (const branch of seed.branches ?? []) {
-      const id = receipt.branches?.[String(branch.id)]
-      if (id === undefined) continue
-      await deliver(host, tx, id, {
-        type: 'input',
-        requestId: `dream.carried:${host.chapter.name}:${branch.id}`,
-        kind: 'dream.carried',
-        data: { from: seed.from, conversation: branch.id, title: branch.title },
-        content: carriedPrompt(seed, branch),
-      })
-    }
     await deliver(host, tx, ultimate, {
       type: 'input',
       requestId: `dream.chapter:${host.chapter.name}`,
