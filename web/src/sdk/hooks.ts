@@ -644,13 +644,16 @@ const noDocs = {}
 /** Shows a notice in the page's notice stack, as a failed command does. */
 export const notify = (notice: Parameters<typeof store.notify>[0]) => store.notify(notice)
 
-/** `copy(text)` puts text on the clipboard; `copied()` is true for 1.2 s after, and a failure becomes an error notice. */
+/**
+ * `copy(text)` puts text on the clipboard and returns the Promise a Button shows as pending; `copied()` is true for
+ * 1.2 s after, and a failure becomes an error notice.
+ */
 export function useCopy() {
   const [copied, setCopied] = createSignal(false)
   const reset: { cancel?: Cancel } = {}
   onSettled(() => () => reset.cancel?.())
   const copy = (text: string) =>
-    void navigator.clipboard
+    navigator.clipboard
       .writeText(text)
       .then(() => {
         setCopied(true)
