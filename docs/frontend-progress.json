@@ -9674,6 +9674,278 @@
       "bundleGzipKB": 3003,
       "entryGzipKB": 410,
       "summary": "Timing on main after React left the core (C5)"
+    },
+    {
+      "switch": null,
+      "stream": null,
+      "previews": null,
+      "commit": "bec3a38f",
+      "sha": "bec3a38f2201036f88bbe63ef74fdf4806841d89",
+      "label": "Step-back after C5",
+      "date": "2026-11-21",
+      "committedAt": 1795256092,
+      "lines": {
+        "total": 56968,
+        "solid": 48607,
+        "react": 8361
+      },
+      "perExtension": {
+        "activity": {
+          "react": 0,
+          "solid": 496
+        },
+        "agent": {
+          "react": 0,
+          "solid": 158
+        },
+        "antigravity": {
+          "react": 0,
+          "solid": 86
+        },
+        "attachments": {
+          "react": 0,
+          "solid": 17
+        },
+        "automations": {
+          "react": 0,
+          "solid": 2436
+        },
+        "browser": {
+          "react": 0,
+          "solid": 239
+        },
+        "claude-code": {
+          "react": 0,
+          "solid": 84
+        },
+        "cloud": {
+          "react": 0,
+          "solid": 593
+        },
+        "codemode": {
+          "react": 0,
+          "solid": 297
+        },
+        "coding-tools": {
+          "react": 0,
+          "solid": 703
+        },
+        "context": {
+          "react": 0,
+          "solid": 873
+        },
+        "conversations": {
+          "react": 0,
+          "solid": 563
+        },
+        "diagrams": {
+          "react": 0,
+          "solid": 20
+        },
+        "documents": {
+          "react": 0,
+          "solid": 172
+        },
+        "dream": {
+          "react": 0,
+          "solid": 1766
+        },
+        "entries": {
+          "react": 0,
+          "solid": 3
+        },
+        "fast": {
+          "react": 0,
+          "solid": 64
+        },
+        "goal": {
+          "react": 0,
+          "solid": 746
+        },
+        "health": {
+          "react": 0,
+          "solid": 3
+        },
+        "inbox": {
+          "react": 0,
+          "solid": 641
+        },
+        "info": {
+          "react": 0,
+          "solid": 617
+        },
+        "instance": {
+          "react": 0,
+          "solid": 479
+        },
+        "keep-warm": {
+          "react": 0,
+          "solid": 93
+        },
+        "lineage": {
+          "react": 0,
+          "solid": 1509
+        },
+        "mcp": {
+          "react": 0,
+          "solid": 178
+        },
+        "messages": {
+          "react": 0,
+          "solid": 1737
+        },
+        "models": {
+          "react": 0,
+          "solid": 1989
+        },
+        "notices": {
+          "react": 0,
+          "solid": 58
+        },
+        "onboarding": {
+          "react": 0,
+          "solid": 1961
+        },
+        "parallel": {
+          "react": 0,
+          "solid": 436
+        },
+        "pause": {
+          "react": 0,
+          "solid": 509
+        },
+        "phase": {
+          "react": 0,
+          "solid": 36
+        },
+        "plan": {
+          "react": 0,
+          "solid": 1185
+        },
+        "projects": {
+          "react": 0,
+          "solid": 361
+        },
+        "prompt": {
+          "react": 0,
+          "solid": 80
+        },
+        "push": {
+          "react": 0,
+          "solid": 265
+        },
+        "questions": {
+          "react": 0,
+          "solid": 1035
+        },
+        "read-aloud": {
+          "react": 0,
+          "solid": 366
+        },
+        "recall": {
+          "react": 0,
+          "solid": 107
+        },
+        "reel": {
+          "react": 0,
+          "solid": 506
+        },
+        "review": {
+          "react": 0,
+          "solid": 1560
+        },
+        "secrets": {
+          "react": 0,
+          "solid": 437
+        },
+        "self": {
+          "react": 0,
+          "solid": 409
+        },
+        "setup": {
+          "react": 0,
+          "solid": 126
+        },
+        "share": {
+          "react": 0,
+          "solid": 89
+        },
+        "side-chat": {
+          "react": 0,
+          "solid": 858
+        },
+        "sidebar": {
+          "react": 10,
+          "solid": 2721
+        },
+        "sounds": {
+          "react": 0,
+          "solid": 440
+        },
+        "splash": {
+          "react": 0,
+          "solid": 1183
+        },
+        "status-line": {
+          "react": 0,
+          "solid": 432
+        },
+        "subagents": {
+          "react": 0,
+          "solid": 2107
+        },
+        "system": {
+          "react": 0,
+          "solid": 1327
+        },
+        "tailscale": {
+          "react": 0,
+          "solid": 327
+        },
+        "tasks": {
+          "react": 0,
+          "solid": 449
+        },
+        "theme": {
+          "react": 0,
+          "solid": 12
+        },
+        "todos": {
+          "react": 0,
+          "solid": 371
+        },
+        "ui": {
+          "react": 0,
+          "solid": 84
+        },
+        "update": {
+          "react": 0,
+          "solid": 460
+        },
+        "voice-live": {
+          "react": 0,
+          "solid": 1958
+        },
+        "voice": {
+          "react": 0,
+          "solid": 292
+        },
+        "watchdog": {
+          "react": 0,
+          "solid": 51
+        },
+        "wire": {
+          "react": 0,
+          "solid": 1230
+        },
+        "workspaces": {
+          "react": 0,
+          "solid": 1310
+        }
+      },
+      "bundleGzipKB": 2991,
+      "entryGzipKB": 401,
+      "summary": "One Solid SDK entry (@/sdk/solid), @vitejs/plugin-react dropped, Solid fixtures, skill and docs for the end state"
     }
   ],
   "previewUsage": [
