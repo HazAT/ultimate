@@ -282,7 +282,6 @@ function Row(props: {
       }}
       render={render}
       size={null}
-      title={title()}
       variant={null}
     >
       <span
@@ -369,7 +368,7 @@ function Row(props: {
     </Button>
   )
   return (
-    <div class={cn(props.first && props.gap && 'mt-2')}>
+    <div class={cn(props.first && props.gap && 'mt-2')} title={title()}>
       <Show when={href()} fallback={control()}>
         {(link) =>
           control((anchor) => (

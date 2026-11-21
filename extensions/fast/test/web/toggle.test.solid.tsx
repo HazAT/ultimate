@@ -157,12 +157,21 @@ it('blocks another Fast write until the saved status has been read back', async 
   expect(harness.requests.filter((call) => call.name === 'status')).toHaveLength(before + 1)
   expect(toggle()).toMatchObject({ pressed: false, disabled: true })
   expect((await agent.act({ steps: [step] })).ok).toBe(false)
+  const second = renderSolid(() => <FastToggle />)
+  await settle()
+  flush()
+  expect(second.querySelector('[aria-label="Fast mode"]')?.getAttribute('aria-disabled')).toBe(
+    'true',
+  )
   expect(harness.requests.filter((call) => call.name === 'set')).toHaveLength(1)
   refresh.resolve(Response.json({ result: { models: harness.models, project: false } }))
   await settle()
   flush()
   expect(toggle().pressed).toBe(true)
   expect(toggle().disabled).not.toBe(true)
+  expect(second.querySelector('[aria-label="Fast mode"]')?.hasAttribute('aria-disabled')).toBe(
+    false,
+  )
 })
 
 it('shows nothing for a model without a fast tier', async () => {

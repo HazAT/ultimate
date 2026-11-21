@@ -163,11 +163,13 @@ const calls = (name: string) => harness.calls.filter((call) => call === name).le
 it('lists projects by name, leaves the current project unfocusable, and an agent pins the rail', async () => {
   const container = await mount()
   const rows = [...container.querySelectorAll<HTMLElement>('[data-project]')]
-  expect(rows.map((row) => [row.dataset.project, row.getAttribute('href'), row.title])).toEqual([
-    ['ultimate', null, 'Ultimate · :4747 · working · this tab'],
-    ['ultimate-eval', 'http://127.0.0.1:4748/', 'Ultimate Eval · :4748 · 2 for you'],
-    ['my-app', 'http://127.0.0.1:4750/', 'My App · owner/my-app · :4750'],
-  ])
+  expect(rows.map((row) => [row.dataset.project, row.getAttribute('href'), row.ariaLabel])).toEqual(
+    [
+      ['ultimate', null, 'Ultimate · :4747 · working · this tab'],
+      ['ultimate-eval', 'http://127.0.0.1:4748/', 'Ultimate Eval · :4748 · 2 for you'],
+      ['my-app', 'http://127.0.0.1:4750/', 'My App · owner/my-app · :4750'],
+    ],
+  )
   const currentRow = container.querySelector<HTMLButtonElement>('button[aria-current="page"]')!
   expect(currentRow.dataset.project).toBe('ultimate')
   expect(currentRow.disabled).toBe(true)
@@ -186,7 +188,7 @@ it('lists projects by name, leaves the current project unfocusable, and an agent
 
   const current = agent
     .snapshot()
-    .find((entry) => !entry.offPage && entry.label === currentRow.title)
+    .find((entry) => !entry.offPage && entry.label === currentRow.ariaLabel)
   expect(current).toMatchObject({ disabled: true })
   expect(await agent.query({ text: 'Ultimate' })).toEqual(
     expect.arrayContaining([expect.objectContaining({ ref: current!.ref })]),
@@ -195,7 +197,7 @@ it('lists projects by name, leaves the current project unfocusable, and an agent
   await advance(100)
   expect((await blocked).ok).toBe(false)
   expect(await agent.query({ text: 'My App' })).toEqual(
-    expect.arrayContaining([expect.objectContaining({ label: rows[2].title })]),
+    expect.arrayContaining([expect.objectContaining({ label: rows[2].ariaLabel })]),
   )
   const pin = agent.snapshot().find((entry) => entry.label === 'Pin the projects rail open')
   expect(pin?.pressed).toBe(false)
@@ -393,7 +395,8 @@ it('shows the opening bar after a click until the page is left, shown again, or 
   evalRow.click()
   flush()
   expect(bar()).not.toBeNull()
-  expect(evalRow.title).toContain('opening')
+  expect(evalRow.ariaLabel).toContain('opening')
+  expect(evalRow.parentElement?.title).toContain('opening')
   window.dispatchEvent(new Event('pageshow'))
   flush()
   expect(bar()).toBeNull()

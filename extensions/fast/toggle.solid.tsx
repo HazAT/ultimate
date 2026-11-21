@@ -55,8 +55,8 @@ export function FastToggle() {
                 aria-label="Fast mode"
                 pressed={state().on}
                 class="h-7 gap-1.5 px-2 font-mono text-[11.5px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground data-pressed:bg-transparent data-pressed:text-foreground/85 data-pressed:hover:bg-accent"
-                data-pending={pending() ? '' : undefined}
-                disabled={state().project || pending()}
+                data-pending={pending() || status.loading() ? '' : undefined}
+                disabled={state().project || pending() || status.loading()}
                 focusableWhenDisabled
                 onPressedChange={(on) => void toggle(on)}
                 size={null}
