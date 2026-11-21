@@ -71,7 +71,10 @@ it('lets an agent add a named secret without reading it back, but not replace on
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
 
-  const open = await agent.act({ steps: [{ ref: refFor('Add a secret'), action: 'press' }] })
+  expect(agent.snapshot().find((entry) => entry.label === 'Add a secret')?.pressed).toBe(false)
+  const open = await agent.act({
+    steps: [{ ref: refFor('Add a secret'), action: 'setPressed', args: [true] }],
+  })
   expect(open.ok).toBe(true)
   flush()
   await settle()

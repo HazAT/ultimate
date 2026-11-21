@@ -335,7 +335,9 @@ export default defineConfig({
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [
             'error',
-            { controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput'] },
+            {
+              controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput', 'Toggle'],
+            },
           ],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',
@@ -344,6 +346,11 @@ export default defineConfig({
           'jsx-a11y/prefer-tag-over-role': 'error',
           'jsx-a11y/no-autofocus': 'error',
         },
+      },
+      {
+        files: ['**/*.solid.tsx'],
+        excludeFiles: ['extensions/automations/form.solid.tsx'],
+        rules: { 'ultimate/no-aria-pressed-button': 'error' },
       },
       {
         files: ['web/**', 'extensions/**', '.ultimate/extensions/**'],

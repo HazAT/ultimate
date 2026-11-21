@@ -79,6 +79,7 @@ export function Footer(props: {
         <div class="ml-auto flex items-center gap-1.5">
           <Button
             aria-label="Discard review drafts"
+            data-agent-confirm="Discards all unsent drafts for this review."
             onClick={() => {
               setNoting(false)
               props.update((all) => ({ ...all, comments: [], note: '' }))

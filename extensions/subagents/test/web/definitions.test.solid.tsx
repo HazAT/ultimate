@@ -12,6 +12,7 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
 import type { FamiliesView } from '../../../models/refs.ts'
 import { DefinitionDialog } from '../../definitions.solid.tsx'
+import { InstructionsEditor } from '../../fields.solid.tsx'
 import { AgentsPanel } from '../../overview.solid.tsx'
 import type { Discovery, Shown } from '../../refs.ts'
 
@@ -117,6 +118,16 @@ beforeEach(async () => {
 })
 
 const agent = createAgent()
+
+it('lets the agent select a visible instructions panel by name', async () => {
+  const page = renderSolid(() => <InstructionsEditor value="**A prompt**" onChange={() => {}} />)
+  const tabs = agent.snapshot().find((entry) => !entry.offPage && entry.label === 'Prompt view')
+  expect(tabs).toMatchObject({ component: 'tabs', value: 'write' })
+  expect(
+    await agent.act({ steps: [{ ref: tabs!.ref, action: 'setValue', args: ['Preview'] }] }),
+  ).toMatchObject({ ok: true })
+  expect(page.querySelector('[role="tabpanel"] strong')?.textContent).toBe('A prompt')
+})
 async function act(label: string, action: string, ...args: unknown[]) {
   const entry = agent.snapshot().find((item) => !item.offPage && item.label === label)
   expect(entry).toBeDefined()

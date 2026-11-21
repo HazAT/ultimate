@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { ChevronRight, ExternalLink } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
-import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from 'solid-js'
+import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import {
   Tool,
@@ -128,9 +128,6 @@ function Card(props: {
   }
   const failed = createMemo(() => props.call.status === 'error')
   const [open, setOpen] = createSignal(failed)
-  createEffect(failed, (error) => {
-    if (error) setOpen(true)
-  })
   return (
     <Tool bind={[open, setOpen]}>
       <div class="flex items-center">

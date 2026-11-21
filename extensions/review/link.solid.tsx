@@ -1,6 +1,13 @@
 /** @jsxImportSource @solidjs/web */
-import { createEffect, createSignal, onSettled } from 'solid-js'
-import { showSurface, useEvent, useExtensionUiState, useStore, writingAs } from '@/sdk/solid'
+import { createEffect, onSettled } from 'solid-js'
+import {
+  showSurface,
+  useEvent,
+  useExtensionUiState,
+  useExternal,
+  useStore,
+  writingAs,
+} from '@/sdk/solid'
 import { defaultSpec, getTarget, setTarget, specKey, subscribeTarget } from './link-state.ts'
 import type { ReviewRequest } from './link-state.ts'
 
@@ -19,15 +26,7 @@ function fromAddress(): ReviewRequest | undefined {
 
 export const useSpec = () => useExtensionUiState(specKey, defaultSpec)
 
-export function useTarget() {
-  const [target, set] = createSignal(getTarget())
-  onSettled(() => {
-    const release = subscribeTarget(() => set(getTarget()))
-    set(getTarget())
-    return release
-  })
-  return target
-}
+export const useTarget = () => useExternal(getTarget, subscribeTarget)
 
 export function ReviewLink() {
   const [selectedSpec, setSpec] = useSpec()

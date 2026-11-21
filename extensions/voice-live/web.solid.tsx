@@ -12,8 +12,9 @@ import {
   Volume2Icon,
   XIcon,
 } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import {
@@ -35,6 +36,7 @@ import {
   useConversation,
   useConversationId,
   useConversationSummary,
+  useConversationWidth,
   useDocOf,
   useEvent,
   useNow,
@@ -160,7 +162,6 @@ function StartButton() {
       <Tooltip delay={400}>
         <TooltipTrigger
           aria-label={label()}
-          aria-pressed={on() ? 'true' : 'false'}
           class={cn(
             'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
             on() && 'bg-brand/15 text-brand hover:bg-brand/20 hover:text-brand',
@@ -327,16 +328,16 @@ function LiveIndicator() {
 
 function MuteButton(props: { class: string; location: string; large?: boolean; text?: boolean }) {
   return (
-    <Button
+    <Toggle
       aria-label={`${mode().muted ? 'Unmute' : 'Mute'} microphone in ${props.location}`}
-      aria-pressed={mode().muted ? 'true' : 'false'}
+      pressed={mode().muted}
       class={cn(
         props.class,
-        mode().muted &&
-          (props.text ? 'border-warning/50 text-warning' : 'text-warning hover:text-warning'),
+        'data-pressed:bg-transparent data-pressed:text-warning data-pressed:hover:bg-accent',
+        props.text ? 'data-pressed:border-warning/50' : 'data-pressed:hover:text-warning',
       )}
       disabled={!livePhase()}
-      onClick={() => live.setMuted(!mode().muted)}
+      onPressedChange={live.setMuted}
       size={null}
       title={mode().muted ? 'Unmute' : 'Mute'}
       variant={null}
@@ -348,7 +349,7 @@ function MuteButton(props: { class: string; location: string; large?: boolean; t
         <MicOffIcon class={props.large ? 'size-4' : 'size-3.5'} />
       </Show>
       <Show when={props.text}>{mode().muted ? 'Unmute' : 'Mute'}</Show>
-    </Button>
+    </Toggle>
   )
 }
 
@@ -487,7 +488,7 @@ function VoiceStage(props: { main?: ConversationId; voice: ConversationId }) {
   const viewport = useViewport()
   const phone = createMemo(() => viewport() === 'phone')
   let overlay!: HTMLDivElement
-  const [width, setWidth] = createSignal(0)
+  const width = useConversationWidth(() => overlay)
   const front = createMemo(() => mode().front)
   const on = createMemo(() => mode().phase !== 'off')
   const inFront = createMemo(() => on() && front() && !sideOpen())
@@ -507,15 +508,6 @@ function VoiceStage(props: { main?: ConversationId; voice: ConversationId }) {
       return undefined
     }
     return deadline(duration + 60, () => setExiting(false))
-  })
-
-  onSettled(() => {
-    const parent = overlay.closest<HTMLElement>('[data-ui="conversation"]')
-    if (!parent) return undefined
-    setWidth(parent.clientWidth)
-    const observer = new ResizeObserver(() => setWidth(parent.clientWidth))
-    observer.observe(parent)
-    return () => observer.disconnect()
   })
 
   createEffect(

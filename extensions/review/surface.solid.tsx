@@ -22,6 +22,7 @@ import {
   onSettled,
 } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { Toggle, ToggleGroup } from '@/components/ui/toggle.solid.tsx'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -264,7 +265,7 @@ function Diffs(props: {
     () => ({ target: target(), diff: props.diff }),
     ({ target: at, diff }) => {
       if (!at) return undefined
-      const clear = () => setTarget()
+      const clear = () => setTarget(undefined)
       if (!diff.files.some((file) => file.path === at.file)) {
         clear()
         return undefined
@@ -539,29 +540,28 @@ function ReviewScope(props: {
             )}
           </Show>
           {!phone() && (
-            <div class="flex shrink-0 items-center rounded-md border border-border/70 p-0.5">
+            <ToggleGroup
+              aria-label="Diff layout"
+              bind={[() => [layout()], ([next]) => next && setLayout(next)]}
+              class="flex shrink-0 items-center gap-0 rounded-md border border-border/70 p-0.5"
+              deselectable={false}
+            >
               <For each={layouts}>
                 {(choice) => (
-                  <Button
+                  <Toggle
                     aria-label={choice.label}
-                    aria-pressed={String(layout() === choice.name) as 'true' | 'false'}
-                    class={cn(
-                      'flex h-6 gap-1 rounded-sm px-1.5 font-mono text-[11px] font-normal text-muted-foreground transition-colors',
-                      layout() === choice.name
-                        ? 'bg-accent text-foreground'
-                        : 'hover:text-foreground',
-                    )}
-                    onClick={() => setLayout(choice.name)}
+                    value={choice.name}
+                    class="flex h-6 gap-1 rounded-sm px-1.5 font-mono text-[11px] font-normal text-muted-foreground transition-colors hover:text-foreground"
                     size={null}
                     title={choice.label}
                     variant={null}
                   >
                     <choice.icon class="size-3.5" />
                     <span class="max-lg:hidden">{choice.name}</span>
-                  </Button>
+                  </Toggle>
                 )}
               </For>
-            </div>
+            </ToggleGroup>
           )}
           <span class="ml-auto" />
           {(drafts().comments.length > 0 || drafts().to !== undefined) && (

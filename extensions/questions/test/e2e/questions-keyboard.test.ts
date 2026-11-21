@@ -106,7 +106,8 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   // The composer takes focus on desktop and keeps its keys; the card takes them once the user leaves it.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   // The picks are already chosen. Question 1: b; down to 2: a; down to 3: b; back up twice and change 1 to c.
-  expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
+  const selected = card.locator('button[aria-current="true"]')
+  expect(await selected.count()).toBe(3)
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('b')
@@ -117,7 +118,7 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('c')
-  expect(await card.locator('[aria-pressed=true]').allTextContents()).toEqual([
+  expect(await selected.allTextContents()).toEqual([
     expect.stringContaining('leave as is'),
     expect.stringContaining('assess a way to add tools'),
     expect.stringContaining('no, change something first'),
@@ -136,7 +137,7 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   const full = await undo.evaluate((node) => node.getBoundingClientRect().width)
   expect(width).toBeGreaterThan(0)
   expect(width).toBeLessThan(full * 0.8)
-  expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
+  expect(await selected.count()).toBe(3)
   // Undo keeps the picks and the note; sending again opens a new window.
   await undo.click()
   const send = card.getByRole('button', {
@@ -147,7 +148,7 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   expect(await card.locator('textarea[data-note]').inputValue()).toBe(
     'Also rename the tab.\nAnd soon.',
   )
-  expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
+  expect(await selected.count()).toBe(3)
   await send.click()
   await undo.waitFor()
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())

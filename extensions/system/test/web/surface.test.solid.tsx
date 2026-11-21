@@ -55,7 +55,21 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       })
     }
     if (path.endsWith('/system/actions/stream'))
-      return Response.json({ result: { rows: [], head: 'first' } })
+      return Response.json({
+        result: {
+          rows: [
+            {
+              id: 'no-trace',
+              at: new Date().toISOString(),
+              kind: 'event',
+              name: 'Missing trace',
+              ok: true,
+              summary: 'Event without details',
+            },
+          ],
+          head: 'first',
+        },
+      })
     return server.handle(path, init) ?? Response.json({ result: undefined })
   }
   const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
@@ -122,9 +136,17 @@ it('switches to a contributed System tab and picks an Agents window, attributing
   await settle()
   flush()
   expect(page.querySelector('[data-lane="8"]')).not.toBeNull()
+  const noTrace = page.querySelector<HTMLButtonElement>(
+    '[aria-label="Missing trace · event or call no-trace"]',
+  )!
+  expect(noTrace.disabled).toBe(true)
+  noTrace.focus()
+  expect(document.activeElement).not.toBe(noTrace)
+  expect(
+    agent.snapshot().find((entry) => entry.label === 'Missing trace · event or call no-trace'),
+  ).toMatchObject({ disabled: true, open: false, actions: [] })
   const choose = async (label: string, value: string) => {
     const control = agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
-    expect(control?.component).toBe('segmented-control')
     const result = await agent.act({
       steps: [{ ref: control!.ref, action: 'setValue', args: [value] }],
     })
@@ -132,7 +154,11 @@ it('switches to a contributed System tab and picks an Agents window, attributing
     await uiState.flush()
     flush()
   }
-  await choose('System view', 'example')
+  await choose('System view', 'Example')
+  expect(agent.snapshot().find((entry) => entry.label === 'System view')).toMatchObject({
+    component: 'tabs',
+    value: 'example',
+  })
   expect(page.querySelector('[data-example]')?.textContent).toBe('React tab')
   expect(page.querySelector('[data-lane]')).toBeNull()
   await choose('System view', 'agents')

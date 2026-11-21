@@ -1,5 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { createElement as h, act } from 'react'
+import { createAgent } from '@ui-sdk/solid/agent'
 import { createStore as createSolidStore, flush, useContext } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
@@ -16,6 +17,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   }
 })
 
+import { Fold } from '../../web/src/app/fold.solid.tsx'
 import { registry } from '../../web/src/sdk/client.ts'
 import { ExtensionName, Provided } from '../../web/src/sdk/solid.ts'
 import { definePoint } from '../../web/src/sdk/types.ts'
@@ -23,6 +25,30 @@ import { renderSolid } from './solid-dom-setup.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const provision = (point: { point: string }, use: unknown) => ({ point: point.point, use })
+
+const agent = createAgent()
+
+it('opens a transcript fold from the bridge and remembers it after remount', async () => {
+  const fold = () => (
+    <Fold always card="agent-fold-test" label="Tool details for this call" summary="Tool summary">
+      Tool output
+    </Fold>
+  )
+  const container = renderSolid(fold)
+  const control = agent
+    .snapshot()
+    .find((entry) => !entry.offPage && entry.label === 'Tool details for this call')
+  expect(control).toMatchObject({ component: 'collapsible', open: false })
+  expect(container.textContent).not.toContain('Tool output')
+  expect(
+    await agent.act({ steps: [{ ref: control!.ref, action: 'setOpen', args: [true] }] }),
+  ).toMatchObject({ ok: true })
+  const trigger = container.querySelector('button')!
+  const body = document.getElementById(trigger.getAttribute('aria-controls')!)
+  expect(body?.textContent).toBe('Tool output')
+  expect(container.querySelector('[data-slot="collapsible-panel"]')).toBeNull()
+  expect(renderSolid(fold).textContent).toContain('Tool output')
+})
 
 const Extras = definePoint<{ id: number }, unknown>('test.extras')
 

@@ -191,7 +191,7 @@ it('opens deep links and keeps scrolling and answer keys in the reading pane', a
       await row.click()
       await page.keyboard.press('2')
       await pane
-        .getByRole('button', { name: 'in the status line at the bottom', pressed: true })
+        .locator('button[aria-current="true"]', { hasText: 'in the status line at the bottom' })
         .first()
         .waitFor()
     }
