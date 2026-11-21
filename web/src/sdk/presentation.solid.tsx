@@ -14,7 +14,7 @@ export const defaultPresentation: Presentation = {
   contextHeader: 'show',
 }
 
-const PresentationContext = createContext<Accessor<Presentation>>(() => defaultPresentation)
+export const PresentationContext = createContext<Accessor<Presentation>>(() => defaultPresentation)
 
 /** The shell's current presentation. */
 export const usePresentation = () => useContext(PresentationContext)

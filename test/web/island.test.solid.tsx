@@ -14,7 +14,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 import { ConversationIdContext } from '../../web/src/compat/conversation-scope.tsx'
 import { ExtensionNameContext } from '../../web/src/compat/conversation-scope.tsx'
 import { island } from '../../web/src/compat/island.tsx'
-import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
+import { ConversationScope, ExtensionName, usePresentation } from '../../web/src/sdk/solid.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -41,6 +41,17 @@ it('delivers a click inside an island that no Solid root encloses', () => {
   act(() => react.render(h(Clickable)))
   container.querySelector('button')!.click()
   expect(pressed).toHaveBeenCalledOnce()
+  act(() => react.unmount())
+  container.remove()
+})
+
+it('uses the default presentation in a standalone React island', () => {
+  const Probe = island(() => <span>{usePresentation()().composer}</span>)
+  const container = document.createElement('div')
+  document.body.append(container)
+  const react = createRoot(container)
+  act(() => react.render(h(Probe)))
+  expect(container.textContent).toBe('full')
   act(() => react.unmount())
   container.remove()
 })

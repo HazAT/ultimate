@@ -3,8 +3,13 @@ import { useContext, useLayoutEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { ReactBridge, Rendered, SolidPart } from '../sdk/framework.ts'
+import { usePresentation as readPresentation } from '../sdk/presentation.solid.tsx'
 import { ExtensionBoundary } from './boundary.tsx'
-import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
+import {
+  ConversationIdContext,
+  PresentationAccessorContext,
+  TranscriptContext,
+} from './conversation-scope.tsx'
 import { TooltipProvider } from './ui/tooltip.tsx'
 
 function SolidNode({ part }: { part: SolidPart }) {
@@ -62,17 +67,20 @@ function Report({
 /** The React side of the core's contribution bridge (`web/src/sdk/contribution.solid.tsx`), loaded with the first React facet. */
 export const bridge: ReactBridge = {
   root(host, placed) {
+    const presentation = readPresentation()
     const root = createRoot(host)
     return {
       render: (element) =>
         flushSync(() =>
           root.render(
             <TooltipProvider delayDuration={400}>
-              <ConversationIdContext value={placed.conversation}>
-                <TranscriptContext value={placed.transcript}>
-                  {element as ReactNode}
-                </TranscriptContext>
-              </ConversationIdContext>
+              <PresentationAccessorContext value={presentation}>
+                <ConversationIdContext value={placed.conversation}>
+                  <TranscriptContext value={placed.transcript}>
+                    {element as ReactNode}
+                  </TranscriptContext>
+                </ConversationIdContext>
+              </PresentationAccessorContext>
             </TooltipProvider>,
           ),
         ),
