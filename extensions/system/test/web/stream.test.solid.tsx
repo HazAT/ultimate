@@ -110,3 +110,40 @@ it('reaches a newer page that arrived while an older follow came back empty', as
   expect(view.textContent).toContain('row e')
   expect(harness.follows).toHaveLength(3)
 })
+
+it('reloads the newest page when a partial follow grows the feed past KEEP', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  )
+  onTestFinished(() => void vi.unstubAllGlobals())
+  vi.useFakeTimers()
+  onTestFinished(() => void vi.useRealTimers())
+  harness.follows.length = 0
+  store.start()
+  onTestFinished(() => store.stop())
+  const stream = harness.sources.at(-1)!
+  stream.open()
+  const view = renderSolid(() => (
+    <Stream live view={{ source: 'events', errors: false, text: '' }} setView={() => {}} />
+  ))
+  await settle()
+  const newest = harness.server!.reads.findLast(
+    (read) => read.read.action === 'stream' && !read.closed,
+  )!
+  const rows = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, index) => row(`${prefix}${index}`))
+  stream.send('read', { result: { rows: rows('old', 990), head: 'h1' } }, newest.sub)
+  await settle()
+  stream.send('read', { result: { rows: rows('top', 100), head: 'h2' } }, newest.sub)
+  await settle()
+  harness.follows[0].answer(rows('new', 20), 'h2')
+  await settle()
+  expect(view.querySelectorAll('[data-row]')).toHaveLength(100)
+  expect(view.textContent).toContain('row top0')
+})

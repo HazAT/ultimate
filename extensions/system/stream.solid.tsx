@@ -79,9 +79,9 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
       .then(
         (page) => {
           if (controller.signal.aborted) return
-          const drained = page.rows.length < pageSize
-          if (cursor.after !== undefined && drained && target === chasing) target = undefined
           const stepped = step(state(), page)
+          const drained = cursor.after !== undefined && page.rows.length < pageSize
+          if (drained && target === chasing && stepped.head !== undefined) target = undefined
           setState(stepped)
           catchUp(stepped)
         },
