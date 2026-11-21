@@ -40,7 +40,12 @@ export const gitIn =
     try {
       const nonInteractiveGitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
       return (
-        await exec('git', args, { cwd: root, env: nonInteractiveGitEnv, timeout: 120_000 })
+        await exec('git', args, {
+          cwd: root,
+          env: nonInteractiveGitEnv,
+          timeout: 120_000,
+          maxBuffer: 16 * 1024 * 1024,
+        })
       ).stdout.trim()
     } catch (error) {
       const { stderr = '' } = error as { stderr?: string }
