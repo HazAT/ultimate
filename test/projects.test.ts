@@ -2,7 +2,7 @@ import type { ConversationId, TaskId } from '@earendil-works/pi-durable'
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { fauxServer, post, temp, until } from './helpers.ts'
+import { fauxServer, post, prepareFauxServer, temp, until } from './helpers.ts'
 import { projects, conversationIndex } from '../server/project.ts'
 import { projectHome } from '../lib/project-paths.ts'
 import { context } from '../server/harness.ts'
@@ -123,4 +123,28 @@ it('lists unknown homes and ignores dead locks; skips unchanged index writes and
   index.update(summaries.map((item) => ({ ...item, busy: true })))
   await index.flush()
   expect((await stat(path)).mtimeMs).toBe(before)
+})
+
+it('leaves the project registration of a running owner alone when a second process is refused its home', async () => {
+  const userHome = await temp('ultimate-project-owner-')
+  const home = join(userHome, 'shared-home')
+  const aRoot = join(userHome, 'a')
+  const bRoot = join(userHome, 'b')
+  for (const root of [aRoot, bRoot]) await mkdir(root, { recursive: true })
+  servers.push(await fauxServer({ ultimateRoot: resolve('.'), projectRoot: aRoot, userHome, home }))
+  const intruder = await prepareFauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot: bRoot,
+    userHome,
+    home,
+  })
+  try {
+    await expect(intruder.go()).rejects.toThrow('already owns this storage')
+  } finally {
+    await intruder.vite.watcher.close()
+    await intruder.close()
+  }
+  expect(JSON.parse(await readFile(join(home, 'project.json'), 'utf8'))).toMatchObject({
+    root: aRoot,
+  })
 })
