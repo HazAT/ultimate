@@ -9117,6 +9117,279 @@
       "bundleGzipKB": 3041,
       "entryGzipKB": 498,
       "summary": "Timing on main after the shell and sidebar switch (C4a+C4b)"
+    },
+    {
+      "switch": null,
+      "stream": null,
+      "previews": null,
+      "commit": "85556954",
+      "sha": "855569549c11713174c20d6e5366c9528226e036",
+      "label": "C5: React out of the core",
+      "date": "2026-11-21",
+      "committedAt": 1795249263,
+      "lines": {
+        "total": 56601,
+        "solid": 48490,
+        "react": 8111
+      },
+      "perExtension": {
+        "activity": {
+          "react": 0,
+          "solid": 496
+        },
+        "agent": {
+          "react": 0,
+          "solid": 151
+        },
+        "antigravity": {
+          "react": 0,
+          "solid": 86
+        },
+        "attachments": {
+          "react": 0,
+          "solid": 17
+        },
+        "automations": {
+          "react": 0,
+          "solid": 2432
+        },
+        "browser": {
+          "react": 0,
+          "solid": 241
+        },
+        "claude-code": {
+          "react": 0,
+          "solid": 84
+        },
+        "cloud": {
+          "react": 0,
+          "solid": 593
+        },
+        "codemode": {
+          "react": 0,
+          "solid": 292
+        },
+        "coding-tools": {
+          "react": 0,
+          "solid": 701
+        },
+        "context": {
+          "react": 0,
+          "solid": 875
+        },
+        "conversations": {
+          "react": 0,
+          "solid": 559
+        },
+        "diagrams": {
+          "react": 0,
+          "solid": 20
+        },
+        "documents": {
+          "react": 0,
+          "solid": 170
+        },
+        "dream": {
+          "react": 0,
+          "solid": 1761
+        },
+        "entries": {
+          "react": 0,
+          "solid": 3
+        },
+        "fast": {
+          "react": 0,
+          "solid": 64
+        },
+        "goal": {
+          "react": 0,
+          "solid": 749
+        },
+        "health": {
+          "react": 0,
+          "solid": 3
+        },
+        "inbox": {
+          "react": 0,
+          "solid": 627
+        },
+        "info": {
+          "react": 0,
+          "solid": 617
+        },
+        "instance": {
+          "react": 0,
+          "solid": 481
+        },
+        "keep-warm": {
+          "react": 0,
+          "solid": 93
+        },
+        "lineage": {
+          "react": 0,
+          "solid": 1490
+        },
+        "mcp": {
+          "react": 0,
+          "solid": 178
+        },
+        "messages": {
+          "react": 0,
+          "solid": 1731
+        },
+        "models": {
+          "react": 0,
+          "solid": 1989
+        },
+        "notices": {
+          "react": 0,
+          "solid": 58
+        },
+        "onboarding": {
+          "react": 0,
+          "solid": 1959
+        },
+        "parallel": {
+          "react": 0,
+          "solid": 429
+        },
+        "pause": {
+          "react": 0,
+          "solid": 511
+        },
+        "phase": {
+          "react": 0,
+          "solid": 36
+        },
+        "plan": {
+          "react": 0,
+          "solid": 1187
+        },
+        "projects": {
+          "react": 0,
+          "solid": 361
+        },
+        "prompt": {
+          "react": 0,
+          "solid": 80
+        },
+        "push": {
+          "react": 0,
+          "solid": 265
+        },
+        "questions": {
+          "react": 0,
+          "solid": 1048
+        },
+        "read-aloud": {
+          "react": 0,
+          "solid": 366
+        },
+        "recall": {
+          "react": 0,
+          "solid": 107
+        },
+        "reel": {
+          "react": 0,
+          "solid": 500
+        },
+        "review": {
+          "react": 0,
+          "solid": 1561
+        },
+        "secrets": {
+          "react": 0,
+          "solid": 437
+        },
+        "self": {
+          "react": 0,
+          "solid": 410
+        },
+        "setup": {
+          "react": 0,
+          "solid": 126
+        },
+        "share": {
+          "react": 0,
+          "solid": 89
+        },
+        "side-chat": {
+          "react": 0,
+          "solid": 855
+        },
+        "sidebar": {
+          "react": 10,
+          "solid": 2720
+        },
+        "sounds": {
+          "react": 0,
+          "solid": 440
+        },
+        "splash": {
+          "react": 0,
+          "solid": 1183
+        },
+        "status-line": {
+          "react": 0,
+          "solid": 432
+        },
+        "subagents": {
+          "react": 0,
+          "solid": 2100
+        },
+        "system": {
+          "react": 0,
+          "solid": 1329
+        },
+        "tailscale": {
+          "react": 0,
+          "solid": 327
+        },
+        "tasks": {
+          "react": 0,
+          "solid": 449
+        },
+        "theme": {
+          "react": 0,
+          "solid": 12
+        },
+        "todos": {
+          "react": 0,
+          "solid": 373
+        },
+        "ui": {
+          "react": 0,
+          "solid": 84
+        },
+        "update": {
+          "react": 0,
+          "solid": 460
+        },
+        "voice-live": {
+          "react": 0,
+          "solid": 1954
+        },
+        "voice": {
+          "react": 0,
+          "solid": 292
+        },
+        "watchdog": {
+          "react": 0,
+          "solid": 52
+        },
+        "wire": {
+          "react": 0,
+          "solid": 1231
+        },
+        "workspaces": {
+          "react": 0,
+          "solid": 1314
+        }
+      },
+      "bundleGzipKB": 3003,
+      "entryGzipKB": 410,
+      "summary": "Core and every built-in extension Solid; React only in a lazy compat layer loaded by web.tsx facets",
+      "compatChunkGzipKB": 140
     }
   ],
   "previewUsage": [
