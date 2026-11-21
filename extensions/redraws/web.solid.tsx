@@ -102,7 +102,7 @@ function Chip() {
             </Rows>
             <Show when={topHot(current()).length > 0}>
               <div class="space-y-0.5 border-t border-border/70 pt-1.5 text-[11px] text-muted-foreground">
-                <For each={topHot(current())} keyed={(entry) => entry.element}>
+                <For each={topHot(current())} keyed={(entry) => entry.id}>
                   {(entry) => (
                     <div class="flex gap-2">
                       <span class="min-w-0 flex-1 truncate">{entry().name}</span>
