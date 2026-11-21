@@ -185,7 +185,7 @@ export function Contribution(props: {
   item: Rendered
   props: Props
   elements?: Record<string, () => JSX.Element>
-  fallback: (extension: string, error: unknown) => JSX.Element
+  fallback: (extension: string, error: unknown, stack?: string) => JSX.Element
   variant?: 'inline' | 'block'
   fallbackOnly?: boolean
   inline?: boolean
@@ -202,8 +202,13 @@ export function Contribution(props: {
           const parts = Object.fromEntries(
             Object.entries(elements).map(([key, element]) => [key, solidPart(element)]),
           )
-          const [failure, setFailure] = createSignal<{ error: unknown; version: number }>()
-          const onError = (error: unknown) => setFailure({ error, version: props.item.version })
+          const [failure, setFailure] = createSignal<{
+            error: unknown
+            stack?: string
+            version: number
+          }>()
+          const onError = (error: unknown, stack: string | undefined) =>
+            setFailure({ error, stack, version: props.item.version })
           const shownFailure = () => {
             const failed = failure()
             return failed?.version === props.item.version ? failed : undefined
@@ -219,7 +224,7 @@ export function Contribution(props: {
                 <MountReactInline render={render} />
               </Show>
               <Show when={shownFailure()}>
-                {(failed) => props.fallback(current.extension, failed().error)}
+                {(failed) => props.fallback(current.extension, failed().error, failed().stack)}
               </Show>
             </>
           )
@@ -245,7 +250,7 @@ export function ReactSlot(props: { name: SlotName }) {
 
 export function Slot(props: {
   name: SlotName
-  fallback: (extension: string, error: unknown) => JSX.Element
+  fallback: (extension: string, error: unknown, stack?: string) => JSX.Element
   variant?: 'inline' | 'block'
   phone?: boolean
   fallbackOnly?: boolean

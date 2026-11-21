@@ -184,8 +184,8 @@ export function App() {
         ),
     },
   )
-  const outOfFlow = (extension: string, error: unknown) => (
-    <StackedFailure error={error} extension={extension} stack={stack} />
+  const outOfFlow = (extension: string, error: unknown, trace?: string) => (
+    <StackedFailure error={error} extension={extension} stack={stack} trace={trace} />
   )
   return (
     <>

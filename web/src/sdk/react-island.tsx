@@ -52,7 +52,10 @@ export function SolidNode({ part }: { part: SolidPart }) {
   return <div className="contents" ref={host} />
 }
 
-type Failure = { variant?: 'inline' | 'block'; onError?: (error: unknown) => void }
+type Failure = {
+  variant?: 'inline' | 'block'
+  onError?: (error: unknown, stack: string | undefined) => void
+}
 
 export function contribution(
   item: Rendered,

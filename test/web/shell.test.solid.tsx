@@ -201,3 +201,44 @@ it('renders one inline card for an error-report provider that throws, without re
   host.remove()
   await registry.setLoaders({})
 })
+
+it('reports a throwing React overlay with its JavaScript frames and component stack', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const sent = vi.fn<(report: string) => void>()
+  function BrokenOverlay(): ReactNode {
+    throw new Error('overlay broke')
+  }
+  await registry.setLoaders({
+    'extensions/agent/web.tsx': async () => ({
+      default: {
+        surfaces: [{ id: 'agent', title: 'Agent', icon: () => null, component: () => null }],
+      },
+    }),
+    'extensions/broken/web.tsx': async () => ({
+      default: { slots: { overlay: [BrokenOverlay] } },
+    }),
+    'extensions/reporter/web.tsx': async () => ({
+      default: { provides: [provide(ErrorReport, () => ({ title: 'Report it', send: sent }))] },
+    }),
+  })
+  registry.receiveSystem()
+  act(() => {
+    renderSolid(() => <App />)
+    flush()
+  })
+  await settle()
+  const report = await vi.waitFor(() => {
+    const button = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Report it: broken failed"]',
+    )
+    expect(button).not.toBeNull()
+    return button!
+  })
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))
+  report.click()
+  await vi.waitFor(() => expect(sent).toHaveBeenCalledOnce())
+  fetch.mockRestore()
+  expect(sent.mock.calls[0][0]).toMatch(/at BrokenOverlay \(.*shell\.test\.solid\.tsx/)
+  expect(sent.mock.calls[0][0]).toMatch(/at ExtensionBoundary \(.*boundary\.tsx/)
+  await registry.setLoaders({})
+})

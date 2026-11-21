@@ -27,7 +27,7 @@ type ContributionBoundaryProps = {
   version: number
   variant?: 'inline' | 'block'
   fallback?: ReactNode
-  onError?: (error: unknown) => void
+  onError?: (error: unknown, stack: string | undefined) => void
   children: ReactNode
 }
 
@@ -50,10 +50,10 @@ export class ExtensionBoundary extends Component<
   componentDidCatch(error: unknown, info: ErrorInfo) {
     console.error(`[extension ${this.props.extension}]`, error, info.componentStack)
     const thrownJsFrames = stackFrames(error)
-    this.setState({
-      stack: [thrownJsFrames, info.componentStack?.trim()].filter(Boolean).join('\n') || undefined,
-    })
-    this.props.onError?.(error)
+    const stack =
+      [thrownJsFrames, info.componentStack?.trim()].filter(Boolean).join('\n') || undefined
+    this.setState({ stack })
+    this.props.onError?.(error, stack)
   }
   render() {
     if (this.state.error === undefined)

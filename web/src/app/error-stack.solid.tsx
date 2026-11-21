@@ -62,14 +62,19 @@ export function ExtensionErrors(props: { stack: HTMLElement }) {
   )
 }
 
-export function StackedFailure(props: { stack: HTMLElement; extension: string; error: unknown }) {
+export function StackedFailure(props: {
+  stack: HTMLElement
+  extension: string
+  error: unknown
+  trace?: string
+}) {
   return (
     <Portal mount={props.stack}>
       <StackedErrorCard
         error={errorMessage(props.error)}
         extension={props.extension}
         footer="a component threw"
-        stack={stackFrames(props.error)}
+        stack={props.trace ?? stackFrames(props.error)}
       />
     </Portal>
   )
