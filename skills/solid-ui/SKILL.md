@@ -297,6 +297,13 @@ Tooling:
   through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
 - A test fixture that registers a Solid facet names it `web.solid.tsx`; `web.tsx` loads the React compat layer and is
   only for testing that layer.
+- Check the entry bundle after a change that may grow it: sum the gzipped scripts and styles the page links, on a
+  preview of the change and of its parent:
+
+  ```bash
+  for a in $(curl -s $URL/ | grep -oE '(src|href)="/[^"]+\.(js|css)"' | cut -d'"' -f2 | sort -u); do
+    curl -s $URL$a | gzip -9 | wc -c; done | awk '{s+=$1} END {print int(s/1024) " KB gzip"}'
+  ```
 
 ## Testing
 

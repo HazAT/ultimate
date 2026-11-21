@@ -151,7 +151,11 @@ const events = await page.evaluate(
 )
 await browser.close()
 
-const median = (values: number[]) => quantile(values, 0.5)
+const median = (values: number[]) => {
+  const sorted = values.toSorted((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+}
 const quantile = (values: number[], at: number) =>
   values.toSorted((a, b) => a - b)[Math.floor((values.length - 1) * at)]
 const byEvent = Map.groupBy(events, (event) => event.ev)

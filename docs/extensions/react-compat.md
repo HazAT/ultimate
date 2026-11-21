@@ -20,12 +20,12 @@ layer offers. New code is Solid. When part of a React facet breaks, its error ca
 - The published kit and AI parts: `@/components/ui/{button,checkbox,collapsible,command,dialog,dropdown-menu,kbd,
   popover,skeleton,switch,tooltip}` and `@/components/ai/{tool,message}` (`MessageResponse` renders Markdown).
 - The sidebar's points from `extensions/sidebar/ui.tsx`: `UnderUltimate`, `Unlisted`, `PreviewUp`.
+- Points: a React `provide(Point, useValue)` works, and the core runs the hook through the compat layer. UI-valued
+  points carry Solid elements, so a React provider returns a React element, which the core mounts for it.
 
 ## What it does not offer
 
-- **Points read by Solid hosts.** A React `provide(Point, useValue)` works: the core runs the hook through the compat
-  layer. UI-valued points carry Solid elements, so a React provider returns a React element, which the core mounts for
-  it. `ConversationPhase` has no `label` (the sidebar draws the phase itself), and `ConversationTask` has no `chip`.
+- **Point fields.** `ConversationPhase` has no `label` (the sidebar draws the phase itself), and `ConversationTask` has no `chip`.
   `@/sdk` has no `<Provided>`, `<AllProvided>` or `<Rendered>`.
 - **Markdown renderers** (`link`, `inlineCode`, `codeBlocks`) are Solid-only.
 - **Internals.** Anything imported from Ultimate's internals by path (`@/../../extensions/<name>/…` other than the
