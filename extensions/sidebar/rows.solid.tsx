@@ -78,34 +78,44 @@ function Mark(props: {
         ? 'Working'
         : 'Subagents working'
       : ((props.state === 'awaiting' ? props.wait : undefined) ?? known()?.label ?? 'New answer')
+  const glyph = () => (
+    <Show
+      when={known()?.Icon}
+      keyed
+      fallback={
+        <span
+          class={cn('size-1.5 rounded-full bg-brand', props.working && 'animate-pulse-dot')}
+          data-status={props.working ? 'working' : 'idle'}
+        />
+      }
+    >
+      {(Icon) => <Icon class={props.state === 'paused' ? 'size-3' : 'size-3.5'} />}
+    </Show>
+  )
+  const tone = () =>
+    cn('flex items-center justify-center', known()?.tone ?? 'text-muted-foreground')
   return (
     <span class="flex size-3 shrink-0 items-center justify-center">
       <Show when={props.working || props.unseen || known()}>
-        <Tooltip>
-          <TooltipTrigger
-            aria-label={`${label()} · row #${props.id}`}
-            class={cn(
-              !props.inert && 'pointer-events-auto',
-              'flex items-center justify-center',
-              known()?.tone ?? 'text-muted-foreground',
-            )}
-            render={(trigger) => <span {...trigger} />}
-          >
-            <Show
-              when={known()?.Icon}
-              keyed
-              fallback={
-                <span
-                  class={cn('size-1.5 rounded-full bg-brand', props.working && 'animate-pulse-dot')}
-                  data-status={props.working ? 'working' : 'idle'}
-                />
-              }
+        <Show
+          when={!props.inert}
+          fallback={
+            <span aria-hidden="true" class={tone()}>
+              {glyph()}
+            </span>
+          }
+        >
+          <Tooltip>
+            <TooltipTrigger
+              aria-label={`${label()} · row #${props.id}`}
+              class={cn('pointer-events-auto', tone())}
+              render={(trigger) => <span {...trigger} />}
             >
-              {(Icon) => <Icon class={props.state === 'paused' ? 'size-3' : 'size-3.5'} />}
-            </Show>
-          </TooltipTrigger>
-          <TooltipContent side="right">{label()}</TooltipContent>
-        </Tooltip>
+              {glyph()}
+            </TooltipTrigger>
+            <TooltipContent side="right">{label()}</TooltipContent>
+          </Tooltip>
+        </Show>
       </Show>
     </span>
   )

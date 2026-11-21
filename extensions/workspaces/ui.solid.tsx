@@ -32,10 +32,11 @@ function External(props: {
   label?: string
   class?: string
   card?: number
+  on?: string
 }) {
   return (
     <Button
-      aria-label={`Compare ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range ?? props.href)} on DiffsHub`}
+      aria-label={`Compare ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range ?? props.href)} on DiffsHub${props.on ? ` ${props.on}` : ''}`}
       class={cn(
         'h-auto shrink-0 gap-0.5 p-0 font-[inherit] text-[length:inherit] font-normal hover:text-foreground hover:underline',
         props.class,
@@ -55,11 +56,13 @@ function External(props: {
 
 /**
  * `N commits`: with `range` and a Review provider, a button that opens Review at it (DiffsHub as a small ↗ beside
- * it when `href` is given); otherwise a DiffsHub link at `href`, or plain text.
+ * it when `href` is given); otherwise a DiffsHub link at `href`, or plain text. `card` names the landing it belongs to,
+ * `on` where it sits (`in the sidebar`), so the same landing shown twice keeps distinct control names.
  */
 export function CommitCount(props: {
   count: number
   card?: number
+  on?: string
   href?: string
   range?: string
   class?: string
@@ -71,6 +74,7 @@ export function CommitCount(props: {
         <External
           card={props.card}
           class={props.class}
+          on={props.on}
           href={href()}
           label={label()}
           range={props.range}
@@ -84,6 +88,7 @@ export function CommitCount(props: {
         <ReviewCommitCount
           card={props.card}
           class={props.class}
+          on={props.on}
           fallback={plain()}
           href={props.href}
           label={label()}
@@ -99,6 +104,7 @@ function ReviewCommitCount(props: {
   label: string
   fallback: JSX.Element
   card?: number
+  on?: string
   href?: string
   class?: string
 }) {
@@ -107,7 +113,7 @@ function ReviewCommitCount(props: {
     <Show fallback={props.fallback} when={open()}>
       <span class={cn('inline-flex shrink-0 items-center gap-1', props.class)}>
         <Button
-          aria-label={`Review ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range)}`}
+          aria-label={`Review ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range)}${props.on ? ` ${props.on}` : ''}`}
           class="font-[inherit] text-[length:inherit] font-normal hover:text-foreground hover:underline"
           onClick={() => open()?.()}
           size={null}
@@ -117,7 +123,7 @@ function ReviewCommitCount(props: {
           {props.label}
         </Button>
         <Show when={props.href}>
-          {(href) => <External card={props.card} href={href()} range={props.range} />}
+          {(href) => <External card={props.card} href={href()} on={props.on} range={props.range} />}
         </Show>
       </span>
     </Show>
