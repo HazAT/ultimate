@@ -1,5 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { Inbox as InboxIcon } from '@lucide/solid'
+import type { JSX } from '@solidjs/web'
 import { createMemo, For, Show } from 'solid-js'
 import { Header, ProvidedValue, Sidebar, useProvided } from '@/sdk/parts.solid.tsx'
 import { useNow, useSurface, useViewport } from '@/sdk/solid'
@@ -39,10 +40,9 @@ export function Inbox() {
         </For>
       }
     >
-      {(() => {
-        const shown = takeover()
-        return typeof shown === 'function' ? shown() : <ProvidedValue value={shown} />
-      })()}
+      <Show when={typeof takeover() === 'function'} fallback={<ProvidedValue value={takeover()} />}>
+        {(takeover() as () => JSX.Element)()}
+      </Show>
     </Show>
   )
   return (

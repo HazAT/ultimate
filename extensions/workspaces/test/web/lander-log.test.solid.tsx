@@ -220,8 +220,10 @@ it('lets an agent open the review range, expand the landing state, and switch to
 
   const open = vi.fn<(spec: string, source: string) => void>()
   await registry.setLoaders({
-    'extensions/local-review/web.tsx': async () => ({
-      default: { provides: [provide(Review, (spec) => () => open(spec, writerNow()))] },
+    'extensions/local-review/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(Review, (spec) => () => () => open(spec(), writerNow()))],
+      },
     }),
   })
   await settle()
