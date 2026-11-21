@@ -9,6 +9,7 @@ export const LandedNote = definePoint<
   JSX.Element
 >('workspaces.landed-note')
 
-export const LandingExtras = definePoint<{ conversation: ConversationId }, JSX.Element>(
-  'workspaces.landing-extras',
-)
+export const LandingExtras = definePoint<
+  { conversation: ConversationId; card: number },
+  JSX.Element
+>('workspaces.landing-extras')

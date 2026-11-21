@@ -3,7 +3,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
-import { Messages, MessageSent } from './api.ts'
+import { Messages, MessageSent, QuestionVideo } from './api.ts'
 import type { Message, Question } from './api.ts'
 import type { Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
@@ -64,6 +64,7 @@ export async function send(
     imagesFrom?: ConversationId
     dismiss?: boolean
     questions?: Question[]
+    video?: string
   },
   ctx: Context,
   options: {
@@ -105,6 +106,14 @@ export async function send(
   if (input.questions !== undefined && (input.to !== 'user' || input.reply === false))
     throw new Error('questions go only with a reply-expected message to the user')
   const questions = input.questions === undefined ? undefined : checkQuestions(input.questions)
+  let video: Message['video']
+  if (input.video !== undefined) {
+    if (from === 'user' || input.to !== 'user' || input.reply === false)
+      throw new Error('video goes only with a reply-expected message to the user')
+    const clips = host.want(QuestionVideo)
+    if (!clips) throw new Error('Browser video attachments are unavailable')
+    video = await clips.validate(from, input.video, ctx)
+  }
   if (parent !== undefined && input.to.replace(/^#/, '') !== String(parent))
     throw new Error(
       `Subagents report to the conversation that started them: message only #${parent}. Your final answer reaches it anyway.`,
@@ -197,6 +206,7 @@ export async function send(
       ...(callId === undefined ? {} : { call: callId }),
       ...(images ? { images } : {}),
       ...(questions ? { questions } : {}),
+      ...(video ? { video } : {}),
       ...(options.report ? { report: true as const } : {}),
       ...(options.routed !== undefined ? { routed: options.routed } : {}),
       ...(options.echo ? { echo: true as const } : {}),

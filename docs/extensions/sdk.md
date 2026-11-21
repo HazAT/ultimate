@@ -53,6 +53,9 @@ example, `const doc = useDoc(MyDoc)` and `<span>{doc()?.title}</span>` update th
 `createConversation()`, `restart()`, and `action(ref, args?)`. Conversation commands default to the shown conversation.
 `api.cancelSubmission(submissionId, conversationId?)` withdraws one queued input without stopping the run.
 
+`extensionFileUrl(extension, id, key)` builds a same-origin `<video src>` URL for a [private WebM](server.md#private-files)
+from an installed server facet. Pass the opaque identifiers supplied by the extension, not filesystem paths.
+
 Use `docRef<T>(kind)` and `actionRef<Args, Result>(extension, name)` for typed refs (built-ins keep theirs in `refs.ts`).
 Helpers include `cn()`, `formatTokens`, `formatBytes`, `formatDuration`, `formatTime`, `formatAgo(at, now)`,
 `shortenPath(path, { cwd, home })` (`system()?.machine.home` where `system = useSystem()`), `elidePath`, `formatKeys`, `prettyName`,

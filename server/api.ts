@@ -39,6 +39,7 @@ import { EVENT_LOG_LABEL, emit, uiChange } from './events.ts'
 import { ChangedEvent, UserInputEvent } from '../shared/events.ts'
 import { admit, deviceOf, sourceOf } from './request-security.ts'
 import type { Access } from './request-security.ts'
+import { privateFilesPath, servePrivateFile } from './private-files.ts'
 import { conversationIndex } from './project.ts'
 import { shortTitle } from '../lib/title.ts'
 import { batch, every } from '../lib/timers.ts'
@@ -536,6 +537,11 @@ export async function createApi(
           !(await admit(request, new URL(system.current().process.url).port || '80', access.rules))
         )
           throw new HttpError(403, 'Forbidden')
+        if (privateFilesPath.test(url.pathname)) {
+          const error = await servePrivateFile(request, response, url, extensions.resolveFile)
+          if (error) throw new HttpError(error, error === 403 ? 'Forbidden' : 'Unknown file')
+          return true
+        }
         if (request.method === 'GET' && url.pathname === '/api/events') {
           await stream(request, response)
           return true
