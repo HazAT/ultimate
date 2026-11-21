@@ -43,4 +43,4 @@ calls no longer running, and a cancel of a call that is not running fails.
 Pi's `prepare` hook only changes the command, cwd, and environment, not the timeout, so one wrapper injects the
 default and formats execution timeout errors.
 
-`server.ts` installs Pi Durable's read, write, edit, and bash tools (named `coding-tools`, like this folder). `web.tsx` registers one renderer per tool name under `tools`; `diff.ts` turns the edit tool's `details.patch` (or Pi's display `details.diff`) into rows.
+`server.ts` installs Pi Durable's read, write, edit, and bash tools (named `coding-tools`, like this folder). `web.solid.tsx` registers one renderer per tool name under `tools`; `diff.ts` turns the edit tool's `details.patch` (or Pi's display `details.diff`) into rows.

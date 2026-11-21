@@ -1,11 +1,11 @@
 ---
 name: solid-ui
-description: Write or review Solid 2.0 UI in Ultimate (a `*.solid.tsx` file, a UI kit component, a Solid extension facet) with ui-sdk components and behaviors. Use before writing or changing any `.solid.tsx` file or anything under web/src/components/ui, and when moving a React component to Solid.
+description: Write or review Solid 2.0 UI in Ultimate (a `*.solid.tsx` file, a UI kit component, a Solid extension facet) with ui-sdk components and behaviors. Use before writing or changing any `.solid.tsx` file or anything under web/src/components/ui.
 ---
 
 # Solid UI in Ultimate
 
-Ultimate's UI is moving from React to Solid 2.0, with Vercel UI SDK (`@ui-sdk/*`) under its components. Both are newer
+Ultimate's UI uses Solid 2.0, with Vercel UI SDK (`@ui-sdk/*`) under its components. Both are newer
 than most models' training data, and Solid 2.0 is not Solid 1.x, so habits from either are the main source of bugs.
 The libraries ship skills that match the pinned versions: read them, not your memory.
 
@@ -36,119 +36,60 @@ The libraries ship skills that match the pinned versions: read them, not your me
 
 ## Where Solid lives
 
-- **One renderer per file.** Solid code is in `*.solid.tsx`, opens with `/** @jsxImportSource @solidjs/web */`, and
-  imports no React. React files import no Solid, except an extension's `web.tsx`, which mounts Solid components with
-  `island(Component)` from `@/sdk`. The two meet only in the bridges: `web/src/sdk/island.tsx`, `solid.ts`,
-  `react-island*.tsx`, `shell.tsx` and `web/src/app/boundary.tsx`, all frozen for C5's compat layer. Lint:
-  `ultimate/ui-framework-boundaries`, `ultimate/solid-jsx-pragma`.
-- **`@/sdk/solid` in Solid files.** `@/sdk` is React's; take only types from it with `import type`. Its readers return
-  accessors: call them where you use them (`doc()?.title` in JSX or a memo), never once at the top of a component
-  ([Solid facets](../../docs/extensions/sdk.md#solid-facets)).
+A facet's framework is its file name: `web.solid.tsx` is Solid; `web.tsx` is only for
+[React facets outside this repository](../../docs/extensions/react-compat.md).
+
+- **One renderer per file.** Solid JSX belongs in `*.solid.tsx`, opened with `/** @jsxImportSource @solidjs/web */`.
+  `ultimate/ui-framework-boundaries` rejects React imports and other `.tsx` names in the repository outside compat
+  (except the sidebar's points-only compat contract); `ultimate/solid-jsx-pragma` checks the pragma.
+- **`@/sdk/solid` in Solid files.** Readers return accessors: call them where you use them (`doc()?.title` in JSX or
+  a memo), never once at the top of a component ([Solid facets](../../docs/extensions/sdk.md#solid-facets)).
 - **Other extensions through their contracts.** A Solid file imports another extension's `refs.ts` (its documents and
-  actions) or its `ui.solid.tsx` (its Solid components, such as conversations' `ConversationRef`); its `ui.tsx` is
-  React. A `.tsx` sibling counts as React even without JSX: data a Solid file shares goes in a `.ts` file or `lib/`
-  (`lib/conversation-ref.ts`, `extensions/sounds/variants.ts`). Lint: `ultimate/api-only-imports`.
-- **Module stores** that both renderers read (a cache, a picker's target) live in a `.ts` file as one small cell with
-  `get`, `set` and `subscribe`; React reads it with `useSyncExternalStore`, Solid with a signal set from `subscribe`
-  (`extensions/models/state.ts`, `readers.solid.tsx`).
-- **What moves now:** slot items, panels and overlays of an extension's own (`component: island(SecretsPanel)`). A React
-  point another extension renders stays React and returns an island (`provide(ExtensionDetails, …)` in
-  `extensions/mcp/web.tsx`). A Solid part that needs what only React reads takes it as a prop from a small React
-  wrapper in `web.tsx`; `island` passes props on live, without a remount (`extensions/todos/web.tsx`). A React point
-  a moved part reads, it reads with `useProvided` or `Provided` from `@/sdk/parts.solid.tsx` (`Review` in
-  `CommitCount`, `extensions/workspaces/ui.solid.tsx`), never through a Solid copy of the point.
-- **Contracts:** `ui.solid.tsx` holds only what other extensions use; parts an extension keeps to itself live in their
-  own file (`extensions/workspaces/panel.solid.tsx`, re-exported). A pure `.ts` helper counts as server code to
-  `ultimate/api-only-imports`: it imports other extensions' refs only as types, or takes their tokens as arguments
-  (`extensions/activity/events.ts`).
-- **Markdown is Solid** (`web/src/components/markdown/`, step C1): the `link`, `inlineCode` and `codeBlocks` renderers
-  are Solid components passed straight to `web.tsx`, without `island` (`extensions/diagrams/mermaid.solid.tsx`).
-  React code shows Markdown through `MessageResponse` and `MentionText` from `@/components/ai/message`, islands of the
-  Solid renderer (`web/src/sdk/markdown.tsx`); a component an island mounts inside text takes `island(C, { inline:
-  true })`, which mounts in a `<span>`. A test that renders React to static markup sees an island empty (it mounts in
-  an effect): mock `web/src/sdk/markdown.tsx` there.
-- **What waits for the core switch:** `provide` hooks and anything that hosts other extensions' React (the shell, panel
-  hosts). The full list is `docs/solid-core-switch.md`; keep it current when you leave a part React.
+  actions) or its `ui.solid.tsx` (its components, such as conversations' `ConversationRef`). Shared data goes in a
+  `.ts` file or `lib/` (`lib/conversation-ref.ts`, `extensions/sounds/variants.ts`). Lint: `ultimate/api-only-imports`.
+- **Module stores** that several parts read (a cache, a picker's target) live in a `.ts` file as one small cell with
+  `get`, `set` and `subscribe`; Solid reads it with a signal set from `subscribe` (`extensions/models/state.ts`,
+  `readers.solid.tsx`).
+- **Contracts:** `ui.solid.tsx` holds only what other extensions use; a component's implementation can live in its
+  own file and be re-exported. A pure `.ts` helper counts as server code to `ultimate/api-only-imports`: it imports
+  other extensions' refs only as types, or takes their tokens as arguments (`extensions/activity/events.ts`).
+- **Markdown:** the `link`, `inlineCode` and `codeBlocks` renderers are components passed straight to `web.solid.tsx`
+  (`extensions/diagrams/mermaid.solid.tsx`). Use `Markdown` and `MentionText` from
+  `@/components/markdown/markdown.solid.tsx` to show Markdown and mentions.
 
-## The transcript and points across frameworks
+## The transcript and points
 
-- **The transcript is Solid (step C2).** Its renderer points keep their framework: a tool, entry, tool-line, message
-  action, message detail, answer label, user bubble or compact summary contributed as `island(C)` renders as plain
-  Solid there (`islandSolid` in `web/src/sdk/island-mark.ts`); any other is React and mounts through the temporary
-  bridge `web/src/sdk/react-island*.tsx` (C5 deletes it), consecutive React renderers sharing one root around the Solid
-  `core`. So moving a row is `entries: { 'my.kind': island(Card) }` with `Card` typed `SolidEntryProps` (`SolidToolProps`
-  for a tool) from `@/sdk/solid`. React rows read `useTranscript()` and `useTranscriptScroll()` from one
-  `TranscriptFrame` whose identity stays, so a streamed update re-renders none of them; Solid ones read `useTranscript()`
-  and `useTranscriptElements()` (the scroll element and the container whose children are rows, no follow state) from `@/sdk/solid`. An entry narrowed by
-  its token is `island(renderEntry(Token, Card))` with `renderEntry` from `@/sdk/parts.solid.tsx`; a model-only entry
-  still gets a Solid null renderer (a `.solid.tsx` returning `null`), or it mounts React to render nothing.
+- **Transcript renderers** are plain components: `entries: { 'my.kind': EntryCard }`, with `EntryCard` taking
+  `SolidEntryProps` (`SolidToolProps` for a tool) from `@/sdk/solid`. Read rows with `useTranscript()` and their
+  scroll element and container with `useTranscriptElements()` from `@/sdk/solid`. Use `renderEntry(Token, EntryCard)`
+  from `@/sdk/parts.solid.tsx` to narrow by an entry token; give a model-only entry a renderer returning `null`.
 - **Transcript parts for Solid renderers** come from `@/sdk/parts.solid.tsx`: `Card`, `Fold` (its `label` names the
   toggle), `MessageActions` (`name` names its copy button when several cards share an entry), `UserText`, `UserView`,
   `useToolDuration`, `renderEntry`, `Provided`, `useProvided`. It is a second entry because these parts and the kit
   components they render import `@/sdk/solid`, so `@/sdk/solid` re-exporting them would be an import cycle. One of each
   part: before writing a card, fold, diff or agent mark, use the shared one (coding-tools' `Diff` from its
   `ui.solid.tsx`, conversations' `AgentMark`).
-- **Every React renderer costs a React root per row.** The bridge mounts one with `flushSync` for each row a React
-  tool, entry or message action renders, and a warm conversation switch mounts them all again: a React message action
-  or a React `pi.assistant` wrapper is one root per reply. The step-back after P3 found the warm switch 60 ms slower
-  than the React transcript, about half of it in such roots (lineage's go-back action, voice-live's quiet row,
-  coding-tools' cards). Move the renderer, even a one-line wrapper, rather than leaving it on the bridge.
-- **Points across frameworks.** Read another extension's point in Solid with `Provided` (all providers, or `last`) or
-  `useProvided` from `@/sdk/parts.solid.tsx`. A provider written `provide(Point, island(C))` renders as Solid with the
-  point's input as props, in Solid hosts and React ones (`<Provided>`, `<AllProvided>`), under its own extension name;
-  under `<Provided>` a React hook provider mounts through the bridge with a copy of the input's plain objects and
-  arrays taken on any nested change, since board reconciliation updates fields like `message.state` in place;
-  `useProvided` passes its accessor's value as it is, so give it plain values. So a point meant for `island(C)` providers takes an
-  object input (`{ message }`, `{ conversation }`), and is defined in a `.ts` file both `ui.tsx` and `ui.solid.tsx`
-  re-export (`extensions/conversations/points.ts`): a definition reached through `@/sdk` drags browser module-scope
-  code into Node tests.
-- **React callers of a moved part** (inbox's reading pane, side chat) keep importing it from the owner's `ui.tsx`,
-  which exports `island(C)` under the old name; lint allows a `ui.tsx` to import its own `*.solid.tsx`. A React caller
-  that styles the part with direct-child selectors (`[&>div]:px-0`) now hits the island's `display: contents` host:
-  reach through it (`[&>div>div]`) or pass a `class`. A React caller passing React children into a Solid part cannot:
-  keep a small React shell for it (voice-live's `Bubble`).
-- **A UI-valued point a Solid host reads** gets its own point whose value is the UI, filled with
-  `provide(Point, island(C))` (P3's `ConversationTaskChip`, which plan fills with its chip): a Solid host cannot pick
-  `.chip` out of a React provider's `{ chip, title }`. A core-tier reader cannot import an optional extension's
-  `ui.solid.tsx` at all, so the point is the only way.
-- **A module several frameworks drive** (read-aloud's player) stays one plain module: `web.tsx` hands it to a Solid
-  factory at module scope (`const Action = readAloudAction(player)`), and the factory's component subscribes to it.
-  That keeps browser-only promises out of a `.ts` file the server lint would check.
-- **The sidebar is Solid (step C4b).** It reads every other extension's point through the bridge's public entry,
-  `@/sdk/parts.solid.tsx`: `useProvided` for one value, `useAllProvided` for every provider's (`Unlisted`), `Provided`
-  for UI another extension draws (`UnderUltimate`, the task chip) and `Slot` for a slot (`sidebar.top`). The bridge file
-  itself is only for `web/src`. Each `useProvided`/`useAllProvided` mounts one hidden React root, so read a point once
-  per row or once per list, never per cell. A point whose value is a React node (phase's `label`) is read for its plain
-  fields only (`word`) and drawn again in Solid; a point that returns UI takes an object input (`{ conversation }`) so
-  `Provided` can pass it to `island(C)` providers.
-- **The composer is Solid (step C3).** A `composer` wrapper is `island(C)` with `C` typed `SolidComposerProps`, an
-  `inbox` renderer `island(C)` with `SolidInboxProps`; read the redirect target with `useContext(ComposerRedirect)`
-  (an accessor) and provide it with `<ComposerRedirect value={target}>` around `props.core`. A core host renders every
-  contribution only through `Contribution`/`Contributed`/`Slot` from `web/src/sdk/react-island.solid.tsx`, never by
-  calling a component itself, so React contributions (outside extensions included) keep mounting through the bridge.
-  Solid parts a React contribution places (`core`, `cancel`) go in `Contribution`'s `elements`: the bridge renders each
-  with Solid's `render` into the host React places it in, under the placement's conversation scope, and disposes it
-  (DOM included) when React removes or hides it. A part React never places never runs.
+- **Point providers** use `provide(Point, value)`. Use a component for a UI-valued point: it takes an object input
+  as props (`{ conversation }`), and `Provided` renders it under its extension name. Keep UI and data in separate
+  points (the sidebar's task data and task chip). A data provider takes an input accessor and returns a value
+  accessor. Declare a shared point once and re-export it from `ui.solid.tsx`; built-ins keep definitions in a plain
+  `.ts` file (`extensions/conversations/points.ts`) so tests can read them without loading the browser SDK. A core-tier
+  reader can't import an optional extension's contract: it declares the point instead.
+- **Point and slot readers** come from `@/sdk/parts.solid.tsx`: `useProvided` for one data value, `useAllProvided`
+  for every provider's (`Unlisted`), `Provided` for UI (`UnderUltimate`, the task chip), and `Slot` for a slot
+  (`sidebar.top`). Read a point once per row or list, not per cell.
+- **The composer:** a `composer` wrapper takes `SolidComposerProps`, an `inbox` renderer `SolidInboxProps`. Read the
+  redirect target with `useContext(ComposerRedirect)` (an accessor) and provide it with
+  `<ComposerRedirect value={target}>` around `props.core`.
 
-## The shell (step C4a)
+## The shell
 
 - **The page is Solid.** `web/src/main.solid.tsx` renders `App.solid.tsx`; the title bar, header, status line,
   sidebar region, panels, dock, palette and error stack are Solid (`web/src/app/shell.solid.tsx` and its neighbours).
   A Solid surface builds on `Header`, `StatusLine`, `Conversation`, `Dock`, `Sidebar`, `Panels`, `Slot` and
   `ErrorCard` from `@/sdk/parts.solid.tsx` (`extensions/agent/surface.solid.tsx`).
-- **Every contribution goes through the bridge.** Surfaces, panels, badges, slots and points render through
-  `Contribution`, `Contributed`, `Slot` or `RenderedPoint`, never by calling the component, so a React one mounts
-  through the bridge and an `island(C)` one renders as Solid.
-- **React wrappers of Solid parts.** `@/sdk`'s `Header`, `Dock` and friends are `island(C)` of the Solid ones
-  (`web/src/sdk/shell.tsx`), one implementation each. React `children` reach the Solid part through `island`'s portal:
-  a `display: contents` element the Solid part places, into which React renders with `createPortal`, so React context
-  still reaches them.
-- **A Solid `render` started from React needs an owner.** An island mounted while the bridge's `flushSync` runs inside a
-  Solid effect throws `PRIMITIVE_IN_EFFECT_CALLBACK` and React loops: islands render under one page owner
-  (`runWithOwner`).
-- **React renders per streamed update are 0.** With no React above the surfaces, a React part re-renders on a stream
-  only when it reads the whole `useConversation()`: read the field you use (`useConversation((c) => c.id)`), and move
-  the part that needs `entries` below a cheap gate (dream's `TimeToDream`). `renders.ts --send` names the owner.
+- **Render registered contributions** through `Contribution`, `Slot` or `Provided` from `@/sdk/parts.solid.tsx`,
+  never by calling the component. This gives each contribution its own extension scope and error handling.
 
 ## The UI kit
 
@@ -182,7 +123,7 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **Whose key:** `useExtensionUiState` takes the extension name of where it renders, so a part rendered through another
   extension's point (a System tab, the sidebar's `UnderUltimate`) writes under that extension's name: wire's tab once
   wrote its own state over `ext.system.tab`. Such a part uses `useUiState` with an explicit `ext.<own name>.<key>`
-  from a `.ts` file that its React and Solid sides share (`extensions/wire/state.ts`).
+  from a shared `.ts` file (`extensions/wire/state.ts`).
 - **A durable selection names what is shown.** When the selected row leaves, store the row that took its place, not
   just a rule for finding it again, or a later arrival takes over the pane under the person's cursor
   (`selectionAfterChange` in `extensions/inbox/items.ts`). Order rows with a tie-breaker, never by time alone. An
@@ -217,6 +158,8 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
 - **One row per id:** `mapArray(ids, (id) => …)` gives each id its own owner and reads, disposed when it leaves. A
   polled list whose objects are replaced on each fetch keeps its DOM with `<For keyed={(row) => row.id}>`; with a key
   function both the item and the index are accessors (`index()`).
+- **A component that reads a shared service** can take it through a factory at module scope (`readAloudAction(player)`
+  in `extensions/read-aloud/web.solid.tsx`). The returned component owns its subscription.
 - **Derived values:** a value that depends on an answer is a function of it, never a signal an effect copies it into.
 - **Effects:** the apply half is untracked, so reading an accessor there trips `STRICT_READ_UNTRACKED` and never
   updates. Read each field you use in the compute half and hand the apply half a plain value
@@ -266,22 +209,16 @@ Solid 2:
   transcript's `follow()` (`web/src/app/follow.ts`) unpins only on a scroll that follows a wheel, a pointer or touch on
   the transcript, or a scroll key outside a text field (focus stays on the body after a click, so keys are read on the
   window).
-- React mounted inside Solid commits in a later task unless `flushSync`: a Solid effect that measures the React part
-  (a reveal finding a tool card inside its row) then sees it empty. The bridge's roots render with `flushSync`.
-- A Solid setter returns the value it set: as the arrow body of a React `useLayoutEffect(() => set(v))` or a Solid
-  effect's apply half, that value becomes a cleanup the framework calls later (`T is not a function` when `ParkedRuns`
-  set a `Set`). Give the effect a block body.
-- Unmounting a React root from Solid cleanup that runs inside a React commit (a part React hides) warns and defers:
-  unmount it on `nextTurn`.
-- A transcript row hides with the `empty-row` utility, which also hides a row whose only child is a React host that
-  rendered nothing (`data-empty`); `:empty` alone no longer matches once the bridge wraps React.
+- A Solid setter returns the value it set: as the arrow body of an effect's apply half, that value becomes a cleanup
+  the framework calls later (`T is not a function` when `ParkedRuns` set a `Set`). Give the effect a block body.
+- Hide a transcript row whose renderer returns nothing with the `empty-row` utility.
 - A Web Animation started from a `ref` callback runs before the element is inserted and stays at its first frame in
   Chromium: start it in `onSettled` (`extensions/questions/send.solid.tsx`).
 - A control that shows only on hover or focus (`invisible group-hover:visible group-focus-within:visible`, a row's
   `…` menu) is absent from the agent snapshot at rest: an agent focuses the row first. Keep that look rather than
   making the trigger always visible; test the focus-then-open path.
 - `expectDistinctAgentNames` is async: `await` it, or the test passes whatever the names.
-- React refused `javascript:` URLs in `href`; Solid sets the attribute as given. A link built from tool output or a
+- Solid sets `href` as given, even for `javascript:` URLs. A link built from tool output or a
   provider's data parses the URL and links only `http(s):`, showing anything else as text
   (`extensions/parallel/calls.solid.tsx`).
 - `<For>` over freshly built rows (`Object.entries(value)`, mapped tuples) remounts every row on each update: key it
@@ -290,20 +227,17 @@ Solid 2:
 - A `group` state class on a recursive part (`group-data-open/json`) reaches every descendant: an open ancestor
   restyles closed children. Put the group on the node's own trigger and read its `aria-expanded`.
 - `import('@lucide/solid/icons')` put the whole icon set (about 190 KB gzipped, measured before P2 landed) in the
-  page's entry even though it is dynamic; conversations' `AgentMark` imports `icons` statically today, which C5 trims.
-  Name icons statically, or load one by name from `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')`.
+  page's entry even though it is dynamic. Import the icons you need by name from `@lucide/solid`, or use
+  `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')` to load one by name.
 - `dynamic(() => table[key()][0])` over a plain function rebuilds the component whenever anything it read changes, even
   to the same icon: a lander log's 109 check icons were replaced once more after mount. Make the lookup a `createMemo`
   (`status` in `extensions/workspaces/log-parts.solid.tsx`).
 - A part inside a collapsible trigger cannot be a kit `Button` (buttons do not nest): put it beside the trigger, as the
   subagent card's task chip sits next to its open button.
-- A Solid part handed to React for it to place is a `SolidPart` (`solidPart` in `web/src/sdk/react-island.solid.tsx`),
-  mounted with `render` at React's host: a bare `insert` there misses event delegation once React portals it, and a
-  part built before React decides to place it keeps running hidden (a composer taking drops).
 - A kit `Textarea` takes `readonly` (lowercase) and `autoResize` with a CSS `max-h-*`; its agent `setValue` runs the
   field's `onValueChange`, so an agent fill updates a draft store like typing does. Keyboard shortcuts on it
   (Enter, Alt+Enter, ↑) stay a plain `onKeyDown`: `submitShortcut` knows only Enter and mod+Enter.
-- A capture-phase listener (`onKeyDownCapture` in React) is a ref callback:
+- A capture-phase listener is a ref callback:
   `ref={(el) => el.addEventListener('keydown', handler, { capture: true })}` (side chat's Tab in `frame.solid.tsx`).
 - An attribute built from untrusted input is set as one property, never as a string another value can extend:
   `style={{ 'text-align': align }}`, not ``style={`text-align:${align}`}``.
@@ -338,15 +272,10 @@ ui-sdk:
   `open`, before the modal makes the page inert, and write to that element's own conversation
   (`dataset.conversation`). Focusing in `onOpenChangeComplete` loses to the SDK's own return to the trigger.
 - The installed Solid SDK documents agent permissions in `docs/agents.md#permissions`.
-- A Solid dialog opened from a React Radix modal (Get ready's Connect, an editor's Configure) sits under the modal's
-  focus trap and pointer lock. The opener steps aside while that one child is open (keyed on the child's dialog id, not
-  on any open dialog: a stale flag would hide it) and restores focus to its button
-  (`extensions/onboarding/pages.tsx`, `extensions/automations/form.solid.tsx`).
 - Tooltip keeps its content mounted (hidden) so it can name an icon-only trigger; keyboard focus opens it at once.
-- The kit Tooltip opens at once (`delay: 0`); the shell's tooltips pass `delay={400}`, the feel React's
-  `TooltipProvider` gave. When a `TooltipTrigger` renders a kit `Button`, put `onClick` and `aria-label` on the
-  `TooltipTrigger`, which hands them on: on the Button a press never reaches the trigger's close, and the tooltip
-  stays open over what the press changed.
+- The kit Tooltip opens at once (`delay: 0`); the shell's tooltips pass `delay={400}`. When a `TooltipTrigger` renders
+  a kit `Button`, put `onClick` and `aria-label` on the `TooltipTrigger`, which hands them on. On the Button a press
+  never reaches the trigger's close, and the tooltip stays open over what the press changed.
 - A trigger that renders another part (`TooltipTrigger render={Button}`, `PopoverTrigger render={Button}`) registers
   two agent components with one name in ui-sdk 0.1.0-beta.13: `snapshot()` lists one and a press by label works, but
   `query({ within })` and `expectDistinctAgentNames` find two. It is upstream; don't work around it in the kit.
@@ -358,9 +287,9 @@ ui-sdk:
 
 Tooling:
 
-- A browser helper extracted to `.ts` goes in `tsconfig.web.json`'s `include`. A `.ts` helper shared by React and Solid
-  imports neither SDK entry: pass SDK functions in or use `lib/`. Another extension's Solid code reaches it through the owner's
-  `ui.solid.tsx` (its React code through `ui.tsx`) (a re-export is enough: `extensions/system/ui.solid.tsx`), never by importing the `.ts` file.
+- A browser helper extracted to `.ts` goes in `tsconfig.web.json`'s `include`. Keep shared pure helpers independent
+  of the SDK: pass SDK functions in or use `lib/`. Another extension reaches an extension-local browser helper
+  through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
 - Check the entry bundle after a move (`node scripts/frontend-weight.ts`, `entryAssetsGzip`); measure each commit in a
   throwaway detached worktree to find the one that grew it.
 
@@ -410,9 +339,8 @@ Tooling:
 `scripts/frontend-progress.ts` and reports its delta.
 
 A slower switch is found by what one warm switch does, not by guessing: the `measure-switch` skill's `--profile`, a
-DevTools trace of one switch (forced layouts and their stacks, `Commit` time), and a count of React roots the bridge
-mounts. Compare against the parent commit in the same session: one run's warm median moves 30–50 ms with machine
-load, so read three runs of each tree, interleaved.
+DevTools trace of one switch (forced layouts and their stacks). Compare against the parent commit in the same
+session: one run's warm median moves 30–50 ms with machine load, so read three runs of each tree, interleaved.
 
 ## Done means
 

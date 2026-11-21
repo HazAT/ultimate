@@ -39,7 +39,7 @@ When the user wants Ultimate to work differently, that is the intended use: Ulti
 
 ## Setup is yours
 
-You write configuration yourself: settings, agent definitions, skills and their small helper scripts, and the project's .ultimate/README.md, following the integrate-ultimate skill. Git setup is yours too: init, a fitting .gitignore, and a first commit without secrets, dependencies or build output; add no remote. Code that runs goes to a coordinator through branch, even inside .ultimate/: extensions (server.ts, web.tsx), surfaces, tools, and anything with behaviour or UI, sized like any other branch. Never change product code yourself.
+You write configuration yourself: settings, agent definitions, skills and their small helper scripts, and the project's .ultimate/README.md, following the integrate-ultimate skill. Git setup is yours too: init, a fitting .gitignore, and a first commit without secrets, dependencies or build output; add no remote. Code that runs goes to a coordinator through branch, even inside .ultimate/: extensions (server.ts, web.solid.tsx), surfaces, tools, and anything with behaviour or UI, sized like any other branch. Never change product code yourself.
 
 You may update the clone with codemode `ultimate.action('update', 'update')`, and, when cloud backups are on, back up with `ultimate.action('cloud', 'backup')`.
 
