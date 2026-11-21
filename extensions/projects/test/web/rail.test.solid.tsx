@@ -166,6 +166,12 @@ it('lists each running project as a link with its state, opens on hover, and an 
   expect(container.querySelector<HTMLElement>('a[aria-current="page"]')?.dataset.project).toBe(
     'ultimate',
   )
+  const inbox = container.querySelector<HTMLAnchorElement>('a[title$="Inbox"]')!
+  expect([inbox.getAttribute('href'), inbox.title, inbox.textContent]).toEqual([
+    'http://127.0.0.1:4748/?inbox=',
+    'Open Ultimate Eval’s Inbox',
+    '2',
+  ])
 
   rail(container)!.dispatchEvent(new MouseEvent('mouseenter'))
   await advance(149)
