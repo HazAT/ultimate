@@ -15,6 +15,7 @@ export type Condition =
   | 'quiet'
   | { entry: string }
   | { event: string; where?: Record<string, unknown> }
+  | { ui: string; is?: Record<string, unknown> }
 export interface UntilOptions {
   conversation?: number
   timeoutMs?: number
@@ -28,6 +29,11 @@ interface Sent {
 }
 
 const SENT_KEY = 'ultimate.sent'
+
+type UiComponent = ReturnType<UiAgent['snapshot']>[number]
+
+const fold = (text: string) =>
+  text.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase()
 
 export function createTestHook(
   store: Store,
@@ -115,6 +121,77 @@ export function createTestHook(
       () => 'the page never received its first snapshot',
     )
 
+  async function named(name: string): Promise<UiComponent | undefined> {
+    const bridge = agent.bridge()
+    const found = await bridge.query({ text: name })
+    const exact = Array.isArray(found)
+      ? found.filter((item) => !item.offPage && item.label && fold(item.label) === fold(name))
+      : []
+    if (exact.length === 1) return exact[0]
+    return bridge.snapshot().find((item) => item.ref === name && !item.offPage)
+  }
+
+  async function exactRefs(steps: Parameters<UiAgent['act']>[0]['steps']) {
+    const resolved = []
+    for (const step of steps)
+      resolved.push({ ...step, ref: (await named(step.ref))?.ref ?? step.ref })
+    return resolved
+  }
+
+  const holds = (component: UiComponent, is: Record<string, unknown>) =>
+    Object.entries(is).every(
+      ([key, value]) => JSON.stringify(component[key]) === JSON.stringify(value),
+    )
+
+  async function untilUi(name: string, is: Record<string, unknown>, timeoutMs: number) {
+    await controlsMounted()
+    return new Promise<UiComponent>((resolve, reject) => {
+      let last: UiComponent | undefined
+      let checking = false
+      let again = false
+      const check = async () => {
+        if (checking) {
+          again = true
+          return
+        }
+        checking = true
+        do {
+          again = false
+          last = await named(name)
+          if (last && holds(last, is)) {
+            stop()
+            resolve(last)
+            return
+          }
+        } while (again)
+        checking = false
+      }
+      const recheck = () => {
+        check().catch((error: unknown) => {
+          stop()
+          reject(error instanceof Error ? error : new Error(String(error)))
+        })
+      }
+      const stopChanges = agent.bridge().subscribe(recheck)
+      const observer = new MutationObserver(recheck)
+      observer.observe(document.body, { subtree: true, childList: true, attributes: true })
+      const cancel = deadline(timeoutMs, () => {
+        stop()
+        reject(
+          new Error(
+            `Timed out after ${timeoutMs / 1000}s: ${last ? `${name} is ${JSON.stringify(last)}` : `no component named ${name}`}`,
+          ),
+        )
+      })
+      function stop() {
+        stopChanges()
+        observer.disconnect()
+        cancel()
+      }
+      recheck()
+    })
+  }
+
   function busyLine(state: State, id: ConversationId) {
     const item = summary(state, id)
     const phases = Object.values(state.tasks?.tasks ?? {})
@@ -140,8 +217,9 @@ export function createTestHook(
       },
       async act(input: Parameters<UiAgent['act']>[0]) {
         await controlsMounted()
-        return agent.bridge().act(input)
+        return agent.bridge().act({ steps: await exactRefs(input.steps) })
       },
+      ready: () => controlsMounted(),
       flush: () => uiState.flush(),
     },
 
@@ -182,6 +260,8 @@ export function createTestHook(
 
     async until(condition: Condition, options: UntilOptions = {}) {
       const timeoutMs = options.timeoutMs ?? 300_000
+      if (typeof condition === 'object' && 'ui' in condition)
+        return untilUi(condition.ui, condition.is ?? {}, timeoutMs)
       const started = Date.now()
       await firstSnapshotReady(timeoutMs)
       const left = () => Math.max(0, timeoutMs - (Date.now() - started))

@@ -17,15 +17,20 @@ afterEach(async () => {
 })
 
 const panel = `/** @jsxImportSource @solidjs/web */
+import { createSignal } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import { useExtensionUiState } from '@/sdk/solid'
 
 export function Digest() {
   const digest = useExtensionUiState('digest', false)
+  const [pressed, setPressed] = createSignal('none')
   return (
     <>
       <Switch aria-label="Weekly digest" bind={digest} />
+      <Button aria-label="Read digest-archive.png" data-pressed={pressed()} onClick={() => setPressed('read')}>read</Button>
+      <Button aria-label="Digest archive" onClick={() => setPressed('archive')}>Archive</Button>
       <Popover>
         <PopoverTrigger aria-label="Digest details">details</PopoverTrigger>
         <PopoverContent>Sent on Mondays</PopoverContent>
@@ -67,7 +72,7 @@ async function serve(settings?: object) {
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
   } as unknown as ExtensionHost
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
-  const api = { output() {} } as unknown as ToolExecutionApi
+  const api = { output() {}, watchDoc: async () => undefined } as unknown as ToolExecutionApi
   const drive = async (steps: object[]) => {
     const result = await browser.execute(
       { url: server.url, screenshot: false, steps: steps as never },
@@ -170,6 +175,23 @@ it('sends a final keypress’s UI-state write on pagehide in one keepalive reque
       }),
     },
   ])
+})
+
+// Pressing 'System' pressed a transcript row named "read ~/fw-verify/live-system.png" instead of the System tab:
+// ui-sdk ranks a whole-word match with the exact label and then prefers the open one (#835504).
+it('acts on the one control with the exact label, and waits on a control’s state', async () => {
+  const { drive } = await serve()
+  const value = await drive([
+    { ui: 'act', steps: [{ ref: 'Digest archive', action: 'press' }] },
+    { eval: "document.querySelector('[data-pressed]').dataset.pressed" },
+    {
+      eval: 'setTimeout(() => document.querySelector(\'[aria-label="Weekly digest"]\').click(), 50)',
+    },
+    { until: { ui: 'Weekly digest', is: { checked: true } }, timeoutMs: 5000 },
+  ])
+  expect(value(1)).toMatchObject({ ok: true })
+  expect(value(2)).toBe('archive')
+  expect(value(4)).toMatchObject({ label: 'Weekly digest', checked: true })
 })
 
 it('records nothing from the agent when it opens and closes a popover', async () => {
