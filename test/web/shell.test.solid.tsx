@@ -28,13 +28,13 @@ vi.stubGlobal('matchMedia', () => ({
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { App } from '../../web/src/app/App.solid.tsx'
-import { ErrorCard } from '../../web/src/app/boundary.tsx'
+import { ErrorCard } from '../../web/src/compat/boundary.tsx'
 import { IconButton } from '../../web/src/app/header.solid.tsx'
 import { CommandPalette } from '../../web/src/app/palette.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
-import { island } from '../../web/src/sdk/island.tsx'
-import { RenderedPoint } from '../../web/src/sdk/react-island.solid.tsx'
-import { Header } from '../../web/src/sdk/shell.tsx'
+import { island } from '../../web/src/compat/island.tsx'
+import { RenderedPoint } from '../../web/src/sdk/contribution.solid.tsx'
+import { Header } from '../../web/src/compat/shell.tsx'
 import { definePoint, ErrorReport, provide } from '../../web/src/sdk/types.ts'
 import { writerNow } from '../../web/src/sdk/writer.ts'
 import { renderSolid } from './solid-dom-setup.ts'

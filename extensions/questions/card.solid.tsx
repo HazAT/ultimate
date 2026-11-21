@@ -1,4 +1,5 @@
 /** @jsxImportSource @solidjs/web */
+import type { JSX } from '@solidjs/web'
 import { MessageCircleQuestion } from '@lucide/solid'
 import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
@@ -23,7 +24,6 @@ import { MessagesDoc } from '../messages/refs.ts'
 import { keyCard, openQuestions, waitsOnUser } from './open.ts'
 import type { Message } from './open.ts'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import type { ReactNode } from 'react'
 import type { Point } from '@/sdk'
 import { QuestionItem } from './question.solid.tsx'
 import { AnswerAction, DismissAction } from './refs.ts'
@@ -44,7 +44,9 @@ import type { CardState, Draft } from './state.ts'
 
 const CHECK_LANDING_BEFORE_ADVANCE_MS = 320
 
-export const CardActions: Point<Message, ReactNode> = { point: 'questions.card-actions' }
+export const CardActions: Point<{ message: Message }, JSX.Element> = {
+  point: 'questions.card-actions',
+}
 
 type CardProps = {
   message: Message
@@ -110,7 +112,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   const Actions = (controls: { disabled: boolean; class?: string }) => (
     <>
       <Show when={props.withActions !== false}>
-        <Provided point={CardActions} input={props.message} last />
+        <Provided point={CardActions} input={{ message: props.message }} last />
       </Show>
       <Button
         aria-label={`Dismiss message ${props.id}`}

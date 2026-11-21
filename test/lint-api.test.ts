@@ -399,7 +399,7 @@ import type { PanelProps } from './panel.solid.tsx'`
     ),
   ).toEqual([move('./panel.solid.tsx')])
   expect(lint('ui-framework-boundaries', 'web/src/sdk/solid.ts', reactSource)).toEqual([])
-  expect(lint('ui-framework-boundaries', 'web/src/sdk/island.tsx', reactSource)).toEqual([])
+  expect(lint('ui-framework-boundaries', 'web/src/compat/island.tsx', reactSource)).toEqual([])
   const solidSdk = `import { useDoc } from '@/sdk/solid'
 import { useUiState } from '../../web/src/sdk/solid.ts'
 import type { Accessor } from '@/sdk/solid'`
@@ -407,7 +407,7 @@ import type { Accessor } from '@/sdk/solid'`
     move('@/sdk/solid'),
     move('../../web/src/sdk/solid.ts'),
   ])
-  expect(lint('ui-framework-boundaries', 'web/src/sdk/hooks.ts', reactSource)).toEqual([
+  expect(lint('ui-framework-boundaries', 'web/src/compat/hooks.ts', reactSource)).toEqual([
     move('@solidjs/web'),
     move('solid-js'),
     move('./panel.solid.tsx'),

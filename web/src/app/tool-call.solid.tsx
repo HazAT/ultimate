@@ -10,7 +10,7 @@ import {
   ToolOutput,
 } from '@/components/ai/tool.solid.tsx'
 import { formatDuration, toolRenderers, useExtensions, useNow } from '@/sdk/solid'
-import { Contributed } from '../sdk/react-island.solid.tsx'
+import { Contributed } from '../sdk/contribution.solid.tsx'
 import type { ToolCallView } from '@/sdk'
 import { ContributionError } from './contribution-error.solid.tsx'
 

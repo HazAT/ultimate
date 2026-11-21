@@ -18,10 +18,10 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { AllProvided } from '../../web/src/app/boundary.tsx'
+import { AllProvided } from '../../web/src/compat/boundary.tsx'
 import { registry } from '../../web/src/sdk/client.ts'
-import { ExtensionNameContext } from '../../web/src/sdk/hooks.ts'
-import { island } from '../../web/src/sdk/island.tsx'
+import { ExtensionNameContext } from '../../web/src/compat/hooks.ts'
+import { island } from '../../web/src/compat/island.tsx'
 import { ExtensionName } from '../../web/src/sdk/solid.ts'
 import { Provided } from '../../web/src/sdk/parts.solid.tsx'
 import { definePoint, provide } from '../../web/src/sdk/types.ts'

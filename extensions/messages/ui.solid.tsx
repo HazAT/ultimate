@@ -24,7 +24,7 @@ export { useRemoteProgress } from './progress.solid.tsx'
 export { useStarters, useUnderway } from './started.solid.tsx'
 export { Body } from './card-parts.solid.tsx'
 export { MessageImages } from './message-images.solid.tsx'
-export { MessageExtras } from './points.ts'
+export { MessageAnswers, MessageExtras, WaitTimers } from './points.ts'
 
 /** The standing name of the conversation, if it has one. */
 export { useStandingName } from './standing-name.solid.tsx'

@@ -29,8 +29,10 @@ if (!folders.length) {
   process.exit(0)
 }
 for (const folder of folders)
-  if (!existsSync(join(folder, 'web.tsx')) && !existsSync(join(folder, 'server.ts'))) {
-    console.error(`${folder} is not an extension folder (no web.tsx or server.ts).`)
+  if (
+    !['web.solid.tsx', 'web.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))
+  ) {
+    console.error(`${folder} is not an extension folder (no web.solid.tsx, web.tsx or server.ts).`)
     process.exit(2)
   }
 
@@ -61,7 +63,7 @@ try {
         types: [...cloneWebAndBundlerOptions.types, 'node'],
         paths: { '@/*': [join(clone, 'web/src/*')] },
       },
-      include: ['ext/*/web.tsx', 'ext/*/server.ts'],
+      include: ['ext/*/web.solid.tsx', 'ext/*/web.tsx', 'ext/*/server.ts'],
     }),
   )
   const tsc = spawnSync(join(clone, 'node_modules/.bin/tsc'), ['-p', '.', '--pretty', 'false'], {

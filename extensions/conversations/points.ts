@@ -1,15 +1,15 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { ReactNode } from 'react'
+import type { JSX } from '@solidjs/web'
 import { definePoint } from '../../web/src/sdk/types.ts'
 
 export const ConversationPhase = definePoint<
   ConversationId | undefined,
-  { label: ReactNode; word: string; waiting: boolean } | undefined
+  { word: string; waiting: boolean } | undefined
 >('conversations.phase')
 
 export const ConversationTask = definePoint<
   ConversationId | undefined,
-  { chip: ReactNode; title: string } | undefined
+  { title: string } | undefined
 >('conversations.task')
 
 export const ConversationEpic = definePoint<
@@ -21,5 +21,5 @@ export const Unsummarized = definePoint<ConversationId, boolean>('conversations.
 
 export const ConversationTaskChip = definePoint<
   { conversation: ConversationId; on: string },
-  unknown
+  JSX.Element
 >('conversations.task-chip')

@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { Inbox as InboxIcon } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'
-import { Header, ReactValue, Sidebar, useProvided } from '@/sdk/parts.solid.tsx'
+import { Header, ProvidedValue, Sidebar, useProvided } from '@/sdk/parts.solid.tsx'
 import { useNow, useSurface, useViewport } from '@/sdk/solid'
 import { Badge, LinkOverlay, SidebarRow, Zero } from './chrome.solid.tsx'
 import { SURFACE, answeredToday, toRow } from './items.ts'
@@ -39,7 +39,7 @@ export function Inbox() {
         </For>
       }
     >
-      <ReactValue value={takeover()} />
+      <ProvidedValue value={takeover()} />
     </Show>
   )
   return (

@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { webAliases } from '../lib/web-alias.ts'
 import { dirname, join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { gzipSync } from 'node:zlib'
@@ -29,7 +30,7 @@ try {
     root: resolve(request.ultimateRoot, 'web'),
     cacheDir: request.cacheDir,
     logLevel: 'error',
-    resolve: { alias: { '@': resolve(request.ultimateRoot, 'web/src') } },
+    resolve: { alias: webAliases(request.ultimateRoot) },
     plugins: [
       extensionModules(request.ultimateRoot, request.projectRoot, request.userHome, request.broken),
     ],

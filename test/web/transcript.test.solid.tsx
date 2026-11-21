@@ -27,8 +27,8 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { Transcript } from '../../web/src/app/transcript.solid.tsx'
 import { registry, store } from '../../web/src/sdk/client.ts'
-import { useTranscript } from '../../web/src/sdk/hooks.ts'
-import { island } from '../../web/src/sdk/island.tsx'
+import { useTranscript } from '../../web/src/compat/hooks.ts'
+import { island } from '../../web/src/compat/island.tsx'
 import { ConversationScope } from '../../web/src/sdk/solid.ts'
 import type { EntryRenderer } from '../../web/src/sdk/types.ts'
 import { renderSolid } from './solid-dom-setup.ts'
