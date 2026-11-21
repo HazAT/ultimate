@@ -14,6 +14,7 @@ import { stackFrames } from './error-report.ts'
 const ErrorCardIsland = island(SolidErrorCard)
 
 export function ErrorCard(props: Omit<ErrorCardProps, 'report'>) {
+  if (props.variant === 'inline') return <ErrorCardIsland {...props} />
   return (
     <Provided input={null} point={ErrorReport}>
       {(report) => <ErrorCardIsland {...props} report={report} />}

@@ -28,13 +28,14 @@ vi.stubGlobal('matchMedia', () => ({
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { App } from '../../web/src/app/App.solid.tsx'
+import { ErrorCard } from '../../web/src/app/boundary.tsx'
 import { IconButton } from '../../web/src/app/header.solid.tsx'
 import { CommandPalette } from '../../web/src/app/palette.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
 import { island } from '../../web/src/sdk/island.tsx'
 import { RenderedPoint } from '../../web/src/sdk/react-island.solid.tsx'
 import { Header } from '../../web/src/sdk/shell.tsx'
-import { definePoint, provide } from '../../web/src/sdk/types.ts'
+import { definePoint, ErrorReport, provide } from '../../web/src/sdk/types.ts'
 import { writerNow } from '../../web/src/sdk/writer.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
@@ -175,4 +176,28 @@ it('renders an island provider of a rendered point as Solid around the core, ins
   })
   const outer = container.querySelector('aside[data-react="7"]')
   expect(outer?.querySelector('section[data-island="7"] > i')?.textContent).toBe('core')
+})
+
+it('renders one inline card for an error-report provider that throws, without recursing', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await registry.setLoaders({
+    'extensions/reporter/web.tsx': async () => ({
+      default: {
+        provides: [
+          provide(ErrorReport, () => {
+            throw new Error('reporter broke')
+          }),
+        ],
+      },
+    }),
+  })
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  act(() => root.render(h(ErrorCard, { extension: 'shown', error: 'shown broke' })))
+  expect(host.querySelectorAll('[data-extension-error="reporter"]')).toHaveLength(1)
+  expect(host.querySelector('[data-extension-error="shown"]')?.textContent).toContain('shown broke')
+  act(() => root.unmount())
+  host.remove()
+  await registry.setLoaders({})
 })
