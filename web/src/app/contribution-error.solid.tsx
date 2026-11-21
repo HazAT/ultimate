@@ -3,7 +3,7 @@ import { TriangleAlert } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
 import { Show } from 'solid-js'
-import { errorMessage } from '@/sdk/solid'
+import { errorMessage } from '../sdk/hooks.ts'
 import { ReactCompatLink, ReactCompatNote } from './error-card.solid.tsx'
 
 export function ContributionError(props: {

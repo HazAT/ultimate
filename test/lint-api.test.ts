@@ -397,7 +397,7 @@ it('lets only the core hosts in web/src import the contribution bridge, and only
   const source = `import { Contribution } from '@/sdk/contribution.solid.tsx'
 const later = import(\`@/sdk/contribution.solid.tsx\`)`
   const onePath =
-    "Only the core hosts in web/src import the bridge (web/src/sdk/contribution.solid.tsx); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/parts.solid.tsx."
+    "Only the core hosts in web/src import the bridge (web/src/sdk/contribution.solid.tsx); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/solid."
   expect(lint('ui-framework-boundaries', 'web/src/app/transcript.solid.tsx', source)).toEqual([])
   expect(lint('ui-framework-boundaries', 'extensions/echo/panel.solid.tsx', source)).toEqual([
     onePath,
@@ -529,13 +529,21 @@ export type AbstractData = {
 MIT License — Copyright (c) 2025 Mario Zechner
 */`
   expect(lint('no-comments', 'extensions/entries/refs.ts', contract)).toEqual([])
-  const solidSdk = `/**
- * The extension SDK for Solid facets.
- */
-import { store } from './client.ts'
+})
+
+it('keeps Solid SDK contract JSDoc on the entry and on the exports it re-exports', () => {
+  const entry = `/** The extension SDK for Solid facets. */
+/** A card that folds. */
+export { Fold } from '../app/fold.solid.tsx'`
+  expect(lint('no-comments', 'web/src/sdk/solid.ts', entry)).toEqual([])
+  const hooks = `/** Reads the document as an accessor. */
+export function useDoc() {}
+/** Shell navigation. */
+export const { switchConversation } = actions
 /** Keyed per conversation and kind. */
-const replicaKey = (kind: string) => kind
-/** The document as an accessor. */
-export function useDoc() {}`
-  expect(lint('no-comments', 'web/src/sdk/solid.ts', solidSdk)).toHaveLength(1)
+export const replicaKey = (kind: string) => kind`
+  expect(lint('no-comments', 'web/src/sdk/hooks.ts', hooks)).toHaveLength(1)
+  const parts = `/** Renders a slot by name. */
+export function Slot() {}`
+  expect(lint('no-comments', 'web/src/sdk/parts.solid.tsx', parts)).toEqual([])
 })

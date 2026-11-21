@@ -3,7 +3,7 @@ import { FileDiffIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For } from 'solid-js'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
-import { Header, StatusLine } from '@/sdk/parts.solid.tsx'
+import { Header, StatusLine } from '@/sdk/solid'
 
 export function Frame(props: { controls?: JSX.Element; children: JSX.Element }) {
   return (

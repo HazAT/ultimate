@@ -8,9 +8,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import type { DocumentItem } from '@/sdk/solid'
-import { ContributedIcon, Contribution, ErrorCard } from '@/sdk/parts.solid.tsx'
 import {
+  type DocumentItem,
+  ContributedIcon,
+  Contribution,
+  ErrorCard,
   documentItems,
   errorMessage,
   useConversationId,

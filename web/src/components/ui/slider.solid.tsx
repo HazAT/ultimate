@@ -9,7 +9,7 @@ import {
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { Accessor, ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 
 type SliderProps = Omit<ComponentProps<typeof SliderRoot<number>>, 'children'> & {
   'aria-label': string

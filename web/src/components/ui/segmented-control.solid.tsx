@@ -6,7 +6,7 @@ import {
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { Accessor, ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 
 type SegmentedControlProps<T extends string> = ComponentProps<typeof SegmentedControlRoot<T>> & {
   class?: string

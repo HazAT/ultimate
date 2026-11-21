@@ -10,33 +10,8 @@ import { Contribution, Slot as BridgeSlot } from './contribution.solid.tsx'
 import { isReact } from './framework.ts'
 import { store } from './client.ts'
 import { scopeAttribute } from './scope.ts'
-import { ConversationScope, provisionsOf, Transcript, useExtensions } from './solid.ts'
+import { ConversationScope, provisionsOf, Transcript, useExtensions } from './hooks.ts'
 import type { Point, SlotName, SolidEntryProps } from './types.ts'
-
-export { Card } from '../app/card.solid.tsx'
-/** A card that folds to one quiet line in compact mode; `label` names its button. The reader's choice survives reloads. */
-export { Fold, useFold } from '../app/fold.solid.tsx'
-export { MessageActions } from '../app/message-actions.solid.tsx'
-export { UserText, UserView } from '../app/user-turn.solid.tsx'
-export { useToolDuration } from '../app/tool-call.solid.tsx'
-/**
- * The values every provider gives for `point`, in discovery order. A provider that throws shows its inline error card
- * in `failures`, an element the caller places, when given.
- */
-export { useAllProvided } from './contribution.solid.tsx'
-/** The value the last provider in discovery order gives for `point`; `failures` as above. */
-export { useProvided } from './contribution.solid.tsx'
-/** Building blocks of surfaces; see docs/extensions/surfaces.md. */
-export { Header } from '../app/header.solid.tsx'
-export { Conversation, Dock, Panels, Sidebar, StatusLine } from '../app/shell.solid.tsx'
-/** An extension's failure, inline or as a block with a report button, as the shell shows it. */
-export { ErrorCard } from '../app/error-card.solid.tsx'
-/** A contribution's `icon` (a panel's, a surface's) with `class`. */
-export { ContributedIcon } from './contribution.solid.tsx'
-/** Renders a registered contribution in its extension's scope, a React one through the compat layer. */
-export { Contribution } from './contribution.solid.tsx'
-/** A value a point's provider returned: as it is, or mounted when a React provider returned a React element. */
-export { ProvidedValue } from './contribution.solid.tsx'
 
 /** Any slot by name, each item isolated: one that throws shows its error card inline and the rest still render. */
 export function Slot(props: { name: SlotName; variant?: 'inline' | 'block' }) {

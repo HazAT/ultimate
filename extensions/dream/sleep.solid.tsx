@@ -1,5 +1,4 @@
 /** @jsxImportSource @solidjs/web */
-import { ROOT } from '@/sdk/solid'
 import { ChevronRightIcon, LoaderCircleIcon, MoonIcon, MoonStarIcon } from '@lucide/solid'
 import { For, Show, createMemo, createSignal } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
@@ -10,9 +9,16 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
-import { Card } from '@/sdk/parts.solid.tsx'
-import { formatTime, useDialog, useDocOf, useNow, useSystem } from '@/sdk/solid'
-import type { EntryRecord } from '@/sdk/solid'
+import {
+  ROOT,
+  Card,
+  formatTime,
+  useDialog,
+  useDocOf,
+  useNow,
+  useSystem,
+  type EntryRecord,
+} from '@/sdk/solid'
 import {
   BusyBlocker,
   CHAPTER_NAME,

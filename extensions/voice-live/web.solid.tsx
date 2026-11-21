@@ -16,8 +16,10 @@ import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'so
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { Conversation, ScopedConversation, useProvided } from '@/sdk/parts.solid.tsx'
 import {
+  Conversation,
+  ScopedConversation,
+  useProvided,
   api,
   cn,
   column,
@@ -39,8 +41,8 @@ import {
   useSurface,
   useTranscript,
   useViewport,
+  type SolidComposerProps,
 } from '@/sdk/solid'
-import type { SolidComposerProps } from '@/sdk/solid'
 import { openQuestion } from '../../lib/message-state.ts'
 import { deadline } from '../../lib/timers.ts'
 import { ConversationPhase } from '../conversations/ui.solid.tsx'

@@ -9,8 +9,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { closePanel, cn, openPanel, usePanels, useStore, useViewport } from '@/sdk/solid'
-import { ContributedIcon } from '@/sdk/parts.solid.tsx'
+import {
+  closePanel,
+  cn,
+  openPanel,
+  usePanels,
+  useStore,
+  useViewport,
+  ContributedIcon,
+} from '@/sdk/solid'
 
 const quickPanels = ['todos', 'tasks', 'activity', 'info']
 

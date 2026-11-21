@@ -63,7 +63,7 @@ import {
   useNow,
   useStore,
   useSystem,
-} from '@/sdk/solid'
+} from '../sdk/hooks.ts'
 import {
   Contributed,
   Contribution,

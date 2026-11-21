@@ -1,7 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { ChartNoAxesCombinedIcon } from '@lucide/solid'
-import { Conversation, Dock, Header, StatusLine } from '@/sdk/parts.solid.tsx'
-import { defineWebExtension } from '@/sdk/solid'
+import { Conversation, Dock, Header, StatusLine, defineWebExtension } from '@/sdk/solid'
 import { Progress } from './progress.solid.tsx'
 
 function Surface() {

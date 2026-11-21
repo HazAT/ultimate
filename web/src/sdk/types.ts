@@ -52,7 +52,7 @@ export interface PanelContribution {
 
 /**
  * A full-screen composition the user switches to: the built-in Agent surface (`extensions/agent`) or an app. Build it
- * from the primitives in `@/sdk/parts.solid.tsx` (`Header`, `Conversation`, `Dock`, `StatusLine`, …) and your own
+ * from the primitives in `@/sdk/solid` (`Header`, `Conversation`, `Dock`, `StatusLine`, …) and your own
  * components.
  */
 export interface SurfaceContribution {
@@ -257,7 +257,7 @@ export type CompactCallTest = (call: ToolCall, docs: CompactDocs) => boolean
 /**
  * A value one extension's browser code asks for and another provides: the web's extension point. The asking extension
  * declares it in a `.ts` file its `ui.solid.tsx` re-exports, as `definePoint<Input, Value>('<owner>.<point>')`, and
- * reads it with `useProvided` or renders it with `<Provided point input>` from `@/sdk/parts.solid.tsx`; a higher
+ * reads it with `useProvided` or renders it with `<Provided point input>` from `@/sdk/solid`; a higher
  * extension imports it and lists `provide(Point, …)` under `provides`. Dependencies keep pointing at the owner, as with
  * a server extension point.
  */

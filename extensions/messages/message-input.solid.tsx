@@ -3,8 +3,9 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 import { CornerLeftUp, Mail } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Fold, UserView } from '@/sdk/parts.solid.tsx'
 import {
+  Fold,
+  UserView,
   ROOT,
   cn,
   events,

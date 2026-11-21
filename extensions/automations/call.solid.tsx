@@ -11,9 +11,14 @@ import {
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { api, openPanel, showSurface, switchConversation } from '@/sdk/solid'
-import type { SolidToolProps } from '@/sdk/solid'
+import {
+  useToolDuration,
+  api,
+  openPanel,
+  showSurface,
+  switchConversation,
+  type SolidToolProps,
+} from '@/sdk/solid'
 import { openAutomation, openAutomationsPanel } from './navigation.ts'
 
 const shell = { openPanel, showSurface, switchConversation }

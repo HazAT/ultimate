@@ -39,9 +39,8 @@ part of it breaks, its error card says so and links here.
 
 1. Rename `web.tsx` to `web.solid.tsx`, and every other `.tsx` in the folder to `.solid.tsx`. Start each with
    `/** @jsxImportSource @solidjs/web */`.
-2. Import from `@/sdk/solid` instead of `@/sdk`, `@lucide/solid` instead of `lucide-react`, and
-   `@/components/ui/<name>.solid.tsx` instead of `@/components/ui/<name>`. Surface parts come from
-   `@/sdk/parts.solid.tsx`.
+2. Import from `@/sdk/solid` instead of `@/sdk`, including surface parts. Use `@lucide/solid` instead of
+   `lucide-react`, and `@/components/ui/<name>.solid.tsx` instead of `@/components/ui/<name>`.
 3. Drop `island(…)`: contribute the component itself.
 4. Rewrite the components in Solid 2: props are read, never destructured; `createEffect(compute, apply)`; readers
    return accessors (`doc()?.title`). Ultimate's `solid-ui` skill and

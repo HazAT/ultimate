@@ -12,8 +12,10 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
-import { Card, Fold, renderEntry } from '@/sdk/parts.solid.tsx'
 import {
+  Card,
+  Fold,
+  renderEntry,
   api,
   errorMessage,
   ROOT,

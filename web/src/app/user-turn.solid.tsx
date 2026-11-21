@@ -14,7 +14,7 @@ import {
 import { FileChip } from '@/components/file-chip.solid.tsx'
 import { typeLabel } from '@/components/file-kind.ts'
 import { Markdown, MentionText } from '@/components/markdown/markdown.solid.tsx'
-import { FileUpload, formatAgo, messageItems, useExtensions } from '@/sdk/solid'
+import { FileUpload, formatAgo, messageItems, useExtensions } from '../sdk/hooks.ts'
 import { Contribution, useProvided } from '../sdk/contribution.solid.tsx'
 import { splitAttachments, uploadedAt } from './attachments.ts'
 import type { AttachedFile } from './attachments.ts'

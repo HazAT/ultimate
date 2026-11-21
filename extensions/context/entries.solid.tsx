@@ -7,9 +7,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { useFold } from '@/sdk/parts.solid.tsx'
-import { useConversationId, useTranscript } from '@/sdk/solid'
-import type { SolidEntryProps } from '@/sdk/solid'
+import { useFold, useConversationId, useTranscript, type SolidEntryProps } from '@/sdk/solid'
 import { breakdownAt, diffAt, opensContext, ownStart, removesAll, systemOf } from './breakdown.ts'
 import type { Diff } from './breakdown.ts'
 import { changeCounts, DiffBody, Header, signed } from './parts.solid.tsx'

@@ -15,8 +15,9 @@ import {
 } from '@/components/ai/tool.solid.tsx'
 import { Markdown, MentionText } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Provided, useToolDuration } from '@/sdk/parts.solid.tsx'
 import {
+  Provided,
+  useToolDuration,
   ROOT,
   cn,
   plural,
@@ -24,8 +25,8 @@ import {
   useConversationId,
   useConversationSummary,
   useDocOf,
+  type SolidToolProps,
 } from '@/sdk/solid'
-import type { SolidToolProps } from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
 import { ConversationTaskChip } from '../conversations/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'

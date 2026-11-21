@@ -4,8 +4,14 @@ import { FilmIcon, LoaderCircleIcon, PlayIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For, Show, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Provided } from '@/sdk/parts.solid.tsx'
-import { cn, defineWebExtension, provide, useAction, useConversationSummary } from '@/sdk/solid'
+import {
+  Provided,
+  cn,
+  defineWebExtension,
+  provide,
+  useAction,
+  useConversationSummary,
+} from '@/sdk/solid'
 import { meansNone } from '../../lib/errors.ts'
 import { MessageAnswers, MessageExtras } from '../messages/ui.solid.tsx'
 import type { Message } from '../messages/refs.ts'

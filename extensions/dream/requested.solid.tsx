@@ -1,7 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { MoonIcon } from '@lucide/solid'
-import { Card } from '@/sdk/parts.solid.tsx'
-import type { EntryRecord } from '@/sdk/solid'
+import { Card, type EntryRecord } from '@/sdk/solid'
 import type { RequestedEntry } from './refs.ts'
 
 const awayFor = (ms: number) => `${Math.max(1, Math.round(ms / 3600_000))} h`

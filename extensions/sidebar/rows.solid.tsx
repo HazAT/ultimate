@@ -22,8 +22,7 @@ import {
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { api, cn, errorMessage, formatAgo, notify } from '@/sdk/solid'
-import { Provided, useProvided } from '@/sdk/parts.solid.tsx'
+import { api, cn, errorMessage, formatAgo, notify, Provided, useProvided } from '@/sdk/solid'
 import { RenameAction } from '../conversations/refs.ts'
 import {
   ConversationEpic,

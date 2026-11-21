@@ -10,8 +10,9 @@ import { dynamic } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { Card, renderEntry } from '@/sdk/parts.solid.tsx'
 import {
+  Card,
+  renderEntry,
   api,
   attention,
   defineWebExtension,
@@ -31,8 +32,9 @@ import {
   useTranscript,
   writerNow,
   writingAs,
+  type EntryRecord,
+  type SolidToolProps,
 } from '@/sdk/solid'
-import type { EntryRecord, SolidToolProps } from '@/sdk/solid'
 import { IsolationAction } from '../workspaces/refs.ts'
 import { settledChoice } from './choices.ts'
 import { firstRunDialog, gitDialog, projectDialog } from './dialogs.ts'

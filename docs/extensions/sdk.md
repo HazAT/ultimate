@@ -4,11 +4,9 @@ Part of the [extension guide](../../extensions/README.md).
 
 ## Solid facets
 
-An extension's `web.solid.tsx` contributes plain Solid components. Import `defineWebExtension`, `definePoint`, `provide`
-and `attention` from `@/sdk/solid`. Import surface and transcript parts (`Header`, `Sidebar`, `StatusLine`, `Conversation`,
-`Dock`, `Slot`, `Card`, `Fold`, `ErrorCard`, `Contribution`, `ScopedConversation`) and point readers (`Provided`,
-`useProvided`, `useAllProvided`) from `@/sdk/parts.solid.tsx`. See [Surfaces](surfaces.md#primitives) for layout and
-[Contracts](contracts.md#web-points) for providers.
+An extension's `web.solid.tsx` contributes plain Solid components. Import SDK features from `@/sdk/solid`, including
+`defineWebExtension`, readers, point providers, and surface and transcript parts such as `Header`, `Conversation`,
+`Card` and `Fold`. See [Surfaces](surfaces.md#primitives) for layout and [Contracts](contracts.md#web-points) for points.
 
 ```tsx
 /** @jsxImportSource @solidjs/web */
@@ -64,7 +62,7 @@ Keep UI state that should survive a reload in `useExtensionUiState`; use a local
 
 ## Rendering another conversation
 
-Wrap `<Conversation />` in `<ScopedConversation id={id}>` (both from `@/sdk/parts.solid.tsx`) to render another live
+Wrap `<Conversation />` in `<ScopedConversation id={id}>` (both from `@/sdk/solid`) to render another live
 conversation without switching the shell. Conversation and transcript readers, `useDoc`/`useDocKind`, `useCompact`,
 `useAction` and shortcuts pressed inside the scope follow its id (Escape stops the scoped run). Scopes of the same id
 share a stream; the last unmount releases it. Explicit `useDocOf` ids, UI state, shell navigation, the palette,

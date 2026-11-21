@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { showSurface, useExtensions, useStore, useSystem } from '@/sdk/solid'
+import { showSurface, useExtensions, useStore, useSystem } from '../sdk/hooks.ts'
 import { actions } from '../sdk/actions.ts'
 import { Contribution, ContributedIcon, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'

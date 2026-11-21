@@ -14,7 +14,7 @@ import {
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 import { runAsItsSource } from './action-source.solid.tsx'
 import type { SourcedAction } from './action-source.solid.tsx'
 import { commandStyles } from './command-styles.ts'

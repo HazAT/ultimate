@@ -2,8 +2,8 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo, For, mapArray, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useProvided } from '@/sdk/parts.solid.tsx'
 import {
+  useProvided,
   cn,
   formatAgo,
   formatTokens,

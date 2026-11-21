@@ -18,7 +18,7 @@ import {
   TranscriptContext,
 } from './conversation-scope.tsx'
 import { markIsland, markReact } from '../sdk/framework.ts'
-import { ConversationScope, ExtensionName, Transcript } from '../sdk/solid.ts'
+import { ConversationScope, ExtensionName, Transcript } from '../sdk/hooks.ts'
 
 type Props = Record<string, unknown>
 

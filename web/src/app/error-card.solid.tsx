@@ -3,7 +3,7 @@ import { MessageSquareShare, TriangleAlert } from '@lucide/solid'
 import { cn } from 'cn'
 import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useExtensions, useSystem, writerNow, writingAs } from '@/sdk/solid'
+import { useExtensions, useSystem, writerNow, writingAs } from '../sdk/hooks.ts'
 import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
 import { errorReport } from './error-report.ts'
 

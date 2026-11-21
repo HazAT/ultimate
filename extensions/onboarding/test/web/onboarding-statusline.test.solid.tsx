@@ -23,8 +23,6 @@ vi.mock('@/sdk/solid', () => ({
   useEvent: () => {},
   useExtensions: () => () => [{ name: 'workspaces' }],
   useSystem: () => () => ({ project: { config: true, decision: null } }),
-}))
-vi.mock('@/sdk/parts.solid.tsx', () => ({
   renderEntry: (_token: unknown, renderer: unknown) => renderer,
 }))
 vi.mock('../../pages.solid.tsx', () => ({}))

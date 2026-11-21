@@ -25,15 +25,13 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     },
   }
 })
-vi.mock('@/sdk/parts.solid.tsx', () => ({
+vi.mock('@/sdk/solid', async (original) => ({
+  ...(await original<typeof import('@/sdk/solid')>()),
   renderEntry: (_token: unknown, component: unknown) => component,
   Provided: () => null,
   Header: () => null,
   Sidebar: () => null,
   StatusLine: () => null,
-}))
-vi.mock('@/sdk/solid', async (original) => ({
-  ...(await original<typeof import('@/sdk/solid')>()),
   useNow: () => () => 0,
   useDocOf: () => () => ({
     memories: {

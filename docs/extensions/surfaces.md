@@ -57,7 +57,7 @@ function MyApp() {
 
 ## Primitives
 
-The shell's own parts are Solid: a Solid surface imports them from `@/sdk/parts.solid.tsx` (with `Slot` and `ErrorCard`),
+The shell's own parts are Solid: a Solid surface imports them from `@/sdk/solid` (with `Slot` and `ErrorCard`),
 and the Agent surface is nothing but these. A React surface imports the same parts from `@/sdk`, as islands; `Header` and
 `Dock` take React children, which keep their React context. `Panels` is Solid only.
 

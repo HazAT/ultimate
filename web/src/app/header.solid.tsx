@@ -14,7 +14,7 @@ import {
   useExtensions,
   useRegionOpen,
   useStore,
-} from '@/sdk/solid'
+} from '../sdk/hooks.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { actions, layout } from '../sdk/actions.ts'
 import { Slot, useProvided } from '../sdk/contribution.solid.tsx'
