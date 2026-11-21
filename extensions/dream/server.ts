@@ -17,7 +17,7 @@ import {
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { CloudApi } from '../cloud/api.ts'
 import { Standing, Started as StandingStarted } from '../subagents/api.ts'
-import { Fired } from '../automations/api.ts'
+import { Fired, Hold } from '../automations/api.ts'
 import { Branched } from '../lineage/api.ts'
 import {
   AsleepAction,
@@ -34,7 +34,8 @@ import type { Dream, Prepared, Sleep, ToolStats } from './refs.ts'
 import { busyElsewhere } from './types.ts'
 import { deliver, deliverTask } from './delivery.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from './seed.ts'
-import { BuiltInDoc, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
+import { BuiltInDoc, builtInOf, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
+import { preparedChapterWaits } from './stage.ts'
 
 export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>({
   kind: DreamDoc.kind,
@@ -414,6 +415,10 @@ export default function dream(host: ExtensionHost) {
   )
   host.react('requested', [Fired], (tx, { data }) => fired(host, tx, data.id, data.fire), {
     from: 'now',
+  })
+  host.implement(Hold, {
+    held: async (tx, id) =>
+      !!(await builtInOf(tx, id)) && preparedChapterWaits(await tx.doc(Next, ROOT_CONVERSATION_ID)),
   })
   host.react('dream-branch', [Branched], (tx, event) =>
     branched(tx, {

@@ -111,10 +111,14 @@ async function ensureOne(host: ExtensionHost, builtIn: BuiltIn, seed: Seed | und
   await remember({ id: createdOrRecoveredByKey.id })
 }
 
-export async function fired(host: ExtensionHost, tx: Tx, id: string, fire: number) {
-  let builtIn: BuiltIn | undefined
+export async function builtInOf(tx: Tx, id: string) {
   for (const item of BUILT_INS)
-    if ((await tx.doc(item.doc, ROOT_CONVERSATION_ID)).id === id) builtIn = item
+    if ((await tx.doc(item.doc, ROOT_CONVERSATION_ID)).id === id) return item
+  return undefined
+}
+
+export async function fired(host: ExtensionHost, tx: Tx, id: string, fire: number) {
+  const builtIn = await builtInOf(tx, id)
   const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   if (!builtIn || ultimate === undefined) return
   const automation = await host.need(AutomationsApi).read(tx, id)
