@@ -1,8 +1,8 @@
 /** @jsxImportSource @solidjs/web */
-import { children, createMemo, createSignal, Match, onSettled, Switch } from 'solid-js'
+import { children, createMemo, Match, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import type { LinkRenderer } from '@/sdk/solid'
-import { cn, useSystem } from '@/sdk/solid'
+import { cn, useExternal, useSystem } from '@/sdk/solid'
 import { at, label } from './links.ts'
 import { canFrameLoopbackPreviews, getPreviews, isLoopback, show, subscribe } from './previews.ts'
 import type { Preview } from './refs.ts'
@@ -43,8 +43,7 @@ export function previewTarget(
 }
 
 export function usePreviewTarget(href: () => string, isPreviewOwnUrl = false) {
-  const [previews, setPreviews] = createSignal(getPreviews())
-  onSettled(() => subscribe(() => setPreviews(getPreviews())))
+  const previews = useExternal(getPreviews, subscribe)
   const system = useSystem()
   return createMemo(() => previewTarget(href(), previews(), system()?.process.url, isPreviewOwnUrl))
 }

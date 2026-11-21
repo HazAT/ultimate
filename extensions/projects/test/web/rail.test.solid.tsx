@@ -99,6 +99,11 @@ const resize = (wide: boolean) => {
 
 let visibility: DocumentVisibilityState = 'visible'
 Object.defineProperty(document, 'visibilityState', { get: () => visibility })
+function setVisibility(state: DocumentVisibilityState) {
+  visibility = state
+  document.dispatchEvent(new Event('visibilitychange'))
+  flush()
+}
 
 import { registry, store } from '../../../../web/src/sdk/client.ts'
 import { OpeningBar, Rail } from '../../rail.solid.tsx'
@@ -107,7 +112,7 @@ const agent = createAgent()
 beforeAll(() => vi.useFakeTimers())
 afterAll(() => vi.useRealTimers())
 beforeEach(async () => {
-  visibility = 'visible'
+  setVisibility('visible')
   harness.sources.length = 0
   harness.pins.length = 0
   harness.calls.length = 0
@@ -297,7 +302,7 @@ it('reads the machine-wide pin once, whichever conversation is shown', async () 
 })
 
 it('polls the list every 4 s and the shared pin every 30 s, only while the tab is shown', async () => {
-  visibility = 'hidden'
+  setVisibility('hidden')
   harness.projects = harness.projects.slice(0, 1)
   const container = await mount()
   expect(container.querySelector('nav')).toBeNull()
@@ -309,8 +314,7 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
     ...harness.projects,
     { name: 'my-app', url: 'http://127.0.0.1:4750', current: false },
   ]
-  visibility = 'visible'
-  document.dispatchEvent(new Event('visibilitychange'))
+  setVisibility('visible')
   await advance(10)
   expect(container.querySelectorAll('a[data-project]')).toHaveLength(2)
   expect([calls('list'), calls('pin')]).toEqual([hidden[0] + 1, hidden[1] + 1])
@@ -325,8 +329,7 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
   await advance(1)
   expect(calls('pin')).toBe(hidden[1] + 2)
 
-  visibility = 'hidden'
-  document.dispatchEvent(new Event('visibilitychange'))
+  setVisibility('hidden')
   const stopped = [calls('list'), calls('pin')]
   await advance(60_000)
   expect([calls('list'), calls('pin')]).toEqual(stopped)

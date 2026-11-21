@@ -1,26 +1,15 @@
 /** @jsxImportSource @solidjs/web */
-import { createEffect, createSignal, onSettled } from 'solid-js'
-import { api, useConversationId, useSurface } from '@/sdk/solid'
+import { createEffect } from 'solid-js'
+import { api, useConversationId, usePageVisible, useSurface } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import { NavigatedAction } from './refs.ts'
 
 const VISIBLE_VIEW_MINIMUM_MS = 1000
 
-export function useVisible() {
-  const [visible, setVisible] = createSignal(document.visibilityState === 'visible')
-  const sync = () => setVisible(document.visibilityState === 'visible')
-  onSettled(() => {
-    sync()
-    document.addEventListener('visibilitychange', sync)
-    return () => document.removeEventListener('visibilitychange', sync)
-  })
-  return visible
-}
-
 export function NavigationReporter() {
   const surface = useSurface()
   const id = useConversationId()
-  const isVisible = useVisible()
+  const isVisible = usePageVisible()
   let reported: string | undefined
   createEffect(
     () => ({

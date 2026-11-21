@@ -15,7 +15,6 @@ import {
   onSettled,
   runWithOwner,
   Show,
-  untrack,
   useContext,
 } from 'solid-js'
 import type { Accessor, Component } from 'solid-js'
@@ -149,10 +148,10 @@ export function Contributed(props: {
   fallback: Fallback
 }) {
   const links = createMemo(() => linksOf(props.renderers), { equals: sameLinks })
-  const wrap = (index: number): JSX.Element => {
+  const wrap = (chain: Link[], index: number): JSX.Element => {
     if (index < 0) return props.core()
-    const link = untrack(links)[index]
-    const inner = () => wrap(index - 1)
+    const link = chain[index]
+    const inner = () => wrap(chain, index - 1)
     if (!link.solid) {
       const run = link.run
       const core = solidPart(inner)
@@ -167,7 +166,7 @@ export function Contributed(props: {
       </Errored>
     )
   }
-  return <For each={[links()]}>{(current) => wrap(current.length - 1)}</For>
+  return <For each={[links()]}>{(current) => wrap(current, current.length - 1)}</For>
 }
 
 export type Contribution = SlotContribution

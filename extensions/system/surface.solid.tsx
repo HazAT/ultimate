@@ -23,6 +23,7 @@ import {
   useDocOf,
   useExtensionUiState,
   useNow,
+  usePageVisible,
   useSurface,
   useUiState,
 } from '@/sdk/solid'
@@ -44,7 +45,6 @@ import { LaneTree } from './hierarchy.solid.tsx'
 import { Axis, laneState } from './lanes.solid.tsx'
 import { windows } from './layout.ts'
 import type { WindowName } from './layout.ts'
-import { useVisible } from './navigation.solid.tsx'
 import { LanesAction } from './refs.ts'
 import type { Lane, LaneLink } from './refs.ts'
 import { Stream } from './stream.solid.tsx'
@@ -202,7 +202,7 @@ export function System() {
 
 function Lanes() {
   const surface = useSurface()
-  const visible = useVisible()
+  const visible = usePageVisible()
   const live = () => surface() === 'system' && visible()
   const [stored, setWindow] = useExtensionUiState<WindowName>('window', '30m')
   const window = (): WindowName => windowNames.find((name) => name === stored()) ?? '30m'

@@ -264,7 +264,7 @@ function Diffs(props: {
     () => ({ target: target(), diff: props.diff }),
     ({ target: at, diff }) => {
       if (!at) return undefined
-      const clear = () => setTarget()
+      const clear = () => setTarget(undefined)
       if (!diff.files.some((file) => file.path === at.file)) {
         clear()
         return undefined

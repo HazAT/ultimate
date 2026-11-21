@@ -300,7 +300,6 @@ function ConcludeDialog(props: {
   cancel: () => void
   confirm: (id: ConversationId) => Promise<void>
 }) {
-  const [pending, setPending] = createSignal(false)
   const description = () => {
     const warning = props.warning
     if (!warning) return ''
@@ -339,15 +338,12 @@ function ConcludeDialog(props: {
             Cancel
           </Button>
           <Button
-            disabled={pending()}
+            class="group/conclude"
             size="sm"
-            onClick={() => {
-              if (!props.warning) return undefined
-              setPending(true)
-              return props.confirm(props.warning.id).finally(() => setPending(false))
-            }}
+            onClick={() => props.warning && props.confirm(props.warning.id)}
           >
-            {pending() ? 'Concluding…' : 'Conclude'}
+            <span class="group-data-pending/conclude:hidden">Conclude</span>
+            <span class="hidden group-data-pending/conclude:inline">Concluding…</span>
           </Button>
         </div>
       </DialogContent>

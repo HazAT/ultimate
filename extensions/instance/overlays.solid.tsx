@@ -1,22 +1,10 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'
-import { createEffect, createMemo, createSignal, For, onCleanup, onSettled } from 'solid-js'
-import { keepLast, useAction, useStore } from '@/sdk/solid'
+import { createEffect, createMemo, For, onCleanup } from 'solid-js'
+import { keepLast, useAction, useExternal, useStore } from '@/sdk/solid'
 import { getPreviews, getShown, polled, show, subscribe } from './previews.ts'
 import { ListAction } from './refs.ts'
-
-function usePreviews() {
-  const [previews, setPreviews] = createSignal(getPreviews())
-  const [shown, setShown] = createSignal(getShown())
-  onSettled(() =>
-    subscribe(() => {
-      setPreviews(getPreviews())
-      setShown(getShown())
-    }),
-  )
-  return { previews, shown }
-}
 
 export function Poll() {
   const list = useAction(ListAction, null, { onError: keepLast, every: 5000 })
@@ -27,7 +15,7 @@ export function Poll() {
 }
 
 export function Embedded() {
-  const { shown } = usePreviews()
+  const shown = useExternal(getShown, subscribe)
   const surface = useStore((state) => state.ui.surface?.id)
   createEffect(surface, () => () => show(undefined))
   onCleanup(() => show(undefined))
@@ -52,7 +40,7 @@ export function Embedded() {
 }
 
 export function previewUp(id: Accessor<ConversationId | undefined>) {
-  const { previews } = usePreviews()
+  const previews = useExternal(getPreviews, subscribe)
   return createMemo(() =>
     (previews() ?? []).some((preview) => preview.running && preview.conversationId === id()),
   )

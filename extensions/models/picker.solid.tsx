@@ -24,13 +24,14 @@ import {
   openPanel,
   useConversationId,
   useDialog,
+  useExternal,
   useModels,
   writingAs,
 } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { familyTitle } from '../../lib/families.ts'
 import { agentsPanel, familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.ts'
-import { FamilyDot, useCell, useCurrentModel, useFamilies } from './readers.solid.tsx'
+import { FamilyDot, useCurrentModel, useFamilies } from './readers.solid.tsx'
 import { SetFamilyAction } from './refs.ts'
 import type { FamilyView } from './refs.ts'
 import {
@@ -79,7 +80,7 @@ async function selectModel(
 
 export function ModelPicker() {
   const [open, setOpen] = useDialog(dialogs.picker)
-  const target = useCell(pickerTarget)
+  const target = useExternal(pickerTarget.get, pickerTarget.subscribe)
   const shown = useConversationId()
   const scope = () => (target() === shown() ? 'shown' : (target() ?? 'shown'))
   return (
