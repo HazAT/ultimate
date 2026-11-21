@@ -102,7 +102,7 @@ const lock = await acquireLock(lockPath, {
   pid: process.pid,
   port,
   project: projectRoot,
-}).catch(async (error) => {
+}, process.env.ULTIMATE_SUPERVISED === '1' ? 10000 : 0).catch(async (error) => {
   const runningProjectToReopen = opening && (await readOwner(lockPath))
   if (
     runningProjectToReopen &&
