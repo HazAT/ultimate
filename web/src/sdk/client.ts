@@ -93,20 +93,19 @@ export const switched = ((): { at: number; changed: string[] } | undefined => {
 
 let uiStateServerProcess: string | undefined
 
-let previousProcessUiSnapshot: unknown
+let snapshotsBeforeProcess = 0
 
-function resetRevisionsBeforeUiSnapshot(process: string | undefined, shared: unknown) {
+function resetRevisionsBeforeUiSnapshot(process: string | undefined, snapshots: number) {
   if (process !== uiStateServerProcess) {
-    if (uiStateServerProcess !== undefined) {
-      uiState.restarted()
-      previousProcessUiSnapshot = shared
-    }
+    const restarting = uiStateServerProcess !== undefined
+    snapshotsBeforeProcess = snapshots
     uiStateServerProcess = process
+    if (restarting) uiState.restarted()
   }
 }
 
 store.subscribe(() => {
-  const { shared, ui, system } = store.getState()
+  const { shared, sharedSnapshots, ui, system } = store.getState()
   if (system && !registry.getReady().ready) registry.receiveSystem()
 
   if (system?.web.id && bundle && system.web.id !== bundle) {
@@ -121,8 +120,8 @@ store.subscribe(() => {
   }
 
   const process = system && `${system.process.pid}:${system.process.generation}`
-  resetRevisionsBeforeUiSnapshot(process, shared)
-  if (shared && shared !== previousProcessUiSnapshot) {
+  resetRevisionsBeforeUiSnapshot(process, sharedSnapshots)
+  if (process && shared && sharedSnapshots > snapshotsBeforeProcess) {
     if (!initialUrlSelectionResolved) {
       uiState.receive(shared)
       if (initialUrl.searchParams.has('conversation')) {
@@ -137,6 +136,7 @@ store.subscribe(() => {
       initialUrlSelectionResolved = true
       followSelection()
     } else if (followsSharedUiState) uiState.receive(shared)
+    else uiState.observed()
   }
 
   const { view, requested } = store.getState()

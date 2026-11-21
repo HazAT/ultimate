@@ -60,6 +60,7 @@ import {
   useProvided,
 } from '../sdk/contribution.solid.tsx'
 import { useExternal } from '../sdk/page.ts'
+import { usePresentation } from '../sdk/presentation.solid.tsx'
 import { Attached, createAttach } from './attach.solid.tsx'
 import { splitAttachments, withAttachments } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
@@ -258,6 +259,7 @@ function createDraftState(id: () => number | undefined) {
 }
 
 function ComposerEditor(props: { dock?: boolean }) {
+  const presentation = usePresentation()
   const conversation = useConversation()
   const scoped = useContext(ConversationScope)
   const target = useContext(ComposerRedirect)
@@ -503,7 +505,9 @@ function ComposerEditor(props: { dock?: boolean }) {
         />
         <div class="@container flex items-center justify-between gap-2 px-2 pt-1 pb-2">
           <div class="flex min-w-0 items-center gap-1 overflow-hidden">
-            <Slot fallback={failed} name="composer.toolbar" />
+            <Show when={presentation().composer === 'full'}>
+              <Slot fallback={failed} name="composer.toolbar" />
+            </Show>
           </div>
           <div class="flex max-w-full min-w-0 shrink-0 items-center gap-2">
             <span
@@ -526,6 +530,7 @@ function ComposerEditor(props: { dock?: boolean }) {
               </Show>
             </span>
             <label
+              hidden={presentation().composer === 'bare'}
               aria-label={upload() ? 'Attach files' : 'Attach images'}
               class={cn(
                 'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
@@ -551,7 +556,7 @@ function ComposerEditor(props: { dock?: boolean }) {
                 type="file"
               />
             </label>
-            <Show when={!target()}>
+            <Show when={presentation().composer !== 'bare' && !target()}>
               <Slot fallback={failed} name="composer.actions" />
             </Show>
             <Show when={busy()}>
@@ -602,16 +607,18 @@ function ComposerEditor(props: { dock?: boolean }) {
           </div>
         </div>
       </Form>
-      <Show
-        when={foldStatus()}
-        keyed
-        fallback={
-          <div class="flex items-center gap-3 overflow-hidden pt-1.5 font-mono text-[11px] whitespace-nowrap text-muted-foreground empty:hidden">
-            {status()}
-          </div>
-        }
-      >
-        {(mount) => <Portal mount={mount}>{status()}</Portal>}
+      <Show when={presentation().composer === 'full'}>
+        <Show
+          when={foldStatus()}
+          keyed
+          fallback={
+            <div class="flex items-center gap-3 overflow-hidden pt-1.5 font-mono text-[11px] whitespace-nowrap text-muted-foreground empty:hidden">
+              {status()}
+            </div>
+          }
+        >
+          {(mount) => <Portal mount={mount}>{status()}</Portal>}
+        </Show>
       </Show>
     </div>
   )

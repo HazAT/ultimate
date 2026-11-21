@@ -129,6 +129,7 @@ export {
   FileUpload,
   MessageReference,
   ParkedRuns,
+  PresentationPoint,
   RunStart,
 } from './types.ts'
 /** Whether `region` overlays the page on `viewport` (a phone's sidebar, a phone's or tablet's panel) instead of docking. */
@@ -295,6 +296,15 @@ export function useUiState<T extends JsonValue>(
   const current = typeof key === 'string' ? () => key : key
   const value = createMemo(() => (ui()[current()] ?? initial) as Widen<T>)
   return [value, (next: UiUpdate<T>) => writeUiState(uiState, current(), initial, next)]
+}
+
+/** Whether the current server process has delivered its UI snapshot to this tab. */
+export function useUiStateReady(): Accessor<boolean> {
+  const { ui } = shared()
+  return () => {
+    ui()
+    return uiState.ready()
+  }
 }
 
 /** `useUiState` under `ext.<extension name>.<key>`, for state an extension's UI keeps across reloads. */

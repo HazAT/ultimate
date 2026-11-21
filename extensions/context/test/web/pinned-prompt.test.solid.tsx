@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush } from 'solid-js'
+import { createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { StreamedView } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
@@ -40,7 +40,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 vi.mock('../../../../web/src/sdk/resume.ts', () => ({ covered: () => false }))
 
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
+import { PresentationProvider } from '../../../../web/src/sdk/presentation.solid.tsx'
+import { PresentationPoint, provide } from '../../../../web/src/sdk/types.ts'
 import { createTranscriptFrame, Transcript } from '../../../../web/src/sdk/solid.ts'
 import { PinnedPrompt } from '../../pinned.solid.tsx'
 
@@ -100,6 +102,47 @@ it('asks for the prompt only once the conversation is known, against its own bas
   expect(
     pin.querySelector('[data-ui="pinned-prompt"] [data-context-header="start"]'),
   ).not.toBeNull()
+})
+
+it('hides and restores pinned context with the presentation', async () => {
+  const [header, setHeader] = createSignal<'show' | 'hide'>('show')
+  await registry.setLoaders({
+    'extensions/presentation/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(PresentationPoint, () => () => ({ contextHeader: header() }))],
+      },
+    }),
+  })
+  store.show(10 as ConversationId)
+  const pin = renderSolid(() => (
+    <PresentationProvider>
+      <PinnedPrompt />
+    </PresentationProvider>
+  ))
+  await settle()
+  server.of(10)!.send('view', view(10))
+  await settle()
+  expect(pin.querySelector('[data-ui="pinned-prompt"]')).not.toBeNull()
+  setHeader('hide')
+  flush()
+  expect(pin.querySelector('[data-ui="pinned-prompt"]')).toBeNull()
+  setHeader('show')
+  await settle()
+  expect(pin.querySelector('[data-ui="pinned-prompt"]')).not.toBeNull()
+  await registry.setLoaders({})
+})
+
+it('does not write an initial baseline until the current process snapshot arrives', async () => {
+  uiState.restarted()
+  store.show(9 as ConversationId)
+  renderSolid(() => <PinnedPrompt />)
+  await settle()
+  server.of(9)!.send('view', view(9))
+  await settle()
+  expect(uiState.get('context.seen.9')).toBeUndefined()
+  uiState.receive({ 'context.seen.9': 60 })
+  await settle()
+  expect(uiState.get('context.seen.9')).toBe(60)
 })
 
 it('lets an agent inspect prompt changes and dismiss them against the new baseline', async () => {

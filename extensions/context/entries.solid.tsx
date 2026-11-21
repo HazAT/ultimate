@@ -7,16 +7,23 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { useFold, useConversationId, useTranscript, type SolidEntryProps } from '@/sdk/solid'
+import {
+  useFold,
+  useConversationId,
+  usePresentation,
+  useTranscript,
+  type SolidEntryProps,
+} from '@/sdk/solid'
 import { breakdownAt, diffAt, opensContext, ownStart, removesAll, systemOf } from './breakdown.ts'
 import type { Diff } from './breakdown.ts'
 import { changeCounts, DiffBody, Header, signed } from './parts.solid.tsx'
 
 function ContextAt(props: { anchor: number; label: string }) {
   const entries = useTranscript()
+  const presentation = usePresentation()
   const breakdown = createMemo(() => breakdownAt(entries(), props.anchor))
   return (
-    <Show when={breakdown().system}>
+    <Show when={presentation().contextHeader === 'show' && breakdown().system}>
       <Header breakdown={breakdown()} label={props.label} />
     </Show>
   )

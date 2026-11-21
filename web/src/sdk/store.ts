@@ -49,6 +49,8 @@ export interface State {
   docsOf: Readonly<Record<number, Docs>>
   /** The root conversation's `ultimate.ui` document, once streamed; read it through `uiState`. */
   shared?: Readonly<Record<string, JsonValue>>
+  /** Number of full UI snapshots received on this page, excluding incremental operations. */
+  sharedSnapshots: number
   system?: SystemInfo
   conversations: readonly ConversationSummary[]
   tasks?: TaskGraph
@@ -123,6 +125,7 @@ export function createStore(options: StoreOptions = {}) {
     viewsOf: {},
     docs: {},
     docsOf: {},
+    sharedSnapshots: 0,
     conversations: [],
     notices: [],
     ui: {
@@ -231,7 +234,10 @@ export function createStore(options: StoreOptions = {}) {
         }
         break
       case 'ui':
-        set({ shared: (data as ServerEvents['ui']).value })
+        set({
+          shared: (data as ServerEvents['ui']).value,
+          sharedSnapshots: state.sharedSnapshots + 1,
+        })
         break
       case 'uiOps':
         if (state.shared)

@@ -8,9 +8,11 @@ import {
   useAgent,
   useConversationId,
   useConversationSummary,
+  usePresentation,
   useTranscript,
   useTranscriptElements,
   useUiState,
+  useUiStateReady,
   writingAs,
 } from '@/sdk/solid'
 import { changeCounts, DiffBody, Header, signed } from './parts.solid.tsx'
@@ -60,8 +62,16 @@ function useStartInView() {
 export function PinnedPrompt() {
   const id = useConversationId()
   const summary = useConversationSummary(id)
+  const presentation = usePresentation()
   return (
-    <Show keyed when={summary()?.parentConversationId === undefined ? id() : undefined}>
+    <Show
+      keyed
+      when={
+        presentation().contextHeader === 'show' && summary()?.parentConversationId === undefined
+          ? id()
+          : undefined
+      }
+    >
       {conversationPrompt}
     </Show>
   )
@@ -75,6 +85,7 @@ function conversationPrompt(conversation: ConversationId) {
   const agent = useAgent()
   const entries = useTranscript()
   const startInView = useStartInView()
+  const uiReady = useUiStateReady()
   const [acknowledged, acknowledge] = useUiState<number | null>(
     `context.seen.${conversation}`,
     null,
@@ -93,7 +104,7 @@ function conversationPrompt(conversation: ConversationId) {
     },
   )
   createEffect(
-    () => (acknowledged() === null ? current()?.at : undefined),
+    () => (uiReady() && acknowledged() === null ? current()?.at : undefined),
     (at) => {
       if (at !== undefined) writingAs('app', () => acknowledge(at))
     },

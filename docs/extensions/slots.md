@@ -8,6 +8,17 @@ Renderers (`tools`, `toolLines`, `entries`, `link`, `inlineCode`, `codeBlocks`, 
 `answerLabels`, `userBubble`, `compact`, `inbox`, `composer`) are in [renderers](renderers.md), `documents` in
 [documents](documents.md), `commands` in [commands](commands.md) and `provides` in [web points](contracts.md#web-points).
 
+## Shell presentation
+
+An extension may provide `PresentationPoint` from `@/sdk/solid` with `provide(PresentationPoint, useValue)`.
+The provider returns an accessor of a partial `Presentation`; the last provider in discovery order wins, and omitted
+fields use the normal defaults. `usePresentation()` reads the current presentation as an accessor.
+
+- `titlebar`: `full` (default), `no-tabs`, or `essential` (only the persistent slot).
+- `composer`: `full` (default), `no-toolbar` (hide toolbar and status), or `bare` (also hide attachment and action controls). Drafts, existing attachments, errors, queue, Send and Stop remain. A selected side-chat target remains active and disclosed with a way back to main.
+- `backgroundUpdates`: `show` (default) or `hide` for closed update lines. Open and live updates remain visible; failures inside a hidden closed update are inaccessible until it is shown again.
+- `contextHeader`: `show` (default) or `hide` for context headers and pinned context, not context markers.
+
 ## Slots
 
 Components mounted in named places of the shell, on every surface that renders the primitive holding them, and in the
@@ -20,7 +31,8 @@ title bar the host shows above every surface.
 | `titlebar.brand`       | Title bar, the wordmark beyond a phone; render your own Solid mark (the core's wordmark is not exported)              |
 | `titlebar.project`     | Title bar, in place of the project chip                                                                               |
 | `titlebar.left`        | Title bar above every surface, after the project chip; monospace, one line                                            |
-| `titlebar.right`       | Title bar, right, before the palette button                                                                           |
+| `titlebar.right`       | Title bar, right, before the palette button; hidden in essential presentation                                         |
+| `titlebar.persistent`  | Title bar, right, in every presentation                                                                               |
 | `header.right`         | Right side of the header, before the panel toggle (`<Header>`)                                                        |
 | `statusline.left`      | Bottom status line, left; monospace, one line (`<StatusLine />`)                                                      |
 | `statusline.right`     | Bottom status line, right (`<StatusLine />`); on a phone only `phone: true` items stay, the rest go behind ⋯          |

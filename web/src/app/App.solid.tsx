@@ -10,6 +10,7 @@ import {
   useStore,
   useSystem,
   useUiState,
+  useUiStateReady,
 } from '../sdk/hooks.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { shellKeys, shownSurface } from '../sdk/actions.ts'
@@ -18,6 +19,7 @@ import { Contribution, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, surfaceItems } from '../sdk/registry.ts'
 import type { SurfaceItem } from '../sdk/registry.ts'
 import { rendered } from '../sdk/resume.ts'
+import { PresentationProvider } from '../sdk/presentation.solid.tsx'
 import { ExtensionErrors, StackedFailure } from './error-stack.solid.tsx'
 import { Header } from './header.solid.tsx'
 import { installShortcuts } from './keyboard.ts'
@@ -120,6 +122,14 @@ const embedded = window.top !== window
 let lastReportedMissingSurface: string | undefined
 
 export function App() {
+  return (
+    <PresentationProvider>
+      <AppBody />
+    </PresentationProvider>
+  )
+}
+
+function AppBody() {
   const readiness = useReady()
   const ready = createMemo(() => readiness().ready)
   const extensions = useExtensions()
@@ -127,9 +137,7 @@ export function App() {
   const preferred = useStore((state) => state.system?.project.settings.defaultSurface)
   const resolved = createMemo(() => shownSurface(extensions(), chosen(), preferred()))
   const pending = () => resolved().pending
-  const streamHasSurfaceChoice = useStore(
-    (state) => state.shared !== undefined && state.system !== undefined,
-  )
+  const streamHasSurfaceChoice = useUiStateReady()
   const shown = useStore((state) => state.ui.surface)
   const viewed = useStore((state) => state.view !== undefined)
   const stack = (<div class="contents" />) as HTMLDivElement

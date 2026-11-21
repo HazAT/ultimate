@@ -71,6 +71,7 @@ import {
   Slot,
   useProvided,
 } from '../sdk/contribution.solid.tsx'
+import { usePresentation } from '../sdk/presentation.solid.tsx'
 import {
   anchorSelector,
   compactRows,
@@ -176,6 +177,7 @@ function TranscriptView(props: {
   initialId: ConversationId | undefined
 }) {
   const conversation = useConversation()
+  const presentation = usePresentation()
   const id = props.initialId
   const busy = createMemo(() => conversation().busy)
   const live = createMemo(() => conversation().live)
@@ -665,13 +667,15 @@ function TranscriptView(props: {
                       const shown = () => (busy() && last()) || betweenOpen(group())
                       return (
                         <>
-                          <BetweenLine
-                            group={group()}
-                            onOpen={() => setBetween(group(), !shown())}
-                            open={shown()}
-                            summary={compact()?.summary}
-                            working={busy() && last()}
-                          />
+                          <Show when={presentation().backgroundUpdates === 'show' || shown()}>
+                            <BetweenLine
+                              group={group()}
+                              onOpen={() => setBetween(group(), !shown())}
+                              open={shown()}
+                              summary={compact()?.summary}
+                              working={busy() && last()}
+                            />
+                          </Show>
                           <Show when={shown()}>
                             <For each={group().between} keyed={itemKey}>
                               {(inner, inside) => (
