@@ -1,8 +1,9 @@
-import { render } from '@solidjs/web'
+import { insert as mount } from '@solidjs/web'
 import {
   createComponent,
   createRoot,
   createStore,
+  flush,
   getOwner,
   onCleanup,
   runWithOwner,
@@ -66,8 +67,9 @@ export function island<P extends object = Record<string, never>>(
           Object.assign(draft, next)
         })
       const dispose = runWithOwner(islands, () =>
-        render(
-          () =>
+        createRoot((done) => {
+          const element = host.current!
+          mount(element, () =>
             createComponent(ExtensionName, {
               value: extension,
               get children() {
@@ -84,9 +86,14 @@ export function island<P extends object = Record<string, never>>(
                 })
               },
             }),
-          host.current!,
-        ),
+          )
+          return () => {
+            done()
+            element.textContent = ''
+          }
+        }),
       )
+      flush()
       return () => {
         live.current = undefined
         dispose()

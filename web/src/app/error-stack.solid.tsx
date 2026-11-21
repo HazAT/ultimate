@@ -13,6 +13,14 @@ export function ReportedErrorCard(props: Omit<ErrorCardProps, 'report'>) {
   return <ErrorCard {...props} report={report()} />
 }
 
+export const reportedFailure = (extension: string, error: unknown, trace?: string) => (
+  <ReportedErrorCard
+    error={errorMessage(error)}
+    extension={extension}
+    stack={trace ?? stackFrames(error)}
+  />
+)
+
 function StackedErrorCard(props: {
   extension: string
   footer: string

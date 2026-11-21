@@ -58,7 +58,7 @@ import { Composer } from '../../web/src/app/composer.solid.tsx'
 import { StatusLine } from '../../web/src/app/shell.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { act as act_, Activity, createElement as h, useState } from 'react'
+import { act as act_, Activity, createElement as h, StrictMode, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
@@ -249,11 +249,15 @@ it('leaves no live editor when a React composer wrapper replaces the composer', 
 
 it('attaches no dropped file to the composer of a collapsed React Dock', async () => {
   await show(16)
-  uiState.set('shell.dock.agent.right', { open: false })
+  uiState.set('shell.dock.agent.right', { open: true })
   const DockedComposer = island(Composer)
   const container = renderSolid(() => <div />)
   const root = createRoot(container)
-  act_(() => root.render(h(Dock, { children: h(DockedComposer) })))
+  act_(() => root.render(h(StrictMode, null, h(Dock, { children: h(DockedComposer) }))))
+  await settle()
+  flush()
+  expect(container.querySelectorAll('[data-ui="composer"]')).toHaveLength(1)
+  act_(() => uiState.set('shell.dock.agent.right', { open: false }))
   await settle()
   flush()
   expect(container.querySelector('[data-ui="composer"]')).toBeNull()
@@ -264,6 +268,10 @@ it('attaches no dropped file to the composer of a collapsed React Dock', async (
   document.body.dispatchEvent(drop)
   await settle()
   expect(getDraft(16).get().images).toEqual([])
+  act_(() => uiState.set('shell.dock.agent.right', { open: true }))
+  await settle()
+  flush()
+  expect(container.querySelectorAll('[data-ui="composer"]')).toHaveLength(1)
   act_(() => root.unmount())
 })
 

@@ -18,7 +18,12 @@ export function Inbox() {
   const now = useNow(60_000)
   const { item, selected, setSelected } = useSelection(entries)
   const rows = createMemo(() => entries().map(toRow))
-  const takeover = useProvided(QuestionPane, () => ({ message: item()?.message, phone: phone() }))
+  const paneFailures = (<span class="contents" />) as HTMLElement
+  const takeover = useProvided(
+    QuestionPane,
+    () => ({ message: item()?.message, phone: phone() }),
+    paneFailures,
+  )
   const reading = () => takeover() != null || (!!item() && !!selected()?.open)
   const close = () => setSelected((current) => current && { ...current, open: false })
   const openItem = createMemo(() => {
@@ -47,9 +52,12 @@ export function Inbox() {
               <InboxIcon class="size-4 text-muted-foreground" />
               Inbox <Badge count={entries().length} />
             </span>
-            {failures}
           </Header>
         </Show>
+        <div class="flex flex-col gap-1 px-3 has-[[data-extension-error]]:py-1.5">
+          {failures}
+          {paneFailures}
+        </div>
         <Show
           when={entries().length > 0 || takeover() != null}
           fallback={<Zero today={answeredToday(messages(), now())} />}

@@ -36,16 +36,12 @@ import { HOME, panelBadges, slotItems } from '../sdk/registry.ts'
 import type { PanelItem } from '../sdk/registry.ts'
 
 import { Composer } from './composer.solid.tsx'
-import { ContributionError } from './contribution-error.solid.tsx'
+import { reportedFailure } from './error-stack.solid.tsx'
 import { IconButton, inlineFailure } from './header.solid.tsx'
 import { setStatusTarget } from './status-target.ts'
 import { Transcript } from './transcript.solid.tsx'
 
 export const [sidebarWidth, sidebarWidthBeyondPhone] = ['w-72', 'md:w-72'] as const
-
-const blockFailure = (extension: string, error: unknown) => (
-  <ContributionError error={error} extension={extension} />
-)
 
 export function StatusLine() {
   const viewport = useViewport()
@@ -115,7 +111,7 @@ export function Conversation(props: { variant?: 'main' | 'dock' }) {
     <div class="relative flex min-h-0 min-w-0 flex-1 flex-col" data-ui="conversation">
       <Transcript dock={props.variant === 'dock'} />
       <Composer dock={props.variant === 'dock'} />
-      <Slot fallback={blockFailure} name="conversation.overlay" />
+      <Slot fallback={reportedFailure} name="conversation.overlay" />
     </div>
   )
 }
@@ -207,13 +203,13 @@ export function Sidebar() {
         fallback={
           <Show when={open()}>
             <aside class={cn('flex shrink-0 flex-col border-r', sidebarWidth, look)}>
-              <Slot fallback={blockFailure} name="sidebar" />
+              <Slot fallback={reportedFailure} name="sidebar" />
             </aside>
           </Show>
         }
       >
         <Overlay class={look} onClose={actions.toggleSidebar} open={open()} side="left">
-          <Slot fallback={blockFailure} name="sidebar" />
+          <Slot fallback={reportedFailure} name="sidebar" />
         </Overlay>
       </Show>
     </Show>
@@ -397,7 +393,7 @@ export function Panels() {
       <PanelTabs active={panel()} panels={tabs()} />
       <div class="min-h-0 flex-1 overflow-y-auto">
         <For each={[panel()]} keyed={key}>
-          {(shown) => <Contribution fallback={blockFailure} item={shown()} props={{}} />}
+          {(shown) => <Contribution fallback={reportedFailure} item={shown()} props={{}} />}
         </For>
       </div>
     </>

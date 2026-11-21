@@ -30,10 +30,12 @@ function callFor(calls: readonly WireSummary[], responseId: string | undefined, 
 
 export function useOpenWire() {
   const [, setTab] = useUiState(SYSTEM_TAB_KEY, 'agents')
-  return () => {
-    setTab('wire')
-    showSurface('system')
-  }
+  return () => showWire(setTab, showSurface)
+}
+
+export function showWire(setTab: (tab: string) => void, show: (surface: string) => void) {
+  setTab('wire')
+  show('system')
 }
 
 export function WireLink(props: SolidEntryProps) {

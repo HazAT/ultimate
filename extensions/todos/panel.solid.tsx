@@ -34,7 +34,7 @@ import type { Todo } from './refs.ts'
 const waits = 'text-amber-700 dark:text-amber-300'
 
 export function TodoList() {
-  const { entries } = Waiting()
+  const { entries, failures } = Waiting()
   const inbox = () => entries().length
   const doc = useDocOf(() => ROOT, TodosDoc)
   const now = useNow(60_000)
@@ -99,6 +99,7 @@ export function TodoList() {
       <Show when={error()}>
         <p class="px-3 pt-1.5 font-mono text-[11px] break-words text-error">{error()}</p>
       </Show>
+      {failures}
       <Show
         when={inbox() + open().length > 0}
         fallback={
