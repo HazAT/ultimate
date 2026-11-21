@@ -105,11 +105,11 @@ describe('web replica store', () => {
     const first = server.of()!
     const release = store.watchDoc('test.counter')
     await tick()
-    // The shown conversation's subscription is replaced on the same stream.
+    // Documents get their own subscription on the same stream; the view's stays, so it is not sent again.
     expect(sources).toHaveLength(1)
-    expect(first.closed).toBe(true)
+    expect(first.closed).toBe(false)
     const main = server.of()!
-    expect(main.docs).toEqual(['test.counter'])
+    expect(main).toMatchObject({ docs: ['test.counter'], view: false })
 
     main.send('doc', { kind: 'test.counter', value: { count: 0 } })
     main.send('docOps', {
@@ -336,6 +336,7 @@ describe('web replica store', () => {
     back.send('view', view([user(1, 'root')], { 'pi.live': { tools: [{ id: 'a' }] } }))
 
     store.show(7 as ConversationId)
+    await tick()
     expect(back.closed).toBe(true)
     const kept = store.getState().view
     expect(() =>

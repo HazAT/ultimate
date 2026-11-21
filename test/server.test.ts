@@ -18,7 +18,7 @@ import {
 import { context } from '../server/harness.ts'
 import { UiState } from '../shared/ui-state.ts'
 import { Metadata } from '../server/metadata.ts'
-import type { ConversationSummary, ServerEvents } from '../shared/protocol.ts'
+import type { ServerEvents } from '../shared/protocol.ts'
 import { Logins } from '../extensions/models/server.ts'
 import { fixture, orderedSource, servers } from './server-fixture.ts'
 import { eventHost } from './helpers.ts'
@@ -877,13 +877,7 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
       answerAt: 2000,
     })
     await until(() =>
-      stream.events.some(
-        (event) =>
-          event.name === 'conversations' &&
-          (event.data as ConversationSummary[]).some(
-            (item) => item.id === created && item.answerAt === 2000,
-          ),
-      ),
+      stream.conversations().some((item) => item.id === created && item.answerAt === 2000),
     )
     expect(
       (await post(server, '/api/extensions/summaries/actions/list', { args: null })).data.result,
@@ -939,28 +933,34 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(stream.events.some((event) => event.name === 'view')).toBe(false)
     await stream.close()
   })
-  it('carries subscriptions opened and closed on one stream, each event tagged with its id', async () => {
+  it('carries subscriptions opened and closed on one stream in batches, each event tagged with its id', async () => {
     const { server } = await fixture(true)
     const stream = await attach(server, { docs: ['test.counter'] })
     const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
-    const call = (method: string, sub: number, data?: unknown) =>
-      fetch(`${server.url}/api/events/${id}/${sub}`, {
-        method,
+    const batch = (
+      subscribe: { sub: number; conversation?: number; docs?: string[]; view?: boolean }[],
+      unsubscribe: number[] = [],
+      streamId = id,
+    ) =>
+      fetch(`${server.url}/api/events/${streamId}`, {
+        method: 'POST',
         headers: { Origin: server.url },
-        ...(data !== undefined && { body: JSON.stringify(data) }),
-      }).then((response) => response.status)
+        body: JSON.stringify({ subscribe, unsubscribe }),
+      }).then(async (response) => ({ status: response.status, data: await response.json() }))
     const docs = { docs: ['test.counter'], view: false }
-    expect(await call('POST', 5, docs)).toBe(200)
-    expect(await call('POST', 6, docs)).toBe(200)
-    expect(await call('DELETE', 6)).toBe(200)
-    // A close that overtakes its open wins.
-    expect(await call('DELETE', 7)).toBe(200)
-    expect(await call('POST', 7, docs)).toBe(200)
-    expect(await call('POST', 8, { conversation: 999 })).toBe(404)
+    // One request opens several; a refused one fails alone.
     expect(
-      (await fetch(`${server.url}/api/events/${crypto.randomUUID()}/1`, { method: 'DELETE' }))
-        .status,
-    ).toBe(410)
+      await batch([
+        { sub: 5, ...docs },
+        { sub: 6, ...docs },
+        { sub: 8, conversation: 999 },
+      ]),
+    ).toEqual({ status: 200, data: { ok: true, refused: { 8: 404 } } })
+    expect((await batch([], [6])).status).toBe(200)
+    // A close that overtakes its open wins.
+    expect((await batch([], [7])).status).toBe(200)
+    expect((await batch([{ sub: 7, ...docs }])).status).toBe(200)
+    expect((await batch([], [1], crypto.randomUUID())).status).toBe(410)
     const of = (name: string) =>
       stream.events.filter((event) => event.name === name).map((event) => event.sub)
     await until(() => of('doc').length === 3)
@@ -976,7 +976,7 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(of('docOps')).toEqual([0, 5])
     // Closing the stream ends it with all its subscriptions.
     await stream.close()
-    await until(async () => (await call('DELETE', 5)) === 410)
+    await until(async () => (await batch([], [5])).status === 410)
   })
   it('runs logins in the models extension: prompt, answer, cancel, no credential leak, dead flows cancelled', async () => {
     const { server, options } = await fixture(false, {

@@ -202,7 +202,7 @@ it('targets the side chat from thinking controls and the picker, including after
   ))
   try {
     await sync()
-    server.of(side)!.send('view', view(side, 'orion', 'low'))
+    server.of(side, true)!.send('view', view(side, 'orion', 'low'))
     await sync()
     expect(container.querySelector('[aria-label="Open the model picker"]')?.textContent).toContain(
       'orion',
@@ -218,7 +218,7 @@ it('targets the side chat from thinking controls and the picker, including after
     expect(await act('Open the model picker', 'press')).toMatchObject({ ok: true })
     expect(await act('Search model catalog', 'run', 'accounts/login')).toMatchObject({ ok: true })
     expect(await act('Faux credentials (API key, faux)', 'press')).toMatchObject({ ok: true })
-    server.of(side)!.send('doc', {
+    server.of(side, false)!.send('doc', {
       kind: 'models.login',
       value: {
         flows: { 'flow-1': { provider: 'faux', type: 'api_key', status: 'complete', events: [] } },

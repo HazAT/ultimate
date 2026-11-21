@@ -217,5 +217,7 @@ export interface ServerEvents {
   doc: { kind: string; value: Readonly<JsonObject> | null }
   docOps: { kind: string; ops: readonly Op[] }
   tasks: TaskGraph
+  conversationsOps: readonly Op[]
+  tasksOps: readonly Op[]
   notice: Notice
 }

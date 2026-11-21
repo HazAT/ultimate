@@ -27,6 +27,7 @@ import type { createSystem } from './system.ts'
 import { requestSwap } from './supervisor-protocol.ts'
 import { UiState, UiWriters } from '../shared/ui-state.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
+import { diffRevisions } from '@earendil-works/chord/delta'
 import { clampThinkingLevel, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import { Metadata } from './metadata.ts'
 import { EVENT_LOG_LABEL, emit, uiChange } from './events.ts'
@@ -93,8 +94,9 @@ function uiOps(ops: unknown): UiOp[] {
 }
 const maxUiWriters = 1000
 const actionPath = /^\/api\/extensions\/([^/]+)\/actions\/([^/]+)$/
-const subscriptionPath = /^\/api\/events\/([0-9a-f-]+)\/(\d+)$/
+const subscriptionPath = /^\/api\/events\/([0-9a-f-]+)$/
 const maxResentSummaryTitleCharacters = 200
+const asSent = (value: unknown) => JSON.parse(JSON.stringify(value)) as JsonValue
 const taskGraphBroadcastIntervalMs = 100
 const liveViewMinimumEntries = 150
 type StreamUniqueSubscriptionId = number
@@ -210,10 +212,13 @@ export async function createApi(
   let closed = false
   let summaries: ConversationSummary[] = []
   const projectIndex = conversationIndex(host.home)
-  const indexListener: Parameters<typeof events.listeners.add>[0] = (name, data) => {
-    if (name === 'conversations') projectIndex.update(data as ConversationSummary[])
+  function publishSummaries(next: ConversationSummary[]) {
+    const ops = diffRevisions(asSent(summaries), asSent(next))
+    if (!ops.length) return
+    summaries = next
+    projectIndex.update(summaries)
+    events.emit('conversationsOps', ops)
   }
-  events.listeners.add(indexListener)
   let refreshing = Promise.resolve()
   async function refreshConversations(ids?: Set<ConversationId>) {
     const records = await harness.commit(async (tx) => {
@@ -266,29 +271,25 @@ export async function createApi(
       if (index < 0) summariesIncludingConcurrentUpdates.push(summary)
       else summariesIncludingConcurrentUpdates[index] = summary
     }
-    if (JSON.stringify(summariesIncludingConcurrentUpdates) !== JSON.stringify(summaries)) {
-      summaries = summariesIncludingConcurrentUpdates
-      events.emit('conversations', summaries)
-    }
+    publishSummaries(summariesIncludingConcurrentUpdates)
   }
   await refreshConversations()
   projectIndex.update(summaries)
-  let lastGraph = JSON.stringify(tasks())
+  let sentTasks = asSent(tasks()) as unknown as TaskGraph
   const scheduleGraph = batch(taskGraphBroadcastIntervalMs, () => {
-    const graphJson = JSON.stringify(tasks())
-    if (graphJson !== lastGraph) {
-      lastGraph = graphJson
-      events.emit('tasks', tasks())
-      const next = summaries.map((summary) => ({
-        ...summary,
-        busy: Object.values(tasks().tasks).some(
-          (task) => task.conversationId === summary.id && !task.background,
-        ),
-      }))
-      if (JSON.stringify(next) !== JSON.stringify(summaries)) {
-        summaries = next
-        events.emit('conversations', summaries)
-      }
+    const next = asSent(tasks()) as unknown as TaskGraph
+    const ops = diffRevisions(sentTasks as unknown as JsonValue, next as unknown as JsonValue)
+    if (ops.length) {
+      sentTasks = next
+      events.emit('tasksOps', ops)
+      publishSummaries(
+        summaries.map((summary) => ({
+          ...summary,
+          busy: Object.values(next.tasks).some(
+            (task) => task.conversationId === summary.id && !task.background,
+          ),
+        })),
+      )
     }
   })
   onGraph = () => {
@@ -335,7 +336,7 @@ export async function createApi(
     ui!.start(async (call) => {
       if (call.kind === 'value') send('uiOps', { ops: call.ops })
     })
-    send('tasks', tasks())
+    send('tasks', sentTasks)
     events.listeners.add(send)
     const stop = async () => {
       if (connection.ended) return
@@ -452,29 +453,46 @@ export async function createApi(
           return true
         }
         const subscription = subscriptionPath.exec(url.pathname)
-        if (subscription && (request.method === 'POST' || request.method === 'DELETE')) {
+        if (subscription && request.method === 'POST') {
           const connection = connections.get(subscription[1])
           if (!connection) throw new HttpError(410, 'Event stream ended')
-          const sub = Number(subscription[2])
-          if (request.method === 'DELETE') {
+          const data = await body(request)
+          const opens = data.subscribe ?? []
+          const closes = data.unsubscribe ?? []
+          if (
+            !Array.isArray(opens) ||
+            !Array.isArray(closes) ||
+            !closes.every(Number.isSafeInteger)
+          )
+            throw new HttpError(400, 'Invalid subscriptions')
+          const specs = opens.map((spec: Record<string, unknown>) => {
+            const docs = spec.docs ?? []
+            if (!Number.isSafeInteger(spec.sub)) throw new HttpError(400, 'Invalid subscription id')
+            if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
+              throw new HttpError(400, 'Invalid document kinds')
+            return {
+              sub: spec.sub as number,
+              conversation: conversationParam(spec.conversation),
+              docs: docs,
+              view: spec.view !== false,
+            }
+          })
+          for (const sub of closes as number[]) {
             const close = connection.subscriptions.get(sub)
             connection.subscriptions.delete(sub)
             if (close) await close()
             else connection.closedBeforeOpen.add(sub)
-          } else {
-            const data = await body(request)
-            const docs = data.docs ?? []
-            if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
-              throw new HttpError(400, 'Invalid document kinds')
-            await subscribe(
-              connection,
-              sub,
-              conversationParam(data.conversation),
-              docs,
-              data.view !== false,
-            )
           }
-          json(200, { ok: true })
+          const refused: Record<number, number> = {}
+          await Promise.all(
+            specs.map(({ sub, conversation, docs, view }) =>
+              subscribe(connection, sub, conversation, docs, view).catch((error: unknown) => {
+                if (!(error instanceof HttpError)) throw error
+                refused[sub] = error.status
+              }),
+            ),
+          )
+          json(200, { ok: true, refused })
           return true
         }
         const history = /^\/api\/conversations\/(\d+)\/history$/.exec(url.pathname)
@@ -791,7 +809,6 @@ export async function createApi(
       scheduleGraph.cancel()
       await Promise.all([...streams].map((stop) => stop()))
       await refreshing
-      events.listeners.delete(indexListener)
       await projectIndex.flush()
     },
   }
