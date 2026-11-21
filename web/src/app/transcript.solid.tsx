@@ -599,7 +599,14 @@ function TranscriptView(props: {
           >
             <div class="pointer-events-none sticky top-0 z-10 -mb-3 h-0 [overflow-anchor:none]">
               <div ref={pinned}>
-                <Slot fallback={reportedFailure} name="transcript.top" />
+                <Slot
+                  fallback={(extension, error, trace) => (
+                    <div class="pointer-events-auto">
+                      {reportedFailure(extension, error, trace)}
+                    </div>
+                  )}
+                  name="transcript.top"
+                />
               </div>
             </div>
             <Show when={!props.loading && hasRows() && history.cursor() !== undefined}>

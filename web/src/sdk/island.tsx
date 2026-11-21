@@ -67,38 +67,48 @@ export function island<P extends object = Record<string, never>>(
           Object.assign(draft, next)
         })
       const element = host.current!
+      let dispose: (() => void) | undefined
+      const release = () => {
+        try {
+          dispose?.()
+        } finally {
+          unregisterDelegatedRoot(element)
+          element.textContent = ''
+        }
+      }
       registerDelegatedRoot(element)
-      const dispose = runWithOwner(islands, () =>
-        createRoot((done) => {
-          mount(element, () =>
-            createComponent(ExtensionName, {
-              value: extension,
-              get children() {
-                return createComponent(ConversationScope, {
-                  value: conversation,
-                  get children() {
-                    return createComponent(Transcript, {
-                      value: transcript,
-                      get children() {
-                        return createComponent(component, store as P)
-                      },
-                    })
-                  },
-                })
-              },
-            }),
-          )
-          return () => {
-            done()
-            unregisterDelegatedRoot(element)
-            element.textContent = ''
-          }
-        }),
-      )
-      flush()
+      try {
+        runWithOwner(islands, () =>
+          createRoot((done) => {
+            dispose = done
+            mount(element, () =>
+              createComponent(ExtensionName, {
+                value: extension,
+                get children() {
+                  return createComponent(ConversationScope, {
+                    value: conversation,
+                    get children() {
+                      return createComponent(Transcript, {
+                        value: transcript,
+                        get children() {
+                          return createComponent(component, store as P)
+                        },
+                      })
+                    },
+                  })
+                },
+              }),
+            )
+          }),
+        )
+        flush()
+      } catch (failure) {
+        release()
+        throw failure
+      }
       return () => {
         live.current = undefined
-        dispose()
+        release()
       }
     }, [extension, conversation, transcript])
     const Host = inline ? 'span' : 'div'
