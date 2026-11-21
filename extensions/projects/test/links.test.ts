@@ -33,3 +33,16 @@ it('goes to the page’s own host on the Tailscale port from a tailnet page, and
   expect(target(unpublished, tailnet)).toBeUndefined()
   expect([shownPort(published, tailnet), shownPort(unpublished, tailnet)]).toEqual([':4752', '—'])
 })
+
+it('uses configured remote URLs and their ports from loopback and tailnet pages', () => {
+  for (const [url, port] of [
+    ['http://other-machine.tail1234.ts.net:4847', ':4847'],
+    ['https://other-machine.tail1234.ts.net:4947', ':4947'],
+  ]) {
+    const remote: RunningProject = { name: 'my-app', machine: 'other-machine', url, current: false }
+    for (const page of [loopback, tailnet]) {
+      expect(target(remote, page)).toBe(url)
+      expect(shownPort(remote, page)).toBe(port)
+    }
+  }
+})

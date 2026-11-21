@@ -332,6 +332,31 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
   expect([calls('list'), calls('pin')]).toEqual(stopped)
 })
 
+it('groups configured remote machines under their name, marking one whose status is unavailable', async () => {
+  harness.projects = [
+    ...harness.projects,
+    { name: 'mining', machine: 'omarchy', url: 'http://omarchy:4747', current: false, busy: 1 },
+    {
+      name: 'vault',
+      machine: 'vault',
+      url: 'https://vault.ts.net',
+      current: false,
+      unavailable: true,
+    },
+  ]
+  const container = await mount()
+  await openRail(container)
+  expect(
+    [...container.querySelectorAll('nav .section-label')].map((label) => label.textContent),
+  ).toEqual(['Projects', 'This machine', 'omarchy', 'vault'])
+  const vault = container.querySelector<HTMLAnchorElement>('a[data-project="vault"]')!
+  expect([vault.getAttribute('href'), vault.title]).toEqual([
+    'https://vault.ts.net',
+    'Vault · vault · :443 · unavailable',
+  ])
+  expect(vault.textContent).toContain('unavailable')
+})
+
 it('gives way to another extension’s rail and to a phone', async () => {
   const container = await mount()
   expect(container.querySelector('nav')).not.toBeNull()

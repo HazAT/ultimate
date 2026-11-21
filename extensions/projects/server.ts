@@ -6,7 +6,7 @@ import { rebuiltOnOpen, meansNone } from '../../lib/errors.ts'
 import { readJson, updateJson } from '../../lib/json-file.ts'
 import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
 import type { GithubRepo } from '../../lib/project-identity.ts'
-import { postAction } from '../../lib/remote.ts'
+import { postAction, userConfiguredRemotes } from '../../lib/remote.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { ListAction, PinAction } from './refs.ts'
@@ -23,9 +23,13 @@ async function localCounts(host: ExtensionHost): Promise<Counts> {
   }
 }
 
-async function timedRemoteCounts(name: string, url: string, signal: AbortSignal) {
+async function timedRemoteCounts(
+  name: string,
+  url: string,
+  signal: AbortSignal,
+): Promise<Counts | { unavailable: true }> {
   const status = (await postAction(
-    { url, label: name },
+    { url: url.replace(/\/+$/, ''), label: name },
     'status',
     'status',
     {},
@@ -33,7 +37,9 @@ async function timedRemoteCounts(name: string, url: string, signal: AbortSignal)
   ).catch(meansNone)) as { busy?: unknown; questions?: { count?: unknown } } | undefined
   const busy = status?.busy
   const questions = status?.questions?.count
-  return typeof busy === 'number' && typeof questions === 'number' ? { busy, questions } : {}
+  return typeof busy === 'number' && typeof questions === 'number'
+    ? { busy, questions }
+    : { unavailable: true }
 }
 
 const repoCache = new Map<string, GithubRepo | null>()
@@ -73,27 +79,33 @@ async function tailnetPorts(host: ExtensionHost) {
 
 export async function list(host: ExtensionHost, signal: AbortSignal): Promise<RunningProject[]> {
   const tailnet = await tailnetPorts(host)
-  return Promise.all(
-    (await host.projects()).flatMap(({ name, root, running, current }) => {
-      const processOrLockUrl = current ? host.system().process.url : running?.url
-      if (!processOrLockUrl) return []
-      return [
-        (async () => {
-          const repo = cachedRepo(root)
-          return {
-            name: checkoutName(name, root),
-            url: processOrLockUrl,
-            current,
-            ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),
-            ...(root && tailnet[root] ? { tailnetPort: tailnet[root] } : {}),
-            ...(current
-              ? await localCounts(host)
-              : await timedRemoteCounts(name, processOrLockUrl, signal)),
-          }
-        })(),
-      ]
-    }),
-  )
+  const local = (await host.projects()).flatMap(({ name, root, running, current }) => {
+    const processOrLockUrl = current ? host.system().process.url : running?.url
+    if (!processOrLockUrl) return []
+    return [
+      (async () => {
+        const repo = cachedRepo(root)
+        return {
+          name: checkoutName(name, root),
+          url: processOrLockUrl,
+          current,
+          ...(repo && { repo: { name: repo.name, url: repo.url, visibility: repo.visibility } }),
+          ...(root && tailnet[root] ? { tailnetPort: tailnet[root] } : {}),
+          ...(current
+            ? await localCounts(host)
+            : await timedRemoteCounts(name, processOrLockUrl, signal)),
+        }
+      })(),
+    ]
+  })
+  const others = (await userConfiguredRemotes(host)).map(async ({ machine, name, url }) => ({
+    name,
+    machine,
+    url,
+    current: false,
+    ...(await timedRemoteCounts(`${name} on ${machine}`, url, signal)),
+  }))
+  return Promise.all([...local, ...others])
 }
 
 const sharedRailPinPath = (host: ExtensionHost) =>
