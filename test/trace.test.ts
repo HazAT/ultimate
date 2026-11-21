@@ -213,6 +213,43 @@ it('redacts image bytes in action and service arguments and results without chan
   }
 })
 
+it('redacts images array items and later aliases without an image MIME type', async () => {
+  const server = await start()
+  const noMime = { data: 'NO_MIME_BYTES' }
+  const textMime = { data: 'TEXT_MIME_BYTES', mimeType: 'text/plain' }
+  const args = {
+    images: [noMime, textMime],
+    later: { noMime, textMime },
+    ordinary: { data: 'ordinary data', mimeType: 'text/plain' },
+  }
+  const original = structuredClone(args)
+  expect(await server.extensions.invoke('alpha', 'go', args, signal)).toEqual({
+    done: true,
+    args: original,
+  })
+  expect(args).toEqual(original)
+  const redacted = {
+    images: [{ data: '[redacted]' }, { data: '[redacted]', mimeType: 'text/plain' }],
+    later: {
+      noMime: { data: '[redacted]' },
+      textMime: { data: '[redacted]', mimeType: 'text/plain' },
+    },
+    ordinary: { data: 'ordinary data', mimeType: 'text/plain' },
+  }
+  const action = server.extensions.trace.query().find((row) => row.name === 'alpha/go')!
+  const work = server.extensions.trace
+    .query({ trace: action.trace })
+    .find((row) => row.name === 'beta.work')!
+  expect(JSON.parse(action.args!)).toEqual(redacted)
+  expect(JSON.parse(action.result!)).toEqual({ done: true, args: redacted })
+  expect(JSON.parse(work.args!)).toEqual([redacted])
+  expect(JSON.parse(work.result!)).toEqual({ done: true, args: redacted })
+  for (const text of [action.args!, action.result!, work.args!, work.result!]) {
+    expect(text).not.toContain('NO_MIME_BYTES')
+    expect(text).not.toContain('TEXT_MIME_BYTES')
+  }
+})
+
 it('counts repeated actions whose summaries differ only in redacted images', async () => {
   const server = await start()
   const args = {
