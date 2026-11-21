@@ -98,16 +98,16 @@ export function Cwd() {
 
 function UsageRows(props: { buckets: Record<string, Usage>; prefix?: string }) {
   return (
-    <For each={Object.entries(props.buckets)}>
-      {([label, bucket]) => (
+    <For each={Object.entries(props.buckets)} keyed={([label]) => label}>
+      {(entry) => (
         <>
           <span>
             {props.prefix}
-            {label}
+            {entry()[0]}
           </span>
           <span class="text-right">
-            ↑{formatTokens(bucket.input)} ↓{formatTokens(bucket.output)} $
-            {bucket.cost.total.toFixed(4)}
+            ↑{formatTokens(entry()[1].input)} ↓{formatTokens(entry()[1].output)} $
+            {entry()[1].cost.total.toFixed(4)}
           </span>
         </>
       )}
