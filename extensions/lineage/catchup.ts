@@ -489,12 +489,15 @@ function readerOf(host: ExtensionHost, id: ConversationId, main: Main, tx: Tx): 
   let files: Promise<ReadonlySet<string> | undefined> | undefined
   return {
     files: () =>
-      (files ??= changedFiles(host, id, main, tx).catch((error: unknown) => {
-        host.notice(
-          `Catch-up for #${id} could not read its changed files, so it lists every update in full without overlap marks: ${String(error)}`,
-        )
-        return undefined
-      })),
+      (files ??= changedFiles(host, id, main, tx).then(
+        (changed) => (changed.size > MAX_PATHS_WITH_OVERLAP_MARKS ? undefined : changed),
+        (error: unknown) => {
+          host.notice(
+            `Catch-up for #${id} could not read its changed files, so it lists every update in full without overlap marks: ${String(error)}`,
+          )
+          return undefined
+        },
+      )),
     touched: async (landing, own) => {
       if (landing.paths.some((path) => own.has(path))) return true
       if (!landing.base || !own.size) return false
