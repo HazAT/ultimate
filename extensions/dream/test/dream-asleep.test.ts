@@ -122,7 +122,7 @@ it('keeps asleep and switch user-only', () => {
   expect(userActions).not.toContain('prepare')
 })
 
-it.each(['nothing prepared', 'busy', 'existing'])(
+it.each(['nothing prepared', 'busy', 'busy branch', 'existing'])(
   'refuses asleep with %s before any effects',
   async (reason) => {
     const f = await fixture()
@@ -130,10 +130,18 @@ it.each(['nothing prepared', 'busy', 'existing'])(
     // @ultimate counts too: a switch would park its turn, and parked work keeps the old chapter from being reopened.
     if (reason === 'busy')
       f.host.conversations = () => [{ id: 20, busy: true, title: 'Building' }] as never
+    // A branch counts as well, though its parent is idle: the switch would park it halfway.
+    if (reason === 'busy branch')
+      f.host.conversations = () =>
+        [
+          { id: 20, busy: false, title: 'Coordinating' },
+          { id: 21, busy: true, parentConversationId: 20, title: 'Worker' },
+        ] as never
     const args: { name?: string } = reason === 'existing' ? { name: 'the-beginning' } : {}
     const messages = {
       'nothing prepared': 'Nothing is prepared',
       busy: '#20 Building',
+      'busy branch': '#21 Worker',
       existing: 'already exists',
     }
     await expect(actions.asleep(args, f.call)).rejects.toThrow(
