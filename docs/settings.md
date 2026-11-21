@@ -35,6 +35,10 @@ agent in a preview (`instance start`) runs on, fast tier included; see `extensio
 the bash tool (foreground and background), previews, lander checks and automation scripts when the service runs with a delegated
 cgroup (`Delegate=yes`, `DelegateSubgroup=core`, as `pnpm setup:machine` writes it): each process group gets its own
 cgroup under `work/`, which the kernel kills as a whole when `work/` runs out, so the core keeps running. Read at start.
+`work.cpuWeight` (default 20) and `work.nice` (default 10, both project over user) let the same work yield the CPU
+to the user's own programs and to Ultimate's UI and server, without a cap: idle cores are still used. A supervised core
+on Linux writes the weight to `work/` when delegated, otherwise starts each process group in a `systemd-run --user
+--scope` with that weight; without systemd it only renices. Read at start.
 `remotes` (user settings only, `{ "<machine>": { "<project>": "<url>" } }`) names other machines' Ultimate instances,
 for example `{ "laptop": { "my-app": "https://laptop.tail1234.ts.net:4747" } }`: codemode's `{ project }` reads and
 `ultimate.tell` reach a project on another machine at that URL (its Tailscale Serve address; the caller's tailnet login
