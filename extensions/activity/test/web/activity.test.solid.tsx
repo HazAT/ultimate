@@ -262,7 +262,7 @@ it('filters problems and time through durable state, and offers System only when
   )
 
   await registry.setLoaders({
-    '/extensions/system/web.tsx': async () => ({
+    '/extensions/system/web.solid.tsx': async () => ({
       default: {
         surfaces: [{ id: 'system', title: 'System', icon: () => null, component: () => null }],
       },

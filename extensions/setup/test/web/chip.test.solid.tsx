@@ -99,7 +99,7 @@ it('shows a command fix once its command is installed, and runs it as the agent 
 
   const ran = vi.fn<(source: string) => void>()
   await registry.setLoaders({
-    'extensions/example/web.tsx': async () => ({
+    'extensions/example/web.solid.tsx': async () => ({
       default: {
         commands: [{ id: 'example.review', title: 'Review', run: () => ran(writerNow()) }],
       },

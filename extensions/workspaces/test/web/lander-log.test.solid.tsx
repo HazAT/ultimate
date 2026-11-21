@@ -64,7 +64,7 @@ it("folds a standing agent's landing to its @name, not the feature it carried at
 }) => {
   const other = parseConversationId(60)
   await registry.setLoaders({
-    'extensions/compact/web.tsx': async () => ({ default: { compact: { when: () => true } } }),
+    'extensions/compact/web.solid.tsx': async () => ({ default: { compact: { when: () => true } } }),
   })
   store.start()
   const stream = harness.sources.at(-1)!
@@ -191,7 +191,7 @@ it('lets an agent open the review range, expand the landing state, and switch to
   onTestFinished(() => {
     vi.unstubAllGlobals()
   })
-  await registry.setLoaders({ 'extensions/review/web.tsx': async () => ({ default: {} }) })
+  await registry.setLoaders({ 'extensions/review/web.solid.tsx': async () => ({ default: {} }) })
   const entry = {
     id: 89,
     kind: 'lineage.note',
