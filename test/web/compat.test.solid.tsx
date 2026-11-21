@@ -21,7 +21,12 @@ import { ConversationIdContext } from '../../web/src/compat/conversation-scope.t
 import { ExtensionNameContext } from '../../web/src/compat/hooks.ts'
 import { island } from '../../web/src/compat/island.tsx'
 import { registry } from '../../web/src/sdk/client.ts'
-import { Contributed, Contribution, Slot, useProvided } from '../../web/src/sdk/contribution.solid.tsx'
+import {
+  Contributed,
+  Contribution,
+  Slot,
+  useProvided,
+} from '../../web/src/sdk/contribution.solid.tsx'
 import { loadReact, markReact } from '../../web/src/sdk/framework.ts'
 import { definePoint } from '../../web/src/sdk/types.ts'
 import { ConversationScope } from '../../web/src/sdk/solid.ts'

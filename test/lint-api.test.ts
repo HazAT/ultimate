@@ -374,14 +374,12 @@ import type { SystemInfo } from '@/sdk'`
 })
 
 it('names every built-in browser file by its framework: React lives only in the compat layer', () => {
-  const rename = (file: string) =>
-    `rename ${file} to ${file.replace('.tsx', '')}.solid.tsx (an extension's facet is web.solid.tsx). React stays only in web/src/compat/ for React facets outside this repository; see docs/extensions/react-compat.md.`
+  const rename = () =>
+    'React stays only in web/src/compat/ for React facets outside this repository; see docs/extensions/react-compat.md.'
   expect(lint('ui-framework-boundaries', 'extensions/echo/web.tsx', 'export default {}')).toEqual([
-    rename('web.tsx'),
+    rename(),
   ])
-  expect(lint('ui-framework-boundaries', 'web/src/app/card.tsx', 'export {}')).toEqual([
-    rename('card.tsx'),
-  ])
+  expect(lint('ui-framework-boundaries', 'web/src/app/card.tsx', 'export {}')).toEqual([rename()])
   for (const file of [
     'extensions/echo/web.solid.tsx',
     'web/src/compat/card.tsx',

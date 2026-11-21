@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { webModule } from '../lib/web-alias.ts'
 import path from 'node:path'
 import { apiSummary } from '../lib/api-files.ts'
 import { coreTier } from '../shared/extension-api.ts'
@@ -130,7 +131,7 @@ const isSolidJsxPragma = (comment: Comment | undefined) =>
 const moduleSuffixes = ['', '.ts', '.tsx', '/index.ts', '/index.tsx']
 const localModule = (filename: string, source: string) => {
   const base = source.startsWith('@/')
-    ? path.resolve(process.cwd(), 'web/src', source.slice(2))
+    ? webModule(process.cwd(), source)
     : source.startsWith('.')
       ? path.resolve(path.dirname(filename), source)
       : undefined

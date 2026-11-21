@@ -29,9 +29,7 @@ if (!folders.length) {
   process.exit(0)
 }
 for (const folder of folders)
-  if (
-    !['web.solid.tsx', 'web.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))
-  ) {
+  if (!['web.solid.tsx', 'web.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))) {
     console.error(`${folder} is not an extension folder (no web.solid.tsx, web.tsx or server.ts).`)
     process.exit(2)
   }
