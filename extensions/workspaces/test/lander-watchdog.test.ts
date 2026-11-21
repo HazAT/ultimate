@@ -137,6 +137,8 @@ it('reads plain commands and commands with their own timeout from settings', asy
     [{ command: 'pnpm test', timeout: 0 }],
     [{ command: 'pnpm test', timeout: '2m' }],
     [{ timeout: 60 }],
+    [{ command: 'pnpm test', skipWhenOnly: '**/*.md' }],
+    [{ command: 'pnpm test', skipWhenOnly: [1] }],
     [[]],
     'pnpm test',
   ])
