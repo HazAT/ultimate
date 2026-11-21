@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { Entry, TypedEntry } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { createEffect, createMemo, For, Show } from 'solid-js'
+import { createMemo, For, onCleanup, Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Component } from 'solid-js'
@@ -139,15 +139,16 @@ export function renderEntry<D extends JsonValue>(
  * the last one unmounts.
  */
 export function ScopedConversation(props: { id: ConversationId; children: JSX.Element }) {
-  createEffect(
-    () => props.id,
-    (id) => store.watchConversation(id),
-  )
+  return <For each={[props.id]}>{(id) => scope(id, () => props.children)}</For>
+}
+
+function scope(id: ConversationId, children: () => JSX.Element) {
+  onCleanup(store.watchConversation(id))
   return (
-    <ConversationScope value={props.id}>
+    <ConversationScope value={id}>
       <Transcript value={null}>
-        <div class="contents" {...{ [scopeAttribute]: props.id }}>
-          {props.children}
+        <div class="contents" {...{ [scopeAttribute]: id }}>
+          {children()}
         </div>
       </Transcript>
     </ConversationScope>

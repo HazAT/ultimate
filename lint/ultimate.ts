@@ -223,7 +223,6 @@ const isGlobal = (node: Node | undefined, name: string) =>
 const isJsDoc = (comment: Comment) => comment.type === 'Block' && comment.value.startsWith('*')
 const inSdk = (filename: string) => /^web\/src\/(sdk|compat)\//.test(repositoryPath(filename))
 let sdkExports: Set<string> | undefined
-/** The names the SDK entries re-export (`@/sdk/solid`, its parts, the React `@/sdk`): the public surface, read once per lint process. */
 function publicSdk() {
   sdkExports ??= new Set(
     ['web/src/compat/sdk.ts', solidSdk, solidParts]
@@ -259,7 +258,6 @@ const hasBody = (statement: Node) =>
   (statement.declaration?.declarations ?? []).some((declarator) =>
     functionTypes.includes(declarator.init?.type ?? ''),
   )
-/** The SDK's public entries: `@/sdk/solid`, its parts, and the frozen React `@/sdk`. */
 const sdkEntry = (filename: string) =>
   ['web/src/compat/sdk.ts', solidSdk, solidParts].includes(repositoryPath(filename))
 /** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */
@@ -328,7 +326,6 @@ export default {
         const check = (node: ImportNode) => {
           const source = staticString(node.source)
           if (typeof source !== 'string') return
-          if (node.importKind === 'type' || node.exportKind === 'type') return
           const local = localModule(context.filename, source)
           const target = local === undefined ? undefined : repositoryPath(local)
           if (
@@ -340,6 +337,7 @@ export default {
               message: `Hosts render every contribution through one path, so a React one mounts through the compat layer like any other. Only the core hosts in web/src import the bridge (${bridgeFile}); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/parts.solid.tsx.`,
             })
           if (compat) return
+          const typeOnly = node.importKind === 'type' || node.exportKind === 'type'
           const lazyCompat =
             node.type === 'ImportExpression' &&
             target === 'web/src/compat/bridge.tsx' &&
@@ -356,6 +354,7 @@ export default {
               message: `The core and built-in extensions are Solid; React lives only in the frozen compat layer (web/src/compat/) for React facets outside this repository. Replace ${source} with its Solid counterpart: @/sdk/solid, our UI kit (@/components/ui/*.solid.tsx), @lucide/solid for icons; see docs/extensions/react-compat.md.`,
             })
           else if (
+            !typeOnly &&
             uiSdkComponents.test(source) &&
             !uiKitFile(context.filename) &&
             !inSdk(context.filename)
@@ -384,6 +383,7 @@ export default {
           ImportExpression: check,
           ExportNamedDeclaration: check,
           ExportAllDeclaration: check,
+          TSImportType: check,
         }
       },
     },

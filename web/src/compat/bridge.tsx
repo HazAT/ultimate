@@ -90,10 +90,11 @@ export const bridge: ReactBridge = {
     return <Icon className={className} />
   },
   node: (value) => value,
-  provision: (item, input, report) => (
+  provision: (item, input, report, fail) => (
     <ExtensionBoundary
       extension={item.extension}
       key={item.extension}
+      onFailed={fail}
       variant="inline"
       version={item.version}
     >

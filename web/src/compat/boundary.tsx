@@ -5,10 +5,20 @@ import { ExtensionNameContext } from './hooks.ts'
 import { island } from './island.tsx'
 import { Slot as SolidSlot } from '../sdk/parts.solid.tsx'
 import { ReportedErrorCard } from '../app/error-stack.solid.tsx'
+import { ErrorCard as PlainErrorCard } from '../app/error-card.solid.tsx'
+import type { ErrorCardProps } from '../app/error-card.solid.tsx'
 import { stackFrames } from '../app/error-report.ts'
 
-/** An extension's failure, inline or as a block with a report button, as the shell shows it. */
-export const ErrorCard = island(ReportedErrorCard)
+const ReportedCard = island(ReportedErrorCard)
+const PlainCard = island(PlainErrorCard)
+
+/**
+ * An extension's failure as the shell shows it: inline as a plain card, or as a block with a report button. The inline
+ * card never asks the error reporter, so a reporter that throws cannot recurse through its own failure.
+ */
+export function ErrorCard(props: Omit<ErrorCardProps, 'report'>) {
+  return props.variant === 'inline' ? <PlainCard {...props} /> : <ReportedCard {...props} />
+}
 
 type ContributionBoundaryProps = {
   extension: string
@@ -16,6 +26,7 @@ type ContributionBoundaryProps = {
   variant?: 'inline' | 'block'
   fallback?: ReactNode
   onError?: (error: unknown, stack: string | undefined) => void
+  onFailed?: () => void
   children: ReactNode
 }
 
@@ -41,6 +52,7 @@ export class ExtensionBoundary extends Component<
     const stack =
       [thrownJsFrames, info.componentStack?.trim()].filter(Boolean).join('\n') || undefined
     this.setState({ stack })
+    this.props.onFailed?.()
     this.props.onError?.(error, stack)
   }
   render() {

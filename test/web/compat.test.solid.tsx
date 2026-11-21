@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h, act, useContext, useEffect } from 'react'
-import { createEffect, createSignal, flush } from 'solid-js'
+import { createEffect, createSignal, flush, useContext as useSolidContext } from 'solid-js'
 import { settle } from '@ui-sdk/core/testing'
 import { expect, it, vi } from 'vitest'
 
@@ -31,7 +31,8 @@ import {
 import { ContributionError } from '../../web/src/app/contribution-error.solid.tsx'
 import { loadReact, markReact } from '../../web/src/sdk/framework.ts'
 import { definePoint } from '../../web/src/sdk/types.ts'
-import { ConversationScope } from '../../web/src/sdk/solid.ts'
+import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
+import { ScopedConversation } from '../../web/src/sdk/parts.solid.tsx'
 import { renderSolid } from './solid-dom-setup.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -329,4 +330,167 @@ it('says a failing web.tsx part broke on the compat layer of a Solid core, and l
   expect(note?.querySelector('a')?.getAttribute('href')).toMatch(
     /docs\/extensions\/react-compat\.md$/,
   )
+})
+
+it('drops a React provider that starts throwing after it reported, showing its own inline card', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const Items = definePoint<null, string[]>('test.items-throw')
+  let broken = false
+  const [tick, setTick] = createSignal(0)
+  await registry.setLoaders({
+    'extensions/a/web.tsx': async () => ({
+      default: { provides: [{ point: Items.point, use: () => ['a'] }] },
+    }),
+    'extensions/b/web.tsx': async () => ({
+      default: {
+        provides: [
+          {
+            point: Items.point,
+            use: (input: number) => {
+              if (broken && input > 0) throw new Error('b broke')
+              return ['b']
+            },
+          },
+        ],
+      },
+    }),
+  })
+  const failures = document.createElement('div')
+  let seen: readonly string[][] = []
+  function Reader() {
+    const all = useAllProvided(Items as never, tick, failures)
+    createEffect(all, (values) => {
+      seen = values as string[][]
+    })
+    return null
+  }
+  act(() => {
+    renderSolid(() => <Reader />)
+    flush()
+  })
+  expect(seen).toEqual([['a'], ['b']])
+  broken = true
+  act(() => {
+    setTick(1)
+    flush()
+  })
+  expect(seen).toEqual([['a']])
+  expect(failures.querySelectorAll('[data-extension-error="b"]')).toHaveLength(1)
+  expect(failures.children).toHaveLength(2)
+})
+
+it('renders a memoized React component a React provider returns through the compat layer', async () => {
+  const Tab = definePoint<null, { component: unknown }>('test.memo-tab')
+  const { memo } = await import('react')
+  const Inner = memo(() => h('em', null, 'memo tab'))
+  await registry.setLoaders({
+    'extensions/tabs/web.tsx': async () => ({
+      default: { provides: [{ point: Tab.point, use: () => ({ component: Inner }) }] },
+    }),
+  })
+  let container!: HTMLElement
+  function Reader() {
+    const tab = useProvided(Tab, () => null)
+    return (
+      <>
+        {tab() && (
+          <Contribution
+            fallback={failed}
+            item={{ extension: 'tabs', version: 1, component: tab()!.component }}
+            props={{}}
+          />
+        )}
+      </>
+    )
+  }
+  act(() => {
+    container = renderSolid(() => <Reader />)
+    flush()
+  })
+  expect(container.querySelector('em')?.textContent).toBe('memo tab')
+})
+
+it('runs a Solid provider under its own extension name, keeping the reader’s conversation', async () => {
+  const Owner = definePoint<null, string>('test.owner')
+  await registry.setLoaders({
+    'extensions/teller/web.solid.tsx': async () => ({
+      default: {
+        provides: [
+          {
+            point: Owner.point,
+            use: () => {
+              const name = useSolidContext(ExtensionName)
+              const scope = useSolidContext(ConversationScope)
+              return () => `${name}@${scope}`
+            },
+          },
+        ],
+      },
+    }),
+  })
+  let seen: string | undefined
+  function Reader() {
+    const owner = useProvided(Owner, () => null)
+    createEffect(owner, (value) => {
+      seen = value
+    })
+    return null
+  }
+  act(() => {
+    renderSolid(() => (
+      <ExtensionName value="reader">
+        <ConversationScope value={9 as ConversationId}>
+          <Reader />
+        </ConversationScope>
+      </ExtensionName>
+    ))
+    flush()
+  })
+  expect(seen).toBe('teller@9')
+})
+
+it('follows a ScopedConversation to its new id: one watch at a time, readers on the new scope, none after unmount', async () => {
+  const { store } = await import('../../web/src/sdk/client.ts')
+  const watched: number[] = []
+  vi.spyOn(store, 'watchConversation').mockImplementation((id) => {
+    watched.push(id)
+    return () => {
+      watched.splice(watched.indexOf(id), 1)
+    }
+  })
+  const [id, setId] = createSignal(3 as ConversationId)
+  const [shown, setShown] = createSignal(true)
+  let container!: HTMLElement
+  function Probe() {
+    const scope = useSolidContext(ConversationScope)
+    return <b>{String(scope)}</b>
+  }
+  act(() => {
+    container = renderSolid(() => (
+      <>
+        {shown() && (
+          <ScopedConversation id={id()}>
+            <Probe />
+          </ScopedConversation>
+        )}
+      </>
+    ))
+    flush()
+  })
+  expect(watched).toEqual([3])
+  expect(container.textContent).toBe('3')
+  act(() => {
+    setId(4 as ConversationId)
+    flush()
+  })
+  expect(watched).toEqual([4])
+  expect(container.textContent).toBe('4')
+  expect(
+    container.querySelector('[data-conversation-scope]')?.getAttribute('data-conversation-scope'),
+  ).toBe('4')
+  act(() => {
+    setShown(false)
+    flush()
+  })
+  expect(watched).toEqual([])
 })

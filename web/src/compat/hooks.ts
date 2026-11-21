@@ -9,7 +9,6 @@ import type {
   EntryId,
 } from '@earendil-works/pi-durable'
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -51,7 +50,12 @@ import type { RestartPhase } from '../sdk/restart.ts'
 import type { CompactRow, ToolCallView, UltimateContext } from './types.ts'
 import { subscribeViewport, viewport } from '../sdk/viewport.ts'
 import { events } from '../sdk/events.ts'
-import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
+import {
+  ConversationIdContext,
+  ExtensionNameContext,
+  TranscriptContext,
+} from './conversation-scope.tsx'
+import { asReact } from './react-parts.ts'
 export { TranscriptContext } from './conversation-scope.tsx'
 
 /** Page readiness is sticky; failed facet names remain available even before ready. */
@@ -268,7 +272,16 @@ export function useRegionOpen(region: Region) {
  * panels in its tab row.
  */
 export function usePanels() {
-  const panels = panelItems(useExtensions())
+  const records = useExtensions()
+  const panels = useMemo(
+    () =>
+      panelItems(records).map((panel) => ({
+        ...panel,
+        icon: panel.icon && asReact(panel.icon),
+        component: asReact(panel.component),
+      })),
+    [records],
+  )
   const open = useRegionOpen('panels')
   const [selected] = useUiState<string | null>(shellKeys.panel, null)
   return { open, ...shownPanels(panels, selected) }
@@ -310,7 +323,7 @@ export function useTranscriptScroll() {
 }
 const noElement = { current: null }
 
-export const ExtensionNameContext = createContext<string | undefined>(undefined)
+export { ExtensionNameContext } from './conversation-scope.tsx'
 
 /** `useUiState` under `ext.<extension name>.<key>`, for state an extension's UI keeps across reloads. */
 export function useExtensionUiState<T extends JsonValue>(
@@ -366,7 +379,16 @@ function useCompactConfig() {
 /** Document renderers by kind (`documents` contributions); the Documents tab shows the rest as JSON. */
 export function useDocumentRenderers() {
   const records = useExtensions()
-  return useMemo(() => documentItems(records), [records])
+  return useMemo(
+    () =>
+      new Map(
+        [...documentItems(records)].map(([kind, item]) => [
+          kind,
+          { ...item, icon: item.icon && asReact(item.icon), component: asReact(item.component) },
+        ]),
+      ),
+    [records],
+  )
 }
 /** Core and extension commands. */
 export function useCommands() {

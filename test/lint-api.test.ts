@@ -354,7 +354,8 @@ import { useDoc as useSolidDoc } from '@/sdk/solid'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { format } from './format.ts'
 import type { Props } from './card.tsx'
-import type { SystemInfo } from '@/sdk'`
+import type { SystemInfo } from '@/sdk'
+type Child = import('react').ReactNode`
   expect(lint('ui-framework-boundaries', 'extensions/echo/panel.solid.tsx', source)).toEqual([
     solidOnly('react'),
     solidOnly('lucide-react'),
@@ -363,8 +364,11 @@ import type { SystemInfo } from '@/sdk'`
     solidOnly('../../web/src/compat/island.tsx'),
     solidOnly('./row.tsx'),
     'Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.',
+    solidOnly('./card.tsx'),
+    solidOnly('@/sdk'),
+    solidOnly('react'),
   ])
-  expect(lint('ui-framework-boundaries', 'web/src/app/panel.solid.tsx', source)).toHaveLength(7)
+  expect(lint('ui-framework-boundaries', 'web/src/app/panel.solid.tsx', source)).toHaveLength(10)
   expect(lint('ui-framework-boundaries', 'web/src/compat/island.tsx', source)).toEqual([])
   expect(
     lint('ui-framework-boundaries', '../my-app/.ultimate/extensions/echo/web.tsx', source),

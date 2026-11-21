@@ -12,8 +12,11 @@ import type { Component } from 'solid-js'
 import { useContext, useEffect, useEffectEvent, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
-import { ExtensionNameContext } from './hooks.ts'
+import {
+  ConversationIdContext,
+  ExtensionNameContext,
+  TranscriptContext,
+} from './conversation-scope.tsx'
 import { markIsland, markReact } from '../sdk/framework.ts'
 import { ConversationScope, ExtensionName, Transcript } from '../sdk/solid.ts'
 

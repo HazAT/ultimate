@@ -7,6 +7,7 @@ import {
   createRoot,
   createSignal,
   Errored,
+  flatten,
   For,
   getOwner,
   mapArray,
@@ -310,7 +311,7 @@ const hookAsComponent = (use: unknown) => {
 export function ContributedIcon(props: { icon: unknown; class: string }) {
   return (
     <Show
-      when={!isReact(props.icon) && (props.icon as Component<{ class?: string }>)}
+      when={solidOf(props.icon) as Component<{ class?: string }> | undefined}
       fallback={<MountReactInline render={() => reactBridge().icon(props.icon, props.class)} />}
     >
       {(Solid) => <Dynamic class={props.class} component={Solid()} />}
@@ -326,10 +327,14 @@ const sameProviders = (a: readonly Provider[], b: readonly Provider[]) =>
 
 const failed = Symbol('failed provider')
 
+const reactComponent = (value: unknown): value is object =>
+  typeof value === 'function' ||
+  (typeof value === 'object' && value !== null && '$$typeof' in value && !isReactNode(value))
+
 const markReactValue = (value: unknown) => {
-  if (typeof value === 'function') markReact(value)
+  if (reactComponent(value)) markReact(value)
   else if (value && typeof value === 'object' && !isReactNode(value))
-    for (const field of Object.values(value)) if (typeof field === 'function') markReact(field)
+    for (const field of Object.values(value)) if (reactComponent(field)) markReact(field)
   return value
 }
 
@@ -343,47 +348,92 @@ function runProvider(use: unknown, input: Accessor<unknown>): Accessor<unknown> 
   }
 }
 
+function solidProviderValue(
+  provider: Provider,
+  input: Accessor<unknown>,
+  failures: HTMLElement | undefined,
+): Accessor<unknown> {
+  const read = runProvider(provider.use, input)
+  const outcome = createMemo(() => {
+    try {
+      return { value: read() }
+    } catch (error) {
+      return { error }
+    }
+  })
+  createEffect(
+    () => outcome().error,
+    (error) => {
+      if (error !== undefined) console.error(`[extension ${provider.extension}]`, error)
+    },
+  )
+  if (failures) {
+    const host = (<span class="contents" />) as HTMLElement
+    failures.append(host)
+    onCleanup(() => host.remove())
+    insert(host, () => (
+      <Show when={'error' in outcome()}>
+        <ContributionError error={outcome().error} extension={provider.extension} inline />
+      </Show>
+    ))
+  }
+  return () => ('error' in outcome() ? failed : outcome().value)
+}
+
+function reactProviderValue(
+  provider: Provider,
+  input: Accessor<unknown>,
+  failures: HTMLElement | undefined,
+): Accessor<unknown> {
+  const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
+  const [found, setFound] = createSignal<unknown>(failed)
+  const host = (<span class="contents" />) as HTMLElement
+  failures?.append(host)
+  const root = reactBridge().root(host, {
+    conversation: useContext(ConversationScope) ?? undefined,
+    transcript: useContext(Transcript) ?? undefined,
+  })
+  onCleanup(() =>
+    nextTurn(() => {
+      root.unmount()
+      host.remove()
+    }),
+  )
+  createEffect(value, (next) =>
+    root.render(
+      reactBridge().provision(
+        provider,
+        next,
+        (latest) => setFound(() => markReactValue(latest)),
+        () => setFound(() => failed),
+      ),
+    ),
+  )
+  return found
+}
+
+function inExtension<T>(extension: string, run: () => T): T {
+  let result!: T
+  flatten(
+    ExtensionName({
+      value: extension,
+      get children() {
+        result = run()
+        return undefined
+      },
+    }),
+  )
+  return result
+}
+
 function providerValue(
   provider: Provider,
   input: Accessor<unknown>,
   failures: HTMLElement | undefined,
 ): Accessor<unknown> {
-  if (!isReact(provider.use)) {
-    const read = runProvider(provider.use, input)
-    const outcome = createMemo(() => {
-      try {
-        return { value: read() }
-      } catch (error) {
-        return { error }
-      }
-    })
-    createEffect(
-      () => outcome().error,
-      (error) => {
-        if (error !== undefined) console.error(`[extension ${provider.extension}]`, error)
-      },
-    )
-    if (failures)
-      insert(failures, () => (
-        <Show when={'error' in outcome()}>
-          <ContributionError error={outcome().error} extension={provider.extension} inline />
-        </Show>
-      ))
-    return () => ('error' in outcome() ? failed : outcome().value)
-  }
-  const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
-  const [found, setFound] = createSignal<unknown>(failed)
-  const root = reactBridge().root(failures ?? document.createElement('div'), {
-    conversation: useContext(ConversationScope) ?? undefined,
-    transcript: useContext(Transcript) ?? undefined,
-  })
-  onCleanup(() => nextTurn(root.unmount))
-  createEffect(value, (next) =>
-    root.render(
-      reactBridge().provision(provider, next, (latest) => setFound(() => markReactValue(latest))),
-    ),
-  )
-  return found
+  return isReact(provider.use)
+    ? reactProviderValue(provider, input, failures)
+    : inExtension(provider.extension, () => solidProviderValue(provider, input, failures))
 }
 
 export function useAllProvided<Input, Value>(

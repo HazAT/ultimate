@@ -382,10 +382,6 @@ export function provisionsOf(records: readonly ExtensionRecord[], point: string)
   )
 }
 
-export function provisionOf(records: readonly ExtensionRecord[], point: string) {
-  return provisionsOf(records, point).at(-1)
-}
-
 export function panelItems(records: readonly ExtensionRecord[]): PanelItem[] {
   return records
     .flatMap(({ name, extension, version }) =>
@@ -404,7 +400,10 @@ export function panelBadges(
   })
 }
 
-export function shownPanels(panels: readonly PanelItem[], selected: string | null) {
+export function shownPanels<P extends Pick<PanelItem, 'id' | 'tab'>>(
+  panels: readonly P[],
+  selected: string | null,
+) {
   const active =
     panels.find((panel) => panel.id === selected) ?? panels.find((panel) => panel.tab !== false)
   return { active, tabs: panels.filter((panel) => panel.tab !== false || panel === active) }

@@ -27,6 +27,7 @@ export interface ReactBridge {
     item: Omit<Rendered, 'component'> & { use: unknown },
     input: unknown,
     report: (value: unknown) => void,
+    fail: () => void,
   ): unknown
 }
 
@@ -45,10 +46,14 @@ export const solidOf = (part: unknown) =>
 
 export const isReact = (part: unknown) => solidOf(part) === undefined
 
+const reactElement = Symbol.for('react.transitional.element')
+
 export const isReactNode = (value: unknown): boolean =>
   Array.isArray(value)
     ? value.some(isReactNode)
-    : typeof value === 'object' && value !== null && '$$typeof' in value
+    : typeof value === 'object' &&
+      value !== null &&
+      (value as { $$typeof?: unknown }).$$typeof === reactElement
 
 let bridge: ReactBridge | undefined
 

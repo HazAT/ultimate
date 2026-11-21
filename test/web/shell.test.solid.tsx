@@ -29,6 +29,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { App } from '../../web/src/app/App.solid.tsx'
 import { ErrorCard } from '../../web/src/compat/boundary.tsx'
+import { ReportedErrorCard } from '../../web/src/app/error-stack.solid.tsx'
 import { IconButton } from '../../web/src/app/header.solid.tsx'
 import { CommandPalette } from '../../web/src/app/palette.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
@@ -203,6 +204,30 @@ it('renders one inline card for an error-report provider that throws, without re
   expect(host.querySelector('[data-extension-error="shown"]')?.textContent).toContain('shown broke')
   act(() => root.unmount())
   host.remove()
+  await registry.setLoaders({})
+})
+
+it('shows a throwing React error reporter once, without the reporter mounting itself again', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  let calls = 0
+  const reporter = () => {
+    calls += 1
+    if (calls > 20) return undefined
+    throw new Error('reporter broke')
+  }
+  await registry.setLoaders({
+    'extensions/reporter/web.tsx': async () => ({
+      default: { provides: [{ point: ErrorReport.point, use: reporter }] },
+    }),
+  })
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => <ReportedErrorCard error="shown broke" extension="shown" />)
+    flush()
+  })
+  await settle()
+  expect(container.querySelectorAll('[data-extension-error="reporter"]')).toHaveLength(1)
+  expect(calls).toBeLessThanOrEqual(2)
   await registry.setLoaders({})
 })
 

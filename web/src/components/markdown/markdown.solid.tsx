@@ -1,4 +1,5 @@
 /** @jsxImportSource @solidjs/web */
+import { ReactCompatLink } from '../../app/error-card.solid.tsx'
 import { Check, Copy, ExternalLink } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
@@ -81,6 +82,7 @@ function ContributionError(props: { extension: string; error: unknown; inner: JS
         <span class="truncate">
           {props.extension}: {errorMessage(props.error)}
         </span>
+        <ReactCompatLink extension={props.extension} />
       </span>
       {props.inner}
     </>

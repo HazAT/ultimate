@@ -17,7 +17,7 @@ title bar the host shows above every surface.
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `sidebar`              | Left column (`<Sidebar />`); it disappears while nothing is in it                                                     |
 | `sidebar.top`          | Agent sidebar, after the Agents group and before the roots: background work such as watches                           |
-| `titlebar.brand`       | Title bar, the wordmark beyond a phone; render `Wordmark` from `@/sdk` with an `onClick`                              |
+| `titlebar.brand`       | Title bar, the wordmark beyond a phone; render your own Solid mark (the core's wordmark is not exported)              |
 | `titlebar.project`     | Title bar, in place of the project chip                                                                               |
 | `titlebar.left`        | Title bar above every surface, after the project chip; monospace, one line                                            |
 | `titlebar.right`       | Title bar, right, before the palette button                                                                           |

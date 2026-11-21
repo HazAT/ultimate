@@ -178,7 +178,7 @@ it('opens Wire as the agent that runs Open Wire from the palette', async () => {
   }))
   uiState.receive({ 'ext.system.tab': 'agents' })
   harness.writes.length = 0
-  await registry.setLoaders({ 'extensions/wire/web.tsx': async () => ({ default: wire }) })
+  await registry.setLoaders({ 'extensions/wire/web.solid.tsx': async () => ({ default: wire }) })
   renderSolid(() => <CommandPalette />)
   store.setUi({ paletteOpen: true })
   flush()
