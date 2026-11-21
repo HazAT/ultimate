@@ -258,17 +258,21 @@ export default function browserExtension(host: ExtensionHost) {
             0,
           )
           return run(args, waits, api, context, async (page, outcomes, png, guard) => {
-            let controlsReady = false
-            const ultimateControlsMounted = async () => {
-              if (controlsReady) return
-              await guard(
-                page.waitForFunction(
-                  () => !document.querySelector('meta[name=ultimate-web]') || 'ultimate' in window,
-                ),
+            const ultimateControlsMounted = () =>
+              guard(
+                page
+                  .waitForFunction(
+                    () =>
+                      !document.querySelector('meta[name=ultimate-web]') || !!window.ultimate?.ui,
+                  )
+                  .then(() =>
+                    page.evaluate(() =>
+                      document.querySelector('meta[name=ultimate-web]')
+                        ? window.ultimate!.ui.ready()
+                        : undefined,
+                    ),
+                  ),
               )
-              await guard(page.evaluate(() => window.ultimate?.ui.ready()))
-              controlsReady = true
-            }
             for (const [index, step] of args.steps.entries()) {
               context.abortSignal?.throwIfAborted()
               api.output(`Step ${index + 1}: ${JSON.stringify(step)}\n`)
@@ -437,7 +441,13 @@ export default function browserExtension(host: ExtensionHost) {
         : within(stepMs + extraMs, work)
     }
     const sendUnsavedUiState = (shown: Page) =>
-      guard(shown.evaluate(() => window.ultimate?.ui.flush())).then(
+      guard(
+        shown.evaluate(() =>
+          document.querySelector('meta[name=ultimate-web]')
+            ? window.ultimate?.ui.flush()
+            : undefined,
+        ),
+      ).then(
         () => [],
         (error: unknown) => [`The page's last UI-state writes were not sent: ${String(error)}`],
       )

@@ -33,7 +33,10 @@ export function Digest() {
       <Button aria-label="Digest archive" onClick={() => setPressed('archive')}>Archive</Button>
       <Popover>
         <PopoverTrigger aria-label="Digest details">details</PopoverTrigger>
-        <PopoverContent>Sent on Mondays</PopoverContent>
+        <PopoverContent>
+          Sent on Mondays
+          <Button aria-label="Archive" onClick={() => setPressed('popover archive')}>Archive</Button>
+        </PopoverContent>
       </Popover>
     </>
   )
@@ -79,7 +82,7 @@ async function serve(settings?: object) {
       api,
       context,
     )
-    expect(result).not.toHaveProperty('isError', true)
+    if (result.isError) throw new Error(JSON.stringify(result.output))
     const { outcomes } = (result as unknown as { structuredContent: { outcomes: string[] } })
       .structuredContent
     return (n: number) => {
@@ -179,19 +182,47 @@ it('sends a final keypress’s UI-state write on pagehide in one keepalive reque
 
 // Pressing 'System' pressed a transcript row named "read ~/fw-verify/live-system.png" instead of the System tab:
 // ui-sdk ranks a whole-word match with the exact label and then prefers the open one (#835504).
-it('acts on the one control with the exact label, and waits on a control’s state', async () => {
+it('acts on the one control with the exact label, also one an earlier step brought onto the page', async () => {
   const { drive } = await serve()
   const value = await drive([
     { ui: 'act', steps: [{ ref: 'Digest archive', action: 'press' }] },
     { eval: "document.querySelector('[data-pressed]').dataset.pressed" },
     {
-      eval: 'setTimeout(() => document.querySelector(\'[aria-label="Weekly digest"]\').click(), 50)',
+      ui: 'act',
+      steps: [
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+        { ref: 'Archive', action: 'press' },
+      ],
     },
-    { until: { ui: 'Weekly digest', is: { checked: true } }, timeoutMs: 5000 },
+    { eval: "document.querySelector('[data-pressed]').dataset.pressed" },
   ])
   expect(value(1)).toMatchObject({ ok: true })
   expect(value(2)).toBe('archive')
-  expect(value(4)).toMatchObject({ label: 'Weekly digest', checked: true })
+  expect(value(3)).toMatchObject({ ok: true, steps: [{ step: 0 }, { step: 1 }] })
+  expect(value(4)).toBe('popover archive')
+})
+
+it('until a control’s state wakes on its change, by label or by ref', async () => {
+  const { drive } = await serve()
+  const value = await drive([
+    { ui: 'query', text: 'Weekly digest' },
+    {
+      eval: '(() => { window.ultimate.ui.ready().then(() => requestAnimationFrame(() => setTimeout(() => document.querySelector(\'[aria-label="Weekly digest"]\').click(), 200))); return 1 })()',
+    },
+    { until: { ui: 'Weekly digest', is: { checked: true } }, timeoutMs: 5000 },
+    {
+      eval: "document.querySelector('[aria-label=\"Weekly digest\"]').getAttribute('aria-checked')",
+    },
+  ])
+  const [{ ref }] = value(1) as Component[]
+  expect(value(4)).toBe('true')
+  expect(value(3)).toMatchObject({ ref, checked: true })
+  const live = (await drive([{ ui: 'query', text: 'Weekly digest' }]))(1) as Component[]
+  const waited = await drive([
+    { ui: 'query', text: 'Weekly digest' },
+    { until: { ui: live[0].ref, is: { checked: true } }, timeoutMs: 5000 },
+  ])
+  expect(waited(2)).toMatchObject({ ref: live[0].ref, label: 'Weekly digest', checked: true })
 })
 
 it('records nothing from the agent when it opens and closes a popover', async () => {

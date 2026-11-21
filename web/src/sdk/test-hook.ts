@@ -123,32 +123,80 @@ export function createTestHook(
 
   async function named(name: string): Promise<UiComponent | undefined> {
     const bridge = agent.bridge()
+    if (/^c\d+$/.test(name)) {
+      const byRef = await bridge.query({ within: name })
+      return Array.isArray(byRef) ? byRef[0] : undefined
+    }
     const found = await bridge.query({ text: name })
     const exact = Array.isArray(found)
       ? found.filter((item) => !item.offPage && item.label && fold(item.label) === fold(name))
       : []
-    if (exact.length === 1) return exact[0]
-    return bridge.snapshot().find((item) => item.ref === name && !item.offPage)
+    return exact.length === 1 ? exact[0] : undefined
   }
 
-  async function exactRefs(steps: Parameters<UiAgent['act']>[0]['steps']) {
-    const resolved = []
-    for (const step of steps)
-      resolved.push({ ...step, ref: (await named(step.ref))?.ref ?? step.ref })
-    return resolved
+  async function act({ steps }: Parameters<UiAgent['act']>[0]) {
+    const bridge = agent.bridge()
+    const done: Awaited<ReturnType<UiAgent['act']>>['steps'] = []
+    const appeared: UiComponent[] = []
+    let last: Awaited<ReturnType<UiAgent['act']>> | undefined
+    for (const [index, step] of steps.entries()) {
+      const ref = (await named(step.ref))?.ref ?? step.ref
+      last = await bridge.act({ steps: [{ ...step, ref }] })
+      done.push(...last.steps.map((item) => ({ ...item, step: index })))
+      appeared.push(...last.appeared)
+      if (!last.ok)
+        return {
+          ...last,
+          steps: done,
+          appeared,
+          error: last.error && { ...last.error, step: index },
+        }
+    }
+    return { ...last!, steps: done, appeared }
   }
 
-  const holds = (component: UiComponent, is: Record<string, unknown>) =>
-    Object.entries(is).every(
-      ([key, value]) => JSON.stringify(component[key]) === JSON.stringify(value),
-    )
+  const same = (a: unknown, b: unknown): boolean => {
+    if (Array.isArray(a) || Array.isArray(b))
+      return (
+        Array.isArray(a) &&
+        Array.isArray(b) &&
+        a.length === b.length &&
+        a.every((item, index) => same(item, b[index]))
+      )
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const keys = Object.keys(a)
+      return (
+        keys.length === Object.keys(b).length &&
+        keys.every((key) => same((a as never)[key], (b as never)[key]))
+      )
+    }
+    return Object.is(a, b)
+  }
 
-  async function untilUi(name: string, is: Record<string, unknown>, timeoutMs: number) {
-    await controlsMounted()
+  function untilUi(name: string, is: Record<string, unknown>, timeoutMs: number) {
     return new Promise<UiComponent>((resolve, reject) => {
+      let ready = false
+      let stopped = false
       let last: UiComponent | undefined
       let checking = false
       let again = false
+      let stopChanges = () => {}
+      const observer = new MutationObserver(() => recheck())
+      const cancel = deadline(timeoutMs, () => {
+        stop()
+        const seen = !ready
+          ? 'the page never rendered its controls'
+          : last
+            ? `${name} is ${JSON.stringify(last)}`
+            : `no component named ${name}`
+        reject(new Error(`Timed out after ${timeoutMs / 1000}s: ${seen}`))
+      })
+      function stop() {
+        stopped = true
+        stopChanges()
+        observer.disconnect()
+        cancel()
+      }
       const check = async () => {
         if (checking) {
           again = true
@@ -158,37 +206,43 @@ export function createTestHook(
         do {
           again = false
           last = await named(name)
-          if (last && holds(last, is)) {
+          if (
+            !stopped &&
+            last &&
+            Object.entries(is).every(([key, value]) => same(last![key], value))
+          ) {
             stop()
             resolve(last)
-            return
           }
-        } while (again)
+        } while (again && !stopped)
         checking = false
       }
-      const recheck = () => {
+      function recheck() {
+        if (stopped) return
         check().catch((error: unknown) => {
           stop()
           reject(error instanceof Error ? error : new Error(String(error)))
         })
       }
-      const stopChanges = agent.bridge().subscribe(recheck)
-      const observer = new MutationObserver(recheck)
-      observer.observe(document.body, { subtree: true, childList: true, attributes: true })
-      const cancel = deadline(timeoutMs, () => {
-        stop()
-        reject(
-          new Error(
-            `Timed out after ${timeoutMs / 1000}s: ${last ? `${name} is ${JSON.stringify(last)}` : `no component named ${name}`}`,
-          ),
-        )
-      })
-      function stop() {
-        stopChanges()
-        observer.disconnect()
-        cancel()
-      }
-      recheck()
+      controlsMounted().then(
+        () => {
+          if (stopped) return
+          ready = true
+          stopChanges = agent.bridge().subscribe(recheck)
+          observer.observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            characterData: true,
+          })
+          recheck()
+        },
+        (error: unknown) => {
+          if (stopped) return
+          stop()
+          reject(error instanceof Error ? error : new Error(String(error)))
+        },
+      )
     })
   }
 
@@ -217,7 +271,7 @@ export function createTestHook(
       },
       async act(input: Parameters<UiAgent['act']>[0]) {
         await controlsMounted()
-        return agent.bridge().act({ steps: await exactRefs(input.steps) })
+        return act(input)
       },
       ready: () => controlsMounted(),
       flush: () => uiState.flush(),

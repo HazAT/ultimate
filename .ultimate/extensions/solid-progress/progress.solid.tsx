@@ -627,7 +627,7 @@ function Previews(props: { entries: Entry[]; weeks: PreviewWeek[] }) {
           <table class="w-full font-mono text-[11.5px]">
             <thead class="text-muted-foreground/70">
               <tr>
-                <th class="px-3 py-1 text-left font-normal">task at {entry().label}</th>
+                <th class="px-3 py-1 text-left font-normal">scripted task at {entry().label}</th>
                 <th class="px-3 py-1 text-right font-normal">calls</th>
                 <th class="px-3 py-1 text-right font-normal">shots</th>
                 <th class="px-3 py-1 text-right font-normal">tokens</th>
