@@ -22,7 +22,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { deadline, every } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
-import { actions, allCommands, ownDefault, regionKeys, shellKeys, shownSurface } from './actions.ts'
+import { actions, allCommands, ownDefault, regionKeys, shellKeys } from './actions.ts'
 import type { Region } from './actions.ts'
 import { ROOT } from './api.ts'
 import { EVENT_FEED } from '../../../shared/events.ts'
@@ -234,13 +234,6 @@ export function useUltimate(): UltimateContext {
   const conversationId = scoped ?? shown
   const surface = useStore((state) => state.ui.surface?.id) ?? HOME
   return useMemo(() => ({ ...actions, conversationId, surface }), [conversationId, surface])
-}
-
-export function useShownSurface() {
-  const records = useExtensions()
-  const [chosen] = useUiState<JsonValue>(shellKeys.surface, null)
-  const preferred = useStore((state) => state.system?.project.settings.defaultSurface)
-  return shownSurface(records, chosen, preferred)
 }
 
 /**
