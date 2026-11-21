@@ -32,8 +32,8 @@ import {
   linkRenderers,
   useCopy,
   useExtensions,
-} from '@/sdk/solid'
-import type { CodeBlockRenderer, InlineCodeRenderer, LinkRenderer } from '@/sdk/solid'
+} from '../../sdk/hooks.ts'
+import type { CodeBlockRenderer, InlineCodeRenderer, LinkRenderer } from '../../sdk/hooks.ts'
 import { highlight, plainLines } from './highlight.ts'
 import type { Line } from './highlight.ts'
 import {

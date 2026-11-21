@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Input, Textarea } from '@/components/ui/input.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
-import { Provided } from '@/sdk/parts.solid.tsx'
 import {
+  Provided,
   api,
   cn,
   errorMessage,
@@ -17,6 +17,7 @@ import {
   useUiState,
   useViewport,
   writingAs,
+  type Point,
 } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
@@ -24,7 +25,6 @@ import { MessagesDoc } from '../messages/refs.ts'
 import { keyCard, openQuestions, waitsOnUser } from './open.ts'
 import type { Message } from './open.ts'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import type { Point } from '@/sdk/solid'
 import { QuestionItem } from './question.solid.tsx'
 import { AnswerAction, DismissAction } from './refs.ts'
 import type { Reply } from './refs.ts'

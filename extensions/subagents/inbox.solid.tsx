@@ -2,9 +2,13 @@
 import { Bot, SquareArrowOutUpRight } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card } from '@/sdk/parts.solid.tsx'
-import { switchConversation, useConversationId, useConversationSummary } from '@/sdk/solid'
-import type { SolidInboxProps } from '@/sdk/solid'
+import {
+  Card,
+  switchConversation,
+  useConversationId,
+  useConversationSummary,
+  type SolidInboxProps,
+} from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { openAgentSource } from './run-name.solid.tsx'
 import { senderAgent } from './source.ts'

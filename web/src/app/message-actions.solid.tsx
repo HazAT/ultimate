@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { createMemo, For, Show } from 'solid-js'
-import { formatTime, MessageReference, messageItems, useCopy, useExtensions } from '@/sdk/solid'
+import { formatTime, MessageReference, messageItems, useCopy, useExtensions } from '../sdk/hooks.ts'
 import { Contribution, useProvided } from '../sdk/contribution.solid.tsx'
 import { ContributionError } from './contribution-error.solid.tsx'
 

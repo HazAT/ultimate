@@ -49,7 +49,7 @@ import {
   useViewport,
   writerNow,
   writingAs,
-} from '@/sdk/solid'
+} from '../sdk/hooks.ts'
 import type { ModelsResponse } from '../../../shared/protocol.ts'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
 import {

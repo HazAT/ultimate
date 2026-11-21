@@ -5,8 +5,8 @@ import type { JSX } from '@solidjs/web'
 import { For, Show, createSignal } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card } from '@/sdk/parts.solid.tsx'
 import {
+  Card,
   ROOT,
   api,
   errorMessage,
@@ -16,8 +16,8 @@ import {
   switchConversation,
   useAction,
   useDocOf,
+  type EntryRecord,
 } from '@/sdk/solid'
-import type { EntryRecord } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { GoalStartedEntry, GoalReportEntry } from './entries.ts'
 import { EndAction, GoalDoc, ImagesAction } from './refs.ts'

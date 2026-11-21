@@ -45,8 +45,18 @@ export const actions = {
 import { GitCommitHorizontalIcon, MessageSquarePlusIcon } from '@lucide/solid'
 import { For, Show, untrack } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Conversation, Dock, Header, StatusLine } from '@/sdk/parts.solid.tsx'
-import { actionRef, api, cn, defineWebExtension, useAction, useExtensionUiState } from '@/sdk/solid'
+import {
+  actionRef,
+  api,
+  cn,
+  Conversation,
+  defineWebExtension,
+  Dock,
+  Header,
+  StatusLine,
+  useAction,
+  useExtensionUiState,
+} from '@/sdk/solid'
 
 type Commit = { sha: string; subject: string; author: string; when: string }
 

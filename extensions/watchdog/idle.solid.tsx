@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { renderEntry } from '@/sdk/parts.solid.tsx'
+import { renderEntry } from '@/sdk/solid'
 import { IdleEntry } from './entries.ts'
 
 export const Idle = renderEntry(IdleEntry, (props) => (

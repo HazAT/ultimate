@@ -1,5 +1,4 @@
 /** @jsxImportSource @solidjs/web */
-import { ROOT } from '@/sdk/solid'
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -11,6 +10,7 @@ import {
 import { For, Match, Show, Switch, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
+  ROOT,
   api,
   cn,
   errorMessage,
@@ -20,9 +20,9 @@ import {
   useSystem,
   useUiState,
   writingAs,
+  type EntryRecord,
+  Card,
 } from '@/sdk/solid'
-import type { EntryRecord } from '@/sdk/solid'
-import { Card } from '@/sdk/parts.solid.tsx'
 import { OpenAction, SideChatsDoc, useSideChatFront } from '../side-chat/ui.solid.tsx'
 import { StandingDoc } from '../subagents/ui.solid.tsx'
 import {

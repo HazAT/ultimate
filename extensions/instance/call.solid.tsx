@@ -15,9 +15,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { cn, shortenPath, useSystem } from '@/sdk/solid'
-import type { SolidToolProps } from '@/sdk/solid'
+import { useToolDuration, cn, shortenPath, useSystem, type SolidToolProps } from '@/sdk/solid'
 import { usePreviewTarget } from './link.solid.tsx'
 import { label } from './links.ts'
 

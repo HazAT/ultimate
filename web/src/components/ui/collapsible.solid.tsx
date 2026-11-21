@@ -6,7 +6,7 @@ import {
 } from '@ui-sdk/solid/collapsible'
 import { omit } from 'solid-js'
 import type { Accessor, ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 
 function Collapsible(
   props: ComponentProps<typeof CollapsibleRoot> & {

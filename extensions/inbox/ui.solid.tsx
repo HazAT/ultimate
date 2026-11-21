@@ -1,8 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 /** Inbox for Solid: the open questions and waiting items. */
 import { createMemo } from 'solid-js'
-import { useAllProvided } from '@/sdk/parts.solid.tsx'
-import { ROOT, useDocOf } from '@/sdk/solid'
+import { useAllProvided, ROOT, useDocOf } from '@/sdk/solid'
 import { MessagesDoc } from '../messages/refs.ts'
 import { emptyMessages } from '../messages/ui.solid.tsx'
 import { inboxItems } from './items.ts'

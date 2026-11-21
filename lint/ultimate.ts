@@ -118,9 +118,7 @@ const inRepository = (filename: string) => {
   const file = repositoryPath(filename)
   return !file.startsWith('..') && !file.startsWith('.ultimate/')
 }
-const solidSdk = 'web/src/sdk/solid.ts'
-const solidParts = 'web/src/sdk/parts.solid.tsx'
-const solidSdkEntry = (file: string) => file === solidSdk || file === solidParts
+const sdkEntries = ['web/src/compat/sdk.ts', 'web/src/sdk/solid.ts']
 const uiKitFile = (filename: string) =>
   repositoryPath(filename).startsWith('web/src/components/ui/')
 const reactOnly =
@@ -225,7 +223,7 @@ const inSdk = (filename: string) => /^web\/src\/(sdk|compat)\//.test(repositoryP
 let sdkExports: Set<string> | undefined
 function publicSdk() {
   sdkExports ??= new Set(
-    ['web/src/compat/sdk.ts', solidSdk, solidParts]
+    sdkEntries
       .flatMap((entry) => [
         ...readFileSync(path.join(process.cwd(), entry), 'utf8').matchAll(
           /export\s+(?:type\s+)?\{([^}]*)\}/g,
@@ -248,7 +246,13 @@ const exportedNames = (statement: Node): string[] => {
   if (!declaration)
     return (statement.specifiers ?? []).map((specifier) => String(specifier.exported?.name))
   if (declaration.type === 'VariableDeclaration')
-    return (declaration.declarations ?? []).map((declarator) => String(declarator.id?.name))
+    return (declaration.declarations ?? []).flatMap(({ id }) =>
+      id?.type === 'ObjectPattern'
+        ? (id.properties ?? []).map((property) =>
+            String((property.value as Node | undefined)?.name),
+          )
+        : [String(id?.name)],
+    )
   return [String(declaration.id?.name)]
 }
 const functionTypes = ['FunctionDeclaration', 'ArrowFunctionExpression', 'FunctionExpression']
@@ -258,13 +262,10 @@ const hasBody = (statement: Node) =>
   (statement.declaration?.declarations ?? []).some((declarator) =>
     functionTypes.includes(declarator.init?.type ?? ''),
   )
-const sdkEntry = (filename: string) =>
-  ['web/src/compat/sdk.ts', solidSdk, solidParts].includes(repositoryPath(filename))
+const sdkEntry = (filename: string) => sdkEntries.includes(repositoryPath(filename))
 /** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */
 function contractStatements(filename: string, statements: Node[]) {
   if (contractFile(filename) || compatFile(filename)) return statements
-  if (solidSdkEntry(repositoryPath(filename)))
-    return statements.filter((statement) => statement.type === 'ExportNamedDeclaration')
   if (!inSdk(filename)) return []
   const names = publicSdk()
   return statements.filter(
@@ -334,7 +335,7 @@ export default {
           )
             return context.report({
               node,
-              message: `Hosts render every contribution through one path, so a React one mounts through the compat layer like any other. Only the core hosts in web/src import the bridge (${bridgeFile}); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/parts.solid.tsx.`,
+              message: `Hosts render every contribution through one path, so a React one mounts through the compat layer like any other. Only the core hosts in web/src import the bridge (${bridgeFile}); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/solid.`,
             })
           if (compat) return
           const typeOnly =

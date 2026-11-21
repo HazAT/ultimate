@@ -12,8 +12,8 @@ import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
-import { Provided } from '@/sdk/parts.solid.tsx'
 import {
+  Provided,
   api,
   cn,
   elidePath,

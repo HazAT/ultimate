@@ -6,8 +6,11 @@ import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { Header, Provided, Sidebar, StatusLine } from '@/sdk/parts.solid.tsx'
 import {
+  Header,
+  Provided,
+  Sidebar,
+  StatusLine,
   api,
   cn,
   column,

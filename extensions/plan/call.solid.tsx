@@ -9,9 +9,7 @@ import {
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { useConversationId, useDoc } from '@/sdk/solid'
-import type { SolidToolProps } from '@/sdk/solid'
+import { useToolDuration, useConversationId, useDoc, type SolidToolProps } from '@/sdk/solid'
 import { meansNone } from '../../lib/errors.ts'
 import { LiteralPlanText, Tag } from './body.solid.tsx'
 import { PlanDoc } from './refs.ts'

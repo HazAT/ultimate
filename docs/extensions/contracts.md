@@ -121,7 +121,7 @@ point and lists `provide(Point, value)` under `provides` in `web.solid.tsx`. Bot
   `<Provided point={UnderUltimate} input={{ conversation: data.ultimateId() }} />` to show every provider in order
   (`last` keeps only the last). A throwing provider shows an inline error card without hiding the others.
 
-`useProvided`, `useAllProvided` and `Provided` come from `@/sdk/parts.solid.tsx`.
+`useProvided`, `useAllProvided` and `Provided` come from `@/sdk/solid`.
 
 The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator

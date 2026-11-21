@@ -129,8 +129,7 @@ export function FeatureTag(props: { feature: string; class?: string }) {
 }
 
 /**
- * Conversation `id` as its standing agent's name, else its feature tag, else `title` or its live title, then `#id`;
- * the same parts as React's `ConversationRef`.
+ * Conversation `id` as its standing agent's name, else its feature tag, else `title` or its live title, then `#id`.
  */
 export function ConversationRef(props: { id: ConversationId; title?: string; class?: string }) {
   const overview = useDocOf(() => ROOT, OverviewDoc)

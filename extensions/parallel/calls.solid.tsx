@@ -18,9 +18,16 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { events, formatBytes, plural, runCommand, useCommands } from '@/sdk/solid'
-import type { SolidToolProps, ToolCallView } from '@/sdk/solid'
+import {
+  useToolDuration,
+  events,
+  formatBytes,
+  plural,
+  runCommand,
+  useCommands,
+  type SolidToolProps,
+  type ToolCallView,
+} from '@/sdk/solid'
 
 interface Page {
   url: string

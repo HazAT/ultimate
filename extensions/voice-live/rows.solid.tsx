@@ -22,8 +22,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { useProvided, UserText, UserView } from '@/sdk/parts.solid.tsx'
 import {
+  useProvided,
+  UserText,
+  UserView,
   cn,
   formatTime,
   plural,

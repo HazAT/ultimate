@@ -17,9 +17,19 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { Card, Fold, renderEntry } from '@/sdk/parts.solid.tsx'
-import { cn, formatTime, ROOT, switchConversation, useDocOf, useTranscript } from '@/sdk/solid'
-import type { SolidEntryProps, SolidToolProps } from '@/sdk/solid'
+import {
+  Card,
+  Fold,
+  renderEntry,
+  cn,
+  formatTime,
+  ROOT,
+  switchConversation,
+  useDocOf,
+  useTranscript,
+  type SolidEntryProps,
+  type SolidToolProps,
+} from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { NoteEntry } from '../entries/refs.ts'

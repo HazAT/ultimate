@@ -2,7 +2,7 @@
 import { Puzzle } from '@lucide/solid'
 import { Portal } from '@solidjs/web'
 import { For } from 'solid-js'
-import { errorMessage, ErrorReport, useExtensions, useSystem } from '@/sdk/solid'
+import { errorMessage, ErrorReport, useExtensions, useSystem } from '../sdk/hooks.ts'
 import { useProvided } from '../sdk/contribution.solid.tsx'
 import { ErrorCard } from './error-card.solid.tsx'
 import type { ErrorCardProps } from './error-card.solid.tsx'

@@ -29,7 +29,7 @@ import {
   useStore,
   useUiState,
   useViewport,
-} from '@/sdk/solid'
+} from '../sdk/hooks.ts'
 import { actions, layout, shellKeys } from '../sdk/actions.ts'
 import { Contribution, ContributedIcon, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, panelBadges, slotItems } from '../sdk/registry.ts'

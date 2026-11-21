@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { Conversation, Header, Panels, Sidebar, StatusLine } from '@/sdk/parts.solid.tsx'
+import { Conversation, Header, Panels, Sidebar, StatusLine } from '@/sdk/solid'
 
 export function Agent() {
   return (

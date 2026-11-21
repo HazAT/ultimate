@@ -39,7 +39,7 @@ export default defineWebExtension({
 A later facet in discovery order wins a kind. A renderer that throws shows an error card with the JSON tree below it;
 the other documents keep working. The tab reads `const extensions = useExtensions()` and looks up renderers in a memo
 with `documentItems(extensions())` from `@/sdk/solid`. It renders them with `Contribution` from
-`@/sdk/parts.solid.tsx`. Opening the tab streams every exported kind, creating missing documents with their initial
+`@/sdk/solid`. Opening the tab streams every exported kind, creating missing documents with their initial
 values, as `useDoc` does.
 
 ## The stream underneath

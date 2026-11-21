@@ -10,7 +10,7 @@ import {
   useStore,
   useSystem,
   useUiState,
-} from '@/sdk/solid'
+} from '../sdk/hooks.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { shellKeys, shownSurface } from '../sdk/actions.ts'
 import { store, uiState } from '../sdk/client.ts'

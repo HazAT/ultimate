@@ -4,16 +4,18 @@ import { createEffect, createSignal, Show } from 'solid-js'
 import { nextTurn } from '../../lib/timers.ts'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card, Fold, Provided } from '@/sdk/parts.solid.tsx'
 import {
+  Card,
+  Fold,
+  Provided,
   events,
   switchConversation,
   useConversation,
   useConversationId,
   useConversationSummary,
   useEvent,
+  type SolidEntryProps,
 } from '@/sdk/solid'
-import type { SolidEntryProps } from '@/sdk/solid'
 import { ConversationRef, ConversationTaskChip } from '../conversations/ui.solid.tsx'
 import { InstructionEntry, ReportEntry } from './refs.ts'
 import { senderAgent, sourceEvent } from './source.ts'

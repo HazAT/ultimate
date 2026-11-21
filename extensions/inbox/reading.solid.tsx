@@ -2,8 +2,16 @@
 import { ArrowLeft, ExternalLink, GitBranch } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Provided, ProvidedValue } from '@/sdk/parts.solid.tsx'
-import { cn, column, events, formatAgo, showSurface, switchConversation } from '@/sdk/solid'
+import {
+  Provided,
+  ProvidedValue,
+  cn,
+  column,
+  events,
+  formatAgo,
+  showSurface,
+  switchConversation,
+} from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { Body, MessageExtras, MessageImages } from '../messages/ui.solid.tsx'
 import { MessageQuestions } from '../questions/ui.solid.tsx'

@@ -4,7 +4,7 @@ import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
 import { createMemo, createSignal, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useCompact, useConversationId } from '@/sdk/solid'
+import { useCompact, useConversationId } from '../sdk/hooks.ts'
 import { foldKey, readFold, writeFold } from './fold-state.ts'
 
 export function useFold(card: () => string | number, always: () => boolean = () => false) {

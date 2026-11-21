@@ -15,8 +15,10 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
-import { Provided, Slot, useProvided } from '@/sdk/parts.solid.tsx'
 import {
+  Provided,
+  Slot,
+  useProvided,
   api,
   cn,
   errorMessage,

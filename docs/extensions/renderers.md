@@ -35,7 +35,7 @@ export default defineWebExtension({ tools: { grep: Grep } })
 `ToolCallView`: `id`, `name`, `args` (partial while the model streams them), `status` (`streaming`, `pending`,
 `running`, `done`, `error`, `interrupted`), `output` (streamed while running, the result's text when done), `images`
 (the result's images, such as screenshots), `details` (the tool's `details()`; cast to its shape), `diagnostics`,
-`dropped`, `startedAt`/`endedAt`, and `result`. `useToolDuration(() => props.call)` from `@/sdk/parts.solid.tsx` gives a ticking duration. `ToolImages` (or one
+`dropped`, `startedAt`/`endedAt`, and `result`. `useToolDuration(() => props.call)` from `@/sdk/solid` gives a ticking duration. `ToolImages` (or one
 `ToolImage`) from `@/components/ai/tool.solid.tsx` shows images as thumbnails that open full size; the generic card
 already does. Use `ToolHeader`'s `action` prop for a button beside the toggle, not inside it.
 

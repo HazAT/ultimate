@@ -15,9 +15,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { cn, plural, useDoc } from '@/sdk/solid'
-import type { SolidToolProps, ToolCallView } from '@/sdk/solid'
+import {
+  useToolDuration,
+  cn,
+  plural,
+  useDoc,
+  type SolidToolProps,
+  type ToolCallView,
+} from '@/sdk/solid'
 import { SummariesDoc } from './refs.ts'
 import type { CallSummary } from './refs.ts'
 

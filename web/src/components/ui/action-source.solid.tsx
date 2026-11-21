@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { dispatch } from '@ui-sdk/core'
 import type { ChangeSource } from '@ui-sdk/core'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 
 export type SourcedAction = (
   value: string,

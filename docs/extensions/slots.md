@@ -59,7 +59,7 @@ panelBadges: {
 
 Open one from code with `openPanel('info')` from `@/sdk/solid`. A panel with `tab: false` stays out of the tab row until
 something opens it (a command, a sidebar row); give it a ⌘K command. Panels show on surfaces that render `<Panels />` (from
-`@/sdk/parts.solid.tsx`), such as Agent.
+`@/sdk/solid`), such as Agent.
 
 ## Surfaces (apps)
 

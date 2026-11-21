@@ -24,8 +24,8 @@ import { ContributionError } from '../app/contribution-error.solid.tsx'
 import { isReact, isReactNode, markReact, reactBridge, solidOf } from './framework.ts'
 import type { Rendered, SolidPart } from './framework.ts'
 import { provisionsOf, slotItems } from './registry.ts'
-import { ConversationScope, ExtensionName, Transcript, useExtensions } from './solid.ts'
-import type { Point, SlotName } from './types.ts'
+import { ConversationScope, ExtensionName, Transcript, useExtensions } from './hooks.ts'
+import type { Contribution as SlotContribution, Point, SlotName } from './types.ts'
 
 type MountProps = { render: () => unknown }
 
@@ -169,6 +169,8 @@ export function Contributed(props: {
   }
   return <For each={[links()]}>{(current) => wrap(current.length - 1)}</For>
 }
+
+export type Contribution = SlotContribution
 
 /**
  * One contribution in its extension's scope, isolated: a failure shows `fallback`. Solid parts it places (`core`,

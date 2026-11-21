@@ -17,8 +17,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 })
 
 import { registry } from '../../web/src/sdk/client.ts'
-import { ExtensionName } from '../../web/src/sdk/solid.ts'
-import { Provided } from '../../web/src/sdk/parts.solid.tsx'
+import { ExtensionName, Provided } from '../../web/src/sdk/solid.ts'
 import { definePoint } from '../../web/src/sdk/types.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 

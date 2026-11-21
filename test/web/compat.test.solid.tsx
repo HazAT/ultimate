@@ -33,8 +33,7 @@ import {
 import { ContributionError } from '../../web/src/app/contribution-error.solid.tsx'
 import { loadReact, markReact } from '../../web/src/sdk/framework.ts'
 import { definePoint } from '../../web/src/sdk/types.ts'
-import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
-import { ScopedConversation } from '../../web/src/sdk/parts.solid.tsx'
+import { ConversationScope, ExtensionName, ScopedConversation } from '../../web/src/sdk/solid.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

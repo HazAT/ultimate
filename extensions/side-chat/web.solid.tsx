@@ -14,8 +14,11 @@ import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'so
 import type { JSX } from '@solidjs/web'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card, Conversation, renderEntry, ScopedConversation } from '@/sdk/parts.solid.tsx'
 import {
+  Card,
+  Conversation,
+  renderEntry,
+  ScopedConversation,
   api,
   cn,
   defineWebExtension,
