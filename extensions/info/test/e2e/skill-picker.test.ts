@@ -1,9 +1,8 @@
-import { resolve } from 'node:path'
 import { chromium } from 'playwright-core'
 import type { Page } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
-import { fauxServer, removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { prebuiltServer, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -22,9 +21,7 @@ const focusedId = (page: Page) => page.evaluate(() => document.activeElement?.id
 it('fills and focuses the composer in front, whose page the open modal made inert, and leaves it alone when a reopened picker is dismissed', async () => {
   const home = await temp('ultimate-skill-picker-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: `${home}/state`,
     port: 0,

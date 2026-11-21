@@ -2,7 +2,7 @@
 // C2. It must follow a streaming reply, let the reader scroll up and stay there, take a wheel inside a tool's output
 // without unpinning, return with the scroll button or a sent message, and keep the row the reader looks at in place
 // when earlier history arrives above it.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
@@ -10,7 +10,7 @@ import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { context } from '../../server/harness.ts'
-import { fauxServer, post, removeTemp, temp, until } from '../helpers.ts'
+import { prebuiltServer, post, removeTemp, temp, until } from '../helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -23,9 +23,7 @@ const paragraph = (n: number) =>
 it('follows, escapes, returns and keeps the read row in place while history pages in', async () => {
   const home = await temp('ultimate-transcript-scroll-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,
@@ -176,9 +174,7 @@ it('follows, escapes, returns and keeps the read row in place while history page
 it('opens every conversation at its end, cold and warm, until the reader scrolls', async () => {
   const home = await temp('ultimate-transcript-open-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,

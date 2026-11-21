@@ -4,12 +4,12 @@
 // file instead. Open the standing conversation explicitly: on bare / the enabled fallback root composer can still
 // be replaced by the shared UI's initial selection. Pick only once that conversation's paperclip is enabled.
 import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
-import { fauxServer, post, removeTemp, temp, until } from '../helpers.ts'
+import { prebuiltServer, post, removeTemp, temp, until } from '../helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -25,9 +25,7 @@ const png = Buffer.from(
 it('attaches an image picked with the paperclip and sends it', async () => {
   const home = await temp('ultimate-image-attach-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,
@@ -72,9 +70,7 @@ it('attaches an image picked with the paperclip and sends it', async () => {
 it('uploads a PDF picked with the paperclip and sends its path, not its bytes', async () => {
   const home = await temp('ultimate-file-attach-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,
