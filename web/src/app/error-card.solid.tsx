@@ -3,7 +3,7 @@ import { MessageSquareShare, TriangleAlert } from '@lucide/solid'
 import { cn } from 'cn'
 import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useSystem } from '@/sdk/solid'
+import { useSystem, writerNow, writingAs } from '@/sdk/solid'
 import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
 import { errorReport } from './error-report.ts'
 
@@ -47,17 +47,21 @@ function InlineErrorCard(props: ErrorCardProps) {
 
 function BlockErrorCard(props: ErrorCardProps) {
   const system = useSystem()
-  const send = (report: Report) =>
+  const send = (report: Report) => {
+    const who = writerNow()
     void sourceFrames(props.stack ?? '', fetchAssets(location.origin)).then((source) =>
-      report.send(
-        errorReport(system(), {
-          extension: props.extension,
-          error: props.error,
-          context: props.context ?? 'a component threw',
-          stack: source || undefined,
-        }),
+      writingAs(who, () =>
+        report.send(
+          errorReport(system(), {
+            extension: props.extension,
+            error: props.error,
+            context: props.context ?? 'a component threw',
+            stack: source || undefined,
+          }),
+        ),
       ),
     )
+  }
   return (
     <div
       class={cn(
