@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement as h, act, useContext, useEffect } from 'react'
-import { createSignal, flush } from 'solid-js'
+import { createEffect, createSignal, flush } from 'solid-js'
 import { settle } from '@ui-sdk/core/testing'
 import { expect, it, vi } from 'vitest'
 
@@ -25,6 +25,7 @@ import {
   Contributed,
   Contribution,
   Slot,
+  useAllProvided,
   useProvided,
 } from '../../web/src/sdk/contribution.solid.tsx'
 import { loadReact, markReact } from '../../web/src/sdk/framework.ts'
@@ -279,4 +280,27 @@ it('takes a facet’s framework from its file name: web.tsx parts mount through 
   expect(container.querySelector('u')?.parentElement?.className).toContain('contents')
   expect(container.querySelector('b')?.parentElement).toBe(container)
   expect(container.textContent).toBe('react itemsolid item')
+})
+
+it('leaves a React provider out of every list until its hook has reported, so a reader never sees undefined', async () => {
+  const Items = definePoint<null, string[]>('test.items')
+  await registry.setLoaders({
+    'extensions/items/web.tsx': async () => ({
+      default: { provides: [{ point: Items.point, use: () => ['react item'] }] },
+    }),
+  })
+  const seen: unknown[][] = []
+  function Reader() {
+    const all = useAllProvided(Items, () => null)
+    createEffect(all, (values) => {
+      seen.push([...values])
+    })
+    return null
+  }
+  act(() => {
+    renderSolid(() => <Reader />)
+    flush()
+  })
+  expect(seen.flat()).not.toContain(undefined)
+  expect(seen.at(-1)).toEqual([['react item']])
 })

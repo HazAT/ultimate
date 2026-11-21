@@ -372,7 +372,7 @@ function providerValue(
     return () => ('error' in outcome() ? failed : outcome().value)
   }
   const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
-  const [found, setFound] = createSignal<unknown>(undefined)
+  const [found, setFound] = createSignal<unknown>(failed)
   const root = reactBridge().root(failures ?? document.createElement('div'), {
     conversation: useContext(ConversationScope) ?? undefined,
     transcript: useContext(Transcript) ?? undefined,
