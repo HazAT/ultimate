@@ -64,7 +64,9 @@ it("folds a standing agent's landing to its @name, not the feature it carried at
 }) => {
   const other = parseConversationId(60)
   await registry.setLoaders({
-    'extensions/compact/web.solid.tsx': async () => ({ default: { compact: { when: () => true } } }),
+    'extensions/compact/web.solid.tsx': async () => ({
+      default: { compact: { when: () => true } },
+    }),
   })
   store.start()
   const stream = harness.sources.at(-1)!

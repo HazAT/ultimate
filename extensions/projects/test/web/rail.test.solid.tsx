@@ -347,7 +347,9 @@ it('gives way to another extension’s rail and to a phone', async () => {
 
   await registry.setLoaders({
     '/extensions/projects/web.solid.tsx': async () => ({ default: {} }),
-    '/extensions/fleet/web.solid.tsx': async () => ({ default: { slots: { 'shell.rail': () => null } } }),
+    '/extensions/fleet/web.solid.tsx': async () => ({
+      default: { slots: { 'shell.rail': () => null } },
+    }),
   })
   flush()
   expect(container.querySelector('nav')).toBeNull()
