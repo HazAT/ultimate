@@ -11,13 +11,13 @@ conversations it configures (see the [subagents README](../subagents/README.md))
 ## Sidebar
 
 The sidebar, its rows and the phone title bar's @ultimate button live in the [sidebar](../sidebar/README.md) extension, which
-reads this extension's overview, titles and actions. `ui.tsx` declares the points it renders for optional extensions:
+reads this extension's overview, titles and actions. `ui.solid.tsx` declares the points it renders for optional extensions:
 `ConversationPhase` (a working conversation's phase) and `ConversationTask` (the plan task a child works on).
 
 It provides the core's `ComposerPlaceholder`: an idle standing agent's composer reads "Message <title>…" by its
-definition's `title` (`standing.tsx`), in the dock, the full view and on a phone alike; @ultimate's
+definition's `title` (`standing.solid.tsx`), in the dock, the full view and on a phone alike; @ultimate's
 keeps the core's text. It also provides `EmptyTranscript`: before its first message, a standing agent's transcript shows
-its mark, title and `@name` (`standing.tsx`) instead of the core's card of repo, model and host.
+its mark, title and `@name` (`standing.solid.tsx`) instead of the core's card of repo, model and host.
 
 ## Server facet
 
@@ -184,8 +184,8 @@ footer names the project file to edit. Two actions back it:
 - `summaryModel` → `{ value, source: 'default' | 'user' | 'project', default, path? }`; `path` is the project file
   when it decides the value.
 - `setSummaryModel {value}`: a `provider/id[:thinking]` string, or `null` to remove it; returns the new effective
-  setting. It refuses while a project setting applies. Writes reuse onboarding's atomic settings writer
-  (`extensions/onboarding/settings.ts`).
+  setting. It refuses while a project setting applies. Writes go through the atomic settings writer
+  (`lib/settings.ts`).
 
 `summary-model-ref.ts` parses the value without node imports, so the web facet shares it: only a recognized final
 thinking level is stripped, so model ids may contain colons (`x-ai/grok-4.3:batch:high`).

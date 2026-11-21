@@ -7,7 +7,7 @@ ephemeral bus and the readiness events.
 
 For "this happened" that other extensions act on or people read later, use a durable event. Define its token once
 with `defineEvent<Data>('<extension>.<event>', { version? })` from `shared/events.ts` in the emitter's `refs.ts`, so
-the browser can use it too, and re-export it from `api.ts` (for server code) and `ui.tsx` (for other extensions'
+the browser can use it too, and re-export it from `api.ts` (for server code) and `ui.solid.tsx` (for other extensions'
 browser code). The names an extension's `api.ts` and `refs.ts` define are listed in its `ExtensionInfo.events`, so a
 wait on any other name fails at once. `{ fails: '<event>' }` marks an event that rules another one out
 (`workspaces.landing-failed` fails `workspaces.landed`): a wait on that one ends with it. Then:

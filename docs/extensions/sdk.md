@@ -17,8 +17,8 @@ export default defineWebExtension({ slots: { 'statusline.left': Status } })
 ```
 
 Use `@/components/ui/<name>.solid.tsx` for controls, `@/components/markdown/markdown.solid.tsx` for Markdown,
-`@/components/json-tree.solid.tsx` for JSON and `@lucide/solid` for icons. Other SDK paths are internal. For existing
-React facets outside the repository, see [React compatibility](react-compat.md).
+`@/components/json-tree.solid.tsx` for JSON and `@lucide/solid` for icons. Other SDK paths are internal. For React
+facets outside the repository, see [React compatibility](react-compat.md).
 
 Never call `fetch` or open an `EventSource` to reach Ultimate (`ultimate/no-raw-stream`). The SDK keeps one live stream
 per tab, carrying subscriptions for the shown conversation and any others watched with `useDocOf`. Call server code

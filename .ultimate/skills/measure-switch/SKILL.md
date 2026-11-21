@@ -49,7 +49,7 @@ node .ultimate/skills/measure-switch/profile-summary.ts ~/switch-perf/a.cpuprofi
 - `settledMs` and `longMs` are the user-facing numbers; `eventKb` shows what the server sends. A tab keeps one event
   stream and a switch only resubscribes on it, so `streams` (new streams during the switch) should stay 0.
 - **What each server event costs while a turn streams or branches work:** `renders.ts` counts per event the main-thread
-  time until the next task, the React components rendered, and which components started those renders (`owners`):
+  time until the next task and the DOM mutations in the transcript during that window:
 
   ```bash
   node .ultimate/skills/measure-switch/renders.ts $URL <id> --seconds 45          # watch: the live host, read-only
@@ -57,8 +57,8 @@ node .ultimate/skills/measure-switch/profile-summary.ts ~/switch-perf/a.cpuprofi
   ```
 
   A paused copy streams nothing, so watch the live host (the page only reads) or send a prompt on a fresh preview.
-  An owner near the top of the tree (`App`, a sidebar `Tree`) re-rendering on every `ops` event means a hook there
-  reads a whole object (`useConversation()`, `state.docsOf`) where a selector of the one field it uses would do.
+  Many mutations on every `ops` event are a reason to look for a part that rebuilds DOM where a keyed list or a
+  narrower read would only update what changed; `--profile` shows which functions the time went to.
 
 - Compare before and after in one session, on one instance home: run main, stop, apply the change, start again on the
   same home. Numbers drift between sessions with machine load; repeat runs and compare medians.

@@ -151,7 +151,7 @@ Failed submissions leave no root note; notes never wake the root.
 
 What lands is named once, at submit: the queue entry keeps the submitter's `subject` (title, summary and feature)
 from the `conversations` service's `subject(id)`, so a later retitle does not rename it. The result, the lander log's
-first lines and outcome, and the root note carry that snapshot. `landing.tsx` renders it the same everywhere: the
+first lines and outcome, and the root note carry that snapshot. `landing.solid.tsx` renders it the same everywhere: the
 `LandingCard` (feature tag, title, summary, then the outcome) is the lander log's outcome, the submitter's report and
 the root's landing note; its one-line `Subject` heads each submission in the lander log and the submit card, and the
 lander's sidebar row shows the feature it lands or landed last.

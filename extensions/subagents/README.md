@@ -109,10 +109,10 @@ it leads them instead: it starts every one in parallel and returns one merged ve
 
 ### Editing definitions
 
-The right panel's **Agents** tab (`overview.tsx`) lists every definition under the model family it runs on (each family
+The right panel's **Agents** tab (`overview.solid.tsx`) lists every definition under the model family it runs on (each family
 line edits its model, thinking and caps in place; see "Model families" in the models README), then those that pin a
 model, then invalid files with their errors. A definition's **move** menu puts it on another family. Clicking one, or
-New, opens its config view (`definitions.tsx`): description, model, thinking, tools, isolate, standing agent, automatic
+New, opens its config view (`definitions.solid.tsx`): description, model, thinking, tools, isolate, standing agent, automatic
 summaries, and the instructions with a preview. Save validates as discovery reads and writes nothing when that fails.
 Built-ins are never written: saving one writes an override to the project's `.ultimate/agents/` (only once the
 project's setup is local) or `~/.ultimate/agents/`; deleting an override restores what it shadowed. Over a definition

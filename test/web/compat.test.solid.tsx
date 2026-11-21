@@ -327,7 +327,7 @@ it('says a failing web.tsx part broke on the compat layer of a Solid core, and l
     flush()
   })
   const note = container.querySelector('[data-react-compat]')
-  expect(note?.textContent).toContain("Ultimate's core is Solid now")
+  expect(note?.textContent).toContain("Ultimate's core is Solid;")
   expect(note?.querySelector('a')?.getAttribute('href')).toMatch(
     /docs\/extensions\/react-compat\.md$/,
   )
