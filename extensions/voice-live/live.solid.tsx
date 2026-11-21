@@ -1,9 +1,11 @@
+/** @jsxImportSource @solidjs/web */
+import { createRoot, createSignal } from 'solid-js'
 import { deadline, every } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
-import { api, errorMessage, events } from '@/sdk'
-import type { ActionRef } from '@/sdk'
-import { playNotes, voiceQuestions } from '../sounds/ui.tsx'
-import type { Note } from '../sounds/ui.tsx'
+import { api, errorMessage, events } from '@/sdk/solid'
+import type { ActionRef } from '../../shared/extension-api.ts'
+import { playNotes, voiceQuestions } from '../sounds/ui.solid.tsx'
+import type { Note } from '../sounds/ui.solid.tsx'
 import { StatusAction } from './refs.ts'
 import type { VoiceStatus } from './refs.ts'
 import { IDLE_MS } from './relay.ts'
@@ -32,7 +34,8 @@ let startupSpeech: { text: string; entry?: number }[] = []
 let cancelled = false
 let closeInFlight: Promise<void> | undefined
 let stopTicking: Cancel | undefined
-const listeners = new Set<() => void>()
+const [mode, setMode] = createRoot(() => createSignal(pageMode))
+export { mode }
 
 const alwaysOnCues: Record<'ready' | 'paused' | 'ended' | 'failed', Note[]> = {
   ready: [
@@ -124,12 +127,7 @@ function publishMode(next: Partial<VoiceMode>, failed = false) {
   voiceQuestions(pageMode.phase !== 'off')
 
   if (cue) playNotes(cue, 0.08).catch((error: unknown) => console.warn('Voice cue failed', error))
-  for (const listener of listeners) listener()
-}
-
-export const subscribe = (listener: () => void) => {
-  listeners.add(listener)
-  return () => void listeners.delete(listener)
+  setMode(pageMode)
 }
 export const voiceMode = () => pageMode
 export const setFront = (front: boolean) => publishMode({ front })
