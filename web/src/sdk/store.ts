@@ -89,7 +89,7 @@ const names = [
 const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
 type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
 type Spec = { conversation?: ConversationId; docs: string[]; view: boolean }
-type Refused = (status: number, neverOpened: boolean) => void
+type Refused = (status: number) => void
 
 type DocChange = ServerEvents['doc'] | ServerEvents['docOps']
 interface Wanted {
@@ -139,6 +139,7 @@ export function createStore(options: StoreOptions = {}) {
   let cancelRetry: Cancel | undefined
   let cancelReconcile: Cancel | undefined
   let cancelResubscribe: Cancel | undefined
+  let cancelCloseRetry: Cancel | undefined
   let flushQueued = false
   let noticeId = 0
   let stopped = true
@@ -283,29 +284,39 @@ export function createStore(options: StoreOptions = {}) {
     const opens = new Map(opening)
     const closes = [...closing]
     opening.clear()
+    closing.clear()
     if (stream === undefined || (!opens.size && !closes.length)) return
     const batch: SubscriptionsRequest = {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
       unsubscribe: closes,
     }
-    const everyOpenFailed = (status: number) =>
-      [...opens.keys()].map((sub) => [sub, status, false] as const)
+    const unanswered = (status: number) => ({
+      refused: Object.fromEntries([...opens.keys()].map((sub) => [sub, status])),
+      confirmed: false,
+    })
     void request(`/api/events/${stream}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(batch),
     })
       .then(async (response) => {
-        if (!response.ok) return everyOpenFailed(response.status)
-        const { refused } = (await response.json()) as SubscriptionsAnswer
-        if (streamId === stream) for (const sub of closes) closing.delete(sub)
-        return Object.entries(refused).map(([sub, status]) => [Number(sub), status, true] as const)
+        if (!response.ok) return unanswered(response.status)
+        const { refused } = (await response.json()) as Partial<SubscriptionsAnswer>
+        if (typeof refused !== 'object' || refused === null) return unanswered(0)
+        return { refused, confirmed: true }
       })
-      .catch(() => everyOpenFailed(0))
-      .then((failures) => {
-        if (streamId === stream)
-          for (const [sub, status, neverOpened] of failures)
-            opens.get(sub)?.failed(status, neverOpened)
+      .catch(() => unanswered(0))
+      .then(({ refused, confirmed }) => {
+        if (streamId !== stream) return
+        if (confirmed) for (const sub of Object.keys(refused)) handlers.delete(Number(sub))
+        else if (closes.length) {
+          for (const sub of closes) closing.add(sub)
+          cancelCloseRetry ??= retryAfter(options.retryMs ?? 1000, () => {
+            cancelCloseRetry = undefined
+            scheduleFlush()
+          })
+        }
+        for (const [sub, status] of Object.entries(refused)) opens.get(Number(sub))?.failed(status)
       })
   }
 
@@ -362,11 +373,10 @@ export function createStore(options: StoreOptions = {}) {
     return result
   }
 
-  function refusedOpen(key: string, sub: number, status: number, neverOpened: boolean) {
+  function refusedOpen(key: string, sub: number, status: number) {
     if (live.get(key) !== sub || status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return
     live.delete(key)
-    if (neverOpened) handlers.delete(sub)
-    else unsubscribe(sub)
+    unsubscribe(sub)
     const requestedConversationNeverOpened =
       key === `${shownKey()}:view` && status === 404 && state.requested !== undefined && !state.view
     if (requestedConversationNeverOpened) {
@@ -402,9 +412,7 @@ export function createStore(options: StoreOptions = {}) {
     if (streamId !== undefined)
       for (const [key, { spec, handler }] of want)
         if (!live.has(key)) {
-          const sub: number = subscribe(spec, handler, (status, neverOpened) =>
-            refusedOpen(key, sub, status, neverOpened),
-          )
+          const sub: number = subscribe(spec, handler, (status) => refusedOpen(key, sub, status))
           live.set(key, sub)
         }
     const keep = <T>(record: Readonly<Record<string, T>>, has: (key: string) => boolean) =>
@@ -459,6 +467,8 @@ export function createStore(options: StoreOptions = {}) {
           handlers.clear()
           opening.clear()
           closing.clear()
+          cancelCloseRetry?.()
+          cancelCloseRetry = undefined
           live.clear()
           reconcile()
           flush()
@@ -501,10 +511,14 @@ export function createStore(options: StoreOptions = {}) {
       cancelReconcile = undefined
       cancelResubscribe?.()
       cancelResubscribe = undefined
+      cancelCloseRetry?.()
+      cancelCloseRetry = undefined
 
-      for (const sub of live.values()) unsubscribe(sub)
-      live.clear()
       streamId = undefined
+      handlers.clear()
+      opening.clear()
+      closing.clear()
+      live.clear()
       multiplexedEventSource?.close()
       multiplexedEventSource = undefined
     },

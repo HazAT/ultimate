@@ -1021,9 +1021,11 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
       ]),
     ).toEqual({ status: 200, data: { ok: true, refused: { 8: 404 } } })
     expect((await batch([], [6])).status).toBe(200)
-    // A close that overtakes its open wins.
+    // A close that overtakes its open wins, once: the open consumes it, and a resent close of a closed one is harmless.
     expect((await batch([], [7])).status).toBe(200)
     expect((await batch([{ sub: 7, ...docs }])).status).toBe(200)
+    expect((await batch([], [6])).status).toBe(200)
+    expect((await batch([{ sub: 9, ...docs }], [9])).status).toBe(200)
     expect((await batch([], [1], crypto.randomUUID())).status).toBe(410)
     const of = (name: string) =>
       stream.events.filter((event) => event.name === name).map((event) => event.sub)

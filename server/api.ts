@@ -401,7 +401,7 @@ export async function createApi(
     }
     if (
       connection.ended ||
-      connection.closedBeforeOpen.has(streamUniqueId) ||
+      connection.closedBeforeOpen.delete(streamUniqueId) ||
       connection.subscriptions.has(streamUniqueId)
     ) {
       await stop()

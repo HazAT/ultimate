@@ -331,6 +331,58 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('sends a lost close again by itself, also after an answer of the wrong shape', async () => {
+    const { store, server, latest, fetch } = setup(1000)
+    latest().open()
+    const release = store.watchDoc('test.counter')
+    await tick()
+    const counter = server.of(undefined, false)!
+    fetch.mockImplementationOnce(async () => {
+      throw new Error('offline')
+    })
+    fetch.mockImplementationOnce(async () => Response.json({}))
+    release()
+    await tick()
+    expect(counter.closed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(counter.closed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(counter.closed).toBe(true)
+    store.stop()
+  })
+
+  it('falls back to the root without closing what the server refused alongside the view', async () => {
+    const { store, server, latest, fetch, onFallback } = setup()
+    latest().open()
+    store.watchDoc('test.counter')
+    await tick()
+    server.refuse(7, 404)
+    store.show(7 as ConversationId)
+    await tick()
+    await tick()
+    expect(onFallback).toHaveBeenCalledOnce()
+    const batches = fetch.mock.calls
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .map(
+        ([, init]) =>
+          JSON.parse(init?.body as string) as {
+            subscribe: { sub: number; conversation?: number }[]
+            unsubscribe: number[]
+          },
+      )
+    const refused = batches.flatMap((batch) =>
+      batch.subscribe.filter((open) => open.conversation === 7).map((open) => open.sub),
+    )
+    expect(refused).toHaveLength(2)
+    expect(
+      batches.flatMap((batch) => batch.unsubscribe).filter((sub) => refused.includes(sub)),
+    ).toEqual([])
+    expect(
+      server.subscriptions.filter((item) => !item.closed).map((item) => item.conversation),
+    ).toEqual([undefined, undefined])
+    store.stop()
+  })
+
   it('does not ask the server to close a subscription it refused', async () => {
     const { store, server, latest, fetch } = setup()
     latest().open()
