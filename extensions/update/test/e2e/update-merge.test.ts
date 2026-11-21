@@ -1,4 +1,4 @@
-import { mkdir, realpath, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterAll, expect, it } from 'vitest'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -6,7 +6,8 @@ import { git } from '../../../../lib/git.ts'
 import { context } from '../../../../server/harness.ts'
 import { Standing } from '../../../subagents/api.ts'
 import { Workspaces } from '../../../workspaces/workspaces.ts'
-import { fauxServer, post, sourceCopy, temp } from '../../../../test/helpers.ts'
+import { eventHost, fauxServer, post, sourceCopy, temp } from '../../../../test/helpers.ts'
+import { Applied } from '../../refs.ts'
 
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 afterAll(async () => {
@@ -104,4 +105,34 @@ it.concurrent('offers no merge where the clone is not the project', async () => 
   expect(state.data.result.merge).toBeUndefined()
   const merge = await post(server, '/api/extensions/update/actions/merge', {})
   expect(merge.status).not.toBe(200)
+})
+
+// A restart-after-update automation fired on every update: its where-filter cannot read the nested layers.
+it.concurrent('says in update.applied whether the update changed the core', async () => {
+  const home = await temp()
+  const root = await sourceCopy(home)
+  await git(root, 'init', '-q', '-b', 'main')
+  await git(root, 'add', '-A')
+  await commit(root, '-m', 'base')
+  const upstream = join(home, 'upstream.git')
+  await git(home, 'clone', '-q', '--bare', root, upstream)
+  await git(root, 'remote', 'add', 'origin', upstream)
+  await writeFile(join(root, 'server/added.ts'), 'export {}\n')
+  await git(root, 'add', '-A')
+  await commit(root, '-m', 'core')
+  await git(root, 'push', '-q', 'origin', 'HEAD:main')
+  await git(root, 'reset', '-q', '--hard', 'HEAD~1')
+  await git(root, 'fetch', '-q', 'origin')
+  await git(root, 'branch', '-q', '--set-upstream-to', 'origin/main')
+  await git(root, 'remote', 'set-head', 'origin', 'main')
+  await rm(join(root, 'node_modules/.pnpm'))
+  await mkdir(join(root, 'node_modules/.pnpm'))
+  await copyFile(join(root, 'pnpm-lock.yaml'), join(root, 'node_modules/.pnpm/lock.yaml'))
+  const server = await serve(home, root, root)
+  const updated = await post(server, '/api/extensions/update/actions/update', {})
+  expect(updated.data.result).toMatchObject({ ok: true, commits: 1 })
+  const [applied] = await eventHost(() => server.harness, 'test').eventLog.recent({
+    events: [Applied],
+  })
+  expect(applied.data).toMatchObject({ needsRestart: true, layers: { core: true } })
 })
