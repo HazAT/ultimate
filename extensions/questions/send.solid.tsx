@@ -107,6 +107,7 @@ export function SendButton(props: {
         if (x < box.left || x > box.right || y < box.top || y > box.bottom) stop()
       }}
       onPointerUp={stop}
+      onPointerLeave={stop}
       onPointerCancel={stop}
       onContextMenu={(event) => event.preventDefault()}
       onClick={(event, details) => {
