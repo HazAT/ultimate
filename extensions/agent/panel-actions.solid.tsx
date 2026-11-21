@@ -30,15 +30,15 @@ export function PanelActions() {
           {(panel) => {
             const shown = () => open() && panel().id === active()?.id
             return (
-              <Tooltip type="description">
+              <Tooltip delay={400}>
                 <TooltipTrigger
+                  aria-label={panel().title}
+                  onClick={() => (shown() ? closePanel() : openPanel(panel().id))}
                   render={(trigger) => (
                     <Button
                       {...trigger}
-                      aria-label={panel().title}
                       aria-pressed={shown() ? 'true' : 'false'}
                       class={cn(action, shown() && 'bg-accent text-foreground')}
-                      onClick={() => (shown() ? closePanel() : openPanel(panel().id))}
                       size={null}
                       variant={null}
                     />

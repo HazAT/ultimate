@@ -69,18 +69,18 @@ export function Wordmark(props: { onClick?: () => void; label?: string }) {
       }
     >
       {(click) => (
-        <Tooltip type="description">
+        <Tooltip delay={400}>
           <TooltipTrigger
+            aria-label={props.label}
+            onClick={() => click()()}
             render={(trigger) => (
               <Button
                 {...trigger}
-                aria-label={props.label}
                 class={cn(
                   wordmark,
                   'h-6 px-1.5 transition-colors outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring',
                 )}
                 data-ui="wordmark"
-                onClick={() => click()()}
                 size={null}
                 variant={null}
               />
@@ -185,7 +185,8 @@ function SurfaceItems() {
       <For each={surfaces()} keyed={(surface) => `${surface.extension}:${surface.id}`}>
         {(surface, index) => {
           const active = () => surface().id === shown()
-          const tab = (trigger: Record<string, unknown> = {}) => (
+          const show = () => actions.showSurface(surface().id)
+          const tab = (trigger: Record<string, unknown> = { onClick: show }) => (
             <Button
               {...trigger}
               aria-current={active() ? 'page' : undefined}
@@ -195,7 +196,6 @@ function SurfaceItems() {
               )}
               data-selected={active() || undefined}
               data-surface={surface().id}
-              onClick={() => actions.showSurface(surface().id)}
               size={null}
               variant={null}
             >
@@ -219,8 +219,8 @@ function SurfaceItems() {
           )
           return (
             <Show when={index() < 9} fallback={tab()}>
-              <Tooltip type="description">
-                <TooltipTrigger render={(trigger) => tab(trigger)} />
+              <Tooltip delay={400}>
+                <TooltipTrigger onClick={show} render={(trigger) => tab(trigger)} />
                 <TooltipContent class="flex items-center gap-2">
                   {surface().description ?? surface().title}
                   <Shortcut keys={`mod+${index() + 1}`} />

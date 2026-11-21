@@ -333,12 +333,11 @@ function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
           {(panel) => {
             const active = () => panel().id === props.active.id
             const iconOnly = () => fit().compact && panel().icon !== undefined && !active()
-            const button = (trigger: Record<string, unknown> = {}) => (
+            const open = () => openPanel(panel().id)
+            const button = (trigger: Record<string, unknown> = { onClick: open }) => (
               <Button
                 {...trigger}
-                aria-label={iconOnly() ? panel().title : undefined}
                 class={cn(tab, tabButton, active() && 'bg-accent text-foreground')}
-                onClick={() => openPanel(panel().id)}
                 size={null}
                 variant={null}
               >
@@ -349,8 +348,12 @@ function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
             )
             return (
               <Show when={iconOnly()} fallback={button()}>
-                <Tooltip type="description">
-                  <TooltipTrigger render={(trigger) => button(trigger)} />
+                <Tooltip delay={400}>
+                  <TooltipTrigger
+                    aria-label={panel().title}
+                    onClick={open}
+                    render={(trigger) => button(trigger)}
+                  />
                   <TooltipContent side="bottom">{panel().title}</TooltipContent>
                 </Tooltip>
               </Show>

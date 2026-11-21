@@ -28,6 +28,7 @@ vi.stubGlobal('matchMedia', () => ({
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { App } from '../../web/src/app/App.solid.tsx'
+import { IconButton } from '../../web/src/app/header.solid.tsx'
 import { CommandPalette } from '../../web/src/app/palette.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
 import { island } from '../../web/src/sdk/island.tsx'
@@ -97,6 +98,33 @@ it('shows Agent with a warning when a surface throws, and mounts a React surface
     'The Broken surface (broken) failed, so Agent shows: surface broke',
   )
   expect(store.getState().ui.surface).toEqual({ id: 'agent', title: 'Agent' })
+})
+
+it('opens a shell tooltip after 400 ms of hover and closes it when its trigger is pressed', async () => {
+  const pressed = vi.fn<() => void>()
+  const container = renderSolid(() => (
+    <IconButton label="Toggle drawer" onClick={pressed}>
+      i
+    </IconButton>
+  ))
+  const button = container.querySelector('button')!
+  const tip = document.getElementById(button.getAttribute('aria-describedby')!)!
+  vi.useFakeTimers()
+  for (const type of ['pointerover', 'pointerenter', 'pointermove'])
+    button.dispatchEvent(
+      new PointerEvent(type, { bubbles: type !== 'pointerenter', pointerType: 'mouse' }),
+    )
+  await vi.advanceTimersByTimeAsync(300)
+  expect(tip.hidden).toBe(true)
+  await vi.advanceTimersByTimeAsync(150)
+  expect(tip.hidden).toBe(false)
+  for (const type of ['pointerdown', 'pointerup'])
+    button.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse' }))
+  button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))
+  await vi.advanceTimersByTimeAsync(400)
+  vi.useRealTimers()
+  expect(pressed).toHaveBeenCalledOnce()
+  expect(tip.hidden).toBe(true)
 })
 
 it("renders the React Header's children inside the Solid header with React context intact", () => {

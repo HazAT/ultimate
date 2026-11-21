@@ -30,17 +30,17 @@ export function IconButton(props: {
   active?: boolean
 }) {
   return (
-    <Tooltip type="description">
+    <Tooltip delay={400}>
       <TooltipTrigger
+        aria-label={props.label}
+        onClick={() => props.onClick()}
         render={(trigger) => (
           <Button
             {...trigger}
-            aria-label={props.label}
             class={cn(
               'size-7 text-muted-foreground hover:text-foreground pointer-coarse:size-9',
               props.active && 'text-foreground',
             )}
-            onClick={() => props.onClick()}
             size="icon"
             variant="ghost"
           />
