@@ -11,6 +11,8 @@ import type {
   Notice,
   ServerEvents,
   StreamedView,
+  SubscriptionsAnswer,
+  SubscriptionsRequest,
   SystemInfo,
 } from '../../../shared/protocol.ts'
 
@@ -87,6 +89,7 @@ const names = [
 const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
 type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
 type Spec = { conversation?: ConversationId; docs: string[]; view: boolean }
+type Refused = (status: number, neverOpened: boolean) => void
 
 type DocChange = ServerEvents['doc'] | ServerEvents['docOps']
 interface Wanted {
@@ -130,8 +133,8 @@ export function createStore(options: StoreOptions = {}) {
   const handlers = new Map<number, Handler>()
   let nextSub = 0
   const live = new Map<string, number>()
-  const opening = new Map<number, { spec: Spec; failed: (status: number) => void }>()
-  const closing: number[] = []
+  const opening = new Map<number, { spec: Spec; failed: Refused }>()
+  const closing = new Set<number>()
   let opened = false
   let cancelRetry: Cancel | undefined
   let cancelReconcile: Cancel | undefined
@@ -251,7 +254,7 @@ export function createStore(options: StoreOptions = {}) {
     set({ view, restored: false })
   }
 
-  function subscribe(spec: Spec, handler: Handler, failed: (status: number) => void) {
+  function subscribe(spec: Spec, handler: Handler, failed: Refused) {
     const sub = ++nextSub
     handlers.set(sub, handler)
     if (streamId === undefined) return sub
@@ -259,11 +262,14 @@ export function createStore(options: StoreOptions = {}) {
     scheduleFlush()
     return sub
   }
+  function retire(sub: number) {
+    if (!handlers.delete(sub) || streamId === undefined) return false
+    if (opening.delete(sub)) return false
+    closing.add(sub)
+    return true
+  }
   function unsubscribe(sub: number) {
-    if (!handlers.delete(sub) || streamId === undefined) return
-    if (opening.delete(sub)) return
-    closing.push(sub)
-    scheduleFlush()
+    if (retire(sub)) scheduleFlush()
   }
   function scheduleFlush() {
     if (flushQueued) return
@@ -275,27 +281,31 @@ export function createStore(options: StoreOptions = {}) {
     flushQueued = false
     const stream = streamId
     const opens = new Map(opening)
-    const closes = closing.splice(0)
+    const closes = [...closing]
     opening.clear()
     if (stream === undefined || (!opens.size && !closes.length)) return
-    const everyOpenFailed = (status: number) => [...opens.keys()].map((sub) => [sub, status])
+    const batch: SubscriptionsRequest = {
+      subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
+      unsubscribe: closes,
+    }
+    const everyOpenFailed = (status: number) =>
+      [...opens.keys()].map((sub) => [sub, status, false] as const)
     void request(`/api/events/${stream}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
-        unsubscribe: closes,
-      }),
+      body: JSON.stringify(batch),
     })
       .then(async (response) => {
         if (!response.ok) return everyOpenFailed(response.status)
-        const { refused = {} } = (await response.json()) as { refused?: Record<number, number> }
-        return Object.entries(refused).map(([sub, status]) => [Number(sub), status])
+        const { refused } = (await response.json()) as SubscriptionsAnswer
+        if (streamId === stream) for (const sub of closes) closing.delete(sub)
+        return Object.entries(refused).map(([sub, status]) => [Number(sub), status, true] as const)
       })
       .catch(() => everyOpenFailed(0))
       .then((failures) => {
         if (streamId === stream)
-          for (const [sub, status] of failures) opens.get(sub)?.failed(status)
+          for (const [sub, status, neverOpened] of failures)
+            opens.get(sub)?.failed(status, neverOpened)
       })
   }
 
@@ -352,14 +362,15 @@ export function createStore(options: StoreOptions = {}) {
     return result
   }
 
-  function refusedOpen(key: string, sub: number, status: number) {
+  function refusedOpen(key: string, sub: number, status: number, neverOpened: boolean) {
     if (live.get(key) !== sub || status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return
     live.delete(key)
-    unsubscribe(sub)
+    if (neverOpened) handlers.delete(sub)
+    else unsubscribe(sub)
     const requestedConversationNeverOpened =
       key === `${shownKey()}:view` && status === 404 && state.requested !== undefined && !state.view
     if (requestedConversationNeverOpened) {
-      closeShown()
+      retireShownUntilReconcile()
       set({ requested: undefined, docs: {} })
       options.onFallback?.()
       reconcile()
@@ -369,11 +380,11 @@ export function createStore(options: StoreOptions = {}) {
         reconcile()
       })
   }
-  function closeShown() {
+  function retireShownUntilReconcile() {
     for (const [key, sub] of live)
       if (key.startsWith('shown:')) {
         live.delete(key)
-        unsubscribe(sub)
+        retire(sub)
       }
   }
 
@@ -385,12 +396,15 @@ export function createStore(options: StoreOptions = {}) {
     for (const [key, sub] of live)
       if (!want.has(key)) {
         live.delete(key)
-        unsubscribe(sub)
+        retire(sub)
       }
+    if (closing.size) scheduleFlush()
     if (streamId !== undefined)
       for (const [key, { spec, handler }] of want)
         if (!live.has(key)) {
-          const sub: number = subscribe(spec, handler, (status) => refusedOpen(key, sub, status))
+          const sub: number = subscribe(spec, handler, (status, neverOpened) =>
+            refusedOpen(key, sub, status, neverOpened),
+          )
           live.set(key, sub)
         }
     const keep = <T>(record: Readonly<Record<string, T>>, has: (key: string) => boolean) =>
@@ -444,7 +458,7 @@ export function createStore(options: StoreOptions = {}) {
           streamId = (JSON.parse(raw) as ServerEvents['stream']).id
           handlers.clear()
           opening.clear()
-          closing.length = 0
+          closing.clear()
           live.clear()
           reconcile()
           flush()
@@ -497,7 +511,7 @@ export function createStore(options: StoreOptions = {}) {
 
     show(id: ConversationId | undefined) {
       if (id === state.requested) return
-      closeShown()
+      retireShownUntilReconcile()
       const kept = id === undefined ? undefined : recentViewsWithRawSnapshots.get(id)?.view
       set({
         requested: id,

@@ -853,25 +853,64 @@ export default host => { host.resource('cleanup.process',()=>{
     const stream = await attach(server)
     const created = (await post(server, '/api/conversations', { title: 'Another' })).data
       .id as ConversationId
-    server.host.faux!.setResponses([fauxAssistantMessage('Done')])
+    server.host.faux!.setResponses([held])
     await post(server, `/api/conversations/${created}/submit`, { text: 'work' })
-    await server.harness.waitForIdle(context)
-    await until(() => stream.conversations().some((item) => item.id === created))
-    const fresh = await attach(server)
-    try {
-      const sent = (name: string) => stream.events.filter((event) => event.name === name).length
-      expect([sent('conversations'), sent('tasks')]).toEqual([1, 1])
-      expect(sent('conversationsOps')).toBeGreaterThan(0)
-      await until(
-        () =>
-          JSON.stringify(stream.conversations()) === JSON.stringify(fresh.conversations()) &&
-          JSON.stringify(stream.tasks()) === JSON.stringify(fresh.tasks()),
-      )
-      expect(stream.conversations()).toEqual(server.api.conversations())
-    } finally {
-      await fresh.close()
-      await stream.close()
+    const busy = () => stream.conversations().find((item) => item.id === created)?.busy
+    const running = () =>
+      Object.values(stream.tasks().tasks).some((task) => task.conversationId === created)
+    const sameAsFresh = async () => {
+      const fresh = await attach(server)
+      try {
+        await until(
+          () =>
+            JSON.stringify(stream.conversations()) === JSON.stringify(fresh.conversations()) &&
+            JSON.stringify(stream.tasks()) === JSON.stringify(fresh.tasks()),
+        )
+      } finally {
+        await fresh.close()
+      }
     }
+    // While the turn runs: the task and the busy flag arrived as ops on the first stream.
+    await until(() => busy() === true && running())
+    await sameAsFresh()
+    await post(server, `/api/conversations/${created}/abort`)
+    await server.harness.waitForIdle(context)
+    await until(() => busy() === false && !running())
+    await sameAsFresh()
+    const sent = (name: string) => stream.events.filter((event) => event.name === name).length
+    expect([sent('conversations'), sent('tasks')]).toEqual([1, 1])
+    expect(sent('conversationsOps')).toBeGreaterThan(0)
+    expect(sent('tasksOps')).toBeGreaterThan(0)
+    expect(stream.conversations()).toEqual(server.api.conversations())
+    await stream.close()
+  })
+  it('refuses only the subscription whose document fails to open, and opens its siblings', async () => {
+    const { server } = await fixture(true)
+    const stream = await attach(server, { view: false })
+    const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
+    const doc = server.extensions.doc.bind(server.extensions)
+    vi.spyOn(server.extensions, 'doc').mockImplementation((kind) => {
+      if (kind === 'test.counter') throw new Error('broken')
+      return doc(kind)
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const response = await fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url },
+      body: JSON.stringify({
+        subscribe: [
+          { sub: 5, docs: ['test.counter'], view: false },
+          { sub: 6, docs: [], view: true },
+        ],
+        unsubscribe: [],
+      }),
+    })
+    expect({ status: response.status, data: await response.json() }).toEqual({
+      status: 200,
+      data: { ok: true, refused: { 5: 500 } },
+    })
+    await until(() => stream.events.some((event) => event.name === 'view' && event.sub === 6))
+    await stream.close()
   })
   it('serves published titles and activity to clients and server facets without deriving entries', async () => {
     const { server } = await fixture(false, {

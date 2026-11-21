@@ -14,6 +14,8 @@ import type {
   ServerEvents,
   ConversationSummary,
   ConfigureRequest,
+  SubscriptionsAnswer,
+  SubscriptionsRequest,
   UiOp,
 } from '../shared/protocol.ts'
 import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
@@ -456,7 +458,7 @@ export async function createApi(
         if (subscription && request.method === 'POST') {
           const connection = connections.get(subscription[1])
           if (!connection) throw new HttpError(410, 'Event stream ended')
-          const data = await body(request)
+          const data: Partial<Record<keyof SubscriptionsRequest, unknown>> = await body(request)
           const opens = data.subscribe ?? []
           const closes = data.unsubscribe ?? []
           if (
@@ -487,12 +489,13 @@ export async function createApi(
           await Promise.all(
             specs.map(({ sub, conversation, docs, view }) =>
               subscribe(connection, sub, conversation, docs, view).catch((error: unknown) => {
-                if (!(error instanceof HttpError)) throw error
-                refused[sub] = error.status
+                if (!(error instanceof HttpError))
+                  console.error(`Subscribing to conversation ${conversation} failed:`, error)
+                refused[sub] = error instanceof HttpError ? error.status : 500
               }),
             ),
           )
-          json(200, { ok: true, refused })
+          json(200, { ok: true, refused } satisfies SubscriptionsAnswer)
           return true
         }
         const history = /^\/api\/conversations\/(\d+)\/history$/.exec(url.pathname)

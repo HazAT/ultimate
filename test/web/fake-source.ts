@@ -84,7 +84,9 @@ export function fakeSubscriptions(sources: FakeSource[]) {
             kind === undefined
               ? open.findLast((item) => item.view)
               : open.findLast((item) => item.docs.includes(kind))
-          ;(target ?? newest).send(name, data)
+          if (!target)
+            throw new Error(`No open subscription of ${conversation} carries ${kind ?? 'the view'}`)
+          target.send(name, data)
         },
       }
     },

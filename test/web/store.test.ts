@@ -262,26 +262,90 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('retires an open whose answer was lost before retrying it, so one watch never has two subscriptions', async () => {
+  it('retires an open whose answer was lost, and keeps its close until the server confirms it', async () => {
+    const { store, server, latest, fetch } = setup(1000)
+    latest().open()
+    await tick()
+    const batches: { subscribe: { sub: number }[]; unsubscribe: number[] }[] = []
+    const answer = (
+      kind: 'lost after the server handled it' | 'lost before the server saw it' | 'not json',
+    ) =>
+      fetch.mockImplementationOnce(async (path, init) => {
+        batches.push(JSON.parse(init?.body as string))
+        if (kind === 'lost before the server saw it') throw new Error('offline')
+        server.handle(path as string, init)
+        if (kind === 'not json') return new Response('not json')
+        throw new Error('connection reset')
+      })
+    fetch.mockImplementation(async (path, init) => {
+      if ((path as string).startsWith('/api/events/'))
+        batches.push(JSON.parse(init?.body as string))
+      return server.handle(path as string, init) ?? Response.json({ providers: [], models: [] })
+    })
+    const live = () => server.subscriptions.filter((item) => !item.closed && item.docs.length)
+
+    // The open reaches the server but its answer is lost; the close sent at once never reaches it.
+    answer('lost after the server handled it')
+    answer('lost before the server saw it')
+    store.watchDoc('test.counter')
+    await tick()
+    const [first] = batches[0].subscribe
+    expect(batches[1]).toEqual({ subscribe: [], unsubscribe: [first.sub] })
+    expect(live().map((item) => item.sub)).toEqual([first.sub])
+
+    // The retry carries that close again; the server handles it, but its answer cannot be read, so the retried open
+    // is closed in turn and opened once more.
+    answer('not json')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(batches[2].unsubscribe).toEqual([first.sub])
+    const second = batches[2].subscribe[0].sub
+    expect(batches[3]).toEqual({ subscribe: [], unsubscribe: [first.sub, second] })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(batches.at(-1)!.subscribe).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    const settled = batches.length
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(batches).toHaveLength(settled)
+    expect(live()).toHaveLength(1)
+    const [only] = live()
+    expect(only.sub).toBeGreaterThan(second)
+    only.send('doc', { kind: 'test.counter', value: { count: 1 } })
+    expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
+    store.stop()
+  })
+
+  it('sends the closes and opens of a switch in one request', async () => {
+    const { store, server, latest, fetch } = setup()
+    latest().open()
+    store.watchDoc('test.counter')
+    await tick()
+    const posts = () =>
+      fetch.mock.calls.filter(([path]) => (path as string).startsWith('/api/events/')).length
+    const before = posts()
+    store.show(7 as ConversationId)
+    await tick()
+    expect(posts() - before).toBe(1)
+    expect(
+      server.subscriptions.filter((item) => !item.closed).map((item) => item.conversation),
+    ).toEqual([7, 7])
+    store.stop()
+  })
+
+  it('does not ask the server to close a subscription it refused', async () => {
     const { store, server, latest, fetch } = setup()
     latest().open()
     await tick()
-    fetch.mockImplementationOnce(async (path, init) => {
-      server.handle(path as string, init)
-      throw new Error('connection reset')
-    })
-    store.watchDoc('test.counter')
-    await tick()
-    fetch.mockImplementationOnce(async (path, init) => {
-      server.handle(path as string, init)
-      return new Response('not json')
-    })
+    server.refuse(9, 404)
+    const release = store.watchDocOf(9 as ConversationId, 'test.plan')
     await tick()
     await tick()
-    const open = server.subscriptions.filter((item) => !item.closed && item.docs.length)
-    expect(open).toHaveLength(1)
-    open[0].send('doc', { kind: 'test.counter', value: { count: 1 } })
-    expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
+    const closes = fetch.mock.calls
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .flatMap(
+        ([, init]) => (JSON.parse(init?.body as string) as { unsubscribe: number[] }).unsubscribe,
+      )
+    expect(closes).toEqual([])
+    release()
     store.stop()
   })
 
