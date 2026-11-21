@@ -8,7 +8,7 @@ import {
 } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createEffect, createRenderEffect, createSignal, For, Show } from 'solid-js'
+import { createEffect, createMemo, createRenderEffect, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   DropdownMenu,
@@ -130,13 +130,7 @@ function Overlay(props: {
   class?: string
   children: JSX.Element
 }) {
-  const [everOpened, setEverOpened] = createSignal(false)
-  createEffect(
-    () => props.open,
-    (open) => {
-      if (open) setEverOpened(true)
-    },
-  )
+  const everOpened = createMemo<boolean>((previous) => props.open || (previous ?? false))
   const [drag, setDrag] = createSignal<number>()
   let touch: { x: number; y: number; swipe?: boolean } | undefined
   const sign = () => (props.side === 'left' ? -1 : 1)

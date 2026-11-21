@@ -1,4 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { cell } from '../../lib/cell.ts'
 import type { ModelsResponse } from '../../shared/protocol.ts'
 
 type OpenContext = { open: (id: string) => void; conversationId?: ConversationId }
@@ -9,24 +10,6 @@ export type ThinkingLevel = ModelInfo['thinkingLevels'][number]
 
 export const dialogs = { picker: 'models.picker', login: 'models.login' } as const
 export const thinkingDialog = (id: ConversationId | undefined) => `models.thinking.${id}`
-
-export function cell<T>(value: T) {
-  const listeners = new Set<() => void>()
-  return {
-    get: () => value,
-    set: (next: T) => {
-      if (Object.is(value, next)) return
-      value = next
-      for (const listener of listeners) listener()
-    },
-    subscribe: (listener: () => void) => {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
-  }
-}
 
 export const picks = cell(0)
 export const notePick = () => picks.set(picks.get() + 1)

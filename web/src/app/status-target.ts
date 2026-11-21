@@ -1,14 +1,7 @@
-let phoneComposerStatusPortal: HTMLElement | null = null
-const listeners = new Set<() => void>()
+import { cell } from '../../../lib/cell.ts'
 
-export function setStatusTarget(element: HTMLElement | null) {
-  phoneComposerStatusPortal = element
-  for (const listener of listeners) listener()
-}
-
-export const statusTarget = () => phoneComposerStatusPortal
-
-export function subscribeStatusTarget(listener: () => void) {
-  listeners.add(listener)
-  return () => void listeners.delete(listener)
-}
+export const {
+  get: statusTarget,
+  set: setStatusTarget,
+  subscribe: subscribeStatusTarget,
+} = cell<HTMLElement | null>(null, { notifyOnEqual: true })

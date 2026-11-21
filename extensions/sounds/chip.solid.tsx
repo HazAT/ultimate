@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { AudioLines, Play, Square, Volume2, VolumeOff } from '@lucide/solid'
-import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
@@ -8,7 +8,7 @@ import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmente
 import { Slider } from '@/components/ui/slider.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
-import { cn, useExtensionUiState, useNow } from '@/sdk/solid'
+import { cn, useExtensionUiState, useExternal, useNow } from '@/sdk/solid'
 import * as conductor from './conductor.ts'
 import { sounds } from './cues.ts'
 import type { Sound } from './cues.ts'
@@ -30,13 +30,7 @@ export function Control() {
   const branches = useExtensionUiState('narrateBranches', false)
   const variant = createMemo(() => variantOf(stored()))
   const playing = () => !!variant() && !muted()
-  const [stage, setStage] = createSignal(conductor.current())
-  onSettled(() => {
-    const update = () => setStage(conductor.current())
-    const unsubscribe = conductor.subscribe(update)
-    update()
-    return unsubscribe
-  })
+  const stage = useExternal(conductor.current, conductor.subscribe)
   const demoUntil = () => stage().demoUntil
   const demoing = () => demoUntil() !== undefined
   const now = useNow(1000, demoing)

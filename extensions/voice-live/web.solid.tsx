@@ -12,7 +12,7 @@ import {
   Volume2Icon,
   XIcon,
 } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
@@ -35,6 +35,7 @@ import {
   useConversation,
   useConversationId,
   useConversationSummary,
+  useConversationWidth,
   useDocOf,
   useEvent,
   useNow,
@@ -487,7 +488,7 @@ function VoiceStage(props: { main?: ConversationId; voice: ConversationId }) {
   const viewport = useViewport()
   const phone = createMemo(() => viewport() === 'phone')
   let overlay!: HTMLDivElement
-  const [width, setWidth] = createSignal(0)
+  const width = useConversationWidth(() => overlay)
   const front = createMemo(() => mode().front)
   const on = createMemo(() => mode().phase !== 'off')
   const inFront = createMemo(() => on() && front() && !sideOpen())
@@ -507,15 +508,6 @@ function VoiceStage(props: { main?: ConversationId; voice: ConversationId }) {
       return undefined
     }
     return deadline(duration + 60, () => setExiting(false))
-  })
-
-  onSettled(() => {
-    const parent = overlay.closest<HTMLElement>('[data-ui="conversation"]')
-    if (!parent) return undefined
-    setWidth(parent.clientWidth)
-    const observer = new ResizeObserver(() => setWidth(parent.clientWidth))
-    observer.observe(parent)
-    return () => observer.disconnect()
   })
 
   createEffect(

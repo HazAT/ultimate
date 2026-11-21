@@ -1,9 +1,9 @@
 /** @jsxImportSource @solidjs/web */
 import { LoaderCircle, Pause, Volume2 } from '@lucide/solid'
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
-import { createSignal, Match, onSettled, Show, Switch } from 'solid-js'
+import { Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { cn } from '@/sdk/solid'
+import { cn, useExternal } from '@/sdk/solid'
 
 type Player = {
   current: () =>
@@ -17,13 +17,7 @@ type Player = {
 
 export function readAloudAction(player: Player) {
   return function ReadAloudAction(props: { entry: EntryRecord; text: string }) {
-    const [reading, setReading] = createSignal(player.current())
-    onSettled(() => {
-      const sync = () => setReading(player.current())
-      const unsubscribe = player.subscribe(sync)
-      sync()
-      return unsubscribe
-    })
+    const reading = useExternal(player.current, player.subscribe)
     const status = () => {
       const current = reading()
       return current?.conversation === props.entry.conversationId &&
