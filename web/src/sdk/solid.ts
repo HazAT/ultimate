@@ -34,7 +34,7 @@ import { EVENT_FEED } from '../../../shared/events.ts'
 import type { EventData, EventRecord, EventToken } from '../../../shared/events.ts'
 import { deadline, every } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
-import { actions, allCommands, ownDefault, regionKeys, shellKeys } from './actions.ts'
+import { actions, allCommands, regionKeys, regionOpenOn, shellKeys } from './actions.ts'
 import type { Region } from './actions.ts'
 import type { CommandItem, ExtensionRecord } from './registry.ts'
 import { HOME, panelItems, shownPanels } from './registry.ts'
@@ -516,11 +516,7 @@ export function useRegionOpen(region: Region): Accessor<boolean> {
   const [desktop] = useUiState<boolean>(key, fallback)
   const { state } = shared()
   const on = useViewport()
-  return createMemo(() => {
-    const size = on()
-    if (size === 'desktop') return desktop()
-    return state().ui.open?.[size]?.[region] ?? ownDefault(region, size)
-  })
+  return createMemo(() => regionOpenOn(region, on(), desktop(), state().ui.open))
 }
 
 /**
