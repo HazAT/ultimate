@@ -102,7 +102,6 @@ export {
   useDoc,
   useDocKind,
   useDocOf,
-  useDocumentRenderers,
   useEvents,
   useExtensionUiState,
   useExtensions,
@@ -110,7 +109,6 @@ export {
   useModels,
   useNotices,
   useNow,
-  usePanels,
   useRestart,
   useReady,
   useStore,
@@ -124,6 +122,7 @@ export {
   useEvent,
   useViewport,
 } from './hooks.ts'
+export { useDocumentRenderers, usePanels } from './react-parts.ts'
 export type { ActionState, ConversationState, Restart } from './hooks.ts'
 export { defineEvent } from '../../../shared/events.ts'
 export type { EventContext, EventData, EventRecord, EventToken } from '../../../shared/events.ts'

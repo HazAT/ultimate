@@ -21,7 +21,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { deadline, every } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
-import { actions, allCommands, regionKeys, regionOpenOn, shellKeys } from '../sdk/actions.ts'
+import { actions, allCommands, regionKeys, regionOpenOn } from '../sdk/actions.ts'
 import type { Region } from '../sdk/actions.ts'
 import { ROOT } from '../sdk/api.ts'
 import { EVENT_FEED } from '../../../shared/events.ts'
@@ -35,14 +35,7 @@ import { api, reads, registry, reportCompact, store, uiState } from '../sdk/clie
 import type { Reader } from '../sdk/reads.ts'
 import { extensionUiKey, writeUiState } from '../sdk/ui-state.ts'
 import type { UiUpdate, Widen } from '../sdk/ui-state.ts'
-import {
-  HOME,
-  compactDocs,
-  compactTools,
-  documentItems,
-  panelItems,
-  shownPanels,
-} from '../sdk/registry.ts'
+import { HOME, compactDocs, compactTools } from '../sdk/registry.ts'
 import type { State } from '../sdk/store.ts'
 import { errorMessage, formatDuration } from '../sdk/format.ts'
 import { restartAccepted, restartPhase, restartTimedOut } from '../sdk/restart.ts'
@@ -55,7 +48,6 @@ import {
   ExtensionNameContext,
   TranscriptContext,
 } from './conversation-scope.tsx'
-import { asReact } from './react-parts.ts'
 export { TranscriptContext } from './conversation-scope.tsx'
 
 /** Page readiness is sticky; failed facet names remain available even before ready. */
@@ -267,26 +259,6 @@ export function useRegionOpen(region: Region) {
   const open = useStore((state) => state.ui.open)
   return regionOpenOn(region, on, desktop, open)
 }
-/**
- * The right panel's state: whether it is open, the panel it shows (the chosen one, else the first with a tab) and the
- * panels in its tab row.
- */
-export function usePanels() {
-  const records = useExtensions()
-  const panels = useMemo(
-    () =>
-      panelItems(records).map((panel) => ({
-        ...panel,
-        icon: panel.icon && asReact(panel.icon),
-        component: asReact(panel.component),
-      })),
-    [records],
-  )
-  const open = useRegionOpen('panels')
-  const [selected] = useUiState<string | null>(shellKeys.panel, null)
-  return { open, ...shownPanels(panels, selected) }
-}
-
 export type { Widen } from '../sdk/ui-state.ts'
 
 /**
@@ -375,20 +347,6 @@ function useCompactConfig() {
     [records, conversation, docs],
   )
   return { compact, docs }
-}
-/** Document renderers by kind (`documents` contributions); the Documents tab shows the rest as JSON. */
-export function useDocumentRenderers() {
-  const records = useExtensions()
-  return useMemo(
-    () =>
-      new Map(
-        [...documentItems(records)].map(([kind, item]) => [
-          kind,
-          { ...item, icon: item.icon && asReact(item.icon), component: asReact(item.component) },
-        ]),
-      ),
-    [records],
-  )
 }
 /** Core and extension commands. */
 export function useCommands() {
