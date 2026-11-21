@@ -160,8 +160,11 @@ function ActivityLine(props: { id: ConversationId; activity: Activity }) {
         ].join(' · ')}
       </span>
       <Show when={props.activity.lastAt !== undefined && idle() >= 60_000}>
+        <span aria-hidden="true" class="shrink-0">
+          ·
+        </span>
         <span
-          class={cn('ml-auto shrink-0', silent() && 'text-amber-700 dark:text-amber-300')}
+          class={cn('shrink-0', silent() && 'text-amber-700 dark:text-amber-300')}
           data-silent={silent() || undefined}
           title={`Last activity ${formatAgo(props.activity.lastAt!, data.now(), { ago: true })}`}
         >

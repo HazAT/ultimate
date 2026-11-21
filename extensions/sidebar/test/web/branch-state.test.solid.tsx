@@ -205,7 +205,7 @@ it("shows the coordinator's own turns and calls, the tree's cost, its workers an
       ?.closest('li')
       ?.querySelector(`[data-flight-activity="${branch}"]`)
   expect(line()?.textContent).toContain('3 turns · 41 calls · $2.25 · with 1 worker')
-  expect(line()?.textContent).toContain('idle 20m')
+  expect(line()?.textContent).toContain('with 1 worker·idle 20m')
   expect(line()?.querySelector('[data-silent]')).not.toBeNull()
   root().send('doc', {
     kind: OverviewDoc.kind,
