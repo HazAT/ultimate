@@ -32,6 +32,7 @@ import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
 import { fallback } from './fallback.ts'
 import { inProcess } from '../../lib/errors.ts'
+import { installCopilotThinkingFix } from './copilot-thinking.ts'
 
 type MutableJson<T> = T extends readonly (infer U)[]
   ? MutableJson<U>[]
@@ -253,6 +254,7 @@ export const actions = {
 }
 
 export default function models(host: ExtensionHost) {
+  installCopilotThinkingFix(host)
   const live = liveFlows(host)
   host.onOpen(async () => {
     const harness = host.harness()
