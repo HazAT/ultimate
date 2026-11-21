@@ -1,10 +1,21 @@
 /** @jsxImportSource @solidjs/web */
+import { flush } from 'solid-js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ServerEvents } from '../../shared/protocol.ts'
+import { renderSolid } from './solid-dom-setup.ts'
 
 class Source extends EventTarget {
-  readyState = 1
+  readyState = 0
   close() {}
+  open() {
+    this.readyState = 1
+    this.dispatchEvent(new Event('open'))
+    this.send('stream', { id: 'stream' })
+  }
+  drop() {
+    this.readyState = 0
+    this.dispatchEvent(new Event('error'))
+  }
   send<K extends keyof ServerEvents>(name: K, data: ServerEvents[K]) {
     this.dispatchEvent(new MessageEvent(name, { data: JSON.stringify(data) }))
   }
@@ -36,19 +47,43 @@ describe('current-process UI snapshot readiness', () => {
         vi.fn(async () => Response.json({ providers: [], models: [] })),
       )
       const { store, uiState } = await import('../../web/src/sdk/client.ts')
+      const { useUiStateReady } = await import('../../web/src/sdk/hooks.ts')
+      const Probe = () => <span>{String(useUiStateReady()())}</span>
+      const container = renderSolid(() => <Probe />)
+      const expectReady = (expected: boolean) => {
+        flush()
+        expect(uiState.ready()).toBe(expected)
+        expect(container.textContent).toBe(String(expected))
+      }
       store.start()
+      source.open()
       source.send('system', system(1))
-      expect(uiState.ready()).toBe(false)
+      expectReady(false)
       source.send('ui', { value: { preference: 'saved' } })
-      expect(uiState.ready()).toBe(true)
+      expectReady(true)
       if (detached) uiState.set('preference', 'local')
+      source.drop()
+      expectReady(false)
+      expect(uiState.get('preference')).toBe(detached ? 'local' : 'saved')
+      source.open()
+      expectReady(false)
+      source.send('ui', { value: { preference: 'premature' } })
+      expectReady(false)
+      source.send('system', system(1))
+      expectReady(false)
+      source.send('ui', { value: { preference: 'saved' } })
+      expectReady(true)
+      expect(uiState.get('preference')).toBe(detached ? 'local' : 'saved')
+      source.drop()
+      expectReady(false)
+      source.open()
       source.send('system', system(2))
-      expect(uiState.ready()).toBe(false)
+      expectReady(false)
       expect(uiState.get('preference')).toBe(detached ? 'local' : 'saved')
       source.send('uiOps', { ops: [['s', ['preference'], 'premature']] })
-      expect(uiState.ready()).toBe(false)
+      expectReady(false)
       source.send('ui', { value: { preference: 'saved' } })
-      expect(uiState.ready()).toBe(true)
+      expectReady(true)
       expect(uiState.get('preference')).toBe(detached ? 'local' : 'saved')
       source.send('ui', { value: { preference: 'changed', another: 'shared' } })
       expect(uiState.get('another')).toBe(detached ? undefined : 'shared')

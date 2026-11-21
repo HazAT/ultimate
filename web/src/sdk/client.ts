@@ -105,7 +105,7 @@ function resetRevisionsBeforeUiSnapshot(process: string | undefined, snapshots: 
 }
 
 store.subscribe(() => {
-  const { shared, sharedSnapshots, ui, system } = store.getState()
+  const { connection, shared, sharedSnapshots, systemOnStream, ui, system } = store.getState()
   if (system && !registry.getReady().ready) registry.receiveSystem()
 
   if (system?.web.id && bundle && system.web.id !== bundle) {
@@ -121,7 +121,10 @@ store.subscribe(() => {
 
   const process = system && `${system.process.pid}:${system.process.generation}`
   resetRevisionsBeforeUiSnapshot(process, sharedSnapshots)
-  if (process && shared && sharedSnapshots > snapshotsBeforeProcess) {
+  if (connection.status !== 'open' || !systemOnStream) {
+    snapshotsBeforeProcess = sharedSnapshots
+    uiState.disconnected()
+  } else if (process && shared && sharedSnapshots > snapshotsBeforeProcess) {
     if (!initialUrlSelectionResolved) {
       uiState.receive(shared)
       if (initialUrl.searchParams.has('conversation')) {

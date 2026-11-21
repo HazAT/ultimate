@@ -222,6 +222,12 @@ export function createUiState(
       update()
     },
 
+    disconnected() {
+      if (!ready) return
+      ready = false
+      update()
+    },
+
     restarted() {
       serverProcessEpoch++
       refusedAppWrites.clear()

@@ -298,7 +298,7 @@ export function useUiState<T extends JsonValue>(
   return [value, (next: UiUpdate<T>) => writeUiState(uiState, current(), initial, next)]
 }
 
-/** Whether the current server process has delivered its UI snapshot to this tab. */
+/** Whether the current stream has announced its process and delivered its UI snapshot. False while disconnected. */
 export function useUiStateReady(): Accessor<boolean> {
   const { ui } = shared()
   return () => {

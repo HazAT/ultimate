@@ -353,11 +353,12 @@ function solidProviderValue(
   provider: Provider,
   input: Accessor<unknown>,
   failures: HTMLElement | undefined,
+  map: (value: unknown) => unknown,
 ): Accessor<unknown> {
   const read = runProvider(provider.use, input)
   const outcome = createMemo(() => {
     try {
-      return { value: read() }
+      return { value: map(read()) }
     } catch (error) {
       return { error }
     }
@@ -385,6 +386,7 @@ function reactProviderValue(
   provider: Provider,
   input: Accessor<unknown>,
   failures: HTMLElement | undefined,
+  map: (value: unknown) => unknown,
 ): Accessor<unknown> {
   const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
   const [found, setFound] = createSignal<unknown>(failed)
@@ -405,7 +407,10 @@ function reactProviderValue(
       reactBridge().provision(
         provider,
         next,
-        (latest) => setFound(() => markReactValue(latest)),
+        (latest) => {
+          const mapped = map(markReactValue(latest))
+          setFound(() => mapped)
+        },
         () => setFound(() => failed),
       ),
     ),
@@ -431,10 +436,37 @@ function providerValue(
   provider: Provider,
   input: Accessor<unknown>,
   failures: HTMLElement | undefined,
+  map: (value: unknown) => unknown,
 ): Accessor<unknown> {
   return isReact(provider.use)
-    ? reactProviderValue(provider, input, failures)
-    : inExtension(provider.extension, () => solidProviderValue(provider, input, failures))
+    ? reactProviderValue(provider, input, failures, map)
+    : inExtension(provider.extension, () => solidProviderValue(provider, input, failures, map))
+}
+
+function mappedProviders<Input, Value, Result>(
+  point: Point<Input, Value>,
+  input: Accessor<Input>,
+  map: (value: Value) => Result,
+  failures?: HTMLElement,
+): Accessor<readonly Result[]> {
+  const extensions = useExtensions()
+  const providers = createMemo(() => provisionsOf(extensions(), point.point), {
+    equals: sameProviders,
+  })
+  const values = mapArray(providers, (provider) =>
+    providerValue(
+      provider,
+      input as Accessor<unknown>,
+      failures,
+      map as (value: unknown) => unknown,
+    ),
+  )
+  return createMemo(
+    () =>
+      values()
+        .map((value) => value())
+        .filter((value) => value !== failed) as Result[],
+  )
 }
 
 export function useAllProvided<Input, Value>(
@@ -442,19 +474,17 @@ export function useAllProvided<Input, Value>(
   input: Accessor<Input>,
   failures?: HTMLElement,
 ): Accessor<readonly Value[]> {
-  const extensions = useExtensions()
-  const providers = createMemo(() => provisionsOf(extensions(), point.point), {
-    equals: sameProviders,
-  })
-  const values = mapArray(providers, (provider) =>
-    providerValue(provider, input as Accessor<unknown>, failures),
-  )
-  return createMemo(
-    () =>
-      values()
-        .map((value) => value())
-        .filter((value) => value !== failed) as Value[],
-  )
+  return mappedProviders(point, input, (value) => value, failures)
+}
+
+export function useMappedProvided<Input, Value, Result>(
+  point: Point<Input, Value>,
+  input: Accessor<Input>,
+  map: (value: Value) => Result,
+  failures?: HTMLElement,
+): Accessor<Result | undefined> {
+  const all = mappedProviders(point, input, map, failures)
+  return () => all().at(-1)
 }
 
 export function useProvided<Input, Value>(

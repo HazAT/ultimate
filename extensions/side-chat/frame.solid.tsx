@@ -75,10 +75,15 @@ export function ComposerFrame(props: SolidComposerProps) {
       <div data-main-composer={active() || undefined} inert={!!covering()}>
         <div
           class={cn(column(), 'flex items-center justify-between gap-2 pb-1.5')}
-          hidden={!full() || (!active() && !(sides().length && parked().length))}
+          hidden={
+            full() ? !active() && !(sides().length && parked().length) : parked().length === 0
+          }
         >
           <div
-            class="flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/70"
+            class={cn(
+              'flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/70',
+              !full() && 'flex-wrap',
+            )}
             data-ui="side-chat-hint"
           >
             <For each={parked()} keyed={(item) => item.id}>
@@ -98,7 +103,7 @@ export function ComposerFrame(props: SolidComposerProps) {
                 </Button>
               )}
             </For>
-            <Show when={active() && parked().length === 0}>
+            <Show when={full() && active() && parked().length === 0}>
               <span class="truncate pointer-coarse:hidden">
                 <Show
                   when={on()}
@@ -113,7 +118,7 @@ export function ComposerFrame(props: SolidComposerProps) {
               </span>
             </Show>
           </div>
-          <Show when={active()}>
+          <Show when={full() && active()}>
             <ModeSwitch on={on()} onToggle={() => setSideMode(!on())} />
           </Show>
         </div>
