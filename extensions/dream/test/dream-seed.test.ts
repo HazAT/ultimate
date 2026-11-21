@@ -14,6 +14,7 @@ import type { ActionContext } from '../../../server/actions.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
+import { docs as messagesDocs } from '../../messages/server.ts'
 import type { MessagesService } from '../../messages/api.ts'
 import { Branch } from '../../lineage/api.ts'
 import type { BranchInput } from '../../lineage/server.ts'
@@ -50,7 +51,7 @@ async function fixture() {
   let scripts: (Seed['scripts'][number] & { enabled: boolean; state?: string })[] = []
   /** A faked `CloudApi`: never the real Worker. */
   let cloud: CloudService | undefined
-  const tokens = [...lineageDocs, Messages, Todos, Next]
+  const tokens = [...lineageDocs, ...messagesDocs, Todos, Next]
   const resources = new Map<string, unknown>()
   const invoke = vi.fn<ExtensionHost['invoke']>(
     async (extension, action, args, _signal, conversationId) => {
@@ -733,6 +734,22 @@ it('recreates each open card session with a pointer back, its watcher resumed fr
   expect((await f.harness.snapshot(Metadata, next, context))?.label).toBe('coordinator')
   expect((await f.harness.snapshot(AgentDoc, next, context))?.instructions).toBe(
     'Coordinate one card.',
+  )
+  const ultimateHere = (await f.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate
+  expect((await f.harness.snapshot(f.host.doc('board.started')!, next, context))?.by).toBe(
+    ultimateHere,
+  )
+  // The carried branch starts only after its question card and watcher exist.
+  const deliveries = await f.harness.commit(
+    async (tx) =>
+      (await tx.scanTasks({ kind: 'dream.deliver' }, 50)).items.map(
+        (task) => (task.input as { kind: string }).kind,
+      ),
+    context,
+  )
+  expect(deliveries).toEqual(['dream.carried', 'dream.chapter'])
+  expect(f.sent.mock.invocationCallOrder[0]).toBeLessThan(
+    Math.max(...f.invoke.mock.invocationCallOrder),
   )
   const first = async () =>
     f.harness.commit(
