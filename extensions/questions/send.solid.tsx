@@ -6,6 +6,7 @@ import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
 
 export const ANSWER_UNDO_WINDOW_MS = 3000
+export const INCOMPLETE_UNDO_WINDOW_MS = 8000
 const HOLD_TO_SEND_MS = 1000
 const REDUCED_MOTION_STEP_MS = 250
 
@@ -38,6 +39,7 @@ export function SendButton(props: {
   phase: Phase
   disabled: boolean
   label: string
+  incomplete?: boolean
   onSend: (source: string) => void
   onSendNow: () => void
   onUndo: () => void
@@ -123,9 +125,11 @@ export function SendButton(props: {
         else if (answering()) props.onSend(details.source)
       }}
       class={cn(
-        'relative isolate touch-manipulation overflow-hidden select-none [-webkit-touch-callout:none] max-md:h-11 max-md:px-4',
+        'relative isolate z-20 touch-manipulation overflow-hidden select-none [-webkit-touch-callout:none] max-md:h-11 max-md:px-4',
         !answering() &&
-          'border-brand/50 bg-brand/10 text-foreground dark:border-brand/50 dark:bg-brand/10',
+          (props.incomplete && undo()
+            ? 'border-warning/60 bg-warning/10 text-foreground dark:border-warning/60 dark:bg-warning/10'
+            : 'border-brand/50 bg-brand/10 text-foreground dark:border-brand/50 dark:bg-brand/10'),
         props.phase === 'sent' && 'disabled:opacity-100',
       )}
     >
@@ -133,7 +137,10 @@ export function SendButton(props: {
         <Fill duration={HOLD_TO_SEND_MS} class="bg-primary-foreground/25" />
       </Show>
       <Show when={undo()}>
-        <Fill duration={ANSWER_UNDO_WINDOW_MS} class="bg-brand/25" />
+        <Fill
+          duration={props.incomplete ? INCOMPLETE_UNDO_WINDOW_MS : ANSWER_UNDO_WINDOW_MS}
+          class={props.incomplete ? 'bg-warning/35' : 'bg-brand/25'}
+        />
       </Show>
       <span class="grid">
         <span

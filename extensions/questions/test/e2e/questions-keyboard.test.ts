@@ -194,6 +194,29 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
 })
 
+it('holds an incomplete send longer, in amber, and a tap on the card takes it back', async () => {
+  const { log, asked, page, card } = await openCard()
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press('Escape')
+  await card
+    .getByRole('button', { name: `Send 2 of 3: answer to message ${asked.id}`, exact: true })
+    .click()
+  await card.and(page.locator('[data-incomplete-send]')).waitFor()
+  await card.getByText('1 unanswered').waitFor()
+  await page.waitForTimeout(4000)
+  const answer = async () =>
+    (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
+  expect(await answer()).toBeUndefined()
+  const box = (await card.boundingBox())!
+  await page.mouse.click(box.x + box.width / 2, box.y + 12)
+  await card
+    .getByRole('button', { name: `Send 2 of 3: answer to message ${asked.id}`, exact: true })
+    .waitFor()
+  expect(await page.locator('[data-incomplete-send]').count()).toBe(0)
+  await page.waitForTimeout(5000)
+  expect(await answer()).toBeUndefined()
+})
+
 it('sends a held answer when the page is left inside the undo window', async () => {
   const { log, asked, page, card } = await openCard()
   await card
