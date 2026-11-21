@@ -107,11 +107,23 @@ const CAPACITY = new Set([
   'quota',
 ])
 
-export function failureKind(error: string): 'auth' | 'billing' | 'capacity' | 'transient' {
+const REFUSED_REQUEST = new Set([
+  '400',
+  '413',
+  '422',
+  'invalid_request_error',
+  'context_length_exceeded',
+  'request_too_large',
+])
+
+export function failureKind(
+  error: string,
+): 'auth' | 'billing' | 'capacity' | 'request' | 'transient' {
   const parts = sanitize(error).split(' ')
   if (parts.some((part) => AUTH.has(part))) return 'auth'
   if (parts.includes('402')) return 'billing'
   if (parts.some((part) => CAPACITY.has(part))) return 'capacity'
+  if (parts.some((part) => REFUSED_REQUEST.has(part))) return 'request'
   return 'transient'
 }
 
