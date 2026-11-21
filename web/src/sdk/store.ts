@@ -339,6 +339,7 @@ export function createStore(options: StoreOptions = {}) {
           String(Number(sub)) === sub &&
           Number.isInteger(status) &&
           status >= 400 &&
+          status < 600 &&
           status !== STREAM_GONE_RECONNECT_RESUBSCRIBES,
       )
     )

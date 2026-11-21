@@ -911,6 +911,22 @@ export default host => { host.resource('cleanup.process',()=>{
     })
     await until(() => stream.events.some((event) => event.name === 'view' && event.sub === 6))
 
+    // An invalid conversation or document list refuses only its own open.
+    const mixed = await fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url },
+      body: JSON.stringify({
+        subscribe: [
+          { sub: 10, conversation: 0, docs: [], view: true },
+          { sub: 11, docs: [42], view: false },
+          { sub: 12, docs: [], view: true },
+        ],
+        unsubscribe: [],
+      }),
+    })
+    expect(await mixed.json()).toEqual({ ok: true, refused: { 10: 400, 11: 400 } })
+    await until(() => stream.events.some((event) => event.name === 'view' && event.sub === 12))
+
     // A watch that fails to start is refused and stopped, so the same id can open later.
     const harness = server.harness
     const watchDoc = harness.watchDoc.bind(harness)

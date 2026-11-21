@@ -481,16 +481,8 @@ export async function createApi(
             if (typeof item !== 'object' || item === null || Array.isArray(item))
               throw new HttpError(400, 'Invalid subscription')
             const spec = item as Record<string, unknown>
-            const docs = spec.docs ?? []
             if (!Number.isSafeInteger(spec.sub)) throw new HttpError(400, 'Invalid subscription id')
-            if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
-              throw new HttpError(400, 'Invalid document kinds')
-            return {
-              sub: spec.sub as number,
-              conversation: conversationParam(spec.conversation),
-              docs: docs,
-              view: spec.view !== false,
-            }
+            return spec as Record<string, unknown> & { sub: number }
           })
           for (const sub of closes as number[]) {
             const close = connection.subscriptions.get(sub)
@@ -504,13 +496,19 @@ export async function createApi(
           }
           const refused: Record<number, number> = {}
           await Promise.all(
-            specs.map(({ sub, conversation, docs, view }) =>
-              subscribe(connection, sub, conversation, docs, view).catch((error: unknown) => {
+            specs.map(async (spec) => {
+              try {
+                const docs = spec.docs ?? []
+                if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
+                  throw new HttpError(400, 'Invalid document kinds')
+                const conversation = conversationParam(spec.conversation)
+                await subscribe(connection, spec.sub, conversation, docs, spec.view !== false)
+              } catch (error) {
                 if (!(error instanceof HttpError))
-                  console.error(`Subscribing to conversation ${conversation} failed:`, error)
-                refused[sub] = error instanceof HttpError ? error.status : 500
-              }),
-            ),
+                  console.error(`Subscribing to ${JSON.stringify(spec)} failed:`, error)
+                refused[spec.sub] = error instanceof HttpError ? error.status : 500
+              }
+            }),
           )
           json(200, { ok: true, refused } satisfies SubscriptionsAnswer)
           return true
