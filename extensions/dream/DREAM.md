@@ -85,8 +85,10 @@ You coordinate the dream. You change nothing: no code, no memory, no settings. Y
    what mattered, which threads are really open, which corrections counted. Put it in every pass brief as the primary
    input; the transcripts are the evidence behind it, and a pass checks the handoff against them rather than taking
    it on trust.
-1. Run the six passes in parallel, each as a `dream-pass` subagent (background), with its pass name, the handoff and
-   the brief below.
+1. Run the six passes, each as a `dream-pass` subagent (background), with its pass name, the handoff and the brief
+   below. On a hosted model run all six in parallel; when `dream-pass` runs on a local model (omlx or another local
+   provider), run at most 2 at once and start the next as each finishes, since six at once overflow the local
+   server's memory.
 2. Check each report against its evidence; drop what does not hold up.
 3. Answer @ultimate with the journal and the proposals:
    - three `learned` lines in Ultimate's own voice ("I learned…", "I keep…", "I'd like…");
