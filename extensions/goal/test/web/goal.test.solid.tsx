@@ -255,6 +255,7 @@ it('shows the open goal in the status chip popover and ends it from there', asyn
       item.getAttribute('data-goal-criterion'),
     ),
   ).toEqual(['met', 'blocked'])
+  expect(popover.textContent).toContain('blocked: No layout shift3 failed attempts')
   expect(
     [...popover.querySelectorAll('[data-goal-decision]')].map((item) => item.textContent),
   ).toEqual([

@@ -4,7 +4,7 @@ import { Bell, BellOff, Check, CircleDashed, CircleSlash, Flag, LoaderCircle } f
 import type { JSX } from '@solidjs/web'
 import { For, Show, createSignal } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
-import { Button } from '@/components/ui/button.solid.tsx'
+import { Button, buttonVariants } from '@/components/ui/button.solid.tsx'
 import {
   Card,
   ROOT,
@@ -63,12 +63,43 @@ export function CriterionIcon(props: { status: Criterion['status']; class: strin
       ) : (
         <CircleDashed class={cn(props.class, 'text-muted-foreground')} />
       )}
+      <span class="sr-only">{props.status}: </span>
     </>
   )
 }
 
-export const endGoal = () => api.action(EndAction, null)
-export const endConfirmation = 'Ends the hands-off goal and returns decisions to you.'
+export function EndGoalButton(props: { class: string; label?: string }) {
+  const [failure, setFailure] = createSignal<string>()
+  const end = () => {
+    setFailure(undefined)
+    return api.action(EndAction, null).catch((error: unknown) => setFailure(errorMessage(error)))
+  }
+  return (
+    <>
+      <Show when={failure()}>
+        <p class="order-first w-full text-[12px] text-error" role="alert">
+          {failure()}
+        </p>
+      </Show>
+      <Button
+        aria-label={props.label}
+        class={cn('group/goal-end', props.class)}
+        data-agent-confirm="Ends the hands-off goal and returns decisions to you."
+        data-goal-end
+        onClick={end}
+        pendingAnnouncement="Ending hands-off goal"
+        size={null}
+        variant={null}
+      >
+        <LoaderCircle
+          aria-hidden="true"
+          class="hidden size-3.5 group-data-pending/goal-end:block motion-safe:animate-spin"
+        />
+        End hands-off
+      </Button>
+    </>
+  )
+}
 
 function Criteria(props: { items: Goal['criteria'] }) {
   return (
@@ -93,7 +124,7 @@ function Criteria(props: { items: Goal['criteria'] }) {
                 <Show when={item().status !== 'met' && item().tries}>
                   <span class="ml-2 font-mono text-[11px] text-muted-foreground">
                     {item().status === 'blocked' ? 'blocked after ' : ''}
-                    {plural(item().tries!, 'failed try')}
+                    {plural(item().tries!, 'failed attempt')}
                   </span>
                 </Show>
               </span>
@@ -277,36 +308,12 @@ function Reminder(props: { goal: Goal }) {
 }
 
 function EndGoal() {
-  const [failure, setFailure] = createSignal<string>()
-  const end = () => {
-    setFailure(undefined)
-    return endGoal().catch((error: unknown) => setFailure(errorMessage(error)))
-  }
   return (
     <footer class="flex flex-wrap items-center gap-3 border-t border-border/60 px-4 py-2.5">
       <span class="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
         I decide what I would ask you and note each decision here. Pause stops everything at once.
       </span>
-      <Show when={failure()}>
-        <p class="w-full text-[12px] text-error" role="alert">
-          {failure()}
-        </p>
-      </Show>
-      <Button
-        class="group/goal-end"
-        data-agent-confirm={endConfirmation}
-        data-goal-end
-        onClick={end}
-        pendingAnnouncement="Ending hands-off goal"
-        size="sm"
-        variant="outline"
-      >
-        <LoaderCircle
-          aria-hidden="true"
-          class="hidden group-data-pending/goal-end:block motion-safe:animate-spin"
-        />
-        End hands-off
-      </Button>
+      <EndGoalButton class={buttonVariants({ variant: 'outline', size: 'sm' })} />
     </footer>
   )
 }
