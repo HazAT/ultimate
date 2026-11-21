@@ -112,7 +112,7 @@ function StatusMore() {
 
 export function Conversation(props: { variant?: 'main' | 'dock' }) {
   return (
-    <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    <div class="relative flex min-h-0 min-w-0 flex-1 flex-col" data-ui="conversation">
       <Transcript dock={props.variant === 'dock'} />
       <Composer dock={props.variant === 'dock'} />
       <Slot fallback={blockFailure} name="conversation.overlay" />

@@ -463,7 +463,7 @@ function Stage() {
   }, [inFront])
 
   useLayoutEffect(() => {
-    const parent = ref.current?.parentElement
+    const parent = ref.current?.closest<HTMLElement>('[data-ui="conversation"]')
     if (!parent) return undefined
     const observer = new ResizeObserver(() => setWidth(parent.clientWidth))
     observer.observe(parent)
@@ -471,7 +471,7 @@ function Stage() {
   }, [isMain, voice])
 
   useLayoutEffect(() => {
-    const parent = ref.current?.parentElement
+    const parent = ref.current?.closest<HTMLElement>('[data-ui="conversation"]')
     if (!parent || !inFront) return undefined
     const layers = [...parent.children].filter(
       (child): child is HTMLElement => child instanceof HTMLElement && !child.contains(ref.current),
