@@ -45,6 +45,7 @@ export function SendButton(props: {
 }) {
   const [holding, setHolding] = createSignal(false)
   let hold: { stop: AbortController; cancel: Cancel } | undefined
+  let heldClick = false
   const end = () => {
     hold?.stop.abort()
     hold?.cancel()
@@ -77,6 +78,7 @@ export function SendButton(props: {
           : 'Click to send with a moment to undo; hold (or ⇧↵) to send at once'
       }
       onPointerDown={(event) => {
+        heldClick = false
         if (!event.isPrimary || event.button !== 0 || props.disabled || !answering()) return
         const pointer = event.pointerId
         const controller = new AbortController()
@@ -93,15 +95,25 @@ export function SendButton(props: {
           stop: controller,
           cancel: deadline(HOLD_TO_SEND_MS, () => {
             stop()
+            heldClick = true
             sendNow()
           }),
         }
       }}
+      onPointerMove={(event) => {
+        if (!hold) return
+        const box = event.currentTarget.getBoundingClientRect()
+        const { clientX: x, clientY: y } = event
+        if (x < box.left || x > box.right || y < box.top || y > box.bottom) stop()
+      }}
       onPointerUp={stop}
-      onPointerLeave={stop}
       onPointerCancel={stop}
       onContextMenu={(event) => event.preventDefault()}
-      onClick={(_event, details) => {
+      onClick={(event, details) => {
+        if (heldClick && event.detail !== 0) {
+          heldClick = false
+          return
+        }
         if (undo()) props.onUndo()
         else if (answering()) props.onSend(details.source)
       }}
