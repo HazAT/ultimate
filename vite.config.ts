@@ -349,7 +349,6 @@ export default defineConfig({
       },
       {
         files: ['**/*.solid.tsx'],
-        excludeFiles: ['extensions/automations/form.solid.tsx'],
         rules: { 'ultimate/no-aria-pressed-button': 'error' },
       },
       {

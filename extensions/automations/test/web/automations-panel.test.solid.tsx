@@ -235,7 +235,7 @@ it('creates an automation through the form as the agent', async () => {
   await expectDistinctAgentNames(agent)
   expect((await act('Name', 'setValue', 'Lunch summary')).ok).toBe(true)
   expect((await act('Prompt', 'setValue', 'Summarise open questions.')).ok).toBe(true)
-  expect((await act('Hourly', 'press')).ok).toBe(true)
+  expect((await act('Hourly', 'setPressed', true)).ok).toBe(true)
   expect((await act('Interval length', 'setValue', '2h')).ok).toBe(true)
   expect((await act('Create', 'press')).ok).toBe(true)
   expect(harness.actions).toEqual([

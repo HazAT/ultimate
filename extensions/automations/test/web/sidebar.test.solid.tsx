@@ -95,7 +95,7 @@ it('lets an agent collapse the automation rows and persist the change as theirs'
   )
   const collapsible = agent
     .snapshot()
-    .find((entry) => !entry.offPage && entry.label === 'Automations')
+    .find((entry) => !entry.offPage && entry.label === 'Active automations')
   expect(collapsible).toMatchObject({ component: 'collapsible', open: true })
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
@@ -110,6 +110,11 @@ it('lets an agent collapse the automation rows and persist the change as theirs'
     { key: 'ext.automations.sidebarOpen', value: false, source: 'agent' },
   ])
   expect(changes).toHaveBeenCalledWith(
-    expect.objectContaining({ label: 'Automations', key: 'open', value: false, source: 'agent' }),
+    expect.objectContaining({
+      label: 'Active automations',
+      key: 'open',
+      value: false,
+      source: 'agent',
+    }),
   )
 })

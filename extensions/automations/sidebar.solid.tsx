@@ -67,7 +67,7 @@ export function AutomationsSection() {
   return (
     <Show when={list().length > 0}>
       <Collapsible
-        aria-label="Automations"
+        aria-label="Active automations"
         bind={expanded}
         class="mb-1 flex flex-col gap-px border-b border-border/60 pb-1"
         data-sidebar-section="automations"
