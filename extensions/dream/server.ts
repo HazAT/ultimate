@@ -102,33 +102,81 @@ export function prepare(args: unknown, now: number): Prepared {
   }
 }
 
-export function toolStats(database: string, enabled: readonly string[]): ToolStats {
+const ISO_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))?$/
+
+const instant = (value: unknown, name: string) => {
+  if (value === undefined || value === null) return undefined
+  const [, year, month, day] = (typeof value === 'string' && ISO_TIME.exec(value)) || []
+  const calendar = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+  const at = Date.parse(value as string)
+  if (!day || calendar.getUTCDate() !== Number(day) || Number.isNaN(at))
+    throw new Error(`${name} must be an ISO date or an ISO time with Z or an offset`)
+  return at
+}
+
+export function statsWindow(args: unknown): { since?: number; until?: number } {
+  const input = fields(args)
+  const since = instant(input.since, 'since')
+  const until = instant(input.until, 'until')
+  return {
+    ...(since === undefined ? {} : { since }),
+    ...(until === undefined ? {} : { until }),
+  }
+}
+
+export function toolStats(
+  database: string,
+  enabled: readonly string[],
+  range: { since?: number; until?: number } = {},
+): ToolStats {
+  const none = { byCaller: [], byCallee: [] }
   if (!existsSync(database))
-    return { calls: 0, tools: [], unused: [...enabled].toSorted(), errors: [] }
+    return {
+      calls: 0,
+      tools: [],
+      unused: [...enabled].toSorted(),
+      errors: [],
+      services: none,
+      actions: none,
+    }
   const db = new DatabaseSync(database, { readOnly: true })
+  const wholeTraceScansWithoutTheTimeIndex = range.since === undefined && range.until === undefined
+  const inRange = wholeTraceScansWithoutTheTimeIndex ? 'true' : 'at >= ? AND at <= ?'
+  const bounds = wholeTraceScansWithoutTheTimeIndex
+    ? []
+    : [range.since ?? 0, range.until ?? Number.MAX_SAFE_INTEGER]
   try {
     const window = db
-      .prepare("SELECT min(at) AS since, count(*) AS calls FROM calls WHERE kind = 'tool'")
-      .get() as { since: number | null; calls: number }
+      .prepare(
+        `SELECT min(at) AS since, max(at) AS until, count(*) AS calls FROM calls WHERE kind = 'tool' AND ${inRange}`,
+      )
+      .get(...bounds) as { since: number | null; until: number | null; calls: number }
     const tools = (
       db
         .prepare(
-          "SELECT name, count(*) AS calls, sum(ok = 0) AS failed, avg(ms) AS avgMs FROM calls WHERE kind = 'tool' GROUP BY name ORDER BY calls DESC",
+          `SELECT name, count(*) AS calls, sum(ok = 0) AS failed, avg(ms) AS avgMs FROM calls WHERE kind = 'tool' AND ${inRange} GROUP BY name ORDER BY calls DESC`,
         )
-        .all() as { name: string; calls: number; failed: number; avgMs: number }[]
+        .all(...bounds) as { name: string; calls: number; failed: number; avgMs: number }[]
     ).map((row) => ({ ...row, avgMs: Math.round(row.avgMs) }))
+    const counts = (kind: 'service' | 'action', by: 'caller' | 'callee') =>
+      db
+        .prepare(
+          `SELECT ${by} AS name, count(*) AS calls, sum(ok = 0) AS failed FROM calls WHERE kind = ? AND ${inRange} GROUP BY ${by} ORDER BY calls DESC, name`,
+        )
+        .all(kind, ...bounds) as { name: string; calls: number; failed: number }[]
     const groups = db
       .prepare(
-        "SELECT name, substr(error, 1, 160) AS error, count(*) AS count FROM calls WHERE kind = 'tool' AND ok = 0 GROUP BY name, substr(error, 1, 160) ORDER BY count DESC LIMIT 20",
+        `SELECT name, substr(error, 1, 160) AS error, count(*) AS count FROM calls WHERE kind = 'tool' AND ok = 0 AND ${inRange} GROUP BY name, substr(error, 1, 160) ORDER BY count DESC LIMIT 20`,
       )
-      .all() as { name: string; error: string; count: number }[]
+      .all(...bounds) as { name: string; error: string; count: number }[]
     const sample = db.prepare(
-      "SELECT conversation, entry, substr(args, 1, 120) AS args FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
+      `SELECT conversation, entry, substr(args, 1, 120) AS args FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? AND ${inRange} ORDER BY at DESC LIMIT 2`,
     )
     const errors = groups.map((group) => ({
       ...group,
       examples: (
-        sample.all(group.name, group.error) as {
+        sample.all(group.name, group.error, ...bounds) as {
           conversation: ConversationId | null
           entry: number | null
           args: string | null
@@ -141,10 +189,13 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
     const used = new Set(tools.map((tool) => tool.name))
     return {
       ...(window.since === null ? {} : { since: window.since }),
+      ...(window.until === null ? {} : { until: window.until }),
       calls: window.calls,
       tools,
       unused: enabled.filter((name) => !used.has(name)).toSorted(),
       errors,
+      services: { byCaller: counts('service', 'caller'), byCallee: counts('service', 'callee') },
+      actions: { byCaller: counts('action', 'caller'), byCallee: counts('action', 'callee') },
     }
   } finally {
     db.close()
@@ -369,13 +420,14 @@ export const actions = {
     host.harness().resume()
     return prepared
   }),
-  stats: implementAction(StatsAction, (_args, { host }) =>
+  stats: implementAction(StatsAction, (args, { host }) =>
     toolStats(
       host.chapter.trace,
       host
         .extensions()
         .filter((item) => item.enabled)
         .flatMap((item) => item.server?.tools.map((tool) => tool.name) ?? []),
+      statsWindow(args),
     ),
   ),
 }

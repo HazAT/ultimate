@@ -9,12 +9,13 @@ itself.
 
 A dream is ordinary work: one branch, its answer, the user's decisions, ordinary branches for what they approve. There
 is no session to track. Dream's actions, called with codemode `ultimate.action('dream', name, args)`: `prepare
-{chapter, learned, handoff}` and `stats` (tool numbers from the trace, no model). `stats` counts tool calls over the
-whole retained trace: about the last 7 days, or the newest 200,000 calls, whichever ends first. `debug trace` and
-`ultimate.trace` do not read that window whole: they return the newest rows only (the newest 100 by default for
-`ultimate.trace`, 50 for `debug trace`, at most 1000, and `debug trace` cuts its text at about 160 rows), so on a busy
-project a query can cover hours rather than days. For older failures and model errors, read conversation entries and
-`watchdog.failure` cards.
+{chapter, learned, handoff}` and `stats` (call numbers from the trace, no model). `stats` counts tool calls, and
+service and action calls per caller and per callee, over the whole retained trace: about the last 7 days, or the newest
+200,000 calls, whichever ends first; `{since, until}` (ISO times with `Z` or an offset) narrow it, for example to one
+night. `debug trace` and `ultimate.trace` do not read that window whole: they return the newest rows only (the newest
+100 by default for `ultimate.trace`, 50 for `debug trace`, at most 1000, and `debug trace` cuts its text at about 160
+rows), so on a busy project a query can cover hours rather than days. For older failures and model errors, read
+conversation entries and `watchdog.failure` cards.
 
 ## For @ultimate
 
@@ -115,9 +116,10 @@ tally, `ultimate.entries(<root>)`) are the cheap way in; open a conversation onl
   and evidence (the memory review in extensions/lineage/README.md). Never drop or weaken the memory about the user.
 - **failures** — what failed often: `watchdog.failure` cards, tool and action errors in the trace, retries, reactor
   failures, lander rejections, runs the user had to stop. Group by cause; for the top ones propose a fix.
-- **tools** — `stats` gives calls, failures, mean duration and enabled tools never called. Explain the numbers: why a
-  tool fails, which are slow, which unused ones should be taught or removed, what agents did by hand that a tool
-  should do.
+- **tools** — `stats` gives calls, failures, mean duration and enabled tools never called, and service and action
+  calls with failures per caller and per callee: background work no tool shows, such as an extension calling a
+  service thousands of times or failing on credits. Explain the numbers: why a tool fails, which are slow, which
+  unused ones should be taught or removed, what agents did by hand that a tool should do.
 - **corrections** — what the user had to say more than once, corrections of the agents' work, and the wishes: what
   Ultimate itself would like to have or be able to do, from friction seen in old conversations.
 - **codify** — memories that should stop depending on being remembered and become how the harness works. For each
