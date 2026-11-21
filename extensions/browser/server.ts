@@ -157,6 +157,13 @@ export default function browserExtension(host: ExtensionHost) {
           'Where to save the PNG, relative to your cwd; default: a new file in the home.',
       }),
     ),
+    width: opt(
+      int({
+        minimum: 1,
+        description: 'Viewport width in CSS pixels; default 1440, 375 for a phone.',
+      }),
+    ),
+    height: opt(int({ minimum: 1, description: 'Viewport height in CSS pixels; default 900.' })),
     timeoutMs: opt(
       int({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
     ),
@@ -180,8 +187,6 @@ export default function browserExtension(host: ExtensionHost) {
         ),
         parameters: obj({
           ...base,
-          width: opt(int({ minimum: 1 })),
-          height: opt(int({ minimum: 1 })),
           fullPage: opt(bool()),
           selector: opt(str()),
           waitMs: opt(int({ minimum: 0 })),
@@ -198,7 +203,7 @@ export default function browserExtension(host: ExtensionHost) {
       defineTool({
         name: 'browser',
         description:
-          "Drive a fresh browser page with clicks, fills, keys, waits and JavaScript; report outcomes and optionally an image. Each step times out after 30 s. On an Ultimate page (this UI or a preview), `send` submits a prompt without the composer and `until` waits on Ultimate's state, never a guessed time: 'idle' (that conversation's turn is done), 'quiet' (nothing is busy, branches and subagents included), {entry: kind} or {event: name, where}; until defaults to 5 min (timeoutMs) and on timeout says what was still busy. Use `ui` steps for ui-sdk controls (switches, selects, dialogs): {ui: 'snapshot'} lists them with their label, state and actions, {ui: 'query', text?, within?, kind?} finds some or a list's items, {ui: 'act', steps: [{ref, action, args?}]} runs their actions as the agent (ref: a snapshot ref or the label), like [{ref: 'Keep warm', action: 'setChecked', args: [false]}]. Click and fill only to test the interaction itself. Scope selectors to one card or panel ('[data-entry-id=\"42\"] button:has-text(\"Retry\")', not 'button:has-text(\"Retry\")', which fails when it matches several).",
+          "Drive a fresh browser page with clicks, fills, keys, waits and JavaScript; report outcomes and optionally an image. width and height set the viewport (width: 375 for a phone). Each step times out after 30 s. On an Ultimate page (this UI or a preview), `send` submits a prompt without the composer and `until` waits on Ultimate's state, never a guessed time: 'idle' (that conversation's turn is done), 'quiet' (nothing is busy, branches and subagents included), {entry: kind} or {event: name, where}; until defaults to 5 min (timeoutMs) and on timeout says what was still busy. Use `ui` steps for ui-sdk controls (switches, selects, dialogs): {ui: 'snapshot'} lists them with their label, state and actions, {ui: 'query', text?, within?, kind?} finds some or a list's items, {ui: 'act', steps: [{ref, action, args?}]} runs their actions as the agent (ref: a snapshot ref or the label), like [{ref: 'Keep warm', action: 'setChecked', args: [false]}]. Click and fill only to test the interaction itself. Scope selectors to one card or panel ('[data-entry-id=\"42\"] button:has-text(\"Retry\")', not 'button:has-text(\"Retry\")', which fails when it matches several).",
         parameters: obj({
           ...base,
           steps: arr(

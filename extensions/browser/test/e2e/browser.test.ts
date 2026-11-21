@@ -129,6 +129,39 @@ it('marks the page as driven without a page error from a sandboxed frame', async
   }
 })
 
+// Phone checks built a 375 px iframe by hand because browser had no viewport size, and those iframes failed often.
+it('drives the page at the given viewport width and height', async () => {
+  const directory = await temp('ultimate-browser-viewport-')
+  const closers: (() => Promise<void>)[] = []
+  const host = {
+    home: join(directory, 'home'),
+    projectRoot: directory,
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose: (close: () => Promise<void>) => closers.push(close),
+    system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
+  } as unknown as ExtensionHost
+  const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
+  const api = { output() {} } as unknown as ToolExecutionApi
+  try {
+    const result = await browser.execute(
+      {
+        url: 'data:text/html,<title>Phone</title>',
+        width: 375,
+        height: 812,
+        steps: [{ eval: '[innerWidth, innerHeight]' }],
+        screenshot: false,
+      },
+      api,
+      context,
+    )
+    expect(result.isError).toBeFalsy()
+    expect(JSON.stringify(result.output)).toContain('Step 1: OK [375,812]')
+  } finally {
+    for (const close of closers) await close()
+    await removeTemp(directory)
+  }
+})
+
 // The call trace keeps the first 300 characters of a failed call: a page's console errors filled them, so the dream's
 // tool stats grouped 69 of 88 such failures by a console line, without the step that failed.
 it('names the failure before the console errors', async () => {
