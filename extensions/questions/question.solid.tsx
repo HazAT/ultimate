@@ -32,6 +32,7 @@ function OptionControl(props: {
       when={props.multi}
       fallback={
         <Button
+          aria-current={props.chosen ? 'true' : undefined}
           aria-label={props.name}
           data-selected={props.chosen ? '' : undefined}
           disabled={props.disabled}
@@ -345,6 +346,7 @@ function Scale(props: {
         <For each={choices(props.question)} keyed={false}>
           {(step, index) => (
             <Button
+              aria-current={value() === index ? 'true' : undefined}
               data-selected={value() === index ? '' : undefined}
               aria-label={`Rating ${step().label} · ${props.name}`}
               disabled={props.disabled}

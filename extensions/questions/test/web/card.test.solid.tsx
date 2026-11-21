@@ -133,21 +133,27 @@ it('shows the saved picks, note and open question on a fresh mount', () => {
   )
 })
 
-it('clears a single pick without advancing and still accepts letter shortcuts', async () => {
+it('announces the current choice and rating, and clears picks without advancing', async () => {
+  const withRating: Message = {
+    ...message,
+    id: 7,
+    questions: [...message.questions!, { text: 'How sure are you?', kind: 'scale' }],
+  }
   const card = renderSolid(() => (
-    <MessageQuestions message={message} keys={true} withActions={false} />
+    <MessageQuestions message={withRating} keys={true} withActions={false} />
   ))
   const field = (index: number) => card.querySelector(`[data-question="${index}"] fieldset`)
   const choice = (label: string) => card.querySelector(`[aria-label="${label}"]`)
-  const sidebar = 'Option 1 · Sidebar · question 1 · message 5'
-  const status = 'Option 2 · Status line · question 1 · message 5'
+  const sidebar = 'Option 1 · Sidebar · question 1 · message 7'
+  const status = 'Option 2 · Status line · question 1 · message 7'
   await press(sidebar)
-  expect(choice(sidebar)?.hasAttribute('data-selected')).toBe(true)
+  expect(choice(sidebar)?.getAttribute('aria-current')).toBe('true')
+  expect(choice(status)?.getAttribute('aria-current')).toBeNull()
   const key = (value: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key: value }))
   key('Escape')
   await vi.advanceTimersByTimeAsync(350)
   flush()
-  expect(choice(sidebar)?.hasAttribute('data-selected')).toBe(false)
+  expect(choice(sidebar)?.getAttribute('aria-current')).toBeNull()
   expect(field(0)?.hasAttribute('data-current')).toBe(true)
   key('b')
   flush()
@@ -156,6 +162,14 @@ it('clears a single pick without advancing and still accepts letter shortcuts', 
   flush()
   expect(choice(sidebar)?.hasAttribute('data-selected')).toBe(true)
   expect(choice(status)?.hasAttribute('data-selected')).toBe(false)
+  key('ArrowDown')
+  flush()
+  key('ArrowDown')
+  flush()
+  const rating = 'Rating 3 · question 3 · message 7'
+  await press(rating)
+  expect(choice(rating)?.getAttribute('aria-current')).toBe('true')
+  expect(choice('Rating 2 · question 3 · message 7')?.getAttribute('aria-current')).toBeNull()
   await uiState.flush()
 })
 

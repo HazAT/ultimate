@@ -154,10 +154,17 @@ it('keeps the picked effort pending and ignores a quick second choice', async ()
   expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
   const high = page.querySelector<HTMLButtonElement>('[aria-label="high effort"]')!
   const low = page.querySelector<HTMLButtonElement>('[aria-label="low effort"]')!
+  const off = page.querySelector<HTMLButtonElement>('[aria-label="off effort"]')!
+  expect(off.getAttribute('aria-current')).toBe('true')
+  expect(high.getAttribute('aria-current')).toBeNull()
   high.click()
   low.click()
   await sync()
   expect(high.hasAttribute('data-pending')).toBe(true)
+  expect(low.disabled).toBe(true)
+  expect(off.disabled).toBe(true)
+  low.click()
+  await sync()
   expect(writes()).toEqual([
     { path: '/api/conversations/1/configure', body: { thinkingLevel: 'high' }, source: 'person' },
   ])
