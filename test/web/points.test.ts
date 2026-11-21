@@ -14,6 +14,8 @@ vi.mock('../../web/src/sdk/hooks.ts', async () => ({
   useExtensions: () => state.records,
   useSystem: () => undefined,
 }))
+vi.mock('../../web/src/app/error-card.solid.tsx', () => ({ ErrorCard: () => null }))
+vi.mock('../../web/src/sdk/island.tsx', () => ({ island: () => () => null }))
 
 const Label = definePoint<number, string>('low.label')
 const record = (name: string, version: number, use: (id: number) => string): ExtensionRecord => ({

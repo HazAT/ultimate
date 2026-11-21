@@ -18,7 +18,7 @@ title bar the host shows above every surface.
 | `sidebar`              | Left column (`<Sidebar />`); it disappears while nothing is in it                                            |
 | `sidebar.top`          | Agent sidebar, after the Agents group and before the roots: background work such as watches                  |
 | `titlebar.brand`       | Title bar, the wordmark beyond a phone; render `Wordmark` from `@/sdk` with an `onClick`                     |
-| `titlebar.project`     | Title bar, in place of the project chip; render `ProjectChip` from `@/sdk` with a menu                       |
+| `titlebar.project`     | Title bar, in place of the project chip                                                                      |
 | `titlebar.left`        | Title bar above every surface, after the project chip; monospace, one line                                   |
 | `titlebar.right`       | Title bar, right, before the palette button                                                                  |
 | `header.right`         | Right side of the header, before the panel toggle (`<Header>`)                                               |
@@ -58,8 +58,8 @@ panelBadges: {
 ```
 
 Open one from code with `useUltimate().openPanel('info')`. A panel with `tab: false` stays out of the tab row until
-something opens it (a command, a sidebar row); give it a ⌘K command. Panels show on surfaces that render `<Panels />`, such
-as Agent.
+something opens it (a command, a sidebar row); give it a ⌘K command. Panels show on surfaces that render `<Panels />` (from
+`@/sdk/parts.solid.tsx`), such as Agent.
 
 ## Surfaces (apps)
 

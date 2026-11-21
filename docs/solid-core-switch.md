@@ -48,12 +48,21 @@ Start card, lineage's history banner, workspaces' lander note and subagents' que
 `ComposerPlaceholder` (conversations' `standing.tsx`) and `FileUpload` (attachments) are React data hooks the composer
 reads with `useProvided`; voice-live's `VoiceDock` wrapper stays React through the bridge until its extension moves.
 
+**Done: the shell (C4a).** `main.solid.tsx` boots `App.solid.tsx` with Solid's `render`; no React component sits above
+the surfaces. The title bar, header, status line, sidebar, panels, dock, palette (`palette.solid.tsx`, the kit `Command`
+in the kit `Dialog`) and the fixed error stack (`error-stack.solid.tsx`) are Solid, and `keyboard.ts` is a plain
+`installShortcuts()`. Surfaces, panels, badges and slots render through `Contribution` and `Slot`, so React ones mount
+through the bridge; `RenderedPoint` chains a point's providers through `Contributed` (`EmptyTranscript`). The React
+`Header`, `StatusLine`, `Conversation`, `Dock`, `Sidebar` and `Wordmark` in `@/sdk` are islands of the Solid parts
+(`web/src/sdk/shell.tsx`), React children reaching them through `island`'s portal; `ErrorCard` in `boundary.tsx` is an
+island of the Solid card. The agent surface and its title-bar panel buttons are `island(C)`.
+
 **Done in C4a:** messages' `OffscreenQuestions`, `MessageNavigation` and `OpenMessages`, questions' draft sweep and
 review's link overlay are `island(C)`. Review's `workspaces.review` point provides a callback with no React hooks.
 Conversations' standing empty state and MCP's extension details are island providers; the Automations panel reads the
 shell's panel and requested conversation state directly in Solid.
 
-**Summary (after C4b):** 38 rows (a row is one part or a group of one extension's parts). By core host:
+**Summary (after C4a and C4b):** see the tables below.
 
 | Core host                                                       | Rows | Extensions |
 | --------------------------------------------------------------- | ---- | ---------- |
@@ -103,7 +112,6 @@ in either framework. The remaining React providers sit behind the bridge until t
 
 | Extension | Part                                                                                                 | Where               | Why it waits                                                    | Moves in |
 | --------- | ---------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------- | -------- |
-| agent     | the `agent` surface and the title bar's panel buttons                                                | `agent/web.tsx`     | is the conversation view: transcript, composer, panels          | C4       |
 | documents | the Documents panel                                                                                  | `documents/web.tsx` | hosts other extensions' React document views                    | C4       |
 | codemode  | document view `codemode.store`                                                                       | `codemode/web.tsx`  | a Documents view                                                | C4       |
 | subagents | the Agents panel (`overview.tsx`) and the definition dialog (`definitions.tsx`, `fields.tsx`)        | `subagents/web.tsx` | uses models' React family editor (`FamilyPopover`, `AddFamily`) | C4       |
@@ -142,5 +150,3 @@ The host is Solid (C3); these React parts mount through the bridge and wait on t
 - **Contracts.** Every `ui.tsx` stays React while React code imports it. A Solid part reaches another extension through
   its `refs.ts` or its `ui.solid.tsx`: `conversations`, `workspaces`, `messages`, `plan` and `sidebar` have one. Give
   an extension a `ui.solid.tsx` when a moved part needs one of its components, not ahead of time.
-- **`prettyName`.** The core's `web/src/app/titlebar.tsx` keeps its own copy; both SDKs export the one in
-  `web/src/sdk/format.ts`, so the switch drops the title bar's.

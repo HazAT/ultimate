@@ -49,17 +49,10 @@ export type {
   WebExtension,
 } from './types.ts'
 /** Building blocks of surfaces; see docs/extensions/surfaces.md. */
-export {
-  Conversation,
-  Dock,
-  Header,
-  Panels,
-  Sidebar,
-  Slot,
-  StatusLine,
-} from '../app/primitives.tsx'
-/** The title bar's project chip, for an extension that replaces it in `titlebar.project` with a menu. */
-export { ProjectChip, projectHeading, projectTitle, Wordmark } from '../app/titlebar.tsx'
+export { Conversation, Dock, Header, Sidebar, StatusLine, Wordmark } from './shell.tsx'
+export { Slot } from '../app/boundary.tsx'
+/** The project's folder, pretty name and path from the system snapshot, as the sidebar heads it. */
+export { projectHeading } from '../app/project.ts'
 /** Isolates another extension's component you render, such as a document renderer: it throws into an error card. */
 export { ExtensionBoundary } from '../app/boundary.tsx'
 /** The transcript's and composer's reading column classes, for a card that sits in that column. */

@@ -1,7 +1,7 @@
+/** @jsxImportSource @solidjs/web */
 import './index.css'
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { App } from './app/App.tsx'
+import { render } from '@solidjs/web'
+import { App } from './app/App.solid.tsx'
 import { loadExtensions } from './extensions.ts'
 import { store, uiAgent } from './sdk/client.ts'
 
@@ -13,8 +13,4 @@ function preventDroppedFileNavigation(event: DragEvent) {
 for (const name of ['dragover', 'drop'] as const)
   document.addEventListener(name, preventDroppedFileNavigation)
 void loadExtensions()
-createRoot(document.getElementById('app')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+render(() => <App />, document.getElementById('app')!)

@@ -631,7 +631,12 @@ function TranscriptView(props: {
             <Show when={!props.loading && visible().length === 0 && !partial()}>
               <Show when={id !== undefined} fallback={<EmptyState />}>
                 <RenderedPoint
-                  staticCore={() => <EmptyState />}
+                  core={() => <EmptyState />}
+                  fallback={(extension, error, inner) => (
+                    <ContributionError error={error} extension={extension} inline>
+                      {inner()}
+                    </ContributionError>
+                  )}
                   input={{ conversation: id! }}
                   point={EmptyTranscript}
                 />

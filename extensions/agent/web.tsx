@@ -1,34 +1,10 @@
 import { ROOT } from '@/sdk'
 import { MessagesSquareIcon } from 'lucide-react'
-import {
-  Conversation,
-  Header,
-  Panels,
-  Sidebar,
-  StatusLine,
-  api,
-  defineWebExtension,
-  getConversation,
-} from '@/sdk'
+import { api, defineWebExtension, getConversation, island } from '@/sdk'
 import type { CommandContribution } from '@/sdk'
 import { CompactAction, getRoots } from '../lineage/ui.tsx'
-import { PanelActions } from './panel-actions.tsx'
-
-function Agent() {
-  return (
-    <>
-      <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        <main className="flex min-w-0 flex-1 flex-col">
-          <Header />
-          <Conversation />
-        </main>
-        <Panels />
-      </div>
-      <StatusLine />
-    </>
-  )
-}
+import { PanelActions } from './panel-actions.solid.tsx'
+import { Agent } from './surface.solid.tsx'
 
 const commands: CommandContribution[] = [
   {
@@ -63,14 +39,14 @@ const commands: CommandContribution[] = [
 ]
 
 export default defineWebExtension({
-  slots: { 'titlebar.right': [{ component: PanelActions, order: 100 }] },
+  slots: { 'titlebar.right': [{ component: island(PanelActions), order: 100 }] },
   surfaces: [
     {
       id: 'agent',
       title: 'Agent',
       icon: MessagesSquareIcon,
       description: 'The conversation, with panels beside it',
-      component: Agent,
+      component: island(Agent),
     },
   ],
   commands: commands.map((command) => ({ group: 'Ultimate', ...command })),

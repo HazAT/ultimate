@@ -4,10 +4,10 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { createMemo, For, Show } from 'solid-js'
 import type { Component } from 'solid-js'
 import { ContributionError } from '../app/contribution-error.solid.tsx'
-import { Contribution } from './react-island.solid.tsx'
+import { Contribution, Slot as ReactBridgeSlot } from './react-island.solid.tsx'
 import { islandSolid } from './island-mark.ts'
 import { provisionsOf, useExtensions } from './solid.ts'
-import type { Point, SolidEntryProps } from './types.ts'
+import type { Point, SlotName, SolidEntryProps } from './types.ts'
 
 export { Card } from '../app/card.solid.tsx'
 /** A card that folds to one quiet line in compact mode; `label` names its button. The reader's choice survives reloads. */
@@ -21,6 +21,30 @@ export { Slot } from './react-island.solid.tsx'
 export { useAllProvided } from './react-island.solid.tsx'
 /** The value the last provider in discovery order gives for `point`, from a React provider's hook. */
 export { useProvided } from './react-island.solid.tsx'
+/** Building blocks of surfaces, as `@/sdk` gives React ones; see docs/extensions/surfaces.md. */
+export { Header } from '../app/header.solid.tsx'
+export { Conversation, Dock, Panels, Sidebar, StatusLine } from '../app/shell.solid.tsx'
+/** An extension's failure, inline or as a block with a report button, as the shell shows it. */
+export { ErrorCard } from '../app/error-card.solid.tsx'
+/** A contribution's `icon` (a panel's, a surface's), React or `island(C)`, with `class`. */
+export { ContributedIcon } from './react-island.solid.tsx'
+
+/** Any slot by name, each item isolated: one that throws shows its error card inline and the rest still render. */
+export function Slot(props: { name: SlotName; variant?: 'inline' | 'block' }) {
+  return (
+    <ReactBridgeSlot
+      fallback={(extension, error) => (
+        <ContributionError
+          error={error}
+          extension={extension}
+          inline={props.variant === 'inline'}
+        />
+      )}
+      name={props.name}
+      variant={props.variant}
+    />
+  )
+}
 
 /**
  * Renders what each extension provides for `point` with `input`, in discovery order (`last` keeps only the last

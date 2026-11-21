@@ -116,8 +116,9 @@ const rendererBridges = new Set([
   'web/src/sdk/solid.ts',
   'web/src/sdk/markdown.tsx',
   'web/src/sdk/react-island.tsx',
+  'web/src/sdk/shell.tsx',
   'web/src/app/transcript-parts.tsx',
-  'web/src/app/primitives.tsx',
+  'web/src/app/boundary.tsx',
   reactIslandFile,
 ])
 const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
@@ -125,8 +126,14 @@ const solidSdk = 'web/src/sdk/solid.ts'
 const solidParts = 'web/src/sdk/parts.solid.tsx'
 const solidSdkEntry = (file: string) => file === solidSdk || file === solidParts
 const frameworkNeutralSdk = new Set(['web/src/sdk/island-mark.ts'])
-const reactSdk = (module: string) => {
+const shellState = new Set(
+  ['actions', 'client', 'registry', 'resume'].map((name) => `web/src/sdk/${name}.ts`),
+)
+const coreShell = (filename: string) =>
+  /^web\/src\/(app\/[^/]+\.solid\.tsx|main\.solid\.tsx)$/.test(repositoryPath(filename))
+const reactSdk = (module: string, importer = '') => {
   const file = repositoryPath(module)
+  if (coreShell(importer) && shellState.has(file)) return false
   return file.startsWith('web/src/sdk/') && !solidSdkEntry(file) && !frameworkNeutralSdk.has(file)
 }
 const islandHost = (filename: string) =>
@@ -360,7 +367,7 @@ export default {
               node,
               message: `A Solid file renders with Solid alone, so React code in it never runs as written. Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`,
             })
-          else if (solid && local !== undefined && reactSdk(local))
+          else if (solid && local !== undefined && reactSdk(local, context.filename))
             context.report({
               node,
               message: `@/sdk is the SDK for React: its hooks run only inside a React render, so in a Solid file they throw or never update. Import the Solid bindings from @/sdk/solid instead of ${source}; types may still come from @/sdk with \`import type\`.`,

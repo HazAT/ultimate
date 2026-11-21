@@ -1,13 +1,6 @@
-import { expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import type { SystemInfo } from '../../shared/protocol.ts'
-import { errorReport, stackFrames } from '../../web/src/app/boundary.tsx'
-
-// The real hooks connect to a server; errorReport reads only the system snapshot it is given.
-vi.mock('../../web/src/sdk/hooks.ts', async () => ({
-  ExtensionNameContext: (await import('react')).createContext<string | undefined>(undefined),
-  useExtensions: () => [],
-  useSystem: () => undefined,
-}))
+import { errorReport, stackFrames } from '../../web/src/app/error-report.ts'
 
 const system = {
   build: { id: 'b1', generation: 4 },
