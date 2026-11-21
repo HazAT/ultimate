@@ -1,8 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname } from 'node:path'
 import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT, withCancel } from '@earendil-works/chord/context'
 import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
@@ -25,6 +23,7 @@ import {
   createReadTool,
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
+import { getOrThrow } from '@earendil-works/pi-durable/env'
 import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { git } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -70,8 +69,16 @@ export async function prepareBash(
   api: Pick<ToolExecutionApi, 'conversationId'>,
   log?: string,
 ) {
-  const worktree = await git(execution.cwd, 'rev-parse', '--show-toplevel').catch(() => '')
-  if (!worktree.trim()) return
+  const [worktree, repository] = (
+    await git(
+      execution.cwd,
+      'rev-parse',
+      '--path-format=absolute',
+      '--show-toplevel',
+      '--git-common-dir',
+    ).catch(() => '')
+  ).split('\n')
+  if (!worktree?.trim() || !repository) return undefined
   execution.env.ULTIMATE_COMMIT_WORKTREE = worktree.trim()
   let count = Number(process.env.GIT_CONFIG_COUNT ?? 0)
   for (const [event, command] of Object.entries(nonBlockingGitHooks(api.conversationId))) {
@@ -83,7 +90,10 @@ export async function prepareBash(
   }
   execution.env.GIT_CONFIG_COUNT = String(count)
   if (log) execution.env.ULTIMATE_COMMIT_LOG = log
+  return repository
 }
+
+const objectId = /^[0-9a-f]{40}([0-9a-f]{24})?$/
 
 export function changes(command: string) {
   const joinedBashLines = command.replaceAll('\\\n', ' ')
@@ -195,7 +205,11 @@ type Made = {
   rewrittenFrom?: string
 }
 
-async function madeCommits(path: string, conversation: ConversationId) {
+async function madeCommits(
+  path: string,
+  conversation: ConversationId,
+  repository: string | undefined,
+) {
   const log = await readFile(path, 'utf8').catch(() => '')
   await rm(path, { force: true })
   const made = new Map<string, Made>()
@@ -203,9 +217,10 @@ async function madeCommits(path: string, conversation: ConversationId) {
   const rewrites: string[][] = []
   for (const line of log.split('\n')) {
     const [kind, sha, branch, toplevel, common, extra, reflog] = line.split('\t')
-    if (!sha || !common) continue
-    if (kind === 'rewrite') rewrites.push([sha, extra])
-    else if (kind === 'merge' && reflog?.endsWith(': Fast-forward')) continue
+    if (!repository || common !== repository || !objectId.test(sha ?? '')) continue
+    if (kind === 'rewrite') {
+      if (objectId.test(extra ?? '')) rewrites.push([sha, extra])
+    } else if (kind === 'merge' && reflog?.endsWith(': Fast-forward')) continue
     else if ((kind === 'commit' || kind === 'merge') && !made.has(sha)) {
       made.set(sha, { sha, ...(branch ? { branch } : {}), toplevel, common })
       if (kind === 'merge') merges.set(sha, extra ?? '')
@@ -356,15 +371,21 @@ export default function codingTools(
         throw new Error(
           `An interruptible command must only wait, but this one changes things (${change}). Run the change in its own bash call, then wait in a separate interruptible one.`,
         )
-      const invocationLog = join(tmpdir(), `ultimate-commits-${randomUUID()}.log`)
+      if (!api.env) throw new Error('No execution environment is configured')
+      const invocationLog = getOrThrow(
+        await api.env.createTempFile({ prefix: 'ultimate-commits-', suffix: '.log' }, context),
+      )
+      let repository: string | undefined
       const call = createBashTool({
-        prepare: (execution) => prepareBash(execution, api, invocationLog),
+        prepare: async (execution) => {
+          repository = await prepareBash(execution, api, invocationLog)
+        },
       })
       const run = (command: Context) => call.execute(args, api, command)
       try {
         return await untilStopped(run, api, interruptible, context)
       } finally {
-        const advisoryCommits = await madeCommits(invocationLog, api.conversationId)
+        const advisoryCommits = await madeCommits(invocationLog, api.conversationId, repository)
         if (advisoryCommits.length)
           await api
             .commit(async (tx) => {

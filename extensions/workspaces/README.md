@@ -42,6 +42,7 @@ refuses worktrees outside one folder, or a team that keeps every tree in one pla
 The commands get five minutes each. A conversation started in a subfolder of its repository opens in the same
 subfolder of its checkout.
 Preparation runs `isolates.worktree.setup` with `ULTIMATE_SOURCE` set to the source checkout.
+When the conversation is confined in a sandbox (the `workspaces.confinement` point below) and the checkout carries its own unlanded commits (a preserved branch), the setup commands run through the sandbox instead of on the host; a fresh checkout is the owner's tip and still runs them on the host.
 Setup commands must be safe to repeat after interruption.
 What a project's setup should do (dependencies, `.env`, a copy-on-write SQLite clone, a dev port per worktree, skipping
 the database in the lander's checkout, and when to ask about Postgres) is the "Worktree setup" step of the
@@ -189,6 +190,8 @@ lander's sidebar row shows the feature it lands or landed last.
      still has work under way (which then reports when it stops, as any branch does). Last, a concluded branch's
      checkout is released. A root or standing agent refuses concluding and stays open. Any later input resumes a
      concluded branch.
+
+`workspaces.confinement` is the extension point the optional `sandbox` extension provides (`Confinement` in `api.ts`, `want` it): `confined(id)` says whether a conversation's tools run in a sandbox, and `exec(id, command, options)` runs a shell command inside it. A confined subagent whose source is the project checkout cannot `land`: its commits reach the project checkout only through `workspace submit`.
 
 Settings (`.ultimate/settings.json`): `"lander": { "checks": ["pnpm check", [{ "command": "pnpm test", "timeout": 180 }, "pnpm test:e2e"]], "push": "origin" }`;
 both are optional. Anything that must follow every landing (a deploy, a notification) is an automation on the

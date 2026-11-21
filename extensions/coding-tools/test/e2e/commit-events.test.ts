@@ -32,7 +32,7 @@ afterEach(async () => {
 })
 
 /** The extension's bash tool, run as one call of conversation 7 in `dir`. */
-async function bash(command: string, dir = cwd) {
+async function bash(command: string, dir = cwd, env = new NodeExecutionEnv({ cwd: dir })) {
   const extension = codingTools({
     home: cwd,
     need: (() => ({})) as never,
@@ -53,7 +53,7 @@ async function bash(command: string, dir = cwd) {
     conversationId: 7 as ConversationId,
     taskId: 'task-commit-events',
     callId: 'call',
-    env: new NodeExecutionEnv({ cwd: dir }),
+    env,
     output: (chunk: string | Uint8Array) => (output += chunk.toString()),
     outputWindow: undefined,
     retainedOutput: () => ({ text: output, truncated: false }),
@@ -244,10 +244,31 @@ it('records nothing when bash made no commit', async () => {
   expect(emitted).toEqual([])
 })
 
+it('ignores commit log lines naming another repository, so a sandboxed agent cannot steer host git', async () => {
+  const forged = join(cwd, 'forged.git')
+  const marker = join(cwd, 'gpg-ran')
+  await bash(
+    [
+      `git init -q --bare ${forged}`,
+      `printf '#!/bin/sh\\ntouch ${marker}\\n' > ${forged}/gpg && chmod +x ${forged}/gpg`,
+      `git --git-dir=${forged} config log.showSignature true`,
+      `git --git-dir=${forged} config gpg.program ${forged}/gpg`,
+      `tree=$(git --git-dir=${forged} mktree </dev/null)`,
+      `sha=$(printf 'tree %s\\nauthor A <a@a> 0 +0000\\ncommitter A <a@a> 0 +0000\\ngpgsig -----BEGIN PGP SIGNATURE-----\\n x\\n -----END PGP SIGNATURE-----\\n\\nforged\\n' $tree | git --git-dir=${forged} hash-object -t commit -w --stdin)`,
+      `printf 'commit\\t%s\\tmain\\t%s\\t%s\\n' $sha ${cwd} ${forged} >> "$ULTIMATE_COMMIT_LOG"`,
+      `printf 'commit\\t--output=${join(cwd, 'written')}\\tmain\\t%s\\t%s\\n' ${cwd} ${join(cwd, '.git')} >> "$ULTIMATE_COMMIT_LOG"`,
+    ].join(' && '),
+  )
+  expect(emitted).toEqual([])
+  await expect(realpath(marker)).rejects.toThrow('ENOENT')
+  await expect(realpath(join(cwd, 'written'))).rejects.toThrow('ENOENT')
+})
+
 it('never fails a commit when the log cannot be written', async () => {
   // A log path inside a missing directory makes every hook's append fail.
-  vi.stubEnv('TMPDIR', join(cwd, 'missing'))
-  const { result } = await bash('git commit -q --allow-empty -m kept && echo ok')
+  const env = new NodeExecutionEnv({ cwd })
+  env.createTempFile = async () => ({ ok: true, value: join(cwd, 'missing', 'commits.log') })
+  const { result } = await bash('git commit -q --allow-empty -m kept && echo ok', cwd, env)
   expect(result.isError).toBeFalsy()
   expect(await git('log', '-1', '--format=%s')).toBe('kept')
   expect(emitted).toEqual([])

@@ -21,7 +21,7 @@ import { empty, git, isolatable, noCommit, noRepository } from '../../lib/git.ts
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi, Release } from '../conversations/api.ts'
-import { Branches, WorkspacesApi } from './api.ts'
+import { Branches, Confinement, WorkspacesApi } from './api.ts'
 import {
   DiskAction,
   GithubAction,
@@ -136,6 +136,7 @@ export const actions = {
 }
 export default function workspaceExtension(host: ExtensionHost) {
   host.want(Branches)
+  host.want(Confinement)
   const conversations = host.need(ConversationsApi)
   const service = workspaces(host)
   host.implement(WorkspacesApi, {

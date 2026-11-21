@@ -25,7 +25,8 @@ import { git } from '../../../../lib/git.ts'
 import { setup } from '../../setup.ts'
 import type { LanderEntry, WorkspaceIndex } from '../../types.ts'
 import { createLander, landerCheckout, landerPath } from '../../lander.ts'
-import { CheckRan, SubmissionFailed, SubmissionLanded } from '../../api.ts'
+import type { ConfinementService } from '../../api.ts'
+import { CheckRan, Confinement, SubmissionFailed, SubmissionLanded } from '../../api.ts'
 import lineage, { leaveNote, startBranch } from '../../../lineage/server.ts'
 import { LineageApi, Roots } from '../../../lineage/api.ts'
 import {
@@ -2296,6 +2297,37 @@ it.concurrent('failed setup while recreating a discarded branch preserves its un
   await f.call(id, 'bash', { command: 'pwd' })
   expect((await f.service.get(id, context))!.state).toBe('failed')
   expect(await git(f.projectRoot, 'rev-parse', workspace.branch)).toBe(tip)
+})
+
+it.concurrent('refuses to land a confined child of the project checkout', async () => {
+  const f = await fixture()
+  const id = await f.create()
+  await f.service.ready(id, context)
+  await commit((await f.service.get(id, context))!.path)
+  f.host.implement(Confinement, { confined: async () => true, exec: async () => {} })
+  await expect(f.service.land(id, context)).rejects.toThrow(
+    "A sandboxed agent's commits reach the project checkout only through workspace submit, never subagent land",
+  )
+})
+it.concurrent('runs setup of a preserved checkout through the confinement, a fresh one on the host', async () => {
+  const f = await fixture(['touch host-ran'])
+  const exec = vi.fn<ConfinementService['exec']>(async () => {})
+  f.host.implement(Confinement, { confined: async () => true, exec })
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  expect(exec).not.toHaveBeenCalled()
+  await readFile(join(workspace.path, 'host-ran'))
+  await commit(workspace.path)
+  await f.service.discard(id, context)
+  await f.call(id, 'bash', { command: 'pwd' })
+  const recreated = (await f.service.get(id, context))!
+  expect(recreated.state).toBe('ready')
+  expect(exec).toHaveBeenCalledWith(
+    id,
+    'touch host-ran',
+    expect.objectContaining({ cwd: recreated.path, env: { ULTIMATE_SOURCE: recreated.source } }),
+  )
 })
 
 it('resuming a child after its removal keeps the parent in the same release batch', async () => {
