@@ -481,7 +481,7 @@ function AnswerCard(props: CardProps & { id: number }) {
               </Show>
             </span>
           </Show>
-          <span class="ml-auto flex items-center gap-1.5">
+          <span class="ml-auto flex flex-wrap items-center justify-end gap-1.5">
             <Actions disabled={disabled()} class="max-md:h-11" />
             <SendButton
               messageId={props.id}

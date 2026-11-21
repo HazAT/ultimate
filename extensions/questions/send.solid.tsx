@@ -65,7 +65,8 @@ export function SendButton(props: {
   )
   const answering = () => props.phase === 'answering'
   const undo = () => props.phase === 'undo'
-  const status = () => (undo() ? 'Undo' : props.phase === 'sending' ? 'Sending…' : 'Sent')
+  const settling = () => answering() || undo()
+  const status = () => (settling() ? 'Undo' : props.phase === 'sending' ? 'Sending…' : 'Sent')
   return (
     <Button
       size="sm"
@@ -143,7 +144,7 @@ export function SendButton(props: {
           )}
           aria-hidden={answering() ? 'true' : 'false'}
         >
-          <Show when={undo()}>
+          <Show when={settling()}>
             <Undo2 />
           </Show>
           {status()}
