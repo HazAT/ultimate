@@ -8,7 +8,7 @@ import {
 } from '@earendil-works/pi-ai/providers/faux'
 import { isRetryableAssistantError } from '@earendil-works/pi-ai/utils/retry'
 import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durable'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { context } from '../server/harness.ts'
 import { guardStream, guardToolArguments, MAX_WHITESPACE_RUN } from '../server/tool-arguments.ts'
 
@@ -114,6 +114,35 @@ it('ends with an error when the source fails', async () => {
     provider: 'faux',
     model: 'faux-1',
   })
+})
+
+it('ends a stream that goes silent with an error Pi does not retry by itself', async () => {
+  // A provider kept connections open without sending anything: calls hung 13 to 65 minutes, then Pi retried them.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  cleanups.push(async () => void vi.useRealTimers())
+  const { message } = source([])
+  let opened: AbortSignal | undefined
+  const stream = guardStream(
+    (signal) => {
+      opened = signal
+      const silent = createAssistantMessageEventStream()
+      const partial = { ...message, content: [] }
+      silent.push({ type: 'start', partial })
+      return silent
+    },
+    model,
+    undefined,
+    300_000,
+  )
+  const drained = drain(stream)
+  await vi.advanceTimersByTimeAsync(299_000)
+  expect(opened?.aborted).toBe(false)
+  await vi.advanceTimersByTimeAsync(2_000)
+  const { events, result } = await drained
+  expect(events.map((event) => event.type)).toEqual(['start', 'error'])
+  expect(opened?.aborted).toBe(true)
+  expect(result.errorMessage).toBe('Model stream stalled: faux/faux-1 sent nothing for 300 s')
+  expect(isRetryableAssistantError(result)).toBe(false)
 })
 
 it('lets the generation retry a degenerate response and answer', async () => {
