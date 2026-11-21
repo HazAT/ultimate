@@ -61,7 +61,7 @@ export function draftsKey(spec: string, conversation?: ConversationId) {
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
-const line = (value: unknown) =>
+const line = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 
 export function checkReview(input: unknown): ReviewComments {

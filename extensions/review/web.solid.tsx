@@ -1,16 +1,17 @@
-import { FileDiffIcon } from 'lucide-react'
-import { lazy, Suspense } from 'react'
-import { defineWebExtension, events, island, provide } from '@/sdk'
-import { Review } from '../workspaces/ui.tsx'
+/** @jsxImportSource @solidjs/web */
+import { FileDiffIcon } from '@lucide/solid'
+import { Loading as LoadingBoundary, lazy } from 'solid-js'
+import { defineWebExtension, events, provide } from '@/sdk/solid'
+import { Review } from '../workspaces/ui.solid.tsx'
 import { ReviewCard } from './card.solid.tsx'
 import { ReviewLink } from './link.solid.tsx'
-import { Frame, Loading } from './parts.tsx'
+import { Frame, Loading } from './parts.solid.tsx'
 
-const Viewer = lazy(() => import('./surface.tsx'))
+const Viewer = lazy(() => import('./surface.solid.tsx'))
 
 function ReviewSurface() {
   return (
-    <Suspense
+    <LoadingBoundary
       fallback={
         <Frame>
           <Loading />
@@ -18,7 +19,7 @@ function ReviewSurface() {
       }
     >
       <Viewer />
-    </Suspense>
+    </LoadingBoundary>
   )
 }
 
@@ -36,7 +37,7 @@ export default defineWebExtension({
   commands: [
     { id: 'review.open', title: 'Open Review', run: (context) => context.showSurface('review') },
   ],
-  slots: { overlay: [island(ReviewLink)] },
-  entries: { 'review.comments': island(ReviewCard) },
-  provides: [provide(Review, (spec) => () => events.emit('review:open', { spec }))],
+  slots: { overlay: [ReviewLink] },
+  entries: { 'review.comments': ReviewCard },
+  provides: [provide(Review, (spec) => () => () => events.emit('review:open', { spec: spec() }))],
 })
