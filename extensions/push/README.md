@@ -20,6 +20,10 @@ with `extensions.enable: ["push"]` in user or project settings.
 A browser that reported the app on screen in the last 15 s gets nothing. Tapping a notification opens its
 conversation, a question's at the question.
 
+`"push": { "generic": true }` in user or project settings (project wins) keeps content off the lock screen: every push
+is titled "Ultimate" with "A question is waiting" for a question and "Something new is waiting" for anything else.
+Reply, Approve and the tap target still work.
+
 ## Setup
 
 The status line's **notify** bell turns notifications on for this browser (it asks for permission), sends a test and
