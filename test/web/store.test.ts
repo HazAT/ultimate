@@ -141,7 +141,7 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('streams documents of given conversations on one subscription per conversation', async () => {
+  it('streams documents of given conversations, adding kinds without resending what is already open', async () => {
     const { store, sources, server, latest } = setup()
     latest().open()
     const tasks = store.watchDocOf(1 as ConversationId, 'test.tasks')
@@ -149,19 +149,16 @@ describe('web replica store', () => {
     const overview = store.watchDocOf(1 as ConversationId, 'test.overview')
     const plan = store.watchDocOf(7 as ConversationId, 'test.plan')
     await tick()
-    // All on the tab's one stream: the shown conversation, then one subscription of all kinds per conversation.
+    // All on the tab's one stream: the shown conversation, then the kinds watched in one tick, per conversation.
     expect(sources).toHaveLength(1)
-    expect(
-      server.subscriptions.map((item) => ({
-        conversation: item.conversation,
-        docs: item.docs,
-        view: item.view,
-        closed: item.closed,
-      })),
-    ).toEqual([
-      { docs: [], view: true, closed: false },
-      { conversation: 1, docs: ['test.overview', 'test.tasks'], view: false, closed: false },
-      { conversation: 7, docs: ['test.plan'], view: false, closed: false },
+    const open = () =>
+      server.subscriptions
+        .filter((item) => !item.closed)
+        .map((item) => ({ conversation: item.conversation, docs: item.docs, view: item.view }))
+    expect(open()).toEqual([
+      { docs: [], view: true },
+      { conversation: 1, docs: ['test.overview', 'test.tasks'], view: false },
+      { conversation: 7, docs: ['test.plan'], view: false },
     ])
     const root = server.of(1)!
     const coordinator = server.of(7)!
@@ -183,19 +180,40 @@ describe('web replica store', () => {
     await tick()
     expect([root.closed, coordinator.closed]).toEqual([false, false])
 
-    // A refused subscription is tried again.
-    server.refuse(1, 500)
+    // Releasing one kind keeps the subscription; its late events are ignored.
     overview()
     await tick()
-    expect(server.of(1)).toBeUndefined()
+    expect(root.closed).toBe(false)
+    root.send('doc', { kind: 'test.overview', value: { late: true } })
+    expect(store.getState().docsOf[1]).toEqual({ 'test.tasks': { n: 2 } })
+
+    // A kind watched later gets a subscription of its own, so nothing open is sent again.
+    const watched = store.watchDocOf(1 as ConversationId, 'test.overview')
+    await tick()
+    expect(root.closed).toBe(false)
+    const added = server.of(1)!
+    expect(added.docs).toEqual(['test.overview'])
+    added.send('doc', { kind: 'test.overview', value: { fresh: true } })
+    expect(store.getState().docsOf[1]['test.overview']).toEqual({ fresh: true })
+
+    // A refused subscription is tried again.
+    watched()
+    await tick()
+    expect(added.closed).toBe(true)
+    server.refuse(1, 500)
+    const retried = store.watchDocOf(1 as ConversationId, 'test.overview')
+    await tick()
+    expect(server.of(1)).toBe(root)
     server.refuse(1, undefined)
     await tick()
-    expect(server.of(1)!.docs).toEqual(['test.tasks'])
+    expect(server.of(1)!.docs).toEqual(['test.overview'])
 
-    // A new stream (a restart) gets every subscription again; the value stays until its snapshot.
+    // A new stream (a restart) gets every kind again; the value stays until its snapshot.
     latest().drop()
     latest().open()
-    const reopened = server.of(1)!
+    const reopened = server.subscriptions.find(
+      (item) => !item.closed && item.conversation === 1 && item.docs.includes('test.tasks'),
+    )!
     expect(reopened.stream).toBe(latest().id)
     expect(store.getState().docsOf[1]['test.tasks']).toEqual({ n: 2 })
     reopened.send('doc', { kind: 'test.tasks', value: { n: 3 } })
@@ -203,26 +221,15 @@ describe('web replica store', () => {
     expect(store.getState().docsOf[1]['test.tasks']).toEqual({ n: 3 })
     expect(server.of(7)!.stream).toBe(latest().id)
 
-    // Released and watched again before the next tick: the subscription carries on.
-    overview()
-    const watched = store.watchDocOf(1 as ConversationId, 'test.overview')
-    await tick()
-    const both = server.of(1)!
-    expect(both.docs).toEqual(['test.overview', 'test.tasks'])
-    watched()
-    store.watchDocOf(1 as ConversationId, 'test.overview')
-    await tick()
-    expect(both.closed).toBe(false)
-
-    // A kind nobody watches leaves its conversation's subscription; the last one closes it.
+    // The last kind of a conversation closes its subscriptions.
     tasks()
     await tick()
-    expect(both.closed).toBe(false)
+    expect(reopened.closed).toBe(false)
     tasksAgain()
+    retried()
     await tick()
-    expect(both.closed).toBe(true)
-    expect(server.of(1)!.docs).toEqual(['test.overview'])
-    expect(store.getState().docsOf[1]).toEqual({})
+    expect(reopened.closed).toBe(true)
+    expect(store.getState().docsOf[1]).toBeUndefined()
     plan()
     await tick()
     // Only the shown conversation's own subscription of 7 is left.

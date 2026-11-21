@@ -95,7 +95,18 @@ export function fakeSubscriptions(sources: FakeSource[]) {
           get closed() {
             return deleted.has(`${stream}/${sub}`) || source.closed || source.id !== stream
           },
-          send: (name, data) => source.send(name, data, sub),
+          send: (name, data) => {
+            const kind = (data as { kind?: string }).kind
+            const carrier = subscriptions.findLast(
+              (item) =>
+                !item.closed &&
+                item.stream === stream &&
+                item.conversation === spec.conversation &&
+                kind !== undefined &&
+                item.docs.includes(kind),
+            )
+            source.send(name, data, carrier?.sub ?? sub)
+          },
         })
       }
       return Response.json({ ok: true, refused: failed })

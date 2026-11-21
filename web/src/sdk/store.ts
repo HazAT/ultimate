@@ -56,7 +56,7 @@ export interface State {
 export interface EventSourceLike {
   readonly readyState: number
   addEventListener(name: string, listener: (event: Event) => void): void
-  close(): void
+  close: () => void
 }
 export interface StoreOptions {
   eventSource?: (url: string) => EventSourceLike
@@ -89,7 +89,10 @@ type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
 type Spec = { conversation?: ConversationId; docs: string[]; view: boolean }
 
 interface Kept {
-  close(): void
+  close: () => void
+}
+interface DocGroup extends Kept {
+  kinds: Set<string>
 }
 
 function applyDoc(docs: Docs, event: ServerEvents['doc'] | ServerEvents['docOps']): Docs {
@@ -123,7 +126,7 @@ export function createStore(options: StoreOptions = {}) {
   const watchedViews = new Map<ConversationId, number>()
 
   const sharedViews = new Map<ConversationId, Kept>()
-  const sharedDocs = new Map<ConversationId, Kept & { kinds: string }>()
+  const sharedDocs = new Map<ConversationId, DocGroup[]>()
 
   let multiplexedEventSource: EventSourceLike | undefined
 
@@ -131,7 +134,7 @@ export function createStore(options: StoreOptions = {}) {
   const handlers = new Map<number, Handler>()
   let nextSub = 0
   let shownView: Kept | undefined
-  let shownDocs: Kept | undefined
+  let shownDocs: DocGroup[] = []
   const opening = new Map<number, { spec: Spec; failed: (status: number) => void }>()
   const closing: number[] = []
   let opened = false
@@ -224,9 +227,7 @@ export function createStore(options: StoreOptions = {}) {
         break
       case 'doc':
       case 'docOps': {
-        const event = data as ServerEvents['doc'] | ServerEvents['docOps']
-        if (!docKinds.has(event.kind)) break
-        const docs = applyDoc(state.docs, event)
+        const docs = applyDoc(state.docs, data as ServerEvents['doc'] | ServerEvents['docOps'])
         if (docs !== state.docs) set({ docs })
         break
       }
@@ -342,20 +343,44 @@ export function createStore(options: StoreOptions = {}) {
         set({ requested: undefined })
         options.onFallback?.()
         openShownView()
-        openShownDocs()
+        closeGroups(shownDocs)
+        syncShownDocs()
         return true
       },
     )
   }
-  function openShownDocs() {
+
+  function syncDocGroups(
+    groups: DocGroup[],
+    wanted: ReadonlySet<string>,
+    conversation: ConversationId | undefined,
+    apply: (change: ServerEvents['doc'] | ServerEvents['docOps']) => void,
+  ) {
+    for (const group of groups)
+      for (const kind of group.kinds) if (!wanted.has(kind)) group.kinds.delete(kind)
+    const live = groups.filter((group) => {
+      if (!group.kinds.size) group.close()
+      return group.kinds.size > 0
+    })
+    const owned = new Set(live.flatMap((group) => [...group.kinds]))
+    const added = [...wanted].filter((kind) => !owned.has(kind)).toSorted()
+    if (!added.length) return live
+    const kinds = new Set(added)
+    const kept = keep({ conversation, docs: added, view: false }, (_name, raw) => {
+      const change = JSON.parse(raw) as ServerEvents['doc'] | ServerEvents['docOps']
+      if (kinds.has(change.kind)) apply(change)
+    })
+    return [...live, { kinds, close: kept.close }]
+  }
+  function closeGroups(groups: DocGroup[]) {
+    for (const group of groups) group.close()
+    groups.length = 0
+  }
+  function syncShownDocs() {
     cancelShownDocs?.()
-    shownDocs?.close()
-    shownDocs = undefined
-    const docs = [...docKinds.keys()].toSorted()
-    if (docs.length)
-      shownDocs = keep({ conversation: state.requested, docs, view: false }, (name, raw) =>
-        handle(name, JSON.parse(raw)),
-      )
+    shownDocs = syncDocGroups(shownDocs, new Set(docKinds.keys()), state.requested, (change) => {
+      if (docKinds.has(change.kind)) handle('doc', change)
+    })
   }
 
   function connect() {
@@ -394,9 +419,12 @@ export function createStore(options: StoreOptions = {}) {
           opening.clear()
           closing.length = 0
           openShownView()
-          openShownDocs()
+          closeGroups(shownDocs)
+          syncShownDocs()
           for (const conversation of sharedViews.keys()) openView(conversation)
-          for (const [conversation, { kinds }] of sharedDocs) openDocs(conversation, kinds)
+          for (const groups of sharedDocs.values()) closeGroups(groups)
+          sharedDocs.clear()
+          syncSharedDocs()
           flush()
         } else if (name === 'system') {
           if (lastSystemText !== raw) {
@@ -415,7 +443,7 @@ export function createStore(options: StoreOptions = {}) {
   function scheduleShownDocs() {
     if (stopped) return
     cancelShownDocs?.()
-    cancelShownDocs = nextTurn(openShownDocs)
+    cancelShownDocs = nextTurn(syncShownDocs)
   }
 
   function openView(conversation: ConversationId) {
@@ -434,16 +462,26 @@ export function createStore(options: StoreOptions = {}) {
       }),
     )
   }
-  function openDocs(conversation: ConversationId, kinds: string) {
-    sharedDocs.get(conversation)?.close()
-    const kept = keep({ conversation, docs: kinds.split(','), view: false }, (_name, raw) => {
-      const change = JSON.parse(raw) as ServerEvents['doc'] | ServerEvents['docOps']
-      if (!docWatchCountsByConversation.get(conversation)?.has(change.kind)) return
-      const docs = state.docsOf[conversation] ?? {}
-      const next = applyDoc(docs, change)
-      if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
-    })
-    sharedDocs.set(conversation, { ...kept, kinds })
+  function syncSharedDocs() {
+    for (const [conversation, groups] of sharedDocs)
+      if (!docWatchCountsByConversation.has(conversation)) {
+        closeGroups(groups)
+        sharedDocs.delete(conversation)
+      }
+    for (const [conversation, kinds] of docWatchCountsByConversation) {
+      const groups = syncDocGroups(
+        sharedDocs.get(conversation) ?? [],
+        new Set(kinds.keys()),
+        conversation,
+        (change) => {
+          if (!docWatchCountsByConversation.get(conversation)?.has(change.kind)) return
+          const docs = state.docsOf[conversation] ?? {}
+          const next = applyDoc(docs, change)
+          if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
+        },
+      )
+      sharedDocs.set(conversation, groups)
+    }
   }
 
   function syncSharedViewAndDocSubscriptions() {
@@ -454,16 +492,9 @@ export function createStore(options: StoreOptions = {}) {
       }
     for (const conversation of watchedViews.keys())
       if (!sharedViews.has(conversation)) openView(conversation)
-    for (const [conversation, kept] of sharedDocs)
-      if (!docWatchCountsByConversation.has(conversation)) {
-        kept.close()
-        sharedDocs.delete(conversation)
-      }
+    syncSharedDocs()
     const docsOf: Record<number, Docs> = {}
     for (const [conversation, kinds] of docWatchCountsByConversation) {
-      const list = [...kinds.keys()].toSorted().join(',')
-      if (sharedDocs.get(conversation)?.kinds !== list) openDocs(conversation, list)
-
       const current = state.docsOf[conversation] ?? {}
       docsOf[conversation] = Object.keys(current).every((kind) => kinds.has(kind))
         ? current
@@ -513,12 +544,13 @@ export function createStore(options: StoreOptions = {}) {
       cancelSync?.()
 
       streamId = undefined
-      for (const kept of [...sharedViews.values(), ...sharedDocs.values()]) kept.close()
+      for (const kept of sharedViews.values()) kept.close()
+      for (const groups of sharedDocs.values()) closeGroups(groups)
       sharedViews.clear()
       sharedDocs.clear()
       shownView?.close()
-      shownDocs?.close()
-      shownView = shownDocs = undefined
+      shownView = undefined
+      closeGroups(shownDocs)
       multiplexedEventSource?.close()
       multiplexedEventSource = undefined
     },
@@ -526,8 +558,8 @@ export function createStore(options: StoreOptions = {}) {
     show(id: ConversationId | undefined) {
       if (id === state.requested) return
       shownView?.close()
-      shownDocs?.close()
-      shownView = shownDocs = undefined
+      shownView = undefined
+      closeGroups(shownDocs)
       const kept = id === undefined ? undefined : recentViewsWithRawSnapshots.get(id)?.view
       set({
         requested: id,
