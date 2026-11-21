@@ -21,9 +21,8 @@ The libraries ship skills that match the pinned versions: read them, not your me
 
 ## Principles
 
-- **Clean, easy to use, simple, clear, robust.** A move to Solid earns its place by reading cleaner: one primitive in
-  place of hand-made state, a kit control in place of a styled element. Size comes second; a plain translation is not
-  the goal.
+- **Clean, easy to use, simple, clear, robust.** One primitive in place of hand-made state, a kit control in place of
+  a styled element. Size comes second.
 - **Durable by default.** State that should survive a reload, a restart or a second tab is a document or UI state, not
   a local signal. Kit controls take it whole through `bind`.
 - **Who acted is part of every change.** Kit controls run their handlers in `writingAs(details.source, …)`, so a write
@@ -36,14 +35,18 @@ The libraries ship skills that match the pinned versions: read them, not your me
 
 ## Where Solid lives
 
-A facet's framework is its file name: `web.solid.tsx` is Solid; `web.tsx` is only for
-[React facets outside this repository](../../docs/extensions/react-compat.md).
+The UI is Solid. A facet's framework is its file name: `web.solid.tsx`. A `web.tsx` is React and exists only for
+extensions outside this repository, which run on the frozen, lazily loaded compat layer in `web/src/compat/`
+([React facets on a Solid core](../../docs/extensions/react-compat.md)). Never change the compat layer for new work.
 
 - **One renderer per file.** Solid JSX belongs in `*.solid.tsx`, opened with `/** @jsxImportSource @solidjs/web */`.
   `ultimate/ui-framework-boundaries` rejects React imports and other `.tsx` names in the repository outside compat
-  (except the sidebar's points-only compat contract); `ultimate/solid-jsx-pragma` checks the pragma.
-- **`@/sdk/solid` in Solid files.** Readers return accessors: call them where you use them (`doc()?.title` in JSX or
-  a memo), never once at the top of a component ([Solid facets](../../docs/extensions/sdk.md#solid-facets)).
+  (except the sidebar's points-only contract for outside React facets); `ultimate/solid-jsx-pragma` checks the pragma.
+- **One SDK entry: `@/sdk/solid`.** Readers, actions, contexts, formatters and the shared parts (`Header`, `Card`,
+  `Fold`, `Slot`, `Provided`, …) all come from it. Inside `web/src`, modules import `web/src/sdk/hooks.ts` instead,
+  since the parts the entry re-exports import the readers (`import/no-cycle`). Readers return accessors: call them
+  where you use them (`doc()?.title` in JSX or a memo), never once at the top of a component
+  ([Solid facets](../../docs/extensions/sdk.md#solid-facets)).
 - **Other extensions through their contracts.** A Solid file imports another extension's `refs.ts` (its documents and
   actions) or its `ui.solid.tsx` (its components, such as conversations' `ConversationRef`). Shared data goes in a
   `.ts` file or `lib/` (`lib/conversation-ref.ts`, `extensions/sounds/variants.ts`). Lint: `ultimate/api-only-imports`.
@@ -61,23 +64,21 @@ A facet's framework is its file name: `web.solid.tsx` is Solid; `web.tsx` is onl
 
 - **Transcript renderers** are plain components: `entries: { 'my.kind': EntryCard }`, with `EntryCard` taking
   `SolidEntryProps` (`SolidToolProps` for a tool) from `@/sdk/solid`. Read rows with `useTranscript()` and their
-  scroll element and container with `useTranscriptElements()` from `@/sdk/solid`. Use `renderEntry(Token, EntryCard)`
-  from `@/sdk/parts.solid.tsx` to narrow by an entry token; give a model-only entry a renderer returning `null`.
-- **Transcript parts for Solid renderers** come from `@/sdk/parts.solid.tsx`: `Card`, `Fold` (its `label` names the
-  toggle), `MessageActions` (`name` names its copy button when several cards share an entry), `UserText`, `UserView`,
-  `useToolDuration`, `renderEntry`, `Provided`, `useProvided`. It is a second entry because these parts and the kit
-  components they render import `@/sdk/solid`, so `@/sdk/solid` re-exporting them would be an import cycle. One of each
-  part: before writing a card, fold, diff or agent mark, use the shared one (coding-tools' `Diff` from its
-  `ui.solid.tsx`, conversations' `AgentMark`).
+  scroll element and container with `useTranscriptElements()`. Use `renderEntry(Token, EntryCard)` to narrow by an
+  entry token; give a model-only entry a renderer returning `null`.
+- **Transcript parts:** `Card`, `Fold` (its `label` names the toggle), `MessageActions` (`name` names its copy button
+  when several cards share an entry), `UserText`, `UserView`, `useToolDuration`. One of each part: before writing a
+  card, fold, diff or agent mark, use the shared one (coding-tools' `Diff` from its `ui.solid.tsx`, conversations'
+  `AgentMark`).
 - **Point providers** use `provide(Point, value)`. Use a component for a UI-valued point: it takes an object input
   as props (`{ conversation }`), and `Provided` renders it under its extension name. Keep UI and data in separate
   points (the sidebar's task data and task chip). A data provider takes an input accessor and returns a value
   accessor. Declare a shared point once and re-export it from `ui.solid.tsx`; built-ins keep definitions in a plain
   `.ts` file (`extensions/conversations/points.ts`) so tests can read them without loading the browser SDK. A core-tier
   reader can't import an optional extension's contract: it declares the point instead.
-- **Point and slot readers** come from `@/sdk/parts.solid.tsx`: `useProvided` for one data value, `useAllProvided`
-  for every provider's (`Unlisted`), `Provided` for UI (`UnderUltimate`, the task chip), and `Slot` for a slot
-  (`sidebar.top`). Read a point once per row or list, not per cell.
+- **Point and slot readers:** `useProvided` for one data value, `useAllProvided` for every provider's (`Unlisted`),
+  `Provided` for UI (`UnderUltimate`, the task chip), and `Slot` for a slot (`sidebar.top`). Read a point once per
+  row or list, not per cell.
 - **The composer:** a `composer` wrapper takes `SolidComposerProps`, an `inbox` renderer `SolidInboxProps`. Read the
   redirect target with `useContext(ComposerRedirect)` (an accessor) and provide it with
   `<ComposerRedirect value={target}>` around `props.core`.
@@ -86,10 +87,11 @@ A facet's framework is its file name: `web.solid.tsx` is Solid; `web.tsx` is onl
 
 - **The page is Solid.** `web/src/main.solid.tsx` renders `App.solid.tsx`; the title bar, header, status line,
   sidebar region, panels, dock, palette and error stack are Solid (`web/src/app/shell.solid.tsx` and its neighbours).
-  A Solid surface builds on `Header`, `StatusLine`, `Conversation`, `Dock`, `Sidebar`, `Panels`, `Slot` and
-  `ErrorCard` from `@/sdk/parts.solid.tsx` (`extensions/agent/surface.solid.tsx`).
-- **Render registered contributions** through `Contribution`, `Slot` or `Provided` from `@/sdk/parts.solid.tsx`,
-  never by calling the component. This gives each contribution its own extension scope and error handling.
+  A surface builds on `Header`, `StatusLine`, `Conversation`, `Dock`, `Sidebar`, `Panels`, `Slot` and `ErrorCard`
+  (`extensions/agent/surface.solid.tsx`).
+- **Render registered contributions** through `Contribution`, `Slot` or `Provided`, never by calling the component.
+  This gives each contribution its own extension scope and error handling, and mounts an outside React one through
+  the compat layer; only the core hosts in `web/src` import the bridge (`ultimate/ui-framework-boundaries`).
 
 ## The UI kit
 
@@ -113,7 +115,7 @@ and, for prose or a link in text, `h-auto whitespace-normal text-left` (`inline`
 | Toast                                                                          | Fed by `createToaster()` (`extensions/notices/toasts.solid.tsx`).                                                                                    |
 | Kbd and KbdGroup, Row and Rows, Skeleton                                       | Static parts.                                                                                                                                        |
 
-Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the reference migration, with its agent test.
+Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is a small reference, with its agent test.
 
 ## Patterns
 
@@ -134,7 +136,7 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   restart, keeping its last answer meanwhile; on reconnect only active reads that failed with a network error retry.
   `useAction` has no deadline: a read that must give up on a hung request or show nothing from an earlier server
   process keeps its own effect keyed on the connection and generation (`useRates` in
-  `extensions/status-line/status.solid.tsx`). A deadline on the shared read was tried in the 0.8 step-back and
+  `extensions/status-line/status.solid.tsx`). A deadline on the shared read was tried and
   dropped: one reader's timeout on a call other readers share kept breaking joins, departures, restarts and readiness. State that lives on the root reads `{ conversation: ROOT }` and `useDocOf(() => ROOT, ref)`,
   since a plain read follows the shown conversation and starts unanswered when the view arrives. A read with getter
   args keeps the args its key was made from. A poll that pauses while the tab is hidden is `every: () => (visible() ?
@@ -183,7 +185,7 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is the re
   1a2b3c4d)`, `Go back to message #812`), options their position (`Option 2 · question 2 · message 2`), and a shared
   part takes an `on` (`TaskChip`) or `name` (`JsonTree`) prop to carry it. A tree names nodes by a path that cannot
   collide: `doc["a.b"]`, not `doc.a.b`. A Tooltip trigger rendered as a `<span>` is not named by its text: give it an
-  `aria-label`. Both P2 and P3 reviews found repeated names in every round.
+  `aria-label`. Reviews found repeated names in nearly every round.
 - **Styling:** our tokens (`text-muted-foreground`, `bg-muted`, `border-border/70`, `text-brand`) and ui-sdk's state
   attributes (`data-pressed:`, `data-checked:`, `data-open:`, `data-disabled:`), never inline styles for state. Dense
   and quiet, `font-mono` for meta. The pointer cursor is a base rule in `web/src/index.css`; never add
@@ -202,8 +204,8 @@ Solid 2:
   changed update, with `<For keyed={false}>` over it. A streamed delta then costs about one DOM mutation
   (`web/src/components/markdown/markdown.solid.tsx`).
 - A memo over a list a registry rebuilds on every read (`entryRenderers(...)`, `toolRenderers(...)`) changes identity
-  each time: give it `equals` comparing the items, or every row below it remounts on each streamed update (C2 found
-  11 remounts per row for one short reply with a DOM mutation observer).
+  each time: give it `equals` comparing the items, or every row below it remounts on each streamed update (11
+  remounts per row for one short reply, found with a DOM mutation observer).
 - Scroll position is the reader's only when the reader steers: a scroll event alone cannot tell a reader from the
   browser anchoring the view while rows settle after a switch, which once left warm revisits 95 px above the end. The
   transcript's `follow()` (`web/src/app/follow.ts`) unpins only on a scroll that follows a wheel, a pointer or touch on
@@ -226,8 +228,8 @@ Solid 2:
   (`web/src/components/json-tree.solid.tsx`). Then the row is an accessor (`entry()`).
 - A `group` state class on a recursive part (`group-data-open/json`) reaches every descendant: an open ancestor
   restyles closed children. Put the group on the node's own trigger and read its `aria-expanded`.
-- `import('@lucide/solid/icons')` put the whole icon set (about 190 KB gzipped, measured before P2 landed) in the
-  page's entry even though it is dynamic. Import the icons you need by name from `@lucide/solid`, or use
+- `import('@lucide/solid/icons')` puts the whole icon set (about 190 KB gzipped) in the page's entry even though it
+  is dynamic. Import the icons you need by name from `@lucide/solid`, or use
   `import.meta.glob('…/@lucide/solid/dist/source/icons/*.jsx')` to load one by name.
 - `dynamic(() => table[key()][0])` over a plain function rebuilds the component whenever anything it read changes, even
   to the same icon: a lander log's 109 check icons were replaced once more after mount. Make the lookup a `createMemo`
@@ -290,8 +292,10 @@ Tooling:
 - A browser helper extracted to `.ts` goes in `tsconfig.web.json`'s `include`. Keep shared pure helpers independent
   of the SDK: pass SDK functions in or use `lib/`. Another extension reaches an extension-local browser helper
   through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
-- Check the entry bundle after a move (`node scripts/frontend-weight.ts`, `entryAssetsGzip`); measure each commit in a
-  throwaway detached worktree to find the one that grew it.
+- A test fixture that registers a Solid facet names it `web.solid.tsx`; `web.tsx` loads the React compat layer and is
+  only for testing that layer.
+- Check the entry bundle after a change that may grow it (`node scripts/frontend-weight.ts`, `entryAssetsGzip`);
+  measure each commit in a throwaway detached worktree to find the one that grew it.
 
 ## Testing
 
@@ -334,9 +338,8 @@ Tooling:
 
 ## Measuring
 
-`docs/frontend-baseline.md` holds the baseline and how each number is measured (`node scripts/frontend-weight.ts`, the
-`measure-switch` skill); each step appends its entry to `docs/frontend-progress.json` with
-`scripts/frontend-progress.ts` and reports its delta.
+`docs/frontend-baseline.md` says how each number is measured (`node scripts/frontend-weight.ts`, the `measure-switch`
+skill) and holds the migration's end result against pure React.
 
 A slower switch is found by what one warm switch does, not by guessing: the `measure-switch` skill's `--profile`, a
 DevTools trace of one switch (forced layouts and their stacks). Compare against the parent commit in the same
