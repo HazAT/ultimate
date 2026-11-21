@@ -55,6 +55,52 @@ function diagnose(rule: Rule, file: string, source: string) {
   return reports
 }
 
+it('rejects hand-rolled polls of Ultimate and raw requests to /api, as extensions shipped them, and leaves other servers alone', () => {
+  const polls = (file: string, source: string) =>
+    diagnose('no-raw-stream', file, source).filter((message) =>
+      message.includes('polls once per page'),
+    )
+  // extensions/status-line/status.solid.tsx before reads went over the stream: its own 1 s loop.
+  const rates = `
+    const poll = async () => {
+      const next = await api.action(RatesAction, null, { signal: own.signal }).catch(() => null)
+      cancel = retryAfter(1000, () => void poll())
+    }`
+  expect(polls('extensions/status-line/status.solid.tsx', rates)).toHaveLength(1)
+  // extensions/automations/poll.ts and live.solid.tsx: a shared list polled by every, refreshed through a helper.
+  const automations = `
+    export const refreshList = () => refreshAutomations(api.action)
+    export function useLive() {
+      const refresh = () => void refreshList()
+      createEffect(signature, () => retryAfter(100, refresh))
+      createEffect(late, () => every(2000, refresh))
+    }
+    function reschedule(fetchList) {
+      poll.stopPolling = every(ms, () => void refreshAutomations(fetchList))
+    }`
+  expect(polls('extensions/automations/live.solid.tsx', automations)).toHaveLength(2)
+  // extensions/mcp/chip.solid.tsx: a refetch at each server's retry time beside useAction's every.
+  const mcp = `
+    const { refetch } = useAction(StatusAction, null, { every: settling })
+    const refresh = () => void refetch()
+    createEffect(retryAt, (at) => retryAfter(at - Date.now() + 500, refresh))`
+  expect(polls('extensions/mcp/chip.solid.tsx', mcp)).toHaveLength(1)
+
+  const raw = `
+    fetch('/api/extensions/mine/actions/list')
+    fetch(\`/api/events/\${id}\`)
+    new EventSource('/api/events')
+    fetch('https://api.example.com/v1/items')
+    fetch(\`\${backend}/items\`)
+    new WebSocket('wss://example.com/live')
+    every(1000, () => setNow(Date.now()))`
+  expect(diagnose('no-raw-stream', 'extensions/mine/web.solid.tsx', raw)).toEqual(
+    Array.from({ length: 3 }, () =>
+      expect.stringMatching(/not fetch or a socket of your own to \/api/),
+    ),
+  )
+})
+
 /** The specific part of each message, after the sentence that says why the rule exists. */
 const lint = (rule: Rule, file: string, source: string) =>
   diagnose(rule, file, source).map((message) => message.slice(message.indexOf('. ') + 2))

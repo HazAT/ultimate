@@ -960,6 +960,106 @@ export default host => { host.resource('cleanup.process',()=>{
     await until(() => stream.events.some((event) => event.name === 'doc' && event.sub === 7))
     await stream.close()
   })
+  it('runs a subscribed read once for every page, pushes only changed answers, and stops with its last page', async () => {
+    const { server } = await fixture(false, {
+      probe: `import { defineExtension } from '@earendil-works/pi-durable'
+
+let runs = 0
+let ticks = 0
+let value = 'one'
+export default defineExtension({ name: 'probe' })
+export const actions = {
+  value: async (args) => {
+    if (args?.fail) throw new Error('probe failed')
+    runs++
+    return value
+  },
+  tick: async () => ++ticks,
+  set: async (args) => { value = args.value; return value },
+  runs: async () => runs,
+}`,
+    })
+    const first = await attach(server, { view: false })
+    const second = await attach(server, { view: false })
+    const streamId = (stream: typeof first) =>
+      (stream.events.find((event) => event.name === 'stream')!.data as { id: string }).id
+    await until(() => first.events.some((e) => e.name === 'stream'))
+    await until(() => second.events.some((e) => e.name === 'stream'))
+    const subscribe = (
+      stream: typeof first,
+      body: object,
+      headers: object = { Origin: server.url },
+    ) =>
+      fetch(`${server.url}/api/events/${streamId(stream)}`, {
+        method: 'POST',
+        headers: headers as Record<string, string>,
+        body: JSON.stringify({ subscribe: [], unsubscribe: [], ...body }),
+      }).then((answer) => answer.json())
+    const read = { extension: 'probe', action: 'value', args: null }
+    const answers = (stream: typeof first, sub: number) =>
+      stream.events.filter((event) => event.name === 'read' && event.sub === sub).map((e) => e.data)
+    const runs = async () =>
+      (await post(server, '/api/extensions/probe/actions/runs', { args: null })).data
+        .result as number
+
+    expect(await subscribe(first, { subscribe: [{ sub: 1, read, every: 250 }] })).toEqual({
+      ok: true,
+      refused: {},
+    })
+    await until(() => answers(first, 1).length === 1)
+    expect(await subscribe(second, { subscribe: [{ sub: 1, read, every: 250 }] })).toEqual({
+      ok: true,
+      refused: {},
+    })
+    await until(() => answers(second, 1).length === 1)
+    expect(server.api.reads()).toBe(1)
+    const before = await runs()
+    await until(async () => (await runs()) >= before + 4)
+    expect([answers(first, 1), answers(second, 1)]).toEqual([
+      [{ result: 'one' }],
+      [{ result: 'one' }],
+    ])
+
+    await post(server, '/api/extensions/probe/actions/set', { args: { value: 'two' } })
+    await until(() => answers(first, 1).length === 2 && answers(second, 1).length === 2)
+    expect(answers(first, 1).at(-1)).toEqual({ result: 'two' })
+
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(
+      await subscribe(first, {
+        subscribe: [
+          { sub: 2, read: { ...read, args: { fail: true } } },
+          { sub: 3, read: { extension: 'probe', action: 'missing', args: null } },
+          { sub: 4, read, every: 1 },
+        ],
+      }),
+    ).toEqual({ ok: true, refused: { 4: 400 } })
+    await until(() => answers(first, 2).length === 1 && answers(first, 3).length === 1)
+    expect(answers(first, 2)).toEqual([{ error: 'probe failed', status: 500 }])
+    expect(answers(first, 3)).toEqual([{ error: 'Unknown extension action', status: 404 }])
+
+    expect(await subscribe(second, { subscribe: [{ sub: 5, read }] }, {})).toEqual({
+      ok: true,
+      refused: {},
+    })
+    await until(() => answers(second, 5).length === 1)
+    expect(answers(second, 5)).toEqual([
+      { error: 'Extension actions require a browser request', status: 403 },
+    ])
+
+    expect(server.api.reads()).toBe(3)
+    await subscribe(first, { unsubscribe: [1, 2, 3] })
+    expect(server.api.reads()).toBe(1)
+    await subscribe(second, { unsubscribe: [1, 5] })
+    expect(server.api.reads()).toBe(0)
+    const stopped = await runs()
+    const tick = { extension: 'probe', action: 'tick', args: null }
+    await subscribe(first, { subscribe: [{ sub: 6, read: tick, every: 250 }] })
+    await until(() => answers(first, 6).length >= 3)
+    expect(await runs()).toBe(stopped)
+    await first.close()
+    await second.close()
+  })
   it('serves published titles and activity to clients and server facets without deriving entries', async () => {
     const { server } = await fixture(false, {
       summaries: `import { defineExtension } from '@earendil-works/pi-durable'

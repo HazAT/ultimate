@@ -16,9 +16,10 @@ import {
   useProvided,
   ParkedRuns,
   ROOT,
-  api,
   cn,
   errorMessage,
+  keepLast,
+  useAction,
   useConversations,
   useDocOf,
   useExtensionUiState,
@@ -26,7 +27,6 @@ import {
   useSurface,
   useUiState,
 } from '@/sdk/solid'
-import { every } from '../../lib/timers.ts'
 import { useAutomations, timerWaits } from '../automations/ui.solid.tsx'
 import { useConcludedSince, useOverview } from '../conversations/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
@@ -121,37 +121,31 @@ function useStates() {
 
 type LanesResult = { now: string; lanes: Lane[]; links: LaneLink[]; more?: number }
 
-function useLanes(currentRange: () => number, isLive: () => boolean) {
-  const [state, setState] = createSignal<{ range: number; data?: LanesResult; error?: unknown }>()
+function useLanes(currentRange: () => number, isLive: () => boolean, now: () => number) {
+  const since = createMemo(() =>
+    new Date(Math.floor((now() - currentRange()) / 60_000) * 60_000).toISOString(),
+  )
+  const read = useAction(
+    LanesAction,
+    {
+      get since() {
+        return since()
+      },
+    },
+    { onError: keepLast, every: () => (isLive() ? 2000 : undefined) },
+  )
+  const [kept, setKept] = createSignal<{ range: number; data: LanesResult }>()
   createEffect(
-    () => ({ range: currentRange(), live: isLive() }),
-    ({ range, live }) => {
-      const controller = new AbortController()
-      const load = () => {
-        const since = new Date(Math.floor((Date.now() - range) / 60_000) * 60_000).toISOString()
-        void api.action(LanesAction, { since }, { signal: controller.signal }).then(
-          (data) => {
-            if (!controller.signal.aborted) setState({ range, data })
-          },
-          (error: unknown) => {
-            if (!controller.signal.aborted)
-              setState((previous) => ({
-                data: previous?.range === range ? previous.data : undefined,
-                range,
-                error,
-              }))
-          },
-        )
-      }
-      load()
-      const stop = live ? every(2000, load) : undefined
-      return () => {
-        stop?.()
-        controller.abort()
-      }
+    () => read.data(),
+    (data) => {
+      if (data) setKept({ range: currentRange(), data })
     },
   )
-  return createMemo(() => (state()?.range === currentRange() ? state() : undefined))
+  return createMemo(() => {
+    const data = read.data() ?? (kept()?.range === currentRange() ? kept()?.data : undefined)
+    const error = read.error()
+    return data || error ? { range: currentRange(), data, error } : undefined
+  })
 }
 
 export function System() {
@@ -214,7 +208,7 @@ function Lanes() {
   })
   const now = useNow(1000, live)
   const range = () => windows[window()].ms
-  const lanes = useLanes(range, live)
+  const lanes = useLanes(range, live, now)
   const stateOf = useStates()
   const list = () => lanes()?.data?.lanes ?? noLanes
   const states = createMemo(() => new Map(list().map((lane) => [lane.conversation, stateOf(lane)])))

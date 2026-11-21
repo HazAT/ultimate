@@ -9,6 +9,8 @@ import type {
   ConversationSummary,
   ModelsResponse,
   Notice,
+  ReadEvent,
+  ReadSpec,
   ServerEvents,
   StreamedView,
   SubscriptionsAnswer,
@@ -84,11 +86,20 @@ const names = [
   'conversationsOps',
   'tasksOps',
   'notice',
+  'read',
 ] as const satisfies readonly (keyof ServerEvents)[]
 
-const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
-type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
-type Spec = { conversation?: ConversationId; docs: string[]; view: boolean }
+const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>([
+  'view',
+  'ops',
+  'doc',
+  'docOps',
+  'read',
+])
+type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps' | 'read', raw: string) => void
+type Spec =
+  | { conversation?: ConversationId; docs: string[]; view: boolean }
+  | { read: ReadSpec; every?: number }
 type Refused = (status: number) => void
 
 type DocChange = ServerEvents['doc'] | ServerEvents['docOps']
@@ -126,6 +137,10 @@ export function createStore(options: StoreOptions = {}) {
 
   const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
   const watchedViews = new Map<ConversationId, number>()
+  const watchedReads = new Map<
+    string,
+    { read: ReadSpec; every?: number; onEvent: (event: ReadEvent) => void }
+  >()
 
   let multiplexedEventSource: EventSourceLike | undefined
 
@@ -171,6 +186,7 @@ export function createStore(options: StoreOptions = {}) {
     switch (name) {
       case 'stream':
       case 'view':
+      case 'read':
         break
       case 'system': {
         const system = data as SystemInfo
@@ -395,6 +411,13 @@ export function createStore(options: StoreOptions = {}) {
             if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
           }),
         )
+    for (const [key, { read, every }] of watchedReads)
+      result.set(`read:${key}:${every ?? ''}`, {
+        spec: every === undefined ? { read } : { read, every },
+        handler: (name, raw) => {
+          if (name === 'read') watchedReads.get(key)?.onEvent(JSON.parse(raw) as ReadEvent)
+        },
+      })
     return result
   }
 
@@ -593,6 +616,17 @@ export function createStore(options: StoreOptions = {}) {
         if (left > 0) kinds.set(kind, left)
         else kinds.delete(kind)
         if (!kinds.size) docWatchCountsByConversation.delete(conversation)
+        scheduleReconcile()
+      }
+    },
+    watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadEvent) => void) {
+      const key = JSON.stringify(read)
+      const watch = { read, every, onEvent }
+      watchedReads.set(key, watch)
+      scheduleReconcile()
+      return () => {
+        if (watchedReads.get(key) !== watch) return
+        watchedReads.delete(key)
         scheduleReconcile()
       }
     },

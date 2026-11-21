@@ -14,7 +14,7 @@ import {
   useStore,
 } from '@/sdk/solid'
 import { AutomationForm } from './form.solid.tsx'
-import { refreshList, useAutomations, useLive, useShown } from './live.solid.tsx'
+import { useAutomations, useRunSignature, useShown } from './live.solid.tsx'
 import { attention, lookOf, looks, worstFirst } from './looks.ts'
 import { Heading } from './parts.solid.tsx'
 import { AutomationRow } from './row.solid.tsx'
@@ -23,8 +23,16 @@ import type { Automation } from './refs.ts'
 
 export function AutomationsPanel() {
   const shown = useShown()
-  const polled = useAutomations(() => (shown() ? 2000 : 15000))
+  const overdue = (items: Automation[] | undefined) =>
+    (items ?? []).some(
+      (item) => item.enabled && item.nextAt !== undefined && Date.now() - item.nextAt > 1500,
+    )
+  const polled = useAutomations(
+    (items) => (shown() || overdue(items) ? 2000 : 15000),
+    useRunSignature(),
+  )
   const list = () => polled().data ?? []
+  const refreshList = () => polled().refetch()
   const commands = useCommands()
   const [expanded, setExpanded] = useExtensionUiState<string[]>('expanded', [])
   const [editor, setEditor] = createSignal<{
@@ -47,9 +55,6 @@ export function AutomationsPanel() {
   const fastClock = useNow(1000, fast)
   const slowClock = useNow(15000, () => !fast())
   const now = () => (fast() ? fastClock() : slowClock())
-  useLive(() =>
-    list().some((item) => item.enabled && item.nextAt !== undefined && now() - item.nextAt > 1500),
-  )
   const watcher = () =>
     listing() !== conversation()
       ? list().find((item) => item.script?.conversationId === conversation())

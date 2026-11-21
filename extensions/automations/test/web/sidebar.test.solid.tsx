@@ -6,10 +6,10 @@ import { expect, it, vi } from 'vitest'
 import { ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
-import { FakeSource } from '../../../../test/web/fake-source.ts'
+import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
-import { refreshList } from '../../live.solid.tsx'
+import { ROOT } from '../../../../web/src/sdk/api.ts'
+import { reads, store, uiState } from '../../../../web/src/sdk/client.ts'
 import type { AutomationListItem } from '../../refs.ts'
 import { AutomationsSection } from '../../sidebar.solid.tsx'
 
@@ -34,10 +34,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
+  const { createReads } = await import('../../../../web/src/sdk/reads.ts')
   const fetch = async (path: RequestInfo | URL, init?: RequestInit) => {
     if (path === '/api/extensions/automations/actions/list')
       return Response.json({ result: harness.updated ?? automations })
-    if (path !== '/api/ui') return Response.json({ ok: true, refused: {} })
+    if (path !== '/api/ui')
+      return (
+        fakeSubscriptions(harness.stream ? [harness.stream] : [], fetch).handle(
+          path as string,
+          init,
+        ) ?? Response.json({ ok: true })
+      )
     const { ops } = JSON.parse(init!.body as string) as UiUpdateRequest
     const source = new Headers(init?.headers).get(SOURCE_HEADER)
     for (const { key, value } of ops) harness.writes.push({ key, value, source })
@@ -48,7 +55,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     fetch,
   })
   const api = createApi(clientStore, { fetch })
-  return { store: clientStore, api, uiState: createUiState(api.updateUi) }
+  return {
+    store: clientStore,
+    api,
+    reads: createReads(api, clientStore),
+    uiState: createUiState(api.updateUi),
+  }
 })
 
 const agent = createAgent()
@@ -69,7 +81,7 @@ it('lets an agent collapse the automation rows and persist the change as theirs'
   const rows = () => container.querySelectorAll('[data-sidebar-automation]')
   expect(rows()).toHaveLength(2)
   harness.updated = [{ ...automations[0], name: 'Read reports' }, automations[1]]
-  await refreshList()
+  await reads.get('automations', 'list', null, ROOT).refetch()
   flush()
   expect(container.querySelector('[data-sidebar-automation="A1"]')?.textContent).toContain(
     'Read reports',

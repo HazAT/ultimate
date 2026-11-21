@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { LoaderCircle, Plug, RefreshCw } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
@@ -16,12 +16,14 @@ import {
   useNow,
   writingAs,
 } from '@/sdk/solid'
-import { retryAfter } from '../../lib/timers.ts'
 import { ReconnectAction, StatusAction } from './refs.ts'
 import type { McpServerStatus } from './refs.ts'
 
-const settling = (servers: McpServerStatus[] | undefined) =>
-  servers?.some((server) => server.state === 'connecting') ? 2_000 : 60_000
+const settling = (servers: McpServerStatus[] | undefined) => {
+  if (servers?.some((server) => server.state === 'connecting')) return 2_000
+  const retryAt = Math.min(...(servers ?? []).map((server) => server.retryAt ?? Infinity))
+  return Math.min(60_000, Math.max(2_000, retryAt - Date.now() + 500))
+}
 
 function useServers() {
   const { data: servers, refetch } = useAction(StatusAction, null, {
@@ -30,12 +32,6 @@ function useServers() {
     every: settling,
   })
   const refresh = () => void refetch()
-  const retryAt = createMemo(() =>
-    Math.min(...(servers() ?? []).map((server) => server.retryAt ?? Infinity)),
-  )
-  createEffect(retryAt, (at) =>
-    at === Infinity ? undefined : retryAfter(Math.max(0, at - Date.now()) + 500, refresh),
-  )
   return { servers, refresh }
 }
 

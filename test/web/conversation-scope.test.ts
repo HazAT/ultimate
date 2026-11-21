@@ -26,18 +26,19 @@ vi.mock('react', async (original) => ({
 vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../web/src/sdk/store.ts')
   const { createApi } = await import('../../web/src/sdk/api.ts')
-  const { FakeSource } = await import('./fake-source.ts')
+  const { FakeSource, answerReadsWith } = await import('./fake-source.ts')
+  const pageFetch = answerReadsWith(harness.fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch: harness.fetch,
+    fetch: pageFetch,
     retryMs: 5,
   })
   const { createReads } = await import('../../web/src/sdk/reads.ts')
-  const api = createApi(store, { fetch: harness.fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return { store, api, reads: createReads(api, store) }
 })
 import { store } from '../../web/src/sdk/client.ts'

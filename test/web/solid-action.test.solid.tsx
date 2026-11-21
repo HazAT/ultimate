@@ -23,15 +23,17 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
     harness.calls.push(args)
     return Response.json({ result: `hello ${args.name}` })
   }
+  const { answerReadsWith } = await import('./fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
 })
 
@@ -89,7 +91,7 @@ it('shows the new read’s cached data at once when its args switch to an alread
   release()
 })
 
-it('sends a read the args of its key, even when the args switch before its request goes', async () => {
+it('subscribes a read with the args of its key, and never a read its args left before it went', async () => {
   const [name, setName] = createSignal('dee')
   function Greeting() {
     const action = useAction(Echo, {
@@ -104,6 +106,6 @@ it('sends a read the args of its key, even when the args switch before its reque
   setName('eve')
   flush()
   await vi.advanceTimersByTimeAsync(10)
-  expect(reads.get('test', 'echo', { name: 'dee' }, ROOT).get().data).toBe('hello dee')
-  expect(harness.calls).toEqual([{ name: 'dee' }, { name: 'eve' }])
+  expect(reads.get('test', 'echo', { name: 'eve' }, ROOT).get().data).toBe('hello eve')
+  expect(harness.calls).toEqual([{ name: 'eve' }])
 })

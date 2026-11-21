@@ -218,6 +218,16 @@ const isGlobal = (node: Node | undefined, name: string) =>
       ['window', 'globalThis'].includes(node.object.name ?? '') &&
       propertyName(node) === name
 
+function walk(node: Node, visit: (node: Node) => void) {
+  visit(node)
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'parent') continue
+    for (const child of Array.isArray(value) ? value : [value])
+      if (child && typeof child === 'object' && typeof (child as Node).type === 'string')
+        walk(child as Node, visit)
+  }
+}
+
 const isJsDoc = (comment: Comment) => comment.type === 'Block' && comment.value.startsWith('*')
 const inSdk = (filename: string) => /^web\/src\/(sdk|compat)\//.test(repositoryPath(filename))
 let sdkExports: Set<string> | undefined
@@ -450,15 +460,92 @@ export default {
     'no-raw-stream': {
       meta: { schema: [] },
       create(context: Context) {
-        const message =
-          'One way to the server keeps every page live, reconnecting and replay-safe: read state with useDoc/useDocOf and call the server with useAction or api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own.'
+        const why =
+          'One stream to Ultimate keeps every page live and reconnecting, and runs each read once for all of them'
+        const raw = `${why}: read state with useDoc/useDocOf and useAction, and call the server with api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own to /api. Anything else, such as an external API or your surface's own backend, is yours to call.`
+        const polled = `${why}: a timer that calls api.action or refetch polls once per page. Give useAction an \`every\` (the server runs the read and pushes changes) or an \`on\` that changes with what it reads (docs/extensions/sdk.md).`
+        const toApi = (url: Node | undefined) => {
+          const text =
+            url?.type === 'Literal'
+              ? url.value
+              : url?.type === 'TemplateLiteral'
+                ? (url as { quasis?: { value?: { raw?: string } }[] }).quasis?.[0]?.value?.raw
+                : undefined
+          return typeof text === 'string' && text.startsWith('/api')
+        }
+        const firstArgument = (node: Node) => node.arguments?.[0]
+        const declarations = new WeakMap<Node, Map<string, Node>>()
+        const declared = (node: Node) => {
+          let program = node
+          while (program.parent) program = program.parent
+          let found = declarations.get(program)
+          if (found) return found
+          const named = new Map<string, Node>()
+          walk(program, (child) => {
+            if (child.type === 'FunctionDeclaration' && child.id?.name)
+              named.set(child.id.name, child)
+            if (child.type === 'VariableDeclarator' && child.id?.name && child.init)
+              named.set(child.id.name, child.init)
+          })
+          declarations.set(program, (found = named))
+          return found
+        }
+        const isApiAction = (node: Node | undefined) =>
+          node?.type === 'MemberExpression' &&
+          node.object?.type === 'Identifier' &&
+          ['api', 'client'].includes(node.object.name ?? '') &&
+          propertyName(node) === 'action'
+        const reads = (node: Node) =>
+          node.type === 'CallExpression' &&
+          (isApiAction(node.callee) ||
+            (node.callee?.type === 'Identifier' && node.callee.name === 'refetch') ||
+            (node.callee?.type === 'MemberExpression' && propertyName(node.callee) === 'refetch') ||
+            (node.arguments ?? []).some(isApiAction))
+        const reachesARead = (start: Node, named: Map<string, Node>) => {
+          const seen = new Set<Node>()
+          const queue = [start]
+          const found: Node[] = []
+          for (let next = queue.shift(); next && !found.length; next = queue.shift()) {
+            if (seen.has(next)) continue
+            seen.add(next)
+            const declaration = next.type === 'Identifier' ? named.get(next.name ?? '') : undefined
+            if (declaration) {
+              queue.push(declaration)
+              continue
+            }
+            walk(next, (child) => {
+              if (reads(child)) found.push(child)
+              if (child.type === 'CallExpression' && child.callee?.type === 'Identifier')
+                queue.push(child.callee)
+            })
+          }
+          return found.length > 0
+        }
+        const timers = new Set(['every', 'retryAfter', 'setInterval', 'setTimeout'])
         return {
           CallExpression(node: Node) {
-            if (isGlobal(node.callee, 'fetch')) context.report({ node, message })
+            if (isGlobal(node.callee, 'fetch') && toApi(firstArgument(node)))
+              context.report({ node, message: raw })
+            const timer =
+              node.callee?.type === 'Identifier' && timers.has(node.callee.name ?? '')
+                ? node.callee.name
+                : undefined
+            if (!timer) return
+            const callback = (node.arguments ?? []).find(
+              (argument) =>
+                argument.type === 'Identifier' ||
+                argument.type === 'ArrowFunctionExpression' ||
+                argument.type === 'FunctionExpression',
+            )
+            if (callback && reachesARead(callback, declared(node)))
+              context.report({ node, message: polled })
           },
           NewExpression(node: Node) {
-            if (isGlobal(node.callee, 'EventSource') || isGlobal(node.callee, 'WebSocket'))
-              context.report({ node, message })
+            if (
+              (isGlobal(node.callee, 'EventSource') || isGlobal(node.callee, 'WebSocket')) &&
+              toApi(firstArgument(node))
+            )
+              context.report({ node, message: raw })
           },
         }
       },

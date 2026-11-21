@@ -44,15 +44,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     }
     return server.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const clientStore = createStore({
     eventSource: (url) => {
       const source = new FakeSource(url)
       sources.push(source)
       return source
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     api,
     store: clientStore,

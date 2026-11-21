@@ -268,7 +268,18 @@ export default defineConfig({
         rules: { 'ultimate/api-file-shape': 'error', 'ultimate/api-naming': 'error' },
       },
       {
-        files: ['extensions/**/*.tsx'],
+        files: [
+          'extensions/**/*.ts',
+          'extensions/**/*.tsx',
+          '.ultimate/extensions/**/*.ts',
+          '.ultimate/extensions/**/*.tsx',
+        ],
+        excludeFiles: [
+          'extensions/*/server.ts',
+          '.ultimate/extensions/*/server.ts',
+          'extensions/*/test/**',
+          '.ultimate/extensions/*/test/**',
+        ],
         rules: { 'ultimate/no-raw-stream': 'error' },
       },
       {

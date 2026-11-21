@@ -37,15 +37,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       }))
     return Response.json({ result: harness.servers })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const source = new FakeSource(url)
       harness.sources.push(source)
       return source
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return {
     store,
     api,

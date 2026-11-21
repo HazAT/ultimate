@@ -148,6 +148,7 @@
     "lib/question-cards.ts",
     "extensions/subagents/types.ts",
     "extensions/onboarding/points.ts",
+    "server/reads.ts",
     "test/web",
     "extensions/*/test/web"
   ]

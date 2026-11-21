@@ -4,7 +4,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
-import { FakeSource } from '../../../../test/web/fake-source.ts'
+import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { reads, store } from '../../../../web/src/sdk/client.ts'
@@ -29,7 +29,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       harness.secrets.push({ name: args.name, declaredBy: [], set: true })
       return Response.json({ result: { name: args.name, set: true } })
     }
-    return Response.json({ ok: true, refused: {} })
+    return (
+      fakeSubscriptions(harness.stream ? [harness.stream] : [], harness.request).handle(
+        path as string,
+        init,
+      ) ?? Response.json({ ok: true })
+    )
   })
   const clientStore = createStore({
     eventSource: (url) => (harness.stream = new FakeSource(url)),
