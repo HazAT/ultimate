@@ -278,7 +278,7 @@ function measurePreviews(home: string, agentDir: string) {
   return serve(home, agentDir, async (url) => {
     await writeFile(join(home, 'benchmark-host'), url)
     return JSON.parse(
-      await node(join(here, 'scripts/preview-bench.ts'), [home, '--runs', String(runs)]),
+      await node(join(here, 'scripts/preview-bench.ts'), [home, prompt, '--runs', String(runs)]),
     ) as unknown
   })
 }

@@ -7,7 +7,7 @@ import { Slider } from '@/components/ui/slider.solid.tsx'
 import { ROOT, cn, useAction, useExtensionUiState, writingAs } from '@/sdk/solid'
 import { every } from '../../../lib/timers.ts'
 import { ProgressAction } from './refs.ts'
-import type { Entry, Progress as Data, PreviewRun, PreviewWeek, Status } from './refs.ts'
+import type { AgentRun, Entry, Progress as Data, PreviewRun, PreviewWeek, Status } from './refs.ts'
 
 type Point = { label: string; value: number | null }
 type Metric = {
@@ -24,6 +24,7 @@ const BAND = 0.1
 const BEAT_MS = 1200
 
 const number = (value: number) => value.toLocaleString('en-US').replaceAll(',', ' ')
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 
 function change(now: number, base: number) {
   if (base === 0) return ''
@@ -433,7 +434,7 @@ function Run(props: { run: PreviewRun | null; base?: PreviewRun }) {
   return (
     <Show
       fallback={
-        <td class="px-3 py-0.5 text-muted-foreground/50" colspan={4}>
+        <td class="px-3 py-0.5 text-muted-foreground/50" colspan={5}>
           no ui steps yet
         </td>
       }
@@ -459,6 +460,9 @@ function Run(props: { run: PreviewRun | null; base?: PreviewRun }) {
               )}
             </Show>
           </td>
+          <td class="px-3 py-0.5 text-right tabular-nums">
+            {run().sleepMs === undefined ? '–' : seconds(run().sleepMs!)}
+          </td>
           <td class={cn('px-3 py-0.5 text-right', !run().ok && 'text-red-500')}>
             {run().ok ? 'ok' : 'failed'}
           </td>
@@ -468,9 +472,84 @@ function Run(props: { run: PreviewRun | null; base?: PreviewRun }) {
   )
 }
 
+function AgentCells(props: { run: AgentRun }) {
+  return (
+    <>
+      <td class="px-3 py-0.5 text-right tabular-nums">{props.run.calls}</td>
+      <td class="px-3 py-0.5 text-right tabular-nums">{props.run.screenshots}</td>
+      <td class="px-3 py-0.5 text-right tabular-nums">{number(props.run.tokens)}</td>
+      <td class="px-3 py-0.5 text-right tabular-nums">{seconds(props.run.ms)}</td>
+      <td class="px-3 py-0.5 text-right tabular-nums">
+        {props.run.ok}/{props.run.runs}
+      </td>
+    </>
+  )
+}
+
+function AgentTasks(props: {
+  tasks: Record<string, { old: AgentRun; new: AgentRun }>
+  label: string
+}) {
+  return (
+    <div class="overflow-x-auto border-t border-border/70">
+      <table class="w-full font-mono text-[11.5px] whitespace-nowrap">
+        <caption class="px-3 py-2 text-left text-muted-foreground">
+          real agent, old vs new · {props.label}
+        </caption>
+        <thead class="text-muted-foreground/70">
+          <tr>
+            <th class="px-3 text-left font-normal" rowspan={2} scope="col">
+              task
+            </th>
+            <th class="px-3 text-center font-normal" colspan={5}>
+              old
+            </th>
+            <th class="px-3 text-center font-normal text-brand" colspan={5}>
+              new
+            </th>
+          </tr>
+          <tr>
+            <For each={['old', 'new']}>
+              {(style) => (
+                <For each={['calls', 'shots', 'tokens', 'time', 'ok']}>
+                  {(metric) => (
+                    <th
+                      class={cn(
+                        'px-3 py-1 text-right font-normal',
+                        style === 'new' && 'text-brand',
+                      )}
+                      scope="col"
+                    >
+                      {metric}
+                    </th>
+                  )}
+                </For>
+              )}
+            </For>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={Object.entries(props.tasks)}>
+            {([name, task]) => (
+              <tr class="border-t border-border/40">
+                <th class="px-3 py-0.5 text-left font-normal" scope="row">
+                  {name}
+                </th>
+                <AgentCells run={task.old} />
+                <AgentCells run={task.new} />
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const countedSteps = (week: PreviewWeek) => week.uiSteps + week.clickSteps + week.evalSteps
+
 function Usage(props: { weeks: PreviewWeek[] }) {
-  const max = () =>
-    Math.max(...props.weeks.map((week) => week.uiSteps + week.clickSteps + week.evalSteps), 1)
+  const max = () => Math.max(...props.weeks.map(countedSteps), 1)
   return (
     <div class="space-y-1 px-3 py-2">
       <div class="flex items-baseline gap-3 font-mono text-[11px]">
@@ -487,7 +566,7 @@ function Usage(props: { weeks: PreviewWeek[] }) {
       </div>
       <For each={props.weeks}>
         {(week) => (
-          <div class="grid grid-cols-[5.5rem_minmax(0,1fr)_16rem] items-center gap-2 font-mono text-[11px]">
+          <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-x-2 font-mono text-[11px] sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]">
             <span class="text-muted-foreground">{week.week}</span>
             <div class="flex h-3 overflow-hidden rounded-sm">
               <span class="bg-brand" style={{ width: `${(week.uiSteps / max()) * 100}%` }} />
@@ -500,9 +579,11 @@ function Usage(props: { weeks: PreviewWeek[] }) {
                 style={{ width: `${(week.evalSteps / max()) * 100}%` }}
               />
             </div>
-            <span class="text-right text-muted-foreground tabular-nums">
+            <span class="col-start-2 text-right text-muted-foreground tabular-nums sm:col-start-auto">
               {week.conversations} conv · {number(week.browserCalls)} calls ·{' '}
-              {number(week.screenshots)} shots
+              {number(week.screenshots)} shots ·{' '}
+              {Math.round((week.uiSteps / (countedSteps(week) || 1)) * 100)}% ui
+              {week.waitMs === undefined ? '' : ` · ${seconds(week.waitMs)} wait`}
             </span>
           </div>
         )}
@@ -514,12 +595,13 @@ function Usage(props: { weeks: PreviewWeek[] }) {
 function Previews(props: { entries: Entry[]; weeks: PreviewWeek[] }) {
   const latest = () => props.entries.findLast((entry) => entry.previews)
   const agent = () => props.entries.findLast((entry) => entry.previews?.agent)
+  const agentTasks = () => props.entries.findLast((entry) => entry.previews?.agentTasks)
   return (
     <div class="rounded-lg border border-border/70 bg-card/40">
       <div class="flex items-baseline gap-3 border-b border-border/70 px-3 py-2 font-mono text-[11px]">
         <span class="section-label">Previews</span>
         <span class="text-muted-foreground">
-          what an agent spends to check the UI: selectors and screenshots, or ui steps
+          what an agent spends to check the UI: selectors, screenshots and sleeps, or ui steps
         </span>
         <Show when={agent()}>
           {(entry) => {
@@ -549,10 +631,12 @@ function Previews(props: { entries: Entry[]; weeks: PreviewWeek[] }) {
                 <th class="px-3 py-1 text-right font-normal">calls</th>
                 <th class="px-3 py-1 text-right font-normal">shots</th>
                 <th class="px-3 py-1 text-right font-normal">tokens</th>
+                <th class="px-3 py-1 text-right font-normal">sleep</th>
                 <th class="px-3 py-1 text-right font-normal">result</th>
                 <th class="px-3 py-1 text-right font-normal text-brand">ui calls</th>
                 <th class="px-3 py-1 text-right font-normal text-brand">shots</th>
                 <th class="px-3 py-1 text-right font-normal text-brand">tokens</th>
+                <th class="px-3 py-1 text-right font-normal text-brand">sleep</th>
                 <th class="px-3 py-1 text-right font-normal">result</th>
               </tr>
             </thead>
@@ -569,6 +653,9 @@ function Previews(props: { entries: Entry[]; weeks: PreviewWeek[] }) {
             </tbody>
           </table>
         )}
+      </Show>
+      <Show when={agentTasks()}>
+        {(entry) => <AgentTasks label={entry().label} tasks={entry().previews!.agentTasks!} />}
       </Show>
       <Show when={props.weeks.length > 0}>
         <div class="border-t border-border/70">

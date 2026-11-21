@@ -12,6 +12,7 @@ type Week = {
   uiSteps: number
   clickSteps: number
   evalSteps: number
+  waitMs: number
   screenshots: number
 }
 const weeks = new Map<string, Week>()
@@ -30,6 +31,7 @@ const at = (ms: number) => {
     uiSteps: 0,
     clickSteps: 0,
     evalSteps: 0,
+    waitMs: 0,
     screenshots: 0,
   }
   weeks.set(week, item)
@@ -60,6 +62,7 @@ const count = (conversation: number, message: Message) => {
       if ('ui' in step) week.uiSteps++
       else if ('click' in step || 'fill' in step || 'press' in step) week.clickSteps++
       else if ('eval' in step) week.evalSteps++
+      else if (typeof step.wait === 'number') week.waitMs += step.wait
     }
   }
 }
