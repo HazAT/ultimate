@@ -24,7 +24,7 @@ The server adds the device (`deviceOf`). An agent's own server-side action call 
 - `value` is absent for a deleted key, `previous` for a new one; only a boolean, a number or null is kept as it is, anything else (a draft, an answer, an object) reads `"[value]"`, so no text a person typed reaches the permanent event history.
 - One decision, `uiChange` in `server/events.ts`, serves both paths: it skips `shell.*` keys, `app` writes and values that are structurally unchanged.
 - `source` is `agent` or `person`. Every write from a page an agent opened (the browser tool marks it `ultimate.driven`) is the agent's, a scripted click included: only the agent acts there.
-- The app's own bookkeeping writes (the sidebar marking a conversation seen) run inside `writingAs('app', …)`: they are stored, and record no `ui.changed`, like `shell.*` keys.
+- The app's own bookkeeping writes (the sidebar marking a conversation seen) and text saved as it is typed (question card answers and notes, a review's overall note, the System filter) run inside `writingAs('app', …)`: they are stored, and record no `ui.changed`, like `shell.*` keys. What the person then decides (a pick, a send, a dismiss) is recorded as usual.
 - `conversation` is the conversation an action was called for.
 
 ## In the UI

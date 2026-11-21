@@ -80,11 +80,11 @@ function AnswerCard(props: CardProps & { id: number }) {
   const card = () => cardKey(props.id)
   const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
   const state = createMemo(() => cardOf(cards(), card(), questions()))
-  const change = (edit: (old: CardState) => CardState, automatic = false) => {
+  const change = (edit: (old: CardState) => CardState, unrecorded = false) => {
     const key = card()
     const list = questions()
     const write = () => setCards((old) => ({ ...old, [key]: edit(cardOf(old, key, list)) }))
-    if (automatic) writingAs('app', write)
+    if (unrecorded) writingAs('app', write)
     else write()
   }
   const answerRequest = () => {
@@ -182,11 +182,14 @@ function AnswerCard(props: CardProps & { id: number }) {
           ?.focus({ preventScroll: true }),
       )
   }
-  const draft = (index: number, edit: (old: Draft) => Draft) =>
-    change((old) => ({
-      ...old,
-      drafts: { ...old.drafts, [index]: edit(old.drafts[index] ?? { chosen: [] }) },
-    }))
+  const draft = (index: number, edit: (old: Draft) => Draft, typed = false) =>
+    change(
+      (old) => ({
+        ...old,
+        drafts: { ...old.drafts, [index]: edit(old.drafts[index] ?? { chosen: [] }) },
+      }),
+      typed,
+    )
   const select = (index: number, option: number, click = false, pressed?: boolean) => {
     const question = questions()[index]
     const choice = question && choices(question)[option]
@@ -347,7 +350,7 @@ function AnswerCard(props: CardProps & { id: number }) {
         placeholder="Your answer…"
         value={state().text}
         disabled={busy()}
-        onValueChange={(text) => change((old) => ({ ...old, text }))}
+        onValueChange={(text) => change((old) => ({ ...old, text }), true)}
         autocomplete="on"
         spellcheck
         class="h-auto min-h-8 flex-1 basis-40 border-border px-2.5 py-1 font-sans text-[13px] placeholder:text-muted-foreground/70 focus-visible:border-brand/60 focus-visible:ring-0 max-md:min-h-11"
@@ -411,7 +414,7 @@ function AnswerCard(props: CardProps & { id: number }) {
                   hints={hints()}
                   onOpen={() => go(index)}
                   onSelect={(option, pressed) => select(index, option, true, pressed)}
-                  onText={(value) => draft(index, (old) => ({ ...old, text: value }))}
+                  onText={(value) => draft(index, (old) => ({ ...old, text: value }), true)}
                   onFieldKey={fieldKey}
                 />
               </div>
@@ -428,7 +431,7 @@ function AnswerCard(props: CardProps & { id: number }) {
               rows={1}
               value={note()}
               disabled={disabled()}
-              onValueChange={(value) => change((old) => ({ ...old, note: value }))}
+              onValueChange={(value) => change((old) => ({ ...old, note: value }), true)}
               onKeyDown={(event) => {
                 if (event.isComposing) return
                 if (event.key === 'Enter' && !event.shiftKey) {
