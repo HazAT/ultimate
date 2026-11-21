@@ -8,8 +8,7 @@ import {
 } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createEffect, createRenderEffect, createSignal, For, Show } from 'solid-js'
-import { Button } from '@/components/ui/button.solid.tsx'
+import { createEffect, createMemo, createRenderEffect, createSignal, For, Show } from 'solid-js'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import {
   openPanel,
@@ -130,13 +130,7 @@ function Overlay(props: {
   class?: string
   children: JSX.Element
 }) {
-  const [everOpened, setEverOpened] = createSignal(false)
-  createEffect(
-    () => props.open,
-    (open) => {
-      if (open) setEverOpened(true)
-    },
-  )
+  const everOpened = createMemo<boolean>((previous) => props.open || (previous ?? false))
   const [drag, setDrag] = createSignal<number>()
   let touch: { x: number; y: number; swipe?: boolean } | undefined
   const sign = () => (props.side === 'left' ? -1 : 1)
@@ -325,37 +319,39 @@ function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
             <Ellipsis class="size-3.5" />
           </span>
         </div>
-        <For each={props.panels.filter((panel) => !fit().overflow.has(key(panel)))} keyed={key}>
-          {(panel) => {
-            const active = () => panel().id === props.active.id
-            const iconOnly = () => fit().compact && panel().icon !== undefined && !active()
-            const open = () => openPanel(panel().id)
-            const button = (trigger: Record<string, unknown> = { onClick: open }) => (
-              <Button
-                {...trigger}
-                class={cn(tab, tabButton, active() && 'bg-accent text-foreground')}
-                size={null}
-                variant={null}
-              >
-                <TabIcon panel={panel()} />
-                <Show when={!iconOnly()}>{panel().title}</Show>
-                <TabBadges id={panel().id} />
-              </Button>
-            )
-            return (
-              <Show when={iconOnly()} fallback={button()}>
-                <Tooltip delay={400}>
+        <TabsList aria-label="Conversation panels" class="min-w-0 gap-0.5 border-0 p-0">
+          <For each={props.panels.filter((panel) => !fit().overflow.has(key(panel)))} keyed={key}>
+            {(panel) => {
+              const iconOnly = () =>
+                fit().compact && panel().icon !== undefined && panel().id !== props.active.id
+              return (
+                <Tooltip delay={400} disabled={!iconOnly()}>
                   <TooltipTrigger
-                    aria-label={panel().title}
-                    onClick={open}
-                    render={(trigger) => button(trigger)}
+                    render={(trigger) => (
+                      <TabsTab
+                        {...trigger}
+                        aria-label={panel().title}
+                        class={cn(tab, tabButton)}
+                        value={panel().id}
+                      >
+                        <TabIcon panel={panel()} />
+                        <span class={iconOnly() ? 'sr-only' : undefined}>{panel().title}</span>
+                        <TabBadges id={panel().id} />
+                      </TabsTab>
+                    )}
                   />
-                  <TooltipContent side="bottom">{panel().title}</TooltipContent>
+                  <TooltipContent
+                    class={iconOnly() ? undefined : 'hidden'}
+                    data-agent-hidden
+                    side="bottom"
+                  >
+                    {panel().title}
+                  </TooltipContent>
                 </Tooltip>
-              </Show>
-            )
-          }}
-        </For>
+              )
+            }}
+          </For>
+        </TabsList>
         <Show when={hidden().length > 0}>
           <DropdownMenu modal={false} onAction={(id) => openPanel(id)}>
             <DropdownMenuTrigger
@@ -389,14 +385,19 @@ export function Panels() {
   const viewport = useViewport()
   const overlay = () => overlays('panels', viewport())
   const content = (panel: () => PanelItem) => (
-    <>
+    <Tabs bind={[() => panel().id, openPanel]} class="flex min-h-0 flex-1 flex-col">
       <PanelTabs active={panel()} panels={tabs()} />
-      <div class="min-h-0 flex-1 overflow-y-auto">
-        <For each={[panel()]} keyed={key}>
-          {(shown) => <Contribution fallback={reportedFailure} item={shown()} props={{}} />}
-        </For>
-      </div>
-    </>
+      <For each={tabs()} keyed={key}>
+        {(shown) => (
+          <TabsPanel
+            class="min-h-0 flex-1 overflow-y-auto not-data-selected:hidden"
+            value={shown().id}
+          >
+            <Contribution fallback={reportedFailure} item={shown()} props={{}} />
+          </TabsPanel>
+        )}
+      </For>
+    </Tabs>
   )
   return (
     <Show when={active()}>

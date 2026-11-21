@@ -26,18 +26,19 @@ vi.mock('react', async (original) => ({
 vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../web/src/sdk/store.ts')
   const { createApi } = await import('../../web/src/sdk/api.ts')
-  const { FakeSource } = await import('./fake-source.ts')
+  const { FakeSource, answerReadsWith } = await import('./fake-source.ts')
+  const pageFetch = answerReadsWith(harness.fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch: harness.fetch,
+    fetch: pageFetch,
     retryMs: 5,
   })
   const { createReads } = await import('../../web/src/sdk/reads.ts')
-  const api = createApi(store, { fetch: harness.fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return { store, api, reads: createReads(api, store) }
 })
 import { store } from '../../web/src/sdk/client.ts'
@@ -158,10 +159,11 @@ it('keeps two scoped snapshots, ops, transcripts and documents independent of th
   expect(getConversation().id).toBe(1)
 
   // A nested scope must not inherit its parent's paged transcript.
+  const parentHistory = view(7, 'parent history').entries
   const nested = renderToStaticMarkup(
     h(
       TranscriptContext,
-      { value: createTranscriptFrame(view(7, 'parent history').entries).frame },
+      { value: createTranscriptFrame(() => parentHistory).frame },
       scoped(9, h(Probe)),
     ),
   )

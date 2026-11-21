@@ -1,6 +1,6 @@
+import { cell } from '../../lib/cell.ts'
 import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import type { FamiliesView, FamilyView } from './refs.ts'
-import { cell } from './state.ts'
 
 export const agentsPanel = 'agents'
 export const familiesCache = cell<FamiliesView | undefined>(undefined)

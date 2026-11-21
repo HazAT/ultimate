@@ -1,14 +1,14 @@
 /** @jsxImportSource @solidjs/web */
 import { createMemo, Show } from 'solid-js'
-import { api, cn } from '@/sdk/solid'
+import { api, cn, useExternal } from '@/sdk/solid'
 import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'
 import { modelIdOf, refresh, runsOn } from './family-state.ts'
-import { FamilyDot, useCell, useFamilies } from './readers.solid.tsx'
+import { FamilyDot, useFamilies } from './readers.solid.tsx'
 import { FamiliesAction } from './refs.ts'
 import { picks } from './state.ts'
 
 export const refreshFamilies = () => refresh(() => api.action(FamiliesAction, null))
-export const usePicks = () => useCell(picks)
+export const usePicks = () => useExternal(picks.get, picks.subscribe)
 
 export function FamilyLabel(props: { family: string | undefined; class?: string }) {
   const families = useFamilies()

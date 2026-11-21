@@ -1,137 +1,148 @@
 import { expect, it, vi } from 'vitest'
+import type { ReadEvent, ReadSpec } from '../../shared/protocol.ts'
 import { ActionError } from '../../web/src/sdk/api.ts'
 import type { Api } from '../../web/src/sdk/api.ts'
 import { createReads } from '../../web/src/sdk/reads.ts'
 
-it('answers readers of one action and args with one call, and asks again after a server restart', async () => {
+function setup(status = 'open') {
+  const watched: { read: ReadSpec; every?: number; send: (event: ReadEvent) => void }[] = []
   const listeners = new Set<() => void>()
-  let system: unknown
+  let connection = status
   const store = {
-    getState: () => ({ system, connection: { status: 'open' } }),
-    subscribe: (listener: () => void) => (
-      listeners.add(listener),
-      () => listeners.delete(listener)
-    ),
     notify: vi.fn<(notice: unknown) => void>(),
+    getState: () => ({ connection: { status: connection } }),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    },
+    watchRead: (read: ReadSpec, every: number | undefined, send: (event: ReadEvent) => void) => {
+      const watch = { read, every, send }
+      watched.push(watch)
+      return () => void watched.splice(watched.indexOf(watch), 1)
+    },
   }
-  /** What the stream's `system` event does to the store: a server process, a new one after a restart. */
-  const serve = (generation: number) => {
-    system = { process: { pid: 1, generation } }
+  const connect = (next: string) => {
+    connection = next
     for (const listener of listeners) listener()
   }
-  const action = vi.fn<() => Promise<string>>(async () => 'answer')
-  const reads = createReads({ action } as unknown as Api, store as never)
-  serve(1)
+  const action = vi.fn<() => Promise<unknown>>()
+  return {
+    watched,
+    store,
+    action,
+    connect,
+    reads: createReads({ action } as unknown as Api, store as never),
+  }
+}
 
+it('subscribes once per action and args for all readers, at the fastest interval, until the last leaves', () => {
+  const { watched, reads, action } = setup()
   const read = reads.get('test', 'status', null)
-  read.use({})
-  reads.get('test', 'status', null).use({})
-  await vi.waitFor(() => expect(read.get().settled).toBe(true))
-  expect(action).toHaveBeenCalledTimes(1)
-  expect(read.get().data).toBe('answer')
-
-  serve(2)
-  await vi.waitFor(() => expect(action).toHaveBeenCalledTimes(2))
+  const first = read.use({})
+  const second = reads.get('test', 'status', null).use({ every: 5000 })
+  expect(watched).toMatchObject([{ read: { extension: 'test', action: 'status' }, every: 5000 }])
+  watched[0].send({ result: 'answer' })
+  expect(read.get()).toMatchObject({ data: 'answer', settled: true })
+  second()
+  expect(watched).toMatchObject([{ every: undefined }])
+  first()
+  expect(watched).toEqual([])
+  expect(action).not.toHaveBeenCalled()
 })
 
-it('keeps a read quiet when its request never reached the server, and asks again when the page is back', async () => {
-  let connection = 'open'
-  const listeners = new Set<() => void>()
-  const store = {
-    getState: () => ({ connection: { status: connection } }),
-    subscribe: (listener: () => void) => (
-      listeners.add(listener),
-      () => listeners.delete(listener)
-    ),
-    notify: vi.fn<(notice: unknown) => void>(),
-  }
-  const connect = (status: string) => {
-    connection = status
-    for (const listener of listeners) listener()
-  }
-  const action = vi.fn<() => Promise<string>>()
-  const reads = createReads({ action } as unknown as Api, store as never)
+it("shows a read's failure through its reader's onError, or else as a notice, once per new answer", () => {
+  const { watched, reads, store } = setup()
+  const onError = vi.fn<(error: ActionError) => void>()
+  const read = reads.get('test', 'status', null)
+  const release = read.use({ onError })
+  watched[0].send({ error: 'boom', status: 500 })
+  watched[0].send({ error: 'boom', status: 500 })
+  expect(onError).toHaveBeenCalledTimes(1)
+  expect(read.get().error).toMatchObject({ extension: 'test', action: 'status', status: 500 })
+  release()
+  read.use({})
+  watched[0].send({ error: 'other', status: 404 })
+  expect(store.notify).toHaveBeenCalledWith({ level: 'error', message: 'test/status: other' })
+})
 
-  // A tab put to sleep: the browser cancels the request before it reaches the server.
-  action
-    .mockResolvedValueOnce('first')
-    .mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))
+it("keeps the stream's newer answer when an older refetch answers last", async () => {
+  const { watched, reads, action } = setup()
   const read = reads.get('test', 'status', null)
   read.use({})
-  await vi.waitFor(() => expect(read.get().data).toBe('first'))
+  const older = Promise.withResolvers<unknown>()
+  action.mockReturnValueOnce(older.promise)
+  const refetched = read.refetch()
+  watched[0].send({ result: 'newer' })
+  older.resolve('older')
+  expect(await refetched).toBe('older')
+  expect(read.get()).toMatchObject({ data: 'newer', loading: false, settled: true })
+})
+
+it('keeps ui steps waiting for the stream even when a refetch answers first', async () => {
+  const { watched, reads, action } = setup()
+  const read = reads.get('test', 'status', null)
+  read.use({})
+  action.mockResolvedValueOnce('over http')
+  await read.refetch()
+  let settled = false
+  const done = reads.settledInUse().then(() => (settled = true))
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  watched[0].send({ result: 'from the stream' })
+  await done
+  expect(read.get().data).toBe('from the stream')
+})
+
+it('answers a refetch of an unwatched read itself, and stays quiet when its request never reached the server', async () => {
+  const { reads, action, store } = setup()
+  const read = reads.get('test', 'status', null)
+  action.mockResolvedValueOnce('fresh')
+  await read.refetch()
+  expect(read.get()).toMatchObject({ data: 'fresh', loading: false })
+  action.mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))
   await read.refetch()
   expect(store.notify).not.toHaveBeenCalled()
-  expect(read.get()).toMatchObject({
-    data: 'first',
-    error: undefined,
-    loading: false,
-  })
-
-  action.mockResolvedValueOnce('again')
-  connect('reconnecting')
-  connect('open')
-  await vi.waitFor(() => expect(read.get().data).toBe('again'))
-
-  // A real answer from the server still shows.
-  action.mockRejectedValueOnce(new ActionError('test', 'status', 500, 'boom'))
-  await read.refetch()
-  expect(store.notify).toHaveBeenCalledTimes(1)
+  expect(read.get()).toMatchObject({ data: 'fresh', loading: false })
 })
 
 it('settles in-use reads once each mounted read has its first answer, so ui steps see the controls it renders', async () => {
-  const store = {
-    getState: () => ({ connection: { status: 'open' } }),
-    subscribe: () => () => {},
-    notify: vi.fn<(notice: unknown) => void>(),
-  }
-  const answer = Promise.withResolvers<string>()
-  const reads = createReads({ action: () => answer.promise } as unknown as Api, store as never)
+  const { watched, reads } = setup()
   reads.get('test', 'idle', null)
   reads.get('test', 'status', null).use({})
   let settled = false
   const done = reads.settledInUse().then(() => (settled = true))
   await Promise.resolve()
   expect(settled).toBe(false)
-  answer.resolve('answer')
+  watched[0].send({ result: 'answer' })
   await done
   expect(settled).toBe(true)
 })
 
-function readiness() {
-  const store = {
-    getState: () => ({ connection: { status: 'open' } }),
-    subscribe: () => () => {},
-    notify: vi.fn<(notice: unknown) => void>(),
-  }
-  const action = vi.fn<() => Promise<string>>()
-  return {
-    action,
-    reads: createReads({ action } as unknown as Api, store as never),
-  }
-}
-
-it('counts a read whose request never reached the server as done for ui steps, and keeps it unsettled', async () => {
-  const { action, reads } = readiness()
-  action.mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))
-  const read = reads.get('test', 'status', null)
-  read.use({})
-  await reads.settledInUse()
-  expect(read.get()).toMatchObject({ loading: false, settled: false })
+it('does not hold ui steps for reads while the stream is down, and holds them again once it is up', async () => {
+  const { reads, connect } = setup('connecting')
+  reads.get('test', 'status', null).use({})
+  await expect(reads.settledInUse()).resolves.toBeUndefined()
+  connect('open')
+  let settled = false
+  const done = reads.settledInUse().then(() => (settled = true))
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  connect('reconnecting')
+  await done
+  await Promise.resolve()
+  expect(settled).toBe(true)
 })
 
 it('rechecks readiness when the last reader of a pending read goes', async () => {
-  const { action, reads } = readiness()
-  action.mockReturnValue(new Promise<string>(() => {}))
+  const { reads } = setup()
   const release = reads.get('test', 'status', null).use({})
-  await Promise.resolve()
   const done = reads.settledInUse()
   release()
   await expect(done).resolves.toBeUndefined()
 })
 
 it('stops waiting for readiness when its signal aborts', async () => {
-  const { action, reads } = readiness()
-  action.mockReturnValue(new Promise<string>(() => {}))
+  const { reads } = setup()
   reads.get('test', 'status', null).use({})
   const stop = new AbortController()
   const done = reads.settledInUse(stop.signal)

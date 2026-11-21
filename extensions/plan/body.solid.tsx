@@ -17,7 +17,7 @@ import {
 } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
+import { For, Show, createEffect, createMemo, createSignal } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { Markdown, MentionText } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
@@ -28,15 +28,13 @@ import {
 } from '@/components/ui/collapsible.solid.tsx'
 import {
   cn,
-  errorMessage,
   formatTime,
-  notify,
   switchConversation,
   useAction,
   useConversationSummary,
+  useCopy,
   useDocOf,
 } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
 import { InfoAction, stateLabel, useWorkspaceIndex } from '../workspaces/ui.solid.tsx'
 import { criteriaOf, sectionsOf, verbatim } from './body.ts'
 import { confirmed, criteriaCounts, criteriaOfBody, finished, number } from './progress.ts'
@@ -282,9 +280,7 @@ function useScrollTo(focus: Accessor<DeepLinkFocus>, reveal?: () => void) {
 }
 
 function CopyLink(props: { coordinator: ConversationId; id: string; class?: string }) {
-  const [copied, setCopied] = createSignal(false)
-  let cancel: (() => void) | undefined
-  onCleanup(() => cancel?.())
+  const { copied, copy } = useCopy()
   return (
     <Button
       aria-label={`Copy plan link #${props.coordinator}/${props.id}`}
@@ -297,14 +293,7 @@ function CopyLink(props: { coordinator: ConversationId; id: string; class?: stri
         const url = new URL(location.origin)
         url.searchParams.set('conversation', String(props.coordinator))
         url.searchParams.set('task', props.id)
-        return navigator.clipboard
-          .writeText(url.href)
-          .then(() => {
-            setCopied(true)
-            cancel?.()
-            cancel = deadline(1200, () => setCopied(false))
-          })
-          .catch((error: unknown) => notify({ level: 'error', message: errorMessage(error) }))
+        return copy(url.href)
       }}
       size="xs"
       title={`Copy a link to ${props.id}`}

@@ -207,10 +207,20 @@ type CommittedUiRevision = number
 export type UiUpdateResponse = { ok: true; rev: CommittedUiRevision }
 type StreamHandshakeBeforeSubscriptions = { id: string }
 type HttpStatusOfRefusedOpen = number
+export interface ReadSpec {
+  extension: string
+  action: string
+  args: JsonValue
+  conversation?: number
+}
+export type ViewSubscription = { sub: number; conversation?: number; docs: string[]; view: boolean }
+export type ReadSubscription = { sub: number; read: ReadSpec; every?: ReadAgainAfterMs }
 export interface SubscriptionsRequest {
-  subscribe: { sub: number; conversation?: number; docs: string[]; view: boolean }[]
+  subscribe: (ViewSubscription | ReadSubscription)[]
   unsubscribe: number[]
 }
+type ReadAgainAfterMs = number
+export type ReadEvent = { result: JsonValue } | { error: string; status: number }
 export interface SubscriptionsAnswer {
   ok: true
   refused: Record<number, HttpStatusOfRefusedOpen>
@@ -229,4 +239,5 @@ export interface ServerEvents {
   conversationsOps: readonly Op[]
   tasksOps: readonly Op[]
   notice: Notice
+  read: ReadEvent
 }

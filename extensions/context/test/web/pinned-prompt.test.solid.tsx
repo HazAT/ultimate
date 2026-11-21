@@ -17,17 +17,18 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
   const { createRegistry } = await import('../../../../web/src/sdk/registry.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
-  const { FakeSource } = await import('../../../../test/web/fake-source.ts')
+  const { FakeSource, answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(harness.fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch: harness.fetch,
+    fetch: pageFetch,
     retryMs: 5,
   })
-  const api = createApi(store, { fetch: harness.fetch })
+  const api = createApi(store, { fetch: pageFetch })
   const { createReads } = await import('../../../../web/src/sdk/reads.ts')
   return {
     store,

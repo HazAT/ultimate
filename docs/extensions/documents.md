@@ -47,8 +47,9 @@ values, as `useDoc` does.
 Extensions read documents through the SDK (`useDoc`, `useDocOf`; see [contracts](contracts.md)), never the stream
 itself. Their `doc` snapshots and `docOps` batches come from `/api/events`. A browser tab keeps one such stream; its
 first event, `stream`, carries the id with which `POST /api/events/<stream>`
-(`{ subscribe: [{ sub, conversation?, docs?, view? }], unsubscribe: [sub] }`) opens and ends subscriptions in one
-request; it answers `{ ok, refused }`, `refused` mapping each sub that did not open to its HTTP status (`ServerEvents` in
+(`{ subscribe: [{ sub, conversation?, docs?, view? } | { sub, read: { extension, action, args, conversation? }, every? }], unsubscribe: [sub] }`)
+opens and ends subscriptions in one request (opens first, so a read moved to a new interval keeps its last answer). A
+read subscription gets `read` events, `{ result }` or `{ error, status }`, each time the answer changes. The request answers `{ ok, refused }`, `refused` mapping each sub that did not open to its HTTP status (`ServerEvents` in
 `shared/protocol.ts`). `conversations` and `tasks` come as one snapshot, then `conversationsOps` and `tasksOps`. A subscription's
-`view`, `ops`, `doc` and `docOps` events carry its id on their first data line, so their `data` reads `<sub>\n{…}`:
+`view`, `ops`, `doc`, `docOps` and `read` events carry its id on their first data line, so their `data` reads `<sub>\n{…}`:
 parse what follows the first newline.

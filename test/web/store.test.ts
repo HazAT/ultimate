@@ -622,3 +622,28 @@ describe('web replica store', () => {
     store.stop()
   })
 })
+
+it('gives a read the server refused as too large its error, instead of retrying it', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers()
+  onTestFinished(() => void vi.useRealTimers())
+  const { store, fetch, latest } = setup()
+  onTestFinished(() => store.stop())
+  latest().open()
+  await vi.advanceTimersByTimeAsync(10)
+  fetch.mockImplementationOnce(async () =>
+    Response.json({ error: 'Request too large' }, { status: 413 }),
+  )
+  const events: unknown[] = []
+  store.watchRead(
+    { extension: 'test', action: 'big', args: 'x' },
+    undefined,
+    (event) => void events.push(event),
+  )
+  await vi.advanceTimersByTimeAsync(10)
+  expect(events).toEqual([{ error: 'The server refused this read', status: 413 }])
+  const posts = fetch.mock.calls.length
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fetch.mock.calls.length).toBe(posts)
+})

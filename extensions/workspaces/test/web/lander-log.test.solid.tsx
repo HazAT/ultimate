@@ -35,15 +35,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: 'sample/project' })
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const clientStore = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,
@@ -192,7 +194,10 @@ it('lets an agent open the review range, expand the landing state, and switch to
   }))
   onTestFinished(() => {
     vi.unstubAllGlobals()
+    store.stop()
   })
+  store.start()
+  harness.sources.at(-1)!.open()
   await registry.setLoaders({ 'extensions/review/web.solid.tsx': async () => ({ default: {} }) })
   const entry = {
     id: 89,

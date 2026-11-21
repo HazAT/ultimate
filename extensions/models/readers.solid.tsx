@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { createEffect, createMemo, createSignal, onSettled } from 'solid-js'
+import { createEffect, createMemo, onSettled } from 'solid-js'
 import {
   api,
   cn,
@@ -7,29 +7,18 @@ import {
   useConversation,
   useConversationId,
   useDoc,
+  useExternal,
   useModels,
   useSystem,
 } from '@/sdk/solid'
 import { familyColor } from '../../lib/families.ts'
 import { familiesCache, refresh, refreshFor } from './family-state.ts'
 import { FamiliesAction, FamilyDoc } from './refs.ts'
-import type { cell } from './state.ts'
-
-export function useCell<T>(source: ReturnType<typeof cell<T>>) {
-  const [value, setValue] = createSignal<T>(() => source.get())
-  onSettled(() => {
-    const update = () => setValue(() => source.get())
-    const unsubscribe = source.subscribe(update)
-    update()
-    return unsubscribe
-  })
-  return value
-}
 
 const fetchFamilies = () => api.action(FamiliesAction, null)
 
 export function useFamilies() {
-  const families = useCell(familiesCache)
+  const families = useExternal(familiesCache.get, familiesCache.subscribe)
   const system = useSystem()
   const revision = createMemo(
     () => `${system()?.code.sha} ${JSON.stringify(system()?.project.settings)}`,

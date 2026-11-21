@@ -167,15 +167,16 @@ it('steers on Enter, queues a follow-up on Alt+Enter, cancels a queued input and
     [{ text: 'agent steer', whenBusy: 'steer', images: [] }, 'agent'],
   ])
   await expectDistinctAgentNames(agent)
-  expect(
-    await act([
-      { ref: 'Cancel queued input 80: queued later', action: 'press' },
-      { ref: 'Stop the run in conversation #8', action: 'press' },
-    ]),
-  ).toMatchObject({ ok: true })
+  for (const ref of ['Cancel queued input 80: queued later', 'Stop the run in conversation #8']) {
+    const before = harness.posts.length
+    const result = await act([{ ref, action: 'press' }])
+    expect(result.error?.message).toContain('Needs a person')
+    expect(harness.posts).toHaveLength(before)
+    container.querySelector<HTMLButtonElement>(`[aria-label="${ref}"]`)!.click()
+  }
   expect(harness.posts.slice(-2)).toEqual([
-    { path: '/api/conversations/8/inbox/80/cancel', body: {}, source: 'agent' },
-    { path: '/api/conversations/8/abort', body: {}, source: 'agent' },
+    { path: '/api/conversations/8/inbox/80/cancel', body: {}, source: 'person' },
+    { path: '/api/conversations/8/abort', body: {}, source: 'person' },
   ])
 })
 
@@ -296,8 +297,9 @@ it('runs a composer a React wrapper portals, scopes or hides as one live editor'
   const [scope, hidden] = [{ id: undefined as number | undefined }, { on: false }]
   const rerender: { now?: () => void } = {}
   const reactWarnings = vi.spyOn(console, 'error')
-  const outerFrame = createTranscriptFrame([entry(17, 'from seventeen')])
-  const innerFrame = createTranscriptFrame([entry(18, 'from eighteen')])
+  const [outer, inner] = [[entry(17, 'from seventeen')], [entry(18, 'from eighteen')]]
+  const outerFrame = createTranscriptFrame(() => outer)
+  const innerFrame = createTranscriptFrame(() => inner)
   await registry.setLoaders({
     '/extensions/wrap/web.tsx': async () => ({
       default: {
@@ -392,9 +394,9 @@ it('keeps the queued row and its cancel when a React inbox renderer throws', asy
   await settle()
   flush()
   expect(container.textContent).toContain('still here')
-  expect(
-    await act([{ ref: 'Cancel queued input 160: still here', action: 'press' }]),
-  ).toMatchObject({ ok: true })
+  container
+    .querySelector<HTMLButtonElement>('[aria-label="Cancel queued input 160: still here"]')!
+    .click()
   expect(harness.posts.at(-1)?.path).toBe('/api/conversations/16/inbox/160/cancel')
   await registry.setLoaders({})
 })

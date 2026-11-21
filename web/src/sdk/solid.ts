@@ -141,6 +141,7 @@ export type {
   UseActionOptions,
   WebExtension,
 } from './hooks.ts'
+export { useConversationWidth, useExternal, usePageVisible } from './page.ts'
 
 export { Card } from '../app/card.solid.tsx'
 /** A card that folds to one quiet line in compact mode; `label` names its button. The reader's choice survives reloads. */

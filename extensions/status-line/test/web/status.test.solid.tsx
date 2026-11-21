@@ -11,8 +11,6 @@ const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
   rates: null as RateSample | null,
-  hang: false,
-  requests: 0,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -21,26 +19,22 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
-    if (path === '/api/extensions/status-line/actions/rates') {
-      harness.requests++
-      if (harness.hang)
-        return new Promise<Response>((_, reject) =>
-          init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)),
-        )
+    if (path === '/api/extensions/status-line/actions/rates')
       return Response.json({ result: harness.rates })
-    }
     if (path === '/api/models') return Response.json({ providers: [], models: [] })
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
 })
 
@@ -114,13 +108,12 @@ const sample = (output: number): RateSample => ({
 const system = (generation: number) =>
   ({ process: { pid: 7, generation, startedAt: '2026-01-01T00:00:00Z' } }) as unknown as SystemInfo
 
-it('gives up on a hung rates request after 5 s and polls on, and forgets the rate when the server restarts', async ({
+it('follows the rate the server samples every second, and forgets it while the stream is down', async ({
   onTestFinished,
 }) => {
   vi.useFakeTimers()
   onTestFinished(() => void vi.useRealTimers())
   harness.rates = sample(10)
-  harness.hang = false
   store.start()
   onTestFinished(() => store.stop())
   const stream = harness.sources.at(-1)!
@@ -131,23 +124,23 @@ it('gives up on a hung rates request after 5 s and polls on, and forgets the rat
   await vi.advanceTimersByTimeAsync(10)
   flush()
   expect(rate()).toBe('↓10 tok/s')
+  expect(harness.server!.reads.at(-1)).toMatchObject({
+    read: { extension: 'status-line', action: 'rates' },
+    every: 1000,
+  })
 
-  harness.hang = true
-  await vi.advanceTimersByTimeAsync(1000)
-  const hung = harness.requests
-  await vi.advanceTimersByTimeAsync(5000)
-  flush()
-  expect(rate()).toBe('↓? tok/s')
-  harness.hang = false
   harness.rates = sample(20)
   await vi.advanceTimersByTimeAsync(1000)
   flush()
-  expect(harness.requests).toBeGreaterThan(hung)
   expect(rate()).toBe('↓20 tok/s')
 
-  harness.hang = true
+  stream.drop()
+  flush()
+  expect(rate()).toBe('↓? tok/s')
+  harness.rates = sample(30)
+  stream.open()
   stream.send('system', system(2))
   await vi.advanceTimersByTimeAsync(10)
   flush()
-  expect(rate()).toBe('↓? tok/s')
+  expect(rate()).toBe('↓30 tok/s')
 })

@@ -1,13 +1,28 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Search, X } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
-import { api, cn, errorMessage, formatDuration, showSurface, switchConversation } from '@/sdk/solid'
-import { deadline, every } from '../../lib/timers.ts'
+import {
+  api,
+  cn,
+  errorMessage,
+  formatDuration,
+  keepLast,
+  showSurface,
+  switchConversation,
+  useAction,
+} from '@/sdk/solid'
+import { deadline } from '../../lib/timers.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { asking, empty, failed, followed, loaded, older, pagesOlder, wantOlder } from './feed.ts'
 import type { Feed } from './feed.ts'
@@ -48,11 +63,13 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
   const [state, setState] = createSignal(empty)
   const controller = new AbortController()
   onCleanup(() => controller.abort())
+  let target: Page | undefined
   const request = (
     cursor: { before?: string; after?: string },
     step: (feed: Feed, page: Page) => Feed,
   ) => {
     setState(asking)
+    const chasing = target
     void api
       .action(
         StreamAction,
@@ -61,7 +78,12 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
       )
       .then(
         (page) => {
-          if (!controller.signal.aborted) setState((previous) => step(previous, page))
+          if (controller.signal.aborted) return
+          const stepped = step(state(), page)
+          const drained = cursor.after !== undefined && page.rows.length < pageSize
+          if (drained && target === chasing && stepped.head !== undefined) target = undefined
+          setState(stepped)
+          catchUp(stepped)
         },
         (error: unknown) => {
           if (!controller.signal.aborted)
@@ -69,16 +91,30 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
         },
       )
   }
-  onSettled(() => request({}, loaded))
-  createEffect(live, (active) =>
-    active
-      ? every(pollMs, () => {
-          const { head, loading } = state()
-          if (loading) return
-          if (head === undefined) request({}, loaded)
-          else request({ after: head }, (feed, page) => followed(feed, head, page))
-        })
-      : undefined,
+  function catchUp(current = state()) {
+    const newestPage = target
+    const { head, loading } = current
+    if (!newestPage || head === newestPage.head) return
+    if (head === undefined) setState((previous) => loaded(previous, newestPage))
+    else if (!loading) request({ after: head }, (feed, page) => followed(feed, head, page))
+  }
+  const newest = useAction(
+    StreamAction,
+    { ...untrack(filter), limit: pageSize },
+    { onError: keepLast, every: () => (live() ? pollMs : undefined) },
+  )
+  createEffect(
+    () => newest.data(),
+    (page) => {
+      target = page
+      catchUp()
+    },
+  )
+  createEffect(
+    () => newest.error(),
+    (error) => {
+      if (error) setState((previous) => failed(previous, errorMessage(error)))
+    },
   )
   const next = createMemo(() => (pagesOlder(state()) ? state().next : undefined))
   createEffect(next, (cursor) => {
@@ -89,19 +125,14 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
 
 function Row(props: { row: SystemRow }) {
   const row = () => props.row
-  const [open, setOpen] = createSignal(false)
   return (
-    <li data-row={row().id}>
+    <Collapsible data-row={row().id} disabled={!row().trace} render={(item) => <li {...item} />}>
       <div class="flex min-w-0 items-start gap-1.5 px-3 py-[3px] font-mono text-[10.5px] leading-[18px] text-muted-foreground hover:bg-muted/40 pointer-coarse:py-1.5">
-        <Button
+        <CollapsibleTrigger
           aria-label={`${row().name} · event or call ${row().id}`}
-          aria-expanded={row().trace ? (open() ? 'true' : 'false') : undefined}
-          class="w-auto min-w-0 flex-1 items-start justify-start gap-1.5 text-left text-[length:inherit] leading-[inherit] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-100 data-disabled:opacity-100"
           disabled={!row().trace}
-          onClick={() => setOpen((current) => !current)}
+          class="inline-flex w-auto min-w-0 flex-1 items-start justify-start gap-1.5 rounded-md text-left text-[length:inherit] leading-[inherit] font-normal whitespace-nowrap outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none"
           title={row().summary}
-          size={null}
-          variant={null}
         >
           <time class="w-14 shrink-0 tabular-nums text-muted-foreground/60" datetime={row().at}>
             {clock(row().at)}
@@ -118,7 +149,7 @@ function Row(props: { row: SystemRow }) {
           <span class="min-w-0 flex-1 truncate text-muted-foreground/70 max-md:hidden">
             {row().error ?? row().summary}
           </span>
-        </Button>
+        </CollapsibleTrigger>
         <Show when={row().conversation}>
           {(id) => (
             <Button
@@ -145,10 +176,12 @@ function Row(props: { row: SystemRow }) {
           {row().error}
         </p>
       </Show>
-      <Show when={open() && row().trace} keyed>
-        {(trace) => <TraceTree trace={trace} />}
-      </Show>
-    </li>
+      <CollapsibleContent>
+        <Show when={row().trace} keyed>
+          {(trace) => <TraceTree trace={trace} />}
+        </Show>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -174,19 +207,18 @@ function Filters(props: ViewProps) {
           )}
         </For>
       </SegmentedControl>
-      <Button
-        aria-pressed={props.view.errors ? 'true' : 'false'}
+      <Toggle
+        pressed={props.view.errors}
         size={null}
         variant={null}
         class={cn(
           chip,
-          'font-normal',
-          props.view.errors ? 'bg-error/15 text-error' : 'text-muted-foreground hover:bg-accent/60',
+          'font-normal text-muted-foreground hover:bg-accent/60 data-pressed:bg-error/15 data-pressed:text-error',
         )}
-        onClick={() => update({ errors: !props.view.errors })}
+        onPressedChange={(errors) => update({ errors })}
       >
         errors only
-      </Button>
+      </Toggle>
       <Show when={props.view.conversation}>
         {(id) => (
           <Button

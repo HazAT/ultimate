@@ -334,6 +334,7 @@ export function hear(text: string, entry?: number) {
 }
 
 export function setMuted(muted: boolean) {
+  if (pageMode.muted === muted) return
   try {
     if (session) {
       if (muted) session.mute()

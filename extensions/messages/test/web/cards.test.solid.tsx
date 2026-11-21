@@ -81,7 +81,7 @@ it('shows a forwarded screenshot as a zoomable thumbnail from the loaded transcr
       { role: 'toolResult', content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }] },
     ],
   } as unknown as EntryRecord
-  const transcript = createTranscriptFrame([shot])
+  const transcript = createTranscriptFrame(() => [shot])
   const view = renderSolid(() => (
     <Transcript value={transcript.frame}>
       <Bubble

@@ -184,8 +184,7 @@ it('marks a copy for a moment', async () => {
     return null
   })
   flush()
-  copy.copy('hello')
-  await vi.advanceTimersByTimeAsync(0)
+  await copy.copy('hello')
   flush()
   expect([writeText.mock.calls[0], copy.copied()]).toEqual([['hello'], true])
   await vi.advanceTimersByTimeAsync(1_300)

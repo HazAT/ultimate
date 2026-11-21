@@ -187,21 +187,22 @@ function AnswerCard(props: CardProps & { id: number }) {
       ...old,
       drafts: { ...old.drafts, [index]: edit(old.drafts[index] ?? { chosen: [] }) },
     }))
-  const select = (index: number, option: number, click = false) => {
+  const select = (index: number, option: number, click = false, pressed?: boolean) => {
     const question = questions()[index]
     const choice = question && choices(question)[option]
     if (!choice) return
     change((old) => {
       const previous = old.drafts[index] ?? { chosen: [] }
+      const on = pressed ?? !(choice.custom ? previous.other : previous.chosen.includes(option))
       const next =
         question.kind === 'multi'
           ? choice.custom
-            ? { ...previous, other: !previous.other }
+            ? { ...previous, other: on }
             : {
                 ...previous,
-                chosen: previous.chosen.includes(option)
-                  ? previous.chosen.filter((i) => i !== option)
-                  : [...previous.chosen, option].toSorted((a, b) => a - b),
+                chosen: on
+                  ? [...new Set([...previous.chosen, option])].toSorted((a, b) => a - b)
+                  : previous.chosen.filter((i) => i !== option),
               }
           : { ...previous, chosen: choice.custom ? [] : [option], other: !!choice.custom }
       return { ...old, current: index, drafts: { ...old.drafts, [index]: next } }
@@ -409,7 +410,7 @@ function AnswerCard(props: CardProps & { id: number }) {
                   disabled={disabled()}
                   hints={hints()}
                   onOpen={() => go(index)}
-                  onSelect={(option) => select(index, option, true)}
+                  onSelect={(option, pressed) => select(index, option, true, pressed)}
                   onText={(value) => draft(index, (old) => ({ ...old, text: value }))}
                   onFieldKey={fieldKey}
                 />

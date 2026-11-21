@@ -41,19 +41,101 @@ function diagnose(rule: Rule, file: string, source: string) {
     },
     report: ({ message }) => reports.push(message),
   }) as Record<string, ((node: Located) => void) | undefined>
-  const visit = (node: Located, parent?: Located) => {
+  const children = (node: Located) =>
+    Object.entries(node).flatMap(([key, value]) =>
+      key === 'parent'
+        ? []
+        : (Array.isArray(value) ? value : [value]).filter(
+            (child): child is Located =>
+              !!child && typeof child === 'object' && typeof child.type === 'string',
+          ),
+    )
+  const link = (node: Located, parent?: Located) => {
     node.parent = parent
-    visitors[node.type]?.(node)
-    for (const [key, value] of Object.entries(node)) {
-      if (key === 'parent') continue
-      for (const child of Array.isArray(value) ? value : [value])
-        if (child && typeof child === 'object' && typeof child.type === 'string')
-          visit(child as Located, node)
-    }
+    for (const child of children(node)) link(child, node)
   }
+  const visit = (node: Located) => {
+    visitors[node.type]?.(node)
+    for (const child of children(node)) visit(child)
+  }
+  link(program)
   visit(program)
   return reports
 }
+
+it('rejects hand-rolled polls of Ultimate and raw requests to /api, as extensions shipped them, and leaves other servers alone', () => {
+  const polls = (file: string, source: string) =>
+    diagnose('no-raw-stream', file, source).filter((message) =>
+      message.includes('polls once per page'),
+    )
+  const sdk = "import { api, useAction } from '@/sdk/solid'\n"
+  // extensions/status-line/status.solid.tsx at 54fadf9: its own 1 s loop.
+  const rates = `${sdk}
+    const poll = async () => {
+      const next = await api.action(RatesAction, null, { signal: own.signal }).catch(() => null)
+      cancel = retryAfter(1000, () => void poll())
+    }`
+  expect(polls('extensions/status-line/status.solid.tsx', rates)).toHaveLength(1)
+  // extensions/automations/live.solid.tsx at 54fadf9: a refresh helper behind two timers.
+  const automations = `${sdk}
+    export const refreshList = () => refreshAutomations(api.action)
+    export function useLive() {
+      const refresh = () => void refreshList()
+      createEffect(signature, (_, previous) => (previous === undefined ? undefined : retryAfter(100, refresh)))
+      createEffect(late, (on) => {
+        refresh()
+        return every(2000, refresh)
+      })
+    }`
+  expect(polls('extensions/automations/live.solid.tsx', automations)).toHaveLength(2)
+  // extensions/mcp/chip.solid.tsx at 54fadf9: a refetch at each server's retry time beside useAction's every.
+  const mcp = `${sdk}
+    const { data: servers, refetch } = useAction(StatusAction, null, { every: settling })
+    const refresh = () => void refetch()
+    createEffect(retryAt, (at) => retryAfter(Math.max(0, at - Date.now()) + 500, refresh))`
+  expect(polls('extensions/mcp/chip.solid.tsx', mcp)).toHaveLength(1)
+  // extensions/system/surface.solid.tsx at 54fadf9: the lanes loaded every 2 s by hand.
+  const lanes = `${sdk}
+    const load = () => {
+      void api.action(LanesAction, { since }, { signal: controller.signal }).then(
+        (data) => setState({ range, data }),
+        (error) => setState({ range, error }),
+      )
+    }
+    load()
+    const stop = live ? every(2000, load) : undefined`
+  expect(polls('extensions/system/surface.solid.tsx', lanes)).toHaveLength(1)
+
+  const aliased = `import { api as backend } from '@/sdk/solid'
+    every(2000, () => void backend.action(ListAction).then(show))`
+  expect(polls('extensions/mine/web.solid.tsx', aliased)).toHaveLength(1)
+  const otherLibrary = `import { useAction } from 'some-query-library'
+    const { refetch } = useAction('items')
+    every(5000, () => void refetch())`
+  expect(polls('extensions/mine/web.solid.tsx', otherLibrary)).toEqual([])
+  const others = `${sdk}
+    import { client } from './my-backend.ts'
+    const query = useQuery()
+    every(5000, () => void client.action('sync'))
+    every(pollMs, () => void query.refetch())
+    retryAfter(1000, () => setNow(Date.now()))
+    every(10_000, () => api.action(PresentAction, { endpoint, visible: true }).catch(warn))`
+  expect(polls('extensions/mine/web.solid.tsx', others)).toEqual([])
+
+  const raw = `
+    fetch('/api/extensions/mine/actions/list')
+    fetch(\`/api/events/\${id}\`)
+    new EventSource('/api/events')
+    fetch('https://api.example.com/v1/items')
+    fetch(\`\${backend}/items\`)
+    new WebSocket('wss://example.com/live')
+    every(1000, () => setNow(Date.now()))`
+  expect(diagnose('no-raw-stream', 'extensions/mine/web.solid.tsx', raw)).toEqual(
+    Array.from({ length: 3 }, () =>
+      expect.stringMatching(/not fetch or a socket of your own to \/api/),
+    ),
+  )
+})
 
 /** The specific part of each message, after the sentence that says why the rule exists. */
 const lint = (rule: Rule, file: string, source: string) =>
@@ -323,6 +405,31 @@ it('sends a Solid bare button to the kit Button, which the agent bridge can see 
   expect(lint('ui-kit-roles', 'extensions/instance/link.solid.tsx', source)).toHaveLength(1)
   expect(lint('ui-kit-roles', 'extensions/instance/web.tsx', source)).toEqual([])
   expect(lint('ui-kit-roles', 'web/src/components/ui/button.solid.tsx', source)).toEqual([])
+})
+
+it('rejects a pressed Button because the agent cannot read its state', () => {
+  const source = `import { Button } from '@/components/ui/button.solid.tsx'
+export const Fast = () => <Button aria-pressed={state().on ? 'true' : 'false'}>Fast mode</Button>`
+  const check = (code: string) =>
+    diagnose('no-aria-pressed-button', 'extensions/fast/toggle.solid.tsx', code)
+  const message =
+    'The agent bridge sees only press on a Button, never its pressed state. Use Toggle from @/components/ui/toggle.solid.tsx, or SegmentedControl or Tabs for a one-of-many selection.'
+  expect(check(source)).toEqual([message])
+  expect(
+    check(`import { Toggle } from '@/components/ui/toggle.solid.tsx'
+export const Fast = () => <Toggle pressed={state().on}>Fast mode</Toggle>`),
+  ).toEqual([])
+  expect(
+    check(`import { Button as Action } from '@/components/ui/button.solid.tsx'
+import { TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
+import { PopoverTrigger } from '@/components/ui/popover.solid.tsx'
+export const Fast = () => <>
+  <TooltipTrigger aria-pressed="true" render={(trigger) => <Action {...trigger} />} />
+  <PopoverTrigger aria-pressed="true" render={Action} />
+  <TooltipTrigger aria-pressed="true" />
+  <Action>Run</Action>
+</>`),
+  ).toEqual([message, message])
 })
 
 it('keeps server helpers out of web tests, which the web tsconfig type-checks', () => {

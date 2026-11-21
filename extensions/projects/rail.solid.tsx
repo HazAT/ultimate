@@ -1,7 +1,18 @@
 /** @jsxImportSource @solidjs/web */
 import { Pin, PinOff } from '@lucide/solid'
-import { createMemo, createRoot, createSignal, For, onSettled, Show } from 'solid-js'
+import {
+  action,
+  createMemo,
+  createOptimistic,
+  createRoot,
+  createSignal,
+  For,
+  onSettled,
+  Show,
+} from 'solid-js'
+import type { ComponentProps } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
 import {
   ROOT,
@@ -11,6 +22,7 @@ import {
   prettyName,
   useAction,
   useExtensions,
+  usePageVisible,
   useViewport,
 } from '@/sdk/solid'
 import { deadline, debounce } from '../../lib/timers.ts'
@@ -51,23 +63,6 @@ export function OpeningBar() {
   )
 }
 
-const [visible, setVisible] = createRoot(() => createSignal(true))
-const shownNow = () => document.visibilityState === 'visible'
-
-function refetchWhenShown(...reads: { refetch: () => unknown }[]) {
-  onSettled(() => {
-    setVisible(shownNow())
-    const changed = () => {
-      setVisible(shownNow())
-      if (shownNow()) for (const read of reads) void read.refetch()
-    }
-    document.addEventListener('visibilitychange', changed)
-    return () => document.removeEventListener('visibilitychange', changed)
-  })
-}
-
-const whileVisible = (ms: number) => () => (visible() ? ms : undefined)
-
 export function Rail() {
   const viewport = useViewport()
   const extensions = useExtensions()
@@ -84,31 +79,39 @@ export function Rail() {
 }
 
 function ProjectsRail() {
+  const visible = usePageVisible()
+  const showCount = createMemo<number>((previous) => (previous ?? 0) + Number(visible()))
+  const whileVisible = (ms: number) => () => (visible() ? ms : undefined)
   const list = useAction(ListAction, null, {
+    on: showCount,
     onError: keepLast,
     every: whileVisible(VISIBLE_PROJECTS_POLL_MS),
   })
   const shared = useAction(
     PinAction,
     {},
-    { conversation: ROOT, onError: keepLast, every: whileVisible(SHARED_PIN_POLL_MS) },
+    {
+      conversation: ROOT,
+      on: showCount,
+      onError: keepLast,
+      every: whileVisible(SHARED_PIN_POLL_MS),
+    },
   )
-  refetchWhenShown(list, shared)
-  const [writing, setWriting] = createSignal<boolean>()
-  const [saved, setSaved] = createSignal<{ pinned: boolean; over: unknown }>()
-  const pinned = () => {
-    const ack = saved()
-    const answer = shared.data()
-    return writing() ?? (ack && answer === ack.over ? ack.pinned : (answer?.pinned ?? false))
-  }
-  const pin = async (next: boolean) => {
-    if (writing() !== undefined) return
-    setWriting(next)
-    await api
+  const answer = createMemo(() => shared.data())
+  const [acknowledged, setAcknowledged] = createSignal(() => answer()?.pinned ?? false)
+  const [pinned, setPinned] = createOptimistic(acknowledged)
+  const pin = action(function* (next: boolean) {
+    setPinned(next)
+    const saved: { pinned: boolean } | undefined = yield api
       .action(PinAction, { pinned: next })
-      .then((answer) => setSaved({ pinned: answer.pinned, over: shared.data() }), keepLast)
-    setWriting()
-    await shared.refetch()
+      .catch(keepLast)
+    if (!saved) return
+    setAcknowledged(saved.pinned)
+    yield shared.refetch()
+  })
+  let saving: Promise<void> | undefined
+  const press = (next: boolean) => {
+    saving ??= pin(next).finally(() => (saving = undefined))
   }
 
   const [hover, setHover] = createSignal(false)
@@ -157,11 +160,11 @@ function ProjectsRail() {
               <span class="ml-1.5 font-mono text-[11px] text-muted-foreground/60 tabular-nums">
                 {projects().length || ''}
               </span>
-              <Button
+              <Toggle
                 aria-label={pinned() ? 'Unpin the projects rail' : 'Pin the projects rail open'}
-                aria-pressed={pinned() ? 'true' : 'false'}
-                class="mr-2 ml-auto text-muted-foreground/70 hover:bg-sidebar-accent hover:text-foreground aria-pressed:text-foreground"
-                onClick={() => pin(!pinned())}
+                pressed={pinned()}
+                class="mr-2 ml-auto text-muted-foreground/70 hover:bg-sidebar-accent hover:text-foreground data-pressed:bg-transparent data-pressed:text-foreground data-pressed:hover:bg-sidebar-accent"
+                onPressedChange={press}
                 size="icon-xs"
                 title={pinned() ? 'Unpin: open on hover' : 'Pin: keep open beside the app'}
                 variant={null}
@@ -169,7 +172,7 @@ function ProjectsRail() {
                 <Show when={pinned()} fallback={<Pin class="size-3.5" />}>
                   <PinOff class="size-3.5" />
                 </Show>
-              </Button>
+              </Toggle>
             </Show>
           </div>
           <div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-2 pb-2 [scrollbar-width:none]">
@@ -264,105 +267,120 @@ function Row(props: {
   )
   const opensHere = (event: MouseEvent) =>
     event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
-  return (
-    <div class={cn(props.first && props.gap && 'mt-2')}>
-      <a
-        aria-current={here() ? 'page' : undefined}
-        aria-label={title()}
+  const control = (render?: ComponentProps<typeof Button>['render']) => (
+    <Button
+      aria-current={here() ? 'page' : undefined}
+      aria-label={title()}
+      class={cn(
+        'group relative mx-1.5 flex h-10 items-center justify-start gap-0 rounded-lg text-left font-normal whitespace-normal outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        unreachable()
+          ? 'disabled:opacity-45 data-disabled:opacity-45'
+          : 'disabled:opacity-100 data-disabled:opacity-100',
+        props.wide && (here() ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
+      )}
+      data-project={props.project.name}
+      disabled={!href()}
+      onClick={(event) => {
+        if (href() && opensHere(event)) open(props.project.url)
+      }}
+      render={render}
+      size={null}
+      variant={null}
+    >
+      <span
         class={cn(
-          'group relative mx-1.5 flex h-10 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
-          unreachable() && 'opacity-45',
-          props.wide && (here() ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
+          'absolute -left-1.5 w-[3px] rounded-r-full transition-all duration-150',
+          here() || pending() ? 'h-6 bg-brand' : 'h-0 bg-muted-foreground/60 group-hover:h-3',
+          pending() && 'animate-pulse-dot',
         )}
-        data-project={props.project.name}
-        href={href()}
-        onClick={(event) => {
-          if (href() && opensHere(event)) open(props.project.url)
-        }}
-        title={title()}
+      />
+      <span
+        class={cn(
+          'flex h-full w-11 shrink-0 justify-center',
+          !props.first && 'pt-px',
+          !props.last && 'pb-px',
+        )}
       >
-        <span
-          class={cn(
-            'absolute -left-1.5 w-[3px] rounded-r-full transition-all duration-150',
-            here() || pending() ? 'h-6 bg-brand' : 'h-0 bg-muted-foreground/60 group-hover:h-3',
-            pending() && 'animate-pulse-dot',
-          )}
-        />
-        <span
-          class={cn(
-            'flex h-full w-11 shrink-0 justify-center',
-            !props.first && 'pt-px',
-            !props.last && 'pb-px',
-          )}
-        >
-          <span class="relative flex h-full w-5 justify-center">
-            <ProjectSwatch
-              class={cn(
-                'h-full transition-[width,opacity] duration-150',
-                here() || pending()
-                  ? 'w-5'
-                  : 'w-3 opacity-70 group-hover:w-4 group-hover:opacity-100',
-                here() && 'outline-1 outline-offset-2 outline-foreground/45',
-                props.first ? 'rounded-t-md' : 'rounded-t-[1px]',
-                props.last ? 'rounded-b-md' : 'rounded-b-[1px]',
-                pending() && 'animate-pulse-dot',
-              )}
-              family={props.family}
-              folder={props.project.name}
-            />
-            <Show when={!props.wide}>
-              <Show
-                when={questions() > 0}
-                fallback={
-                  <Show when={busy()}>
-                    <span class="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
-                  </Show>
-                }
-              >
-                <span class="absolute inset-0 m-auto flex h-4 w-fit min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] leading-none font-semibold text-black tabular-nums ring-2 ring-sidebar">
-                  {questions()}
-                </span>
-              </Show>
-            </Show>
-          </span>
-        </span>
-        <Show when={props.wide}>
-          <span class="flex min-w-0 flex-1 items-center gap-2 pr-2.5 pl-1.5">
-            <span class="flex min-w-0 flex-1 flex-col">
-              <span
-                class={cn(
-                  'truncate text-[13px] leading-5',
-                  here() ? 'font-semibold text-foreground' : 'text-foreground/85',
-                )}
-              >
-                {prettyName(props.project.name)}
-              </span>
-              <span class="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground/80">
-                <Show when={!pending()} fallback={<span class="text-brand">opening…</span>}>
-                  <Show when={props.project.repo}>
-                    {(repo) => <RepoLabel class="min-w-0" repo={repo()} />}
-                  </Show>
-                  <span class="shrink-0 text-muted-foreground/50">
-                    {shownPort(props.project, location)}
-                  </span>
-                </Show>
-              </span>
-            </span>
+        <span class="relative flex h-full w-5 justify-center">
+          <ProjectSwatch
+            class={cn(
+              'h-full transition-[width,opacity] duration-150',
+              here() || pending()
+                ? 'w-5'
+                : 'w-3 opacity-70 group-hover:w-4 group-hover:opacity-100',
+              here() && 'outline-1 outline-offset-2 outline-foreground/45',
+              props.first ? 'rounded-t-md' : 'rounded-t-[1px]',
+              props.last ? 'rounded-b-md' : 'rounded-b-[1px]',
+              pending() && 'animate-pulse-dot',
+            )}
+            family={props.family}
+            folder={props.project.name}
+          />
+          <Show when={!props.wide}>
             <Show
               when={questions() > 0}
               fallback={
                 <Show when={busy()}>
-                  <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
+                  <span class="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
                 </Show>
               }
             >
-              <span class="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 px-1.5 font-mono text-[10px] font-semibold text-amber-700 tabular-nums ring-1 ring-amber-500/30 ring-inset dark:text-amber-300">
+              <span class="absolute inset-0 m-auto flex h-4 w-fit min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] leading-none font-semibold text-black tabular-nums ring-2 ring-sidebar">
                 {questions()}
               </span>
             </Show>
+          </Show>
+        </span>
+      </span>
+      <Show when={props.wide}>
+        <span class="flex min-w-0 flex-1 items-center gap-2 pr-2.5 pl-1.5">
+          <span class="flex min-w-0 flex-1 flex-col">
+            <span
+              class={cn(
+                'truncate text-[13px] leading-5',
+                here() ? 'font-semibold text-foreground' : 'text-foreground/85',
+              )}
+            >
+              {prettyName(props.project.name)}
+            </span>
+            <span class="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground/80">
+              <Show when={!pending()} fallback={<span class="text-brand">opening…</span>}>
+                <Show when={props.project.repo}>
+                  {(repo) => <RepoLabel class="min-w-0" repo={repo()} />}
+                </Show>
+                <span class="shrink-0 text-muted-foreground/50">
+                  {shownPort(props.project, location)}
+                </span>
+              </Show>
+            </span>
           </span>
-        </Show>
-      </a>
+          <Show
+            when={questions() > 0}
+            fallback={
+              <Show when={busy()}>
+                <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
+              </Show>
+            }
+          >
+            <span class="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 px-1.5 font-mono text-[10px] font-semibold text-amber-700 tabular-nums ring-1 ring-amber-500/30 ring-inset dark:text-amber-300">
+              {questions()}
+            </span>
+          </Show>
+        </span>
+      </Show>
+    </Button>
+  )
+  return (
+    <div class={cn(props.first && props.gap && 'mt-2')} title={title()}>
+      <Show when={href()} fallback={control()}>
+        {(link) =>
+          control((anchor) => (
+            <a {...anchor} href={link()}>
+              {anchor.children}
+            </a>
+          ))
+        }
+      </Show>
     </div>
   )
 }

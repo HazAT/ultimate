@@ -37,7 +37,7 @@ import {
   useConversations,
   writingAs,
 } from '@/sdk/solid'
-import { refreshList } from './live.solid.tsx'
+import { useRefreshList } from './live.solid.tsx'
 import { attention, clock, lookOf, looks, spent, stateLine, statusLabel } from './looks.ts'
 import { BusyDot, Dot, KindIcon, RunIcon, Tag } from './parts.solid.tsx'
 import { DeleteAction, DescribeAction, PauseAction, ResumeAction, RunAction } from './refs.ts'
@@ -45,6 +45,7 @@ import type { Automation, Run, Schedule } from './refs.ts'
 import { actions, automationLabel, full, triggerWords, words } from './words.ts'
 
 export function useAct() {
+  const refreshList = useRefreshList()
   const [error, setError] = createSignal<string>()
   const act = async (work: Promise<unknown>) => {
     setError(undefined)

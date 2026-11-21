@@ -14,10 +14,13 @@ import type {
   ServerEvents,
   ConversationSummary,
   ConfigureRequest,
+  ReadSpec,
   SubscriptionsAnswer,
   SubscriptionsRequest,
   UiOp,
 } from '../shared/protocol.ts'
+import { createReads } from './reads.ts'
+import type { Reads } from './reads.ts'
 import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
 import { listModels } from './models.ts'
 import { hostDefault } from '../lib/agents.ts'
@@ -102,6 +105,8 @@ const asSent = (value: unknown) => JSON.parse(JSON.stringify(value)) as JsonValu
 const taskGraphBroadcastIntervalMs = 100
 const liveViewMinimumEntries = 150
 const maxClosesAwaitingTheirOpen = 1000
+const minReadEveryMs = 250
+const maxReadEveryMs = 24 * 60 * 60_000
 type StreamUniqueSubscriptionId = number
 
 interface Connection {
@@ -146,42 +151,78 @@ function eventStream(response: ServerResponse) {
     },
   }
 }
+const browserRequest = (request: IncomingMessage) =>
+  request.headers['sec-fetch-site'] === 'same-origin' || !!request.headers.origin
+const validConversationId = (id: unknown) =>
+  id === undefined || (typeof id === 'number' && Number.isSafeInteger(id) && id >= 1)
+const argsOf = (data: Record<string, unknown>) =>
+  (Object.hasOwn(data, 'args') ? data.args : null) as JsonValue
+const readInterval = (againAfterMs: unknown) =>
+  typeof againAfterMs === 'number' && Number.isFinite(againAfterMs)
+    ? Math.min(maxReadEveryMs, Math.max(minReadEveryMs, againAfterMs))
+    : undefined
+function readSpec(value: unknown): ReadSpec {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new HttpError(400, 'Invalid read')
+  const read = value as Record<string, unknown>
+  const { extension, action, conversation } = read
+  if (typeof extension !== 'string' || typeof action !== 'string')
+    throw new HttpError(400, 'Invalid read')
+  if (!validConversationId(conversation)) throw new HttpError(400, 'Invalid conversation id')
+  return {
+    extension,
+    action,
+    args: argsOf(read),
+    ...(conversation === undefined ? {} : { conversation: conversation as number }),
+  }
+}
 async function runAction(
   request: IncomingMessage,
   response: ServerResponse,
   extensions: Extensions,
+  reads: Reads,
   [, name, key]: RegExpExecArray,
   data: Record<string, unknown>,
 ) {
-  if (request.headers['sec-fetch-site'] !== 'same-origin' && !request.headers.origin)
+  if (!browserRequest(request))
     throw new HttpError(403, 'Extension actions require a browser request')
   if (!extensions.action(name, key)) throw new HttpError(404, 'Unknown extension action')
-  const id = data.conversationId
-  if (id !== undefined && (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 1))
-    throw new HttpError(400, 'Invalid conversation id')
+  const id = data.conversationId as number | undefined
+  if (!validConversationId(id)) throw new HttpError(400, 'Invalid conversation id')
+  const args = argsOf(data)
+  const answerReaders = reads.answering({
+    extension: name,
+    action: key,
+    args,
+    ...(id === undefined ? {} : { conversation: id }),
+  })
   const controller = new AbortController()
   const cancel = () => {
     if (!response.writableEnded) controller.abort()
   }
   response.once('close', cancel)
   try {
-    const argsWithMissingMeaningNone = (Object.hasOwn(data, 'args') ? data.args : {}) as JsonValue
     const result = await extensions.invoke(
       name,
       key,
-      argsWithMissingMeaningNone,
+      args,
       controller.signal,
       id === undefined ? undefined : parseConversationId(id),
       'ui',
       deviceOf(request.headers),
       sourceOf(request.headers),
     )
+    answerReaders({ result: result ?? null })
     reply(response, 200, { result })
   } catch (error) {
     const clientLeft = controller.signal.aborted || (error as Error)?.name === 'AbortError'
     if (!clientLeft) console.error(`Extension action ${name}/${key}:`, error)
-    const userFacingActionError = error instanceof Error ? error.message : String(error)
-    reply(response, 500, { error: userFacingActionError.slice(0, 500) })
+    const userFacingActionError = (error instanceof Error ? error.message : String(error)).slice(
+      0,
+      500,
+    )
+    if (!clientLeft) answerReaders({ error: userFacingActionError, status: 500 })
+    reply(response, 500, { error: userFacingActionError })
   } finally {
     response.off('close', cancel)
   }
@@ -198,6 +239,18 @@ export async function createApi(
   const { harness, root } = opened
   const streams = new Set<() => Promise<void>>()
   const connections = new Map<string, Connection>()
+  const reads = createReads(async (spec, signal) => {
+    if (!extensions.action(spec.extension, spec.action))
+      throw new HttpError(404, 'Unknown extension action')
+    return await extensions.invoke(
+      spec.extension,
+      spec.action,
+      spec.args,
+      signal,
+      spec.conversation === undefined ? undefined : parseConversationId(spec.conversation),
+      'ui',
+    )
+  })
   let onGraph = () => {}
   const latestCommitGraph: { tasks?: TaskGraph } = {}
   const graph = await harness.observeTaskGraph(
@@ -441,6 +494,28 @@ export async function createApi(
       throw error
     }
   }
+  function subscribeRead(
+    connection: Connection,
+    streamUniqueId: StreamUniqueSubscriptionId,
+    spec: ReadSpec,
+    againAfterMs: number | undefined,
+    fromBrowser: boolean,
+  ) {
+    if (
+      connection.ended ||
+      connection.closedBeforeOpen.delete(streamUniqueId) ||
+      connection.subscriptions.has(streamUniqueId)
+    )
+      return
+    const send = (event: ServerEvents['read']) => connection.send('read', event, streamUniqueId)
+    if (!fromBrowser) {
+      send(reads.refused(403, 'Extension actions require a browser request'))
+      connection.subscriptions.set(streamUniqueId, async () => {})
+      return
+    }
+    const stop = reads.subscribe(spec, againAfterMs, send)
+    connection.subscriptions.set(streamUniqueId, async () => stop())
+  }
   function conversationParam(value: unknown) {
     const id = value === undefined ? root.id : Number(value)
     if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(400, 'Invalid conversation id')
@@ -451,6 +526,7 @@ export async function createApi(
       return summaries
     },
     pages: () => connections.size,
+    reads: () => reads.size(),
     async handle(request: IncomingMessage, response: ServerResponse) {
       const url = new URL(request.url ?? '/', 'http://localhost')
       if (!url.pathname.startsWith('/api/')) return false
@@ -484,6 +560,20 @@ export async function createApi(
             if (!Number.isSafeInteger(spec.sub)) throw new HttpError(400, 'Invalid subscription id')
             return spec as Record<string, unknown> & { sub: number }
           })
+          const refused: Record<number, number> = {}
+          const keepsSharedReadsRunning = specs.filter((spec) => spec.read !== undefined)
+          for (const spec of keepsSharedReadsRunning)
+            try {
+              subscribeRead(
+                connection,
+                spec.sub,
+                readSpec(spec.read),
+                readInterval(spec.every),
+                browserRequest(request),
+              )
+            } catch (error) {
+              refused[spec.sub] = error instanceof HttpError ? error.status : 500
+            }
           for (const sub of closes as number[]) {
             const close = connection.subscriptions.get(sub)
             connection.subscriptions.delete(sub)
@@ -494,21 +584,22 @@ export async function createApi(
             await connection.stop()
             throw new HttpError(410, 'Event stream ended')
           }
-          const refused: Record<number, number> = {}
           await Promise.all(
-            specs.map(async (spec) => {
-              try {
-                const docs = spec.docs ?? []
-                if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
-                  throw new HttpError(400, 'Invalid document kinds')
-                const conversation = conversationParam(spec.conversation)
-                await subscribe(connection, spec.sub, conversation, docs, spec.view !== false)
-              } catch (error) {
-                if (!(error instanceof HttpError))
-                  console.error(`Subscribing to ${JSON.stringify(spec)} failed:`, error)
-                refused[spec.sub] = error instanceof HttpError ? error.status : 500
-              }
-            }),
+            specs
+              .filter((spec) => spec.read === undefined)
+              .map(async (spec) => {
+                try {
+                  const docs = spec.docs ?? []
+                  if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
+                    throw new HttpError(400, 'Invalid document kinds')
+                  const conversation = conversationParam(spec.conversation)
+                  await subscribe(connection, spec.sub, conversation, docs, spec.view !== false)
+                } catch (error) {
+                  if (!(error instanceof HttpError))
+                    console.error(`Subscribing to ${JSON.stringify(spec)} failed:`, error)
+                  refused[spec.sub] = error instanceof HttpError ? error.status : 500
+                }
+              }),
           )
           json(200, { ok: true, refused } satisfies SubscriptionsAnswer)
           return true
@@ -558,7 +649,7 @@ export async function createApi(
         const mediaBodyLimitBytes = 12 * 1024 * 1024
         const data = await body(request, mayCarryMedia ? mediaBodyLimitBytes : undefined)
         if (action) {
-          await runAction(request, response, extensions, action, data)
+          await runAction(request, response, extensions, reads, action, data)
           return true
         }
         if (url.pathname === '/api/ui') {

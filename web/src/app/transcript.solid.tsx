@@ -184,8 +184,7 @@ function TranscriptView(props: {
     createMemo(() => conversation().entries),
     createMemo(() => conversation().older),
   )
-  const transcript = createTranscriptFrame()
-  createEffect(history.entries, (entries) => transcript.setEntries(entries))
+  const transcript = createTranscriptFrame(history.entries)
 
   let scroll!: HTMLDivElement
   let content!: HTMLDivElement

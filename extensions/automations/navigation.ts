@@ -1,6 +1,9 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { inProcess } from '../../lib/errors.ts'
-import { get, refreshAutomations, type FetchList } from './poll.ts'
+import { ListAction } from './refs.ts'
+import type { AutomationListItem } from './refs.ts'
+
+export type FetchList = (ref: typeof ListAction) => Promise<AutomationListItem[]>
 
 type PanelShell = {
   showSurface: (id: string) => void
@@ -17,15 +20,15 @@ export function openAutomation(
   shell: PanelShell & { switchConversation: (id: ConversationId) => void },
   fetchList: FetchList,
 ) {
-  const find = () => get().data?.find((automation) => automation.id === id)
   const show = (to: ConversationId | undefined) => {
     if (to !== undefined) shell.switchConversation(to)
     openAutomationsPanel(shell)
   }
-  const automation = find()
-  if (automation) return show(automation.script?.conversationId)
   inProcess(
     'Find the watcher before opening the panel in this tab',
-    refreshAutomations(fetchList).then(() => show(find()?.script?.conversationId)),
+    fetchList(ListAction).then(
+      (list) => show(list.find((automation) => automation.id === id)?.script?.conversationId),
+      () => show(undefined),
+    ),
   )
 }

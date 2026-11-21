@@ -17,7 +17,7 @@ interface Node {
   end?: number
   name?: string
   id?: Node
-  specifiers?: { type?: string; imported?: Node; exported?: Node }[]
+  specifiers?: { type?: string; imported?: Node; exported?: Node; local?: Node }[]
   source?: Node
   value?: unknown
   computed?: boolean
@@ -217,6 +217,16 @@ const isGlobal = (node: Node | undefined, name: string) =>
       node.object?.type === 'Identifier' &&
       ['window', 'globalThis'].includes(node.object.name ?? '') &&
       propertyName(node) === name
+
+function walk(node: Node, visit: (node: Node) => void) {
+  visit(node)
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'parent') continue
+    for (const child of Array.isArray(value) ? value : [value])
+      if (child && typeof child === 'object' && typeof (child as Node).type === 'string')
+        walk(child as Node, visit)
+  }
+}
 
 const isJsDoc = (comment: Comment) => comment.type === 'Block' && comment.value.startsWith('*')
 const inSdk = (filename: string) => /^web\/src\/(sdk|compat)\//.test(repositoryPath(filename))
@@ -447,18 +457,181 @@ export default {
         }
       },
     },
+    'no-aria-pressed-button': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const buttons = new Set<string | undefined>()
+        const triggers = new Set<string | undefined>()
+        return {
+          ImportDeclaration(node: Node) {
+            const source = staticString(node.source)
+            if (typeof source !== 'string') return
+            const target = localModule(context.filename, source)
+            const part = target && repositoryPath(target)
+            for (const specifier of node.specifiers ?? []) {
+              const imported = specifier.imported?.name
+              if (part === 'web/src/components/ui/button.solid.tsx' && imported === 'Button')
+                buttons.add(specifier.local?.name)
+              if (
+                (part === 'web/src/components/ui/tooltip.solid.tsx' &&
+                  imported === 'TooltipTrigger') ||
+                (part === 'web/src/components/ui/popover.solid.tsx' &&
+                  imported === 'PopoverTrigger')
+              )
+                triggers.add(specifier.local?.name)
+            }
+          },
+          JSXOpeningElement(node: Node & { name?: Node; attributes?: (Node & { name?: Node })[] }) {
+            const pressed = node.attributes?.find((attr) => attr.name?.name === 'aria-pressed')
+            const name = node.name?.name
+            if (!pressed || !name) return
+            if (!buttons.has(name)) {
+              if (!triggers.has(name)) return
+              const render = node.attributes?.find((attr) => attr.name?.name === 'render')
+              const value = (render?.value as Node | undefined)?.expression
+              const body = value?.body as (Node & { openingElement?: { name?: Node } }) | undefined
+              const rendered = value?.name ?? body?.openingElement?.name?.name
+              if (!rendered || !buttons.has(rendered)) return
+            }
+            context.report({
+              node: pressed,
+              message:
+                'The agent bridge sees only press on a Button, never its pressed state. Use Toggle from @/components/ui/toggle.solid.tsx, or SegmentedControl or Tabs for a one-of-many selection.',
+            })
+          },
+        }
+      },
+    },
     'no-raw-stream': {
       meta: { schema: [] },
       create(context: Context) {
-        const message =
-          'One way to the server keeps every page live, reconnecting and replay-safe: read state with useDoc/useDocOf and call the server with useAction or api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own.'
+        const why =
+          'One stream to Ultimate keeps every page live and reconnecting, and runs each read once for all of them'
+        const raw = `${why}: read state with useDoc/useDocOf and useAction, and call the server with api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own to /api. Anything else, such as an external API or your surface's own backend, is yours to call.`
+        const polled = `${why}: a timer that calls api.action or refetch polls once per page. Give useAction an \`every\` (the server runs the read and pushes changes) or an \`on\` that changes with what it reads (docs/extensions/sdk.md).`
+        const toApi = (url: Node | undefined) => {
+          const text =
+            url?.type === 'Literal'
+              ? url.value
+              : url?.type === 'TemplateLiteral'
+                ? (url as { quasis?: { value?: { raw?: string } }[] }).quasis?.[0]?.value?.raw
+                : undefined
+          return typeof text === 'string' && text.startsWith('/api')
+        }
+        const firstArgument = (node: Node) => node.arguments?.[0]
+        const declarations = new WeakMap<Node, Map<string, Node>>()
+        const declared = (node: Node) => {
+          let program = node
+          while (program.parent) program = program.parent
+          let found = declarations.get(program)
+          if (found) return found
+          const named = new Map<string, Node>()
+          walk(program, (child) => {
+            if (child.type === 'FunctionDeclaration' && child.id?.name)
+              named.set(child.id.name, child)
+            if (child.type === 'VariableDeclarator' && child.id?.name && child.init)
+              named.set(child.id.name, child.init)
+            if (
+              child.type === 'VariableDeclarator' &&
+              child.id?.type === 'ObjectPattern' &&
+              child.init
+            )
+              for (const property of child.id.properties ?? [])
+                if (property.key?.name) named.set(property.key.name, child.init)
+          })
+          declarations.set(program, (found = named))
+          return found
+        }
+        const sdkImports = (node: Node) => {
+          let program = node
+          while (program.parent) program = program.parent
+          const localToImported = new Map<string, string>()
+          for (const statement of (program.body as Node[] | undefined) ?? [])
+            if (
+              statement.type === 'ImportDeclaration' &&
+              /^@\/sdk\/|\/web\/src\/sdk\//.test(String(statement.source?.value))
+            )
+              for (const specifier of statement.specifiers ?? [])
+                if (specifier.imported?.name && specifier.local?.name)
+                  localToImported.set(specifier.local.name, specifier.imported.name)
+          return localToImported
+        }
+        const answerIsUsed = (call: Node): boolean => {
+          const parent = call.parent
+          if (parent?.type === 'MemberExpression') {
+            const method = propertyName(parent)
+            if (method === 'then') return true
+            return method === 'catch' && !!parent.parent && answerIsUsed(parent.parent)
+          }
+          if (parent?.type === 'AwaitExpression') return answerIsUsed(parent)
+          return parent?.type === 'VariableDeclarator' || parent?.type === 'AssignmentExpression'
+        }
+        const readsUltimate = (node: Node, named: Map<string, Node>, sdk: Map<string, string>) => {
+          const resultOfUseAction = (identifier: Node) => {
+            const init = named.get(identifier.name ?? '')
+            return (
+              init?.type === 'CallExpression' &&
+              init.callee?.type === 'Identifier' &&
+              sdk.get(init.callee.name ?? '') === 'useAction'
+            )
+          }
+          const isSdkAction = (callee: Node | undefined) =>
+            callee?.type === 'MemberExpression' &&
+            callee.object?.type === 'Identifier' &&
+            sdk.get(callee.object.name ?? '') === 'api' &&
+            propertyName(callee) === 'action'
+          if (node.type !== 'CallExpression') return false
+          if ((node.arguments ?? []).some(isSdkAction)) return true
+          if (isSdkAction(node.callee)) return answerIsUsed(node)
+          const callee = node.callee
+          if (callee?.type === 'MemberExpression' && propertyName(callee) === 'refetch')
+            return callee.object?.type === 'Identifier' && resultOfUseAction(callee.object)
+          if (callee?.type === 'Identifier' && callee.name === 'refetch')
+            return resultOfUseAction(callee)
+          return false
+        }
+        const reachesARead = (start: Node, named: Map<string, Node>, sdk: Map<string, string>) => {
+          const seen = new Set<Node>()
+          const queue = [start]
+          const found: Node[] = []
+          for (let next = queue.shift(); next && !found.length; next = queue.shift()) {
+            if (seen.has(next)) continue
+            seen.add(next)
+            const declaration = next.type === 'Identifier' ? named.get(next.name ?? '') : undefined
+            if (declaration) {
+              queue.push(declaration)
+              continue
+            }
+            walk(next, (child) => {
+              if (readsUltimate(child, named, sdk)) found.push(child)
+              else if (child.type === 'CallExpression' && child.callee?.type === 'Identifier')
+                queue.push(child.callee)
+            })
+          }
+          return found.length > 0
+        }
+        const callbackAt: Record<string, number> = {
+          every: 1,
+          retryAfter: 1,
+          setInterval: 0,
+          setTimeout: 0,
+        }
         return {
           CallExpression(node: Node) {
-            if (isGlobal(node.callee, 'fetch')) context.report({ node, message })
+            if (isGlobal(node.callee, 'fetch') && toApi(firstArgument(node)))
+              context.report({ node, message: raw })
+            const timer = node.callee?.type === 'Identifier' ? node.callee.name : undefined
+            const at = timer === undefined ? undefined : callbackAt[timer]
+            const callback = at === undefined ? undefined : node.arguments?.[at]
+            if (callback && reachesARead(callback, declared(node), sdkImports(node)))
+              context.report({ node, message: polled })
           },
           NewExpression(node: Node) {
-            if (isGlobal(node.callee, 'EventSource') || isGlobal(node.callee, 'WebSocket'))
-              context.report({ node, message })
+            if (
+              (isGlobal(node.callee, 'EventSource') || isGlobal(node.callee, 'WebSocket')) &&
+              toApi(firstArgument(node))
+            )
+              context.report({ node, message: raw })
           },
         }
       },

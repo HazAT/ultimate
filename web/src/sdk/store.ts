@@ -9,6 +9,8 @@ import type {
   ConversationSummary,
   ModelsResponse,
   Notice,
+  ReadEvent,
+  ReadSpec,
   ServerEvents,
   StreamedView,
   SubscriptionsAnswer,
@@ -84,11 +86,20 @@ const names = [
   'conversationsOps',
   'tasksOps',
   'notice',
+  'read',
 ] as const satisfies readonly (keyof ServerEvents)[]
 
-const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
-type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
-type Spec = { conversation?: ConversationId; docs: string[]; view: boolean }
+const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>([
+  'view',
+  'ops',
+  'doc',
+  'docOps',
+  'read',
+])
+type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps' | 'read', raw: string) => void
+type Spec =
+  | { conversation?: ConversationId; docs: string[]; view: boolean }
+  | { read: ReadSpec; every?: number }
 type Refused = (status: number) => void
 
 type DocChange = ServerEvents['doc'] | ServerEvents['docOps']
@@ -126,6 +137,10 @@ export function createStore(options: StoreOptions = {}) {
 
   const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
   const watchedViews = new Map<ConversationId, number>()
+  const watchedReads = new Map<
+    string,
+    { read: ReadSpec; every?: number; onEvent: (event: ReadEvent) => void }
+  >()
 
   let multiplexedEventSource: EventSourceLike | undefined
 
@@ -171,6 +186,7 @@ export function createStore(options: StoreOptions = {}) {
     switch (name) {
       case 'stream':
       case 'view':
+      case 'read':
         break
       case 'system': {
         const system = data as SystemInfo
@@ -290,8 +306,10 @@ export function createStore(options: StoreOptions = {}) {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
       unsubscribe: closes,
     }
-    const unanswered = () => ({
-      refused: Object.fromEntries([...opens.keys()].map((sub) => [sub, 0])),
+    const unanswered = (status = 0) => ({
+      refused: Object.fromEntries(
+        [...opens].map(([sub, { spec }]) => [sub, 'read' in spec ? status : 0]),
+      ),
       confirmed: false,
     })
     void request(`/api/events/${stream}`, {
@@ -301,7 +319,7 @@ export function createStore(options: StoreOptions = {}) {
     })
       .then(async (response) => {
         if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return undefined
-        if (!response.ok) return unanswered()
+        if (!response.ok) return unanswered(response.status)
         const answer = (await response.json()) as Partial<SubscriptionsAnswer>
         return answeredFor(opens, answer)
           ? { refused: answer.refused, confirmed: true }
@@ -395,11 +413,23 @@ export function createStore(options: StoreOptions = {}) {
             if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
           }),
         )
+    for (const [key, { read, every }] of watchedReads)
+      result.set(`read:${key}`, {
+        spec: every === undefined ? { read } : { read, every },
+        handler: (name, raw) => {
+          if (name === 'read') watchedReads.get(key)?.onEvent(JSON.parse(raw) as ReadEvent)
+        },
+      })
     return result
   }
 
   function refusedOpen(key: string, sub: number, status: number) {
     if (live.get(key) !== sub) return
+    const read = key.startsWith('read:') ? watchedReads.get(key.slice(5)) : undefined
+    if (read && status >= 400 && status < 500) {
+      read.onEvent({ error: 'The server refused this read', status })
+      return
+    }
     live.delete(key)
     unsubscribe(sub)
     const requestedConversationNeverOpened =
@@ -593,6 +623,17 @@ export function createStore(options: StoreOptions = {}) {
         if (left > 0) kinds.set(kind, left)
         else kinds.delete(kind)
         if (!kinds.size) docWatchCountsByConversation.delete(conversation)
+        scheduleReconcile()
+      }
+    },
+    watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadEvent) => void) {
+      const key = JSON.stringify([read, every ?? null])
+      const watch = { read, every, onEvent }
+      watchedReads.set(key, watch)
+      scheduleReconcile()
+      return () => {
+        if (watchedReads.get(key) !== watch) return
+        watchedReads.delete(key)
         scheduleReconcile()
       }
     },

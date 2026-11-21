@@ -1,22 +1,37 @@
 /** @jsxImportSource @solidjs/web */
-import { createEffect, createMemo, createSignal, onSettled } from 'solid-js'
-import { api, useConversations, useStore, useTasks, useUiState, useViewport } from '@/sdk/solid'
-import { every, retryAfter } from '../../lib/timers.ts'
+import { createMemo, createSignal, onSettled } from 'solid-js'
+import type { Accessor } from 'solid-js'
+import {
+  ROOT,
+  keepLast,
+  useAction,
+  useConversations,
+  useStore,
+  useTasks,
+  useUiState,
+  useViewport,
+} from '@/sdk/solid'
 import { RunLabel, WatcherLabel } from './types.ts'
-import { get, refreshAutomations, subscribe, want } from './poll.ts'
+import { ListAction } from './refs.ts'
+import type { AutomationListItem } from './refs.ts'
 
-export const refreshList = () => refreshAutomations(api.action)
-
-export function useAutomations(rate: () => number) {
-  const [list, setList] = createSignal(get())
-  onSettled(() => {
-    const update = () => setList(get())
-    const stop = subscribe(update)
-    update()
-    return stop
+export function useAutomations(
+  rate: (list: AutomationListItem[] | undefined) => number,
+  on?: Accessor<unknown>,
+) {
+  const list = useAction(ListAction, null, {
+    conversation: ROOT,
+    onError: keepLast,
+    every: rate,
+    focus: true,
+    ...(on ? { on } : {}),
   })
-  createEffect(rate, (ms) => want(ms, api.action))
-  return list
+  return () => ({ data: list.data(), error: list.error(), refetch: list.refetch })
+}
+
+export function useRefreshList() {
+  const list = useAction(ListAction, null, { conversation: ROOT, onError: keepLast })
+  return () => list.refetch()
 }
 
 export function useShown() {
@@ -37,10 +52,10 @@ export function useShown() {
   }
 }
 
-export function useLive(overdue: () => boolean) {
+export function useRunSignature() {
   const graph = useTasks()
   const conversations = useConversations()
-  const signature = createMemo(() =>
+  return createMemo(() =>
     [
       ...Object.values(graph()?.tasks ?? {})
         .filter((task) => task.kind.startsWith('ultimate.automation'))
@@ -55,18 +70,4 @@ export function useLive(overdue: () => boolean) {
         .map((conversation) => `#${conversation.id}:${conversation.busy}`),
     ].join(' '),
   )
-  const refresh = () => void refreshList()
-  createEffect(signature, (_, previous) =>
-    previous === undefined ? undefined : retryAfter(100, refresh),
-  )
-  const late = createMemo(overdue)
-  createEffect(late, (on) => {
-    if (!on) return undefined
-    refresh()
-    return every(2000, refresh)
-  })
-  onSettled(() => {
-    window.addEventListener('focus', refresh)
-    return () => window.removeEventListener('focus', refresh)
-  })
 }

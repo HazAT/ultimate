@@ -122,6 +122,7 @@ export function DraftCard(props: {
             size={null}
             variant={null}
             aria-label={`Delete review comment ${props.comment.id}`}
+            data-agent-confirm="Deletes this review comment."
             class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-error"
             onClick={() => props.onDelete()}
             type="button"
