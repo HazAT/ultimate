@@ -910,6 +910,38 @@ export default host => { host.resource('cleanup.process',()=>{
       data: { ok: true, refused: { 5: 500 } },
     })
     await until(() => stream.events.some((event) => event.name === 'view' && event.sub === 6))
+
+    // A watch that fails to start is refused and stopped, so the same id can open later.
+    const harness = server.harness
+    const watchDoc = harness.watchDoc.bind(harness)
+    const stopped = vi.fn<() => void>()
+    const spy = vi.spyOn(harness, 'watchDoc').mockImplementationOnce(async (...args) => {
+      const watch = (await watchDoc(...args))!
+      const stop = watch.stop.bind(watch)
+      return Object.assign(watch, {
+        start: () => {
+          throw new Error('cannot start')
+        },
+        stop: () => {
+          stopped()
+          return stop()
+        },
+      })
+    })
+    const open = () =>
+      fetch(`${server.url}/api/events/${id}`, {
+        method: 'POST',
+        headers: { Origin: server.url },
+        body: JSON.stringify({
+          subscribe: [{ sub: 7, docs: ['pi.live'], view: false }],
+          unsubscribe: [],
+        }),
+      }).then((answer) => answer.json())
+    expect(await open()).toEqual({ ok: true, refused: { 7: 500 } })
+    expect(stopped).toHaveBeenCalledOnce()
+    spy.mockRestore()
+    expect(await open()).toEqual({ ok: true, refused: {} })
+    await until(() => stream.events.some((event) => event.name === 'doc' && event.sub === 7))
     await stream.close()
   })
   it('serves published titles and activity to clients and server facets without deriving entries', async () => {

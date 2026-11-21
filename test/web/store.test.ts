@@ -352,7 +352,7 @@ describe('web replica store', () => {
   })
 
   it('takes an answer that does not match its request for a lost one, and leaves other subscriptions alone', async () => {
-    for (const refused of [[], 'shown view', { 1: 200 }] as const) {
+    for (const refused of [[], 'shown view'] as const) {
       const { store, server, latest, fetch } = setup(1000)
       latest().open()
       const counter = store.watchDoc('test.counter')
@@ -375,6 +375,61 @@ describe('web replica store', () => {
       expect(store.getState().view?.entries.map((entry) => entry.id)).toEqual([1])
       store.stop()
     }
+  })
+
+  it('takes a refusal of its own open with a bad key or status for a lost answer, and closes what may have opened', async () => {
+    for (const bad of ['status 200', 'hex key'] as const) {
+      const { store, server, latest, fetch } = setup(1000)
+      latest().open()
+      await tick()
+      fetch.mockImplementationOnce(async (path, init) => {
+        server.handle(path as string, init)
+        const [{ sub }] = (JSON.parse(init?.body as string) as { subscribe: { sub: number }[] })
+          .subscribe
+        return Response.json({
+          ok: true,
+          refused: bad === 'status 200' ? { [sub]: 200 } : { [`0x${sub.toString(16)}`]: 404 },
+        })
+      })
+      store.watchDoc('test.counter')
+      await tick()
+      await vi.advanceTimersByTimeAsync(1000)
+      const counters = server.subscriptions.filter((item) => item.docs.includes('test.counter'))
+      expect(counters.map((item) => item.closed)).toEqual([true, false])
+      store.stop()
+    }
+  })
+
+  it('retries a request the endpoint answered 404 without leaving the conversation', async () => {
+    const { store, server, latest, fetch, onFallback } = setup()
+    latest().open()
+    await tick()
+    fetch.mockImplementationOnce(async () =>
+      Response.json({ error: 'Unknown endpoint' }, { status: 404 }),
+    )
+    store.show(7 as ConversationId)
+    await tick()
+    await tick()
+    expect(onFallback).not.toHaveBeenCalled()
+    expect(store.getState().requested).toBe(7)
+    expect(server.of(7, true)).toBeDefined()
+    store.stop()
+  })
+
+  it('opens again a subscription the server answered 410 for alone', async () => {
+    const { store, server, latest, fetch } = setup()
+    latest().open()
+    await tick()
+    fetch.mockImplementationOnce(async (path, init) => {
+      const [{ sub }] = (JSON.parse(init?.body as string) as { subscribe: { sub: number }[] })
+        .subscribe
+      return Response.json({ ok: true, refused: { [sub]: 410 } })
+    })
+    store.watchDoc('test.counter')
+    await tick()
+    await tick()
+    expect(server.of(undefined, false)?.docs).toEqual(['test.counter'])
+    store.stop()
   })
 
   it('falls back to the root without closing what the server refused alongside the view', async () => {

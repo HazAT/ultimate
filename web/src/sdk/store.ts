@@ -290,8 +290,8 @@ export function createStore(options: StoreOptions = {}) {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
       unsubscribe: closes,
     }
-    const unanswered = (status: number) => ({
-      refused: Object.fromEntries([...opens.keys()].map((sub) => [sub, status])),
+    const unanswered = () => ({
+      refused: Object.fromEntries([...opens.keys()].map((sub) => [sub, 0])),
       confirmed: false,
     })
     void request(`/api/events/${stream}`, {
@@ -300,15 +300,17 @@ export function createStore(options: StoreOptions = {}) {
       body: JSON.stringify(batch),
     })
       .then(async (response) => {
-        if (!response.ok) return unanswered(response.status)
+        if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return undefined
+        if (!response.ok) return unanswered()
         const answer = (await response.json()) as Partial<SubscriptionsAnswer>
         return answeredFor(opens, answer)
           ? { refused: answer.refused, confirmed: true }
-          : unanswered(0)
+          : unanswered()
       })
-      .catch(() => unanswered(0))
-      .then(({ refused, confirmed }) => {
-        if (streamId !== stream) return
+      .catch(() => unanswered())
+      .then((result) => {
+        if (streamId !== stream || result === undefined) return
+        const { refused, confirmed } = result
         if (confirmed) for (const sub of Object.keys(refused)) handlers.delete(Number(sub))
         else if (closes.length) {
           for (const sub of closes) closing.add(sub)
@@ -332,7 +334,12 @@ export function createStore(options: StoreOptions = {}) {
       refused !== null &&
       !Array.isArray(refused) &&
       Object.entries(refused).every(
-        ([sub, status]) => opens.has(Number(sub)) && Number.isInteger(status) && status >= 400,
+        ([sub, status]) =>
+          opens.has(Number(sub)) &&
+          String(Number(sub)) === sub &&
+          Number.isInteger(status) &&
+          status >= 400 &&
+          status !== STREAM_GONE_RECONNECT_RESUBSCRIBES,
       )
     )
   }
@@ -391,7 +398,7 @@ export function createStore(options: StoreOptions = {}) {
   }
 
   function refusedOpen(key: string, sub: number, status: number) {
-    if (live.get(key) !== sub || status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return
+    if (live.get(key) !== sub) return
     live.delete(key)
     unsubscribe(sub)
     const requestedConversationNeverOpened =

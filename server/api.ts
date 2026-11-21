@@ -433,7 +433,13 @@ export async function createApi(
         })
       }
     }
-    deliverSnapshotsThenOps()
+    try {
+      deliverSnapshotsThenOps()
+    } catch (error) {
+      connection.subscriptions.delete(streamUniqueId)
+      await stop()
+      throw error
+    }
   }
   function conversationParam(value: unknown) {
     const id = value === undefined ? root.id : Number(value)
