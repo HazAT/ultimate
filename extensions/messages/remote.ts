@@ -4,12 +4,13 @@ import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
+import { isMissing } from '../../lib/errors.ts'
 import { locate, postAction, selfAddress } from '../../lib/remote.ts'
 import { defineEffect, effectResult } from '../../lib/effect.ts'
 import { discoverAgents } from '../../lib/agents.ts'
@@ -17,6 +18,7 @@ import { Messages, MessageSent } from './api.ts'
 import type { Message } from './api.ts'
 import { append } from './log.ts'
 import { isOpen } from '../../lib/message-state.ts'
+import { pace } from '../../lib/timers.ts'
 import { branchesReadThisRun, remoteLabel, senderName, serve } from './addresses.ts'
 import { dropped } from './outcomes.ts'
 import { delivery } from './delivery.ts'
@@ -33,8 +35,8 @@ async function startProjectOnDemand(
   const parts = projectInfo.home.split('/.ultimate/projects/')
   const projectHome = join(host.userHome, '.ultimate/projects', ...parts.slice(1))
   const lockPath = join(projectHome, 'ultimate.lock')
-  execFile('ultimate', [projectInfo.root, '--no-open'], {
-    stdio: 'ignore',
+  spawn('ultimate', [projectInfo.root, '--no-open'], {
+    stdio: 'inherit',
     env: { ...process.env, ULTIMATE_SUPERVISED: '1', ULTIMATE_HOME: projectHome },
   })
   const deadline = Date.now() + 30_000
@@ -48,10 +50,10 @@ async function startProjectOnDemand(
           name: projectName,
         }
       }
-    } catch {
-      // lock file not yet written
+    } catch (error) {
+      if (!isMissing(error)) throw error
     }
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await pace(500)
   }
   throw new Error(`${projectName} did not start within 30 seconds`)
 }

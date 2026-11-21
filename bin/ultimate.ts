@@ -117,7 +117,6 @@ const lock = await acquireLock(
     process.exit(0)
   }
   if (process.env.ULTIMATE_SUPERVISED === '1' && String(error).includes('already running')) {
-    // supervised: suppress error and exit 0 so the caller can poll for the lock file
     console.error(String(error))
     process.exit(0)
   }
