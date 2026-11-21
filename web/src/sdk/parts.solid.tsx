@@ -26,6 +26,10 @@ export { Conversation, Dock, Panels, Sidebar, StatusLine } from '../app/shell.so
 export { ErrorCard } from '../app/error-card.solid.tsx'
 /** A contribution's `icon` (a panel's, a surface's), React or `island(C)`, with `class`. */
 export { ContributedIcon } from './react-island.solid.tsx'
+/** Renders a registered React or `island(C)` contribution in its extension's scope. */
+export { Contribution } from './react-island.solid.tsx'
+/** Renders a React node already returned by a React point. */
+export { ReactValue } from './react-island.solid.tsx'
 
 /** Any slot by name, each item isolated: one that throws shows its error card inline and the rest still render. */
 export function Slot(props: { name: SlotName; variant?: 'inline' | 'block' }) {

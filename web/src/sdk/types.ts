@@ -175,6 +175,7 @@ export interface DocumentContribution {
   kind: string
   title: string
   icon?: ComponentType<{ className?: string }>
+  /** React or `island(C)`. */
   component: ComponentType<DocumentProps>
 }
 

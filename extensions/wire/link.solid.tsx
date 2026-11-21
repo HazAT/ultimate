@@ -28,13 +28,21 @@ function callFor(calls: readonly WireSummary[], responseId: string | undefined, 
   return best && Math.abs(best.startedAt - at) <= MAX_RESPONSE_START_DISTANCE_MS ? best : undefined
 }
 
+export function useOpenWire() {
+  const [, setTab] = useUiState(SYSTEM_TAB_KEY, 'agents')
+  return () => {
+    setTab('wire')
+    showSurface('system')
+  }
+}
+
 export function WireLink(props: SolidEntryProps) {
   const conversation = useConversation()
   const calls = useAction(ListAction, null, { on: () => conversation().busy, onError: keepLast })
   const transcript = useTranscript()
   const bust = createMemo(() => cacheBusts(transcript()).has(props.entry.id))
   const [, setPicked] = useUiState<Picked | null>(WIRE_PICKED_KEY, null)
-  const [, setTab] = useUiState(SYSTEM_TAB_KEY, 'agents')
+  const openWire = useOpenWire()
   const matchedCall = createMemo(() => {
     const message = props.entry.model?.[0]
     if (message?.role !== 'assistant' || (props.blocks && props.blocks[0] !== 0)) return undefined
@@ -57,8 +65,7 @@ export function WireLink(props: SolidEntryProps) {
             data-wire-link={call().n}
             onClick={() => {
               setPicked({ conversation: props.entry.conversationId, n: call().n })
-              setTab('wire')
-              showSurface('system')
+              openWire()
             }}
             size={null}
             title={`Open call #${call().n} in Wire: what was sent and what came back`}

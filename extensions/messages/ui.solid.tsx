@@ -1,14 +1,14 @@
 /** @jsxImportSource @solidjs/web */
-/** Messages for Solid code: who a message is from or to. */
+/** Messages for Solid code: message parts, addresses and waiting state. */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Globe } from '@lucide/solid'
-import { Match, Show, Switch, createMemo } from 'solid-js'
+import { Match, Show, Switch } from 'solid-js'
 import { ROOT, useDocOf } from '@/sdk/solid'
 import { AgentMark, ConversationRef, useAgentTitle } from '../conversations/ui.solid.tsx'
-import { StandingDoc } from '../subagents/refs.ts'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import { remoteLabel } from './data.ts'
 import type { Remote } from './refs.ts'
+import { useStandingName } from './standing-name.solid.tsx'
 
 export {
   conversationState,
@@ -22,15 +22,12 @@ export {
 export type { ConversationState } from './data.ts'
 export { useRemoteProgress } from './progress.solid.tsx'
 export { useStarters, useUnderway } from './started.solid.tsx'
+export { Body } from './card-parts.solid.tsx'
+export { MessageImages } from './message-images.solid.tsx'
+export { MessageExtras } from './points.ts'
 
 /** The standing name of the conversation, if it has one. */
-export function useStandingName(id: () => ConversationId | 'user' | 'remote') {
-  const standing = useDocOf(() => ROOT, StandingDoc)
-  return createMemo(() => {
-    const conversation = id()
-    return Object.entries(standing() ?? {}).find(([, value]) => value === conversation)?.[0]
-  })
-}
+export { useStandingName } from './standing-name.solid.tsx'
 
 /** `you`, the remote project's address, `@name` for a standing agent or lander, else a conversation reference. */
 export function Address(props: {

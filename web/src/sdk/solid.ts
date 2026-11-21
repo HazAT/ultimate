@@ -8,6 +8,7 @@ import type {
   EntryId,
   EntryRecord,
   InboxItem,
+  JsonObject,
   LiveState,
   UsageState,
 } from '@earendil-works/pi-durable'
@@ -36,7 +37,7 @@ import type { Cancel } from '../../../lib/timers.ts'
 import { actions, allCommands, ownDefault, regionKeys, shellKeys } from './actions.ts'
 import type { Region } from './actions.ts'
 import type { CommandItem, ExtensionRecord } from './registry.ts'
-import { panelItems, shownPanels } from './registry.ts'
+import { HOME, panelItems, shownPanels } from './registry.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
 import { api as client, reads, registry, reportCompact, store, uiState } from './client.ts'
@@ -88,6 +89,7 @@ export { touchKeyboard } from './viewport.ts'
 export {
   codeBlockRenderers,
   composerRenderers,
+  documentItems,
   entryRenderers,
   inboxRenderer,
   inlineCodeRenderers,
@@ -245,6 +247,18 @@ export function useDoc<T>(ref: DocRef<T>): DocAccessor<T> {
   const target = useContext(ConversationScope) ?? 'shown'
   onSettled(() => docs.watch(target, ref.kind))
   return () => docs.read(target, ref.kind) as Readonly<T> | null | undefined
+}
+
+/** The whole document by kind, with a new value on each change so React document views also receive updates. */
+export function useDocKind(kind: Accessor<string>): DocAccessor<JsonObject> {
+  const { state } = shared()
+  const target = useContext(ConversationScope) ?? 'shown'
+  createEffect(kind, (name) =>
+    target === 'shown' ? store.watchDoc(name) : store.watchDocOf(target, name),
+  )
+  return createMemo(
+    () => immutableDoc(state(), target, kind()) as ReturnType<DocAccessor<JsonObject>>,
+  )
 }
 
 /**
@@ -487,6 +501,9 @@ export function useAgent(): Accessor<AgentState> {
   const view = useScopedView()
   return createMemo(() => view()?.docs['pi.agent'] ?? {})
 }
+
+/** The active surface's id, or `agent` until the shell opens another surface. */
+export const useSurface = selected((state) => state.ui.surface?.id ?? HOME)
 
 /** The page's notice stack, oldest first, as `useNotices` from `@/sdk` reads it. */
 export const useNotices = selected((state) => state.notices)

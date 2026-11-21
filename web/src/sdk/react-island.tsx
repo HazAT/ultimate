@@ -11,6 +11,8 @@ import type { TranscriptFrame } from './transcript-frame.ts'
 
 export type Rendered = { extension: string; version: number; component: unknown }
 
+export const ReactNodeView = ({ value }: { value: ReactNode }) => value
+
 export function reactRoot(
   host: HTMLElement,
   context: { conversation?: ConversationId; transcript?: TranscriptFrame },

@@ -151,7 +151,7 @@ it('opens deep links and keeps scrolling and answer keys in the reading pane', a
     const image = pane.getByRole('img', { name: 'Forwarded image 1' })
     await image.waitFor()
     const bodyStyle = await prose.evaluate((paragraph) => {
-      const wrapper = paragraph.closest('div.contents > div')!
+      const wrapper = paragraph.closest('[data-message-body]')!
       const style = getComputedStyle(wrapper)
       return [style.padding, style.fontSize, style.lineHeight]
     })

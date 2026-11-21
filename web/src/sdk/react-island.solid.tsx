@@ -21,6 +21,7 @@ import type { ReactNode } from 'react'
 import { nextTurn } from '../../../lib/timers.ts'
 import { islandSolid } from './island-mark.ts'
 import {
+  ReactNodeView,
   allProvided,
   chain,
   contribution,
@@ -38,6 +39,17 @@ type MountProps = { render: () => ReactNode }
 
 function MountReact(props: MountProps) {
   return mountReact((<div class="contents data-empty:hidden" />) as HTMLElement, props)
+}
+
+export function ReactValue(props: { value: ReactNode }) {
+  const extension = useContext(ExtensionName) ?? 'react'
+  return (
+    <Contribution
+      fallback={() => null}
+      item={{ component: ReactNodeView, extension, version: 0 }}
+      props={{ value: props.value }}
+    />
+  )
 }
 
 function MountReactInline(props: MountProps) {

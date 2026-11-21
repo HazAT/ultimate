@@ -1,130 +1,6 @@
-import { BracesIcon, ChevronRightIcon, FileStackIcon } from 'lucide-react'
-import { JsonTree as SolidJsonTree } from '@/components/json-tree.solid.tsx'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import {
-  ExtensionBoundary,
-  defineWebExtension,
-  island,
-  useConversations,
-  useDocKind,
-  useDocumentRenderers,
-  useExtensionUiState,
-  useSystem,
-  useUltimate,
-} from '@/sdk'
-import type { DocumentItem } from '@/sdk'
-
-const JsonTree = island(SolidJsonTree)
-
-function Json({ value, kind }: { value: object; kind: string }) {
-  if (Object.keys(value).length === 0)
-    return <p className="px-3 font-mono text-[11.5px] text-muted-foreground/70">empty</p>
-  return <JsonTree class="px-2" name={kind} open={1} value={value} />
-}
-
-function Document({
-  kind,
-  owner,
-  renderer,
-  open,
-  setOpen,
-}: {
-  kind: string
-  owner: string
-  renderer?: DocumentItem
-  open: boolean
-  setOpen: (open: boolean) => void
-}) {
-  const value = useDocKind(kind)
-  const { conversationId } = useUltimate()
-  if (!value || conversationId === undefined) return null
-  const Icon = renderer?.icon ?? BracesIcon
-  const Renderer = renderer?.component
-  return (
-    <Collapsible
-      className="group/document border-t border-border/70 first:border-t-0"
-      onOpenChange={setOpen}
-      open={open}
-    >
-      <CollapsibleTrigger
-        className="flex h-8 w-full min-w-0 items-center gap-1.5 px-3 text-left section-label hover:bg-accent/40"
-        title={`${kind} · ${owner}`}
-      >
-        <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]/document:rotate-90" />
-        <Icon className="size-3.5 shrink-0" />
-        <span className="min-w-0 truncate text-foreground/85">{renderer?.title ?? kind}</span>
-        <span className="ml-auto shrink-0 pl-2 text-muted-foreground/60">
-          {renderer ? kind : owner}
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pb-2 [&>[data-extension-error]]:mx-3 [&>[data-extension-error]]:mb-2">
-        {Renderer ? (
-          <ExtensionBoundary
-            extension={renderer.extension}
-            fallback={<Json kind={kind} value={value} />}
-            key={renderer.extension}
-            version={renderer.version}
-          >
-            <Renderer conversationId={conversationId} value={value} />
-          </ExtensionBoundary>
-        ) : (
-          <Json kind={kind} value={value} />
-        )}
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
-function DocumentsPanel() {
-  const system = useSystem()
-  const renderers = useDocumentRenderers()
-  const { conversationId } = useUltimate()
-  const conversations = useConversations()
-  const [folds, setFolds] = useExtensionUiState<Record<string, boolean>>('open', {})
-  const kinds = (system?.extensions ?? [])
-    .flatMap((extension) =>
-      (extension.server?.docs ?? []).map((kind) => ({ kind, owner: extension.name })),
-    )
-    .toSorted(
-      (a, b) =>
-        Number(renderers.has(b.kind)) - Number(renderers.has(a.kind)) ||
-        a.kind.localeCompare(b.kind),
-    )
-  const shown = conversations.find((conversation) => conversation.id === conversationId)
-  return (
-    <div className="py-2">
-      <div className="flex items-center gap-2 px-3 pb-2 section-label">
-        Documents
-        {conversationId !== undefined && (
-          <span className="ml-auto text-muted-foreground/70">
-            {conversationId === 1 ? 'main' : (shown?.label ?? 'conversation')} #{conversationId}
-          </span>
-        )}
-      </div>
-      {kinds.length > 0 && (
-        <div className="border-y border-border/70">
-          {kinds.map(({ kind, owner }) => (
-            <Document
-              key={kind}
-              kind={kind}
-              open={folds[kind] ?? renderers.has(kind)}
-              owner={owner}
-              renderer={renderers.get(kind)}
-              setOpen={(open) => setFolds((previous) => ({ ...previous, [kind]: open }))}
-            />
-          ))}
-        </div>
-      )}
-      {system && kinds.length === 0 && (
-        <p className="px-3 pt-3 font-sans text-[12px] leading-relaxed text-muted-foreground/70">
-          Documents are durable state that extensions keep with a conversation, such as the plan;
-          they appear here when a server facet exports them as{' '}
-          <code className="font-mono">docs</code>.
-        </p>
-      )}
-    </div>
-  )
-}
+import { FileStackIcon } from 'lucide-react'
+import { defineWebExtension, island } from '@/sdk'
+import { DocumentsPanel } from './panel.solid.tsx'
 
 export default defineWebExtension({
   panels: [
@@ -132,7 +8,7 @@ export default defineWebExtension({
       id: 'documents',
       title: 'Documents',
       icon: FileStackIcon,
-      component: DocumentsPanel,
+      component: island(DocumentsPanel),
       order: 4,
     },
   ],

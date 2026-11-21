@@ -29,6 +29,13 @@ export function useConcludedSince() {
   return (id: ConversationId) => (concluded().includes(id) ? Infinity : at()[id])
 }
 
+/** Conversation overview rows from the root document. */
+export function useOverview() {
+  const overview = useDocOf(() => ROOT, OverviewDoc)
+  return () => overview()?.conversations ?? noOverview
+}
+const noOverview: Record<string, import('./types.ts').OverviewRow> = {}
+
 /** Conversations that are currently concluded, excluding those that have been resumed. */
 export const useConcluded = () => useUiState<ConversationId[]>('ext.conversations.concluded', [])[0]
 

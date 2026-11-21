@@ -62,15 +62,20 @@ review's link overlay are `island(C)`. Review's `workspaces.review` point provid
 Conversations' standing empty state and MCP's extension details are island providers; the Automations panel reads the
 shell's panel and requested conversation state directly in Solid.
 
+**Done in C4a:** the System and Inbox surfaces, Wire tab and command overlay, To-dos and Documents panels, and
+Codemode Store view are Solid. System tabs and document views render through `Contribution`: `island(C)` runs
+as Solid and React still mounts through the bridge. System reads `ParkedRuns` through the bridge; Inbox does the
+same for waiting items and Side chat's optional reading-pane takeover.
+
 **Summary (after C4a and C4b):** see the tables below.
 
 | Core host                                                       | Rows | Extensions |
 | --------------------------------------------------------------- | ---- | ---------- |
 | The transcript's points and overlays (host done in C2)          | 11   | 10         |
 | The sidebar (React providers bridged into its Solid host)       | 8    | 8          |
-| Panel and surface hosts, System's tab host, documents' views    | 11   | 8          |
+| Panel and surface hosts                                         | 1    | 1          |
 | The composer (React parts the Solid host mounts)                | 2    | 2          |
-| React points of other extensions (onboarding, the Agents panel) | 5    | 5          |
+| React points of other extensions (onboarding, the Agents panel) | 4    | 4          |
 
 Transcript renderers still React, which no host blocks (they move with their extension, before C5): dream's four
 cards, onboarding's `setup` tool and three cards, plan's `plan` tool, side-chat's summary card, and voice-live's seven
@@ -89,7 +94,7 @@ breaks them unless they move to `island(C)` first.
 | codemode    | provided `MessageReference`                                                                     | `codemode/web.tsx`    | message actions              | any (provider) |
 | reel        | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card) | `reel/web.tsx`        | message cards, inbox's cards | any (provider) |
 | tasks       | provided `RunStart` (a data hook)                                                               | `tasks/web.tsx`       | the run timer                | any (provider) |
-| pause       | provided `ParkedRuns` (also read by the sidebar and System)                                     | `pause/web.tsx`       | parked runs                  | C4             |
+| pause       | provided `ParkedRuns` (bridged in the transcript, sidebar and System)                           | `pause/web.tsx`       | parked runs                  | any (provider) |
 | subagents   | provided `ErrorReport` (a data hook the React boundary reads)                                   | `subagents/web.tsx`   | error cards                  | C4             |
 
 ## The sidebar
@@ -110,17 +115,9 @@ in either framework. The remaining React providers sit behind the bridge until t
 
 ## Panel and surface hosts
 
-| Extension | Part                                                                                                 | Where               | Why it waits                                                    | Moves in |
-| --------- | ---------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------- | -------- |
-| documents | the Documents panel                                                                                  | `documents/web.tsx` | hosts other extensions' React document views                    | C4       |
-| codemode  | document view `codemode.store`                                                                       | `codemode/web.tsx`  | a Documents view                                                | C4       |
-| subagents | the Agents panel (`overview.tsx`) and the definition dialog (`definitions.tsx`, `fields.tsx`)        | `subagents/web.tsx` | uses models' React family editor (`FamilyPopover`, `AddFamily`) | C4       |
-| inbox     | the surface frame (core `Sidebar`, `Header`, the `QuestionPane` takeover)                            | `inbox/web.tsx`     | the surface host; side-chat's React pane                        | C4       |
-| inbox     | the reading pane: messages' `Body`, `MessageImages`, `MessageExtras`, questions' card, items' `pane` | `inbox/reading.tsx` | hosts the transcript's message parts                            | C4       |
-| inbox     | the contract `Waiting`, `InboxItems`, `QuestionPane` and the wrappers feeding its islands            | `inbox/ui.tsx`      | React points other extensions provide                           | C4       |
-| wire      | the tab's wrapper, docking the core `Conversation`                                                   | `wire/web.tsx`      | System's tab host; the core dock                                | C4       |
-| wire      | the `wire.open` overlay (`useDialog`, `useOpenWire`)                                                 | `wire/web.tsx`      | a command cannot set UI state                                   | C4       |
-| todos     | the panel's wrapper, reading inbox's React `Waiting` for the Solid list                              | `todos/web.tsx`     | inbox's `Waiting` is React                                      | C4       |
+| Extension | Part                                                                                          | Where               | Why it waits                                                    | Moves in |
+| --------- | --------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------- | -------- |
+| subagents | the Agents panel (`overview.tsx`) and the definition dialog (`definitions.tsx`, `fields.tsx`) | `subagents/web.tsx` | uses models' React family editor (`FamilyPopover`, `AddFamily`) | C4       |
 
 ## The composer
 
@@ -133,20 +130,18 @@ The host is Solid (C3); these React parts mount through the bridge and wait on t
 
 ## Other extensions' React points
 
-| Extension   | Part                                                                                                                                                | Where               | Called by                                                           | Moves in       |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- | -------------- |
-| reel        | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
-| side-chat   | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    | any (provider) |
-| plan        | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
-| models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`           | subagents' Agents panel and definition form, onboarding's Get ready | C4             |
-| automations | `useAutomations`, `timerWaits` (`ui.tsx`)                                                                                                           | `automations/`      | System (the sidebar uses `ui.solid.tsx`)                            | C4             |
+| Extension | Part                                                                                                                                                | Where               | Called by                                                           | Moves in       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- | -------------- |
+| reel      | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
+| side-chat | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    | any (provider) |
+| plan      | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
+| models    | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`           | subagents' Agents panel and definition form, onboarding's Get ready | C4             |
 
 ## Shared state and keys
 
-- **Whose key.** `useExtensionUiState` takes the extension name of where a part renders. `Provided` and `AllProvided`
-  run a provider's hook in the provider's scope but render what it returns (a System tab's `component`, a sidebar row)
-  in the host's, so such a part names its own key (`extensions/wire/state.ts`). Giving returned components their
-  provider's scope needs `web/src/app/boundary.tsx`, so it belongs to the core switch.
+- **Whose key.** `useExtensionUiState` takes the extension name of where a part renders. A point's hook runs in the
+  provider's scope, but a component it returns may render in the host's scope (System's tabs). Wire names its own
+  keys explicitly (`extensions/wire/state.ts`).
 - **Contracts.** Every `ui.tsx` stays React while React code imports it. A Solid part reaches another extension through
   its `refs.ts` or its `ui.solid.tsx`: `conversations`, `workspaces`, `messages`, `plan` and `sidebar` have one. Give
   an extension a `ui.solid.tsx` when a moved part needs one of its components, not ahead of time.
