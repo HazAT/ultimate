@@ -18,7 +18,7 @@ import { meansNone, overshadowed, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
-import { Branches } from './api.ts'
+import { Branches, Confinement } from './api.ts'
 import { WorkspacesDoc } from './refs.ts'
 import { setup } from './setup.ts'
 import {
@@ -318,6 +318,7 @@ export function workspaces(host: Host) {
     initial: () => ({ phase: 'prepare' }),
     phases: {
       prepare: async (task, runtime, context) => {
+        const confinement = host.want(Confinement)
         const workspace = (await get(task.input.id, context))!
         let checkoutCreatedByPreparation = false
         try {
@@ -381,6 +382,11 @@ export function workspaces(host: Host) {
             workspace.path,
             await host.projectSettings(),
             runtime.signal,
+            confinement &&
+              task.input.preserve &&
+              (await confinement.confined(task.input.id, context))
+              ? (command, options) => confinement.exec(task.input.id, command, options)
+              : undefined,
           )
           await runtime.commit(async (tx) => {
             ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(task.input.id)].state =
@@ -686,6 +692,13 @@ export function workspaces(host: Host) {
   async function land(id: ConversationId, context: Context): Promise<LandResult> {
     const record = await get(id, context)
     if (!record) throw new Error('Conversation has no workspace')
+    if (
+      (await host.want(Confinement)?.confined(id, context)) &&
+      (await realpath(record.source)) === (await realpath(host.projectRoot))
+    )
+      throw new Error(
+        "A sandboxed agent's commits reach the project checkout only through workspace submit, never subagent land",
+      )
     return serializeSourceWrites(record.source, async () => {
       const workspace = (await get(id, context))!
       const source = workspace.source
@@ -953,6 +966,7 @@ export function workspaces(host: Host) {
     standLander,
     started: tasksStartedByThisModule,
     get,
+    serialize: serializeSourceWrites,
     unavailable,
     land,
     submit,
