@@ -1,10 +1,13 @@
+/** @jsxImportSource @solidjs/web */
+import { TriangleAlertIcon, XIcon } from '@lucide/solid'
+import { createEffect, createSignal, For, onSettled, Show, untrack } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
+import { api, defineWebExtension, errorMessage, notify, useReady, useStore } from '@/sdk/solid'
+import { resumed } from '@/sdk/resume.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { pace } from '../../lib/timers.ts'
-import { TriangleAlertIcon, XIcon } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, defineWebExtension, errorMessage, resumed, useReady, useStore } from '@/sdk'
-import { store } from '@/sdk/client'
-import { StatusAction } from '../onboarding/ui.tsx'
-import { Electric } from './electric.tsx'
+import { StatusAction } from '../onboarding/refs.ts'
+import { Electric } from './electric.solid.tsx'
 
 const readinessDeadlineMs = 8000
 
@@ -45,42 +48,46 @@ const wordmarkAlphaImage = `data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fontUnitsYDownBounds.x} 0 ${fontUnitsYDownBounds.width} ${fontUnitsYDownBounds.height}" width="${fontUnitsYDownBounds.width / 10}" height="${fontUnitsYDownBounds.height / 10}"><path d="${interSemiboldContours.flat().join('')}" fill="#fff"/></svg>`,
 )}`
 
-function Lightning({ level }: { level: () => Level }) {
+function Lightning(props: { level: () => Level }) {
   const theme = useStore((state) => state.ui.theme)
   return (
     <Electric
       edgeArcRate={0.25}
       bend={0.45}
-      className="pointer-events-none absolute top-1/2 left-1/2 h-[400%] w-[120%] -translate-1/2"
-      color={theme === 'dark' ? '#e4d6ff' : '#7b47bf'}
+      class="pointer-events-none absolute top-1/2 left-1/2 h-[400%] w-[120%] -translate-1/2"
+      color={theme() === 'dark' ? '#e4d6ff' : '#7b47bf'}
       crackle={1}
       flicker={0.3}
       glow={0.8}
-      glowColor={theme === 'dark' ? '#bb9af4' : '#7b47bf'}
-      burstCount={() => level().bursts}
-      presence={() => level().presence}
-      sweepLeftToRight={() => level().reveal}
+      glowColor={theme() === 'dark' ? '#bb9af4' : '#7b47bf'}
+      burstCount={() => props.level().bursts}
+      presence={() => props.level().presence}
+      sweepLeftToRight={() => props.level().reveal}
       containerSizeFraction={1 / 1.2}
       speed={2}
       alphaImageSrc={wordmarkAlphaImage}
       outlineFilaments={3}
-      theme={theme}
+      theme={theme()}
       strandWidthPx={1.3}
     />
   )
 }
 
-function Wordmark({ still, level }: { still: boolean; level: () => Level }) {
+function Wordmark(props: { still: boolean; level: () => Level }) {
   return (
-    <div className="relative">
+    <div class="relative">
       <svg
         aria-hidden="true"
-        className="block w-full overflow-visible"
+        class="block w-full overflow-visible"
         viewBox={`${fontUnitsYDownBounds.x} 0 ${fontUnitsYDownBounds.width} ${fontUnitsYDownBounds.height}`}
       >
-        {still && <path className="fill-brand" d={interSemiboldContours.flat().join('')} />}
+        <Show when={props.still}>
+          <path class="fill-brand" d={interSemiboldContours.flat().join('')} />
+        </Show>
       </svg>
-      {!still && <Lightning level={level} />}
+      <Show when={!props.still}>
+        <Lightning level={props.level} />
+      </Show>
       <div data-sweep="" hidden />
     </div>
   )
@@ -186,7 +193,7 @@ function play(overlay: HTMLElement, still: boolean, release: () => void): Show {
       }
     },
     signature() {
-      if (signature || revealCommitted || still) return
+      if (cancelled || signature || revealCommitted || still) return
       signature = true
       for (const animation of [...awaitedIntro, ...unawaitedRule])
         animation.updatePlaybackRate(firstRunPlaybackRate)
@@ -288,118 +295,134 @@ function guardAppInput(overlay: HTMLElement) {
 const splashReplayMode = new URLSearchParams(location.search).get('splash')
 
 function Overlay() {
-  const [take, setTake] = useState(0)
+  const ready = useReady()
+  const [gone, setGone] = createSignal(
+    splashReplayMode === null && (untrack(() => ready().ready) || resumed || navigator.webdriver),
+  )
+  const [take, setTake] = createSignal(1)
   return (
-    <Splash
-      key={take}
-      replay={splashReplayMode === null ? undefined : () => setTake((current) => current + 1)}
-    />
+    <Show
+      when={!gone()}
+      fallback={
+        <Show when={ready().timedOut}>
+          <Late />
+        </Show>
+      }
+    >
+      <For each={[take()]}>
+        {() => (
+          <Playback onDone={() => setGone(true)} onReplay={() => setTake((count) => count + 1)} />
+        )}
+      </For>
+    </Show>
   )
 }
 
-function Splash({ replay }: { replay?: () => void }) {
-  const { ready, timedOut } = useReady()
+function Playback(props: { onDone: () => void; onReplay: () => void }) {
+  const ready = useReady()
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches || !canTraceWithWebGL2()
+  let overlay: HTMLDivElement | undefined
+  const [show, setShow] = createSignal<Show>()
+  const level = (): Level => show()?.level() ?? { reveal: 0, presence: 0, bursts: 0 }
 
-  const [gone, setGone] = useState(!replay && (ready || resumed || navigator.webdriver))
-  const [still] = useState(
-    () => matchMedia('(prefers-reduced-motion: reduce)').matches || !canTraceWithWebGL2(),
-  )
-  const overlay = useRef<HTMLDivElement>(null)
-  const show = useRef<Show>(undefined)
-  const level = () => show.current?.level() ?? { reveal: 0, presence: 0, bursts: 0 }
-
-  useLayoutEffect(() => {
-    if (!overlay.current) return undefined
-    const release = guardAppInput(overlay.current)
-    const current = play(overlay.current, still, release)
-    show.current = current
-
-    let active = true
-    const optionalOnboarding = api.action(StatusAction)
-    optionalOnboarding.then(
-      (status) => {
-        if (active && (status.firstRun || splashReplayMode === 'first')) current.signature()
-      },
-      () => {},
-    )
+  onSettled(() => {
+    if (!overlay) return undefined
+    const release = guardAppInput(overlay)
+    const current = play(overlay, still, release)
+    setShow(current)
+    const replay = () => props.onReplay()
+    if (splashReplayMode !== null) overlay.addEventListener('click', replay)
+    if (splashReplayMode === 'first') current.signature()
+    void api.action(StatusAction).then((status) => {
+      if (status.firstRun) current.signature()
+    }, meansNone)
     return () => {
-      active = false
+      overlay?.removeEventListener('click', replay)
       current.cancel()
       release()
     }
-  }, [still])
+  })
 
-  useEffect(() => {
-    if (gone || !ready || splashReplayMode !== null) return
-    void show.current
-      ?.reveal()
-      .then((done) => {
-        if (done) setGone(true)
-      })
-      .catch((error: unknown) => {
-        store.notify({ level: 'error', message: errorMessage(error) })
-        setGone(true)
-      })
-  }, [gone, ready])
+  createEffect(
+    () => (splashReplayMode === null && ready().ready ? show() : undefined),
+    (current) => {
+      if (!current) return
+      void current
+        .reveal()
+        .then((done) => {
+          if (done) props.onDone()
+        })
+        .catch((error: unknown) => {
+          notify({ level: 'error', message: errorMessage(error) })
+          props.onDone()
+        })
+    },
+  )
 
-  if (gone) return timedOut ? <Late /> : null
   return (
     <div
-      aria-busy="true"
-      aria-label="Loading Ultimate"
-      aria-live="polite"
-
-      className="pointer-events-auto fixed inset-0 z-[60] grid place-items-center bg-background outline-none data-revealing:pointer-events-none"
-      onClick={replay}
+      class="pointer-events-auto fixed inset-0 z-[60] grid place-items-center bg-background outline-none data-revealing:pointer-events-none"
+      data-splash=""
       ref={overlay}
-      role="progressbar"
-      tabIndex={-1}
+      tabindex={-1}
     >
-      <div className="relative w-[min(72vw,40rem)]" data-mark="">
+      <progress aria-busy="true" aria-label="Loading Ultimate" aria-live="polite" class="sr-only" />
+      <div class="relative w-[min(72vw,40rem)]" data-mark="" aria-hidden="true">
         <Wordmark level={level} still={still} />
         <div
-          className="relative mx-auto mt-[7%] h-px w-1/4 overflow-hidden bg-foreground/10 opacity-0"
+          class="relative mx-auto mt-[7%] h-px w-1/4 overflow-hidden bg-foreground/10 opacity-0"
           data-rule=""
-        ></div>
+        />
       </div>
     </div>
   )
 }
 
-const names = (list: readonly string[]) =>
-  list.map((name, index) => (
-    <span key={name}>
-      {index > 0 && ', '}
-      <span className="text-foreground">{name}</span>
-    </span>
-  ))
+function Names(props: { list: readonly string[] }) {
+  return (
+    <For each={props.list}>
+      {(name, index) => (
+        <span>
+          {index() > 0 && ', '}
+          <span class="text-foreground">{name}</span>
+        </span>
+      )}
+    </For>
+  )
+}
 
 function Late() {
-  const { failed, pending } = useReady()
-  const [dismissed, setDismissed] = useState(false)
-  if (dismissed || (pending.length === 0 && failed.length === 0)) return null
+  const ready = useReady()
+  const [dismissed, setDismissed] = createSignal(false)
   return (
-    <div
-      className="fixed top-12 left-1/2 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-start gap-2 rounded-md border border-border/80 bg-popover px-2.5 py-2 font-mono text-[11.5px] leading-snug shadow-lg"
-      role="alert"
-    >
-      <TriangleAlertIcon className="mt-px size-3.5 shrink-0 text-warning" />
-      <div className="min-w-0 flex-1 text-foreground/90">
-        <p>Not ready after {readinessDeadlineMs / 1000} s, so it opened anyway.</p>
-        <p className="mt-0.5 text-muted-foreground">
-          {pending.length > 0 && <>still loading: {names(pending)}. </>}
-          {failed.length > 0 && <>failed: {names(failed)}. </>}
-        </p>
-      </div>
-      <button
-        aria-label="Dismiss"
-        className="shrink-0 text-muted-foreground/60 hover:text-foreground"
-        onClick={() => setDismissed(true)}
-        type="button"
+    <Show when={!dismissed() && (ready().pending.length || ready().failed.length)}>
+      <div
+        class="fixed top-12 left-1/2 z-40 flex w-96 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-start gap-2 rounded-md border border-border/80 bg-popover px-2.5 py-2 font-mono text-[11.5px] leading-snug shadow-lg"
+        role="alert"
       >
-        <XIcon className="size-3.5" />
-      </button>
-    </div>
+        <TriangleAlertIcon class="mt-px size-3.5 shrink-0 text-warning" />
+        <div class="min-w-0 flex-1 text-foreground/90">
+          <p>Not ready after {readinessDeadlineMs / 1000} s, so it opened anyway.</p>
+          <p class="mt-0.5 text-muted-foreground">
+            <Show when={ready().pending.length}>
+              still loading: <Names list={ready().pending} />.{' '}
+            </Show>
+            <Show when={ready().failed.length}>
+              failed: <Names list={ready().failed} />.{' '}
+            </Show>
+          </p>
+        </div>
+        <Button
+          aria-label="Dismiss slow loading notice"
+          size={null}
+          variant={null}
+          class="shrink-0 text-muted-foreground/60 hover:text-foreground"
+          onClick={() => setDismissed(true)}
+        >
+          <XIcon class="size-3.5" />
+        </Button>
+      </div>
+    </Show>
   )
 }
 

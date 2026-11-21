@@ -1,5 +1,6 @@
+/** @jsxImportSource @solidjs/web */
 import { Mesh, Program, Renderer, Texture, Triangle } from 'ogl'
-import { useEffect, useRef } from 'react'
+import { createEffect } from 'solid-js'
 
 const tracedRasterAreaPx = 640 * 640
 const glowCellSizePx = 4
@@ -594,17 +595,12 @@ export interface ElectricProps {
   sweepLeftToRight?: () => number
   burstCount?: () => number
   theme: 'dark' | 'light'
-  className?: string
+  class?: string
 }
 
 export function Electric(props: ElectricProps) {
-  const container = useRef<HTMLDivElement>(null)
-  const settings = useRef(props)
-  settings.current = props
-  const { alphaImageSrc } = props
-
-  useEffect(() => {
-    const element = container.current
+  let element: HTMLDivElement | undefined
+  const attach = (src: string) => {
     if (!element) return undefined
     const renderer = new Renderer({ alpha: true, premultipliedAlpha: true, antialias: false })
     const gl = renderer.gl
@@ -666,13 +662,19 @@ export function Electric(props: ElectricProps) {
     }
     const mesh = new Mesh(gl, {
       geometry: new Triangle(gl),
-      program: new Program(gl, { vertex, fragment, uniforms, depthTest: false, depthWrite: false }),
+      program: new Program(gl, {
+        vertex,
+        fragment,
+        uniforms,
+        depthTest: false,
+        depthWrite: false,
+      }),
     })
 
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
     const sparks: Spark[] = []
     let shape: Shape | undefined
-    let ink = settings.current.theme === 'light' ? 1 : 0
+    let ink: number | undefined
     let time = 0
     let bursts = 0
     let pulse: number | undefined
@@ -697,7 +699,7 @@ export function Electric(props: ElectricProps) {
       halo.needsUpdate = true
     }
     image.addEventListener('load', traced)
-    image.src = alphaImageSrc
+    image.src = src
 
     const resize = () => {
       width = Math.max(1, element.clientWidth)
@@ -709,7 +711,7 @@ export function Electric(props: ElectricProps) {
 
     const frame = (now: number) => {
       raf = 0
-      const s = settings.current
+      const s = props
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
       last = now
       if (shape) {
@@ -732,7 +734,10 @@ export function Electric(props: ElectricProps) {
         if (fired > bursts && !reducedMotion) {
           pulse = now
           sparks.length = 0
-          const centre = { x: shape.pad + shape.logoWidth / 2, y: shape.pad + shape.logoHeight / 2 }
+          const centre = {
+            x: shape.pad + shape.logoWidth / 2,
+            y: shape.pad + shape.logoHeight / 2,
+          }
           for (let i = 0; i < ARCS * 3 && sparks.length < ARCS; i++) {
             const spark = outwardShapeArc(shape, time, {
               ...centre,
@@ -773,7 +778,9 @@ export function Electric(props: ElectricProps) {
           arcShape[o + 2] = spark.seed
         }
 
-        ink += ((s.theme === 'light' ? 1 : 0) - ink) * (1 - Math.exp(-dt / 0.25))
+        const targetInk = s.theme === 'light' ? 1 : 0
+        ink ??= targetInk
+        ink += (targetInk - ink) * (1 - Math.exp(-dt / 0.25))
         uniforms.uMap.value = [ox, oy, fit, shape.glowOffset]
         uniforms.uSize.value = [shape.width, shape.height, shape.glowWidth, shape.glowHeight]
         uniforms.uUnit.value = (Math.sqrt(shape.logoWidth * shape.logoHeight) * fit) / 100
@@ -822,7 +829,8 @@ export function Electric(props: ElectricProps) {
       gl.getExtension('WEBGL_lose_context')?.loseContext()
       canvas.remove()
     }
-  }, [alphaImageSrc])
+  }
+  createEffect(() => props.alphaImageSrc, attach)
 
-  return <div className={props.className} ref={container} />
+  return <div class={props.class} ref={element} />
 }
