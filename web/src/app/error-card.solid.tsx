@@ -21,18 +21,24 @@ export type ErrorCardProps = {
 
 const reactCompatDoc = 'https://github.com/HazAT/ultimate/blob/main/docs/extensions/react-compat.md'
 
-function ReactCompatNote(props: { extension: string }) {
+const reactCompatNote =
+  "Ultimate's core is Solid now; this React facet (web.tsx) runs on a frozen compat layer, and this part of it broke there."
+
+function useReactFacet(extension: () => string) {
   const extensions = useExtensions()
-  const react = () =>
-    extensions().some((record) => record.name === props.extension && record.framework === 'react')
+  return () =>
+    extensions().some((record) => record.name === extension() && record.framework === 'react')
+}
+
+export function ReactCompatNote(props: { extension: string }) {
+  const react = useReactFacet(() => props.extension)
   return (
     <Show when={react()}>
       <div
         class="mt-1.5 font-sans text-[12px] leading-snug text-muted-foreground"
         data-react-compat
       >
-        Ultimate's core is Solid now; this React facet (web.tsx) runs on a frozen compat layer, and
-        this part of it broke there.{' '}
+        {reactCompatNote}{' '}
         <a
           class="text-foreground underline underline-offset-2 hover:text-brand"
           href={reactCompatDoc}
@@ -54,20 +60,41 @@ export function ErrorCard(props: ErrorCardProps) {
   )
 }
 
+export function ReactCompatLink(props: { extension: string }) {
+  const react = useReactFacet(() => props.extension)
+  return (
+    <Show when={react()}>
+      <a
+        aria-label={`React facet ${props.extension}: how to move it to Solid`}
+        class="shrink-0 underline underline-offset-2 hover:text-foreground"
+        data-react-compat
+        href={reactCompatDoc}
+        rel="noreferrer"
+        target="_blank"
+        title={reactCompatNote}
+      >
+        Solid core
+      </a>
+    </Show>
+  )
+}
+
 function InlineErrorCard(props: ErrorCardProps) {
+  const react = useReactFacet(() => props.extension)
   return (
     <span
       class={cn(
         'inline-flex max-w-72 items-center gap-1 rounded-sm bg-error/12 px-1.5 font-mono text-[11px] text-error',
         props.class,
       )}
-      title={props.error}
+      title={react() ? `${props.error}\n\n${reactCompatNote}` : props.error}
       data-extension-error={props.extension}
     >
       <TriangleAlert aria-hidden="true" class="size-3 shrink-0" />
       <span class="truncate">
         {props.extension}: {props.error}
       </span>
+      <ReactCompatLink extension={props.extension} />
     </span>
   )
 }

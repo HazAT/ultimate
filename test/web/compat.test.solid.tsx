@@ -28,6 +28,7 @@ import {
   useAllProvided,
   useProvided,
 } from '../../web/src/sdk/contribution.solid.tsx'
+import { ContributionError } from '../../web/src/app/contribution-error.solid.tsx'
 import { loadReact, markReact } from '../../web/src/sdk/framework.ts'
 import { definePoint } from '../../web/src/sdk/types.ts'
 import { ConversationScope } from '../../web/src/sdk/solid.ts'
@@ -303,4 +304,29 @@ it('leaves a React provider out of every list until its hook has reported, so a 
   })
   expect(seen.flat()).not.toContain(undefined)
   expect(seen.at(-1)).toEqual([['react item']])
+})
+
+it('says a failing web.tsx part broke on the compat layer of a Solid core, and links how to move or shim it', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const Thinking = () => {
+    throw new Error('reads a field the Solid core no longer passes')
+  }
+  await registry.setLoaders({
+    'extensions/old/web.tsx': async () => ({ default: { slots: { overlay: [Thinking] } } }),
+  })
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => (
+      <Slot
+        fallback={(extension, error) => <ContributionError error={error} extension={extension} />}
+        name="overlay"
+      />
+    ))
+    flush()
+  })
+  const note = container.querySelector('[data-react-compat]')
+  expect(note?.textContent).toContain("Ultimate's core is Solid now")
+  expect(note?.querySelector('a')?.getAttribute('href')).toMatch(
+    /docs\/extensions\/react-compat\.md$/,
+  )
 })
