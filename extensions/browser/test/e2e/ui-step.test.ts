@@ -26,9 +26,18 @@ import { useExtensionUiState } from '@/sdk/solid'
 export function Digest() {
   const digest = useExtensionUiState('digest', false)
   const [pressed, setPressed] = createSignal('none')
+  const [many, setMany] = createSignal(false)
+  const [hidden, setHidden] = createSignal(false)
   return (
     <>
       <Switch aria-label="Weekly digest" bind={digest} />
+      <Switch aria-label="Many fields" checked={many()} onCheckedChange={setMany} />
+      <Switch aria-label="Hide the last filler" checked={hidden()} onCheckedChange={setHidden} />
+      {many() && Array.from({ length: 120 }, (_, index) => (
+        <span aria-hidden={hidden() && index === 119 ? 'true' : undefined}>
+          <Switch aria-label={'Filler ' + index} />
+        </span>
+      ))}
       <Button aria-label="Read digest-archive.png" data-pressed={pressed()} onClick={() => setPressed('read')}>read</Button>
       <Button aria-label="Digest archive" onClick={() => setPressed('archive')}>Archive</Button>
       <Button aria-label="Archive c9999" onClick={() => setPressed('c9999')}>c9999</Button>
@@ -226,6 +235,36 @@ it('acts on the one control with the exact label, also one an earlier step broug
   const { values } = later(1) as { values: Record<string, unknown> }
   expect(Object.entries(values).find(([key]) => key.endsWith(' Monday only'))?.[1]).toBe(true)
   expect(Object.keys(values).some((key) => key.endsWith(' Weekly digest'))).toBe(true)
+})
+
+it('keeps the fields a batch touched within the 100-field cap, with the right count, unless they left', async () => {
+  const { drive } = await serve()
+  const value = await drive([
+    { ui: 'act', steps: [{ ref: 'Many fields', action: 'setChecked', args: [true] }] },
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Filler 119', action: 'setChecked', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+      ],
+    },
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Filler 119', action: 'setChecked', args: [false] },
+        { ref: 'Hide the last filler', action: 'setChecked', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+      ],
+    },
+  ])
+  const kept = (value(2) as { values: Record<string, unknown> }).values
+  const keys = Object.keys(kept).filter((key) => key !== 'more')
+  expect(Object.entries(kept).find(([key]) => key.endsWith(' Filler 119'))?.[1]).toBe(true)
+  expect(keys.length).toBe(100)
+  expect(keys.length + (kept.more as number)).toBe(125)
+  const hiddenLater = (value(3) as { values: Record<string, unknown> }).values
+  expect(Object.keys(hiddenLater).some((key) => key.endsWith(' Filler 119'))).toBe(false)
+  expect(Object.keys(hiddenLater).filter((key) => key !== 'more').length).toBe(100)
 })
 
 it('until a control’s state wakes on its change, by label or by ref, and a missing ref is never a label', async () => {

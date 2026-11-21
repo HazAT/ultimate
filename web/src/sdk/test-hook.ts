@@ -144,7 +144,7 @@ export function createTestHook(
     const done: ActResult['steps'] = []
     const appeared = new Set<string>()
     let values: ActResult['values'] = {}
-    const touchedFields = new Map<string, [string, unknown]>()
+    const touchedNames = new Map<string, string>()
     const touched = new Set<string>()
     let error: ActResult['error']
     for (const [index, step] of steps.entries()) {
@@ -158,8 +158,8 @@ export function createTestHook(
       for (const item of one.appeared) appeared.add(item.ref)
       values = one.values
       for (const item of one.steps) touched.add(item.ref)
-      for (const field of Object.entries(one.values))
-        if (touched.has(field[0].split(' ')[0])) touchedFields.set(field[0].split(' ')[0], field)
+      for (const name of Object.keys(one.values))
+        if (touched.has(name.split(' ')[0])) touchedNames.set(name.split(' ')[0], name)
       if (!one.ok) {
         error = one.error && { ...one.error, step: index }
         break
@@ -172,10 +172,7 @@ export function createTestHook(
     const open = (await Promise.all([...touched].map(now))).filter(
       (item): item is UiComponent => item?.open === true,
     )
-    if ('more' in values)
-      for (const [ref, [name, value]] of touchedFields)
-        if (!Object.keys(values).some((key) => key.startsWith(`${ref} `)))
-          values = { [name]: value, ...values }
+    if ('more' in values) values = await keepTouched(values, touchedNames)
     return {
       ok: !error,
       ...(error && { error }),
@@ -183,6 +180,27 @@ export function createTestHook(
       ...(open.length ? { open } : {}),
       appeared: live,
       values,
+    }
+  }
+
+  async function keepTouched(values: ActResult['values'], touchedNames: Map<string, string>) {
+    const { more, ...listed } = values
+    const restored: [string, unknown][] = []
+    for (const [ref, name] of touchedNames) {
+      if (Object.keys(listed).some((key) => key.startsWith(`${ref} `))) continue
+      const now = await named(ref)
+      const key = now && ('checked' in now ? 'checked' : 'value' in now ? 'value' : undefined)
+      if (now && key && now.open !== true) restored.push([name, now[key]])
+    }
+    const touchedRefs = new Set(touchedNames.keys())
+    const evictable = Object.keys(listed)
+      .filter((name) => !touchedRefs.has(name.split(' ')[0]))
+      .slice(restored.length ? -restored.length : Infinity)
+    for (const name of evictable) delete listed[name]
+    return {
+      ...Object.fromEntries(restored),
+      ...listed,
+      more: (more as number) - restored.length + evictable.length,
     }
   }
 
