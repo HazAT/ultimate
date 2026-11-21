@@ -49,11 +49,7 @@ export const isReact = (part: unknown) => solidOf(part) === undefined
 export const rendersInReact = (part: unknown) =>
   (typeof part === 'function' || typeof part === 'object') && part !== null && reactParts.has(part)
 
-const reactNodes = new Set([
-  Symbol.for('react.transitional.element'),
-  Symbol.for('react.element'),
-  Symbol.for('react.portal'),
-])
+const reactNodes = new Set([Symbol.for('react.transitional.element'), Symbol.for('react.portal')])
 
 export const isReactNode = (value: unknown): boolean =>
   Array.isArray(value)

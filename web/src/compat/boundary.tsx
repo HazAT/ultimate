@@ -12,7 +12,6 @@ import { stackFrames } from '../app/error-report.ts'
 const CardWithReport = island(ReportedErrorCard)
 const CardWithoutReporter = island(PlainErrorCard)
 
-/** An extension's failure, inline or as a block with a report button, as the shell shows it. */
 export function ErrorCard(props: Omit<ErrorCardProps, 'report'>) {
   return props.variant === 'inline' ? (
     <CardWithoutReporter {...props} />

@@ -146,7 +146,11 @@ it('falls back to the core rendering when an extension renderer throws', () => {
   try {
     const view = renderSolid(() => <Markdown text={'Before.\n\n```ts\nlet x\n```\n\nAfter.'} />)
     flush()
-    expect(view.querySelector('[data-extension-error="broken"] [data-react-compat]')).not.toBeNull()
+    expect(
+      view
+        .querySelector('[data-extension-error="broken"] [data-react-compat]')
+        ?.getAttribute('href'),
+    ).toMatch(/docs\/extensions\/react-compat\.md$/)
     expect(view.querySelector('.code-block pre')?.textContent).toBe('let x')
     expect(view.textContent).toContain('After.')
   } finally {

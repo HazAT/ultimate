@@ -7,9 +7,9 @@ import { rendersInReact } from '../sdk/framework.ts'
 import { documentItems, panelItems, shownPanels } from '../sdk/registry.ts'
 import { useExtensions, useRegionOpen, useUiState } from './hooks.ts'
 import { island } from './island.tsx'
-import type { DocumentProps } from './types.ts'
+import type { DocumentContribution, DocumentProps, PanelContribution } from './types.ts'
 
-type Icon = ComponentType<{ className?: string }>
+type Icon = NonNullable<PanelContribution['icon']>
 
 const components = new WeakMap<object, ComponentType<never>>()
 const icons = new WeakMap<object, Icon>()
@@ -38,24 +38,14 @@ const icon = (part: unknown): Icon => {
   return icons.get(key)!
 }
 
-/** A tab of the right panel, with its icon and component as React components. */
-export interface PanelItem {
-  id: string
-  title: string
-  icon?: Icon
-  component: ComponentType
-  order?: number
-  tab?: boolean
+/** A tab of the right panel, with the extension that contributed it. */
+export interface PanelItem extends PanelContribution {
   extension: string
   version: number
 }
 
-/** How the Documents tab shows one kind of document, with its icon and renderer as React components. */
-export interface DocumentItem {
-  kind: string
-  title: string
-  icon?: Icon
-  component: ComponentType<DocumentProps>
+/** How the Documents tab shows one kind of document, with the extension that contributed it. */
+export interface DocumentItem extends DocumentContribution {
   extension: string
   version: number
 }

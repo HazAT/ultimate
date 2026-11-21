@@ -337,7 +337,6 @@ it('says a failing web.tsx part broke on the compat layer of a Solid core, and l
 it('drops a React provider that starts throwing after it reported; each failure keeps its own card', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   const Items = definePoint<null, string[]>('test.items-throw')
-  let broken = false
   const [tick, setTick] = createSignal(0)
   const failing = (name: string) => ({
     default: {
@@ -345,7 +344,7 @@ it('drops a React provider that starts throwing after it reported; each failure 
         {
           point: Items.point,
           use: (input: number) => {
-            if (broken && input > 0) throw new Error(`${name} broke`)
+            if (input >= (name === 'b' ? 1 : 2)) throw new Error(`${name} broke`)
             return [name]
           },
         },
@@ -370,9 +369,13 @@ it('drops a React provider that starts throwing after it reported; each failure 
     flush()
   })
   expect(seen).toEqual([['a'], ['b']])
-  broken = true
   act(() => {
     setTick(1)
+    flush()
+  })
+  expect(seen).toEqual([['a']])
+  act(() => {
+    setTick(2)
     flush()
   })
   expect(seen).toEqual([])
