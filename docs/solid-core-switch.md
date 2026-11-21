@@ -57,25 +57,31 @@ through the bridge; `RenderedPoint` chains a point's providers through `Contribu
 (`web/src/sdk/shell.tsx`), React children reaching them through `island`'s portal; `ErrorCard` in `boundary.tsx` is an
 island of the Solid card. The agent surface and its title-bar panel buttons are `island(C)`.
 
-**Done in C4a:** messages' `OffscreenQuestions`, `MessageNavigation` and `OpenMessages`, questions' draft sweep and
-review's link overlay are `island(C)`. Review's `workspaces.review` point provides a callback with no React hooks.
-Conversations' standing empty state and MCP's extension details are island providers; the Automations panel reads the
-shell's panel and requested conversation state directly in Solid.
+**Done in C4a, the extensions the shell hosts:**
 
-**Done in C4a:** the System and Inbox surfaces, Wire tab and command overlay, To-dos and Documents panels, and
-Codemode Store view are Solid. System tabs and document views render through `Contribution`: `island(C)` runs
-as Solid and React still mounts through the bridge. System reads `ParkedRuns` through the bridge; Inbox does the
-same for waiting items and Side chat's optional reading-pane takeover.
+- messages' `OffscreenQuestions`, `MessageNavigation` and `OpenMessages`, questions' draft sweep and review's link
+  overlay are `island(C)`. Review's `workspaces.review` point provides a callback with no React hooks.
+- Conversations' standing empty state and MCP's extension details are island providers; the Automations panel reads
+  the shell's panel and requested conversation state directly in Solid.
+- The System and Inbox surfaces, Wire's tab and command overlay, the To-dos and Documents panels and Codemode's Store
+  view are Solid. System tabs and document views render through `Contribution`: `island(C)` runs as Solid and React
+  still mounts through the bridge. System reads `ParkedRuns` through the bridge; Inbox does the same for waiting items
+  and Side chat's optional reading-pane takeover.
+- subagents' Agents panel and definition dialog and models' family editor (`FamilyPopover`, `AddFamily`, `FamilyDot`,
+  `FamilyLabel`) are Solid; onboarding's Get ready reads `useFamilies` and `usePicks` from models' `ui.tsx`.
+- Overlays find their conversation box by `[data-ui="conversation"]` (side chat, voice-live): a React
+  `conversation.overlay` item mounts in the bridge's `display: contents` host, so its `parentElement` has no size.
+- Review's surface and lineage's surfaces stay React through the bridge; they move with their extensions.
 
-**Summary (after C4a and C4b):** see the tables below.
+**Summary (after C4a and C4b):** 20 rows. By core host:
 
-| Core host                                                       | Rows | Extensions |
-| --------------------------------------------------------------- | ---- | ---------- |
-| The transcript's points and overlays (host done in C2)          | 11   | 10         |
-| The sidebar (React providers bridged into its Solid host)       | 8    | 8          |
-| Panel and surface hosts                                         | 1    | 1          |
-| The composer (React parts the Solid host mounts)                | 2    | 2          |
-| React points of other extensions (onboarding, the Agents panel) | 4    | 4          |
+| Core host                                                 | Rows | Extensions |
+| --------------------------------------------------------- | ---- | ---------- |
+| The transcript's points (host done in C2)                 | 6    | 6          |
+| The sidebar (React providers bridged into its Solid host) | 8    | 8          |
+| The composer (React parts the Solid host mounts)          | 2    | 2          |
+| React points of other extensions                          | 3    | 3          |
+| React surfaces mounted through the bridge                 | 1    | 2          |
 
 Transcript renderers still React, which no host blocks (they move with their extension, before C5): dream's four
 cards, onboarding's `setup` tool and three cards, plan's `plan` tool, side-chat's summary card, and voice-live's seven
@@ -95,7 +101,7 @@ breaks them unless they move to `island(C)` first.
 | reel        | provided `MessageExtras` (its chip opens the React `Player` dialog with questions' answer card) | `reel/web.tsx`        | message cards, inbox's cards | any (provider) |
 | tasks       | provided `RunStart` (a data hook)                                                               | `tasks/web.tsx`       | the run timer                | any (provider) |
 | pause       | provided `ParkedRuns` (bridged in the transcript, sidebar and System)                           | `pause/web.tsx`       | parked runs                  | any (provider) |
-| subagents   | provided `ErrorReport` (a data hook the React boundary reads)                                   | `subagents/web.tsx`   | error cards                  | C4             |
+| subagents   | provided `ErrorReport` (a data hook the Solid error card reads through the bridge)              | `subagents/web.tsx`   | error cards                  | any (provider) |
 
 ## The sidebar
 
@@ -113,11 +119,13 @@ in either framework. The remaining React providers sit behind the bridge until t
 | voice-live | `UnderUltimate`, `Unlisted`            | `voice-live/web.tsx` | The Voice row and its conversation to exclude             |
 | inbox      | `UnderUltimate`                        | `inbox/web.tsx`      | The Inbox row, returned as an island                      |
 
-## Panel and surface hosts
+## React surfaces
 
-| Extension | Part                                                                                          | Where               | Why it waits                                                    | Moves in |
-| --------- | --------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------- | -------- |
-| subagents | the Agents panel (`overview.tsx`) and the definition dialog (`definitions.tsx`, `fields.tsx`) | `subagents/web.tsx` | uses models' React family editor (`FamilyPopover`, `AddFamily`) | C4       |
+The surface host is Solid (C4a); these React surfaces mount through the bridge and move with their extension.
+
+| Extension       | Part                                                   | Where                 | Moves in             |
+| --------------- | ------------------------------------------------------ | --------------------- | -------------------- |
+| review, lineage | the Review surface (`surface.tsx`); History and Memory | `review/`, `lineage/` | with their extension |
 
 ## The composer
 
@@ -130,12 +138,11 @@ The host is Solid (C3); these React parts mount through the bridge and wait on t
 
 ## Other extensions' React points
 
-| Extension | Part                                                                                                                                                | Where               | Called by                                                           | Moves in       |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- | -------------- |
-| reel      | provided `LandingExtras`                                                                                                                            | `reel/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
-| side-chat | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    | any (provider) |
-| plan      | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
-| models    | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`           | subagents' Agents panel and definition form, onboarding's Get ready | C4             |
+| Extension | Part                                        | Where               | Called by                                          | Moves in       |
+| --------- | ------------------------------------------- | ------------------- | -------------------------------------------------- | -------------- |
+| reel      | provided `LandingExtras`                    | `reel/web.tsx`      | workspaces' Solid landing card, through `Provided` | any (provider) |
+| side-chat | provided `CardActions` (`useTalkItThrough`) | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`   | any (provider) |
+| plan      | provided `LandedNote`                       | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided` | any (provider) |
 
 ## Shared state and keys
 
