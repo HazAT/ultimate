@@ -304,6 +304,17 @@ it('until a control’s state wakes on its change, by label or by ref, and a mis
   expect(value(4)).toBe('none')
 })
 
+// An until on an event that never came held a browser call for 3 minutes; without timeoutMs it fails after 10 s.
+it('fails an until without timeoutMs after 10 s, saying what it saw', async () => {
+  const { drive } = await serve()
+  const begin = performance.now()
+  await expect(drive([{ until: { event: 'workspaces.landed' } }])).rejects.toThrow(
+    /Timed out after [\d.]+s: no matching workspaces.landed event/,
+  )
+  expect(performance.now() - begin).toBeGreaterThan(9_000)
+  expect(performance.now() - begin).toBeLessThan(30_000)
+})
+
 it('records nothing from the agent when it opens and closes a popover', async () => {
   const { drive, changes } = await serve()
   const value = await drive([
