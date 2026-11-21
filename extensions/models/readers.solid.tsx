@@ -1,37 +1,28 @@
 /** @jsxImportSource @solidjs/web */
-import { createEffect, createMemo, onSettled } from 'solid-js'
+import { createMemo } from 'solid-js'
 import {
-  api,
+  ROOT,
   cn,
+  keepLast,
+  useAction,
   useAgent,
   useConversation,
   useConversationId,
   useDoc,
-  useExternal,
   useModels,
   useSystem,
 } from '@/sdk/solid'
 import { familyColor } from '../../lib/families.ts'
-import { familiesCache, refresh, refreshFor } from './family-state.ts'
 import { FamiliesAction, FamilyDoc } from './refs.ts'
 
-const fetchFamilies = () => api.action(FamiliesAction, null)
-
 export function useFamilies() {
-  const families = useExternal(familiesCache.get, familiesCache.subscribe)
   const system = useSystem()
-  const revision = createMemo(
-    () => `${system()?.code.sha} ${JSON.stringify(system()?.project.settings)}`,
-  )
-  createEffect(revision, (next) => {
-    void refreshFor(next, fetchFamilies)
-  })
-  onSettled(() => {
-    const reload = () => void refresh(fetchFamilies)
-    addEventListener('focus', reload)
-    return () => removeEventListener('focus', reload)
-  })
-  return families
+  return useAction(FamiliesAction, null, {
+    conversation: ROOT,
+    onError: keepLast,
+    focus: true,
+    on: () => [system()?.code.sha, system()?.project.settings],
+  }).data
 }
 
 export function FamilyDot(props: { color: string | undefined; class?: string }) {
