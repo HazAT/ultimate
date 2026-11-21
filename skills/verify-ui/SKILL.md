@@ -27,7 +27,10 @@ Never claim a UI change works without an image of it.
 - Wait on state, never a guessed time: `{send: 'prompt'}` submits, then `{until: 'idle'}` returns when that turn is
   done, `{until: 'quiet'}` when nothing runs (branches and subagents included), `{until: {entry: 'pi.tool-result'}}`,
   `{until: {event: 'workspaces.landed', where: {…}}}`, or `{until: {ui: 'Keep warm', is: {checked: false}}}` when a
-  control has that state. A timeout says what it saw. `conversation: <id>` targets another conversation.
+  control has that state. `conversation: <id>` targets another conversation. An `until` fails after 10 s and says
+  what it saw: a control, state or event that takes longer is a bug to report, not a wait to raise. Only a model turn
+  (`idle`, `quiet` or `{entry: 'assistant'}` after a `send`) passes `timeoutMs`, at most `120000`. Never sleep in an
+  `eval` (`setTimeout`): wait with `until`.
 - `click`, `fill` and `press` only when that interaction itself is under test, scoped to its card:
   `[data-entry-id="42"] button:has-text("Retry")`.
 - `eval` reads what no control holds (transcript text, layout, styles); one expression, or an async IIFE for
