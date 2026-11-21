@@ -337,7 +337,8 @@ export default {
               message: `Hosts render every contribution through one path, so a React one mounts through the compat layer like any other. Only the core hosts in web/src import the bridge (${bridgeFile}); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/parts.solid.tsx.`,
             })
           if (compat) return
-          const typeOnly = node.importKind === 'type' || node.exportKind === 'type'
+          const typeOnly =
+            node.type === 'TSImportType' || node.importKind === 'type' || node.exportKind === 'type'
           const lazyCompat =
             node.type === 'ImportExpression' &&
             target === 'web/src/compat/bridge.tsx' &&

@@ -46,14 +46,21 @@ export const solidOf = (part: unknown) =>
 
 export const isReact = (part: unknown) => solidOf(part) === undefined
 
-const reactElement = Symbol.for('react.transitional.element')
+export const rendersInReact = (part: unknown) =>
+  (typeof part === 'function' || typeof part === 'object') && part !== null && reactParts.has(part)
+
+const reactNodes = new Set([
+  Symbol.for('react.transitional.element'),
+  Symbol.for('react.element'),
+  Symbol.for('react.portal'),
+])
 
 export const isReactNode = (value: unknown): boolean =>
   Array.isArray(value)
     ? value.some(isReactNode)
     : typeof value === 'object' &&
       value !== null &&
-      (value as { $$typeof?: unknown }).$$typeof === reactElement
+      reactNodes.has((value as { $$typeof?: symbol }).$$typeof!)
 
 let bridge: ReactBridge | undefined
 

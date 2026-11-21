@@ -1,7 +1,7 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { errorMessage } from '../sdk/format.ts'
-import { ExtensionNameContext } from './hooks.ts'
+import { ExtensionNameContext } from './conversation-scope.tsx'
 import { island } from './island.tsx'
 import { Slot as SolidSlot } from '../sdk/parts.solid.tsx'
 import { ReportedErrorCard } from '../app/error-stack.solid.tsx'
@@ -9,15 +9,16 @@ import { ErrorCard as PlainErrorCard } from '../app/error-card.solid.tsx'
 import type { ErrorCardProps } from '../app/error-card.solid.tsx'
 import { stackFrames } from '../app/error-report.ts'
 
-const ReportedCard = island(ReportedErrorCard)
-const PlainCard = island(PlainErrorCard)
+const CardWithReport = island(ReportedErrorCard)
+const CardWithoutReporter = island(PlainErrorCard)
 
-/**
- * An extension's failure as the shell shows it: inline as a plain card, or as a block with a report button. The inline
- * card never asks the error reporter, so a reporter that throws cannot recurse through its own failure.
- */
+/** An extension's failure, inline or as a block with a report button, as the shell shows it. */
 export function ErrorCard(props: Omit<ErrorCardProps, 'report'>) {
-  return props.variant === 'inline' ? <PlainCard {...props} /> : <ReportedCard {...props} />
+  return props.variant === 'inline' ? (
+    <CardWithoutReporter {...props} />
+  ) : (
+    <CardWithReport {...props} />
+  )
 }
 
 type ContributionBoundaryProps = {

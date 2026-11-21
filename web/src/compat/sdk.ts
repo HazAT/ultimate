@@ -123,13 +123,13 @@ export {
   useViewport,
 } from './hooks.ts'
 export { useDocumentRenderers, usePanels } from './react-parts.ts'
+export type { DocumentItem, PanelItem } from './react-parts.ts'
 export type { ActionState, ConversationState, Restart } from './hooks.ts'
 export { defineEvent } from '../../../shared/events.ts'
 export type { EventContext, EventData, EventRecord, EventToken } from '../../../shared/events.ts'
 export { touchKeyboard } from '../sdk/viewport.ts'
 export type { Viewport } from '../sdk/viewport.ts'
 export type { Connection, State } from '../sdk/store.ts'
-export type { DocumentItem } from '../sdk/registry.ts'
 export {
   elidePath,
   errorMessage,

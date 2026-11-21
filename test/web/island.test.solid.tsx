@@ -12,7 +12,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 })
 
 import { ConversationIdContext } from '../../web/src/compat/conversation-scope.tsx'
-import { ExtensionNameContext } from '../../web/src/compat/hooks.ts'
+import { ExtensionNameContext } from '../../web/src/compat/conversation-scope.tsx'
 import { island } from '../../web/src/compat/island.tsx'
 import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
 

@@ -18,12 +18,14 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 })
 
 import { ConversationIdContext } from '../../web/src/compat/conversation-scope.tsx'
-import { ExtensionNameContext } from '../../web/src/compat/hooks.ts'
+import { ExtensionNameContext } from '../../web/src/compat/conversation-scope.tsx'
 import { island } from '../../web/src/compat/island.tsx'
 import { registry } from '../../web/src/sdk/client.ts'
 import {
   Contributed,
+  ContributedIcon,
   Contribution,
+  ProvidedValue,
   Slot,
   useAllProvided,
   useProvided,
@@ -332,28 +334,27 @@ it('says a failing web.tsx part broke on the compat layer of a Solid core, and l
   )
 })
 
-it('drops a React provider that starts throwing after it reported, showing its own inline card', async () => {
+it('drops a React provider that starts throwing after it reported; each failure keeps its own card', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   const Items = definePoint<null, string[]>('test.items-throw')
   let broken = false
   const [tick, setTick] = createSignal(0)
-  await registry.setLoaders({
-    'extensions/a/web.tsx': async () => ({
-      default: { provides: [{ point: Items.point, use: () => ['a'] }] },
-    }),
-    'extensions/b/web.tsx': async () => ({
-      default: {
-        provides: [
-          {
-            point: Items.point,
-            use: (input: number) => {
-              if (broken && input > 0) throw new Error('b broke')
-              return ['b']
-            },
+  const failing = (name: string) => ({
+    default: {
+      provides: [
+        {
+          point: Items.point,
+          use: (input: number) => {
+            if (broken && input > 0) throw new Error(`${name} broke`)
+            return [name]
           },
-        ],
-      },
-    }),
+        },
+      ],
+    },
+  })
+  await registry.setLoaders({
+    'extensions/a/web.tsx': async () => failing('a'),
+    'extensions/b/web.tsx': async () => failing('b'),
   })
   const failures = document.createElement('div')
   let seen: readonly string[][] = []
@@ -374,9 +375,18 @@ it('drops a React provider that starts throwing after it reported, showing its o
     setTick(1)
     flush()
   })
-  expect(seen).toEqual([['a']])
+  expect(seen).toEqual([])
+  expect(failures.querySelectorAll('[data-extension-error="a"]')).toHaveLength(1)
   expect(failures.querySelectorAll('[data-extension-error="b"]')).toHaveLength(1)
-  expect(failures.children).toHaveLength(2)
+  await act(async () => {
+    await registry.setLoaders({ 'extensions/b/web.tsx': async () => failing('b') })
+    flush()
+  })
+  await act(async () => {
+    await Promise.resolve()
+  })
+  expect(failures.querySelectorAll('[data-extension-error="a"]')).toHaveLength(0)
+  expect(failures.querySelectorAll('[data-extension-error="b"]')).toHaveLength(1)
 })
 
 it('renders a memoized React component a React provider returns through the compat layer', async () => {
@@ -493,4 +503,89 @@ it('follows a ScopedConversation to its new id: one watch at a time, readers on 
     flush()
   })
   expect(watched).toEqual([])
+})
+
+it('renders a portal a React provider returns into its target', async () => {
+  const Overlay = definePoint<null, unknown>('test.portal')
+  const { createPortal } = await import('react-dom')
+  const target = document.createElement('div')
+  document.body.append(target)
+  await registry.setLoaders({
+    'extensions/overlay/web.tsx': async () => ({
+      default: {
+        provides: [
+          { point: Overlay.point, use: () => createPortal(h('em', null, 'ported'), target) },
+        ],
+      },
+    }),
+  })
+  function Reader() {
+    const value = useProvided(Overlay, () => null)
+    return <>{value() !== undefined && <ProvidedValue value={value()} />}</>
+  }
+  act(() => {
+    renderSolid(() => <Reader />)
+    flush()
+  })
+  await act(async () => {
+    await Promise.resolve()
+  })
+  expect(target.textContent).toBe('ported')
+  target.remove()
+})
+
+it('hands a React caller React components for Solid and island() panels and documents, icons with their class', async () => {
+  const { usePanels, useDocumentRenderers } = await import('../../web/src/compat/react-parts.ts')
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  const SolidPanel = () => <b>solid panel</b>
+  const IslandPanel = island(() => <b>island panel</b>)
+  const SolidIcon = (props: { class?: string }) => <i class={props.class}>i</i>
+  const SolidDocument = (props: { value: { n: number } }) => <b>doc {props.value.n}</b>
+  await registry.setLoaders({
+    'extensions/p/web.solid.tsx': async () => ({
+      default: {
+        panels: [{ id: 'solid', title: 'S', icon: SolidIcon, component: SolidPanel }],
+        documents: [{ kind: 'k', title: 'K', icon: SolidIcon, component: SolidDocument }],
+      },
+    }),
+    'extensions/q/web.tsx': async () => ({
+      default: { panels: [{ id: 'island', title: 'I', component: IslandPanel }] },
+    }),
+  })
+  function Panels() {
+    const { tabs } = usePanels()
+    const documents = useDocumentRenderers()
+    const Document = documents.get('k')!.component
+    const DocumentIcon = documents.get('k')!.icon!
+    return h(
+      'div',
+      null,
+      tabs.map((tab) => h(tab.component, { key: tab.id })),
+      h(DocumentIcon, { className: 'size-3' }),
+      h(Document, { value: { n: 1 }, conversationId: 1 as ConversationId }),
+    )
+  }
+  const host = document.createElement('div')
+  document.body.append(host)
+  const { createRoot } = await import('react-dom/client')
+  const root = createRoot(host)
+  await act(async () => root.render(h(Panels)))
+  expect(host.textContent).toBe('solid panelisland panelidoc 1')
+  expect(host.querySelector('i')?.getAttribute('class')).toBe('size-3')
+  act(() => root.unmount())
+  host.remove()
+})
+
+it('renders an island() icon in a Solid host as its Solid component', () => {
+  const SolidIcon = (props: { class?: string }) => <i class={props.class}>icon</i>
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => <ContributedIcon class="k" icon={island(SolidIcon)} />)
+    flush()
+  })
+  expect(container.innerHTML).toBe('<i class="k">icon</i>')
 })

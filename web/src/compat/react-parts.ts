@@ -1,22 +1,63 @@
 import { useMemo } from 'react'
 import type { ComponentType } from 'react'
+import { createComponent } from 'solid-js'
+import type { Component as SolidComponent } from 'solid-js'
 import { shellKeys } from '../sdk/actions.ts'
+import { rendersInReact } from '../sdk/framework.ts'
 import { documentItems, panelItems, shownPanels } from '../sdk/registry.ts'
 import { useExtensions, useRegionOpen, useUiState } from './hooks.ts'
-import { isReact } from '../sdk/framework.ts'
 import { island } from './island.tsx'
+import type { DocumentProps } from './types.ts'
 
-const wrapped = new WeakMap<object, ComponentType<never>>()
+type Icon = ComponentType<{ className?: string }>
 
-/** A contribution as a React component: a React one as it is, a Solid one wrapped once in an island. */
-function asReact(component: unknown): ComponentType<never> {
-  if (isReact(component)) return component as ComponentType<never>
-  let react = wrapped.get(component as object)
-  if (!react) {
-    react = island(component as never) as ComponentType<never>
-    wrapped.set(component as object, react)
-  }
-  return react
+const components = new WeakMap<object, ComponentType<never>>()
+const icons = new WeakMap<object, Icon>()
+
+const component = <P extends object>(part: unknown): ComponentType<P> => {
+  if (rendersInReact(part)) return part as ComponentType<P>
+  const key = part as object
+  if (!components.has(key)) components.set(key, island(part as SolidComponent<P>) as never)
+  return components.get(key) as ComponentType<P>
+}
+
+const icon = (part: unknown): Icon => {
+  if (rendersInReact(part)) return part as Icon
+  const key = part as object
+  if (!icons.has(key))
+    icons.set(
+      key,
+      island((props: { className?: string }) =>
+        createComponent(part as SolidComponent<{ class?: string }>, {
+          get class() {
+            return props.className
+          },
+        }),
+      ) as Icon,
+    )
+  return icons.get(key)!
+}
+
+/** A tab of the right panel, with its icon and component as React components. */
+export interface PanelItem {
+  id: string
+  title: string
+  icon?: Icon
+  component: ComponentType
+  order?: number
+  tab?: boolean
+  extension: string
+  version: number
+}
+
+/** How the Documents tab shows one kind of document, with its icon and renderer as React components. */
+export interface DocumentItem {
+  kind: string
+  title: string
+  icon?: Icon
+  component: ComponentType<DocumentProps>
+  extension: string
+  version: number
 }
 
 /**
@@ -27,10 +68,10 @@ export function usePanels() {
   const records = useExtensions()
   const panels = useMemo(
     () =>
-      panelItems(records).map((panel) => ({
+      panelItems(records).map((panel): PanelItem => ({
         ...panel,
-        icon: panel.icon && asReact(panel.icon),
-        component: asReact(panel.component),
+        icon: panel.icon && icon(panel.icon),
+        component: component(panel.component),
       })),
     [records],
   )
@@ -45,9 +86,13 @@ export function useDocumentRenderers() {
   return useMemo(
     () =>
       new Map(
-        [...documentItems(records)].map(([kind, item]) => [
+        [...documentItems(records)].map(([kind, item]): [string, DocumentItem] => [
           kind,
-          { ...item, icon: item.icon && asReact(item.icon), component: asReact(item.component) },
+          {
+            ...item,
+            icon: item.icon && icon(item.icon),
+            component: component<DocumentProps>(item.component),
+          },
         ]),
       ),
     [records],

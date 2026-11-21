@@ -295,8 +295,6 @@ export function useTranscriptScroll() {
 }
 const noElement = { current: null }
 
-export { ExtensionNameContext } from './conversation-scope.tsx'
-
 /** `useUiState` under `ext.<extension name>.<key>`, for state an extension's UI keeps across reloads. */
 export function useExtensionUiState<T extends JsonValue>(
   key: string,
