@@ -112,6 +112,7 @@ const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
 const bridgeFile = 'web/src/sdk/contribution.solid.tsx'
+const sidebarPointsForReactFacets = 'extensions/sidebar/ui.tsx'
 const compatFile = (filename: string) => repositoryPath(filename).startsWith('web/src/compat/')
 const inRepository = (filename: string) => {
   const file = repositoryPath(filename)
@@ -370,6 +371,7 @@ export default {
             if (
               inRepository(context.filename) &&
               !compat &&
+              file !== sidebarPointsForReactFacets &&
               file.endsWith('.tsx') &&
               !solidFile(file)
             )

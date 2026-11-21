@@ -382,6 +382,7 @@ it('names every built-in browser file by its framework: React lives only in the 
   expect(lint('ui-framework-boundaries', 'web/src/app/card.tsx', 'export {}')).toEqual([rename()])
   for (const file of [
     'extensions/echo/web.solid.tsx',
+    'extensions/sidebar/ui.tsx',
     'web/src/compat/card.tsx',
     '../my-app/.ultimate/extensions/echo/web.tsx',
   ])

@@ -130,13 +130,12 @@ it('shows working, a phase word or reviewing for a busy direct reviewer by defin
   const row = container.querySelector(`[data-in-flight="${branch}"]`)!
   expect(row.querySelector('[title="working"]')).not.toBeNull()
   await registry.setLoaders({
-    'extensions/sample/web.tsx': async () => ({
+    'extensions/sample/web.solid.tsx': async () => ({
       default: {
         provides: [
-          provide(ConversationPhase, (id) =>
-            id === branch
-              ? { label: 'Implementing', word: 'implementing', waiting: false }
-              : undefined,
+          provide(
+            ConversationPhase,
+            (id) => () => (id() === branch ? { word: 'implementing', waiting: false } : undefined),
           ),
         ],
       },
@@ -229,8 +228,8 @@ it('uses the running preview for user waits and idle branches', async ({ onTestF
   const row = container.querySelector(`[data-in-flight="${branch}"]`)!
   expect(row.querySelector('[title="idle"]')).not.toBeNull()
   await registry.setLoaders({
-    'extensions/sample/web.tsx': async () => ({
-      default: { provides: [provide(PreviewUp, (id) => id === branch)] },
+    'extensions/sample/web.solid.tsx': async () => ({
+      default: { provides: [provide(PreviewUp, (id) => () => id() === branch)] },
     }),
   })
   await settle()
