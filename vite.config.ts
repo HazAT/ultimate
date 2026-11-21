@@ -1,15 +1,15 @@
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
 import solid from '@solidjs/vite-plugin'
 import solidV2Strict from 'eslint-plugin-solid/configs/v2-strict'
 import { defineConfig } from 'vite-plus'
+import { webAliases } from './lib/web-alias.ts'
 
 const solidFiles = /\.solid\.tsx$/
 const uiSdkSolidBuild = /\/@ui-sdk\/solid\/dist\/solid\/.*\.jsx$/
 const lucideSolidSource = /\/@lucide\/solid\/dist\/source\/.*\.jsx$/
 const solidPlugin = () => solid({ include: [solidFiles, uiSdkSolidBuild, lucideSolidSource] })
-const alias = { '@': fileURLToPath(new URL('web/src', import.meta.url)) }
+const alias = webAliases(fileURLToPath(new URL('.', import.meta.url)))
 const excludeE2e = ['test/e2e/**', 'extensions/*/test/e2e/**']
 const maxWorkers = 8
 const solidRules = Object.fromEntries(
@@ -67,7 +67,8 @@ const noReactRules = Object.fromEntries(
 
 export default defineConfig({
   root: 'web',
-  plugins: [react({ exclude: [solidFiles, /\/node_modules\//] }), solidPlugin(), tailwindcss()],
+  plugins: [solidPlugin(), tailwindcss()],
+  oxc: { jsx: { runtime: 'automatic', importSource: 'react' } },
   resolve: { alias },
   lint: {
     plugins: ['typescript', 'unicorn', 'import', 'promise', 'vitest', 'react'],
@@ -102,14 +103,6 @@ export default defineConfig({
       {
         files: ['web/public/sw.js'],
         rules: { 'unicorn/require-post-message-target-origin': 'off' },
-      },
-      {
-        files: ['extensions/instance/web.tsx'],
-        rules: { 'react/iframe-missing-sandbox': 'off' },
-      },
-      {
-        files: ['web/src/app/transcript.tsx'],
-        rules: { 'react/immutability': 'off' },
       },
       {
         files: ['test/**', 'extensions/*/test/**'],

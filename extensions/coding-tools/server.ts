@@ -14,6 +14,7 @@ import {
   ROOT_CONVERSATION_ID,
   type ToolExecutionApi,
   type ToolExecutionResult,
+  type ToolPark,
   type ToolRegistration,
   wrapTool,
 } from '@earendil-works/pi-durable'
@@ -115,11 +116,11 @@ function took(ms: number) {
 }
 
 async function untilStopped(
-  run: (context: Context) => Promise<ToolExecutionResult>,
+  run: (context: Context) => Promise<ToolExecutionResult | ToolPark>,
   api: ToolExecutionApi,
   interruptible: boolean | undefined,
   context: Context,
-): Promise<ToolExecutionResult> {
+): Promise<ToolExecutionResult | ToolPark> {
   const id = api.conversationId
   const cancellationDoc = await api.snapshot(DurableCancellations, id, context)
   if (!cancellationDoc) await api.commit((tx) => tx.doc(DurableCancellations, id), context)

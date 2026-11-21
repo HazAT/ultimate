@@ -57,7 +57,7 @@ export async function fixture(extra = false, sources?: Record<string, string>, e
     await writeFile(join(ultimateRoot, 'extensions', 'counter', 'server.ts'), counterSource)
     await mkdir(join(ultimateRoot, 'extensions', 'web-only'), { recursive: true })
     await writeFile(
-      join(ultimateRoot, 'extensions', 'web-only', 'web.tsx'),
+      join(ultimateRoot, 'extensions', 'web-only', 'web.solid.tsx'),
       'export default () => null',
     )
     await writeFile(

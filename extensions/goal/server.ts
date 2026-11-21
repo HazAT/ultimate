@@ -51,10 +51,12 @@ const text = (value: unknown, name: string) => {
   return value.trim()
 }
 
-export async function start(tx: Tx, words: unknown, now: number) {
+export async function start(tx: Tx, words: unknown, now: number, proposal?: unknown) {
   const goals = await tx.doc(Goals, ROOT_CONVERSATION_ID)
   const open = goals.goals.find((goal) => !goal.ended)
   if (open) throw new Error(`Goal ${open.id} is still open; end it first`)
+  const earlier = goals.goals.find((goal) => proposal !== undefined && goal.proposal === proposal)
+  if (earlier) throw new Error(`This proposal already started goal ${earlier.id}`)
   const goalText = text(words, 'The goal')
   const goal: Goal = {
     id: goals.next++,
@@ -62,6 +64,7 @@ export async function start(tx: Tx, words: unknown, now: number) {
     startedAt: now,
     criteria: [],
     decisions: [],
+    ...(typeof proposal === 'string' ? { proposal } : {}),
   }
   goals.goals.push(goal)
   return goal
@@ -111,7 +114,8 @@ async function imagesEntry(tx: Tx, id: ConversationId, ref: 'latest' | EntryId) 
 }
 
 type ToolArgs = {
-  action: 'criteria' | 'decide' | 'met' | 'failed' | 'finish' | 'pause' | 'resume'
+  action: 'propose' | 'criteria' | 'decide' | 'met' | 'failed' | 'finish' | 'pause' | 'resume'
+  text?: string
   criteria?: string[]
   n?: number
   question?: string
@@ -124,6 +128,10 @@ type ToolArgs = {
 }
 
 export async function act(tx: Tx, ultimate: ConversationId, args: ToolArgs, now: number) {
+  if (args.action === 'propose') {
+    text(args.text, 'text')
+    return { answer: 'Proposed. The goal starts only when the user presses Start on its card.' }
+  }
   const goal = await openGoal(tx)
   if (!goal) throw new Error('No hands-off goal is open; ask the user as usual.')
   const criterion = () => {
@@ -240,7 +248,7 @@ export const userActions = ['start', 'end']
 export const actions = {
   start: implementAction(StartAction, (args, { host }) =>
     host.harness().commit(async (tx) => {
-      const goal = await start(tx, field(args, 'text'), Date.now())
+      const goal = await start(tx, field(args, 'text'), Date.now(), field(args, 'proposal'))
       await enqueueGoalNotice(host, tx, 'goal.started', goal)
       await enqueueReminderSync(host, tx, goal.id)
       return detachGoal(goal)
@@ -277,7 +285,7 @@ export default function goalExtension(host: ExtensionHost) {
     tasks: [deliverTask(host), reminderTask(host, Goals)],
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: async (input, { tx, conversationId }) => {
           if ((await ultimateOf(tx)) !== conversationId) return undefined
           const goal = await openGoal(tx)
@@ -306,9 +314,19 @@ export default function goalExtension(host: ExtensionHost) {
         deferred: true,
         replay: 'unsafe',
         description:
-          "The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked', summary} ends the goal and leaves the report card; pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
+          "propose {text} shows the user a card with a hands-off goal they start with one press, never starting it yourself; call it directly, not from codemode, or no card shows. The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked', summary} ends the goal and leaves the report card; pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
         parameters: obj({
-          action: strEnum(['criteria', 'decide', 'met', 'failed', 'finish', 'pause', 'resume']),
+          action: strEnum([
+            'propose',
+            'criteria',
+            'decide',
+            'met',
+            'failed',
+            'finish',
+            'pause',
+            'resume',
+          ]),
+          text: opt(str()),
           criteria: opt(arr(str())),
           n: opt(int({ minimum: 1 })),
           question: opt(str()),

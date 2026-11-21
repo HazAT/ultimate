@@ -13,7 +13,7 @@ import {
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 import { dialogStyles } from './dialog-styles.ts'
 
 function Dialog(props: ComponentProps<typeof DialogRoot>) {
@@ -32,13 +32,16 @@ function Dialog(props: ComponentProps<typeof DialogRoot>) {
 function DialogContent<Payload>(
   props: ComponentProps<typeof DialogContentRoot<Payload>> & {
     class?: string
+    backdropClass?: string
     showCloseButton?: boolean
   },
 ) {
-  const rest = omit(props, 'class', 'children', 'showCloseButton')
+  const rest = omit(props, 'class', 'backdropClass', 'children', 'showCloseButton')
   return (
     <>
-      <DialogBackdrop class={cn(dialogStyles.overlay, dialogStyles.overlaySolid)} />
+      <DialogBackdrop
+        class={cn(dialogStyles.overlay, dialogStyles.overlaySolid, props.backdropClass)}
+      />
       <DialogContentRoot<Payload>
         {...rest}
         class={cn(dialogStyles.content, dialogStyles.contentSolid, props.class)}

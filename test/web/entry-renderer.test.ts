@@ -3,7 +3,7 @@ import { createElement, useState } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
-import { renderEntry } from '../../web/src/sdk/entry-renderer.tsx'
+import { renderEntry } from '../../web/src/compat/entry-renderer.tsx'
 
 it('mounts a typed entry renderer for its kind and otherwise keeps the core rendering', () => {
   const token = defineEntry<{ label: string }>('example.result')

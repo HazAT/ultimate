@@ -178,7 +178,7 @@ export default function todosExtension(host: ExtensionHost) {
     name: 'todos',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           return (await callerIsUltimate(tx, conversationId))
             ? noteFor(tx, conversationId, Date.now())

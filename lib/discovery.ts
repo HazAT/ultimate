@@ -13,6 +13,13 @@ import { coreTier, defaultOff } from '../shared/extension-api.ts'
 
 const sourceOrder = { builtin: 0, user: 1, project: 2 }
 
+export const webFacet = (files: readonly string[]) =>
+  files.includes('web.solid.tsx')
+    ? 'web.solid.tsx'
+    : files.includes('web.tsx')
+      ? 'web.tsx'
+      : undefined
+
 export function compareExtensions(
   a: { name: string; source: Source; order?: number },
   b: { name: string; source: Source; order?: number },

@@ -1,6 +1,6 @@
 import type { EntryRecord, EntryId, ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
-import { accentOf } from '../../accent.tsx'
+import { accentOf } from '../../accent.ts'
 import { callerOf } from '../../caller.ts'
 import {
   answerTo,
@@ -23,11 +23,10 @@ import {
   threadRow,
   ultimateCompact,
   waitingOnUser,
-} from '../../data.tsx'
+} from '../../data.ts'
 import type { Message } from '../../refs.ts'
-import { questionsOf } from '../../waiting.tsx'
+import { questionsOf } from '../../waiting.ts'
 
-vi.mock('@/sdk', () => ({ events: { emit: vi.fn<() => void>() } }))
 vi.mock('../../../lineage/ui.tsx', async () => import('../../../lineage/refs.ts'))
 vi.mock('../../../workspaces/ui.tsx', async () => import('../../../workspaces/refs.ts'))
 vi.mock('../../../subagents/ui.tsx', async () => import('../../../subagents/refs.ts'))

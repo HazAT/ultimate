@@ -26,13 +26,16 @@ import {
   useNow,
   writingAs,
 } from '@/sdk/solid'
+import { Waiting } from '../inbox/ui.solid.tsx'
 import { StandingAction } from '../subagents/refs.ts'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
 
 const waits = 'text-amber-700 dark:text-amber-300'
 
-export function TodoList(props: { inbox: number }) {
+export function TodoList() {
+  const { entries, failures } = Waiting()
+  const inbox = () => entries().length
   const doc = useDocOf(() => ROOT, TodosDoc)
   const now = useNow(60_000)
   const [error, setError] = createSignal<string>()
@@ -83,21 +86,22 @@ export function TodoList(props: { inbox: number }) {
       <div class="flex items-center gap-2 px-3 pb-2 section-label">
         To-dos
         <span class="ml-auto text-muted-foreground/70">
-          <Show when={props.inbox > 0}>
+          <Show when={inbox() > 0}>
             <span class={waits}>
-              {props.inbox} in Inbox
+              {inbox()} in Inbox
               {open().length > 0 && ' · '}
             </span>
           </Show>
-          {open().length ? `${open().length} open` : props.inbox ? '' : 'none open'}
+          {open().length ? `${open().length} open` : inbox() ? '' : 'none open'}
         </span>
       </div>
       <AddTodo add={(text, owner) => run(api.action(AddAction, { text, owner }))} />
       <Show when={error()}>
         <p class="px-3 pt-1.5 font-mono text-[11px] break-words text-error">{error()}</p>
       </Show>
+      {failures}
       <Show
-        when={props.inbox + open().length > 0}
+        when={inbox() + open().length > 0}
         fallback={
           <p class="flex items-center gap-2 px-3 py-6 text-xs text-muted-foreground">
             <Check class="size-3.5 text-success" />
@@ -105,8 +109,8 @@ export function TodoList(props: { inbox: number }) {
           </p>
         }
       >
-        <Section empty={!props.inbox && !yours().length} owner="user" title="For you">
-          <Show when={props.inbox > 0}>
+        <Section empty={!inbox() && !yours().length} owner="user" title="For you">
+          <Show when={inbox() > 0}>
             <li data-todo-inbox>
               <Button
                 class="flex h-auto w-full items-center justify-start gap-2.5 rounded px-2 py-1.5 text-left font-normal hover:bg-muted/50"
@@ -115,7 +119,7 @@ export function TodoList(props: { inbox: number }) {
                 variant={null}
               >
                 <Inbox class={cn('size-4 shrink-0', waits)} />
-                <span class={cn('min-w-0 flex-1 text-[13px]', waits)}>Inbox · {props.inbox}</span>
+                <span class={cn('min-w-0 flex-1 text-[13px]', waits)}>Inbox · {inbox()}</span>
                 <ChevronRight class="size-3.5 shrink-0 text-muted-foreground/60" />
               </Button>
             </li>

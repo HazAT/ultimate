@@ -128,7 +128,7 @@ async function state(host: Host): Promise<PauseState> {
   }
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.5.2 — patched Harness.hold()/release() keep the scheduler from starting tasks.
+// Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold()/release() keep the scheduler from starting tasks.
 async function holdAndRecordPause(host: Host, limit?: RateLimit) {
   const harness = host.harness()
   harness.hold()

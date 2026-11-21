@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
-import { createSignal, flush } from 'solid-js'
+import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
@@ -94,10 +94,9 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   store.start()
   onTestFinished(() => store.stop())
   harness.sources[0].open()
-  const [inbox, setInbox] = createSignal(0)
   const container = renderSolid(() => (
     <ExtensionName value="todos">
-      <TodoList inbox={inbox()} />
+      <TodoList />
     </ExtensionName>
   ))
   await settle()
@@ -119,7 +118,21 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   )
   expect(container.textContent).toContain('3 open')
 
-  setInbox(2)
+  harness.server!.of(1)!.send('doc', {
+    kind: 'board',
+    value: {
+      next: 3,
+      messages: [1, 2].map((id) => ({
+        id,
+        from: 69,
+        to: 'user',
+        text: `Question ${id}`,
+        at: id,
+        reply: true,
+        state: 'delivered',
+      })),
+    },
+  })
   flush()
   expect(container.querySelector('[data-todo-inbox]')?.textContent).toContain('Inbox · 2')
   expect(container.textContent).toContain('2 in Inbox')

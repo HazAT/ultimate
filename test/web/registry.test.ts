@@ -16,7 +16,6 @@ import {
   linkRenderers,
   inlineCodeRenderers,
   panelBadges,
-  codeBlockLanguages,
   codeBlockRenderers,
   messageItems,
   composerRenderers,
@@ -32,7 +31,7 @@ import type {
 import { attention } from '../../web/src/sdk/types.ts'
 import type { WebExtension } from '../../web/src/sdk/types.ts'
 
-const path = (name: string) => `../../extensions/${name}/web.tsx`
+const path = (name: string) => `../../extensions/${name}/web.solid.tsx`
 /** The shown panel's id and the tab row's ids. */
 const ids = ({ active, tabs }: ReturnType<typeof shownPanels>) => [
   active?.id,
@@ -313,7 +312,6 @@ describe('web extension registry', () => {
       { extension: 'a', version: 1, component: First },
       { extension: 'b', version: 1, component: Second },
     ])
-    expect(codeBlockLanguages(records)).toEqual(['mermaid', 'dot'])
     // Any extension can badge any panel's tab, its own or another's.
     expect(panelBadges(records, 'tasks')).toEqual([
       { extension: 'a', version: 1, component: First },

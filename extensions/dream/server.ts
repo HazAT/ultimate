@@ -206,7 +206,7 @@ async function restartChapter(
     throw new Error(
       await host.restart(async () => {
         requireNoWorkParkedBySwitch(host)
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched Harness.hold() keeps the scheduler from starting tasks.
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold() keeps the scheduler from starting tasks.
         host.harness().hold()
       }),
     )

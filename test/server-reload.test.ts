@@ -55,7 +55,7 @@ describe('server reload', () => {
 
     // A build that changes no section leaves the system prompt as it was; only the note says so.
     await writeFile(
-      join(options.ultimateRoot, 'extensions/web-only/web.tsx'),
+      join(options.ultimateRoot, 'extensions/web-only/web.solid.tsx'),
       'export default () => "changed"',
     )
     await until(() => server.host.build().id !== second.id)

@@ -10,7 +10,7 @@ import {
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 
 const field =
   'h-7 w-full min-w-0 rounded-md border border-input bg-background px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 aria-invalid:border-error data-disabled:opacity-60'

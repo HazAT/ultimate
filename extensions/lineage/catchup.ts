@@ -419,7 +419,7 @@ export async function tallyText(
 
 type NoteBaselineAndInputCommitTogether = Tx
 
-// Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
+// Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
 export async function catchup(
   host: ExtensionHost,
   _input: EntryDraft,

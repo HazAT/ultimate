@@ -4,7 +4,7 @@ import { Checkbox as CheckboxRoot, CheckboxIndicator } from '@ui-sdk/solid/check
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { Accessor, ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 
 type CheckboxProps = ComponentProps<typeof CheckboxRoot> & {
   class?: string

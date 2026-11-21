@@ -1,4 +1,4 @@
-// Pi upstream: @earendil-works/pi-coding-agent@1.5.2 src/core/http-dispatcher.ts — copied, not exported; prevents early provider stream termination. Drop when Pi exports configureHttpDispatcher and applyHttpProxySettings.
+// Pi upstream: @earendil-works/pi-coding-agent@1.6.0 src/core/http-dispatcher.ts — copied, not exported; prevents early provider stream termination. Drop when Pi exports configureHttpDispatcher and applyHttpProxySettings.
 /*
 MIT License — Copyright (c) 2025 Mario Zechner
 

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { webModule } from '../lib/web-alias.ts'
 import path from 'node:path'
 import { apiSummary } from '../lib/api-files.ts'
 import { coreTier } from '../shared/extension-api.ts'
@@ -110,21 +111,18 @@ const membersOf = (declaration: Node): Node[] =>
 const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
-const reactIslandFile = 'web/src/sdk/react-island.tsx'
-const rendererBridges = new Set(['web/src/sdk/island.tsx', 'web/src/sdk/solid.ts', reactIslandFile])
-const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
-const solidSdk = 'web/src/sdk/solid.ts'
-const reactSdk = (module: string) => {
-  const file = repositoryPath(module)
-  return file.startsWith('web/src/sdk/') && file !== solidSdk
+const bridgeFile = 'web/src/sdk/contribution.solid.tsx'
+const sidebarPointsForReactFacets = 'extensions/sidebar/ui.tsx'
+const compatFile = (filename: string) => repositoryPath(filename).startsWith('web/src/compat/')
+const inRepository = (filename: string) => {
+  const file = repositoryPath(filename)
+  return !file.startsWith('..') && !file.startsWith('.ultimate/')
 }
-const extensionWebFacet = (filename: string) =>
-  /^(\.ultimate\/)?extensions\/[^/]+\/web\.tsx$/.test(repositoryPath(filename))
+const sdkEntries = ['web/src/compat/sdk.ts', 'web/src/sdk/solid.ts']
 const uiKitFile = (filename: string) =>
   repositoryPath(filename).startsWith('web/src/components/ui/')
 const reactOnly =
-  /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|use-stick-to-bottom|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
-const solidOnly = /^(solid-js|@solidjs\/.*|@ui-sdk\/solid)(\/|$)/
+  /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
 const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
 const solidJsxPragma = '@jsxImportSource @solidjs/web'
 const isSolidJsxPragma = (comment: Comment | undefined) =>
@@ -132,7 +130,7 @@ const isSolidJsxPragma = (comment: Comment | undefined) =>
 const moduleSuffixes = ['', '.ts', '.tsx', '/index.ts', '/index.tsx']
 const localModule = (filename: string, source: string) => {
   const base = source.startsWith('@/')
-    ? path.resolve(process.cwd(), 'web/src', source.slice(2))
+    ? webModule(process.cwd(), source)
     : source.startsWith('.')
       ? path.resolve(path.dirname(filename), source)
       : undefined
@@ -221,24 +219,24 @@ const isGlobal = (node: Node | undefined, name: string) =>
       propertyName(node) === name
 
 const isJsDoc = (comment: Comment) => comment.type === 'Block' && comment.value.startsWith('*')
-const inSdk = (filename: string) =>
-  path.relative(process.cwd(), filename).startsWith(`web${path.sep}src${path.sep}sdk${path.sep}`)
+const inSdk = (filename: string) => /^web\/src\/(sdk|compat)\//.test(repositoryPath(filename))
 let sdkExports: Set<string> | undefined
-/** The names `web/src/sdk/index.ts` exports: the SDK's public surface, read once per lint process. */
 function publicSdk() {
   sdkExports ??= new Set(
-    [
-      ...readFileSync(path.join(process.cwd(), 'web/src/sdk/index.ts'), 'utf8').matchAll(
-        /export\s+(?:type\s+)?\{([^}]*)\}/g,
+    sdkEntries
+      .flatMap((entry) => [
+        ...readFileSync(path.join(process.cwd(), entry), 'utf8').matchAll(
+          /export\s+(?:type\s+)?\{([^}]*)\}/g,
+        ),
+      ])
+      .flatMap((match) =>
+        match[1].split(',').map((name) =>
+          name
+            .trim()
+            .split(/\s+as\s+/)
+            .pop()!,
+        ),
       ),
-    ].flatMap((match) =>
-      match[1].split(',').map((name) =>
-        name
-          .trim()
-          .split(/\s+as\s+/)
-          .pop()!,
-      ),
-    ),
   )
   return sdkExports
 }
@@ -248,7 +246,13 @@ const exportedNames = (statement: Node): string[] => {
   if (!declaration)
     return (statement.specifiers ?? []).map((specifier) => String(specifier.exported?.name))
   if (declaration.type === 'VariableDeclaration')
-    return (declaration.declarations ?? []).map((declarator) => String(declarator.id?.name))
+    return (declaration.declarations ?? []).flatMap(({ id }) =>
+      id?.type === 'ObjectPattern'
+        ? (id.properties ?? []).map((property) =>
+            String((property.value as Node | undefined)?.name),
+          )
+        : [String(id?.name)],
+    )
   return [String(declaration.id?.name)]
 }
 const functionTypes = ['FunctionDeclaration', 'ArrowFunctionExpression', 'FunctionExpression']
@@ -258,20 +262,12 @@ const hasBody = (statement: Node) =>
   (statement.declaration?.declarations ?? []).some((declarator) =>
     functionTypes.includes(declarator.init?.type ?? ''),
   )
-/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` for Solid. */
-const sdkEntry = (filename: string) =>
-  ['web/src/sdk/index.ts', solidSdk].includes(repositoryPath(filename))
-/**
- * Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names, and the
- * core's temporary `reactIsland`, which no SDK entry exports.
- */
+const sdkEntry = (filename: string) => sdkEntries.includes(repositoryPath(filename))
+/** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */
 function contractStatements(filename: string, statements: Node[]) {
-  if (contractFile(filename)) return statements
-  if (repositoryPath(filename) === solidSdk)
-    return statements.filter((statement) => statement.type === 'ExportNamedDeclaration')
+  if (contractFile(filename) || compatFile(filename)) return statements
   if (!inSdk(filename)) return []
-  const names =
-    repositoryPath(filename) === reactIslandFile ? new Set(['reactIsland']) : publicSdk()
+  const names = publicSdk()
   return statements.filter(
     (statement) =>
       statement.type === 'ExportNamedDeclaration' &&
@@ -300,7 +296,9 @@ export default {
             const opening = context.sourceCode.getAllComments()[0]
             if (
               opening &&
-              (contractFile(context.filename) || sdkEntry(context.filename)) &&
+              (contractFile(context.filename) ||
+                sdkEntry(context.filename) ||
+                compatFile(context.filename)) &&
               (statements.length === 0 || opening.end <= statements[0].start!)
             )
               contractDocs.add(opening.start)
@@ -315,7 +313,7 @@ export default {
               context.report({
                 node: comment,
                 message:
-                  'A comment is an excuse for unclear code: make the names and structure say it. An invariant (ordering, durability, replay) becomes a name, a type or a small function; a workaround keeps its why in the commit message and a regression test. Only contract JSDoc (on the exports of api.ts, refs.ts, ui.tsx and web/src/sdk), `Pi upstream:` markers and licence headers of copied code stay.',
+                  'A comment is an excuse for unclear code: make the names and structure say it. An invariant (ordering, durability, replay) becomes a name, a type or a small function; a workaround keeps its why in the commit message and a regression test. Only contract JSDoc (on the exports of api.ts, refs.ts, ui.solid.tsx and web/src/sdk), `Pi upstream:` markers and licence headers of copied code stay.',
               })
             }
           },
@@ -325,49 +323,40 @@ export default {
     'ui-framework-boundaries': {
       meta: { schema: [] },
       create(context: Context) {
-        const solid = solidFile(context.filename)
+        const compat = compatFile(context.filename)
         const check = (node: ImportNode) => {
           const source = staticString(node.source)
           if (typeof source !== 'string') return
-          if (node.importKind === 'type' || node.exportKind === 'type') return
           const local = localModule(context.filename, source)
-          if (local !== undefined && repositoryPath(local) === reactIslandFile) {
-            if (!repositoryPath(context.filename).startsWith('web/src/app/'))
-              context.report({
-                node,
-                message: `reactIsland is a temporary bridge for the core switch: only the core hosts in web/src/app mount leftover React in Solid, and C5 deletes it with React. Move this part to Solid, or keep it React and contribute it where a core host renders React.`,
-              })
-            return
-          }
-          const localReact = local?.endsWith('.tsx') === true && !solidFile(local)
-          const localSolid =
-            local !== undefined && (solidFile(local) || repositoryPath(local) === solidSdk)
-          const islandComponent =
-            local !== undefined &&
-            solidFile(local) &&
-            node.type === 'ImportDeclaration' &&
-            extensionWebFacet(context.filename)
-          if (solid && (reactOnly.test(source) || localReact))
-            context.report({
-              node,
-              message: `A Solid file renders with Solid alone, so React code in it never runs as written. Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`,
-            })
-          else if (solid && local !== undefined && reactSdk(local))
-            context.report({
-              node,
-              message: `@/sdk is the SDK for React: its hooks run only inside a React render, so in a Solid file they throw or never update. Import the Solid bindings from @/sdk/solid instead of ${source}; types may still come from @/sdk with \`import type\`.`,
-            })
-          else if (
-            !solid &&
-            !rendererBridge(context.filename) &&
-            !islandComponent &&
-            (solidOnly.test(source) || localSolid)
+          const target = local === undefined ? undefined : repositoryPath(local)
+          if (
+            target === bridgeFile &&
+            !/^web\/src\/(app|sdk)\//.test(repositoryPath(context.filename))
           )
+            return context.report({
+              node,
+              message: `Hosts render every contribution through one path, so a React one mounts through the compat layer like any other. Only the core hosts in web/src import the bridge (${bridgeFile}); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/solid.`,
+            })
+          if (compat) return
+          const typeOnly =
+            node.type === 'TSImportType' || node.importKind === 'type' || node.exportKind === 'type'
+          const lazyCompat =
+            node.type === 'ImportExpression' &&
+            target === 'web/src/compat/bridge.tsx' &&
+            repositoryPath(context.filename) === 'web/src/sdk/framework.ts'
+          if (lazyCompat) return
+          const react =
+            reactOnly.test(source) ||
+            source === '@/sdk' ||
+            (target !== undefined &&
+              (compatFile(target) || (target.endsWith('.tsx') && !solidFile(target))))
+          if (react && inRepository(context.filename))
             context.report({
               node,
-              message: `React and Solid meet only in the SDK's island mount, so each file has one renderer and one set of JSX types. Move this code into a .solid.tsx file, or import the Solid component in your extension's web.tsx and contribute it as island(Component) from @/sdk instead of importing ${source} here.`,
+              message: `The core and built-in extensions are Solid; React lives only in the frozen compat layer (web/src/compat/) for React facets outside this repository. Replace ${source} with its Solid counterpart: @/sdk/solid, our UI kit (@/components/ui/*.solid.tsx), @lucide/solid for icons; see docs/extensions/react-compat.md.`,
             })
           else if (
+            !typeOnly &&
             uiSdkComponents.test(source) &&
             !uiKitFile(context.filename) &&
             !inSdk(context.filename)
@@ -378,10 +367,25 @@ export default {
             })
         }
         return {
+          Program(program: Node) {
+            const file = repositoryPath(context.filename)
+            if (
+              inRepository(context.filename) &&
+              !compat &&
+              file !== sidebarPointsForReactFacets &&
+              file.endsWith('.tsx') &&
+              !solidFile(file)
+            )
+              context.report({
+                node: program,
+                message: `The core and built-in extensions are Solid, and a file's framework is its name: rename ${path.basename(file)} to ${path.basename(file, '.tsx')}.solid.tsx (an extension's facet is web.solid.tsx). React stays only in web/src/compat/ for React facets outside this repository; see docs/extensions/react-compat.md.`,
+              })
+          },
           ImportDeclaration: check,
           ImportExpression: check,
           ExportNamedDeclaration: check,
           ExportAllDeclaration: check,
+          TSImportType: check,
         }
       },
     },
@@ -416,6 +420,17 @@ export default {
                 node,
                 message:
                   "A native form submit carries no source, so a change an agent submits is recorded as the person's. Use the kit's Form from @/components/ui and start the change in its type=\"submit\" Button's onClick, which Enter in a field presses too.",
+              })
+            if (
+              node.name?.type === 'JSXIdentifier' &&
+              node.name.name === 'button' &&
+              solidFile(context.filename) &&
+              !context.filename.endsWith('.test.solid.tsx')
+            )
+              context.report({
+                node,
+                message:
+                  "The agent bridge sees only kit parts, so an agent can neither find nor press a bare <button>, and its click is recorded without a source. Use the kit's Button from @/components/ui (size={null} variant={null} for an unstyled one) with a name unique on the page.",
               })
           },
           JSXAttribute(node: Node & { name?: Node }) {
@@ -683,14 +698,11 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         if (!own) return {}
-        const solid = solidFile(context.filename)
         const browser = context.filename.endsWith('.tsx')
-        const allowed = solid ? ['refs.ts', 'ui.solid.tsx'] : browser ? ['ui.tsx'] : ['api.ts']
-        const how = solid
-          ? 'its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its Solid components; its ui.tsx is React)'
-          : browser
-            ? 'its ui.tsx (components, hooks and the refs of its documents and actions)'
-            : 'its api.ts (a service, document or event token)'
+        const allowed = browser ? ['refs.ts', 'ui.solid.tsx', 'ui.tsx'] : ['api.ts']
+        const how = browser
+          ? 'its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its components, hooks and points)'
+          : 'its api.ts (a service, document or event token)'
         const check = (node: ImportNode) => {
           const source = node.source?.value
           if (typeof source !== 'string' || !source.startsWith('.')) return

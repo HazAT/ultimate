@@ -2,7 +2,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createEffect, createMemo, mapArray, onSettled, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
-import type { LiveState } from '@/sdk'
+import type { LiveState } from '@/sdk/solid'
 import {
   ROOT,
   api,
