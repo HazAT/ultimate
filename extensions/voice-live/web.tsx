@@ -944,7 +944,11 @@ function VoiceDock({ core }: { core: ReactNode }) {
   )
 }
 
-function useVoiceRow(main: number | undefined): ReactNode {
+function useVoiceRow({
+  conversation: main,
+}: {
+  conversation: ConversationId | undefined
+}): ReactNode {
   const { voice } = useIds()
   const mode = useMode()
   const actions = useUltimate()

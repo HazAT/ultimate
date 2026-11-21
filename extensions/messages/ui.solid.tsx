@@ -10,6 +10,19 @@ import { WorkspacesDoc } from '../workspaces/refs.ts'
 import { remoteLabel } from './data.ts'
 import type { Remote } from './refs.ts'
 
+export {
+  conversationState,
+  conversationWait,
+  emptyMessages,
+  stateTone,
+  stateWord,
+  waitLabel,
+  waitingOnUser,
+} from './data.ts'
+export type { ConversationState } from './data.ts'
+export { useRemoteProgress } from './progress.solid.tsx'
+export { useStarters, useUnderway } from './started.solid.tsx'
+
 /** The standing name of the conversation, if it has one. */
 export function useStandingName(id: () => ConversationId | 'user' | 'remote') {
   const standing = useDocOf(() => ROOT, StandingDoc)
