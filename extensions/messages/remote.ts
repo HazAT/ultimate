@@ -4,6 +4,9 @@ import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
@@ -17,6 +20,38 @@ import { isOpen } from '../../lib/message-state.ts'
 import { branchesReadThisRun, remoteLabel, senderName, serve } from './addresses.ts'
 import { dropped } from './outcomes.ts'
 import { delivery } from './delivery.ts'
+
+async function startProjectOnDemand(
+  host: Pick<ExtensionHost, 'projects' | 'userHome'>,
+  projectName: string,
+): Promise<{ url: string; label: string; name: string }> {
+  const projects = await host.projects()
+  const projectInfo = projects.find((p) => p.name === projectName)
+  if (!projectInfo?.root) {
+    throw new Error(`${projectName} is not running on this machine; start it to query it`)
+  }
+  const parts = projectInfo.home.split('/.ultimate/projects/')
+  const projectHome = join(host.userHome, '.ultimate/projects', ...parts.slice(1))
+  const lockPath = join(projectHome, 'ultimate.lock')
+  execFile('ultimate', [projectInfo.root, '--no-open'], { stdio: 'ignore' })
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    try {
+      const lock = JSON.parse(await readFile(lockPath, 'utf8'))
+      if (lock.port) {
+        return {
+          url: `http://127.0.0.1:${lock.port}`,
+          label: `${projectName} on this machine`,
+          name: projectName,
+        }
+      }
+    } catch {
+      // lock file not yet written
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  throw new Error(`${projectName} did not start within 30 seconds`)
+}
 
 type PendingRemoteAnswer = {
   message: Message
@@ -76,7 +111,23 @@ export async function tell(
   if (standing?.ultimate !== from)
     throw new Error("Only @ultimate tells another project's Ultimate")
   if (!input.text.trim()) throw new Error('Message text must not be empty')
-  const target = await locate(host, input.project, input.machine)
+  let target: Awaited<ReturnType<typeof locate>>
+  try {
+    target = await locate(host, input.project, input.machine)
+  } catch (error) {
+    const msg = (error as Error).message
+    const match = msg.match(/^(.+?) is not running on this machine; start it to query it$/)
+    if (match) {
+      const projectInfo = (await host.projects()).find((p) => p.name === match[1])
+      if (projectInfo?.root) {
+        target = await startProjectOnDemand(host, match[1])
+      } else {
+        throw error
+      }
+    } else {
+      throw error
+    }
+  }
   if ('current' in target)
     throw new Error(`${input.project} is this project; message its agents with message`)
   const self = await selfAddress(host)
