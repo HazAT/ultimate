@@ -5,13 +5,7 @@ import { Command as CommandPrimitive } from 'cmdk'
 import { cn } from 'cn'
 import { SearchIcon } from 'lucide-react'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from './dialog.tsx'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog.tsx'
 import { commandStyles } from '../../components/ui/command-styles.ts'
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {

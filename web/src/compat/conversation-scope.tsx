@@ -10,7 +10,6 @@ export const ConversationIdContext = createContext<ConversationId | undefined>(u
 
 export const TranscriptContext = createContext<TranscriptFrame | undefined>(undefined)
 
-
 /**
  * Give descendants their own live conversation without switching the shell's shown conversation.
  * Hooks and transcript/composer contributions inherit this id, and so do shortcuts pressed inside it; the palette and

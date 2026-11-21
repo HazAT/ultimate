@@ -15,7 +15,11 @@ const sourceOrder = { builtin: 0, user: 1, project: 2 }
 
 /** An extension's browser facet among its files: `web.solid.tsx` is Solid, `web.tsx` React (the compat layer). */
 export const webFacet = (files: readonly string[]) =>
-  files.includes('web.solid.tsx') ? 'web.solid.tsx' : files.includes('web.tsx') ? 'web.tsx' : undefined
+  files.includes('web.solid.tsx')
+    ? 'web.solid.tsx'
+    : files.includes('web.tsx')
+      ? 'web.tsx'
+      : undefined
 
 export function compareExtensions(
   a: { name: string; source: Source; order?: number },

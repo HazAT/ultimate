@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 
-const compatKit = 'ui/(?:button|checkbox|collapsible|command|dialog|dropdown-menu|kbd|popover|skeleton|switch|tooltip)|ai/(?:tool|message)'
+const compatKit =
+  'ui/(?:button|checkbox|collapsible|command|dialog|dropdown-menu|kbd|popover|skeleton|switch|tooltip)|ai/(?:tool|message)'
 
 /**
  * Where `@/…` resolves in browser code: `@/sdk` and the published React kit names (`@/components/ui/button`) to the
@@ -23,6 +24,8 @@ export const webAliases = (ultimateRoot: string) => {
 export const webModule = (ultimateRoot: string, id: string) => {
   for (const { find, replacement } of webAliases(ultimateRoot))
     if (typeof find === 'string' ? id.startsWith(find + '/') : find.test(id))
-      return typeof find === 'string' ? replacement + id.slice(find.length) : id.replace(find, replacement)
+      return typeof find === 'string'
+        ? replacement + id.slice(find.length)
+        : id.replace(find, replacement)
   return id
 }

@@ -1,13 +1,13 @@
+/** @jsxImportSource @solidjs/web */
 import {
   api,
   defineWebExtension,
   errorMessage,
   getConversation,
   getState,
-  island,
+  notify,
   refreshModels,
-} from '@/sdk'
-import { store } from '@/sdk/client'
+} from '@/sdk/solid'
 import { FellBack } from './fallback.solid.tsx'
 import { agentsPanel } from './family-state.ts'
 import { LoginDialog } from './login.solid.tsx'
@@ -18,10 +18,10 @@ import { Switched } from './switched.solid.tsx'
 import { ModelButton, ThinkingButton } from './toolbar.solid.tsx'
 
 export default defineWebExtension({
-  entries: { 'pi.assistant': island(Switched), 'models.fallback': island(FellBack) },
+  entries: { 'pi.assistant': Switched, 'models.fallback': FellBack },
   slots: {
-    'composer.toolbar': [island(ModelButton), island(ThinkingButton)],
-    overlay: [island(ModelPicker), island(LoginDialog)],
+    'composer.toolbar': [ModelButton, ThinkingButton],
+    overlay: [ModelPicker, LoginDialog],
   },
   commands: [
     {
@@ -69,7 +69,7 @@ export default defineWebExtension({
           const { errors } = await api.action(RefreshCatalogAction, null)
           await refreshModels()
           const failed = Object.entries(errors)
-          store.notify(
+          notify(
             failed.length
               ? {
                   level: 'warning',
@@ -78,7 +78,7 @@ export default defineWebExtension({
               : { level: 'info', message: 'Model catalog refreshed' },
           )
         } catch (error) {
-          store.notify({ level: 'error', message: errorMessage(error) })
+          notify({ level: 'error', message: errorMessage(error) })
         }
       },
     },

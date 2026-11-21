@@ -43,7 +43,15 @@ function contribution(
   )
 }
 
-function Report({ use, input, report }: { use: unknown; input: unknown; report: (value: unknown) => void }) {
+function Report({
+  use,
+  input,
+  report,
+}: {
+  use: unknown
+  input: unknown
+  report: (value: unknown) => void
+}) {
   const value = (use as (input: unknown) => unknown)(input)
   useLayoutEffect(() => {
     report(value)
@@ -61,7 +69,9 @@ export const bridge: ReactBridge = {
           root.render(
             <TooltipProvider delayDuration={400}>
               <ConversationIdContext value={placed.conversation}>
-                <TranscriptContext value={placed.transcript}>{element as ReactNode}</TranscriptContext>
+                <TranscriptContext value={placed.transcript}>
+                  {element as ReactNode}
+                </TranscriptContext>
               </ConversationIdContext>
             </TooltipProvider>,
           ),

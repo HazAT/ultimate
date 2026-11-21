@@ -75,7 +75,10 @@ export function Provided<Input extends object>(props: {
   return (
     <For each={items()} keyed={(item) => `${item.extension}:${item.version}`}>
       {(item) => (
-        <Show fallback={<Provider item={item()} input={copy()} />} when={!isReact(item().component)}>
+        <Show
+          fallback={<Provider item={item()} input={copy()} />}
+          when={!isReact(item().component)}
+        >
           <Provider item={item()} input={props.input as Record<string, unknown>} />
         </Show>
       )}

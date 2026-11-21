@@ -1,12 +1,13 @@
-import { defineWebExtension, island } from '@/sdk'
+/** @jsxImportSource @solidjs/web */
+import { defineWebExtension } from '@/sdk/solid'
 import { readAloudAction } from './action.solid.tsx'
-import * as player from './player.tsx'
+import * as player from './player.solid.tsx'
 import { readingStrip } from './strip.solid.tsx'
 
 const ReadAloudAction = readAloudAction(player)
 const ReadingStrip = readingStrip(player)
 
 export default defineWebExtension({
-  messageActions: [island(ReadAloudAction)],
-  composer: island(ReadingStrip),
+  messageActions: [ReadAloudAction],
+  composer: ReadingStrip,
 })

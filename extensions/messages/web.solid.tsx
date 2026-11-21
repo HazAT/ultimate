@@ -1,5 +1,5 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
-import { attention, ConversationKind, defineWebExtension, island, provide } from '@/sdk'
+/** @jsxImportSource @solidjs/web */
+import { attention, ConversationKind, defineWebExtension, provide } from '@/sdk/solid'
 import { CompactAnswer, MessageAnswerLabel, HiddenEntry } from './compact-answer.solid.tsx'
 import { scriptMessaged, threadRow, ultimateCompact } from './data.ts'
 import { MessageInput } from './message-input.solid.tsx'
@@ -9,29 +9,29 @@ import { MessageNavigation } from './navigation.solid.tsx'
 import { OpenMessages } from './open.solid.tsx'
 import { QuestionPointer } from './pointer.solid.tsx'
 import { OffscreenQuestions } from './waiting.solid.tsx'
-import { StandingDoc } from '../subagents/ui.tsx'
+import { StandingDoc } from '../subagents/refs.ts'
 import type { MessagesData } from './refs.ts'
 
 const afterPinnedPromptOrder = 1
-const input = island(MessageInput)
-const hidden = island<{ entry: EntryRecord }>(HiddenEntry)
+const input = MessageInput
+const hidden = HiddenEntry
 
 export default defineWebExtension({
   slots: {
-    overlay: [island(MessageNavigation)],
-    'composer.status': [island(OpenMessages)],
-    'transcript.top': [{ component: island(OffscreenQuestions), order: afterPinnedPromptOrder }],
+    overlay: [MessageNavigation],
+    'composer.status': [OpenMessages],
+    'transcript.top': [{ component: OffscreenQuestions, order: afterPinnedPromptOrder }],
   },
   entries: {
     'board.message': input,
     'board.reply': input,
-    'board.asked': attention(island(QuestionPointer)),
+    'board.asked': attention(QuestionPointer),
     'board.answered': hidden,
     'board.wake': hidden,
     'board.open': hidden,
-    'pi.assistant': island(CompactAnswer),
+    'pi.assistant': CompactAnswer,
   },
-  tools: { message: island(MessageCall), branch: island(BranchCall) },
+  tools: { message: MessageCall, branch: BranchCall },
   compact: {
     when: (conversation, docs) => ultimateCompact(conversation, docs[StandingDoc.kind]),
     tools: [
@@ -43,12 +43,14 @@ export default defineWebExtension({
     ],
     docs: ['board', StandingDoc.kind],
     thread: (row, docs) => threadRow(row, docs.board as MessagesData | null | undefined),
-    summary: island(StretchSummary),
+    summary: StretchSummary,
   },
-  answerLabels: [island(MessageAnswerLabel)],
+  answerLabels: [MessageAnswerLabel],
   provides: [
-    provide(ConversationKind, (conversation) =>
-      conversation?.label === 'coordinator' ? 'branch · coordinator' : undefined,
+    provide(
+      ConversationKind,
+      (conversation) => () =>
+        conversation()?.label === 'coordinator' ? 'branch · coordinator' : undefined,
     ),
   ],
 })

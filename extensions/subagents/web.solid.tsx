@@ -1,32 +1,33 @@
-import { NetworkIcon } from 'lucide-react'
-import { defineWebExtension, ErrorReport, island, provide } from '@/sdk'
-import { agentsPanel } from '../models/ui.tsx'
+/** @jsxImportSource @solidjs/web */
+import { NetworkIcon } from '@lucide/solid'
+import { defineWebExtension, ErrorReport, provide } from '@/sdk/solid'
+import { agentsPanel } from '../models/ui.solid.tsx'
 import { SubagentCall } from './call.solid.tsx'
 import { DefinitionDialog } from './definitions.solid.tsx'
-import { useErrorReport } from './error-report.tsx'
+import { errorReport } from './error-report.ts'
 import { AgentInbox } from './inbox.solid.tsx'
 import { LandOnUltimate } from './land-on-ultimate.solid.tsx'
 import { AgentInput, AgentMessages } from './messages.solid.tsx'
 import { AgentsPanel } from './overview.solid.tsx'
-import { talkToUltimate } from './ui.tsx'
+import { talkToUltimate } from './ui.solid.tsx'
 
 export default defineWebExtension({
-  tools: { subagent: island(SubagentCall) },
+  tools: { subagent: SubagentCall },
   panels: [
     {
       id: agentsPanel,
       title: 'Agents',
       icon: NetworkIcon,
-      component: island(AgentsPanel),
+      component: AgentsPanel,
       order: 3,
     },
   ],
-  entries: { 'subagents.instruction': island(AgentInput), 'subagents.report': island(AgentInput) },
-  inbox: island(AgentInbox),
-  provides: [provide(ErrorReport, useErrorReport)],
+  entries: { 'subagents.instruction': AgentInput, 'subagents.report': AgentInput },
+  inbox: AgentInbox,
+  provides: [provide(ErrorReport, () => () => errorReport)],
   slots: {
-    overlay: [island(DefinitionDialog), island(LandOnUltimate)],
-    'header.right': [island(AgentMessages)],
+    overlay: [DefinitionDialog, LandOnUltimate],
+    'header.right': [AgentMessages],
   },
   commands: [
     {

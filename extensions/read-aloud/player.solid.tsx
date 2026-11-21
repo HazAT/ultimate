@@ -1,5 +1,6 @@
+/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { api, errorMessage } from '@/sdk'
+import { api, errorMessage } from '@/sdk/solid'
 import { meansNone } from '../../lib/errors.ts'
 import { SpeakAction } from './refs.ts'
 import type { SpokenSection } from './refs.ts'

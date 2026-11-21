@@ -1,20 +1,21 @@
-import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, island, provide } from '@/sdk'
+/** @jsxImportSource @solidjs/web */
+import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, provide } from '@/sdk/solid'
 import { SummaryModelDialog, summaryModelDialog } from './summary-model.solid.tsx'
 import { StandingEmpty } from './standing.solid.tsx'
-import { useStandingPlaceholder } from './standing.tsx'
+import { standingPlaceholder } from './placeholder.solid.tsx'
 import { HiddenIdentity, SummaryAction } from './summary-entry.solid.tsx'
 import { MentionLink } from './mention.solid.tsx'
 
-const summary = island(SummaryAction)
+const summary = SummaryAction
 
 export default defineWebExtension({
   provides: [
-    provide(ComposerPlaceholder, useStandingPlaceholder),
-    provide(EmptyTranscript, island(StandingEmpty)),
+    provide(ComposerPlaceholder, standingPlaceholder),
+    provide(EmptyTranscript, StandingEmpty),
   ],
   link: MentionLink,
   entries: {
-    'conversations.identity': island(HiddenIdentity),
+    'conversations.identity': HiddenIdentity,
     'conversations.title-changed': summary,
     'conversations.feature-changed': summary,
     'conversations.intent-summarized': summary,
@@ -22,7 +23,7 @@ export default defineWebExtension({
     'conversations.assessed': summary,
     'conversations.summary-discarded': summary,
   },
-  slots: { overlay: [island(SummaryModelDialog)] },
+  slots: { overlay: [SummaryModelDialog] },
   commands: [
     {
       id: 'conversations.summary-model',

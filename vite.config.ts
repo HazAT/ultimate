@@ -105,14 +105,6 @@ export default defineConfig({
         rules: { 'unicorn/require-post-message-target-origin': 'off' },
       },
       {
-        files: ['extensions/instance/web.tsx'],
-        rules: { 'react/iframe-missing-sandbox': 'off' },
-      },
-      {
-        files: ['web/src/app/transcript.tsx'],
-        rules: { 'react/immutability': 'off' },
-      },
-      {
         files: ['test/**', 'extensions/*/test/**'],
         excludeFiles: ['test/e2e/**', 'extensions/*/test/e2e/**'],
         rules: {

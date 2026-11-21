@@ -1,16 +1,16 @@
-import { useMemo } from 'react'
+/** @jsxImportSource @solidjs/web */
+import { createMemo } from 'solid-js'
 import {
   ROOT,
   api,
   attention,
   defineWebExtension,
   getState,
-  island,
   ParkedRuns,
   provide,
   useDocOf,
   useTasks,
-} from '@/sdk'
+} from '@/sdk/solid'
 import { AutoPlayedNote, Held, Limit, Note } from './entries.solid.tsx'
 import { parkedConversations } from './parked.ts'
 import { PauseAction, PauseDoc, PlayAction } from './refs.ts'
@@ -18,26 +18,26 @@ import { Hint, Item, Play } from './status.solid.tsx'
 
 const paused = () => getState().docsOf[ROOT]?.[PauseDoc.kind]?.paused === true
 
-function useParked() {
-  const pausedNow = useDocOf(ROOT, PauseDoc)?.paused === true
+function parked() {
+  const pause = useDocOf(() => ROOT, PauseDoc)
   const graph = useTasks()
-  return useMemo(() => parkedConversations(graph, pausedNow), [graph, pausedNow])
+  return createMemo(() => parkedConversations(graph(), pause()?.paused === true))
 }
 
 export default defineWebExtension({
-  provides: [provide(ParkedRuns, useParked)],
+  provides: [provide(ParkedRuns, parked)],
   slots: {
     'statusline.right': [
-      { component: island(Item), order: -3, phone: true },
-      { component: island(Play), order: -3, phone: true },
+      { component: Item, order: -3, phone: true },
+      { component: Play, order: -3, phone: true },
     ],
-    'composer.status': [island(Hint)],
+    'composer.status': [Hint],
   },
   entries: {
-    'pause.note': island(Note),
-    'pause.limit': attention(island(Limit)),
-    'pause.autoplay': island(AutoPlayedNote),
-    'pause.held': island(Held),
+    'pause.note': Note,
+    'pause.limit': attention(Limit),
+    'pause.autoplay': AutoPlayedNote,
+    'pause.held': Held,
   },
   commands: [
     {

@@ -65,11 +65,10 @@ export async function appIdentity(projectRoot: string, userHome: string) {
 }
 
 export async function webFacets(ultimateRoot: string, projectRoot: string, userHome: string) {
-  return (await discoverExtensions(ultimateRoot, projectRoot, userHome))
-    .flatMap((entry) => {
-      const facet = webFacet(entry.files)
-      return entry.enabled && facet ? [join(entry.path, facet)] : []
-    })
+  return (await discoverExtensions(ultimateRoot, projectRoot, userHome)).flatMap((entry) => {
+    const facet = webFacet(entry.files)
+    return entry.enabled && facet ? [join(entry.path, facet)] : []
+  })
 }
 
 const escapeAttribute = (text: string) =>
@@ -207,9 +206,7 @@ export async function createWeb(options: {
       const file = result.error.file
       const facet =
         file &&
-        targets.find(
-          (entry) => webFacet(entry.files) && file.startsWith(entry.target + sep),
-        )
+        targets.find((entry) => webFacet(entry.files) && file.startsWith(entry.target + sep))
       if (!facet || facet.name in broken) {
         failed = `The web UI did not build${file ? ` (${relative(ultimateRoot, file)})` : ''}: ${result.error.message}`
         options.notice(failed)
