@@ -59,7 +59,11 @@ try {
         outDir: undefined,
         noEmit: true,
         types: [...cloneWebAndBundlerOptions.types, 'node'],
-        paths: { '@/*': [join(clone, 'web/src/*')] },
+        paths: Object.fromEntries(
+          Object.entries(cloneWebAndBundlerOptions.paths as Record<string, string[]>).map(
+            ([alias, targets]) => [alias, targets.map((target) => join(clone, target))],
+          ),
+        ),
       },
       include: ['ext/*/web.solid.tsx', 'ext/*/web.tsx', 'ext/*/server.ts'],
     }),
