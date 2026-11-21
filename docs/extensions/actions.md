@@ -104,6 +104,9 @@ export const userActions = ['decide']
 ```
 
 Codemode rejects these calls with `<extension>/<action> is a user-only action`; the HTTP path still calls them.
+`userActions` restrict codemode and tools, not pages: a page an agent drives with the browser tool may press the
+control that calls one, by design. To have the UI ask a person, mark that control `data-agent-confirm="what it does"`:
+the browser tool's step on it fails with "Needs a person" (`skills/solid-ui/SKILL.md`).
 
 Likewise `pollActions: string[]` names read-only actions a surface polls with changing arguments (cursors, windows):
 the call trace counts their successful calls in `host.trace.polls()` instead of writing them, with the plain action

@@ -19,7 +19,7 @@ export { MessagesDoc, MessageSent } from './refs.ts'
 export { accentOf } from './accent.ts'
 export type { ConversationState } from './data.ts'
 export { useRemoteProgress } from './progress.solid.tsx'
-export { useStarters, useUnderway } from './started.solid.tsx'
+export { useUnderway } from './started.solid.tsx'
 export { Body } from './card-parts.solid.tsx'
 /** The sender and timestamp header used by message-shaped cards. */
 export { BubbleHeader } from './bubble.solid.tsx'

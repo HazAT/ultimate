@@ -1,6 +1,6 @@
 Entry kinds that core extensions on both sides of a dependency read. The extension that writes an entry and the one
 that renders or routes it may not import each other (`pnpm deps` fails on a cycle), so the token lives here, below
-both: `refs.ts` defines it with `defineEntry`, `api.ts` passes it on to server code and `ui.tsx` to browser code. Each
+both: `refs.ts` defines it with `defineEntry`, `api.ts` passes it on to server code and `ui.solid.tsx` to browser code. Each
 reader narrows with `Token.is(entry)` instead of casting `entry.data`.
 
 Today: `lineage.note` (lineage writes it, workspaces renders landings), `board.message` and `board.reply` (messages

@@ -22,7 +22,7 @@ export type ErrorCardProps = {
 const reactCompatDoc = 'https://github.com/HazAT/ultimate/blob/main/docs/extensions/react-compat.md'
 
 const reactCompatNote =
-  "Ultimate's core is Solid now; this React facet (web.tsx) runs on a frozen compat layer, and this part of it broke there."
+  "Ultimate's core is Solid; this React facet (web.tsx) runs on a frozen compat layer, and this part of it broke there."
 
 function useReactFacet(extension: () => string) {
   const extensions = useExtensions()

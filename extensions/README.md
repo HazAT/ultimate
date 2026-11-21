@@ -34,7 +34,7 @@ An extension is a folder `<name>/` in `extensions/` (built-in), `~/.ultimate/ext
 
 Split a large `web.solid.tsx` into more `*.solid.tsx` files in the same folder (see `coding-tools/diff.solid.tsx`).
 The folder name is the extension name; a `server.ts` extension must use it as its `name`. Outside the repository,
-existing React facets named `web.tsx` still run on the [compat layer](../docs/extensions/react-compat.md).
+a React facet named `web.tsx` runs on the [compat layer](../docs/extensions/react-compat.md).
 
 Each web facet loads on its own. If it fails to compile, throws, or exports a contribution of the wrong shape (such as
 `surfaces: {}` instead of an array, or a command without `run`), an error card names it and the rest of the UI keeps

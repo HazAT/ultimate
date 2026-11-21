@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { fauxServer, temp, until } from '../../../../test/helpers.ts'
@@ -40,7 +40,6 @@ if (process.argv[2] === 'models') {
 
     const before = runtime.getProvider('antigravity')
     const file = join(server.host.ultimateRoot, 'extensions/antigravity/server.ts')
-    await writeFile(file, (await readFile(file, 'utf8')) + '\n')
     server.vite.watcher.emit('change', file)
     await until(() => runtime.getProvider('antigravity') !== before)
     await until(() => !!runtime.getProvider('antigravity'))

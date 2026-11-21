@@ -21,14 +21,13 @@ import {
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import { useAutomations, timerWaits } from '../automations/ui.solid.tsx'
 import { OverviewDoc } from '../conversations/refs.ts'
-import { hiddenConversationIds, useConcludedSince } from '../conversations/ui.solid.tsx'
+import { hiddenConversationIds } from '../conversations/ui.solid.tsx'
 import { RootsDoc } from '../lineage/refs.ts'
 import { MessagesDoc } from '../messages/refs.ts'
 import {
   conversationWait,
   emptyMessages,
   useRemoteProgress,
-  useStarters,
   useUnderway,
   waitLabel,
 } from '../messages/ui.solid.tsx'
@@ -94,9 +93,7 @@ export function useSidebarData() {
   const unlisted = createMemo(() => new Set(exclusions().flatMap((set) => [...set])))
   const timersList = useAutomations(() => 5000)
   const timers = createMemo(() => timerWaits(timersList().data, standingIds()))
-  const starterOf = useStarters()
   const underway = useUnderway()
-  const concludedSince = useConcludedSince()
   const [concludedIds] = useSidebarState<number[]>('concluded', [])
   const [seen] = useSidebarState<Record<string, number>>('seen', {})
   const [expanded, setExpanded] = useSidebarState<number[]>('expanded', [])
@@ -158,8 +155,6 @@ export function useSidebarData() {
     runState: row(id)?.runState,
     busy: live,
     parked: parked(id),
-    starter: starterOf(id),
-    concludedSince: concludedSince(id),
   })
   const primaryWait = createMemo(() => {
     const id = ultimateId()

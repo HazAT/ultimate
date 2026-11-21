@@ -3,8 +3,7 @@ import { ArrowRightIcon, CircleAlertIcon, MessageSquareIcon } from '@lucide/soli
 import { createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
-import { cn } from '@/sdk/solid'
-import type { writingAs } from '@/sdk/solid'
+import { cn, writingAs } from '@/sdk/solid'
 import { commentCount, limits } from './comments.ts'
 import type { Drafts } from './drafts.ts'
 
@@ -29,7 +28,8 @@ export function Footer(props: {
           aria-label="Overall note"
           class="mb-2 block max-h-40 min-h-12 w-full resize-y rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/50 focus:border-brand/50 focus-visible:ring-0"
           onValueChange={(note, details) => {
-            const kept = props.update((all) => ({ ...all, note }))
+            const write = () => props.update((all) => ({ ...all, note }))
+            const kept = writingAs('app', write)
             if (!kept) {
               details.cancel()
               const field = details.event?.target

@@ -180,10 +180,10 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is a smal
   still works, but the bridge reports nothing); `agent: { secret: true }` in a `definePrimitive` whose value must never
   be read.
 - **Names:** every control has a visible label or `aria-label` naming its action (`Play paused work`, `Pause: stop
-  starting new work`). The bridge resolves a name as whole words of a label or row text, regardless of case and
-  accents, so no name on the page may appear as whole words in another ("New to-do" also named "New to-do for";
-  "Finished" also named "Play Finished"; a popover trigger and its switch were both "Sounds"; "Resume" and "Résumé").
-  Cards repeat (two `subagent` calls to one child, a start and a list card of one preview, two codemode results, every
+  starting new work`). The bridge resolves a name regardless of case and accents: a label that exactly names one
+  control wins, and otherwise it matches whole words of a label or row text. So a label may appear inside a longer one
+  ("Finished" beside "Play Finished"), but no two controls on the page may share a label (a popover trigger and its
+  switch were both "Sounds"; "Resume" and "Résumé"), and an agent naming a control uses its whole label. Cards repeat (two `subagent` calls to one child, a start and a list card of one preview, two codemode results, every
   reply's copy button), so a card's controls name the call or entry they sit on (`Show conversation #34 (call
   1a2b3c4d)`, `Go back to message #812`), options their position (`Option 2 · question 2 · message 2`), and a shared
   part takes an `on` (`TaskChip`) or `name` (`JsonTree`) prop to carry it. A tree names nodes by a path that cannot
@@ -297,8 +297,13 @@ Tooling:
   through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
 - A test fixture that registers a Solid facet names it `web.solid.tsx`; `web.tsx` loads the React compat layer and is
   only for testing that layer.
-- Check the entry bundle after a change that may grow it (`node scripts/frontend-weight.ts`, `entryAssetsGzip`);
-  measure each commit in a throwaway detached worktree to find the one that grew it.
+- Check the entry bundle after a change that may grow it: sum the gzipped scripts and styles the page links, on a
+  preview of the change and of its parent:
+
+  ```bash
+  for a in $(curl -s $URL/ | grep -oE '(src|href)="/[^"]+\.(js|css)"' | cut -d'"' -f2 | sort -u); do
+    curl -s $URL$a | gzip -9 | wc -c; done | awk '{s+=$1} END {print int(s/1024) " KB gzip"}'
+  ```
 
 ## Testing
 
@@ -341,16 +346,15 @@ Tooling:
 
 ## Measuring
 
-`docs/frontend-baseline.md` says how each number is measured (`node scripts/frontend-weight.ts`, the `measure-switch`
-skill) and holds the migration's end result against pure React.
-
 A slower switch is found by what one warm switch does, not by guessing: the `measure-switch` skill's `--profile`, a
 DevTools trace of one switch (forced layouts and their stacks). Compare against the parent commit in the same
-session: one run's warm median moves 30–50 ms with machine load, so read three runs of each tree, interleaved.
+session: one run's warm median moves 30–50 ms with machine load, so compare interleaved runs of both trees
+(`measure-switch`'s `paired.ts`).
 
 ## Done means
 
 1. `pnpm check` passes.
 2. Tests for the behaviour, as above.
-3. Look at it with the `verify-ui` skill; for a visible change, a preview round.
+3. Look at it with the `verify-ui` skill. Whether it also needs the user's approval on a preview is the
+   `ui-preview-round` skill's call.
 4. Report anything the skills, docs or types got wrong, so this skill or a lint rule catches it next time.

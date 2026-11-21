@@ -21,6 +21,7 @@ import {
   showSurface,
   switchConversation,
   useAction,
+  writingAs,
 } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
@@ -192,6 +193,10 @@ type ViewProps = { view: StreamView; setView: (view: StreamView) => void }
 
 function Filters(props: ViewProps) {
   const update = (changes: Partial<StreamView>) => props.setView({ ...props.view, ...changes })
+  const typed = (text: string) => {
+    const write = () => update({ text })
+    writingAs('app', write)
+  }
   return (
     <div class="flex flex-wrap items-center gap-1 px-3 py-2">
       <SegmentedControl
@@ -239,7 +244,7 @@ function Filters(props: ViewProps) {
         <Input
           aria-label="Filter event text"
           class="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 font-mono text-[11px] shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/60"
-          onValueChange={(text) => update({ text })}
+          onValueChange={typed}
           placeholder="filter text"
           value={props.view.text}
         />

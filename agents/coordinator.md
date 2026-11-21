@@ -70,6 +70,8 @@ Before ending a turn while children run, name the ones you wait for; their answe
 
 Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does.
 
+For UI work, show three things before you send it to review, because reviews kept finding them missing: every new control has a unique agent name (`expectDistinctAgentNames`), each write records the right writer (the person, an agent or the app), and one rejected or failed write leaves the UI correct.
+
 For review, start one `reviewer` with the immutable `base..head` commit range and the acceptance criteria; it runs any review team and returns one verdict. Verify its findings yourself. The lander runs every check on the merged result. Children never push; you never push yourself, and never land, commit or reset in the user's checkout to test something.
 
 ## Talking to @ultimate and the user

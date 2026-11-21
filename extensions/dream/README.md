@@ -14,7 +14,7 @@ A dream is ordinary work; code keeps only which branch is the dream, so its end 
    to the turn's start) becomes `dream.next.dream { branch, requested, at }`.
 3. **Decided.** @ultimate weighs in and the dream branch asks the user with a questions card; approved ones become ordinary branches or
    `remember` batches.
-4. **Woke.** Once the dream branch is concluded, the sidebar (`awake.tsx`) and the status line show "The dream is
+4. **Woke.** Once the dream branch is concluded, the sidebar (`awake.solid.tsx`) and the status line show "The dream is
    done" with **Fall asleep…**, until a chapter is prepared after it or the user dismisses it (user-only `dismiss`).
    Fall asleep calls user-only `ready`, which wakes @ultimate with a `dream.ready` input asking it to prepare.
 5. **Prepared.** @ultimate calls `prepare {chapter, learned, handoff}`: the chapter's name, three learned lines and a fresh handover (at most 12,000 characters). It is kept in

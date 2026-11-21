@@ -173,6 +173,42 @@ it('announces the current choice and rating, and clears picks without advancing'
   await uiState.flush()
 })
 
+it('keeps typed drafts without recording them, and records a person picking and sending', async () => {
+  const typed: Message = { ...message, id: 8 }
+  const card = renderSolid(() => (
+    <MessageQuestions message={typed} keys={false} withActions={false} />
+  ))
+  const note = card.querySelector<HTMLTextAreaElement>('textarea[data-note]')!
+  for (const text of ['O', 'Ok', 'Ok!']) {
+    note.value = text
+    note.dispatchEvent(new InputEvent('input', { bubbles: true }))
+    flush()
+    await uiState.flush()
+  }
+  expect(uiState.get(CARDS_KEY)).toMatchObject({ 'message:8': { note: 'Ok!' } })
+  expect(new Set(harness.writers)).toEqual(new Set(['app']))
+  harness.writers.length = 0
+  card
+    .querySelector<HTMLButtonElement>('[aria-label="Option 1 · Sidebar · question 1 · message 8"]')!
+    .click()
+  flush()
+  await uiState.flush()
+  expect(harness.writers).toEqual(['person'])
+  card.querySelector<HTMLButtonElement>('[aria-label="Send 1 of 2: answer to message 8"]')!.click()
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(harness.actions).toEqual([
+    {
+      name: 'answer',
+      args: {
+        messageId: 8,
+        answers: [{ question: 'Where should it sit?', answer: 'Sidebar' }],
+        note: 'Ok!',
+      },
+      source: 'person',
+    },
+  ])
+})
+
 it('lets an agent choose, undo a send, send again, and dismiss another card', async () => {
   const folded: Message = {
     ...message,

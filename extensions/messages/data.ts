@@ -36,8 +36,6 @@ type Conversation = {
   runState?: 'working' | 'queued' | 'idle' | 'answered' | 'error'
   busy?: boolean
   parked?: boolean
-  concludedSince?: number
-  starter?: number
 }
 
 export function conversationWait(
@@ -52,8 +50,6 @@ export function conversationWait(
       conversation.runState === 'queued',
     messages: log.messages,
     automations,
-    starter: conversation.starter,
-    concluded: conversation.concludedSince === Infinity,
   })
 }
 
@@ -96,7 +92,6 @@ export function waitLabel(
     case 'user':
       return 'waits on you'
     case 'agent':
-    case 'starter':
       return wait.to === primary
         ? `waits on @ultimate${primaryWait?.on === 'remote' ? ` → ${primaryWait.project}${suffix}` : ''}`
         : `waits on #${wait.to}`
@@ -297,12 +292,7 @@ export function openMessages(
 ) {
   const owedBranches = branches.filter((branch) => {
     const wait = waitsOn(branch.id, { ...branch, messages, automations })
-    return (
-      !branch.concluded &&
-      branch.starter === id &&
-      (wait?.on === 'starter' || wait?.on === 'agent') &&
-      wait.to === id
-    )
+    return !branch.concluded && branch.starter === id && wait?.on === 'agent' && wait.to === id
   })
   return {
     waiting: messages.filter((m) => m.from === id && isOwed(m)),
