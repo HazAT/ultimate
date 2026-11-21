@@ -6,12 +6,14 @@ import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
+import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { System } from '../../surface.solid.tsx'
 import { SystemTab, SYSTEM_TAB_KEY } from '../../ui.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   writes: [] as { key: string; value: unknown; source: string | null }[],
+  sources: [] as FakeSource[],
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -54,10 +56,20 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     }
     if (path.endsWith('/system/actions/stream'))
       return Response.json({ result: { rows: [], head: 'first' } })
-    return Response.json({ result: undefined })
+    return server.handle(path, init) ?? Response.json({ result: undefined })
   }
-  const store = createStore({ fetch })
-  const api = createApi(store, { fetch })
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const server = fakeSubscriptions(harness.sources)
+  const pageFetch = answerReadsWith(fetch)
+  const store = createStore({
+    fetch: pageFetch,
+    eventSource: (url) => {
+      const source = new FakeSource(url)
+      harness.sources.push(source)
+      return source
+    },
+  })
+  const api = createApi(store, { fetch: pageFetch })
   return {
     api,
     store,
@@ -67,12 +79,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { registry, uiState } from '../../../../web/src/sdk/client.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { ExtensionName } from '../../../../web/src/sdk/solid.ts'
 
 const agent = createAgent()
 
-it('switches to a contributed System tab and picks an Agents window, attributing both writes to the agent', async () => {
+it('switches to a contributed System tab and picks an Agents window, attributing both writes to the agent', async ({
+  onTestFinished,
+}) => {
+  store.start()
+  onTestFinished(() => store.stop())
+  harness.sources.at(-1)!.open()
   vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {} }))
   vi.stubGlobal(
     'IntersectionObserver',
