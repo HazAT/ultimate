@@ -82,6 +82,7 @@ export type ExtensionHost = Pick<
   projectExtensions(): Promise<ExtensionInfo[]>
   setProjectDecision(local: boolean): Promise<void>
   reloadExtensions(): Promise<void>
+  reloadSelf(): Promise<void>
   invoke(
     name: string,
     action: string,
@@ -241,6 +242,7 @@ export async function loadExtensions(
         beforeLoad.add(callback)
         stops.add(() => beforeLoad.delete(callback))
       },
+      reloadSelf: () => queued(() => reload(new Set([name]))),
       react: (reactorName, tokens, handler, options) => {
         const reactor = log.reactor(`${name}/${reactorName}`, tokens, handler, options)
         facetHost.onOpen(reactor.start)
@@ -340,7 +342,7 @@ export async function loadExtensions(
       }),
     )
   }
-  const extensionHost: ExtensionHost = {
+  const extensionHost: Omit<ExtensionHost, 'reloadSelf'> = {
     invoke: async (name, action, args, signal, conversationId) => {
       if (userActions.get(name)?.includes(action))
         throw new Error(`${name}/${action} is a user-only action`)
@@ -435,12 +437,7 @@ export async function loadExtensions(
       await extensionHost.reloadExtensions()
     },
     reloadExtensions: async () => {
-      const work = chain
-        .then(() => (closed ? undefined : prepareLoadBestEffort()))
-        .then(() => (closed ? undefined : reloadSettings()))
-      const recoveredQueueForLaterReloads = work.catch(() => changed())
-      chain = recoveredQueueForLaterReloads
-      await work
+      await queued(reloadSettings)
       await rebuildWeb()
     },
     doc: findDoc,
@@ -455,6 +452,13 @@ export async function loadExtensions(
       ),
     )
   let chain = Promise.resolve()
+  async function queued(work: () => Promise<void>) {
+    const run = chain
+      .then(() => (closed ? undefined : prepareLoadBestEffort()))
+      .then(() => (closed ? undefined : work()))
+    chain = run.catch(() => changed())
+    await run
+  }
   function enqueue(work: () => Promise<void>) {
     chain = chain
       .then(() => (closed ? undefined : prepareLoadBestEffort()))

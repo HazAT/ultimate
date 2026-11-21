@@ -25,6 +25,7 @@ Connects the MCP servers in `mcpServers` and lets agents use their tools through
 - **Secrets:** `${NAME}` in `args`, `env`, `url` or `headers` is replaced by the secret `NAME` from the Secrets panel (⌘K → Secrets). Never write a token inline. Each such name is declared as a secret, so the Secrets panel lists it, set or missing, with the servers using it. A missing secret fails that server with its name and an Add button; saving it there connects the server again.
 - **Precedence:** user and project servers merge by name; a project entry replaces a user entry of the same name. Project servers run commands, so they load only once the project's setup is trusted (`host.projectSettings()` is empty before).
 - `"disabled": true` leaves a server out.
+- **Per person, per project:** the popover's switch turns a server off for the current project, and its pin runs it only in the projects you pin it in. Both go to `~/.ultimate/mcp.json`, keyed by server name and the project's main checkout, never into a settings file: `{ "servers": { "files": { "only": ["/path/to/my-app"] }, "my-server": { "off": ["/path/to/other-app"] } } }`. A switch reloads only this extension (`host.reloadSelf()`), not the web UI; a hand edit of the file applies at the next reload. A server that is off in a project is listed there as `off` and is not in the agents' `mcp` tool.
 
 Saving either settings file reconnects every server. OAuth is not supported yet: a server behind OAuth needs a token or service credentials in headers.
 
@@ -42,6 +43,6 @@ Servers connect when the server opens, each on its own: a failing one never bloc
 
 ## UI
 
-The status line's `mcp 2/3` chip counts connected out of configured servers, turns red while one failed, and is hidden when none is configured. Its popover lists each server with its transport, source, state or tool count, the error and the next retry, and a reconnect button. The Extensions panel's `mcp` row lists the same servers when opened.
+The status line's `mcp 2/3` chip counts connected out of configured servers, turns red while one failed, and is hidden when none is configured. Its popover lists each server with its transport, source, state or tool count, the error and the next retry, an only-here pin, a reconnect button and an on/off switch; it counts only servers that are on, and reads `mcp off` when all are off. The Extensions panel's `mcp` row lists the same servers when opened.
 
-Actions: `status` → every server's state; `reconnect {name}` → connects one again and returns the states.
+Actions: `status` → every server's state; `reconnect {name}` → connects one again and returns the states; `choose {name, enabled}` switches one on or off for this project and `choose {name, only}` runs it only here (`true`) or everywhere again (`false`).

@@ -7,7 +7,10 @@ export type McpServerStatus = {
   /** Which settings file it comes from; a project entry replaces a user one of the same name. */
   source: 'user' | 'project'
   transport: 'stdio' | 'http'
-  state: 'connecting' | 'connected' | 'failed'
+  /** `off`: switched off for this project in the user's `~/.ultimate/mcp.json`; agents here do not see it. */
+  state: 'connecting' | 'connected' | 'failed' | 'off'
+  /** It runs only in the projects the user listed for it. */
+  only?: boolean
   /** How many tools it offers, once connected. */
   tools?: number
   error?: string
@@ -21,3 +24,8 @@ export type McpServerStatus = {
 export const StatusAction = actionRef<null, McpServerStatus[]>('mcp', 'status')
 /** `{ name }` → connects that server again now, and returns every server's state once it is connected or failed. */
 export const ReconnectAction = actionRef<{ name: string }, McpServerStatus[]>('mcp', 'reconnect')
+/** `{ name, enabled }` → switches it on or off for this project; `{ name, only }` → `true` runs it only in this project, `false` everywhere again. Written to the user's `~/.ultimate/mcp.json`; the extension reloads itself. */
+export const ChooseAction = actionRef<{ name: string; enabled?: boolean; only?: boolean }, null>(
+  'mcp',
+  'choose',
+)
