@@ -113,6 +113,13 @@ The libraries ship skills that match the pinned versions: read them, not your me
 - **A module several frameworks drive** (read-aloud's player) stays one plain module: `web.tsx` hands it to a Solid
   factory at module scope (`const Action = readAloudAction(player)`), and the factory's component subscribes to it.
   That keeps browser-only promises out of a `.ts` file the server lint would check.
+- **The sidebar is Solid (step C4b).** It reads every other extension's point through the bridge's public entry,
+  `@/sdk/parts.solid.tsx`: `useProvided` for one value, `useAllProvided` for every provider's (`Unlisted`), `Provided`
+  for UI another extension draws (`UnderUltimate`, the task chip) and `Slot` for a slot (`sidebar.top`). The bridge file
+  itself is only for `web/src`. Each `useProvided`/`useAllProvided` mounts one hidden React root, so read a point once
+  per row or once per list, never per cell. A point whose value is a React node (phase's `label`) is read for its plain
+  fields only (`word`) and drawn again in Solid; a point that returns UI takes an object input (`{ conversation }`) so
+  `Provided` can pass it to `island(C)` providers.
 - **The composer is Solid (step C3).** A `composer` wrapper is `island(C)` with `C` typed `SolidComposerProps`, an
   `inbox` renderer `island(C)` with `SolidInboxProps`; read the redirect target with `useContext(ComposerRedirect)`
   (an accessor) and provide it with `<ComposerRedirect value={target}>` around `props.core`. A core host renders every
@@ -249,6 +256,9 @@ Solid 2:
   rendered nothing (`data-empty`); `:empty` alone no longer matches once the bridge wraps React.
 - A Web Animation started from a `ref` callback runs before the element is inserted and stays at its first frame in
   Chromium: start it in `onSettled` (`extensions/questions/send.solid.tsx`).
+- A control that shows only on hover or focus (`invisible group-hover:visible group-focus-within:visible`, a row's
+  `…` menu) is absent from the agent snapshot at rest: an agent focuses the row first. Keep that look rather than
+  making the trigger always visible; test the focus-then-open path.
 - `expectDistinctAgentNames` is async: `await` it, or the test passes whatever the names.
 - React refused `javascript:` URLs in `href`; Solid sets the attribute as given. A link built from tool output or a
   provider's data parses the URL and links only `http(s):`, showing anything else as text
