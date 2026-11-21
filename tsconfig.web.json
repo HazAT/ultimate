@@ -69,6 +69,7 @@
     "extensions/dream/stage.ts",
     "extensions/dream/types.ts",
     "extensions/lineage/types.ts",
+    "extensions/lineage/points.ts",
     "extensions/lineage/memory-chip.ts",
     "extensions/system/tab.ts",
     "extensions/phase/types.ts",
