@@ -45,7 +45,7 @@ export function ModelButton() {
       </Show>
       <span
         class={cn(
-          'flex min-w-0 whitespace-pre',
+          'flex min-w-0',
           !loading() && (ref() ? 'text-foreground/85' : 'text-warning'),
         )}
       >
@@ -58,7 +58,7 @@ export function ModelButton() {
           {(current) => (
             <>
               <span class="truncate">{familyTitle(current().name)}</span>
-              <span class="min-w-0 shrink-[0.2] truncate">{` (${ref()!.modelId})`}</span>
+              <span class="ml-1 min-w-0 shrink-[0.2] truncate">{`(${ref()!.modelId})`}</span>
             </>
           )}
         </Show>
