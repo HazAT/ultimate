@@ -101,7 +101,6 @@ export { attention, defineWebExtension, definePoint, provide } from './types.ts'
 export type {
   CommandContribution,
   CompactRow,
-  Contribution,
   DocumentProps,
   CodeBlockRenderer,
   CompactSummaryProps,
@@ -312,6 +311,7 @@ export function useExtensionUiState<T extends JsonValue>(key: string, initial: T
 /**
  * Options of `useAction`: `on` is an accessor that triggers another call when its value changes (compared as JSON), and
  * `conversation` the one to call it on instead of the scoped or shown one, such as `ROOT` for state that lives there.
+ * `every` polls in ms: a number, or a function of the latest answer returning one (undefined stops polling).
  */
 export type UseActionOptions<T = unknown> = {
   conversation?: ConversationId

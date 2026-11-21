@@ -23,7 +23,7 @@ async function setupFixture(decision?: boolean) {
     join(config, 'extensions/x/server.ts'),
     "import { defineExtension } from '@earendil-works/pi-durable'; export default defineExtension({ name: 'x' })",
   )
-  await writeFile(join(config, 'extensions/x/web.tsx'), 'export default {}')
+  await writeFile(join(config, 'extensions/x/web.solid.tsx'), 'export default {}')
   await writeFile(
     join(config, 'extensions/x/README.md'),
     '# X\n\nA local extension. Another sentence.',
@@ -138,7 +138,7 @@ it('gates project resources until the local setup is chosen, and remembers the c
     expect(enabled('x')).toBe(true)
     expect(enabled('plan')).toBe(false)
     expect(await tools()).not.toContain('plan')
-    expect((await web()).some((path) => path.endsWith('/x/web.tsx'))).toBe(true)
+    expect((await web()).some((path) => path.endsWith('/x/web.solid.tsx'))).toBe(true)
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(true)
     expect(projectDecision(project, home)).toBe(true)
     await server.close()
@@ -224,7 +224,7 @@ it('withdraws the local setup, adopts it into user settings, and remembers the f
     expect(enabled('x')).toBe(false)
     expect(enabled('plan')).toBe(true)
     expect(await tools()).toContain('plan')
-    expect((await web()).some((path) => path.endsWith('/x/web.tsx'))).toBe(false)
+    expect((await web()).some((path) => path.endsWith('/x/web.solid.tsx'))).toBe(false)
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(false)
     const adoptDenied = await post(server, '/api/extensions/onboarding/actions/adoptProjectSetup', {
       args: {},

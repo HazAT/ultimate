@@ -45,7 +45,7 @@ const agent = createAgent()
 it('runs the command an agent picks in the palette, attributed to the agent', async () => {
   const ran = vi.fn<(writer: string) => void>()
   await registry.setLoaders({
-    'extensions/deploy/web.tsx': async () => ({
+    'extensions/deploy/web.solid.tsx': async () => ({
       default: {
         commands: [
           { id: 'deploy.ship', title: 'Ship the release', run: () => ran(writerNow()) },

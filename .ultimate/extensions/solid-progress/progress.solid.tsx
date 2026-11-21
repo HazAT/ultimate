@@ -608,7 +608,6 @@ function useStep(data: () => Data) {
 
 function StepBar(props: { data: Data; step: ReturnType<typeof useStep> }) {
   const chosen = (): Entry | undefined => props.data.entries[props.step.step()]
-  const labels = () => [...props.data.entries.map((item) => item.label), 'Live']
   return (
     <div class="rounded-lg border border-border/70 bg-card/40 px-3 py-2.5">
       <div class="flex items-center gap-3">
@@ -631,8 +630,8 @@ function StepBar(props: { data: Data; step: ReturnType<typeof useStep> }) {
             step={1}
           />
           <div class="flex justify-between font-mono text-[10px] text-muted-foreground/70">
-            <span>{labels()[0]}</span>
-            <span>{labels().at(-1)}</span>
+            <span>{props.data.entries[0]?.label}</span>
+            <span>Live</span>
           </div>
         </div>
       </div>

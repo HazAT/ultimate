@@ -68,6 +68,7 @@ const noReactRules = Object.fromEntries(
 export default defineConfig({
   root: 'web',
   plugins: [solidPlugin(), tailwindcss()],
+  oxc: { jsx: { runtime: 'automatic', importSource: 'react' } },
   resolve: { alias },
   lint: {
     plugins: ['typescript', 'unicorn', 'import', 'promise', 'vitest', 'react'],

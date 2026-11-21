@@ -18,8 +18,7 @@ in two interleaved sessions (each value the median of three runs; the range span
 | Entry assets / all JS, gzip      |          432 / 2 823 KB |          410 / 3 003 KB |
 | Front-end lines (Solid / compat) |          49 954 (0 / 0) | 56 750 (48 557 / 2 525) |
 
-Switching is flat within the noise, as the series showed all along: what a warm switch costs is layout and the rows
-it mounts, not the framework. The `pure React` entry in `docs/frontend-progress.json` was measured under heavy load
+Cold switches overlapped between the trees; warm switches were slower at C5 in both sessions. The `pure React` entry in `docs/frontend-progress.json` was measured under heavy load
 on an older snapshot (748.5 / 273.5 ms), so the progress page's switch percentages overstate the gain. The series of
 every step is in that file; the sections below say how each number is measured.
 
