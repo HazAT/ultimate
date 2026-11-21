@@ -4,7 +4,8 @@ import { Bell, BellOff, Check, CircleDashed, CircleSlash, Flag, LoaderCircle } f
 import type { JSX } from '@solidjs/web'
 import { For, Show, createSignal } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
-import { Button, buttonVariants } from '@/components/ui/button.solid.tsx'
+import { Button } from '@/components/ui/button.solid.tsx'
+import type { ButtonVariants } from '@/components/ui/button-variants.ts'
 import {
   Card,
   ROOT,
@@ -89,7 +90,12 @@ export function CriterionRow(props: { item: Criterion; compact?: boolean }) {
   )
 }
 
-export function EndGoalButton(props: { class: string; label?: string }) {
+export function EndGoalButton(props: {
+  class?: string
+  label?: string
+  size?: ButtonVariants['size']
+  variant?: ButtonVariants['variant']
+}) {
   const [failure, setFailure] = createSignal<string>()
   const end = () => {
     setFailure(undefined)
@@ -109,8 +115,8 @@ export function EndGoalButton(props: { class: string; label?: string }) {
         data-goal-end
         onClick={end}
         pendingAnnouncement="Ending hands-off goal"
-        size={null}
-        variant={null}
+        size={props.size ?? null}
+        variant={props.variant ?? null}
       >
         <LoaderCircle
           aria-hidden="true"
@@ -316,7 +322,7 @@ function EndGoal() {
       <span class="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
         I decide what I would ask you and note each decision here. Pause stops everything at once.
       </span>
-      <EndGoalButton class={buttonVariants({ variant: 'outline', size: 'sm' })} />
+      <EndGoalButton size="sm" variant="outline" />
     </footer>
   )
 }

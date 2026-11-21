@@ -71,7 +71,7 @@ function GoalSummary(props: { goal: Goal }) {
   const met = () => props.goal.criteria.filter((item) => item.status === 'met').length
   const count = () => props.goal.decisions.length
   return (
-    <div class="flex min-h-0 flex-col" data-goal-popover={props.goal.id}>
+    <div class="flex min-h-0 flex-col wrap-anywhere" data-goal-popover={props.goal.id}>
       <div class="flex items-center gap-2 px-3 pt-2 text-[11px] text-muted-foreground">
         <Flag aria-hidden="true" class="size-3 text-brand" />
         <span class="text-foreground">Hands-off goal {props.goal.id}</span>
