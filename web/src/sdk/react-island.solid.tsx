@@ -28,7 +28,6 @@ import {
   icon,
   provided,
   reactRoot,
-  slot,
 } from './react-island.tsx'
 import type { Rendered, SolidPart } from './react-island.tsx'
 import { provisionsOf, slotItems } from './registry.ts'
@@ -242,10 +241,6 @@ export function Contribution(props: {
       }}
     </For>
   )
-}
-
-export function ReactSlot(props: { name: SlotName }) {
-  return <MountReact render={() => slot(props.name)} />
 }
 
 export function Slot(props: {

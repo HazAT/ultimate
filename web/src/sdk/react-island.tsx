@@ -3,10 +3,10 @@ import { useContext, useLayoutEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { AllProvided, ExtensionBoundary, Provided, Slot } from '../app/boundary.tsx'
+import { AllProvided, ExtensionBoundary, Provided } from '../app/boundary.tsx'
 import { TooltipProvider } from '../components/ui/tooltip.tsx'
 import { ConversationIdContext, TranscriptContext } from './conversation-scope.tsx'
-import type { Point, SlotName } from './types.ts'
+import type { Point } from './types.ts'
 import type { TranscriptFrame } from './transcript-frame.ts'
 
 export type Rendered = { extension: string; version: number; component: unknown }
@@ -88,8 +88,6 @@ export function chain(run: readonly Rendered[], props: object, core: SolidPart) 
     <SolidNode part={core} />,
   )
 }
-
-export const slot = (name: SlotName) => <Slot name={name} />
 
 export const icon = (component: unknown, className: string) => {
   const Icon = component as ComponentType<{ className?: string }>

@@ -60,13 +60,16 @@ function SolidNote(props: { entry: { data?: { text?: string } }; core: unknown }
   return <em data-solid-note>{props.entry.data?.text}</em>
 }
 
-it('renders its scoped conversation, mounting React renderers through the bridge and island(C) as Solid', async () => {
+it('renders its scoped conversation, mounting React renderers through the bridge and island(C) entries and slots as Solid', async () => {
   await registry.setLoaders({
     'extensions/react-note/web.tsx': async () => ({
       default: { entries: { 'probe.note': ReactNote } },
     }),
     'extensions/solid-note/web.tsx': async () => ({
-      default: { entries: { 'pi.user': island(SolidNote as never) } },
+      default: {
+        entries: { 'pi.user': island(SolidNote as never) },
+        slots: { 'transcript.top': [island(() => <b data-top-overlay>top</b>)] },
+      },
     }),
   })
   vi.spyOn(store, 'getState').mockReturnValue({
@@ -90,4 +93,6 @@ it('renders its scoped conversation, mounting React renderers through the bridge
   expect(transcript.querySelector('[data-solid-note]')).not.toBeNull()
   expect(transcript.textContent).not.toContain('shown')
   expect(transcript.querySelectorAll('[data-entry-id]')).toHaveLength(2)
+  const top = transcript.querySelector('[data-top-overlay]')!
+  expect(top.parentElement?.className).not.toContain('contents')
 })

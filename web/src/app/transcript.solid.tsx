@@ -67,8 +67,8 @@ import {
 import {
   Contributed,
   Contribution,
-  ReactSlot,
   RenderedPoint,
+  Slot,
   useProvided,
 } from '../sdk/react-island.solid.tsx'
 import {
@@ -598,7 +598,7 @@ function TranscriptView(props: {
           >
             <div class="pointer-events-none sticky top-0 z-10 -mb-3 h-0 [overflow-anchor:none]">
               <div ref={pinned}>
-                <ReactSlot name="transcript.top" />
+                <Slot fallback={slotFailure} name="transcript.top" />
               </div>
             </div>
             <Show when={!props.loading && hasRows() && history.cursor() !== undefined}>
@@ -643,7 +643,7 @@ function TranscriptView(props: {
               </Show>
             </Show>
             <Show when={!props.loading && visible().length > 0 && history.cursor() === undefined}>
-              <ReactSlot name="transcript.start" />
+              <Slot fallback={slotFailure} name="transcript.start" />
             </Show>
             <For each={threaded()} keyed={shownKey}>
               {(item, index) => {
@@ -696,7 +696,7 @@ function TranscriptView(props: {
                 />
               )}
             </Show>
-            <ReactSlot name="transcript.end" />
+            <Slot fallback={slotFailure} name="transcript.end" />
             <LiveStatus busy={busy()} id={id} live={live()} partial={partial()} />
             <div aria-hidden="true" class="-mt-3 shrink-0" data-history-anchor-space ref={tail} />
           </div>
@@ -716,6 +716,10 @@ function TranscriptView(props: {
     </TranscriptScope>
   )
 }
+
+const slotFailure = (extension: string, error: unknown) => (
+  <ContributionError error={error} extension={extension} />
+)
 
 function fadeInRowsNearTheEnd(scroll: HTMLElement, content: HTMLElement) {
   const view = scroll.getBoundingClientRect()
