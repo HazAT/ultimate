@@ -110,7 +110,7 @@ function LandedRow(props: { group: LandingGroup; now: number }) {
       </Button>
       <CommitCount
         card={latest().entry}
-        name={props.group.label}
+        name={`sidebar landing #${latest().entry}`}
         class="text-muted-foreground/80"
         count={commits()}
         href={single() ? latest().compare : undefined}

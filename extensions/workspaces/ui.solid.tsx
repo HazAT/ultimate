@@ -61,7 +61,7 @@ function External(props: {
 /**
  * `N commits`: with `range` and a Review provider, a button that opens Review at it (DiffsHub as a small ↗ beside
  * it when `href` is given); otherwise a DiffsHub link at `href`, or plain text. `card` names the landing it belongs to;
- * `name` (a feature or title) names the controls instead where the same landing shows twice on a page (the sidebar's
+ * `name` (`sidebar landing #N`) names the controls instead where the same landing shows twice on a page (the sidebar's
  * Landed list beside History).
  */
 export function CommitCount(props: {
@@ -119,7 +119,7 @@ function ReviewCommitCount(props: {
       <span class={cn('inline-flex shrink-0 items-center gap-1', props.class)}>
         <Button
           aria-label={
-            (props.name && `Review commits of ${props.name}`) ??
+            (props.name && `Review ${props.name}`) ??
             `Review ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range)}`
           }
           class="font-[inherit] text-[length:inherit] font-normal hover:text-foreground hover:underline"
