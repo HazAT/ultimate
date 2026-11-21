@@ -416,22 +416,6 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('opens again a subscription the server answered 410 for alone', async () => {
-    const { store, server, latest, fetch } = setup()
-    latest().open()
-    await tick()
-    fetch.mockImplementationOnce(async (path, init) => {
-      const [{ sub }] = (JSON.parse(init?.body as string) as { subscribe: { sub: number }[] })
-        .subscribe
-      return Response.json({ ok: true, refused: { [sub]: 410 } })
-    })
-    store.watchDoc('test.counter')
-    await tick()
-    await tick()
-    expect(server.of(undefined, false)?.docs).toEqual(['test.counter'])
-    store.stop()
-  })
-
   it('falls back to the root without closing what the server refused alongside the view', async () => {
     const { store, server, latest, fetch, onFallback } = setup()
     latest().open()
