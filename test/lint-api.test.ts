@@ -41,16 +41,24 @@ function diagnose(rule: Rule, file: string, source: string) {
     },
     report: ({ message }) => reports.push(message),
   }) as Record<string, ((node: Located) => void) | undefined>
-  const visit = (node: Located, parent?: Located) => {
+  const children = (node: Located) =>
+    Object.entries(node).flatMap(([key, value]) =>
+      key === 'parent'
+        ? []
+        : (Array.isArray(value) ? value : [value]).filter(
+            (child): child is Located =>
+              !!child && typeof child === 'object' && typeof child.type === 'string',
+          ),
+    )
+  const link = (node: Located, parent?: Located) => {
     node.parent = parent
-    visitors[node.type]?.(node)
-    for (const [key, value] of Object.entries(node)) {
-      if (key === 'parent') continue
-      for (const child of Array.isArray(value) ? value : [value])
-        if (child && typeof child === 'object' && typeof child.type === 'string')
-          visit(child as Located, node)
-    }
+    for (const child of children(node)) link(child, node)
   }
+  const visit = (node: Located) => {
+    visitors[node.type]?.(node)
+    for (const child of children(node)) visit(child)
+  }
+  link(program)
   visit(program)
   return reports
 }
@@ -98,6 +106,13 @@ it('rejects hand-rolled polls of Ultimate and raw requests to /api, as extension
     const stop = live ? every(2000, load) : undefined`
   expect(polls('extensions/system/surface.solid.tsx', lanes)).toHaveLength(1)
 
+  const aliased = `import { api as backend } from '@/sdk/solid'
+    every(2000, () => void backend.action(ListAction).then(show))`
+  expect(polls('extensions/mine/web.solid.tsx', aliased)).toHaveLength(1)
+  const otherLibrary = `import { useAction } from 'some-query-library'
+    const { refetch } = useAction('items')
+    every(5000, () => void refetch())`
+  expect(polls('extensions/mine/web.solid.tsx', otherLibrary)).toEqual([])
   const others = `${sdk}
     import { client } from './my-backend.ts'
     const query = useQuery()

@@ -63,3 +63,17 @@ it("counts an action's own answer as the read's, and drops an older one that ans
   await vi.advanceTimersByTimeAsync(999)
   expect(run).toHaveBeenCalledTimes(1)
 })
+
+it('keeps running after an action answers while a scheduled run is still out', async () => {
+  const { run, reads, page } = setup()
+  reads.subscribe(spec, 1000, page().send)
+  await vi.advanceTimersByTimeAsync(0)
+  const slow = Promise.withResolvers<unknown>()
+  run.mockReturnValueOnce(slow.promise)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(run).toHaveBeenCalledTimes(2)
+  reads.answering(spec)({ result: 'from the action' })
+  slow.resolve('stale')
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(run).toHaveBeenCalledTimes(3)
+})

@@ -63,6 +63,7 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
   const [state, setState] = createSignal(empty)
   const controller = new AbortController()
   onCleanup(() => controller.abort())
+  let target: Page | undefined
   const request = (
     cursor: { before?: string; after?: string },
     step: (feed: Feed, page: Page) => Feed,
@@ -76,13 +77,23 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
       )
       .then(
         (page) => {
-          if (!controller.signal.aborted) setState((previous) => step(previous, page))
+          if (controller.signal.aborted) return
+          setState((previous) => step(previous, page))
+          if (cursor.after !== undefined && !page.rows.length) target = undefined
+          catchUp()
         },
         (error: unknown) => {
           if (!controller.signal.aborted)
             setState((previous) => failed(previous, errorMessage(error)))
         },
       )
+  }
+  function catchUp() {
+    const newestPage = target
+    const { head, loading } = state()
+    if (!newestPage || head === newestPage.head) return
+    if (head === undefined) setState((previous) => loaded(previous, newestPage))
+    else if (!loading) request({ after: head }, (feed, page) => followed(feed, head, page))
   }
   const newest = useAction(
     StreamAction,
@@ -92,11 +103,8 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
   createEffect(
     () => newest.data(),
     (page) => {
-      if (!page) return
-      const { head, loading } = state()
-      if (head === undefined) setState((previous) => loaded(previous, page))
-      else if (page.head !== head && !loading)
-        request({ after: head }, (feed, next) => followed(feed, head, next))
+      target = page
+      catchUp()
     },
   )
   createEffect(

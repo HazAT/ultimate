@@ -61,14 +61,15 @@ export function createReads(run: Run, now = () => Date.now()) {
           (result) => ({ result: (result ?? null) as JsonValue }),
           (error: unknown) => {
             if (!controller.signal.aborted)
-              console.error(`Read ${entry.spec.extension}/${entry.spec.action} failed:`, error)
+              console.error(`Read ${entry.spec.extension}/${entry.spec.action} failed`)
             return failure(error)
           },
         )
         .then((event) => {
           if (controller.signal.aborted) return
           entry.running = undefined
-          publish(entry, startedAt, event)
+          if (startedAt < entry.shown) schedule(entry)
+          else publish(entry, startedAt, event)
         }),
     )
   }

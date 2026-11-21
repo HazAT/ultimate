@@ -78,6 +78,21 @@ it("keeps the stream's newer answer when an older refetch answers last", async (
   expect(read.get()).toMatchObject({ data: 'newer', loading: false, settled: true })
 })
 
+it('keeps ui steps waiting for the stream even when a refetch answers first', async () => {
+  const { watched, reads, action } = setup()
+  const read = reads.get('test', 'status', null)
+  read.use({})
+  action.mockResolvedValueOnce('over http')
+  await read.refetch()
+  let settled = false
+  const done = reads.settledInUse().then(() => (settled = true))
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  watched[0].send({ result: 'from the stream' })
+  await done
+  expect(read.get().data).toBe('from the stream')
+})
+
 it('answers a refetch of an unwatched read itself, and stays quiet when its request never reached the server', async () => {
   const { reads, action, store } = setup()
   const read = reads.get('test', 'status', null)

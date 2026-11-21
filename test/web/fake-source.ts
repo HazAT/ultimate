@@ -28,6 +28,7 @@ export class FakeSource extends EventTarget implements EventSourceLike {
   /** A dropped connection the browser retries (`closed: false`), or one the server refused. */
   drop(closed = false) {
     this.readyState = closed ? 2 : 0
+    this.dispatchEvent(new Event('fake-close'))
     this.dispatchEvent(new Event('error'))
   }
   /** An event of the stream, or with `sub` one of its subscriptions, which carries the id on its first data line. */
@@ -219,7 +220,7 @@ export function fakeSubscriptions(sources: FakeSource[], actions?: ActionFetch) 
           stops.set(
             `${stream}/${sub}`,
             running.subscribe(spec.read, spec.every, (event: ReadEvent) => {
-              if (!read.closed) source.send('read', event, sub)
+              if (!read.closed && source.readyState === 1) source.send('read', event, sub)
             }),
           )
           continue

@@ -306,8 +306,10 @@ export function createStore(options: StoreOptions = {}) {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
       unsubscribe: closes,
     }
-    const unanswered = () => ({
-      refused: Object.fromEntries([...opens.keys()].map((sub) => [sub, 0])),
+    const unanswered = (status = 0) => ({
+      refused: Object.fromEntries(
+        [...opens].map(([sub, { spec }]) => [sub, 'read' in spec ? status : 0]),
+      ),
       confirmed: false,
     })
     void request(`/api/events/${stream}`, {
@@ -317,7 +319,7 @@ export function createStore(options: StoreOptions = {}) {
     })
       .then(async (response) => {
         if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return undefined
-        if (!response.ok) return unanswered()
+        if (!response.ok) return unanswered(response.status)
         const answer = (await response.json()) as Partial<SubscriptionsAnswer>
         return answeredFor(opens, answer)
           ? { refused: answer.refused, confirmed: true }

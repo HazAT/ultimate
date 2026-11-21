@@ -136,9 +136,14 @@ it('switches to a contributed System tab and picks an Agents window, attributing
   await settle()
   flush()
   expect(page.querySelector('[data-lane="8"]')).not.toBeNull()
-  const noTrace = page.querySelector<HTMLButtonElement>(
-    '[aria-label="Missing trace · event or call no-trace"]',
-  )!
+  const noTrace = await vi.waitFor(() => {
+    flush()
+    const row = page.querySelector<HTMLButtonElement>(
+      '[aria-label="Missing trace · event or call no-trace"]',
+    )
+    expect(row).not.toBeNull()
+    return row!
+  })
   expect(noTrace.disabled).toBe(true)
   noTrace.focus()
   expect(document.activeElement).not.toBe(noTrace)

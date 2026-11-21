@@ -148,7 +148,7 @@ export function createReads(api: Api, store: Store) {
       if (controller === own) controller = undefined
       const streamWritesTheSharedAnswer = watching !== undefined
       if (event && !streamWritesTheSharedAnswer) return answer(event, onError)
-      answered = true
+      if (!streamWritesTheSharedAnswer) answered = true
       set({ loading: !!controller })
     }
     const read = {
