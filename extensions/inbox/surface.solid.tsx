@@ -39,7 +39,10 @@ export function Inbox() {
         </For>
       }
     >
-      <ProvidedValue value={takeover()} />
+      {(() => {
+        const shown = takeover()
+        return typeof shown === 'function' ? shown() : <ProvidedValue value={shown} />
+      })()}
     </Show>
   )
   return (

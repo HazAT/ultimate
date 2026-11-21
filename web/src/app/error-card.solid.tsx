@@ -3,7 +3,7 @@ import { MessageSquareShare, TriangleAlert } from '@lucide/solid'
 import { cn } from 'cn'
 import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useSystem, writerNow, writingAs } from '@/sdk/solid'
+import { useExtensions, useSystem, writerNow, writingAs } from '@/sdk/solid'
 import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
 import { errorReport } from './error-report.ts'
 
@@ -17,6 +17,30 @@ export type ErrorCardProps = {
   variant?: 'inline' | 'block'
   class?: string
   report?: Report
+}
+
+const reactCompatDoc = 'https://github.com/HazAT/ultimate/blob/main/docs/extensions/react-compat.md'
+
+function ReactCompatNote(props: { extension: string }) {
+  const extensions = useExtensions()
+  const react = () =>
+    extensions().some((record) => record.name === props.extension && record.framework === 'react')
+  return (
+    <Show when={react()}>
+      <div class="mt-1.5 font-sans text-[12px] leading-snug text-muted-foreground" data-react-compat>
+        Ultimate's core is Solid now; this React facet (web.tsx) runs on a frozen compat layer, and this part of it
+        broke there.{' '}
+        <a
+          class="text-foreground underline underline-offset-2 hover:text-brand"
+          href={reactCompatDoc}
+          rel="noreferrer"
+          target="_blank"
+        >
+          How to move it to web.solid.tsx or keep it working with a local shim
+        </a>
+      </div>
+    </Show>
+  )
 }
 
 export function ErrorCard(props: ErrorCardProps) {
@@ -94,6 +118,7 @@ function BlockErrorCard(props: ErrorCardProps) {
         <div class="mt-0.5 max-h-48 overflow-auto whitespace-pre text-muted-foreground">
           {props.error}
         </div>
+        <ReactCompatNote extension={props.extension} />
       </div>
     </div>
   )
