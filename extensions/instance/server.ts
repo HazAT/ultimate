@@ -16,7 +16,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, isAbsolute, join, resolve as resolvePath } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@earendil-works/chord/context'
 import { int, nullable, obj, opt, str } from '@earendil-works/pi-schema'
@@ -92,11 +92,20 @@ const PRIVATE_CONFIG_COPIES = [
 
 export async function seedUserHome(from: string, to: string) {
   const source = join(from, '.ultimate')
-  const target = join(to, '.ultimate')
-  await mkdir(target, { recursive: true, mode: 0o700 })
+  await mkdir(dirname(to), { recursive: true })
+  const staging = await mkdtemp(`${to}.seed-`)
+  const target = join(staging, '.ultimate')
+  await mkdir(target, { mode: 0o700 })
   try {
     for (const name of PRIVATE_CONFIG_COPIES) {
-      if (!existsSync(join(source, name))) continue
+      const absent = await lstat(join(source, name)).then(
+        () => false,
+        (error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOENT') throw error
+          return true
+        },
+      )
+      if (absent) continue
       await cp(join(source, name), join(target, name), {
         recursive: true,
         dereference: true,
@@ -106,8 +115,10 @@ export async function seedUserHome(from: string, to: string) {
     }
     await makeOwnerWritable(target)
     await symlink(join(source, 'tailscale.json'), join(target, 'tailscale.json'))
+    await rename(staging, to)
   } catch (error) {
-    await rm(to, { recursive: true, force: true })
+    await makeOwnerWritable(staging)
+    await rm(staging, { recursive: true, force: true })
     throw error
   }
 }
