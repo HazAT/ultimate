@@ -92,7 +92,6 @@ export async function acquireLock(
         database.exec('BEGIN EXCLUSIVE')
         break
       } catch (error) {
-        console.error("acquireLock error code:", sqliteCode(error), String(error).substring(0,200))
         if (sqliteCode(error) !== 5) throw error
         let owner = await readOwner(path)
         if (!owner) {
