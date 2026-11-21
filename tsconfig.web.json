@@ -88,6 +88,7 @@
     "extensions/sidebar/work.ts",
     "extensions/sidebar/landings.ts",
     "extensions/subagents/landing.ts",
+    "extensions/subagents/points.ts",
     "extensions/subagents/source.ts",
     "extensions/onboarding/onboarded.ts",
     "extensions/onboarding/dialogs.ts",
