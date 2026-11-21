@@ -1,5 +1,12 @@
 import { render } from '@solidjs/web'
-import { createComponent, createRoot, createStore, getOwner, runWithOwner } from 'solid-js'
+import {
+  createComponent,
+  createRoot,
+  createStore,
+  getOwner,
+  onCleanup,
+  runWithOwner,
+} from 'solid-js'
 import type { Component } from 'solid-js'
 import { useContext, useEffect, useEffectEvent, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -25,7 +32,7 @@ type IslandProps<P> = {
  * `const Panel = island(List)`), and a new value updates it without a remount. It mounts in a `display: contents`
  * `<div>`, or a `<span>` with `{ inline: true }` for a component that renders inside text. React `children` reach the
  * Solid component as one `display: contents` element it places where they go; React renders them into it through a
- * portal, so React context still reaches them. A Solid host (the transcript) renders an island's component directly: a
+ * portal, so React context still reaches them, and only while the Solid component places it. A Solid host (the transcript) renders an island's component directly: a
  * tool, entry or message renderer contributed as `island(Card)` is plain Solid there.
  */
 export function island<P extends object = Record<string, never>>(
@@ -40,8 +47,14 @@ export function island<P extends object = Record<string, never>>(
     const [childHost] = useState(() =>
       Object.assign(document.createElement(inline ? 'span' : 'div'), { className: 'contents' }),
     )
+    const [placements, setPlacements] = useState(0)
+    const [placeChildren] = useState(() => () => {
+      setPlacements((count) => count + 1)
+      onCleanup(() => setPlacements((count) => count - 1))
+      return childHost
+    })
     const { children, ...rest } = given as Props & { children?: ReactNode }
-    const props = children === undefined ? rest : { ...rest, children: childHost }
+    const props = children === undefined ? rest : { ...rest, children: placeChildren }
     const committed = useEffectEvent(() => ({ ...props }))
     const live = useRef<(next: Props) => void>(undefined)
     useEffect(() => live.current?.(props))
@@ -83,7 +96,7 @@ export function island<P extends object = Record<string, never>>(
     return (
       <>
         <Host ref={host as never} className="contents" />
-        {children !== undefined && createPortal(children, childHost)}
+        {children !== undefined && placements > 0 && createPortal(children, childHost)}
       </>
     )
   }
