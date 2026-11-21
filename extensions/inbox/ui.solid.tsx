@@ -8,11 +8,15 @@ import { emptyMessages } from '../messages/ui.solid.tsx'
 import { inboxItems } from './items.ts'
 import { InboxItems } from './points.ts'
 
-/** Everything that waits on the user, oldest first: open questions and other extensions' items. */
+/**
+ * Everything that waits on the user, oldest first: open questions and other extensions' items. `failures` holds the
+ * inline error card of each provider that throws.
+ */
 export function Waiting() {
   const log = useDocOf(() => ROOT, MessagesDoc)
-  const provided = useAllProvided(InboxItems, () => null)
+  const failures = (<span class="contents" />) as HTMLElement
+  const provided = useAllProvided(InboxItems, () => null, failures)
   const messages = () => (log() ?? emptyMessages).messages
   const entries = createMemo(() => inboxItems(messages(), provided()))
-  return { entries, messages }
+  return { entries, messages, failures }
 }

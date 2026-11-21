@@ -15,9 +15,12 @@ export { Fold, useFold } from '../app/fold.solid.tsx'
 export { MessageActions } from '../app/message-actions.solid.tsx'
 export { UserText, UserView } from '../app/user-turn.solid.tsx'
 export { useToolDuration } from '../app/tool-call.solid.tsx'
-/** The values all React providers give for `point`, in discovery order. */
+/**
+ * The values all React providers give for `point`, in discovery order. A provider that throws shows its inline error card
+ * in `failures`, an element the caller places, when given.
+ */
 export { useAllProvided } from './react-island.solid.tsx'
-/** The value the last provider in discovery order gives for `point`, from a React provider's hook. */
+/** The value the last provider in discovery order gives for `point`, from a React provider's hook; `failures` as above. */
 export { useProvided } from './react-island.solid.tsx'
 /** Building blocks of surfaces, as `@/sdk` gives React ones; see docs/extensions/surfaces.md. */
 export { Header } from '../app/header.solid.tsx'

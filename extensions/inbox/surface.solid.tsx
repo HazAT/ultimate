@@ -12,7 +12,7 @@ import { useSelection } from './selection.solid.tsx'
 import { Waiting } from './ui.solid.tsx'
 
 export function Inbox() {
-  const { entries, messages } = Waiting()
+  const { entries, messages, failures } = Waiting()
   const viewport = useViewport()
   const phone = () => viewport() === 'phone'
   const now = useNow(60_000)
@@ -47,6 +47,7 @@ export function Inbox() {
               <InboxIcon class="size-4 text-muted-foreground" />
               Inbox <Badge count={entries().length} />
             </span>
+            {failures}
           </Header>
         </Show>
         <Show
@@ -76,15 +77,27 @@ export function Inbox() {
 
 export function InboxSidebar() {
   const active = useSurface()
-  const { entries } = Waiting()
+  const { entries, failures } = Waiting()
   return (
-    <SidebarRow active={active() === SURFACE} count={entries().length} oldest={entries()[0]?.at} />
+    <>
+      <SidebarRow
+        active={active() === SURFACE}
+        count={entries().length}
+        oldest={entries()[0]?.at}
+      />
+      {failures}
+    </>
   )
 }
 
 export function WaitingBadge() {
-  const { entries } = Waiting()
-  return <Badge count={entries().length} />
+  const { entries, failures } = Waiting()
+  return (
+    <>
+      <Badge count={entries().length} />
+      {failures}
+    </>
+  )
 }
 
 export function WaitingLink() {

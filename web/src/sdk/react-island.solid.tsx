@@ -329,10 +329,11 @@ function useReactReport<Input, Found>(
   input: Accessor<Input>,
   initial: Found,
   element: (input: Input, report: (found: Found) => void) => ReactNode,
+  host: HTMLElement = document.createElement('div'),
 ): Accessor<Found> {
   const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
   const [found, setFound] = createSignal<Found>(() => initial)
-  const root = reactRoot(document.createElement('div'), {
+  const root = reactRoot(host, {
     conversation: useContext(ConversationScope) ?? undefined,
     transcript: useContext(Transcript) ?? undefined,
   })
@@ -341,12 +342,26 @@ function useReactReport<Input, Found>(
   return found
 }
 
-export const useProvided = <Input, Value>(point: Point<Input, Value>, input: Accessor<Input>) =>
-  useReactReport<Input, Value | undefined>(input, undefined, (next, report) =>
-    provided(point, next, report),
+export const useProvided = <Input, Value>(
+  point: Point<Input, Value>,
+  input: Accessor<Input>,
+  failures?: HTMLElement,
+) =>
+  useReactReport<Input, Value | undefined>(
+    input,
+    undefined,
+    (next, report) => provided(point, next, report),
+    failures,
   )
 
-export const useAllProvided = <Input, Value>(point: Point<Input, Value>, input: Accessor<Input>) =>
-  useReactReport<Input, readonly Value[]>(input, [], (next, report) =>
-    allProvided(point, next, report),
+export const useAllProvided = <Input, Value>(
+  point: Point<Input, Value>,
+  input: Accessor<Input>,
+  failures?: HTMLElement,
+) =>
+  useReactReport<Input, readonly Value[]>(
+    input,
+    [],
+    (next, report) => allProvided(point, next, report),
+    failures,
   )
