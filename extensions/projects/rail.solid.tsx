@@ -1,6 +1,15 @@
 /** @jsxImportSource @solidjs/web */
 import { Pin, PinOff } from '@lucide/solid'
-import { createMemo, createRoot, createSignal, For, onSettled, Show } from 'solid-js'
+import {
+  action,
+  createMemo,
+  createOptimistic,
+  createRoot,
+  createSignal,
+  For,
+  onSettled,
+  Show,
+} from 'solid-js'
 import type { ComponentProps } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
@@ -88,27 +97,20 @@ function ProjectsRail() {
       every: whileVisible(SHARED_PIN_POLL_MS),
     },
   )
-  const [writing, setWriting] = createSignal<boolean>()
-  const [saved, setSaved] = createSignal<{ pinned: boolean; over: unknown }>()
-  const pinned = () => {
-    const ack = saved()
-    const answer = shared.data()
-    return writing() ?? (ack && answer === ack.over ? ack.pinned : (answer?.pinned ?? false))
-  }
-  let saving = false
-  const pin = async (next: boolean) => {
-    if (saving) return
-    saving = true
-    setWriting(next)
-    try {
-      await api
-        .action(PinAction, { pinned: next })
-        .then((answer) => setSaved({ pinned: answer.pinned, over: shared.data() }), keepLast)
-      setWriting()
-      await shared.refetch()
-    } finally {
-      saving = false
-    }
+  const answer = createMemo(() => shared.data())
+  const [acknowledged, setAcknowledged] = createSignal(() => answer()?.pinned ?? false)
+  const [pinned, setPinned] = createOptimistic(acknowledged)
+  const pin = action(function* (next: boolean) {
+    setPinned(next)
+    const saved: { pinned: boolean } | undefined = yield api
+      .action(PinAction, { pinned: next })
+      .catch(keepLast)
+    if (saved) setAcknowledged(saved.pinned)
+    yield shared.refetch()
+  })
+  let saving: Promise<void> | undefined
+  const press = (next: boolean) => {
+    saving ??= pin(next).finally(() => (saving = undefined))
   }
 
   const [hover, setHover] = createSignal(false)
@@ -161,7 +163,7 @@ function ProjectsRail() {
                 aria-label={pinned() ? 'Unpin the projects rail' : 'Pin the projects rail open'}
                 pressed={pinned()}
                 class="mr-2 ml-auto text-muted-foreground/70 hover:bg-sidebar-accent hover:text-foreground data-pressed:bg-transparent data-pressed:text-foreground data-pressed:hover:bg-sidebar-accent"
-                onPressedChange={pin}
+                onPressedChange={press}
                 size="icon-xs"
                 title={pinned() ? 'Unpin: open on hover' : 'Pin: keep open beside the app'}
                 variant={null}

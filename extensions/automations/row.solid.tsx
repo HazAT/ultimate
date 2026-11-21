@@ -10,7 +10,15 @@ import {
   Terminal,
   Trash2,
 } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import {
+  action,
+  createEffect,
+  createMemo,
+  createOptimistic,
+  createSignal,
+  For,
+  Show,
+} from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Collapsible,
@@ -77,15 +85,12 @@ export function ErrorLine(props: { error?: string }) {
 }
 
 export function Toggle(props: { automation: Automation; now: number; act: Act }) {
-  const [pending, setPending] = createSignal<boolean>()
-  const checked = () => pending() ?? props.automation.enabled
+  const [checked, setChecked] = createOptimistic(() => props.automation.enabled)
   const passed = () => !props.automation.enabled && spent(props.automation, props.now)
-  const toggle = (enabled: boolean) => {
-    setPending(enabled)
-    void props
-      .act(api.action(enabled ? ResumeAction : PauseAction, { id: props.automation.id }))
-      .finally(() => setPending(undefined))
-  }
+  const toggle = action(function* (enabled: boolean) {
+    setChecked(enabled)
+    yield props.act(api.action(enabled ? ResumeAction : PauseAction, { id: props.automation.id }))
+  })
   const title = () => {
     if (passed()) return 'Its one time has passed: edit the time, then switch it on'
     if (!props.automation.script)
@@ -100,8 +105,8 @@ export function Toggle(props: { automation: Automation; now: number; act: Act })
   return (
     <Switch
       aria-label={`Enable ${automationLabel(props.automation)}`}
-      bind={[checked, toggle]}
-      disabled={passed() || pending() !== undefined}
+      bind={[checked, (enabled) => void toggle(enabled)]}
+      disabled={passed() || checked() !== props.automation.enabled}
       title={title()}
     />
   )
