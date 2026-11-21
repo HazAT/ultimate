@@ -321,7 +321,6 @@ export default defineConfig({
           ...solidRules,
           'ultimate/solid-jsx-pragma': 'error',
           'ultimate/ui-kit-roles': 'error',
-          'ultimate/no-aria-pressed-button': 'off',
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [
             'error',
@@ -336,6 +335,11 @@ export default defineConfig({
           'jsx-a11y/prefer-tag-over-role': 'error',
           'jsx-a11y/no-autofocus': 'error',
         },
+      },
+      {
+        files: ['**/*.solid.tsx'],
+        excludeFiles: ['extensions/automations/form.solid.tsx'],
+        rules: { 'ultimate/no-aria-pressed-button': 'error' },
       },
       {
         files: ['web/**', 'extensions/**', '.ultimate/extensions/**'],

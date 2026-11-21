@@ -155,6 +155,7 @@ function Inbox(props: { items: readonly InboxItem[] }) {
               const cancellation = () => (
                 <Button
                   aria-label={`Cancel queued input ${item().id}: ${inboxText(item())}`}
+                  data-agent-confirm="Removes this message from the queue before the agent reads it."
                   class="size-6 rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
                   onClick={() => cancel(item().id)}
                   size={null}
@@ -564,6 +565,7 @@ function ComposerEditor(props: { dock?: boolean }) {
             <Show when={busy()}>
               <Button
                 aria-label={`Stop the run in ${label()}`}
+                data-agent-confirm="Stops the current run in this conversation."
                 class={submitClass}
                 onClick={() =>
                   api.abort(id()).catch((failure: unknown) => setError(errorMessage(failure)))

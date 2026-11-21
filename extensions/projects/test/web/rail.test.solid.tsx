@@ -174,8 +174,12 @@ it('lists each running project as a link with its state, opens on hover, and an 
   expect(container.textContent).toContain('2 for you · 1 working')
   await expectDistinctAgentNames(agent)
 
+  expect(await agent.query({ text: 'My App' })).toEqual(
+    expect.arrayContaining([expect.objectContaining({ label: rows[2].title })]),
+  )
   const pin = agent.snapshot().find((entry) => entry.label === 'Pin the projects rail open')
-  const pressed = agent.act({ steps: [{ ref: pin!.ref, action: 'press' }] })
+  expect(pin?.pressed).toBe(false)
+  const pressed = agent.act({ steps: [{ ref: pin!.ref, action: 'setPressed', args: [true] }] })
   await advance(100)
   expect(await pressed).toMatchObject({ ok: true })
   expect(harness.pins).toEqual([{ pinned: true, source: 'agent' }])
@@ -359,11 +363,15 @@ it('gives way to another extension’s rail and to a phone', async () => {
   await registry.setLoaders({})
 })
 
-it('shows the opening bar after a click until the page is left, shown again, or 15 s pass', async () => {
+it('shows the opening bar after a click until the page is left, shown again, or 15 s pass', async ({
+  onTestFinished,
+}) => {
   const container = await mount()
   const bar = () => container.querySelector('.animate-sweep')
   const evalRow = container.querySelector<HTMLAnchorElement>('a[data-project="ultimate-eval"]')!
-  evalRow.addEventListener('click', (event) => event.preventDefault())
+  const preventNavigation = (event: MouseEvent) => event.preventDefault()
+  window.addEventListener('click', preventNavigation)
+  onTestFinished(() => window.removeEventListener('click', preventNavigation))
   evalRow.click()
   flush()
   expect(bar()).not.toBeNull()

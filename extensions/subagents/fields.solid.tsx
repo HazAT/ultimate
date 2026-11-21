@@ -1,11 +1,12 @@
 /** @jsxImportSource @solidjs/web */
 import type { JSX } from '@solidjs/web'
-import { createMemo, createSignal, For, Match, Show, Switch as Branch } from 'solid-js'
+import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs.solid.tsx'
 import type { ModelsResponse } from '@/sdk/solid'
 import { cn } from '@/sdk/solid'
 import type { ModelRef } from './refs.ts'
@@ -57,23 +58,18 @@ export function Segmented<T extends string>(props: {
   options: readonly { value: T; label?: string; title?: string; disabled?: boolean }[]
   onChange: (value: T) => void
   label: string
-  tabs?: boolean
 }) {
   return (
     <SegmentedControl
       aria-label={props.label}
       bind={[() => props.value, (value) => props.onChange(value)]}
-      class={props.tabs ? 'gap-1 border-0 p-0' : 'flex-wrap bg-background'}
+      class="flex-wrap bg-background"
     >
       <For each={props.options} keyed={(item) => item.value}>
         {(item) => (
           <SegmentedControlItem
             aria-label={`${item().label ?? item().value} · ${props.label} option`}
-            class={
-              props.tabs
-                ? 'rounded-[5px] px-2'
-                : 'flex-1 justify-center rounded-[5px] whitespace-nowrap data-checked:shadow-xs'
-            }
+            class="flex-1 justify-center rounded-[5px] whitespace-nowrap data-checked:shadow-xs"
             disabled={item().disabled}
             title={item().title}
             value={item().value}
@@ -198,43 +194,48 @@ export function InstructionsEditor(props: {
   const [selected, select] = createSignal<(typeof tabs)[number]['value']>('write')
   const tab = () => (selected() === 'file' && props.file === undefined ? 'write' : selected())
   return (
-    <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border/80 bg-background focus-within:border-ring">
+    <Tabs
+      bind={[tab, select]}
+      class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border/80 bg-background focus-within:border-ring"
+    >
       <div class="flex items-center gap-1 border-b border-border/70 px-1.5 py-1 font-mono text-[11px]">
-        <Segmented
-          label="Prompt view"
-          onChange={select}
-          options={props.file === undefined ? tabs.slice(0, 2) : tabs}
-          tabs
-          value={tab()}
-        />
+        <TabsList aria-label="Prompt view" class="inline-flex gap-1 border-0 p-0">
+          <For each={props.file === undefined ? tabs.slice(0, 2) : tabs}>
+            {(item) => (
+              <TabsTab class="rounded-[5px] px-2" value={item.value}>
+                {item.label}
+              </TabsTab>
+            )}
+          </For>
+        </TabsList>
         <span class="ml-auto pr-1.5 text-muted-foreground/70">Markdown · the system prompt</span>
       </div>
-      <Branch>
-        <Match when={tab() === 'write'}>
-          <Textarea
-            aria-label="Instructions"
-            class="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent p-3 font-mono text-[12.5px] focus-visible:ring-0"
-            onValueChange={(value) => props.onChange(value)}
-            placeholder="What this agent does and how it reports back…"
-            value={props.value}
-          />
-        </Match>
-        <Match when={tab() === 'preview'}>
-          <div class="min-h-0 flex-1 overflow-y-auto p-3 text-[13px]">
-            <Show
-              when={props.value.trim()}
-              fallback={<p class="text-muted-foreground/70">Nothing to preview.</p>}
-            >
-              <Markdown text={props.value} />
-            </Show>
-          </div>
-        </Match>
-        <Match when={tab() === 'file'}>
-          <pre class="min-h-0 flex-1 overflow-auto p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-            {props.file}
-          </pre>
-        </Match>
-      </Branch>
-    </div>
+      <TabsPanel class="flex min-h-0 flex-1 flex-col" value="write">
+        <Textarea
+          aria-label="Instructions"
+          class="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent p-3 font-mono text-[12.5px] focus-visible:ring-0"
+          onValueChange={(value) => props.onChange(value)}
+          placeholder="What this agent does and how it reports back…"
+          value={props.value}
+        />
+      </TabsPanel>
+      <TabsPanel class="min-h-0 flex-1 overflow-y-auto p-3 text-[13px]" value="preview">
+        <Show
+          when={props.value.trim()}
+          fallback={<p class="text-muted-foreground/70">Nothing to preview.</p>}
+        >
+          <Markdown text={props.value} />
+        </Show>
+      </TabsPanel>
+      <Show when={props.file !== undefined}>
+        <TabsPanel
+          class="min-h-0 flex-1 overflow-auto p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground"
+          render={(panel) => <pre {...panel} />}
+          value="file"
+        >
+          {props.file}
+        </TabsPanel>
+      </Show>
+    </Tabs>
   )
 }

@@ -15,6 +15,11 @@ import type { JSX } from '@solidjs/web'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible.solid.tsx'
+import {
   Card,
   Conversation,
   renderEntry,
@@ -325,6 +330,7 @@ function SidePane(props: {
             <Button
               aria-label={`Discard side chat #${props.side}`}
               class="text-muted-foreground"
+              data-agent-confirm="Discards this side chat without sending a summary."
               disabled={ending() !== undefined}
               onClick={() => void end('discard')}
               size="sm"
@@ -381,7 +387,7 @@ function PinnedQuestion(props: {
   const log = useDocOf(() => ROOT, MessagesDoc)
   const message = () => log()?.messages.find((item) => item.id === props.message)
   const [cards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
-  const [folded, setFolded] = createSignal(true)
+  const [open, setOpen] = createSignal(false)
   const questions = () => message()?.questions ?? []
   const ready = () =>
     answered(questions(), cardOf(cards(), cardKey(props.message), questions()).drafts).length
@@ -397,36 +403,31 @@ function PinnedQuestion(props: {
   return (
     <Show when={message()}>
       {(question) => (
-        <section
-          aria-label="The question"
+        <Collapsible
+          bind={[open, setOpen]}
           class="mx-3 mt-2 flex max-h-[45%] shrink-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/60"
           data-pinned-question={props.message}
+          render={(panel) => <section {...panel} />}
         >
-          <Button
-            aria-expanded={folded() ? 'false' : 'true'}
-            aria-label={`${folded() ? 'Review' : 'Fold'} pinned question #${props.message}`}
-            class="flex w-full shrink-0 items-center justify-start gap-2 rounded-none px-3 py-1.5 text-left font-mono text-[11px] font-normal text-muted-foreground hover:text-foreground"
-            onClick={() => setFolded(!folded())}
-            size={null}
-            variant={null}
+          <CollapsibleTrigger
+            aria-label={`Pinned question #${props.message}`}
+            class="group/question flex w-full shrink-0 items-center justify-start gap-2 rounded-none px-3 py-1.5 text-left font-mono text-[11px] font-normal whitespace-nowrap text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <MessageCircleQuestionIcon class="size-3.5 shrink-0 text-brand" />
             <span class="min-w-0 flex-1 truncate">
               {waits() ? lead().replace(/\*\*/g, '') : settled()}
             </span>
-            <Show when={waits() && folded()}>
+            <Show when={waits() && !open()}>
               <span class="shrink-0 text-brand">
                 {questions().length
                   ? `${ready()}/${questions().length} · ${ready() ? 'review & send' : 'answer'}`
                   : 'answer'}
               </span>
             </Show>
-            <ChevronDownIcon
-              class={cn('size-3.5 shrink-0 transition-transform', folded() && '-rotate-90')}
-            />
-          </Button>
-          <Show when={!folded() && waits()}>
-            <div class="min-h-0 overflow-y-auto">
+            <ChevronDownIcon class="size-3.5 shrink-0 transition-transform group-data-closed/question:-rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent class="min-h-0 overflow-y-auto">
+            <Show when={waits()}>
               <MessageQuestions
                 answerWith={props.answerWith}
                 keys={props.keys}
@@ -434,9 +435,9 @@ function PinnedQuestion(props: {
                 sendLabel="Summarize & send"
                 withActions={false}
               />
-            </div>
-          </Show>
-        </section>
+            </Show>
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </Show>
   )

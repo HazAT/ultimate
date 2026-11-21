@@ -4,6 +4,7 @@ import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { cn } from '@/sdk/solid'
 import type { Question } from '../messages/refs.ts'
 import { answerOf, choices, keyOf, position } from './state.ts'
@@ -122,14 +123,14 @@ export function QuestionItem(props: {
               )}
               onPointerEnter={showPreview}
             >
-              <Button
+              <Toggle
                 aria-label={`Option ${index + 1} · ${choice().label} · ${name()}`}
-                aria-pressed={chosen() ? 'true' : 'false'}
+                pressed={chosen()}
                 disabled={props.disabled}
-                onClick={() => props.onSelect(index)}
+                onPressedChange={() => props.onSelect(index)}
                 onFocus={showPreview}
                 class={cn(
-                  'group/option flex h-auto min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug font-normal whitespace-normal motion-safe:active:scale-[0.995] max-md:min-h-11',
+                  'group/option flex h-auto min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug font-normal whitespace-normal motion-safe:active:scale-[0.995] data-pressed:bg-transparent data-pressed:text-inherit max-md:min-h-11',
                   ring,
                 )}
                 size={null}
@@ -168,7 +169,7 @@ export function QuestionItem(props: {
                     my pick
                   </span>
                 </Show>
-              </Button>
+              </Toggle>
               <Show when={choice().custom && chosen()}>
                 <div class="px-2.5 pb-2.5 pl-10">{field('Your answer…', true)}</div>
               </Show>
@@ -301,26 +302,25 @@ function Scale(props: {
       <div class="flex gap-1">
         <For each={choices(props.question)} keyed={false}>
           {(step, index) => (
-            <Button
-              aria-pressed={value() === index ? 'true' : 'false'}
+            <Toggle
+              pressed={value() === index}
               aria-label={`Rating ${step().label} · ${props.name}`}
               disabled={props.disabled}
-              onClick={() => props.onSelect(index)}
+              onPressedChange={() => props.onSelect(index)}
               style={{ 'transition-delay': value() >= index ? `${index * 20}ms` : undefined }}
               class={cn(
                 'h-9 min-w-0 flex-1 rounded-md border font-mono text-[13px] transition-[background-color,border-color,color,scale] duration-150 motion-safe:active:scale-95 max-md:h-11',
                 ring,
-                value() === index
-                  ? 'border-brand bg-brand text-brand-foreground'
-                  : value() > index
-                    ? 'border-brand/30 bg-brand/15 text-foreground'
-                    : 'border-border/70 bg-background/40 text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground',
+                'data-pressed:border-brand data-pressed:bg-brand data-pressed:text-brand-foreground',
+                value() >= index
+                  ? 'border-brand/30 bg-brand/15 text-foreground'
+                  : 'border-border/70 bg-background/40 text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground',
               )}
               size={null}
               variant={null}
             >
               {step().label}
-            </Button>
+            </Toggle>
           )}
         </For>
       </div>

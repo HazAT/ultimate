@@ -85,7 +85,10 @@ it('lets an agent turn fast mode on for the shown OpenAI model', async () => {
   expect(container.querySelector('[aria-label="Fast mode"]')?.getAttribute('aria-pressed')).toBe(
     'false',
   )
-  expect(await agent.act({ steps: [{ ref: toggle!.ref, action: 'press' }] })).toMatchObject({
+  expect(toggle).toMatchObject({ component: 'toggle', pressed: false })
+  expect(
+    await agent.act({ steps: [{ ref: toggle!.ref, action: 'setPressed', args: [true] }] }),
+  ).toMatchObject({
     ok: true,
   })
   await settle()

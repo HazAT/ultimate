@@ -107,7 +107,6 @@ it('switches to a contributed System tab and picks an Agents window, attributing
   expect(page.querySelector('[data-lane="8"]')).not.toBeNull()
   const choose = async (label: string, value: string) => {
     const control = agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
-    expect(control?.component).toBe('segmented-control')
     const result = await agent.act({
       steps: [{ ref: control!.ref, action: 'setValue', args: [value] }],
     })
@@ -115,7 +114,11 @@ it('switches to a contributed System tab and picks an Agents window, attributing
     await uiState.flush()
     flush()
   }
-  await choose('System view', 'example')
+  await choose('System view', 'Example')
+  expect(agent.snapshot().find((entry) => entry.label === 'System view')).toMatchObject({
+    component: 'tabs',
+    value: 'example',
+  })
   expect(page.querySelector('[data-example]')?.textContent).toBe('React tab')
   expect(page.querySelector('[data-lane]')).toBeNull()
   await choose('System view', 'agents')

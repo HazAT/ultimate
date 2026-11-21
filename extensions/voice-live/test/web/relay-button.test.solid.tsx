@@ -71,8 +71,10 @@ it('opens Secrets from the relay button and updates when the key becomes availab
   const button = container.querySelector('button[data-voice-live="unavailable"]')!
   expect(button.getAttribute('aria-label')).toBe(label)
   const control = agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
-  expect(control).toMatchObject({ component: 'button', label })
-  expect(await agent.act({ steps: [{ ref: control!.ref, action: 'press' }] })).toMatchObject({
+  expect(control).toMatchObject({ component: 'toggle', label, pressed: false })
+  expect(
+    await agent.act({ steps: [{ ref: control!.ref, action: 'setPressed', args: [true] }] }),
+  ).toMatchObject({
     ok: true,
   })
   expect(openSecrets).toHaveBeenCalledExactlyOnceWith({ name: 'OPENAI_API_KEY' })

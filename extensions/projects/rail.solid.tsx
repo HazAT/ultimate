@@ -2,6 +2,7 @@
 import { Pin, PinOff } from '@lucide/solid'
 import { createMemo, createRoot, createSignal, For, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
 import {
   ROOT,
@@ -101,14 +102,20 @@ function ProjectsRail() {
     const answer = shared.data()
     return writing() ?? (ack && answer === ack.over ? ack.pinned : (answer?.pinned ?? false))
   }
+  let saving = false
   const pin = async (next: boolean) => {
-    if (writing() !== undefined) return
+    if (saving) return
+    saving = true
     setWriting(next)
-    await api
-      .action(PinAction, { pinned: next })
-      .then((answer) => setSaved({ pinned: answer.pinned, over: shared.data() }), keepLast)
-    setWriting()
-    await shared.refetch()
+    try {
+      await api
+        .action(PinAction, { pinned: next })
+        .then((answer) => setSaved({ pinned: answer.pinned, over: shared.data() }), keepLast)
+      setWriting()
+      await shared.refetch()
+    } finally {
+      saving = false
+    }
   }
 
   const [hover, setHover] = createSignal(false)
@@ -157,11 +164,11 @@ function ProjectsRail() {
               <span class="ml-1.5 font-mono text-[11px] text-muted-foreground/60 tabular-nums">
                 {projects().length || ''}
               </span>
-              <Button
+              <Toggle
                 aria-label={pinned() ? 'Unpin the projects rail' : 'Pin the projects rail open'}
-                aria-pressed={pinned() ? 'true' : 'false'}
-                class="mr-2 ml-auto text-muted-foreground/70 hover:bg-sidebar-accent hover:text-foreground aria-pressed:text-foreground"
-                onClick={() => pin(!pinned())}
+                pressed={pinned()}
+                class="mr-2 ml-auto text-muted-foreground/70 hover:bg-sidebar-accent hover:text-foreground data-pressed:bg-transparent data-pressed:text-foreground data-pressed:hover:bg-sidebar-accent"
+                onPressedChange={pin}
                 size="icon-xs"
                 title={pinned() ? 'Unpin: open on hover' : 'Pin: keep open beside the app'}
                 variant={null}
@@ -169,7 +176,7 @@ function ProjectsRail() {
                 <Show when={pinned()} fallback={<Pin class="size-3.5" />}>
                   <PinOff class="size-3.5" />
                 </Show>
-              </Button>
+              </Toggle>
             </Show>
           </div>
           <div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-2 pb-2 [scrollbar-width:none]">
@@ -266,20 +273,26 @@ function Row(props: {
     event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
   return (
     <div class={cn(props.first && props.gap && 'mt-2')}>
-      <a
+      <Button
         aria-current={here() ? 'page' : undefined}
         aria-label={title()}
         class={cn(
-          'group relative mx-1.5 flex h-10 items-center rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+          'group relative mx-1.5 flex h-10 items-center justify-start gap-0 rounded-lg text-left font-normal whitespace-normal outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
           unreachable() && 'opacity-45',
           props.wide && (here() ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
         )}
         data-project={props.project.name}
-        href={href()}
         onClick={(event) => {
           if (href() && opensHere(event)) open(props.project.url)
         }}
+        render={(anchor) => (
+          <a {...anchor} href={href()}>
+            {anchor.children}
+          </a>
+        )}
+        size={null}
         title={title()}
+        variant={null}
       >
         <span
           class={cn(
@@ -362,7 +375,7 @@ function Row(props: {
             </Show>
           </span>
         </Show>
-      </a>
+      </Button>
     </div>
   )
 }

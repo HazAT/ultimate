@@ -98,10 +98,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function press(label: string) {
+async function press(label: string, action = 'press', args?: unknown[]) {
   const control = agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
   expect(control).toBeDefined()
-  const result = agent.act({ steps: [{ ref: control!.ref, action: 'press' }] })
+  const result = agent.act({ steps: [{ ref: control!.ref, action, args }] })
   await vi.advanceTimersByTimeAsync(100)
   flush()
   expect(await result).toMatchObject({ ok: true })
@@ -161,7 +161,8 @@ it('lets an agent choose, undo a send, send again, and dismiss another card', as
     ]),
   )
   const option = 'Option 2 · Status line · question 1 · message 5'
-  await press(option)
+  expect(agent.snapshot().find((entry) => entry.label === option)?.pressed).toBe(false)
+  await press(option, 'setPressed', [true])
   expect(card.querySelector(`[aria-label="${option}"]`)?.getAttribute('aria-pressed')).toBe('true')
   expect(harness.writers).toEqual(['agent'])
   await vi.advanceTimersByTimeAsync(320)

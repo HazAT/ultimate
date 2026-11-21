@@ -199,8 +199,10 @@ it('switches to side chat mode on Tab or the switch, opens a side chat on send, 
   expect(frame()).toBe('normal')
 
   await expectDistinctAgentNames(agent)
+  const label = 'Composer sends to @ultimate · Tab switches'
+  expect(agent.snapshot().find((entry) => entry.label === label)?.pressed).toBe(false)
   const switched = await agent.act({
-    steps: [{ ref: 'Composer sends to @ultimate · Tab switches', action: 'press' }],
+    steps: [{ ref: label, action: 'setPressed', args: [true] }],
   })
   expect(switched).toMatchObject({ ok: true })
   flush()

@@ -209,7 +209,8 @@ it('targets the side chat from thinking controls and the picker, including after
     )
     expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
     await expectDistinctAgentNames(agent)
-    expect(await act('high effort', 'press')).toMatchObject({ ok: true })
+    expect(agent.snapshot().find((entry) => entry.label === 'high effort')?.pressed).toBe(false)
+    expect(await act('high effort', 'setPressed', true)).toMatchObject({ ok: true })
     const cycle = models.commands!.find((command) => command.id === 'model.thinking.cycle')!
     expect(cycle).toMatchObject({ keys: 'shift+tab', whileTyping: true })
     await cycle.run(currentContext(side))
