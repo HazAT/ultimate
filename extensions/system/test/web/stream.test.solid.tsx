@@ -101,4 +101,12 @@ it('reaches a newer page that arrived while an older follow came back empty', as
   harness.follows[1].answer([row('c'), row('b')], 'h3')
   await settle()
   expect(view.textContent).toContain('row c')
+
+  page([row('d'), row('c')], 'h4')
+  await settle()
+  expect(harness.follows.map((follow) => follow.after)).toEqual(['h1', 'h1', 'h3'])
+  harness.follows[2].answer([row('e'), row('d')], 'h5')
+  await settle()
+  expect(view.textContent).toContain('row e')
+  expect(harness.follows).toHaveLength(3)
 })
