@@ -51,7 +51,7 @@ import {
   EscalateAction,
   EventsAction,
 } from './refs.ts'
-import { describeSchedule, nextAt, parseSchedule } from './schedule.ts'
+import { describeNext, describeSchedule, nextAt, parseSchedule } from './schedule.ts'
 import { scheduler } from './scheduler.ts'
 import { triggers, TRIGGER_EVENTS, describeTrigger } from './triggers.ts'
 import { supervisor } from './supervisor.ts'
@@ -986,7 +986,8 @@ function concise(value: JsonValue): string {
   if (value && typeof value === 'object' && 'enabled' in value) {
     const a = value as Automation
     const to = a.subscribers.map((s) => (typeof s === 'number' ? `#${s}` : s)).join(', ')
-    return `${a.id} ${a.name} — ${describeTrigger(a)} — ${a.enabled ? 'enabled' : 'paused'}${to ? ` → ${to}` : ''}`
+    const next = a.nextAt !== undefined ? ` — ${describeNext(a.nextAt, Date.now())}` : ''
+    return `${a.id} ${a.name} — ${describeTrigger(a)}${next} — ${a.enabled ? 'enabled' : 'paused'}${to ? ` → ${to}` : ''}`
   }
   if (value && typeof value === 'object' && typeof value.text === 'string') return value.text
   return JSON.stringify(value)

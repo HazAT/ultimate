@@ -121,6 +121,10 @@ async function fixture() {
         : last.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
     if (last.role === 'user' && text === 'HOLD')
       return fauxAssistantMessage([fauxToolCall('hold', {})], { stopReason: 'toolUse' })
+    if (last.role === 'user' && text.startsWith('AUTOMATION '))
+      return fauxAssistantMessage([fauxToolCall('automation', JSON.parse(text.slice(11)))], {
+        stopReason: 'toolUse',
+      })
     return fauxAssistantMessage([fauxText(`Answer: ${text}\nSecond line`)])
   }
   prepared.faux!.setResponses([route])
@@ -547,4 +551,41 @@ it('preserves the next interval fire on rename, even when the same schedule is s
   expect(reordered.nextAt).toBe(a.nextAt)
   const changed = (await f.action('update', { id: a.id, schedule: 'every 2d' })) as Automation
   expect(changed.nextAt).toBeGreaterThan(a.nextAt!)
+})
+
+it('names the next fire in UTC and from now in the tool receipt and list', async () => {
+  const f = await fixture()
+  vi.setSystemTime(Date.parse('2026-11-19T19:00:00Z'))
+  const receipt = async (args: JsonObject) => {
+    const conversation = f.opened.root
+    const results = async () =>
+      (await conversation.context(context)).entries.filter(
+        (entry) => entry.kind === 'pi.tool-result',
+      )
+    const before = (await results()).length
+    await conversation.submit(
+      { type: 'input', content: `AUTOMATION ${JSON.stringify(args)}` },
+      context,
+    )
+    await until(async () => (await results()).length > before)
+    const result = (await results()).at(-1)!.model![0] as unknown as {
+      content: { text: string }[]
+    }
+    return result.content.map((part) => part.text).join('')
+  }
+  expect(
+    await receipt({ action: 'create', name: 'Daily', schedule: 'cron "0 13 * * *" UTC' }),
+  ).toContain('At 13:00 (UTC) — next: 2026-11-20T13:00:00Z, in 18h — enabled')
+  expect(await receipt({ action: 'create', name: 'Soon', schedule: 'every 90m' })).toContain(
+    'next: 2026-11-19T20:30:00Z, in 1h 30m',
+  )
+  expect(await receipt({ action: 'create', name: 'Later', schedule: 'in 3d' })).toContain(
+    'next: 2026-11-22T19:00:00Z, in 3d',
+  )
+  expect(await receipt({ action: 'pause', id: 'A2' })).not.toContain('next:')
+  const list = (await receipt({ action: 'list' })).split('\n')
+  expect(list).toHaveLength(3)
+  expect(list[0]).toContain('next: 2026-11-20T13:00:00Z')
+  expect(list[1]).not.toContain('next:')
+  expect(list[2]).toContain('next: 2026-11-22T19:00:00Z')
 })
