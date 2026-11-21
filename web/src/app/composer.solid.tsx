@@ -113,11 +113,7 @@ export function Composer(props: { dock?: boolean }) {
   const requested = useStore((state) => state.requested)
   const mountKey = createMemo(() => conversation().id ?? scoped ?? requested())
   const extensions = useExtensions()
-  const frame = createTranscriptFrame()
-  createEffect(
-    () => conversation().entries,
-    (entries) => frame.setEntries(entries),
-  )
+  const frame = createTranscriptFrame(() => conversation().entries)
   return (
     <Transcript value={frame.frame}>
       <Contributed

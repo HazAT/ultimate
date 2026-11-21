@@ -15,7 +15,7 @@ it('shows the memories recalled for a message as chips that keep their slug and 
     kind: 'recall.memories',
     data: { input: 9, root: 1, memories: [{ slug: 'ui-taste', line: 'quiet', confidence: 1 }] },
   } as unknown as EntryRecord
-  const { frame } = createTranscriptFrame([user, recalled])
+  const { frame } = createTranscriptFrame(() => [user, recalled])
   const container = renderSolid(() => (
     <Transcript value={frame}>
       <RecallBubble entry={user} />

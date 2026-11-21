@@ -162,7 +162,7 @@ it('keeps two scoped snapshots, ops, transcripts and documents independent of th
   const nested = renderToStaticMarkup(
     h(
       TranscriptContext,
-      { value: createTranscriptFrame(view(7, 'parent history').entries).frame },
+      { value: createTranscriptFrame(() => view(7, 'parent history').entries).frame },
       scoped(9, h(Probe)),
     ),
   )

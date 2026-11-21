@@ -297,8 +297,8 @@ it('runs a composer a React wrapper portals, scopes or hides as one live editor'
   const [scope, hidden] = [{ id: undefined as number | undefined }, { on: false }]
   const rerender: { now?: () => void } = {}
   const reactWarnings = vi.spyOn(console, 'error')
-  const outerFrame = createTranscriptFrame([entry(17, 'from seventeen')])
-  const innerFrame = createTranscriptFrame([entry(18, 'from eighteen')])
+  const outerFrame = createTranscriptFrame(() => [entry(17, 'from seventeen')])
+  const innerFrame = createTranscriptFrame(() => [entry(18, 'from eighteen')])
   await registry.setLoaders({
     '/extensions/wrap/web.tsx': async () => ({
       default: {

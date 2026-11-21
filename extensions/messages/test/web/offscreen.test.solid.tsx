@@ -52,7 +52,7 @@ it('finds a question card mounted after its row and reveals its entry when press
   onTestFinished(() => {
     vi.unstubAllGlobals()
   })
-  const transcript = createTranscriptFrame([
+  const transcript = createTranscriptFrame(() => [
     {
       id: 44,
       conversationId: conversation,

@@ -161,13 +161,7 @@ export const Transcript = createContext<TranscriptFrame | null>(null)
 export function useTranscript(): Accessor<readonly EntryRecord[]> {
   const frame = useContext(Transcript)
   const conversation = useConversation()
-  if (!frame) return () => conversation().entries
-  const [entries, setEntries] = createSignal(frame.entries())
-  onSettled(() => {
-    setEntries(() => frame.entries())
-    return frame.subscribe(() => setEntries(() => frame.entries()))
-  })
-  return entries
+  return frame ? frame.entries : () => conversation().entries
 }
 
 type Target = ConversationId | 'shown'
