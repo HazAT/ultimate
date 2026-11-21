@@ -1,9 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import {
-  ToggleGroup as ToggleGroupRoot,
-  ToggleIcon,
-  Toggle as ToggleRoot,
-} from '@ui-sdk/solid/toggle'
+import { ToggleGroup as ToggleGroupRoot, Toggle as ToggleRoot } from '@ui-sdk/solid/toggle'
 import { cn } from 'cn'
 import { merge, omit } from 'solid-js'
 import type { Accessor, ComponentProps } from 'solid-js'
@@ -70,4 +66,4 @@ function ToggleGroup<T extends string>(props: ToggleGroupProps<T>) {
   )
 }
 
-export { Toggle, ToggleGroup, ToggleIcon }
+export { Toggle, ToggleGroup }

@@ -324,27 +324,30 @@ function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
             {(panel) => {
               const iconOnly = () =>
                 fit().compact && panel().icon !== undefined && panel().id !== props.active.id
-              const button = (trigger: Record<string, unknown> = {}) => (
-                <TabsTab
-                  {...trigger}
-                  aria-label={panel().title}
-                  class={cn(tab, tabButton)}
-                  value={panel().id}
-                >
-                  <TabIcon panel={panel()} />
-                  <span class={iconOnly() ? 'sr-only' : undefined}>{panel().title}</span>
-                  <TabBadges id={panel().id} />
-                </TabsTab>
-              )
               return (
-                <Show when={iconOnly()} fallback={button()}>
-                  <Tooltip delay={400}>
-                    <TooltipTrigger render={(trigger) => button(trigger)} />
-                    <TooltipContent data-agent-hidden side="bottom">
-                      {panel().title}
-                    </TooltipContent>
-                  </Tooltip>
-                </Show>
+                <Tooltip delay={400} disabled={!iconOnly()}>
+                  <TooltipTrigger
+                    render={(trigger) => (
+                      <TabsTab
+                        {...trigger}
+                        aria-label={panel().title}
+                        class={cn(tab, tabButton)}
+                        value={panel().id}
+                      >
+                        <TabIcon panel={panel()} />
+                        <span class={iconOnly() ? 'sr-only' : undefined}>{panel().title}</span>
+                        <TabBadges id={panel().id} />
+                      </TabsTab>
+                    )}
+                  />
+                  <TooltipContent
+                    class={iconOnly() ? undefined : 'hidden'}
+                    data-agent-hidden
+                    side="bottom"
+                  >
+                    {panel().title}
+                  </TooltipContent>
+                </Tooltip>
               )
             }}
           </For>
@@ -386,7 +389,10 @@ export function Panels() {
       <PanelTabs active={panel()} panels={tabs()} />
       <For each={tabs()} keyed={key}>
         {(shown) => (
-          <TabsPanel class="min-h-0 flex-1 overflow-y-auto" value={shown().id}>
+          <TabsPanel
+            class="min-h-0 flex-1 overflow-y-auto not-data-selected:hidden"
+            value={shown().id}
+          >
             <Contribution fallback={reportedFailure} item={shown()} props={{}} />
           </TabsPanel>
         )}

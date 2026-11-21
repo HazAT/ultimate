@@ -32,6 +32,7 @@ import { ErrorCard } from '../../web/src/compat/boundary.tsx'
 import { ReportedErrorCard } from '../../web/src/app/error-stack.solid.tsx'
 import { IconButton } from '../../web/src/app/header.solid.tsx'
 import { CommandPalette } from '../../web/src/app/palette.solid.tsx'
+import { Panels } from '../../web/src/app/shell.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
 import { island } from '../../web/src/compat/island.tsx'
 import { RenderedPoint } from '../../web/src/sdk/contribution.solid.tsx'
@@ -41,6 +42,60 @@ import { writerNow } from '../../web/src/sdk/writer.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 const agent = createAgent()
+
+it('keeps keyboard focus on the same compact tab as it becomes selected', async ({
+  onTestFinished,
+}) => {
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(80)
+  const measure = vi
+    .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+    .mockImplementation(function (this: HTMLElement) {
+      return this.dataset.measure?.startsWith('label:') ? 40 : 15
+    })
+  onTestFinished(() => {
+    width.mockRestore()
+    measure.mockRestore()
+  })
+  const panels = ['Inspect', 'Activity', 'Tasks']
+  await registry.setLoaders({
+    'extensions/example/web.solid.tsx': async () => ({
+      default: {
+        panels: panels.map((title) => ({
+          id: title.toLowerCase(),
+          title,
+          icon: () => <svg aria-hidden="true" />,
+          component: () => <p>{title} panel content</p>,
+        })),
+      },
+    }),
+  })
+  registry.receiveSystem()
+  uiState.set('shell.panel', 'inspect')
+  uiState.set('shell.panelOpen', true)
+  const page = renderSolid(() => <Panels />)
+  await settle()
+  const lookup = (name: string) =>
+    page.querySelector<HTMLButtonElement>(`[role="tab"][aria-label="${name}"]`)!
+  const first = lookup('Inspect')
+  const second = lookup('Activity')
+  expect(second.querySelector('.sr-only')?.textContent).toBe('Activity')
+  first.focus()
+  first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+  flush()
+  expect(document.activeElement).toBe(second)
+  expect(second.getAttribute('aria-selected')).toBe('true')
+  expect(second.querySelector('.sr-only')).toBeNull()
+  expect(page.querySelector('[role="tabpanel"][data-selected]')?.textContent).toBe(
+    'Activity panel content',
+  )
+  expect(page.textContent).not.toContain('Inspect panel content')
+  const tabs = agent
+    .snapshot()
+    .find((entry) => !entry.offPage && entry.label === 'Conversation panels')
+  expect(tabs?.items?.map((item) => item.label)).toEqual(panels)
+  for (const text of panels) expect(await agent.query({ text, kind: 'tooltip' })).toEqual([])
+  uiState.set('shell.panelOpen', false)
+})
 
 it('runs the command an agent picks in the palette, attributed to the agent', async () => {
   const ran = vi.fn<(writer: string) => void>()

@@ -39,7 +39,7 @@ export function PanelActions() {
             return (
               <Tooltip delay={400}>
                 <TooltipTrigger
-                  aria-label={panel().title}
+                  aria-label={`Show ${panel().title} panel`}
                   render={(trigger) => (
                     <Toggle
                       {...trigger}

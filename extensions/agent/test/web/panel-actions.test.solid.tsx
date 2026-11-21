@@ -1,6 +1,8 @@
 /** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { expect, it, vi } from 'vitest'
+import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
+import { Panels } from '../../../../web/src/app/shell.solid.tsx'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { registry } from '../../../../web/src/sdk/client.ts'
 import { PanelActions } from '../../panel-actions.solid.tsx'
@@ -34,14 +36,27 @@ it('opens and closes a conversation panel from its tablet shortcut', async ({ on
     }),
   })
   registry.receiveSystem()
-  renderSolid(() => <PanelActions />)
-  const shortcut = () => agent.snapshot().find((entry) => !entry.offPage && entry.label === 'Info')
+  renderSolid(() => (
+    <>
+      <PanelActions />
+      <Panels />
+    </>
+  ))
+  const shortcut = () =>
+    agent.snapshot().find((entry) => !entry.offPage && entry.label === 'Show Info panel')
   expect(shortcut()).toMatchObject({ component: 'toggle', pressed: false })
-  for (const pressed of [true, false]) {
+  const setPressed = async (pressed: boolean) => {
     const result = await agent.act({
       steps: [{ ref: shortcut()!.ref, action: 'setPressed', args: [pressed] }],
     })
     expect(result.ok).toBe(true)
     expect(shortcut()?.pressed).toBe(pressed)
   }
+  await setPressed(true)
+  const tabs = agent
+    .snapshot()
+    .find((entry) => !entry.offPage && entry.label === 'Conversation panels')
+  expect(tabs?.items).toEqual([{ value: 'info', label: 'Info' }])
+  await expectDistinctAgentNames(agent)
+  await setPressed(false)
 })

@@ -43,7 +43,10 @@ it('opens a transcript fold from the bridge and remembers it after remount', asy
   expect(
     await agent.act({ steps: [{ ref: control!.ref, action: 'setOpen', args: [true] }] }),
   ).toMatchObject({ ok: true })
-  expect(container.textContent).toContain('Tool output')
+  const trigger = container.querySelector('button')!
+  const body = document.getElementById(trigger.getAttribute('aria-controls')!)
+  expect(body?.textContent).toBe('Tool output')
+  expect(container.querySelector('[data-slot="collapsible-panel"]')).toBeNull()
   expect(renderSolid(fold).textContent).toContain('Tool output')
 })
 

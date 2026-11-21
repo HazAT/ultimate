@@ -1,11 +1,9 @@
 /** @jsxImportSource @solidjs/web */
 import {
   Tabs as TabsRoot,
-  TabsIndicator,
   TabsList as TabsListRoot,
   TabsPanel,
   TabsTab as TabsTabRoot,
-  TabsTabIcon,
 } from '@ui-sdk/solid/tabs'
 import { cn } from 'cn'
 import { omit } from 'solid-js'
@@ -60,4 +58,4 @@ function TabsTab(props: ComponentProps<typeof TabsTabRoot> & { class?: string })
   )
 }
 
-export { Tabs, TabsIndicator, TabsList, TabsPanel, TabsTab, TabsTabIcon }
+export { Tabs, TabsList, TabsPanel, TabsTab }
