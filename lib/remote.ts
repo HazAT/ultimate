@@ -1,4 +1,5 @@
 import { hostname } from 'node:os'
+import { isAbsolute, resolve } from 'node:path'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { cloudConfig, fetchRegister } from './cloud.ts'
 import type { Register } from './cloud.ts'
@@ -13,8 +14,9 @@ export type Target =
   | { current: true }
   | { url: string; label: string; name: string; machine?: string }
 
-const naming = (project: string) => (item: { name?: string; key?: string }) =>
-  [item.name, item.key].some((value) => value?.toLowerCase() === project.toLowerCase())
+const naming = (project: string) => (item: { name?: string; key?: string; root?: string }) =>
+  [item.name, item.key].some((value) => value?.toLowerCase() === project.toLowerCase()) ||
+  (isAbsolute(project) && item.root !== undefined && resolve(project) === resolve(item.root))
 
 export function resolveProject(
   project: string,
