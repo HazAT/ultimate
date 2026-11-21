@@ -37,10 +37,10 @@ Arguments and results are stored as JSON summaries of about 300 characters with 
 array replaced by `[redacted]`. A `data` value on an object whose own `mimeType` data property begins with `image/`
 is also redacted, including when the object appears before an alias in an `images` array. An own `mimeType` accessor
 also causes redaction without calling it to determine the type, even when it is not an image. This also redacts non-image
-`data` inside such arrays, and a shared object seen there is redacted in later references in the same summary. Other
-fields, including image MIME types, remain subject to the normal summary budget. This is shape-specific, not general
-binary redaction: image data in other shapes or strings can still appear, as can an earlier alias that does not have an
-own `mimeType`, or one whose custom serialization removes it. Failed unsealed calls store their error message unchanged, so
+`data` inside such arrays, and a shared object seen there is redacted in later references in the same summary unless
+custom serialization returns a fresh object. Other fields, including image MIME types, remain subject to the normal
+summary budget. This is shape-specific, not general binary redaction: image data in other shapes or strings can still
+appear, as can an earlier alias that does not have an own `mimeType`, or one whose custom serialization removes it. Failed unsealed calls store their error message unchanged, so
 an error that echoes image data can leak it even when the arguments are redacted and no result is stored. This does
 not rewrite existing trace rows or protect image delivery. Because repeat suppression compares argument summaries,
 successful root calls differing only in redacted image bytes can be counted as repeats rather than written.
