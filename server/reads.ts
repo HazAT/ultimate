@@ -11,6 +11,7 @@ interface Entry {
   spec: ReadSpec
   subscribers: Map<symbol, { every?: number; send: Send }>
   sent?: string
+  answeredAt: number
   running?: AbortController
   again?: Cancel
   started: number
@@ -25,23 +26,28 @@ const failure = (error: unknown, status?: number): ReadEvent => ({
   status: status ?? (error as { status?: number } | undefined)?.status ?? 500,
 })
 
-export function createReads(run: Run) {
+export function createReads(run: Run, now = () => Date.now()) {
   const entries = new Map<string, Entry>()
 
   function publish(entry: Entry, startedAt: number, event: ReadEvent) {
     if (startedAt < entry.shown) return
     entry.shown = startedAt
+    entry.answeredAt = now()
     const json = JSON.stringify(event)
-    if (json === entry.sent) return
-    entry.sent = json
-    for (const { send } of entry.subscribers.values()) send(event)
+    if (json !== entry.sent) {
+      entry.sent = json
+      for (const { send } of entry.subscribers.values()) send(event)
+    }
+    schedule(entry)
   }
 
   function schedule(entry: Entry) {
     entry.again?.()
     entry.again = undefined
     const every = Math.min(...[...entry.subscribers.values()].map((item) => item.every ?? Infinity))
-    if (every !== Infinity && !entry.running) entry.again = retryAfter(every, () => runOnce(entry))
+    if (every === Infinity || entry.running) return
+    const dueInMs = Math.max(0, entry.answeredAt + every - now())
+    entry.again = retryAfter(dueInMs, () => runOnce(entry))
   }
 
   function runOnce(entry: Entry) {
@@ -54,7 +60,8 @@ export function createReads(run: Run) {
         .then(
           (result) => ({ result: (result ?? null) as JsonValue }),
           (error: unknown) => {
-            if (!controller.signal.aborted) console.error(`Read ${readKey(entry.spec)}:`, error)
+            if (!controller.signal.aborted)
+              console.error(`Read ${entry.spec.extension}/${entry.spec.action} failed:`, error)
             return failure(error)
           },
         )
@@ -62,7 +69,6 @@ export function createReads(run: Run) {
           if (controller.signal.aborted) return
           entry.running = undefined
           publish(entry, startedAt, event)
-          schedule(entry)
         }),
     )
   }
@@ -72,7 +78,7 @@ export function createReads(run: Run) {
       const key = readKey(spec)
       let entry = entries.get(key)
       if (!entry) {
-        entry = { spec, subscribers: new Map(), started: 0, shown: 0 }
+        entry = { spec, subscribers: new Map(), answeredAt: 0, started: 0, shown: 0 }
         entries.set(key, entry)
       }
       const id = Symbol(key)

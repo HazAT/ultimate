@@ -37,7 +37,15 @@ export function createReads(api: Api, store: Store) {
   const reads = new Map<string, Read & { readers: Set<Reader>; answered: () => boolean }>()
   const changed = new Set<() => void>()
   const inUseReadsSettled = () =>
+    store.getState().connection.status !== 'open' ||
     [...reads.values()].every((read) => !read.readers.size || read.answered())
+  let connection = store.getState().connection.status
+  store.subscribe(() => {
+    const status = store.getState().connection.status
+    if (status === connection) return
+    connection = status
+    for (const listener of changed) listener()
+  })
 
   if (typeof window !== 'undefined')
     window.addEventListener('focus', () => {
@@ -119,17 +127,29 @@ export function createReads(api: Api, store: Store) {
           ...([args, { signal: own.signal, conversationId }] as ActionArgs<unknown, ActionOptions>),
         )
         if (own.signal.aborted) return undefined
-        controller = undefined
-        answer({ result: (data ?? null) as JsonValue }, onError)
+        settleAttempt(own, { result: (data ?? null) as JsonValue }, onError)
         return data
       } catch (error) {
         if (own.signal.aborted) return undefined
-        controller = undefined
         const failure = error as ActionError
-        if (failure.status === 0) set({ loading: false })
-        else answer({ error: failure.message, status: failure.status }, onError)
+        settleAttempt(
+          own,
+          failure.status === 0 ? undefined : { error: failure.message, status: failure.status },
+          onError,
+        )
         return undefined
       }
+    }
+    function settleAttempt(
+      own: AbortController,
+      event: ReadEvent | undefined,
+      onError: Reader['onError'],
+    ) {
+      if (controller === own) controller = undefined
+      const streamWritesTheSharedAnswer = watching !== undefined
+      if (event && !streamWritesTheSharedAnswer) return answer(event, onError)
+      answered = true
+      set({ loading: !!controller })
     }
     const read = {
       readers,

@@ -1013,8 +1013,6 @@ export const actions = {
     })
     await until(() => answers(second, 1).length === 1)
     expect(server.api.reads()).toBe(1)
-    const before = await runs()
-    await until(async () => (await runs()) >= before + 4)
     expect([answers(first, 1), answers(second, 1)]).toEqual([
       [{ result: 'one' }],
       [{ result: 'one' }],
@@ -1030,10 +1028,9 @@ export const actions = {
         subscribe: [
           { sub: 2, read: { ...read, args: { fail: true } } },
           { sub: 3, read: { extension: 'probe', action: 'missing', args: null } },
-          { sub: 4, read, every: 1 },
         ],
       }),
-    ).toEqual({ ok: true, refused: { 4: 400 } })
+    ).toEqual({ ok: true, refused: {} })
     await until(() => answers(first, 2).length === 1 && answers(first, 3).length === 1)
     expect(answers(first, 2)).toEqual([{ error: 'probe failed', status: 500 }])
     expect(answers(first, 3)).toEqual([{ error: 'Unknown extension action', status: 404 }])
@@ -1048,17 +1045,21 @@ export const actions = {
     ])
 
     expect(server.api.reads()).toBe(3)
-    await subscribe(first, { unsubscribe: [1, 2, 3] })
+    await subscribe(first, { unsubscribe: [2, 3] })
     expect(server.api.reads()).toBe(1)
     await subscribe(second, { unsubscribe: [1, 5] })
-    expect(server.api.reads()).toBe(0)
-    const stopped = await runs()
-    const tick = { extension: 'probe', action: 'tick', args: null }
-    await subscribe(first, { subscribe: [{ sub: 6, read: tick, every: 250 }] })
-    await until(() => answers(first, 6).length >= 3)
-    expect(await runs()).toBe(stopped)
-    await first.close()
     await second.close()
+    expect(server.api.reads()).toBe(1)
+    await first.close()
+    await until(() => server.api.reads() === 0)
+    const stopped = await runs()
+    const third = await attach(server, { view: false })
+    await until(() => third.events.some((e) => e.name === 'stream'))
+    const tick = { extension: 'probe', action: 'tick', args: null }
+    await subscribe(third, { subscribe: [{ sub: 6, read: tick, every: 250 }] })
+    await until(() => answers(third, 6).length >= 3)
+    expect(await runs()).toBe(stopped)
+    await third.close()
   })
   it('serves published titles and activity to clients and server facets without deriving entries', async () => {
     const { server } = await fixture(false, {

@@ -6,7 +6,7 @@ import { expect, it, vi } from 'vitest'
 import { ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
-import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
+import type { FakeSource } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { ROOT } from '../../../../web/src/sdk/api.ts'
 import { reads, store, uiState } from '../../../../web/src/sdk/client.ts'
@@ -39,22 +39,29 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     if (path === '/api/extensions/automations/actions/list')
       return Response.json({ result: harness.updated ?? automations })
     if (path !== '/api/ui')
-      return (
-        fakeSubscriptions(harness.stream ? [harness.stream] : [], fetch).handle(
-          path as string,
-          init,
-        ) ?? Response.json({ ok: true })
-      )
+      return server.handle(path as string, init) ?? Response.json({ ok: true })
     const { ops } = JSON.parse(init!.body as string) as UiUpdateRequest
     const source = new Headers(init?.headers).get(SOURCE_HEADER)
     for (const { key, value } of ops) harness.writes.push({ key, value, source })
     return Response.json({ ok: true, rev: 1 })
   }
+  const {
+    FakeSource: Source,
+    answerReadsWith,
+    fakeSubscriptions: fake,
+  } = await import('../../../../test/web/fake-source.ts')
+  const sources: FakeSource[] = []
+  const server = fake(sources)
+  const pageFetch = answerReadsWith(fetch)
   const clientStore = createStore({
-    eventSource: (url) => (harness.stream = new FakeSource(url)),
-    fetch,
+    eventSource: (url) => {
+      harness.stream = new Source(url)
+      sources.push(harness.stream)
+      return harness.stream
+    },
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,

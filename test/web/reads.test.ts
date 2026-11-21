@@ -4,21 +4,33 @@ import { ActionError } from '../../web/src/sdk/api.ts'
 import type { Api } from '../../web/src/sdk/api.ts'
 import { createReads } from '../../web/src/sdk/reads.ts'
 
-function setup() {
+function setup(status = 'open') {
   const watched: { read: ReadSpec; every?: number; send: (event: ReadEvent) => void }[] = []
+  const listeners = new Set<() => void>()
+  let connection = status
   const store = {
     notify: vi.fn<(notice: unknown) => void>(),
+    getState: () => ({ connection: { status: connection } }),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    },
     watchRead: (read: ReadSpec, every: number | undefined, send: (event: ReadEvent) => void) => {
       const watch = { read, every, send }
       watched.push(watch)
       return () => void watched.splice(watched.indexOf(watch), 1)
     },
   }
+  const connect = (next: string) => {
+    connection = next
+    for (const listener of listeners) listener()
+  }
   const action = vi.fn<() => Promise<unknown>>()
   return {
     watched,
     store,
     action,
+    connect,
     reads: createReads({ action } as unknown as Api, store as never),
   }
 }
@@ -53,10 +65,22 @@ it("shows a read's failure through its reader's onError, or else as a notice, on
   expect(store.notify).toHaveBeenCalledWith({ level: 'error', message: 'test/status: other' })
 })
 
-it('answers a refetch over HTTP and stays quiet when the request never reached the server', async () => {
-  const { reads, action, store } = setup()
+it("keeps the stream's newer answer when an older refetch answers last", async () => {
+  const { watched, reads, action } = setup()
   const read = reads.get('test', 'status', null)
   read.use({})
+  const older = Promise.withResolvers<unknown>()
+  action.mockReturnValueOnce(older.promise)
+  const refetched = read.refetch()
+  watched[0].send({ result: 'newer' })
+  older.resolve('older')
+  expect(await refetched).toBe('older')
+  expect(read.get()).toMatchObject({ data: 'newer', loading: false, settled: true })
+})
+
+it('answers a refetch of an unwatched read itself, and stays quiet when its request never reached the server', async () => {
+  const { reads, action, store } = setup()
+  const read = reads.get('test', 'status', null)
   action.mockResolvedValueOnce('fresh')
   await read.refetch()
   expect(read.get()).toMatchObject({ data: 'fresh', loading: false })
@@ -76,6 +100,21 @@ it('settles in-use reads once each mounted read has its first answer, so ui step
   expect(settled).toBe(false)
   watched[0].send({ result: 'answer' })
   await done
+  expect(settled).toBe(true)
+})
+
+it('does not hold ui steps for reads while the stream is down, and holds them again once it is up', async () => {
+  const { reads, connect } = setup('connecting')
+  reads.get('test', 'status', null).use({})
+  await expect(reads.settledInUse()).resolves.toBeUndefined()
+  connect('open')
+  let settled = false
+  const done = reads.settledInUse().then(() => (settled = true))
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  connect('reconnecting')
+  await done
+  await Promise.resolve()
   expect(settled).toBe(true)
 })
 

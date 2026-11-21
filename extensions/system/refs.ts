@@ -98,13 +98,14 @@ export type LaneLink = {
 }
 
 /**
- * `{ since?, until? }` (ISO; default the last 30 minutes up to now) → `{ now, lanes, links, more? }`: a lane for each
+ * `{ since?, until?, windowMs? }` (ISO; default the last `windowMs`, else 30 minutes, up to now, `since` rounded down
+ * to the minute when `windowMs` sets it) → `{ now, lanes, links, more? }`: a lane for each
  * conversation with tool or model calls in the window, most recently active first, at most 40 together with the
  * parents they need (a parent without calls in the window has no runs); `more` counts the lanes left out. `links` are
  * the messages between listed lanes sent in the window, oldest first.
  */
 export const LanesAction = actionRef<
-  { since?: string; until?: string },
+  { since?: string; until?: string; windowMs?: number },
   { now: string; lanes: Lane[]; links: LaneLink[]; more?: number }
 >('system', 'lanes')
 

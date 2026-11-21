@@ -16,6 +16,7 @@ export class FakeSource extends EventTarget implements EventSourceLike {
   close() {
     this.closed = true
     this.readyState = 2
+    this.dispatchEvent(new Event('fake-close'))
   }
   /** The server answered: a new stream (also after a drop), which sends its id first. */
   open() {
@@ -212,6 +213,9 @@ export function fakeSubscriptions(sources: FakeSource[], actions?: ActionFetch) 
             },
           }
           reads.push(read)
+          source.addEventListener('fake-close', () => stops.get(`${stream}/${sub}`)?.(), {
+            once: true,
+          })
           stops.set(
             `${stream}/${sub}`,
             running.subscribe(spec.read, spec.every, (event: ReadEvent) => {

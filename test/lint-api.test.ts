@@ -60,31 +60,52 @@ it('rejects hand-rolled polls of Ultimate and raw requests to /api, as extension
     diagnose('no-raw-stream', file, source).filter((message) =>
       message.includes('polls once per page'),
     )
-  // extensions/status-line/status.solid.tsx before reads went over the stream: its own 1 s loop.
-  const rates = `
+  const sdk = "import { api, useAction } from '@/sdk/solid'\n"
+  // extensions/status-line/status.solid.tsx at 54fadf9: its own 1 s loop.
+  const rates = `${sdk}
     const poll = async () => {
       const next = await api.action(RatesAction, null, { signal: own.signal }).catch(() => null)
       cancel = retryAfter(1000, () => void poll())
     }`
   expect(polls('extensions/status-line/status.solid.tsx', rates)).toHaveLength(1)
-  // extensions/automations/poll.ts and live.solid.tsx: a shared list polled by every, refreshed through a helper.
-  const automations = `
+  // extensions/automations/live.solid.tsx at 54fadf9: a refresh helper behind two timers.
+  const automations = `${sdk}
     export const refreshList = () => refreshAutomations(api.action)
     export function useLive() {
       const refresh = () => void refreshList()
-      createEffect(signature, () => retryAfter(100, refresh))
-      createEffect(late, () => every(2000, refresh))
-    }
-    function reschedule(fetchList) {
-      poll.stopPolling = every(ms, () => void refreshAutomations(fetchList))
+      createEffect(signature, (_, previous) => (previous === undefined ? undefined : retryAfter(100, refresh)))
+      createEffect(late, (on) => {
+        refresh()
+        return every(2000, refresh)
+      })
     }`
   expect(polls('extensions/automations/live.solid.tsx', automations)).toHaveLength(2)
-  // extensions/mcp/chip.solid.tsx: a refetch at each server's retry time beside useAction's every.
-  const mcp = `
-    const { refetch } = useAction(StatusAction, null, { every: settling })
+  // extensions/mcp/chip.solid.tsx at 54fadf9: a refetch at each server's retry time beside useAction's every.
+  const mcp = `${sdk}
+    const { data: servers, refetch } = useAction(StatusAction, null, { every: settling })
     const refresh = () => void refetch()
-    createEffect(retryAt, (at) => retryAfter(at - Date.now() + 500, refresh))`
+    createEffect(retryAt, (at) => retryAfter(Math.max(0, at - Date.now()) + 500, refresh))`
   expect(polls('extensions/mcp/chip.solid.tsx', mcp)).toHaveLength(1)
+  // extensions/system/surface.solid.tsx at 54fadf9: the lanes loaded every 2 s by hand.
+  const lanes = `${sdk}
+    const load = () => {
+      void api.action(LanesAction, { since }, { signal: controller.signal }).then(
+        (data) => setState({ range, data }),
+        (error) => setState({ range, error }),
+      )
+    }
+    load()
+    const stop = live ? every(2000, load) : undefined`
+  expect(polls('extensions/system/surface.solid.tsx', lanes)).toHaveLength(1)
+
+  const others = `${sdk}
+    import { client } from './my-backend.ts'
+    const query = useQuery()
+    every(5000, () => void client.action('sync'))
+    every(pollMs, () => void query.refetch())
+    retryAfter(1000, () => setNow(Date.now()))
+    every(10_000, () => api.action(PresentAction, { endpoint, visible: true }).catch(warn))`
+  expect(polls('extensions/mine/web.solid.tsx', others)).toEqual([])
 
   const raw = `
     fetch('/api/extensions/mine/actions/list')

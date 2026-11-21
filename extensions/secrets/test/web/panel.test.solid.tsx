@@ -29,18 +29,21 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       harness.secrets.push({ name: args.name, declaredBy: [], set: true })
       return Response.json({ result: { name: args.name, set: true } })
     }
-    return (
-      fakeSubscriptions(harness.stream ? [harness.stream] : [], harness.request).handle(
-        path as string,
-        init,
-      ) ?? Response.json({ ok: true })
-    )
+    return server.handle(path as string, init) ?? Response.json({ ok: true })
   })
+  const sources: FakeSource[] = []
+  const server = fakeSubscriptions(sources)
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(harness.request)
   const clientStore = createStore({
-    eventSource: (url) => (harness.stream = new FakeSource(url)),
-    fetch: harness.request,
+    eventSource: (url) => {
+      harness.stream = new FakeSource(url)
+      sources.push(harness.stream)
+      return harness.stream
+    },
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch: harness.request })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,

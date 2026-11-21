@@ -412,7 +412,7 @@ export function createStore(options: StoreOptions = {}) {
           }),
         )
     for (const [key, { read, every }] of watchedReads)
-      result.set(`read:${key}:${every ?? ''}`, {
+      result.set(`read:${key}`, {
         spec: every === undefined ? { read } : { read, every },
         handler: (name, raw) => {
           if (name === 'read') watchedReads.get(key)?.onEvent(JSON.parse(raw) as ReadEvent)
@@ -423,6 +423,11 @@ export function createStore(options: StoreOptions = {}) {
 
   function refusedOpen(key: string, sub: number, status: number) {
     if (live.get(key) !== sub) return
+    const read = key.startsWith('read:') ? watchedReads.get(key.slice(5)) : undefined
+    if (read && status >= 400 && status < 500) {
+      read.onEvent({ error: 'The server refused this read', status })
+      return
+    }
     live.delete(key)
     unsubscribe(sub)
     const requestedConversationNeverOpened =
@@ -620,7 +625,7 @@ export function createStore(options: StoreOptions = {}) {
       }
     },
     watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadEvent) => void) {
-      const key = JSON.stringify(read)
+      const key = JSON.stringify([read, every ?? null])
       const watch = { read, every, onEvent }
       watchedReads.set(key, watch)
       scheduleReconcile()

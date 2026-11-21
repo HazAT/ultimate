@@ -375,7 +375,12 @@ export async function lanes(
   clock = Date.now(),
 ) {
   const until = time(args.until, 'until') ?? clock
-  const since = time(args.since, 'since') ?? until - 30 * 60_000
+  const windowMs = typeof args.windowMs === 'number' ? args.windowMs : 30 * 60_000
+  const since =
+    time(args.since, 'since') ??
+    (args.windowMs === undefined
+      ? until - windowMs
+      : Math.floor((until - windowMs) / 60_000) * 60_000)
   if (since >= until) throw new Error('Expected since before until')
 
   const byConversation = new Map<ConversationId, CallRow[]>()

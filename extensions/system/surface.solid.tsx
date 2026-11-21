@@ -121,15 +121,12 @@ function useStates() {
 
 type LanesResult = { now: string; lanes: Lane[]; links: LaneLink[]; more?: number }
 
-function useLanes(currentRange: () => number, isLive: () => boolean, now: () => number) {
-  const since = createMemo(() =>
-    new Date(Math.floor((now() - currentRange()) / 60_000) * 60_000).toISOString(),
-  )
+function useLanes(currentRange: () => number, isLive: () => boolean) {
   const read = useAction(
     LanesAction,
     {
-      get since() {
-        return since()
+      get windowMs() {
+        return currentRange()
       },
     },
     { onError: keepLast, every: () => (isLive() ? 2000 : undefined) },
@@ -208,7 +205,7 @@ function Lanes() {
   })
   const now = useNow(1000, live)
   const range = () => windows[window()].ms
-  const lanes = useLanes(range, live, now)
+  const lanes = useLanes(range, live)
   const stateOf = useStates()
   const list = () => lanes()?.data?.lanes ?? noLanes
   const states = createMemo(() => new Map(list().map((lane) => [lane.conversation, stateOf(lane)])))

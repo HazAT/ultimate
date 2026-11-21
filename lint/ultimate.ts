@@ -486,22 +486,65 @@ export default {
               named.set(child.id.name, child)
             if (child.type === 'VariableDeclarator' && child.id?.name && child.init)
               named.set(child.id.name, child.init)
+            if (
+              child.type === 'VariableDeclarator' &&
+              child.id?.type === 'ObjectPattern' &&
+              child.init
+            )
+              for (const property of child.id.properties ?? [])
+                if (property.key?.name) named.set(property.key.name, child.init)
           })
           declarations.set(program, (found = named))
           return found
         }
-        const isApiAction = (node: Node | undefined) =>
-          node?.type === 'MemberExpression' &&
-          node.object?.type === 'Identifier' &&
-          ['api', 'client'].includes(node.object.name ?? '') &&
-          propertyName(node) === 'action'
-        const reads = (node: Node) =>
-          node.type === 'CallExpression' &&
-          (isApiAction(node.callee) ||
-            (node.callee?.type === 'Identifier' && node.callee.name === 'refetch') ||
-            (node.callee?.type === 'MemberExpression' && propertyName(node.callee) === 'refetch') ||
-            (node.arguments ?? []).some(isApiAction))
-        const reachesARead = (start: Node, named: Map<string, Node>) => {
+        const sdkImports = (node: Node) => {
+          let program = node
+          while (program.parent) program = program.parent
+          const names = new Set<string>()
+          for (const statement of (program.body as Node[] | undefined) ?? [])
+            if (
+              statement.type === 'ImportDeclaration' &&
+              /^@\/sdk\/|\/web\/src\/sdk\//.test(String(statement.source?.value))
+            )
+              for (const specifier of statement.specifiers ?? [])
+                if (specifier.imported?.name) names.add(specifier.imported.name)
+          return names
+        }
+        const answerIsUsed = (call: Node): boolean => {
+          const parent = call.parent
+          if (parent?.type === 'MemberExpression') {
+            const method = propertyName(parent)
+            if (method === 'then') return true
+            return method === 'catch' && !!parent.parent && answerIsUsed(parent.parent)
+          }
+          if (parent?.type === 'AwaitExpression') return answerIsUsed(parent)
+          return parent?.type === 'VariableDeclarator' || parent?.type === 'AssignmentExpression'
+        }
+        const resultOfUseAction = (identifier: Node, named: Map<string, Node>) => {
+          const init = named.get(identifier.name ?? '')
+          return (
+            init?.type === 'CallExpression' &&
+            init.callee?.type === 'Identifier' &&
+            init.callee.name === 'useAction'
+          )
+        }
+        const readsUltimate = (node: Node, named: Map<string, Node>, sdk: Set<string>) => {
+          const isSdkAction = (callee: Node | undefined) =>
+            callee?.type === 'MemberExpression' &&
+            callee.object?.type === 'Identifier' &&
+            sdk.has(callee.object.name ?? '') &&
+            propertyName(callee) === 'action'
+          if (node.type !== 'CallExpression') return false
+          if ((node.arguments ?? []).some(isSdkAction)) return true
+          if (isSdkAction(node.callee)) return answerIsUsed(node)
+          const callee = node.callee
+          if (callee?.type === 'MemberExpression' && propertyName(callee) === 'refetch')
+            return callee.object?.type === 'Identifier' && resultOfUseAction(callee.object, named)
+          if (callee?.type === 'Identifier' && callee.name === 'refetch')
+            return resultOfUseAction(callee, named)
+          return false
+        }
+        const reachesARead = (start: Node, named: Map<string, Node>, sdk: Set<string>) => {
           const seen = new Set<Node>()
           const queue = [start]
           const found: Node[] = []
@@ -514,30 +557,27 @@ export default {
               continue
             }
             walk(next, (child) => {
-              if (reads(child)) found.push(child)
-              if (child.type === 'CallExpression' && child.callee?.type === 'Identifier')
+              if (readsUltimate(child, named, sdk)) found.push(child)
+              else if (child.type === 'CallExpression' && child.callee?.type === 'Identifier')
                 queue.push(child.callee)
             })
           }
           return found.length > 0
         }
-        const timers = new Set(['every', 'retryAfter', 'setInterval', 'setTimeout'])
+        const callbackAt: Record<string, number> = {
+          every: 1,
+          retryAfter: 1,
+          setInterval: 0,
+          setTimeout: 0,
+        }
         return {
           CallExpression(node: Node) {
             if (isGlobal(node.callee, 'fetch') && toApi(firstArgument(node)))
               context.report({ node, message: raw })
-            const timer =
-              node.callee?.type === 'Identifier' && timers.has(node.callee.name ?? '')
-                ? node.callee.name
-                : undefined
-            if (!timer) return
-            const callback = (node.arguments ?? []).find(
-              (argument) =>
-                argument.type === 'Identifier' ||
-                argument.type === 'ArrowFunctionExpression' ||
-                argument.type === 'FunctionExpression',
-            )
-            if (callback && reachesARead(callback, declared(node)))
+            const timer = node.callee?.type === 'Identifier' ? node.callee.name : undefined
+            const at = timer === undefined ? undefined : callbackAt[timer]
+            const callback = at === undefined ? undefined : node.arguments?.[at]
+            if (callback && reachesARead(callback, declared(node), sdkImports(node)))
               context.report({ node, message: polled })
           },
           NewExpression(node: Node) {

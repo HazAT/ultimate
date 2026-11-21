@@ -1,13 +1,22 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Search, X } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
-import { api, cn, errorMessage, formatDuration, showSurface, switchConversation } from '@/sdk/solid'
-import { deadline, every } from '../../lib/timers.ts'
+import {
+  api,
+  cn,
+  errorMessage,
+  formatDuration,
+  keepLast,
+  showSurface,
+  switchConversation,
+  useAction,
+} from '@/sdk/solid'
+import { deadline } from '../../lib/timers.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { asking, empty, failed, followed, loaded, older, pagesOlder, wantOlder } from './feed.ts'
 import type { Feed } from './feed.ts'
@@ -69,16 +78,26 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
         },
       )
   }
-  onSettled(() => request({}, loaded))
-  createEffect(live, (active) =>
-    active
-      ? every(pollMs, () => {
-          const { head, loading } = state()
-          if (loading) return
-          if (head === undefined) request({}, loaded)
-          else request({ after: head }, (feed, page) => followed(feed, head, page))
-        })
-      : undefined,
+  const newest = useAction(
+    StreamAction,
+    { ...untrack(filter), limit: pageSize },
+    { onError: keepLast, every: () => (live() ? pollMs : undefined) },
+  )
+  createEffect(
+    () => newest.data(),
+    (page) => {
+      if (!page) return
+      const { head, loading } = state()
+      if (head === undefined) setState((previous) => loaded(previous, page))
+      else if (page.head !== head && !loading)
+        request({ after: head }, (feed, next) => followed(feed, head, next))
+    },
+  )
+  createEffect(
+    () => newest.error(),
+    (error) => {
+      if (error) setState((previous) => failed(previous, errorMessage(error)))
+    },
   )
   const next = createMemo(() => (pagesOlder(state()) ? state().next : undefined))
   createEffect(next, (cursor) => {

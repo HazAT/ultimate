@@ -106,6 +106,7 @@ const taskGraphBroadcastIntervalMs = 100
 const liveViewMinimumEntries = 150
 const maxClosesAwaitingTheirOpen = 1000
 const minReadEveryMs = 250
+const maxReadEveryMs = 24 * 60 * 60_000
 type StreamUniqueSubscriptionId = number
 
 interface Connection {
@@ -154,17 +155,24 @@ const browserRequest = (request: IncomingMessage) =>
   request.headers['sec-fetch-site'] === 'same-origin' || !!request.headers.origin
 const validConversationId = (id: unknown) =>
   id === undefined || (typeof id === 'number' && Number.isSafeInteger(id) && id >= 1)
+const argsOf = (data: Record<string, unknown>) =>
+  (Object.hasOwn(data, 'args') ? data.args : null) as JsonValue
+const readInterval = (againAfterMs: unknown) =>
+  typeof againAfterMs === 'number' && Number.isFinite(againAfterMs)
+    ? Math.min(maxReadEveryMs, Math.max(minReadEveryMs, againAfterMs))
+    : undefined
 function readSpec(value: unknown): ReadSpec {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new HttpError(400, 'Invalid read')
-  const { extension, action, args, conversation } = value as Record<string, unknown>
+  const read = value as Record<string, unknown>
+  const { extension, action, conversation } = read
   if (typeof extension !== 'string' || typeof action !== 'string')
     throw new HttpError(400, 'Invalid read')
   if (!validConversationId(conversation)) throw new HttpError(400, 'Invalid conversation id')
   return {
     extension,
     action,
-    args: (args ?? null) as JsonValue,
+    args: argsOf(read),
     ...(conversation === undefined ? {} : { conversation: conversation as number }),
   }
 }
@@ -181,24 +189,23 @@ async function runAction(
   if (!extensions.action(name, key)) throw new HttpError(404, 'Unknown extension action')
   const id = data.conversationId as number | undefined
   if (!validConversationId(id)) throw new HttpError(400, 'Invalid conversation id')
-  const read: ReadSpec = {
+  const args = argsOf(data)
+  const answerReaders = reads.answering({
     extension: name,
     action: key,
-    args: (data.args ?? null) as JsonValue,
+    args,
     ...(id === undefined ? {} : { conversation: id }),
-  }
-  const answerReaders = reads.answering(read)
+  })
   const controller = new AbortController()
   const cancel = () => {
     if (!response.writableEnded) controller.abort()
   }
   response.once('close', cancel)
   try {
-    const argsWithMissingMeaningNone = (Object.hasOwn(data, 'args') ? data.args : {}) as JsonValue
     const result = await extensions.invoke(
       name,
       key,
-      argsWithMissingMeaningNone,
+      args,
       controller.signal,
       id === undefined ? undefined : parseConversationId(id),
       'ui',
@@ -557,19 +564,11 @@ export async function createApi(
           const keepsSharedReadsRunning = specs.filter((spec) => spec.read !== undefined)
           for (const spec of keepsSharedReadsRunning)
             try {
-              const againAfterMs = spec.every
-              if (
-                againAfterMs !== undefined &&
-                (typeof againAfterMs !== 'number' ||
-                  !Number.isFinite(againAfterMs) ||
-                  againAfterMs < minReadEveryMs)
-              )
-                throw new HttpError(400, 'Invalid read interval')
               subscribeRead(
                 connection,
                 spec.sub,
                 readSpec(spec.read),
-                againAfterMs,
+                readInterval(spec.every),
                 browserRequest(request),
               )
             } catch (error) {
