@@ -49,15 +49,22 @@ function contextShare(entries: readonly EntryRecord[], window: number) {
 }
 
 function TimeToDream() {
-  const { id, entries, agent } = useConversation()
+  const id = useConversation((conversation) => conversation.id)
   const ultimate = useDocOf(ROOT, StandingDoc)?.ultimate
   const doc = useDocOf(ROOT, DreamDoc)
+  const awake = useAwake()
+  const compacted = useConversation((conversation) =>
+    conversation.entries.some((entry) => entry.kind === 'pi.compaction'),
+  )
+  if (ultimate === undefined || id !== ultimate || doc === undefined || awake || !compacted)
+    return null
+  return <DreamHint />
+}
+
+function DreamHint() {
+  const { entries, agent } = useConversation()
   const models = useModels()
   const actions = useUltimate()
-  const awake = useAwake()
-  if (ultimate === undefined || id !== ultimate || doc === undefined) return null
-  if (awake) return null
-  if (!entries.some((entry) => entry.kind === 'pi.compaction')) return null
   const window = models?.models.find(
     (model) => model.provider === agent.model?.provider && model.id === agent.model.modelId,
   )?.contextWindow

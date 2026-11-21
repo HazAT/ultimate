@@ -53,7 +53,8 @@ export function FirstRun({
   onClosed: () => void
 }) {
   const models = useModels()
-  const { id: conversationId, agent } = useConversation()
+  const conversationId = useConversation((conversation) => conversation.id)
+  const agent = useConversation((conversation) => conversation.agent)
   const commands = useCommands()
   const ui = useUltimate()
   const families = useFamilies()
