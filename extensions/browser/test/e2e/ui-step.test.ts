@@ -31,6 +31,7 @@ export function Digest() {
       <Switch aria-label="Weekly digest" bind={digest} />
       <Button aria-label="Read digest-archive.png" data-pressed={pressed()} onClick={() => setPressed('read')}>read</Button>
       <Button aria-label="Digest archive" onClick={() => setPressed('archive')}>Archive</Button>
+      <Button aria-label="Archive c9999" onClick={() => setPressed('c9999')}>c9999</Button>
       <Popover>
         <PopoverTrigger aria-label="Digest details">details</PopoverTrigger>
         <PopoverContent>
@@ -211,6 +212,18 @@ it('acts on the one control with the exact label, also one an earlier step broug
   ])
   expect(closed(1)).toMatchObject({ ok: true, appeared: [] })
   expect(closed(1)).not.toHaveProperty('open')
+  const later = await drive([
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Weekly digest', action: 'setChecked', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+      ],
+    },
+  ])
+  const { open, values } = later(1) as { open: Component[]; values: Record<string, unknown> }
+  expect(open.map((item) => item.label)).toEqual(['Digest details'])
+  expect(Object.entries(values).find(([key]) => key.endsWith(' Weekly digest'))?.[1]).toBe(true)
 })
 
 it('until a control’s state wakes on its change, by label or by ref, and a missing ref is never a label', async () => {
@@ -221,6 +234,7 @@ it('until a control’s state wakes on its change, by label or by ref, and a mis
     { eval: waitThenToggle("'Weekly digest'") },
     { eval: waitThenToggle('ref') },
     { ui: 'act', steps: [{ ref: 'c9999', action: 'press' }] },
+    { eval: "document.querySelector('[data-pressed]').dataset.pressed" },
   ])
   expect(value(1)).toEqual({ early: false, same: true, checked: true })
   expect(value(2)).toEqual({ early: false, same: true, checked: false })
@@ -228,6 +242,7 @@ it('until a control’s state wakes on its change, by label or by ref, and a mis
     ok: false,
     error: { step: 0, message: 'No component c9999 on the page.' },
   })
+  expect(value(4)).toBe('none')
 })
 
 it('records nothing from the agent when it opens and closes a popover', async () => {

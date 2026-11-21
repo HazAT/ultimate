@@ -142,8 +142,8 @@ export function createTestHook(
   async function act({ steps }: Parameters<UiAgent['act']>[0]) {
     const bridge = agent.bridge()
     const done: ActResult['steps'] = []
-    const appeared = new Map<string, UiComponent>()
-    const values: ActResult['values'] = {}
+    const appeared = new Set<string>()
+    let values: ActResult['values'] = {}
     const touched = new Set<string>()
     let error: ActResult['error']
     for (const [index, step] of steps.entries()) {
@@ -154,8 +154,8 @@ export function createTestHook(
       }
       const one = await bridge.act({ steps: [{ ...step, ref: found?.ref ?? step.ref }] })
       done.push(...one.steps.map((item) => ({ ...item, step: index })))
-      for (const item of one.appeared) appeared.set(item.ref, item)
-      Object.assign(values, one.values)
+      for (const item of one.appeared) appeared.add(item.ref)
+      values = one.values
       for (const item of one.steps) touched.add(item.ref)
       if (!one.ok) {
         error = one.error && { ...one.error, step: index }
@@ -163,7 +163,7 @@ export function createTestHook(
       }
     }
     const now = async (ref: string) => named(ref)
-    const live = (await Promise.all([...appeared.keys()].map(now))).filter(
+    const live = (await Promise.all([...appeared].map(now))).filter(
       (item): item is UiComponent => !!item,
     )
     const open = (await Promise.all([...touched].map(now))).filter(
