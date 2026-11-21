@@ -50,8 +50,8 @@ export interface FakeSubscription {
 }
 
 /**
- * The server's side of `POST`/`DELETE /api/events/<stream>/<sub>` for a fake `fetch`: `handle` answers those requests
- * and returns undefined for any other, `refuse` makes it answer a conversation's subscriptions with a status.
+ * The server's side of `POST /api/events/<stream>` for a fake `fetch`: `handle` answers those requests and returns
+ * undefined for any other, `refuse` makes it answer a conversation's subscriptions with a status.
  */
 export function fakeSubscriptions(sources: FakeSource[]) {
   const subscriptions: FakeSubscription[] = []
@@ -59,39 +59,69 @@ export function fakeSubscriptions(sources: FakeSource[]) {
   const refusals = new Map<number | undefined, number>()
   return {
     subscriptions,
-    /** The newest open subscription of a conversation (undefined: the server's root). */
-    of: (conversation?: number) =>
-      subscriptions.findLast((item) => !item.closed && item.conversation === conversation),
+    /**
+     * A conversation's subscriptions (undefined: the server's root) as one: `view` and `ops` go to its newest open view
+     * subscription, `doc` and `docOps` to the open one watching that kind. With `view`, only the newest open view (true)
+     * or document (false) subscription.
+     */
+    of(conversation?: number, view?: boolean): FakeSubscription | undefined {
+      const open = subscriptions.filter(
+        (item) =>
+          !item.closed &&
+          item.conversation === conversation &&
+          (view === undefined || item.view === view),
+      )
+      const newest = open.at(-1)
+      if (!newest || view !== undefined) return newest
+      return {
+        ...newest,
+        get closed() {
+          return open.every((item) => item.closed)
+        },
+        send: (name, data) => {
+          const kind = (data as { kind?: string }).kind
+          const target =
+            kind === undefined
+              ? open.findLast((item) => item.view)
+              : open.findLast((item) => item.docs.includes(kind))
+          if (!target)
+            throw new Error(`No open subscription of ${conversation} carries ${kind ?? 'the view'}`)
+          target.send(name, data)
+        },
+      }
+    },
     refuse(conversation: number | undefined, status: number | undefined) {
       if (status === undefined) refusals.delete(conversation)
       else refusals.set(conversation, status)
     },
     handle(path: string, init?: RequestInit) {
-      const match = /^\/api\/events\/([^/]+)\/(\d+)$/.exec(path)
+      const match = /^\/api\/events\/([^/]+)$/.exec(path)
       if (!match) return undefined
-      const [, stream, id] = match
-      const sub = Number(id)
-      if (init?.method === 'DELETE') {
-        deleted.add(`${stream}/${sub}`)
-        return Response.json({ ok: true })
+      const [, stream] = match
+      const batch = JSON.parse(init?.body as string) as {
+        subscribe: Pick<FakeSubscription, 'sub' | 'conversation' | 'docs' | 'view'>[]
+        unsubscribe: number[]
       }
-      const spec = JSON.parse(init?.body as string) as Pick<
-        FakeSubscription,
-        'conversation' | 'docs' | 'view'
-      >
-      const status = refusals.get(spec.conversation)
-      if (status) return Response.json({ error: 'Refused' }, { status })
+      for (const sub of batch.unsubscribe) deleted.add(`${stream}/${sub}`)
+      const failed: Record<number, number> = {}
       const source = sources.find((item) => item.id === stream)!
-      subscriptions.push({
-        stream,
-        sub,
-        ...spec,
-        get closed() {
-          return deleted.has(`${stream}/${sub}`) || source.closed || source.id !== stream
-        },
-        send: (name, data) => source.send(name, data, sub),
-      })
-      return Response.json({ ok: true })
+      for (const { sub, ...spec } of batch.subscribe) {
+        const status = refusals.get(spec.conversation)
+        if (status) {
+          failed[sub] = status
+          continue
+        }
+        subscriptions.push({
+          stream,
+          sub,
+          ...spec,
+          get closed() {
+            return deleted.has(`${stream}/${sub}`) || source.closed || source.id !== stream
+          },
+          send: (name, data) => source.send(name, data, sub),
+        })
+      }
+      return Response.json({ ok: true, refused: failed })
     },
   }
 }

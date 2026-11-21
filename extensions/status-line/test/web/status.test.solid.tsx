@@ -87,6 +87,7 @@ it('shows the conversation’s spend, its context fill, the project’s rate and
     },
   } as unknown as StreamedView
   harness.server!.of()!.send('view', view)
+  await settle()
   harness.server!.of()!.send('doc', {
     kind: 'conversations.context',
     value: { tokens: 160_000, window: 200_000, percent: 80, at: 1 },

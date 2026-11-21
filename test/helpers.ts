@@ -5,7 +5,12 @@ import { setImmediate as yieldIO } from 'node:timers/promises'
 import { join, resolve, sep } from 'node:path'
 import { applyImmutable } from '@earendil-works/chord/delta'
 import type { Op } from '@earendil-works/chord/delta'
-import type { ConversationId, ConversationView, Harness } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  ConversationView,
+  Harness,
+  TaskGraph,
+} from '@earendil-works/pi-durable'
 import { afterAll, vi } from 'vitest'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
@@ -14,7 +19,7 @@ import { Tally } from '../extensions/lineage/api.ts'
 import { context } from '../server/harness.ts'
 import { createServer, prepareServer } from '../server/main.ts'
 import type { ServerOptions } from '../server/main.ts'
-import type { ServerEvents, SystemInfo } from '../shared/protocol.ts'
+import type { ConversationSummary, ServerEvents, SystemInfo } from '../shared/protocol.ts'
 import type { Api } from '../shared/extension-api.ts'
 import type { EventData, EventToken } from '../shared/events.ts'
 import { EventFeed, eventLog } from '../server/events.ts'
@@ -271,6 +276,8 @@ export async function attach(
   const events: { name: keyof ServerEvents; data: unknown; sub?: number }[] = []
   let system: SystemInfo | undefined
   let view: ConversationView | undefined
+  let conversations: ConversationSummary[] = []
+  let tasks: TaskGraph | undefined
   let connections = 0
   const task = (async () => {
     while (!controller.signal.aborted) {
@@ -296,16 +303,21 @@ export async function attach(
             const parsed: unknown = JSON.parse(data)
             events.push({ name, data: parsed, ...(lines.length > 1 && { sub: Number(lines[0]) }) })
             if (name === 'stream')
-              void fetch(`${url}/api/events/${(parsed as { id: string }).id}/0`, {
+              void fetch(`${url}/api/events/${(parsed as { id: string }).id}`, {
                 method: 'POST',
                 headers: { Origin: url },
-                body: JSON.stringify(subscription),
+                body: JSON.stringify({ subscribe: [{ sub: 0, ...subscription }] }),
               }).catch(() => {
                 // The stream ended: its reconnect subscribes again.
               })
             if (name === 'system') system = parsed as SystemInfo
             if (name === 'view') view = parsed as ConversationView
             if (name === 'ops' && view) view = applyImmutable(view, parsed as Op[])
+            if (name === 'conversations') conversations = parsed as ConversationSummary[]
+            if (name === 'conversationsOps')
+              conversations = applyImmutable(conversations, parsed as Op[])
+            if (name === 'tasks') tasks = parsed as TaskGraph
+            if (name === 'tasksOps' && tasks) tasks = applyImmutable(tasks, parsed as Op[])
           }
         }
       } catch (error) {
@@ -321,6 +333,10 @@ export async function attach(
     events,
     system: () => system!,
     view: () => view!,
+    /** The conversation list as the stream's snapshot and ops build it. */
+    conversations: () => conversations,
+    /** The task graph as the stream's snapshot and ops build it. */
+    tasks: () => tasks!,
     connections: () => connections,
     async close() {
       controller.abort()

@@ -37,7 +37,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const fetch = async (path: RequestInfo | URL, init?: RequestInit) => {
     if (path === '/api/extensions/automations/actions/list')
       return Response.json({ result: harness.updated ?? automations })
-    if (path !== '/api/ui') return Response.json({ ok: true })
+    if (path !== '/api/ui') return Response.json({ ok: true, refused: {} })
     const { ops } = JSON.parse(init!.body as string) as UiUpdateRequest
     const source = new Headers(init?.headers).get(SOURCE_HEADER)
     for (const { key, value } of ops) harness.writes.push({ key, value, source })

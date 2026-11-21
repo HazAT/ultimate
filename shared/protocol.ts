@@ -206,6 +206,15 @@ export const SOURCE_HEADER = 'x-ultimate-source'
 type CommittedUiRevision = number
 export type UiUpdateResponse = { ok: true; rev: CommittedUiRevision }
 type StreamHandshakeBeforeSubscriptions = { id: string }
+type HttpStatusOfRefusedOpen = number
+export interface SubscriptionsRequest {
+  subscribe: { sub: number; conversation?: number; docs: string[]; view: boolean }[]
+  unsubscribe: number[]
+}
+export interface SubscriptionsAnswer {
+  ok: true
+  refused: Record<number, HttpStatusOfRefusedOpen>
+}
 export interface ServerEvents {
   stream: StreamHandshakeBeforeSubscriptions
   system: SystemInfo
@@ -217,5 +226,7 @@ export interface ServerEvents {
   doc: { kind: string; value: Readonly<JsonObject> | null }
   docOps: { kind: string; ops: readonly Op[] }
   tasks: TaskGraph
+  conversationsOps: readonly Op[]
+  tasksOps: readonly Op[]
   notice: Notice
 }
