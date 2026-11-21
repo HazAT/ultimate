@@ -23,7 +23,7 @@ wait on any other name fails at once. `{ fails: '<event>' }` marks an event that
   after the newest event instead of replaying the log.
 - `host.eventLog.recent({ events?, since?, before?, order?, limit })` reads the newest first (oldest first with
   `order: 'ascending'`) as plain copies, `since` and `before` exclusive event ids; `host.eventLog.reactors()`
-  shows each reactor's cursor, lag and last failure. In the browser, `useEvents({ events?, limit })` from `@/sdk` streams
+  shows each reactor's cursor, lag and last failure. In the browser, `useEvents({ events?, limit })` from `@/sdk/solid` streams
   the root's feed of the latest 100 events.
 
 Each distinct `host.notice` message of a facet is also recorded as an `ultimate.notice` event while storage is open.
@@ -66,7 +66,7 @@ each such watcher says so in a comment above it. Do not invent an event only to 
 ## Browser events
 
 The browser
-has an ephemeral `events` bus from `@/sdk`: it queues and replays nothing, catches and logs handler errors with the
+has an ephemeral `events` bus from `@/sdk/solid`: it queues and replays nothing, catches and logs handler errors with the
 channel while other handlers continue, and `on(channel, handler)` returns an unsubscribe; clean it up when its owner
 is removed.
 
@@ -75,15 +75,16 @@ bus. In a web component, use
 `useEvent(channel, handler)` to subscribe for its mount and always call the latest handler:
 
 ```tsx
-import { events, useEvent, useReady } from '@/sdk'
+import { Show } from 'solid-js'
+import { events, useEvent, useReady } from '@/sdk/solid'
 
 function Receiver() {
   useEvent('hello:selected', (data) => console.log(data))
-  const { ready, timedOut, failed, pending } = useReady()
+  const ready = useReady()
   return (
     <span>
-      {ready ? 'Ready' : 'Loading'} {failed.join(', ')}
-      {timedOut && `Still loading: ${pending.join(', ')}`}
+      {ready().ready ? 'Ready' : 'Loading'} {ready().failed.join(', ')}
+      <Show when={ready().timedOut}>Still loading: {ready().pending.join(', ')}</Show>
     </span>
   )
 }
@@ -103,4 +104,4 @@ shows the surface and starts its shortcuts only once ready. In particular, root 
 facet is still loading; they need not wait for ready.
 A reload of a rendered page (a core restart, a switch to a new web bundle, F5) paints the previous page's view from
 `sessionStorage` before any module loads and fades it out once the app has rendered and settled
-(`web/src/sdk/resume.ts`); `resumed` from `@/sdk` is true on such a load, so a loading overlay can stay away.
+(`web/src/sdk/resume.ts`); `covered()` from `@/sdk/solid` is true while that picture still covers the page, so a loading overlay can stay away.

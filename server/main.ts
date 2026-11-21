@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from 'node:http'
+import { webAliases } from '../lib/web-alias.ts'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve as resolvePath } from 'node:path'
 import { createServer as createViteServer } from 'vite-plus'
@@ -117,7 +118,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     appType: 'custom',
     optimizeDeps: { noDiscovery: true, include: [] },
     cacheDir: resolvePath(host.home, 'vite'),
-    resolve: { alias: { '@': resolvePath(ultimateRoot, 'web/src') } },
+    resolve: { alias: webAliases(ultimateRoot) },
     plugins: [
       extensionModules(ultimateRoot, projectRoot, host.userHome),
       {

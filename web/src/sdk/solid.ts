@@ -1,6 +1,6 @@
 /**
- * The extension SDK for Solid facets (`*.solid.tsx`): live documents, durable UI state and client state as accessors.
- * Mount a Solid component from a `web.tsx` with `island` from `@/sdk`; docs/extensions/sdk.md#solid-facets.
+ * The extension SDK (`web.solid.tsx` and every `*.solid.tsx`): the facet's definition, live documents, durable UI state
+ * and client state as accessors; docs/extensions/sdk.md.
  */
 import type {
   AgentState,
@@ -99,8 +99,22 @@ export {
   toolLine,
   toolRenderers,
 } from './registry.ts'
-/** Typed props of Solid tool and entry renderers contributed as `island(Component)`. */
+/** A facet's contributions and its values for other extensions' points; `web.solid.tsx` default-exports one. */
+export { attention, defineWebExtension, definePoint, provide } from './types.ts'
+/** Typed props of tool, entry, inbox and composer renderers. */
 export type {
+  CommandContribution,
+  CompactRow,
+  Contribution,
+  DocumentProps,
+  CodeBlockRenderer,
+  CompactSummaryProps,
+  InlineCodeRenderer,
+  LinkRenderer,
+  Point,
+  UltimateActions,
+  UltimateContext,
+  WebExtension,
   ComposerTarget,
   SolidComposerProps,
   SolidInboxProps,
@@ -569,24 +583,37 @@ function useScopedView() {
   return createMemo(() => (scoped === null ? state().view : state().viewsOf[scoped]))
 }
 
+function conversationState(shown: State['view']): ConversationState {
+  const live = (shown?.docs['pi.live'] ?? noLive) as LiveState
+  return {
+    id: shown?.conversation.id,
+    loading: !shown,
+    entries: shown?.entries ?? noEntries,
+    older: historyCursorFromStreamBefore(shown?.before),
+    agent: shown?.docs['pi.agent'] ?? {},
+    usage: (shown?.docs['pi.usage'] ?? noUsage) as UsageState,
+    live,
+    inbox: (shown?.docs['pi.inbox'] as { items?: InboxItem[] } | undefined)?.items ?? noInbox,
+    busy: !!live.run,
+  }
+}
+
 export function useConversation(): Accessor<ConversationState> {
   const view = useScopedView()
-  return createMemo((): ConversationState => {
-    const shown = view()
-    const live = (shown?.docs['pi.live'] ?? noLive) as LiveState
-    return {
-      id: shown?.conversation.id,
-      loading: !shown,
-      entries: shown?.entries ?? noEntries,
-      older: historyCursorFromStreamBefore(shown?.before),
-      agent: shown?.docs['pi.agent'] ?? {},
-      usage: (shown?.docs['pi.usage'] ?? noUsage) as UsageState,
-      live,
-      inbox: (shown?.docs['pi.inbox'] as { items?: InboxItem[] } | undefined)?.items ?? noInbox,
-      busy: !!live.run,
-    }
-  })
+  return createMemo(() => conversationState(view()))
 }
+
+/** The shown conversation now, or the streamed conversation `id`, outside a component: for commands and callbacks. */
+export function getConversation(id?: ConversationId): ConversationState {
+  const { view, viewsOf } = store.getState()
+  return conversationState(id === undefined || id === view?.conversation.id ? view : viewsOf[id])
+}
+
+/** Writes durable UI state `key` outside a component (a command), as `useUiState`'s setter does. */
+export const setUiState = (key: string, value: JsonValue) => uiState.set(key, value)
+
+/** The whole client state now, outside a component. */
+export const getState = (): State => store.getState()
 const noInbox: readonly InboxItem[] = []
 
 /**
@@ -685,3 +712,13 @@ export function useRestart(timeoutMs = 120_000) {
     },
   }
 }
+export type { DocumentItem } from './registry.ts'
+export type {
+  ConversationSummary,
+  ModelsResponse,
+  Notice,
+  SystemInfo,
+} from '../../../shared/protocol.ts'
+export type { EntryRecord, LiveState } from '@earendil-works/pi-durable'
+export type { JsonValue } from '@earendil-works/chord/json'
+export type { AuthEvent, AuthPrompt, Usage } from '@earendil-works/pi-ai'

@@ -34,7 +34,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 
 import { registry, store } from '../../../../web/src/sdk/client.ts'
-import { island } from '../../../../web/src/sdk/island.tsx'
+import { island } from '../../../../web/src/compat/island.tsx'
 import { ConversationScope, ExtensionName } from '../../../../web/src/sdk/solid.ts'
 import type { DocumentProps } from '../../../../web/src/sdk/types.ts'
 

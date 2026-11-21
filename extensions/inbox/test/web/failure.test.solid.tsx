@@ -28,10 +28,10 @@ import { TodoList } from '../../../todos/panel.solid.tsx'
 it('shows a failing item provider as an inline error card on the badge and the To-dos panel', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   await registry.setLoaders({
-    'extensions/broken/web.tsx': async () => ({
+    'extensions/broken/web.solid.tsx': async () => ({
       default: {
         provides: [
-          provide(InboxItems, () => {
+          provide(InboxItems, () => () => {
             throw new Error('items broke')
           }),
         ],

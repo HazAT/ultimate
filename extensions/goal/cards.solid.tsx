@@ -17,7 +17,7 @@ import {
   useAction,
   useDocOf,
 } from '@/sdk/solid'
-import type { EntryRecord } from '@/sdk'
+import type { EntryRecord } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { GoalStartedEntry, GoalReportEntry } from './entries.ts'
 import { EndAction, GoalDoc, ImagesAction } from './refs.ts'

@@ -17,7 +17,7 @@ diff is unified. The diff stack is virtualized; the viewer loads with the surfac
 
 **Comments.** Click a line number (shift-click or drag for a range, on either side) or the gutter `+` to open an
 inline composer; the range highlights as it grows, with a bar down its line numbers. **Add to review** keeps it as a
-draft under its lines, which can be edited or deleted. Drafts are durable UI state (`drafts.ts`) keyed by spec and by
+draft under its lines, which can be edited or deleted. Drafts are durable UI state (`drafts.solid.tsx`) keyed by spec and by
 the conversation whose checkout the diff came from (`draftsKey`; a spec too long for a key is named by its SHA-256), so
 a reload and other tabs keep them. A draft holds only its lines and text; its excerpt (at most 40 lines and 8 KB) is
 read from the diff on screen when the review is sent. One spec's drafts may take 96 KB of the 256 KiB UI state: past

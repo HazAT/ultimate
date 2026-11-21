@@ -9,7 +9,7 @@ import { exec } from '../lib/exec.ts'
 import { inProcess, ignoring, isMissing } from '../lib/errors.ts'
 import { debounce } from '../lib/timers.ts'
 import { writeTextAtomically } from '../lib/json-file.ts'
-import { discoverExtensions } from '../lib/discovery.ts'
+import { discoverExtensions, webFacet } from '../lib/discovery.ts'
 import { discoveryRoots } from '../lib/project-paths.ts'
 import { projectSettings, useProjectSetup } from '../lib/project-setup.ts'
 import { extensionSettingsFiles } from '../lib/extension-settings.ts'
@@ -65,9 +65,10 @@ export async function appIdentity(projectRoot: string, userHome: string) {
 }
 
 export async function webFacets(ultimateRoot: string, projectRoot: string, userHome: string) {
-  return (await discoverExtensions(ultimateRoot, projectRoot, userHome))
-    .filter((entry) => entry.enabled && entry.files.includes('web.tsx'))
-    .map((entry) => join(entry.path, 'web.tsx'))
+  return (await discoverExtensions(ultimateRoot, projectRoot, userHome)).flatMap((entry) => {
+    const facet = webFacet(entry.files)
+    return entry.enabled && facet ? [join(entry.path, facet)] : []
+  })
 }
 
 const escapeAttribute = (text: string) =>
@@ -205,9 +206,7 @@ export async function createWeb(options: {
       const file = result.error.file
       const facet =
         file &&
-        targets.find(
-          (entry) => entry.files.includes('web.tsx') && file.startsWith(entry.target + sep),
-        )
+        targets.find((entry) => webFacet(entry.files) && file.startsWith(entry.target + sep))
       if (!facet || facet.name in broken) {
         failed = `The web UI did not build${file ? ` (${relative(ultimateRoot, file)})` : ''}: ${result.error.message}`
         options.notice(failed)
@@ -215,8 +214,9 @@ export async function createWeb(options: {
       }
       broken[facet.name] = result.error.message
       brokenFolders.push(facet.target)
-      left.push({ file: join(facet.path, 'web.tsx'), error: result.error.message })
-      options.notice(`${join(facet.path, 'web.tsx')} did not build: ${result.error.message}`)
+      const facetFile = join(facet.path, webFacet(facet.files)!)
+      left.push({ file: facetFile, error: result.error.message })
+      options.notice(`${facetFile} did not build: ${result.error.message}`)
     }
     const allFileNamesAndContentsHash = createHash('sha256')
     for (const file of (await readdir(outDir, { recursive: true })).toSorted()) {

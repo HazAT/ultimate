@@ -3,7 +3,7 @@ import { ListFilter } from '@lucide/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import type { ConversationSummary } from '@/sdk'
+import type { ConversationSummary } from '@/sdk/solid'
 import {
   cn,
   formatDuration,

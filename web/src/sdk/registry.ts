@@ -1,8 +1,9 @@
-import type { ComponentType } from 'react'
+import type { Component } from 'solid-js'
 import { deadline } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { events } from './events.ts'
+import { loadReact, markReact } from './framework.ts'
 import { errorMessage } from './format.ts'
 import { needsAttention } from './types.ts'
 import type {
@@ -32,6 +33,7 @@ type BuiltinUserProjectByName = Readonly<Record<string, ExtensionLoader>>
 
 export interface ExtensionRecord {
   name: string
+  framework: 'solid' | 'react'
 
   extension?: WebExtension
 
@@ -45,7 +47,7 @@ export interface SlotItem {
   key: string
   extension: string
   version: number
-  component: ComponentType
+  component: Component
   phone: boolean
 }
 export interface PanelItem extends PanelContribution {
@@ -64,9 +66,39 @@ export interface DocumentItem extends DocumentContribution {
   version: number
 }
 
+const facetPath = /extensions\/([^/]+)\/web(\.solid)?\.tsx(?:\?.*)?$/
+
 export function extensionName(path: string): string | undefined {
-  return /extensions\/([^/]+)\/web\.tsx(?:\?.*)?$/.exec(path)?.[1]
+  return facetPath.exec(path)?.[1]
 }
+
+const frameworkOf = (path: string): ExtensionRecord['framework'] =>
+  facetPath.exec(path)?.[2] ? 'solid' : 'react'
+
+const reactParts = (extension: WebExtension): unknown[] => [
+  ...Object.values(extension.slots ?? {}).flatMap((value) =>
+    normalize(value).map((item) => item.component),
+  ),
+  ...(extension.panels ?? []).flatMap((panel) => [panel.component, panel.icon]),
+  ...Object.values(extension.panelBadges ?? {}),
+  ...(extension.surfaces ?? []).flatMap((surface) => [
+    surface.component,
+    surface.icon,
+    surface.badge,
+  ]),
+  ...Object.values(extension.tools ?? {}),
+  ...Object.values(extension.toolLines ?? {}),
+  ...Object.values(extension.entries ?? {}),
+  extension.inbox,
+  extension.composer,
+  ...(extension.messageActions ?? []),
+  ...(extension.messageDetails ?? []),
+  ...(extension.answerLabels ?? []),
+  ...(extension.userBubble ?? []),
+  extension.compact?.summary,
+  ...(extension.documents ?? []).flatMap((document) => [document.component, document.icon]),
+  ...(extension.provides ?? []).map((provision) => provision.use),
+]
 
 type Check = (value: unknown) => boolean
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -185,7 +217,8 @@ const shapes: Record<keyof WebExtension, [Check, string]> = {
 
 function validate(module: unknown): WebExtension {
   const extension = isObject(module) && 'default' in module ? module.default : undefined
-  if (!isObject(extension)) throw new Error('web.tsx must default-export defineWebExtension({ … })')
+  if (!isObject(extension))
+    throw new Error('A web facet must default-export defineWebExtension({ … })')
   for (const [key, [check, shape]] of Object.entries(shapes))
     if (!optional(check)(extension[key])) throw new Error(`${key} must be ${shape}`)
   return extension
@@ -232,11 +265,13 @@ export function createRegistry() {
   const install = (name: string, module: unknown) => {
     try {
       const extension = validate(module)
-      update(name, (record) =>
-        record.extension === extension && !record.error && !record.loading
+      update(name, (record) => {
+        if (record.framework === 'react')
+          for (const part of reactParts(extension)) if (part) markReact(part)
+        return record.extension === extension && !record.error && !record.loading
           ? record
-          : { name, extension, loading: false, version: record.version + 1 },
-      )
+          : { ...record, extension, loading: false, error: undefined, version: record.version + 1 }
+      })
       events.emit('ultimate:extension-loaded', { name })
     } catch (error) {
       fail(name, error)
@@ -271,19 +306,27 @@ export function createRegistry() {
       tokens.clear()
       const entries = Object.entries(lastWinsDiscoveryOrder).flatMap(([path, loader]) => {
         const name = extensionName(path)
-        return name ? [{ name, loader }] : []
+        return name ? [{ name, loader, framework: frameworkOf(path) }] : []
       })
       pending = new Set(entries.map(({ name }) => name))
       const previous = new Map(records.map((record) => [record.name, record]))
-      records = entries.map(({ name }) => previous.get(name) ?? { name, loading: true, version: 0 })
+      records = entries.map(({ name, framework }) => {
+        const kept = previous.get(name)
+        return kept?.framework === framework
+          ? kept
+          : { name, framework, loading: true, version: (kept?.version ?? -1) + 1 }
+      })
       refreshReady()
       emit()
       await Promise.allSettled(
-        entries.map(async ({ name, loader }) => {
+        entries.map(async ({ name, loader, framework }) => {
           const token = {}
           tokens.set(name, token)
           try {
-            const module = await loader()
+            const [module] = await Promise.all([
+              loader(),
+              framework === 'react' ? loadReact() : undefined,
+            ])
             if (tokens.get(name) === token) {
               pending.delete(name)
               install(name, module)
@@ -339,10 +382,6 @@ export function provisionsOf(records: readonly ExtensionRecord[], point: string)
   )
 }
 
-export function provisionOf(records: readonly ExtensionRecord[], point: string) {
-  return provisionsOf(records, point).at(-1)
-}
-
 export function panelItems(records: readonly ExtensionRecord[]): PanelItem[] {
   return records
     .flatMap(({ name, extension, version }) =>
@@ -354,14 +393,17 @@ export function panelItems(records: readonly ExtensionRecord[]): PanelItem[] {
 export function panelBadges(
   records: readonly ExtensionRecord[],
   id: string,
-): { extension: string; version: number; component: ComponentType }[] {
+): { extension: string; version: number; component: Component }[] {
   return records.flatMap((record) => {
     const component = record.extension?.panelBadges?.[id]
     return component ? [{ extension: record.name, version: record.version, component }] : []
   })
 }
 
-export function shownPanels(panels: readonly PanelItem[], selected: string | null) {
+export function shownPanels<P extends Pick<PanelItem, 'id' | 'tab'>>(
+  panels: readonly P[],
+  selected: string | null,
+) {
   const active =
     panels.find((panel) => panel.id === selected) ?? panels.find((panel) => panel.tab !== false)
   return { active, tabs: panels.filter((panel) => panel.tab !== false || panel === active) }
@@ -541,7 +583,7 @@ export function compactTools(
       summary?: {
         extension: string
         version: number
-        component: ComponentType<CompactSummaryProps>
+        component: Component<CompactSummaryProps>
       }
     }
   | undefined {

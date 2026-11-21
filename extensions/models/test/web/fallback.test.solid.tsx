@@ -8,10 +8,9 @@ import { parseConversationId } from '../../../../lib/ids.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store } from '../../../../web/src/sdk/client.ts'
-import { islandSolid } from '../../../../web/src/sdk/island-mark.ts'
 import type { SolidEntryProps } from '../../../../web/src/sdk/types.ts'
 import { dialogs, pickerTarget } from '../../state.ts'
-import models from '../../web.tsx'
+import models from '../../web.solid.tsx'
 
 const agent = createAgent()
 
@@ -22,7 +21,7 @@ it('opens the model picker for the fallback entry’s conversation', async () =>
     kind: 'models.fallback',
     data: { from: 'faux/atlas', to: 'other/atlas', reason: 'same' },
   } as unknown as EntryRecord
-  const Fallback = islandSolid(models.entries?.['models.fallback']) as Component<SolidEntryProps>
+  const Fallback = models.entries?.['models.fallback'] as Component<SolidEntryProps>
   renderSolid(() => <Fallback core={null} entry={entry} />)
   flush()
   await expectDistinctAgentNames(agent)

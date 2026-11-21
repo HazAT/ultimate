@@ -14,7 +14,7 @@ import {
 import type { JsonValue } from '@earendil-works/chord/json'
 import { shellKeys, shownSurface } from '../sdk/actions.ts'
 import { store, uiState } from '../sdk/client.ts'
-import { Contribution, Slot } from '../sdk/react-island.solid.tsx'
+import { Contribution, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, surfaceItems } from '../sdk/registry.ts'
 import type { SurfaceItem } from '../sdk/registry.ts'
 import { rendered } from '../sdk/resume.ts'

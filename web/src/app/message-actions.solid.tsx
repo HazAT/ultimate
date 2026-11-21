@@ -6,7 +6,7 @@ import { cn } from 'cn'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { createMemo, For, Show } from 'solid-js'
 import { formatTime, MessageReference, messageItems, useCopy, useExtensions } from '@/sdk/solid'
-import { Contribution, useProvided } from '../sdk/react-island.solid.tsx'
+import { Contribution, useProvided } from '../sdk/contribution.solid.tsx'
 import { ContributionError } from './contribution-error.solid.tsx'
 
 export function MessageActions(props: {

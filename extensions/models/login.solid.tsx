@@ -41,7 +41,7 @@ import {
   useNow,
   writingAs,
 } from '@/sdk/solid'
-import type { AuthEvent, AuthPrompt } from '@/sdk'
+import type { AuthEvent, AuthPrompt } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { meansNone } from '../../lib/errors.ts'
 import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'

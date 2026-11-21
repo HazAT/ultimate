@@ -12,7 +12,7 @@ import {
   useExtensionUiState,
 } from '@/sdk/solid'
 import type { SolidComposerProps } from '@/sdk/solid'
-import type { Reading } from './player.tsx'
+import type { Reading } from './player.solid.tsx'
 
 type Player = {
   current: () => Reading | undefined

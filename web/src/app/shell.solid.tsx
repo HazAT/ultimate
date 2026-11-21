@@ -31,7 +31,7 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import { actions, layout, shellKeys } from '../sdk/actions.ts'
-import { Contribution, ContributedIcon, Slot } from '../sdk/react-island.solid.tsx'
+import { Contribution, ContributedIcon, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, panelBadges, slotItems } from '../sdk/registry.ts'
 import type { PanelItem } from '../sdk/registry.ts'
 

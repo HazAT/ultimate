@@ -19,7 +19,7 @@ import {
 import { Limit } from '../../entries.solid.tsx'
 import { PauseDoc } from '../../refs.ts'
 import { Item, Play } from '../../status.solid.tsx'
-import type { EntryRecord } from '@/sdk'
+import type { EntryRecord } from '@/sdk/solid'
 
 async function mountStatus() {
   await refetchState()

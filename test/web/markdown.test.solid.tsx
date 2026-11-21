@@ -140,11 +140,17 @@ it('falls back to the core rendering when an extension renderer throws', () => {
   const Broken: CodeBlockRenderer = () => {
     throw new Error('broken')
   }
-  installed.set([{ name: 'broken', version: 1, extension: { codeBlocks: { ts: Broken } } }])
+  installed.set([
+    { name: 'broken', version: 1, framework: 'react', extension: { codeBlocks: { ts: Broken } } },
+  ])
   try {
     const view = renderSolid(() => <Markdown text={'Before.\n\n```ts\nlet x\n```\n\nAfter.'} />)
     flush()
-    expect(view.querySelector('[data-extension-error="broken"]')).not.toBeNull()
+    expect(
+      view
+        .querySelector('[data-extension-error="broken"] [data-react-compat]')
+        ?.getAttribute('href'),
+    ).toMatch(/docs\/extensions\/react-compat\.md$/)
     expect(view.querySelector('.code-block pre')?.textContent).toBe('let x')
     expect(view.textContent).toContain('After.')
   } finally {

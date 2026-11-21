@@ -3,7 +3,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
-import type { EntryRecord, ToolCallView } from '@/sdk'
+import type { EntryRecord, ToolCallView } from '@/sdk/solid'
 import { ConversationScope, events, ROOT } from '@/sdk/solid'
 import { provide } from '@/sdk/types.ts'
 import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
@@ -220,8 +220,10 @@ it('lets an agent open the review range, expand the landing state, and switch to
 
   const open = vi.fn<(spec: string, source: string) => void>()
   await registry.setLoaders({
-    'extensions/local-review/web.tsx': async () => ({
-      default: { provides: [provide(Review, (spec) => () => open(spec, writerNow()))] },
+    'extensions/local-review/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(Review, (spec) => () => () => open(spec(), writerNow()))],
+      },
     }),
   })
   await settle()

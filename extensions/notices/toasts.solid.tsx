@@ -9,7 +9,7 @@ import {
   ToastRegion,
   ToastTitle,
 } from '@/components/ui/toast.solid.tsx'
-import type { Notice } from '@/sdk'
+import type { Notice } from '@/sdk/solid'
 import { cn, useNotices } from '@/sdk/solid'
 
 const shownAtOnce = 4

@@ -1,7 +1,7 @@
 import { debounce } from '../../../lib/timers.ts'
 import { allCommands, applies, currentContext, runCommand } from '../sdk/actions.ts'
 import { store } from '../sdk/client.ts'
-import { scopeOf } from '../sdk/conversation-scope.tsx'
+import { scopeOf } from '../sdk/scope.ts'
 import { chordOf, parseKeys } from '../sdk/keys.ts'
 import type { CommandItem } from '../sdk/registry.ts'
 

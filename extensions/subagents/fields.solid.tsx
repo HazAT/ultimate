@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
-import type { ModelsResponse } from '@/sdk'
+import type { ModelsResponse } from '@/sdk/solid'
 import { cn } from '@/sdk/solid'
 import type { ModelRef } from './refs.ts'
 

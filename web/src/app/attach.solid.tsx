@@ -8,7 +8,7 @@ import { typeLabel } from '@/components/file-kind.ts'
 import { fitImage } from '@/components/image-resize.ts'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { errorMessage, formatBytes } from '@/sdk/solid'
-import type { FileUpload } from '@/sdk'
+import type { FileUpload } from '@/sdk/solid'
 import { imageMimeTypes, maxImages } from '../../../shared/protocol.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
 

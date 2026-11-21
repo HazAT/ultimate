@@ -11,9 +11,9 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   return { store: createStore(), uiState: createUiState(undefined), api: {} }
 })
 
-import { ConversationIdContext } from '../../web/src/sdk/conversation-scope.tsx'
-import { ExtensionNameContext } from '../../web/src/sdk/hooks.ts'
-import { island } from '../../web/src/sdk/island.tsx'
+import { ConversationIdContext } from '../../web/src/compat/conversation-scope.tsx'
+import { ExtensionNameContext } from '../../web/src/compat/conversation-scope.tsx'
+import { island } from '../../web/src/compat/island.tsx'
 import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

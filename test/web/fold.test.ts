@@ -2,10 +2,10 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { Fold, foldKey, writeFold } from '../../web/src/app/fold.tsx'
+import { Fold, foldKey, writeFold } from '../../web/src/compat/fold.tsx'
 
 const state = vi.hoisted(() => ({ compact: false, conversation: 7 }))
-vi.mock('../../web/src/sdk/hooks.ts', () => ({
+vi.mock('../../web/src/compat/hooks.ts', () => ({
   useCompact: () => (state.compact ? () => true : undefined),
   useConversation: (select: (conversation: { id: number }) => unknown) =>
     select({ id: state.conversation }),

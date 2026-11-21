@@ -41,7 +41,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   return { store, api, reads: createReads(api, store) }
 })
 import { store } from '../../web/src/sdk/client.ts'
-import { ConversationScope } from '../../web/src/sdk/conversation-scope.tsx'
+import { ConversationScope } from '../../web/src/compat/conversation-scope.tsx'
 import { createTranscriptFrame } from '../../web/src/sdk/transcript-frame.ts'
 import {
   getConversation,
@@ -51,7 +51,7 @@ import {
   useDoc,
   useTranscript,
   useUltimate,
-} from '../../web/src/sdk/hooks.ts'
+} from '../../web/src/compat/hooks.ts'
 
 harness.server = fakeSubscriptions(harness.sources)
 const counter = docRef<{ n: number }>('test.counter')

@@ -17,7 +17,7 @@ import {
 } from '@/sdk/solid'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { actions, layout } from '../sdk/actions.ts'
-import { Slot, useProvided } from '../sdk/react-island.solid.tsx'
+import { Slot, useProvided } from '../sdk/contribution.solid.tsx'
 import { panelItems, slotItems } from '../sdk/registry.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
 import { Shortcut } from './palette.solid.tsx'

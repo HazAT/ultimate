@@ -68,7 +68,7 @@ agent uses `openai-codex/gpt-6-luna` through Pi's existing ChatGPT login, low th
 While voice mode is on, the page watches the Messages log; each question to the user that opens then goes to Voice
 through `asked` once the user and GPT-Live have been quiet for two seconds, as a `voice.question` input (once per
 message). Voice announces it in one line and reads it only when asked. The sounds narrator keeps the question's tone
-but leaves its words to Voice while voice mode is on in that tab (`voiceQuestions` in `sounds/ui.tsx`).
+but leaves its words to Voice while voice mode is on in that tab (`voiceQuestions` in `sounds/ui.solid.tsx`).
 
 ## Browser and transcript
 

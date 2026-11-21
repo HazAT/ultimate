@@ -58,7 +58,7 @@ import {
   Slot,
   useAllProvided,
   useProvided,
-} from '../sdk/react-island.solid.tsx'
+} from '../sdk/contribution.solid.tsx'
 import { Attached, createAttach } from './attach.solid.tsx'
 import { splitAttachments, withAttachments } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'

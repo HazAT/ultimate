@@ -72,7 +72,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { CommandPalette } from '../../../../web/src/app/palette.solid.tsx'
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { WireTab } from '../../tab.solid.tsx'
-import wire from '../../web.tsx'
+import wire from '../../web.solid.tsx'
 
 const agent = createAgent()
 harness.server = fakeSubscriptions(harness.sources)
@@ -178,7 +178,7 @@ it('opens Wire as the agent that runs Open Wire from the palette', async () => {
   }))
   uiState.receive({ 'ext.system.tab': 'agents' })
   harness.writes.length = 0
-  await registry.setLoaders({ 'extensions/wire/web.tsx': async () => ({ default: wire }) })
+  await registry.setLoaders({ 'extensions/wire/web.solid.tsx': async () => ({ default: wire }) })
   renderSolid(() => <CommandPalette />)
   store.setUi({ paletteOpen: true })
   flush()

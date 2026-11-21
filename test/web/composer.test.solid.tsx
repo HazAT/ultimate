@@ -63,9 +63,9 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { ConversationScope, TranscriptContext } from '../../web/src/sdk/conversation-scope.tsx'
-import { island } from '../../web/src/sdk/island.tsx'
-import { Dock } from '../../web/src/sdk/shell.tsx'
+import { ConversationScope, TranscriptContext } from '../../web/src/compat/conversation-scope.tsx'
+import { island } from '../../web/src/compat/island.tsx'
+import { Dock } from '../../web/src/compat/shell.tsx'
 import { createTranscriptFrame, useTranscript } from '../../web/src/sdk/solid.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

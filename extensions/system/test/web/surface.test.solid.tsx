@@ -8,7 +8,7 @@ import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { System } from '../../surface.solid.tsx'
-import { SystemTab, SYSTEM_TAB_KEY } from '../../ui.tsx'
+import { SystemTab, SYSTEM_TAB_KEY } from '../../ui.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   writes: [] as { key: string; value: unknown; source: string | null }[],
@@ -69,7 +69,6 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 import { registry, uiState } from '../../../../web/src/sdk/client.ts'
 import { ExtensionName } from '../../../../web/src/sdk/solid.ts'
-import { provide } from '../../../../web/src/sdk/types.ts'
 
 const agent = createAgent()
 
@@ -86,11 +85,14 @@ it('switches to a contributed System tab and picks an Agents window, attributing
     'extensions/example/web.tsx': async () => ({
       default: {
         provides: [
-          provide(SystemTab, () => ({
-            id: 'example',
-            title: 'Example',
-            component: () => h('main', { 'data-example': '' }, 'React tab'),
-          })),
+          {
+            point: SystemTab.point,
+            use: () => ({
+              id: 'example',
+              title: 'Example',
+              component: () => h('main', { 'data-example': '' }, 'React tab'),
+            }),
+          },
         ],
       },
     }),

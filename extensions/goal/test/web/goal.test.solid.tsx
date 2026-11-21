@@ -12,7 +12,7 @@ import { HandsOff } from '../../chip.solid.tsx'
 import { GoalDialog, goalDialog } from '../../dialog.solid.tsx'
 import { GoalDoc } from '../../refs.ts'
 import type { Goal } from '../../refs.ts'
-import type { EntryRecord, ToolCallView } from '@/sdk'
+import type { EntryRecord, ToolCallView } from '@/sdk/solid'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],

@@ -70,7 +70,7 @@ import {
   RenderedPoint,
   Slot,
   useProvided,
-} from '../sdk/react-island.solid.tsx'
+} from '../sdk/contribution.solid.tsx'
 import {
   anchorSelector,
   compactRows,

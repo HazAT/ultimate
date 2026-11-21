@@ -6,7 +6,7 @@ An isolated conversation must first land into the running Ultimate clone. Restar
 
 Restart affects all conversations. Landing never restarts automatically. A restart first waits for the `onBeforeLoad` callbacks (the `update` extension's install of owed packages) and is refused when one fails. `POST /api/restart` requests the same swap; reconnect to `/api/events` to observe readiness.
 
-`web.tsx` renders restart results, build information, and transcript reload markers. While `server/` or `shared/`
+`web.solid.tsx` renders restart results, build information, and transcript reload markers. While `server/` or `shared/`
 changed since this core booted, the status line shows `core changed · restart` just left of `live · gen N`; clicking
 it restarts the host, and a failed restart turns it into `restart failed` with the reason in a popover.
 After the page switched to a new web bundle (`server/web.ts`), a quiet toast above the bottom right of the status line

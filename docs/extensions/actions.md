@@ -23,14 +23,17 @@ export const actions = {
 ```
 
 ```tsx
-// web.tsx
-import { actionRef, useAction } from '@/sdk'
+/** @jsxImportSource @solidjs/web */
+// web.solid.tsx
+import { actionRef, useAction } from '@/sdk/solid'
 
 /** No arguments → every `TODO` line as `file:line:text`. */
 const ListAction = actionRef<null, string[]>('todos', 'list')
 
-const todos = useAction(ListAction)
-// todos.data, todos.error, todos.loading, todos.refetch()
+function TodoCount() {
+  const todos = useAction(ListAction)
+  return <span>{todos.loading() ? 'Loading…' : (todos.data()?.length ?? 0)}</span>
+}
 ```
 
 An action is `(args, ctx)`; `ctx` has:
@@ -45,8 +48,8 @@ An action is `(args, ctx)`; `ctx` has:
 
 The `ActionContext` import is type-only. The path above is right for `.ultimate/extensions/<name>/` in Ultimate's clone
 (built-ins use `../../server/actions.ts`); in another project the path does not resolve and the import is erased, so it
-runs either way (`scripts/check-extension.ts` reports it there; type `ctx` by hand or leave the import out). A project extension keeps its refs in `web.tsx`, from `@/sdk`; built-ins keep them in `refs.ts` and
-check their handlers against them with `implementAction` (see [contracts](contracts.md#the-browser-side-refsts-and-uitsx)).
+runs either way (`scripts/check-extension.ts` reports it there; type `ctx` by hand or leave the import out). A project extension can keep its refs in `web.solid.tsx`, from `@/sdk/solid`; built-ins keep them in `refs.ts` and
+check their handlers against them with `implementAction` (see [contracts](contracts.md#the-browser-side-refsts-and-uisolidtsx)).
 
 - **Arguments are untrusted, from the browser or an agent**: make actions safe to call from an agent and validate args before they reach a command line. `exec` takes an argument list,
   never a shell string, so quoting is never the problem; meaning is.
@@ -61,13 +64,14 @@ check their handlers against them with `implementAction` (see [contracts](contra
 
 Call actions from the UI in one of two ways:
 
-- `useAction(ref, args?, { enabled?, onError?, on?, every?, focus? })` reads. It calls on mount and again whenever
-  the action or `args` (compared as JSON) change, when `on` changes (a document, an event id, a busy flag: anything
-  that means the answer may be stale), every `every` ms, on window focus with `focus`, and after the server restarts;
-  never while `enabled` is false. Every component reading the same action and args shares one call and one result,
-  so a remount shows the last answer at once while it asks again. It returns `{ data, error, loading, refetch }`:
-  `data` stays while a refetch runs; `refetch()` calls again, also when not `enabled`. A failure shows as a notice
-  unless a reader passes `onError`. Pass the signal as `on` rather than calling `refetch()` from an effect.
+- `useAction(ref, args?, { conversation?, onError?, on?, every?, focus? })` reads. It calls on mount and again when
+  `on()` changes (a document, an event id, a busy flag), every `every` ms, on window focus with `focus`, and after the
+  server restarts. It follows the scoped or shown conversation unless `conversation` is set. Every component reading
+  the same action, args (compared as JSON) and conversation shares one call and result, so a remount shows the last
+  answer while it asks again. It returns `{ data, error, loading, refetch }`: the first three are accessors, and
+  `data()` stays while a refetch runs. A failure shows as a notice unless a reader passes `onError`. Pass an accessor
+  as `on` rather than refetching from an effect. Mount the reader only when its arguments are ready; for changing
+  object arguments, use getters or remount the reader on the new input (see the [Commits example](example-app.md)).
 - `api.action(ref, args?, { conversationId?, signal?, keepalive? })` acts, once: a click that saves,
   closes, or labels something; `keepalive` lets a call sent on `pagehide` outlive the page. It returns a promise of
   the result; afterwards, `refetch()` what changed. A rejection (an `ActionError` with `extension`, `action`,
