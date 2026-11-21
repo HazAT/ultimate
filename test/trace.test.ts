@@ -32,6 +32,8 @@ const extensions = {
 export default defineExtension({ name: 'alpha' })
 export const actions = {
   go: async (args, { host }) => host.need(Beta).work(args),
+  echo: async (args) => args,
+  failImage: async (args, { host }) => host.need(Beta).failImage(args),
   recent: async (_args, { host }) => host.eventLog.recent({ events: [Worked] }),
   fail: async (_args, { host }) => {
     const beta = host.need(Beta)
@@ -52,6 +54,7 @@ export default (host) => {
     },
     boom() { throw thrown },
     async reject() { throw thrown },
+    failImage(args) { throw new Error(args.encodedImage) },
   })
   return defineExtension({ name: 'beta' })
 }`,
@@ -169,6 +172,95 @@ it('traces an action through a service, its event and a reactor into another ser
   // Not hex, so it can't match the rows' random ids by chance.
   expect(JSON.stringify(rows)).not.toContain('sentinel-token')
   expect(note.args).toBe('[{"from":"beta.worked"}]')
+})
+
+it('redacts image bytes in action and service arguments and results without changing the payload', async () => {
+  const server = await start()
+  const image = { data: 'PRIVATE_IMAGE_BYTES', mimeType: 'image/png' }
+  const args = {
+    messageId: 1,
+    before: image,
+    nested: { images: [image], encodedImage: 'PRIVATE_ENCODED_IMAGE_BYTES' },
+    ordinary: { data: 'ordinary data', mimeType: 'application/json' },
+    token: 'private token',
+  }
+  const original = structuredClone(args)
+  const result = await server.extensions.invoke('alpha', 'go', args, signal)
+  expect(args).toEqual(original)
+  expect(result).toEqual({ done: true, args: original })
+  const redacted = {
+    messageId: 1,
+    before: { data: '[redacted]', mimeType: 'image/png' },
+    nested: {
+      images: [{ data: '[redacted]', mimeType: 'image/png' }],
+      encodedImage: '[redacted]',
+    },
+    ordinary: { data: 'ordinary data', mimeType: 'application/json' },
+    token: '[redacted]',
+  }
+  const action = server.extensions.trace.query().find((row) => row.name === 'alpha/go')!
+  const work = server.extensions.trace
+    .query({ trace: action.trace })
+    .find((row) => row.name === 'beta.work')!
+  expect(JSON.parse(action.args!)).toEqual(redacted)
+  expect(JSON.parse(action.result!)).toEqual({ done: true, args: redacted })
+  expect(JSON.parse(work.args!)).toEqual([redacted])
+  expect(JSON.parse(work.result!)).toEqual({ done: true, args: redacted })
+  for (const text of [action.args!, action.result!, work.args!, work.result!]) {
+    expect(text).not.toContain('PRIVATE_IMAGE_BYTES')
+    expect(text).not.toContain('PRIVATE_ENCODED_IMAGE_BYTES')
+    expect(text).not.toContain('private token')
+  }
+})
+
+it('counts repeated actions whose summaries differ only in redacted images', async () => {
+  const server = await start()
+  const args = {
+    images: [{ data: 'FIRST_IMAGE_BYTES', mimeType: 'image/png' }],
+    encodedImage: 'FIRST_ENCODED_IMAGE_BYTES',
+  }
+  const other = {
+    images: [{ data: 'OTHER_IMAGE_BYTES', mimeType: 'image/png' }],
+    encodedImage: 'OTHER_ENCODED_IMAGE_BYTES',
+  }
+  const original = structuredClone(args)
+  const otherOriginal = structuredClone(other)
+  expect(await server.extensions.invoke('alpha', 'echo', args, signal)).toEqual(original)
+  expect(await server.extensions.invoke('alpha', 'echo', other, signal)).toEqual(otherOriginal)
+  expect(args).toEqual(original)
+  expect(other).toEqual(otherOriginal)
+  expect(server.extensions.trace.query().filter((row) => row.name === 'alpha/echo')).toHaveLength(1)
+  expect(server.extensions.trace.polls()).toContainEqual(
+    expect.objectContaining({ name: 'alpha/echo', count: 1 }),
+  )
+})
+
+it('redacts failing action and service arguments but keeps the unsealed error message', async () => {
+  const server = await start()
+  const image = { data: 'PRIVATE_IMAGE_BYTES', mimeType: 'image/png' }
+  const args = { before: image, images: [image], encodedImage: 'ERROR_IMAGE_BYTES' }
+  const original = structuredClone(args)
+  await expect(server.extensions.invoke('alpha', 'failImage', args, signal)).rejects.toThrow(
+    'ERROR_IMAGE_BYTES',
+  )
+  expect(args).toEqual(original)
+  const action = server.extensions.trace.query().find((row) => row.name === 'alpha/failImage')!
+  const work = server.extensions.trace
+    .query({ trace: action.trace })
+    .find((row) => row.name === 'beta.failImage')!
+  for (const row of [action, work]) {
+    expect(row).toMatchObject({ ok: false, error: 'ERROR_IMAGE_BYTES' })
+    expect(row).not.toHaveProperty('result')
+    expect(row.args).not.toContain('PRIVATE_IMAGE_BYTES')
+    expect(row.args).not.toContain('ERROR_IMAGE_BYTES')
+  }
+  const redacted = {
+    before: { data: '[redacted]', mimeType: 'image/png' },
+    images: [{ data: '[redacted]', mimeType: 'image/png' }],
+    encodedImage: '[redacted]',
+  }
+  expect(JSON.parse(action.args!)).toEqual(redacted)
+  expect(JSON.parse(work.args!)).toEqual([redacted])
 })
 
 it('records failing service calls and passes the error through unchanged', async () => {
@@ -567,6 +659,16 @@ it('summarises values: secret keys redacted, long values cut, unserializable sai
   cycle.self = cycle
   expect(summary(cycle)).toBe('[unserializable]')
   expect(summary(undefined)).toBe(undefined)
+  const images = summary({
+    images: [{ data: 'x'.repeat(1000), mimeType: 'image/png' }],
+    encodedImage: 'y'.repeat(1000),
+    ordinary: 'still visible',
+    long: 'z'.repeat(1000),
+  })!
+  expect(images).toContain('"data":"[redacted]"')
+  expect(images).toContain('"encodedImage":"[redacted]"')
+  expect(images).toContain('"ordinary":"still visible"')
+  expect(images.length).toBeLessThanOrEqual(301)
 })
 
 type Execute = (

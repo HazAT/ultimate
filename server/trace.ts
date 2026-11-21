@@ -95,10 +95,24 @@ function toolError(result: ToolExecutionResult) {
 export function summary(value: unknown) {
   if (value === undefined) return undefined
   let budget = SUMMARY_CHARACTER_LIMIT
+  const imageArrays = new WeakSet<object>()
+  const imageItems = new WeakSet<object>()
   try {
-    const text = JSON.stringify(value, (key, item: unknown) => {
+    const text = JSON.stringify(value, function (this: object, key, item: unknown) {
       if (budget <= 0) return undefined
-      if (key && SECRET.test(key)) item = '[redacted]'
+      const mimeType =
+        key === 'data' && !imageItems.has(this)
+          ? Object.getOwnPropertyDescriptor(this, 'mimeType')
+          : undefined
+      const imageData =
+        key === 'data' &&
+        (imageItems.has(this) ||
+          (mimeType !== undefined &&
+            (!('value' in mimeType) ||
+              (typeof mimeType.value === 'string' && /^image\//i.test(mimeType.value)))))
+      if ((key && SECRET.test(key)) || key === 'encodedImage' || imageData) item = '[redacted]'
+      if (key === 'images' && Array.isArray(item)) imageArrays.add(item)
+      if (imageArrays.has(this) && item && typeof item === 'object') imageItems.add(item)
       if (typeof item === 'string' && item.length > budget) item = item.slice(0, budget)
       budget -= key.length + (item && typeof item === 'object' ? 2 : String(item).length)
       return item
