@@ -27,10 +27,12 @@ export function FastToggle() {
     return { model, modelId: ref.modelId, on: data.models.includes(model), project: data.project }
   })
   const [error, setError] = createSignal<string>()
+  const [pending, setPending] = createSignal(false)
   let changing = false
   const toggle = async (on: boolean) => {
     if (changing) return
     changing = true
+    setPending(true)
     setError(undefined)
     const { model } = fast()!
     try {
@@ -40,6 +42,7 @@ export function FastToggle() {
       setError(errorMessage(failure))
     } finally {
       changing = false
+      setPending(false)
     }
   }
   return (
@@ -53,7 +56,8 @@ export function FastToggle() {
                 aria-label="Fast mode"
                 pressed={state().on}
                 class="h-7 gap-1.5 px-2 font-mono text-[11.5px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground data-pressed:bg-transparent data-pressed:text-foreground/85 data-pressed:hover:bg-accent"
-                disabled={state().project}
+                data-pending={pending() ? '' : undefined}
+                disabled={state().project || pending()}
                 focusableWhenDisabled
                 onPressedChange={(on) => void toggle(on)}
                 size={null}

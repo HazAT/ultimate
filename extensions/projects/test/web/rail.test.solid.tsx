@@ -179,6 +179,11 @@ it('lists each running project as a link with its state, opens on hover, and an 
   expect(container.textContent).toContain('2 for you · 1 working')
   await expectDistinctAgentNames(agent)
 
+  const current = agent.snapshot().find((entry) => !entry.offPage && entry.label === rows[0].title)
+  expect(current).toMatchObject({ disabled: true })
+  const blocked = agent.act({ steps: [{ ref: current!.ref, action: 'press' }] })
+  await advance(100)
+  expect((await blocked).ok).toBe(false)
   expect(await agent.query({ text: 'My App' })).toEqual(
     expect.arrayContaining([expect.objectContaining({ label: rows[2].title })]),
   )

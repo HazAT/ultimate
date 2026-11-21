@@ -269,11 +269,12 @@ function Row(props: {
         aria-current={here() ? 'page' : undefined}
         aria-label={title()}
         class={cn(
-          'group relative mx-1.5 flex h-10 items-center justify-start gap-0 rounded-lg text-left font-normal whitespace-normal outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
-          unreachable() && 'opacity-45',
+          'group relative mx-1.5 flex h-10 items-center justify-start gap-0 rounded-lg text-left font-normal whitespace-normal outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset data-disabled:opacity-100',
+          unreachable() && 'data-disabled:opacity-45',
           props.wide && (here() ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
         )}
         data-project={props.project.name}
+        disabled={!href()}
         onClick={(event) => {
           if (href() && opensHere(event)) open(props.project.url)
         }}

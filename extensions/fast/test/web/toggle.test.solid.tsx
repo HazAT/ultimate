@@ -11,6 +11,7 @@ const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   requests: [] as { name: string; body: unknown; source: string | null }[],
   models: [] as string[],
+  write: undefined as Promise<Response> | undefined,
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
@@ -31,6 +32,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       body: args,
       source: new Headers(init?.headers).get('x-ultimate-source'),
     })
+    if (match[1] === 'set' && harness.write) return harness.write
     if (match[1] === 'set' && args)
       harness.models = args.on
         ? [...harness.models, args.model]
@@ -58,11 +60,11 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { store } from '../../../../web/src/sdk/client.ts'
 import { FastToggle } from '../../toggle.solid.tsx'
 
-const view = (provider: string) =>
+const view = (provider: string, modelId = 'gpt-test') =>
   ({
     conversation: { id: 1 },
     entries: [],
-    docs: { 'pi.agent': { model: { provider, modelId: 'gpt-test' } } },
+    docs: { 'pi.agent': { model: { provider, modelId } } },
   }) as unknown as StreamedView
 
 const agent = createAgent()
@@ -70,6 +72,7 @@ beforeEach(({ onTestFinished }) => {
   harness.sources.length = 0
   harness.requests.length = 0
   harness.models = []
+  harness.write = undefined
   store.start()
   onTestFinished(() => store.stop())
   harness.sources[0].open()
@@ -101,6 +104,34 @@ it('lets an agent turn fast mode on for the shown OpenAI model', async () => {
   expect(container.querySelector('[aria-label="Fast mode"]')?.getAttribute('aria-pressed')).toBe(
     'true',
   )
+})
+
+it('holds the stored Fast state while a write is pending and shows its rejection', async () => {
+  const pending = Promise.withResolvers<Response>()
+  harness.write = pending.promise
+  harness.server!.of()!.send('view', view('openai-codex', 'gpt-pending'))
+  const page = renderSolid(() => <FastToggle />)
+  await settle()
+  const toggle = () =>
+    agent
+      .snapshot()
+      .find(
+        (entry) => !entry.offPage && entry.component === 'toggle' && entry.label === 'Fast mode',
+      )!
+  const step = { ref: toggle().ref, action: 'setPressed', args: [true] }
+  expect((await agent.act({ steps: [step] })).ok).toBe(true)
+  flush()
+  const button = page.querySelector('[aria-label="Fast mode"]')!
+  expect(button.hasAttribute('data-pending')).toBe(true)
+  expect(toggle()).toMatchObject({ pressed: false, disabled: true })
+  expect((await agent.act({ steps: [step] })).ok).toBe(false)
+  expect(harness.requests.filter((call) => call.name === 'set')).toHaveLength(1)
+  pending.resolve(Response.json({ error: 'Settings are read-only' }, { status: 500 }))
+  await settle()
+  flush()
+  expect(button.hasAttribute('data-pending')).toBe(false)
+  expect(toggle().pressed).toBe(false)
+  expect(page.textContent).toContain('Settings are read-only')
 })
 
 it('shows nothing for a model without a fast tier', async () => {

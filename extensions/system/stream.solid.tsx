@@ -100,6 +100,7 @@ function Row(props: { row: SystemRow }) {
       <div class="flex min-w-0 items-start gap-1.5 px-3 py-[3px] font-mono text-[10.5px] leading-[18px] text-muted-foreground hover:bg-muted/40 pointer-coarse:py-1.5">
         <CollapsibleTrigger
           aria-label={`${row().name} · event or call ${row().id}`}
+          disabled={!row().trace}
           class="inline-flex w-auto min-w-0 flex-1 items-start justify-start gap-1.5 rounded-md text-left text-[length:inherit] leading-[inherit] font-normal whitespace-nowrap outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none"
           title={row().summary}
         >

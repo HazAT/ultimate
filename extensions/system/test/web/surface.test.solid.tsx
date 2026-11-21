@@ -53,7 +53,21 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       })
     }
     if (path.endsWith('/system/actions/stream'))
-      return Response.json({ result: { rows: [], head: 'first' } })
+      return Response.json({
+        result: {
+          rows: [
+            {
+              id: 'no-trace',
+              at: new Date().toISOString(),
+              kind: 'event',
+              name: 'Missing trace',
+              ok: true,
+              summary: 'Event without details',
+            },
+          ],
+          head: 'first',
+        },
+      })
     return Response.json({ result: undefined })
   }
   const store = createStore({ fetch })
@@ -105,6 +119,15 @@ it('switches to a contributed System tab and picks an Agents window, attributing
   await settle()
   flush()
   expect(page.querySelector('[data-lane="8"]')).not.toBeNull()
+  const noTrace = page.querySelector<HTMLButtonElement>(
+    '[aria-label="Missing trace · event or call no-trace"]',
+  )!
+  expect(noTrace.disabled).toBe(true)
+  noTrace.focus()
+  expect(document.activeElement).not.toBe(noTrace)
+  expect(
+    agent.snapshot().find((entry) => entry.label === 'Missing trace · event or call no-trace'),
+  ).toMatchObject({ disabled: true, open: false, actions: [] })
   const choose = async (label: string, value: string) => {
     const control = agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
     const result = await agent.act({
