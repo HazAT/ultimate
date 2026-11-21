@@ -10,6 +10,7 @@ import {
 } from '@lucide/solid'
 import { For, Show, createEffect, createMemo, createRoot, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import {
   Dialog,
   DialogContent,
@@ -122,7 +123,12 @@ export function SwitchVeil() {
         count !== undefined &&
         (chapter !== previous?.chapter || count !== previous.count || pid !== previous.pid)
       ) {
-        setPending({ to: chapterLabel(count + 1, chapter), verb: 'asleep', pid, since: Date.now() })
+        setPending({
+          to: chapterLabel(count + 1, chapter),
+          verb: 'asleep',
+          pid,
+          since: Date.now(),
+        })
       }
       if (
         intent?.verb === 'asleep' &&
@@ -488,10 +494,8 @@ export function OlderChapterStatus() {
   return (
     <Show when={older()}>
       {(chapter) => (
-        <Button
-          size={null}
-          variant={null}
-          class="-mx-1 flex items-center gap-1.5 rounded-sm px-1 font-normal text-brand/90 transition-colors hover:bg-accent hover:text-foreground"
+        <StatusButton
+          class="text-brand/90"
           data-dream-older-status
           onClick={() => setChapters(true)}
           title={`${chapterLabel(chapter().number, chapter().active)} is open; ${chapter().newest} is the newest`}
@@ -499,7 +503,7 @@ export function OlderChapterStatus() {
         >
           <MoonIcon class="size-3" />
           older chapter
-        </Button>
+        </StatusButton>
       )}
     </Show>
   )

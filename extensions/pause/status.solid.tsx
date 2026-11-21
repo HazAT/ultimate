@@ -2,6 +2,7 @@
 import { Hourglass, Pause, Play as PlayIcon } from '@lucide/solid'
 import { For, Match, Show, Switch, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
 import { NumberInput } from '@/components/ui/number-input.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
@@ -218,7 +219,9 @@ export function Item() {
         const toggle = () => {
           setError(undefined)
           return api
-            .action(state().paused ? PlayAction : PauseAction, null, { conversationId: ROOT })
+            .action(state().paused ? PlayAction : PauseAction, null, {
+              conversationId: ROOT,
+            })
             .catch((failure: unknown) => setError(errorMessage(failure)))
         }
         return (
@@ -241,7 +244,8 @@ export function Item() {
                 </>
               ) : state().limit ? (
                 <>
-                  Rate limited<span class="max-md:hidden"> · {state().limit?.provider}</span>
+                  Rate limited
+                  <span class="max-md:hidden"> · {state().limit?.provider}</span>
                 </>
               ) : state().paused ? (
                 <>
@@ -275,18 +279,16 @@ export function Play() {
   const doc = useDocOf(() => ROOT, PauseDoc)
   return (
     <Show when={doc()?.paused}>
-      <Button
-        class="-mx-1 flex gap-1.5 rounded-sm px-1 font-[family-name:inherit] text-[length:inherit] leading-[inherit] font-normal text-brand transition-colors hover:bg-accent"
+      <StatusButton
+        class="text-brand hover:text-brand"
         aria-label="Play paused work"
         data-agent-confirm={playConfirmation}
         data-pause-play
         onClick={playPausedWork}
-        size={null}
-        variant={null}
       >
         <PlayIcon class="size-3" />
         Play
-      </Button>
+      </StatusButton>
     </Show>
   )
 }

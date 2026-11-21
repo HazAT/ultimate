@@ -44,7 +44,7 @@ and the rest is @ultimate's judgement. Pause in the status line stops everything
 - `goal {action: 'propose'}`: the proposed goal in an editable field and **Start this goal**, disabled with "Goal N is
   still open" while one is; once started from it, the goal's text and "you started it as goal N". The goal keeps the
   call id as `proposal`.
-- A quiet **Hands-off** mark in the status line while a goal is open; it opens @ultimate.
+- A quiet **Hands-off** mark in the status line while a goal is open; it opens a popover with the goal, its criteria, the decision count and the last two decisions, with links to @ultimate and End hands-off.
 
 ## Actions
 

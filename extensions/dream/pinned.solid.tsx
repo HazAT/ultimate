@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { MoonIcon } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
-import { Button } from '@/components/ui/button.solid.tsx'
+import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import {
   Dialog,
   DialogContent,
@@ -13,8 +13,6 @@ import { AwakeSection, nextDialog, useAwake, useDreamStage } from './awake.solid
 import { NextChapter } from './sleep.solid.tsx'
 
 const awakeDialog = 'dream.awake'
-const statusClass =
-  '-mx-1 flex min-w-0 items-center gap-1.5 rounded-sm px-1 font-normal transition-colors hover:bg-accent hover:text-foreground'
 
 export function DreamStatus() {
   const dream = useDreamStage()
@@ -30,13 +28,11 @@ export function DreamStatus() {
       fallback={
         <Show when={prepared()}>
           {(chapter) => (
-            <Button
-              class={statusClass}
+            <StatusButton
+              class="min-w-0"
               data-dream-status={chapter().chapter}
               onClick={() => setNext(true)}
-              size={null}
               title={`Chapter ${chapter().chapter} is prepared: show the Fall asleep card`}
-              variant={null}
             >
               <MoonIcon class="size-3 shrink-0 text-brand" />
               <span class="truncate">
@@ -46,28 +42,26 @@ export function DreamStatus() {
                     ? 'falling asleep'
                     : 'ready to fall asleep'}
               </span>
-            </Button>
+            </StatusButton>
           )}
         </Show>
       }
     >
-      <Button
-        class={statusClass}
+      <StatusButton
+        class="min-w-0"
         data-dream-status={stage()}
         onClick={() => setAwake(true)}
-        size={null}
         title={
           stage() === 'woke'
             ? 'The dream is done: fall asleep into a fresh chapter'
             : '@ultimate is preparing the next chapter'
         }
-        variant={null}
       >
         <MoonIcon class="size-3 shrink-0 text-brand" />
         <span class="truncate">
           {stage() === 'woke' ? 'dream done · fall asleep' : 'preparing the next chapter'}
         </span>
-      </Button>
+      </StatusButton>
     </Show>
   )
 }

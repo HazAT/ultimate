@@ -9,6 +9,7 @@ import {
   Card,
   ROOT,
   api,
+  cn,
   errorMessage,
   formatDuration,
   formatTime,
@@ -21,7 +22,7 @@ import {
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { GoalStartedEntry, GoalReportEntry } from './entries.ts'
 import { EndAction, GoalDoc, ImagesAction } from './refs.ts'
-import type { Decision, Goal } from './refs.ts'
+import type { Criterion, Decision, Goal } from './refs.ts'
 
 export function ModelOnlyNote(_props: { entry: EntryRecord }) {
   return null
@@ -52,6 +53,23 @@ function GoalCard(props: {
 
 const loading = () => <p class="px-3 py-3 text-[12px] text-muted-foreground">Loading…</p>
 
+export function CriterionIcon(props: { status: Criterion['status']; class: string }) {
+  return (
+    <>
+      {props.status === 'met' ? (
+        <Check class={cn(props.class, 'text-success')} />
+      ) : props.status === 'blocked' ? (
+        <CircleSlash class={cn(props.class, 'text-warning')} />
+      ) : (
+        <CircleDashed class={cn(props.class, 'text-muted-foreground')} />
+      )}
+    </>
+  )
+}
+
+export const endGoal = () => api.action(EndAction, null)
+export const endConfirmation = 'Ends the hands-off goal and returns decisions to you.'
+
 function Criteria(props: { items: Goal['criteria'] }) {
   return (
     <Show
@@ -68,13 +86,7 @@ function Criteria(props: { items: Goal['criteria'] }) {
               data-goal-criterion={item().status}
             >
               <span class="mt-0.5 shrink-0">
-                {item().status === 'met' ? (
-                  <Check class="size-3.5 text-success" />
-                ) : item().status === 'blocked' ? (
-                  <CircleSlash class="size-3.5 text-warning" />
-                ) : (
-                  <CircleDashed class="size-3.5 text-muted-foreground" />
-                )}
+                <CriterionIcon class="size-3.5" status={item().status} />
               </span>
               <span class={['min-w-0', { 'text-muted-foreground': item().status === 'met' }]}>
                 {item().text}
@@ -268,7 +280,7 @@ function EndGoal() {
   const [failure, setFailure] = createSignal<string>()
   const end = () => {
     setFailure(undefined)
-    return api.action(EndAction, null).catch((error: unknown) => setFailure(errorMessage(error)))
+    return endGoal().catch((error: unknown) => setFailure(errorMessage(error)))
   }
   return (
     <footer class="flex flex-wrap items-center gap-3 border-t border-border/60 px-4 py-2.5">
@@ -282,7 +294,7 @@ function EndGoal() {
       </Show>
       <Button
         class="group/goal-end"
-        data-agent-confirm="Ends the hands-off goal and returns decisions to you."
+        data-agent-confirm={endConfirmation}
         data-goal-end
         onClick={end}
         pendingAnnouncement="Ending hands-off goal"
