@@ -37,6 +37,7 @@ import { dropped } from './outcomes.ts'
 import { delivery, reconcileOutputs, retireOutput, settle, submitOutput } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
+import { consume } from './log.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { branchesConcluded, reported, route, working } from './route.ts'
@@ -269,6 +270,7 @@ export default function messages(host: ExtensionHost) {
       ),
     dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
+    consume,
     tell: (from, input, ctx) => tell(host, from, input, ctx),
     owed: (tx, to, automation) => owed(host, tx, to, automation),
     submitFire: (tx, to, input, { id, name }) =>
@@ -350,6 +352,13 @@ export default function messages(host: ExtensionHost) {
           text: str({ minLength: 1 }),
           reply: opt(bool()),
           steer: opt(bool()),
+          consumer: opt(
+            str({
+              minLength: 1,
+              description:
+                'Retain this message for the named extension consumer until it acknowledges it.',
+            }),
+          ),
           images: opt(imagesParameter),
           questions: opt(questionsParameter),
         }),

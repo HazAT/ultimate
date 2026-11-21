@@ -4,7 +4,7 @@ Durable messages between conversations, standing agents and the user. Built in a
 
 ## Messaging
 
-`message { to, text, reply?: true, steer?, images?, questions? }` returns the message id at once. Address a
+`message { to, text, reply?: true, steer?, images?, questions?, consumer? }` returns the message id at once. Address a
 conversation as `#123` or `123`, a standing agent as `@name`, or `user`.
 
 - **Who may message whom.** Any conversation except a subagent may message `user`; a message to the user ends the run
@@ -121,15 +121,16 @@ as `@ultimate@<project> on <machine>` with a globe mark and a violet accent.
 ## Document and typed inputs
 
 `Messages` (kind `board`, version 1) is exported on `ROOT_CONVERSATION_ID` as `{ messages: Message[]; next: number }`;
-the log keeps the newest 300 items, and transcripts retain delivered inputs. `Message` is in `api.ts`: `from` and `to`
+the log keeps the newest 300 items plus open and explicitly pending messages, and transcripts retain delivered inputs. `Message` is in `api.ts`: `from` and `to`
 are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`, `failed` or
 `stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`, `questions` and `call` are optional.
 
 - `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote? }`.
 - `board.reply` data: `{ id, re, from, text, failed, stopped?, images?, remote?, interim? }`; `stopped` also sets
   `failed`; an `interim` reply is placed as a note (`delivery: 'note'`).
-- Each post emits `board.sent` `{ message, from, to, reply, steer }` (`MessageSent`), never the text; replies emit
-  nothing.
+- Each post emits `board.sent` `{ message, from, to, reply, steer, re? }` (`MessageSent`), never the text; `re`
+  identifies the original for a user's answer or dismissal, or an explicitly admitted converted answer. Automatic
+  replies emit nothing.
 
 ## Actions and service
 
@@ -143,8 +144,23 @@ are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `
   the reply records `via`, so the card reads "@ultimate answered for you". Refused for other callers and closed
   messages. With `dismiss`, it also closes @ultimate's own open `tell` to another project, `text` as the reason.
 
-There is no user posting action: users type in a conversation or answer a card. `host.want(MessagesApi)` (`api.ts`)
+There is no user posting action: users type in a conversation or answer a card. `host.need(MessagesApi)` (`api.ts`)
 exposes `send`, a one-way message from a conversation, and `answer`, the user's reply to an open message.
+
+### Named consumer retention
+
+An agent may explicitly send a message with `consumer: 'name'` through `message` or a one-way message through the
+Messages service. The message's `admission` records that name, its pending status, the sender conversation and, if the
+sender was a standing agent at admission, its standing name. Neither ordinary messages nor answers are implicitly admitted.
+If an opted-in `message` is converted into an answer to an agent, that answer emits `board.sent` for the consumer.
+
+A consumer registers a durable `board.sent` reactor (from the start, not `from: 'now'`) and calls
+`MessagesApi.consume(tx, event.data.message, 'name')` inside the reactor transaction. It returns the pending message
+and acknowledges it, or returns nothing for an unadmitted, already consumed, missing or differently named message.
+Write the consumer's state in that same transaction: a failure rolls both the write and acknowledgement back, and
+replay retries it. The reactor's cursor and failure are visible in the event log. Names route messages; they are not
+an authorization boundary. Pending messages have no expiry and can grow without bound if a consumer is missing,
+disabled or repeatedly failing. Once consumed, a message may be trimmed on a later append.
 
 ## Files
 

@@ -21,6 +21,7 @@ import { obj } from '@earendil-works/pi-schema'
 import {
   configure,
   defineExtension,
+  defineDoc,
   defineTask,
   defineTool,
   InboxDoc,
@@ -113,6 +114,7 @@ async function fixture(
     /** Only this conversation's calls wait at the gate. */
     conversation?: () => number
   },
+  setup?: (host: ExtensionHost, service: () => MessagesService) => void,
 ) {
   /** Services other extensions implement here, by API name, such as pause's `messages.gate`. */
   const provided = new Map<string, unknown>()
@@ -180,6 +182,7 @@ async function fixture(
       kind === 'lineage.roots' ? Roots : kind === 'lineage.tally' ? Tally : undefined,
   } as unknown as ExtensionHost
   let backend = messagesExtension(host)
+  setup?.(host, () => service)
   if (sendGate)
     backend = {
       ...backend,
@@ -380,6 +383,7 @@ async function fixture(
     },
     holding: () => holding,
     reactorsSettled: events.settled,
+    eventLog: events.eventLog,
     observed,
     transcripts,
   }
@@ -413,6 +417,186 @@ it('wakes an idle recipient and returns one typed reply; one-way messages return
   ])
   expect(JSON.stringify(sent)).not.toContain('One way')
 })
+const Consumed = defineDoc<{ ids: number[] }>({
+  kind: 'messages-test.consumed',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ ids: [] }),
+})
+
+it('retains an admitted message across trimming, reactor failure and reopen until consumption commits', async () => {
+  let failing = true
+  const f = await fixture(undefined, undefined, (host, service) => {
+    host.react('test-consumer', [MessageSent], async (tx, event) => {
+      const message = await service().consume(tx, event.data.message, 'reader')
+      if (!message) return
+      ;(await tx.doc(Consumed, ROOT_CONVERSATION_ID)).ids.push(message.id)
+      if (failing) throw new Error('consumer failed')
+    })
+  })
+  await f.opened.harness.commit(async (tx) => {
+    const board = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    for (let i = 0; i < 300; i++)
+      board.messages.push({
+        id: board.next++,
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: 'Open question',
+        at: 0,
+        reply: true,
+        state: 'delivered',
+      })
+  }, context)
+  await f.send('user', 'Retain me', { reply: false, consumer: 'reader' })
+  const retained = (await f.log())!.messages.find((m) => m.text === 'Retain me')!
+  expect(retained).toMatchObject({
+    admission: {
+      consumer: 'reader',
+      pending: true,
+      sender: { conversation: 1, standing: 'ultimate' },
+    },
+  })
+  await until(async () => (await f.eventLog.reactors()).some((r) => r.failure))
+  expect(
+    (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids ?? [],
+  ).toEqual([])
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = f.recipient.id
+  }, context)
+  await f.opened.close()
+  await f.open()
+  await until(async () => (await f.eventLog.reactors()).some((r) => r.failure))
+  expect((await f.log())!.messages.find((m) => m.id === retained.id)).toMatchObject({
+    admission: { pending: true, sender: { conversation: 1, standing: 'ultimate' } },
+  })
+  failing = false
+  await f.send('user', 'Trigger', { reply: false })
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids.includes(
+        retained.id,
+      ) ?? false,
+  )
+  expect((await f.log())!.messages.find((m) => m.id === retained.id)?.admission?.pending).toBe(
+    false,
+  )
+  await f.send('user', 'Trim', { reply: false })
+  expect((await f.log())!.messages.some((m) => m.id === retained.id)).toBe(false)
+  expect((await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))!.ids).toEqual([
+    retained.id,
+  ])
+})
+
+it('deduplicates concurrent admitted sends by task and conversation receipts across reopen', async () => {
+  const f = await fixture()
+  const taskId = await f.opened.harness.commit(
+    (tx) =>
+      tx.createTask(
+        reporter,
+        { delivered: false },
+        {
+          ownership: { kind: 'conversation' },
+          conversationId: ROOT_CONVERSATION_ID,
+          background: true,
+        },
+      ),
+    context,
+  )
+  const send = () =>
+    sendMessage(
+      f.host,
+      ROOT_CONVERSATION_ID,
+      {
+        to: `#${f.recipient.id}`,
+        text: 'Once',
+        reply: false,
+        consumer: 'reader',
+      },
+      context,
+      { taskId, callId: 'call', requestId: 'request' },
+    )
+  const ids = await Promise.all(Array.from({ length: 8 }, send))
+  expect(new Set(ids).size).toBe(1)
+  await until(
+    async () => (await f.log())!.messages.find((m) => m.id === ids[0])?.state === 'delivered',
+  )
+  const deliveries = await f.host.scanSubmissions(
+    { conversationId: f.recipient.id },
+    100,
+    undefined,
+    context,
+  )
+  expect(deliveries.items.filter((s) => s.requestId === `board:${ids[0]}`)).toHaveLength(1)
+  await f.opened.close()
+  await f.open()
+  expect(await send()).toBe(ids[0])
+  expect((await f.log())!.messages.filter((m) => m.text === 'Once')).toHaveLength(1)
+  expect(
+    (await f.eventLog.recent({ events: [MessageSent] })).filter((e) => e.data.message === ids[0]),
+  ).toHaveLength(1)
+  expect(
+    await sendMessage(
+      f.host,
+      ROOT_CONVERSATION_ID,
+      { to: 'user', text: 'Again', reply: false },
+      context,
+      { taskId, callId: 'call' },
+    ),
+  ).toBe(ids[0])
+  expect(
+    await f
+      .service()
+      .send(ROOT_CONVERSATION_ID, { to: 'user', text: 'Again', reply: false }, 'request', context),
+  ).toBe(ids[0])
+})
+
+it('includes the original message in user answer and dismissal events without admitting ordinary messages', async () => {
+  const f = await fixture()
+  await f.send('user', 'First?')
+  const first = (await f.log())!.messages.at(-1)!.id
+  await f.service().answer(first, 'Yes', context)
+  await f.send('user', 'Second?')
+  const second = (await f.log())!.messages.at(-1)!.id
+  await f.service().dismiss(second, context)
+  const events = await f.eventLog.recent({ events: [MessageSent] })
+  expect(events.filter((e) => e.data.from === 'user').map((e) => e.data.re)).toEqual([
+    second,
+    first,
+  ])
+  expect((await f.log())!.messages.every((m) => m.admission === undefined)).toBe(true)
+})
+
+it('admits reply-expected messages and explicitly opted-in converted answers', async () => {
+  const f = await fixture()
+  await f.send('user', 'Question?', { consumer: 'reader' })
+  const question = (await f.log())!.messages.at(-1)!
+  await f.service().answer(question.id, 'Yes', context)
+  expect((await f.log())!.messages.find((m) => m.id === question.id)).toMatchObject({
+    state: 'answered',
+    admission: { consumer: 'reader', pending: true },
+  })
+  await f.send(
+    `#${f.recipient.id}`,
+    'SEND ' + JSON.stringify({ to: '#1', text: 'Converted', consumer: 'reader' }),
+  )
+  await until(async () =>
+    (await replies(f)).some((entry) => JSON.stringify(entry.data).includes('Converted')),
+  )
+  const answer = (await f.log())!.messages.find((m) => m.text === 'Converted')!
+  expect(answer).toMatchObject({
+    reply: false,
+    admission: { consumer: 'reader', pending: true, sender: { conversation: f.recipient.id } },
+  })
+  const events = await f.eventLog.recent({ events: [MessageSent] })
+  expect(events.find((event) => event.data.message === answer.id)?.data).toMatchObject({
+    re: answer.re,
+    reply: false,
+  })
+})
+
 it('records a one-way input answer without returning it to the sender', async () => {
   const f = await fixture()
   await f.send(String(f.recipient.id), 'One-way update', { reply: false })

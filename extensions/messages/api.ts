@@ -16,7 +16,7 @@ import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
-import type { Question, Remote, Via } from './refs.ts'
+import type { Admission, Question, Remote, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -52,6 +52,8 @@ export type Message = {
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
   via?: Via
+  /** Explicit retention until the named consumer acknowledges it. */
+  admission?: Admission
 }
 /** Every message between conversations and the user, on the root conversation. */
 export const Messages = defineDoc<{ messages: Message[]; next: number }>({
@@ -94,13 +96,19 @@ export type MessagesService = {
     device?: Device,
     call?: { taskId: TaskId; callId: string },
   ): Promise<number>
-  /** Send a one-way message from conversation `from` to `to` (`#id`, `@name` or `user`), once per `requestId`. */
+  /** Send a one-way message once per `requestId`; `consumer` opts it into retention for that named consumer. */
   send(
     from: ConversationId,
-    input: { to: string; text: string; reply: false },
+    input: { to: string; text: string; reply: false; consumer?: string },
     requestId: string,
     ctx: Context,
   ): Promise<number>
+  /**
+   * Acknowledge and return a pending message for `consumer` in `tx`, or return undefined. Call inside the same
+   * transaction as the consumer's writes; a thrown transaction leaves it pending. Consumer names are routing, not
+   * authorization. No expiry: a disabled or missing consumer leaves messages retained until it consumes them.
+   */
+  consume(tx: Tx, messageId: number, consumer: string): Promise<Message | undefined>
   /**
    * From the primary agent's conversation `from`, message another project's primary agent (on `machine`, else where it
    * runs): only that Ultimate receives it. With `reply`, its answer returns here as a reply. Returns this log's id of the
@@ -128,7 +136,7 @@ export type MessagesService = {
   dropped(tx: Tx, automation: string, source: string, why: string): Promise<void>
 }
 export { MessageSent } from './refs.ts'
-export type { Question, Serves } from './refs.ts'
+export type { Admission, Question, Serves } from './refs.ts'
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')
 

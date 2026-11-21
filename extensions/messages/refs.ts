@@ -31,6 +31,13 @@ export type Question = {
   placeholder?: string
 }
 
+/** An explicitly admitted message and the standing identity it had when sent. */
+export type Admission = {
+  consumer: string
+  pending: boolean
+  sender: { conversation: ConversationId; standing?: string }
+}
+
 /** One message as the log stores it. */
 export type Message = {
   id: number
@@ -63,6 +70,8 @@ export type Message = {
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
   via?: Via
+  /** Explicit retention until the named consumer acknowledges it. */
+  admission?: Admission
 }
 /** Where @ultimate settled a question for the user: its conversation, and the user's input it read the answer from. */
 export type Via = { conversation: ConversationId; entry?: EntryId }
@@ -119,7 +128,8 @@ export const SettleAction = actionRef<
 
 /**
  * Message `message` was posted from `from` to `to`; `reply` whether it waits for an answer, `steer` whether it
- * steers a busy recipient. Never its text. Emitted in the posting commit; answers are no posts.
+ * steers a busy recipient. `re` identifies the original for a user answer, dismissal or opted-in converted answer.
+ * Never its text. Emitted in the posting commit; automatic replies are no posts.
  */
 export const MessageSent = defineEvent<{
   message: number
@@ -127,4 +137,5 @@ export const MessageSent = defineEvent<{
   to: ConversationId | 'user' | 'remote'
   reply: boolean
   steer: boolean
+  re?: number
 }>('board.sent')
