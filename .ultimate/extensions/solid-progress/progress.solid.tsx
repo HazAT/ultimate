@@ -444,7 +444,7 @@ function Run(props: { run: PreviewRun | null; base?: PreviewRun }) {
         <>
           <td class="px-3 py-0.5 text-right tabular-nums">{run().calls}</td>
           <td class="px-3 py-0.5 text-right tabular-nums">{run().screenshots}</td>
-          <td class="px-3 py-0.5 text-right tabular-nums">
+          <td class="px-3 py-0.5 text-right whitespace-nowrap tabular-nums">
             {number(run().tokens)}
             <Show when={props.base}>
               {(base) => (
