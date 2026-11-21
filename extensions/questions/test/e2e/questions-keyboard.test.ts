@@ -207,3 +207,26 @@ it('sends a held answer when the page is left inside the undo window', async () 
   await until(async () => !!(await answer()))
   expect((await answer())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
 })
+
+// Under load the undo window ended while the page was going away: the answer went out as an ordinary fetch, which
+// the unload aborted, and the answer was lost.
+it('keeps an answer that is still in flight when the page is left', async () => {
+  const { log, asked, page, card } = await openCard()
+  const held = Promise.withResolvers<void>()
+  const requested = Promise.withResolvers<void>()
+  await page.context().route('**/actions/answer', async (route) => {
+    requested.resolve()
+    await held.promise
+    await route.continue()
+  })
+  await card
+    .getByRole('button', { name: `Send: answer to message ${asked.id}`, exact: true })
+    .click()
+  await requested.promise
+  await page.goto('about:blank')
+  held.resolve()
+  const answer = async () =>
+    (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
+  await until(async () => !!(await answer()))
+  expect((await answer())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
+})
