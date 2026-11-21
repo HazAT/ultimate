@@ -98,11 +98,15 @@ let port = Number(requestedPort ?? 4747)
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid port')
 const lockPath = join(home, 'ultimate.lock')
 await mkdir(home, { recursive: true })
-const lock = await acquireLock(lockPath, {
-  pid: process.pid,
-  port,
-  project: projectRoot,
-}, process.env.ULTIMATE_SUPERVISED === '1' ? 10000 : 0).catch(async (error) => {
+const lock = await acquireLock(
+  lockPath,
+  {
+    pid: process.pid,
+    port,
+    project: projectRoot,
+  },
+  process.env.ULTIMATE_SUPERVISED === '1' ? 10000 : 0,
+).catch(async (error) => {
   const runningProjectToReopen = opening && (await readOwner(lockPath))
   if (
     runningProjectToReopen &&
