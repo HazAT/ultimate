@@ -47,6 +47,7 @@
     "extensions/coding-tools/diff.ts",
     "extensions/automations/form-draft.ts",
     "extensions/automations/looks.ts",
+    "extensions/redraws/recorder.ts",
     "extensions/automations/navigation.ts",
     "extensions/automations/poll.ts",
     "extensions/automations/waits.ts",
