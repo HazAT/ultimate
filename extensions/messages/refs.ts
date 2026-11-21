@@ -73,6 +73,18 @@ export type Message = {
   /** Explicit retention until the named consumer acknowledges it. */
   admission?: Admission
 }
+/** `{after?, limit?}` → a page of pending message ids, consumer names and admission times; no text. */
+export const PendingAction = actionRef<
+  { after?: number; limit?: number },
+  { messages: { id: number; consumer: string; at: number }[]; next?: number }
+>('messages', 'pending')
+
+/** `{message, expected, consumer}` → `{id}`: retarget a still-pending message if its current consumer matches. */
+export const RetargetAction = actionRef<
+  { message: number; expected: string; consumer: string },
+  { id: number }
+>('messages', 'retarget')
+
 /** Where @ultimate settled a question for the user: its conversation, and the user's input it read the answer from. */
 export type Via = { conversation: ConversationId; entry?: EntryId }
 export type MessagesData = { messages: Message[]; next: number }
@@ -139,3 +151,8 @@ export const MessageSent = defineEvent<{
   steer: boolean
   re?: number
 }>('board.sent')
+
+/** A pending message was explicitly retargeted; consumers use its id to try consumption in the event transaction. */
+export const MessageRetargeted = defineEvent<{ message: number; consumer: string }>(
+  'messages.retargeted',
+)

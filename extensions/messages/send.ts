@@ -93,6 +93,7 @@ export async function send(
     routed?: EntryId
     echo?: boolean
     serveBranch?: true
+    sender?: ConversationId
   } = {},
 ) {
   const { taskId, callId, requestId, answerId, device, via } = options
@@ -161,18 +162,22 @@ export async function send(
     if (from === 'user' && input.re !== undefined)
       for (const m of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages)
         if (openQuestion(m) && m.id === input.re) m.state = input.dismiss ? 'dismissed' : 'answered'
+    const actualSender = from === 'user' ? undefined : (options.sender ?? from)
     const standingSender =
-      input.consumer === undefined || from === 'user'
+      input.consumer === undefined || actualSender === undefined
         ? undefined
         : Object.entries(await tx.doc(Standing, ROOT_CONVERSATION_ID)).find(
-            ([, id]) => id === from,
+            ([, id]) => id === actualSender,
           )?.[0]
     const admission =
-      input.consumer !== undefined && from !== 'user'
+      input.consumer !== undefined && actualSender !== undefined
         ? {
             consumer: input.consumer,
             pending: true,
-            sender: { conversation: from, ...(standingSender ? { standing: standingSender } : {}) },
+            sender: {
+              conversation: actualSender,
+              ...(standingSender ? { standing: standingSender } : {}),
+            },
           }
         : undefined
     let re = input.re
@@ -253,7 +258,7 @@ export async function send(
       to,
       reply: message.reply,
       steer,
-      ...(from === 'user' && re !== undefined ? { re } : {}),
+      ...((from === 'user' || admission !== undefined) && re !== undefined ? { re } : {}),
     })
     if (primaryId !== undefined) {
       const asked = to === 'user' && message.reply && from !== primaryId && typeof from === 'number'

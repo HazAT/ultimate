@@ -18,10 +18,11 @@ export async function append(tx: Tx, input: Omit<Message, 'id' | 'at'>) {
 }
 
 export function trim(messages: Message[], cap = 300) {
-  let extra = messages.length - cap
+  let extra =
+    messages.filter((message) => !message.admission?.pending || isOpen(message)).length - cap
   for (let i = 0; extra > 0 && i < messages.length;) {
-    const openMessageMustStayVisible = isOpen(messages[i]) || messages[i].admission?.pending
-    if (openMessageMustStayVisible) i++
+    const mustStay = isOpen(messages[i]) || messages[i].admission?.pending
+    if (mustStay) i++
     else {
       messages.splice(i, 1)
       extra--

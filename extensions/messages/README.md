@@ -121,8 +121,9 @@ as `@ultimate@<project> on <machine>` with a globe mark and a violet accent.
 ## Document and typed inputs
 
 `Messages` (kind `board`, version 1) is exported on `ROOT_CONVERSATION_ID` as `{ messages: Message[]; next: number }`;
-the log keeps the newest 300 items plus open and explicitly pending messages, and transcripts retain delivered inputs. `Message` is in `api.ts`: `from` and `to`
-are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`, `failed` or
+the log retains the newest 300 ordinary or open items, except that open messages always survive even beyond 300.
+Pending messages that are not open are retained separately and do not consume that budget. Transcripts retain delivered
+inputs. `Message` is in `api.ts`: `from` and `to` are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`, `failed` or
 `stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`, `questions` and `call` are optional.
 
 - `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote? }`.
@@ -150,17 +151,27 @@ exposes `send`, a one-way message from a conversation, and `answer`, the user's 
 ### Named consumer retention
 
 An agent may explicitly send a message with `consumer: 'name'` through `message` or a one-way message through the
-Messages service. The message's `admission` records that name, its pending status, the sender conversation and, if the
-sender was a standing agent at admission, its standing name. Neither ordinary messages nor answers are implicitly admitted.
-If an opted-in `message` is converted into an answer to an agent, that answer emits `board.sent` for the consumer.
+Messages service. The message's `admission` records that name, its pending status, the actual sending conversation
+and, if it was a standing agent at admission, its standing name. A side chat can send as another conversation: `from`
+keeps that delivery identity while `admission.sender` identifies the side chat. Neither ordinary messages nor answers
+are implicitly admitted. If an opted-in `message` is converted into an answer to an agent, that answer emits `board.sent`
+for the consumer.
 
-A consumer registers a durable `board.sent` reactor (from the start, not `from: 'now'`) and calls
+A consumer registers one durable reactor for both `MessageSent` (`board.sent`) and `MessageRetargeted`
+(`messages.retargeted`), from the start, not `from: 'now'`. On either event it calls
 `MessagesApi.consume(tx, event.data.message, 'name')` inside the reactor transaction. It returns the pending message
 and acknowledges it, or returns nothing for an unadmitted, already consumed, missing or differently named message.
 Write the consumer's state in that same transaction: a failure rolls both the write and acknowledgement back, and
-replay retries it. The reactor's cursor and failure are visible in the event log. Names route messages; they are not
-an authorization boundary. Pending messages have no expiry and can grow without bound if a consumer is missing,
-disabled or repeatedly failing. Once consumed, a message may be trimmed on a later append.
+replay retries it. The reactor's cursor and failure are visible in the event log.
+
+For a missed or mistyped consumer, `pending({after?, limit?})` lists pending message ids, names and times without text,
+in pages of at most 100. `retarget({message, expected, consumer})` changes a still-pending message only if its current
+name equals `expected`, and commits a text-free `messages.retargeted` event with the change. A consumed message cannot
+be retargeted. The target's reactor handles the new event even if it already passed the original post; no second post or
+delivery is made. If a consumer previously skipped events by starting from now, it can also reconcile explicitly by
+reading `Messages` in a transaction and calling `consume` with its name, committing its own writes in that transaction.
+Names route messages; they are not an authorization boundary. Pending messages have no expiry and can grow without
+bound if a consumer is missing, disabled or repeatedly failing. Once consumed, a message may be trimmed on a later append.
 
 ## Files
 

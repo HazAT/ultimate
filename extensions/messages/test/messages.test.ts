@@ -41,7 +41,8 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { Messages, MessageSent } from '../api.ts'
+import { Messages, MessageRetargeted, MessageSent } from '../api.ts'
+import { append } from '../log.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -52,6 +53,16 @@ import { Standing, Subagents } from '../../subagents/api.ts'
 import { landingPending, pendingLandingCards, Workspaces } from '../../workspaces/workspaces.ts'
 import { actions as conversationActions, concludedIn } from '../../conversations/server.ts'
 import { UiState } from '../../../shared/ui-state.ts'
+
+const SideChat = defineDoc<{ of?: ConversationId }>({
+  kind: 'sidechat',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})
 
 const homes: string[] = []
 const hosts: OpenHost[] = []
@@ -179,7 +190,13 @@ async function fixture(
     },
     conversations: () => [],
     doc: (kind: string) =>
-      kind === 'lineage.roots' ? Roots : kind === 'lineage.tally' ? Tally : undefined,
+      kind === 'lineage.roots'
+        ? Roots
+        : kind === 'lineage.tally'
+          ? Tally
+          : kind === 'sidechat'
+            ? SideChat
+            : undefined,
   } as unknown as ExtensionHost
   let backend = messagesExtension(host)
   setup?.(host, () => service)
@@ -490,6 +507,152 @@ it('retains an admitted message across trimming, reactor failure and reopen unti
   ])
 })
 
+it('keeps the ordinary retention budget alongside pending messages', async () => {
+  const f = await fixture()
+  await f.opened.harness.commit(async (tx) => {
+    for (let i = 0; i < 300; i++)
+      await append(tx, {
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: `pending ${i}`,
+        reply: false,
+        state: 'delivered',
+        admission: {
+          consumer: 'reader',
+          pending: true,
+          sender: { conversation: ROOT_CONVERSATION_ID },
+        },
+      })
+    for (let i = 0; i < 301; i++)
+      await append(tx, {
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: `ordinary ${i}`,
+        reply: false,
+        state: 'delivered',
+      })
+  }, context)
+  const messages = (await f.log())!.messages
+  expect(messages.filter((m) => m.admission?.pending)).toHaveLength(300)
+  expect(messages.filter((m) => !m.admission)).toHaveLength(300)
+  expect(messages.some((m) => m.text === 'ordinary 0')).toBe(false)
+  expect(messages.some((m) => m.text === 'ordinary 300')).toBe(true)
+})
+
+it('captures the actual side-chat sender while retaining the borrowed delivery identity', async () => {
+  const f = await fixture()
+  const target = await f.opened.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const agent = await f.opened.root.agent(context)
+  await f.opened.harness.commit(async (tx) => {
+    await configure(tx, target.id, { model: agent.model, tools: agent.tools })
+    ;(await tx.doc(SideChat, f.recipient.id)).of = ROOT_CONVERSATION_ID
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).helper = f.recipient.id
+  }, context)
+  await (
+    await f.recipient.submit(
+      {
+        type: 'input',
+        content:
+          'SEND ' +
+          JSON.stringify({ to: `#${target.id}`, text: 'Side', reply: false, consumer: 'reader' }),
+      },
+      context,
+    )
+  ).wait(context)
+  await until(async () =>
+    (await f.log())!.messages.some((m) => m.text === 'Side' && m.state === 'delivered'),
+  )
+  expect((await f.log())!.messages.find((m) => m.text === 'Side')).toMatchObject({
+    from: ROOT_CONVERSATION_ID,
+    to: target.id,
+    admission: { sender: { conversation: f.recipient.id, standing: 'helper' }, pending: true },
+  })
+})
+
+it('recovers a mistyped consumer after its event was skipped and serializes retarget against consumption', async () => {
+  const f = await fixture(undefined, undefined, (host, service) => {
+    host.react('reader', [MessageSent, MessageRetargeted], async (tx, event) => {
+      const message = await service().consume(tx, event.data.message, 'reader')
+      if (message) (await tx.doc(Consumed, ROOT_CONVERSATION_ID)).ids.push(message.id)
+    })
+  })
+  await f.send('user', 'Private payload', { reply: false, consumer: 'typo' })
+  const id = (await f.log())!.messages.at(-1)!.id
+  await f.send('user', 'Another private payload', { reply: false, consumer: 'other-typo' })
+  const other = (await f.log())!.messages.at(-1)!.id
+  await until(f.reactorsSettled)
+  const diagnostic = await actions.pending({ limit: 1 }, f.action())
+  expect(diagnostic.messages).toEqual([{ id, consumer: 'typo', at: expect.any(Number) }])
+  expect(diagnostic.next).toBe(id)
+  expect(
+    (await actions.pending({ limit: 1, after: diagnostic.next! }, f.action())).messages,
+  ).toEqual([{ id: other, consumer: 'other-typo', at: expect.any(Number) }])
+  expect(JSON.stringify(diagnostic)).not.toContain('Private payload')
+  await expect(
+    actions.retarget({ message: id, expected: 'wrong', consumer: 'reader' }, f.action()),
+  ).rejects.toThrow('expected consumer')
+  const originalEmit = f.host.emit.bind(f.host)
+  f.host.emit = async (...args) => {
+    await originalEmit(...args)
+    throw new Error('retarget transaction failed')
+  }
+  try {
+    await expect(
+      actions.retarget({ message: id, expected: 'typo', consumer: 'reader' }, f.action()),
+    ).rejects.toThrow('retarget transaction failed')
+  } finally {
+    f.host.emit = originalEmit
+  }
+  expect((await f.log())!.messages.find((m) => m.id === id)?.admission?.consumer).toBe('typo')
+  expect(await f.eventLog.recent({ events: [MessageRetargeted] })).toEqual([])
+  await actions.retarget({ message: id, expected: 'typo', consumer: 'reader' }, f.action())
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids.includes(
+        id,
+      ) ?? false,
+  )
+  await expect(
+    actions.retarget({ message: id, expected: 'reader', consumer: 'other' }, f.action()),
+  ).rejects.toThrow('expected consumer')
+  const retargeted = await f.eventLog.recent({ events: [MessageRetargeted] })
+  expect(retargeted.map((event) => event.data)).toEqual([{ message: id, consumer: 'reader' }])
+  expect(JSON.stringify(retargeted)).not.toContain('Private payload')
+  await f.send('user', 'Race', { reply: false, consumer: 'race' })
+  const race = (await f.log())!.messages.at(-1)!.id
+  await until(f.reactorsSettled)
+  const results = await Promise.allSettled([
+    actions.retarget({ message: race, expected: 'race', consumer: 'reader' }, f.action()),
+    f.opened.harness.commit(async (tx) => {
+      const message = await f.service().consume(tx, race, 'race')
+      if (message) (await tx.doc(Consumed, ROOT_CONVERSATION_ID)).ids.push(message.id)
+    }, context),
+  ])
+  expect(results[1].status).toBe('fulfilled')
+  expect(
+    (await f.eventLog.recent({ events: [MessageRetargeted] })).filter(
+      (event) => event.data.message === race,
+    ),
+  ).toHaveLength(results[0].status === 'fulfilled' ? 1 : 0)
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids.includes(
+        race,
+      ) ?? false,
+  )
+  expect(
+    (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))!.ids.filter(
+      (item) => item === race,
+    ),
+  ).toHaveLength(1)
+  await expect(
+    actions.retarget({ message: race, expected: 'reader', consumer: 'other' }, f.action()),
+  ).rejects.toThrow('expected consumer')
+})
+
 it('deduplicates concurrent admitted sends by task and conversation receipts across reopen', async () => {
   const f = await fixture()
   const taskId = await f.opened.harness.commit(
@@ -595,6 +758,32 @@ it('admits reply-expected messages and explicitly opted-in converted answers', a
     re: answer.re,
     reply: false,
   })
+})
+
+it('includes the original in an opted-in answer converted to the user', async () => {
+  const f = await fixture()
+  const original = await f.opened.harness.commit(async (tx) => {
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    const id = log.next++
+    log.messages.push({
+      id,
+      from: 'user',
+      to: ROOT_CONVERSATION_ID,
+      text: 'Question',
+      at: 0,
+      reply: true,
+      state: 'delivered',
+    })
+    return id
+  }, context)
+  await f.send('user', 'Answer', { consumer: 'reader' })
+  const answer = (await f.log())!.messages.find((m) => m.text === 'Answer')!
+  expect(answer.re).toBe(original)
+  expect(
+    (await f.eventLog.recent({ events: [MessageSent] })).find(
+      (event) => event.data.message === answer.id,
+    )?.data.re,
+  ).toBe(original)
 })
 
 it('records a one-way input answer without returning it to the sender', async () => {

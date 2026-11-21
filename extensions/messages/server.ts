@@ -25,7 +25,13 @@ import { LineageApi } from '../lineage/api.ts'
 import { Messages, MessagesApi } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
-import { CallerAction, SettleAction } from './refs.ts'
+import {
+  CallerAction,
+  MessageRetargeted,
+  PendingAction,
+  RetargetAction,
+  SettleAction,
+} from './refs.ts'
 import type { Via } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
@@ -149,6 +155,46 @@ async function userRunInput(host: ExtensionHost, id: ConversationId, ctx: Contex
 }
 
 export const actions = {
+  pending: implementAction(PendingAction, async (args, { host }) => {
+    const { after = 0, limit = 100 } = (args ?? {}) as Record<string, unknown>
+    if (!Number.isSafeInteger(after) || (after as number) < 0)
+      throw new Error('after must be a non-negative message id')
+    if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > 100)
+      throw new Error('limit must be between 1 and 100')
+    const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)
+    const page = (log?.messages ?? [])
+      .filter((message) => message.id > (after as number) && message.admission?.pending)
+      .slice(0, (limit as number) + 1)
+    const rows = page.slice(0, limit as number).map((message) => ({
+      id: message.id,
+      consumer: message.admission!.consumer,
+      at: message.at,
+    }))
+    return { messages: rows, ...(page.length > (limit as number) ? { next: rows.at(-1)!.id } : {}) }
+  }),
+  retarget: implementAction(RetargetAction, async (args, { host }) => {
+    const { message, expected, consumer } = (args ?? {}) as Record<string, unknown>
+    if (!Number.isSafeInteger(message) || (message as number) < 1)
+      throw new Error('message must be a message id')
+    if (
+      typeof expected !== 'string' ||
+      !expected.trim() ||
+      typeof consumer !== 'string' ||
+      !consumer.trim()
+    )
+      throw new Error('expected and consumer must be non-empty names')
+    if (expected === consumer) throw new Error('consumer must differ from expected')
+    return host.harness().commit(async (tx) => {
+      const item = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+        (m) => m.id === message,
+      )
+      if (!item?.admission?.pending || item.admission.consumer !== expected)
+        throw new Error('Message is not pending for the expected consumer')
+      item.admission.consumer = consumer
+      await host.emit(tx, MessageRetargeted, { message: item.id, consumer })
+      return { id: item.id }
+    }, BACKGROUND_CONTEXT)
+  }),
   [CallerAction.name]: implementAction(CallerAction, async (args, { host }) => {
     const { conversation, call } = (args ?? {}) as Record<string, unknown>
     if (!Number.isSafeInteger(conversation) || (conversation as number) < 1)
@@ -387,6 +433,7 @@ export default function messages(host: ExtensionHost) {
                 {
                   taskId: api.taskId,
                   callId: api.callId,
+                  sender: api.conversationId,
                 },
               ),
               ctx,
