@@ -48,13 +48,25 @@ export type PreviewRun = {
   kb: number
   tokens: number
   ms: number
+  sleepMs?: number
   ok: boolean
 }
 
-/** Scripted preview tasks, old style (`selectors`) beside `ui` steps (null before they existed); `agent` a real worker. */
+/** The measured cost of running a preview task with a real agent; `ok` counts successful runs. */
+export type AgentRun = {
+  runs: number
+  calls: number
+  screenshots: number
+  tokens: number
+  ms: number
+  ok: number
+}
+
+/** Scripted tasks (`selectors` beside `ui`), the early real-worker measure, and paired real-agent tasks. */
 export type Previews = {
   scenarios: Record<string, { selectors: PreviewRun; ui: PreviewRun | null }>
-  agent: { runs: number; calls: number; screenshots: number; tokens: number; ok: number } | null
+  agent?: Omit<AgentRun, 'ms'> | null
+  agentTasks?: Record<string, { old: AgentRun; new: AgentRun }>
 }
 
 /** Real use of browser previews in one ISO week (Monday's date), from stored history. */
@@ -65,6 +77,7 @@ export type PreviewWeek = {
   uiSteps: number
   clickSteps: number
   evalSteps: number
+  waitMs?: number
   screenshots: number
 }
 

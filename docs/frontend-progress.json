@@ -9946,6 +9946,504 @@
       "bundleGzipKB": 2991,
       "entryGzipKB": 401,
       "summary": "One Solid SDK entry (@/sdk/solid), @vitejs/plugin-react dropped, Solid fixtures, skill and docs for the end state"
+    },
+    {
+      "switch": null,
+      "stream": null,
+      "previews": {
+        "scenarios": {
+          "keep-warm": {
+            "selectors": {
+              "calls": 2,
+              "steps": 5,
+              "screenshots": 2,
+              "kb": 135,
+              "tokens": 3469,
+              "ms": 3186,
+              "sleepMs": 3000,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 3,
+              "screenshots": 0,
+              "kb": 3,
+              "tokens": 795,
+              "ms": 108,
+              "sleepMs": 0,
+              "ok": true
+            }
+          },
+          "pause": {
+            "selectors": {
+              "calls": 2,
+              "steps": 5,
+              "screenshots": 2,
+              "kb": 139,
+              "tokens": 3469,
+              "ms": 3251,
+              "sleepMs": 3000,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 3,
+              "screenshots": 0,
+              "kb": 4,
+              "tokens": 934,
+              "ms": 140,
+              "sleepMs": 0,
+              "ok": true
+            }
+          },
+          "setup-read": {
+            "selectors": {
+              "calls": 2,
+              "steps": 4,
+              "screenshots": 2,
+              "kb": 151,
+              "tokens": 3467,
+              "ms": 3137,
+              "sleepMs": 3000,
+              "ok": true
+            },
+            "ui": {
+              "calls": 2,
+              "steps": 3,
+              "screenshots": 0,
+              "kb": 3,
+              "tokens": 802,
+              "ms": 79,
+              "sleepMs": 0,
+              "ok": true
+            }
+          },
+          "surface": {
+            "selectors": {
+              "calls": 2,
+              "steps": 5,
+              "screenshots": 2,
+              "kb": 185,
+              "tokens": 3479,
+              "ms": 3218,
+              "sleepMs": 3000,
+              "ok": true
+            },
+            "ui": {
+              "calls": 1,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 37,
+              "tokens": 9411,
+              "ms": 186,
+              "sleepMs": 0,
+              "ok": true
+            }
+          },
+          "palette": {
+            "selectors": {
+              "calls": 2,
+              "steps": 7,
+              "screenshots": 2,
+              "kb": 131,
+              "tokens": 3478,
+              "ms": 3210,
+              "sleepMs": 3000,
+              "ok": true
+            },
+            "ui": {
+              "calls": 1,
+              "steps": 2,
+              "screenshots": 0,
+              "kb": 0,
+              "tokens": 127,
+              "ms": 144,
+              "sleepMs": 0,
+              "ok": true
+            }
+          },
+          "stream": {
+            "selectors": {
+              "calls": 2,
+              "steps": 6,
+              "screenshots": 2,
+              "kb": 198,
+              "tokens": 3729,
+              "ms": 7147,
+              "sleepMs": 7000,
+              "ok": true
+            },
+            "ui": {
+              "calls": 1,
+              "steps": 3,
+              "screenshots": 0,
+              "kb": 1,
+              "tokens": 280,
+              "ms": 2534,
+              "sleepMs": 0,
+              "ok": true
+            }
+          }
+        },
+        "agentTasks": {
+          "surface": {
+            "old": {
+              "runs": 3,
+              "calls": 5,
+              "screenshots": 3,
+              "tokens": 121810,
+              "ms": 20094,
+              "ok": 3
+            },
+            "new": {
+              "runs": 3,
+              "calls": 3,
+              "screenshots": 2,
+              "tokens": 132808,
+              "ms": 22130,
+              "ok": 3
+            }
+          },
+          "palette": {
+            "old": {
+              "runs": 3,
+              "calls": 4,
+              "screenshots": 4,
+              "tokens": 102572,
+              "ms": 22102,
+              "ok": 3
+            },
+            "new": {
+              "runs": 3,
+              "calls": 5,
+              "screenshots": 2,
+              "tokens": 101448,
+              "ms": 20098,
+              "ok": 3
+            }
+          },
+          "setting": {
+            "old": {
+              "runs": 3,
+              "calls": 5,
+              "screenshots": 4,
+              "tokens": 109259,
+              "ms": 22094,
+              "ok": 3
+            },
+            "new": {
+              "runs": 3,
+              "calls": 5,
+              "screenshots": 2,
+              "tokens": 95864,
+              "ms": 20084,
+              "ok": 3
+            }
+          },
+          "stream": {
+            "old": {
+              "runs": 3,
+              "calls": 3,
+              "screenshots": 3,
+              "tokens": 67461,
+              "ms": 16069,
+              "ok": 3
+            },
+            "new": {
+              "runs": 3,
+              "calls": 4,
+              "screenshots": 1,
+              "tokens": 89505,
+              "ms": 18078,
+              "ok": 3
+            }
+          },
+          "question": {
+            "old": {
+              "runs": 3,
+              "calls": 6,
+              "screenshots": 5,
+              "tokens": 130671,
+              "ms": 34153,
+              "ok": 3
+            },
+            "new": {
+              "runs": 3,
+              "calls": 4,
+              "screenshots": 1,
+              "tokens": 82523,
+              "ms": 18079,
+              "ok": 3
+            }
+          }
+        }
+      },
+      "commit": "85792e67",
+      "sha": "85792e67ccbda3a5b2879d97236cb6772929ac3e",
+      "label": "browser ui-first",
+      "date": "2026-11-21",
+      "committedAt": 1795258722,
+      "lines": {
+        "total": 57042,
+        "solid": 48607,
+        "react": 8435
+      },
+      "perExtension": {
+        "activity": {
+          "react": 0,
+          "solid": 496
+        },
+        "agent": {
+          "react": 0,
+          "solid": 158
+        },
+        "antigravity": {
+          "react": 0,
+          "solid": 86
+        },
+        "attachments": {
+          "react": 0,
+          "solid": 17
+        },
+        "automations": {
+          "react": 0,
+          "solid": 2436
+        },
+        "browser": {
+          "react": 0,
+          "solid": 239
+        },
+        "claude-code": {
+          "react": 0,
+          "solid": 84
+        },
+        "cloud": {
+          "react": 0,
+          "solid": 593
+        },
+        "codemode": {
+          "react": 0,
+          "solid": 297
+        },
+        "coding-tools": {
+          "react": 0,
+          "solid": 703
+        },
+        "context": {
+          "react": 0,
+          "solid": 873
+        },
+        "conversations": {
+          "react": 0,
+          "solid": 563
+        },
+        "diagrams": {
+          "react": 0,
+          "solid": 20
+        },
+        "documents": {
+          "react": 0,
+          "solid": 172
+        },
+        "dream": {
+          "react": 0,
+          "solid": 1766
+        },
+        "entries": {
+          "react": 0,
+          "solid": 3
+        },
+        "fast": {
+          "react": 0,
+          "solid": 64
+        },
+        "goal": {
+          "react": 0,
+          "solid": 746
+        },
+        "health": {
+          "react": 0,
+          "solid": 3
+        },
+        "inbox": {
+          "react": 0,
+          "solid": 641
+        },
+        "info": {
+          "react": 0,
+          "solid": 617
+        },
+        "instance": {
+          "react": 0,
+          "solid": 479
+        },
+        "keep-warm": {
+          "react": 0,
+          "solid": 93
+        },
+        "lineage": {
+          "react": 0,
+          "solid": 1509
+        },
+        "mcp": {
+          "react": 0,
+          "solid": 178
+        },
+        "messages": {
+          "react": 0,
+          "solid": 1737
+        },
+        "models": {
+          "react": 0,
+          "solid": 1989
+        },
+        "notices": {
+          "react": 0,
+          "solid": 58
+        },
+        "onboarding": {
+          "react": 0,
+          "solid": 1961
+        },
+        "parallel": {
+          "react": 0,
+          "solid": 436
+        },
+        "pause": {
+          "react": 0,
+          "solid": 509
+        },
+        "phase": {
+          "react": 0,
+          "solid": 36
+        },
+        "plan": {
+          "react": 0,
+          "solid": 1185
+        },
+        "projects": {
+          "react": 0,
+          "solid": 361
+        },
+        "prompt": {
+          "react": 0,
+          "solid": 80
+        },
+        "push": {
+          "react": 0,
+          "solid": 265
+        },
+        "questions": {
+          "react": 0,
+          "solid": 1035
+        },
+        "read-aloud": {
+          "react": 0,
+          "solid": 366
+        },
+        "recall": {
+          "react": 0,
+          "solid": 107
+        },
+        "reel": {
+          "react": 0,
+          "solid": 506
+        },
+        "review": {
+          "react": 0,
+          "solid": 1560
+        },
+        "secrets": {
+          "react": 0,
+          "solid": 437
+        },
+        "self": {
+          "react": 0,
+          "solid": 409
+        },
+        "setup": {
+          "react": 0,
+          "solid": 126
+        },
+        "share": {
+          "react": 0,
+          "solid": 89
+        },
+        "side-chat": {
+          "react": 0,
+          "solid": 858
+        },
+        "sidebar": {
+          "react": 10,
+          "solid": 2721
+        },
+        "sounds": {
+          "react": 0,
+          "solid": 440
+        },
+        "splash": {
+          "react": 0,
+          "solid": 1183
+        },
+        "status-line": {
+          "react": 0,
+          "solid": 432
+        },
+        "subagents": {
+          "react": 0,
+          "solid": 2107
+        },
+        "system": {
+          "react": 0,
+          "solid": 1327
+        },
+        "tailscale": {
+          "react": 0,
+          "solid": 327
+        },
+        "tasks": {
+          "react": 0,
+          "solid": 449
+        },
+        "theme": {
+          "react": 0,
+          "solid": 12
+        },
+        "todos": {
+          "react": 0,
+          "solid": 371
+        },
+        "ui": {
+          "react": 0,
+          "solid": 84
+        },
+        "update": {
+          "react": 0,
+          "solid": 460
+        },
+        "voice-live": {
+          "react": 0,
+          "solid": 1958
+        },
+        "voice": {
+          "react": 0,
+          "solid": 292
+        },
+        "watchdog": {
+          "react": 0,
+          "solid": 51
+        },
+        "wire": {
+          "react": 0,
+          "solid": 1230
+        },
+        "workspaces": {
+          "react": 0,
+          "solid": 1310
+        }
+      },
+      "bundleGzipKB": 2991,
+      "entryGzipKB": 401
     }
   ],
   "previewUsage": [
@@ -9955,6 +10453,7 @@
       "uiSteps": 0,
       "clickSteps": 532,
       "evalSteps": 742,
+      "waitMs": 2919601,
       "screenshots": 688,
       "conversations": 85
     },
@@ -9964,6 +10463,7 @@
       "uiSteps": 0,
       "clickSteps": 39,
       "evalSteps": 161,
+      "waitMs": 672700,
       "screenshots": 206,
       "conversations": 25
     },
@@ -9973,17 +10473,19 @@
       "uiSteps": 0,
       "clickSteps": 486,
       "evalSteps": 455,
+      "waitMs": 2377530,
       "screenshots": 512,
       "conversations": 55
     },
     {
       "week": "2026-11-16",
-      "browserCalls": 432,
-      "uiSteps": 144,
-      "clickSteps": 531,
-      "evalSteps": 446,
-      "screenshots": 373,
-      "conversations": 41
+      "browserCalls": 1160,
+      "uiSteps": 536,
+      "clickSteps": 1448,
+      "evalSteps": 1215,
+      "waitMs": 4058881,
+      "screenshots": 1017,
+      "conversations": 104
     }
   ]
 }

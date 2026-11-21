@@ -70,13 +70,15 @@ dropped, so the file keeps every step. Per entry:
     framework, plus any work already queued ahead of it, so it is latency rather than time spent on the event alone.
     The median is the steady cost; the p95 is the slow events a reader feels as jank. One run's p95 can jump with
     machine load (27 ms in one of three C0 runs, 6–7 ms in the other two), so read the median of runs.
-- `previews` (`scripts/preview-bench.ts`) runs three status-line tasks (keep-warm, pause, reading the setup issues)
-  three times each from a fresh page, once with CSS selectors and screenshots and once with `ui` steps (`null` before
-  `ui` steps existed at `1c5d056`). `tokens` estimates what the agent reads back: text at 4 bytes a token, a
-  1440×900 screenshot at width × height / 750. `agent` is a worker on `openai-codex/gpt-6.2-sol` given the keep-warm task
-  in plain words, three runs, counted from its stored entries; measured by hand and only at some commits.
+- `previews` (`scripts/preview-bench.ts`) compares keep-warm, pause, setup issues, switching to System, toggling the
+  theme from the palette, and reading a streamed reply. It takes the median of three runs: selectors, screenshots
+  and fixed sleeps (`sleepMs`) versus `ui` actions and state-based waits, without screenshots or sleeps (`ui` is
+  `null` before the bridge existed). `tokens` estimates the output the agent reads: text at 4 bytes a token, a
+  1440×900 screenshot at width × height / 750. The original `agent` measurement used a real worker on keep-warm;
+  `agentTasks`, when present, compares real workers using the old and new styles per task.
 - `previewUsage` (`node scripts/preview-usage.ts ~/.ultimate/projects/<home>`) counts browser calls, `ui`/click/eval
-  steps and screenshots per week over every chapter of the project's history, read-only.
+  steps, screenshots, and total numeric waits (`waitMs`) per week across all chapters, read-only. The page shows
+  `ui`'s share of the three counted step types and the waits in seconds.
 
 ### Code and bundle: `node scripts/frontend-weight.ts`
 
