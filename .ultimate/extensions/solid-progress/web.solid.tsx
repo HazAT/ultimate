@@ -1,18 +1,18 @@
-import { ChartNoAxesCombinedIcon } from 'lucide-react'
-import { Conversation, Dock, Header, StatusLine, defineWebExtension, island } from '@/sdk'
+/** @jsxImportSource @solidjs/web */
+import { ChartNoAxesCombinedIcon } from '@lucide/solid'
+import { Conversation, Dock, Header, StatusLine } from '@/sdk/parts.solid.tsx'
+import { defineWebExtension } from '@/sdk/solid'
 import { Progress } from './progress.solid.tsx'
-
-const Body = island(Progress)
 
 function Surface() {
   return (
     <>
       <Header>
-        <span className="text-[13px]">Solid migration</span>
+        <span class="text-[13px]">Solid migration</span>
       </Header>
-      <div className="flex min-h-0 flex-1">
-        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <Body />
+      <div class="flex min-h-0 flex-1">
+        <main class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+          <Progress />
         </main>
         <Dock>
           <Conversation variant="dock" />
