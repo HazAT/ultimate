@@ -277,8 +277,12 @@ function ComposerEditor(props: { dock?: boolean }) {
   const [placeholder, setPlaceholder] = createSignal<string>()
   const models = useModels()
   const viewport = useViewport()
-  const [foldTarget, setFoldTarget] = createSignal(statusTarget())
-  onSettled(() => subscribeStatusTarget(() => setFoldTarget(statusTarget())))
+  const [foldTarget, setFoldTarget] = createSignal<HTMLElement | null>(null)
+  onSettled(() => {
+    const unsubscribe = subscribeStatusTarget(() => setFoldTarget(statusTarget()))
+    setFoldTarget(statusTarget())
+    return unsubscribe
+  })
   const foldStatus = createMemo(() =>
     viewport() === 'phone' && scoped === null && !props.dock ? foldTarget() : null,
   )
