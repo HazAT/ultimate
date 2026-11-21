@@ -351,6 +351,57 @@ export async function applySeed(host: ExtensionHost) {
     const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
     todos.items.push({ owner: 'ultimate', text, id: todos.next++, at: Date.now() })
   }
+  for (const script of carriesWork ? seed.scripts : []) {
+    if (script.scope === 'project' || !script.folder) continue
+    const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
+    if (done?.scripts?.includes(script.id)) continue
+    const subscribers = [
+      ...new Set((script.subscribers ?? []).flatMap((s) => subscriberHere(s) ?? [])),
+    ]
+    const failure =
+      !script.prompt && !subscribers.length
+        ? 'none of its subscribers came along'
+        : await host
+            .invoke(
+              'automations',
+              'create',
+              {
+                name: script.name,
+                ask: script.ask,
+                once: script.once ?? true,
+                ...(script.secrets ? { secrets: script.secrets } : {}),
+                ...(script.prompt ? { prompt: script.prompt } : {}),
+                ...(script.agent ? { agent: script.agent } : {}),
+                ...(script.model ? { model: script.model } : {}),
+                ...(script.thinking ? { thinking: script.thinking } : {}),
+                ...(subscribers.length ? { subscribers } : {}),
+                adopt: script.folder,
+                key: `seed:${host.chapter.name}:script:${script.id}`,
+              },
+              signal,
+              ultimate,
+            )
+            .then(
+              () => undefined,
+              (error: unknown) => String(error),
+            )
+    const key = `seed:${host.chapter.name}:script:${script.id}`
+    const createdButLaunchFailed =
+      !!failure &&
+      ((await host.invoke('automations', 'list', null, signal)) as Automation[]).some(
+        (item) => item.key === key,
+      )
+    await harness.commit(async (tx) => {
+      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+      if (saved.scripts?.includes(script.id)) return
+      saved.scripts = [...(saved.scripts ?? []), script.id]
+      if (failure && !createdButLaunchFailed)
+        await leaveTodo(
+          tx,
+          `Recreate script ${script.id} (${script.name}), not carried (${failure}): ${script.ask} · its files: ${script.folder}`,
+        )
+    }, context)
+  }
   for (const question of carriesWork ? seed.questions : []) {
     const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
     if (done?.questions?.includes(question.ref)) continue
@@ -412,57 +463,6 @@ export async function applySeed(host: ExtensionHost) {
       content: chapterText(host, seed),
     })
   }, context)
-  for (const script of carriesWork ? seed.scripts : []) {
-    if (script.scope === 'project' || !script.folder) continue
-    const done = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
-    if (done?.scripts?.includes(script.id)) continue
-    const subscribers = [
-      ...new Set((script.subscribers ?? []).flatMap((s) => subscriberHere(s) ?? [])),
-    ]
-    const failure =
-      !script.prompt && !subscribers.length
-        ? 'none of its subscribers came along'
-        : await host
-            .invoke(
-              'automations',
-              'create',
-              {
-                name: script.name,
-                ask: script.ask,
-                once: script.once ?? true,
-                ...(script.secrets ? { secrets: script.secrets } : {}),
-                ...(script.prompt ? { prompt: script.prompt } : {}),
-                ...(script.agent ? { agent: script.agent } : {}),
-                ...(script.model ? { model: script.model } : {}),
-                ...(script.thinking ? { thinking: script.thinking } : {}),
-                ...(subscribers.length ? { subscribers } : {}),
-                adopt: script.folder,
-                key: `seed:${host.chapter.name}:script:${script.id}`,
-              },
-              signal,
-              ultimate,
-            )
-            .then(
-              () => undefined,
-              (error: unknown) => String(error),
-            )
-    const key = `seed:${host.chapter.name}:script:${script.id}`
-    const createdButLaunchFailed =
-      !!failure &&
-      ((await host.invoke('automations', 'list', null, signal)) as Automation[]).some(
-        (item) => item.key === key,
-      )
-    await harness.commit(async (tx) => {
-      const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
-      if (saved.scripts?.includes(script.id)) return
-      saved.scripts = [...(saved.scripts ?? []), script.id]
-      if (failure && !createdButLaunchFailed)
-        await leaveTodo(
-          tx,
-          `Recreate script ${script.id} (${script.name}), not carried (${failure}): ${script.ask} · its files: ${script.folder}`,
-        )
-    }, context)
-  }
   harness.resume()
   return seed
 }

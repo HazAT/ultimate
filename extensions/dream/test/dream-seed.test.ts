@@ -748,9 +748,12 @@ it('recreates each open card session with a pointer back, its watcher resumed fr
     context,
   )
   expect(deliveries).toEqual(['dream.carried', 'dream.chapter'])
-  expect(f.sent.mock.invocationCallOrder[0]).toBeLessThan(
-    Math.max(...f.invoke.mock.invocationCallOrder),
+  const lastCreate = Math.max(
+    ...f.invoke.mock.calls.flatMap(([, action], index) =>
+      action === 'create' ? [f.invoke.mock.invocationCallOrder[index]] : [],
+    ),
   )
+  expect(lastCreate).toBeLessThan(f.sent.mock.invocationCallOrder[0])
   const first = async () =>
     f.harness.commit(
       async (tx) =>
