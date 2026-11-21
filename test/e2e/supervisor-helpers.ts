@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { readFile, writeFile } from 'node:fs/promises'
+import { cp, readFile, writeFile } from 'node:fs/promises'
 import {
   temp,
   removeTemp,
@@ -72,6 +72,10 @@ export async function launch(home: string) {
   const ultimateRoot = copies.get(home) ?? (await sourceCopy(home))
   copies.set(home, ultimateRoot)
   model ??= await scriptedModel(answer)
+  // A core SIGKILLed while Pi writes models-store.json leaves its lock behind, and Pi waits up to 30 s for it to go
+  // stale: each home gets its own Pi agent directory, so a test never boots against another test's leftover lock.
+  const agentDir = join(home, 'pi-agent')
+  await cp(model.env.PI_CODING_AGENT_DIR, agentDir, { recursive: true, force: false })
   const child = spawn(
     process.execPath,
     [join(ultimateRoot, 'bin/ultimate.ts'), ultimateRoot, '--no-open'],
@@ -79,7 +83,7 @@ export async function launch(home: string) {
       cwd: ultimateRoot,
       env: {
         ...cleanEnv(),
-        ...model.env,
+        PI_CODING_AGENT_DIR: agentDir,
         HOME: home,
         ULTIMATE_HOME: home,
         ULTIMATE_PORT: '0',
