@@ -28,6 +28,23 @@ function Status() {
 }
 const Island = island(Status)
 
+it('delivers a click inside an island that no Solid root encloses', () => {
+  const pressed = vi.fn<() => void>()
+  const Clickable = island(() => (
+    <button onClick={() => pressed()} type="button">
+      press
+    </button>
+  ))
+  const container = document.createElement('div')
+  document.body.append(container)
+  const react = createRoot(container)
+  act(() => react.render(h(Clickable)))
+  container.querySelector('button')!.click()
+  expect(pressed).toHaveBeenCalledOnce()
+  act(() => react.unmount())
+  container.remove()
+})
+
 it('mounts a Solid component in React with its extension and conversation, and disposes it', () => {
   const container = document.createElement('div')
   document.body.append(container)

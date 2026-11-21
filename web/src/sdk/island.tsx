@@ -1,4 +1,4 @@
-import { insert as mount } from '@solidjs/web'
+import { insert as mount, registerDelegatedRoot, unregisterDelegatedRoot } from '@solidjs/web'
 import {
   createComponent,
   createRoot,
@@ -66,9 +66,10 @@ export function island<P extends object = Record<string, never>>(
           for (const key of Object.keys(draft)) if (!Object.hasOwn(next, key)) delete draft[key]
           Object.assign(draft, next)
         })
+      const element = host.current!
+      registerDelegatedRoot(element)
       const dispose = runWithOwner(islands, () =>
         createRoot((done) => {
-          const element = host.current!
           mount(element, () =>
             createComponent(ExtensionName, {
               value: extension,
@@ -89,6 +90,7 @@ export function island<P extends object = Record<string, never>>(
           )
           return () => {
             done()
+            unregisterDelegatedRoot(element)
             element.textContent = ''
           }
         }),
