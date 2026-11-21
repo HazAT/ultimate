@@ -1,11 +1,7 @@
 /** @jsxImportSource @solidjs/web */
-import { createEffect } from 'solid-js'
 import { Conversation, Dock } from '@/sdk/parts.solid.tsx'
-import { useConversation, useDialog, useViewport } from '@/sdk/solid'
-import { useOpenWire } from './link.solid.tsx'
+import { useConversation, useViewport } from '@/sdk/solid'
 import { WireTab } from './tab.solid.tsx'
-
-export const openDialog = 'wire.open'
 
 export function Wire() {
   const conversation = useConversation()
@@ -18,15 +14,4 @@ export function Wire() {
       </Dock>
     </div>
   )
-}
-
-export function OpenOnCommand() {
-  const [open, setOpen] = useDialog(openDialog)
-  const openWire = useOpenWire()
-  createEffect(open, (shown) => {
-    if (!shown) return
-    setOpen(false)
-    openWire()
-  })
-  return null
 }
