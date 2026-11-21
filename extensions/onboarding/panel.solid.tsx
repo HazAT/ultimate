@@ -9,16 +9,7 @@ import {
   TriangleAlertIcon,
 } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
-import {
-  action,
-  createEffect,
-  createMemo,
-  createOptimistic,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-} from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import {
@@ -99,12 +90,12 @@ function ProjectSetup(props: { system: SystemInfo }) {
     const { enable, disable } = projectLists(props.system)
     return enable.length + disable.length
   })
-  const run = async (kind: 'local' | 'global' | 'adopt', work: () => Promise<unknown>) => {
+  const run = async (kind: 'local' | 'global' | 'adopt', action: () => Promise<unknown>) => {
     setBusy(kind)
     setError(undefined)
     setAdopted(false)
     try {
-      await work()
+      await action()
       if (kind === 'adopt') setAdopted(true)
     } catch (failure) {
       setError(errorMessage(failure))
@@ -432,9 +423,10 @@ function Row(props: {
   replaces: boolean
   local: boolean
   scope: Scope
+  pending?: boolean
   error?: string
   note?: string
-  onToggle: (enabled: boolean) => Promise<void>
+  onToggle: (enabled: boolean) => void
   registerSwitch: (node: HTMLButtonElement) => () => void
 }) {
   const extension = () => props.extension
@@ -452,12 +444,7 @@ function Row(props: {
       .filter(Boolean)
       .join('\n')
   })
-  const [checked, setChecked] = createOptimistic(() => extension().enabled)
-  const pending = () => checked() !== extension().enabled
-  const toggle = action(function* (enabled: boolean) {
-    setChecked(enabled)
-    yield props.onToggle(enabled)
-  })
+  const checked = () => props.pending ?? extension().enabled
   const where = () => (props.scope === 'project' ? 'for this project' : 'everywhere')
   return (
     <li class="px-3 py-1.5">
@@ -529,14 +516,14 @@ function Row(props: {
         <Show when={!extension().core}>
           <span class="mt-0.5">
             <Switch
-              aria-busy={pending() ? 'true' : undefined}
-              class={pending() ? 'animate-pulse cursor-progress' : undefined}
+              aria-busy={props.pending !== undefined ? 'true' : undefined}
+              class={props.pending !== undefined ? 'animate-pulse cursor-progress' : undefined}
               checked={checked()}
               disabled={unusable()}
               aria-label={`${extension().name} ${where()}`}
               onCheckedChange={(enabled, details) => {
-                if (pending()) details.cancel()
-                else void toggle(enabled)
+                if (props.pending !== undefined) details.cancel()
+                else props.onToggle(enabled)
               }}
               title={
                 unusable()
@@ -586,6 +573,7 @@ function ExtensionList(props: { system: SystemInfo }) {
   const { line, replaces } = useDescribed()
   const [chosen, setChosen] = createSignal<Scope>()
   const [savedOpenRows, setSavedOpenRows] = useExtensionUiState<string[]>('open', [])
+  const [pending, setPending] = createSignal<Record<string, boolean>>({})
   const [errors, setErrors] = createSignal<Record<string, string>>({})
   const [notes, setNotes] = createSignal<Record<string, string>>({})
   const [toggleAnnouncement, setToggleAnnouncement] = createSignal('')
@@ -598,13 +586,16 @@ function ExtensionList(props: { system: SystemInfo }) {
   const switches = new Map<string, HTMLButtonElement>()
   let remountFocus: { name: string; enabled: boolean } | undefined
   createEffect(
-    () => props.system.extensions,
-    (extensions) => {
+    () => ({ pending: pending(), extensions: props.system.extensions }),
+    (state) => {
       if (!remountFocus) return
       const { name, enabled } = remountFocus
       const target = switches.get(name)
       if (target && document.activeElement === document.body) target.focus()
-      if (extensions.find((extension) => extension.name === name)?.enabled === enabled)
+      if (
+        state.pending[name] === undefined &&
+        state.extensions.find((extension) => extension.name === name)?.enabled === enabled
+      )
         remountFocus = undefined
     },
   )
@@ -624,6 +615,7 @@ function ExtensionList(props: { system: SystemInfo }) {
     const savingTo = scope()
     const projectSetup = local()
     if (root?.contains(document.activeElement)) remountFocus = { name, enabled }
+    setPending((previous) => ({ ...previous, [name]: enabled }))
     setErrors(without(name))
     setNotes(without(name))
     try {
@@ -641,6 +633,8 @@ function ExtensionList(props: { system: SystemInfo }) {
       setErrors((previous) => ({ ...previous, [name]: errorMessage(failure) }))
       setToggleAnnouncement(`${name} did not change: ${errorMessage(failure)}`)
       remountFocus = undefined
+    } finally {
+      setPending(without(name))
     }
   }
   const groups = createMemo((): [string, ExtensionInfo[], string?][] => {
@@ -716,7 +710,8 @@ function ExtensionList(props: { system: SystemInfo }) {
                       )
                     }}
                     open={savedOpenRows().includes(extension().name)}
-                    onToggle={(enabled) => toggle(extension(), enabled)}
+                    onToggle={(enabled) => void toggle(extension(), enabled)}
+                    pending={pending()[extension().name]}
                     replaces={replaces(extension().name)}
                     scope={scope()}
                     secrets={
