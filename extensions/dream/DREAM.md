@@ -87,8 +87,8 @@ You coordinate the dream. You change nothing: no code, no memory, no settings. Y
    it on trust.
 1. Run the six passes, each as a `dream-pass` subagent (background), with its pass name, the handoff and the brief
    below. On a hosted model run all six in parallel; when `dream-pass` runs on a local model (omlx or another local
-   provider), run at most 2 at once and start the next as each finishes, since six at once overflow the local
-   server's memory.
+   provider), run one at a time and start the next as each finishes, since two at once can overflow the local
+   server's memory (a Metal out-of-memory error on omlx).
 2. Check each report against its evidence; drop what does not hold up.
 3. Answer @ultimate with the journal and the proposals:
    - three `learned` lines in Ultimate's own voice ("I learned…", "I keep…", "I'd like…");
