@@ -20,16 +20,21 @@ export function useTaskOf(
   }
 }
 
+/** Show the task's coordinator with the task open in its plan (`plan.open`). */
+export function useOpenTask() {
+  const [, setOpen] = useUiState<PlanOpen>(PLAN_OPEN, null)
+  return (task: Pick<TaskLink, 'coordinator' | 'key'>) => {
+    switchConversation(task.coordinator)
+    setOpen(openRequest(task))
+  }
+}
+
 /**
  * A task's key with its status dot; click shows its coordinator with the task open in its plan (`plan.open`). A
  * button: place it beside a row's button, not inside it.
  */
 export function TaskChip(props: { task: TaskLink; on?: string; class?: string }) {
-  const [, setOpen] = useUiState<PlanOpen>(PLAN_OPEN, null)
-  const open = () => {
-    switchConversation(props.task.coordinator)
-    setOpen(openRequest(props.task))
-  }
+  const open = useOpenTask()
   return (
     <Button
       aria-label={`Open task #${props.task.coordinator}/${props.task.key}: ${props.task.title}${props.on ? ` (${props.on})` : ''}`}
@@ -38,7 +43,7 @@ export function TaskChip(props: { task: TaskLink; on?: string; class?: string })
         props.class,
       )}
       data-task={props.task.key}
-      onClick={open}
+      onClick={() => open(props.task)}
       size={null}
       variant={null}
       title={`#${props.task.coordinator}/${props.task.key} · ${props.task.title} · ${props.task.status.replace('_', ' ')}`}
