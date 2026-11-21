@@ -1,7 +1,28 @@
+import { cell } from '../../lib/cell.ts'
 import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import type { FamiliesView, FamilyView } from './refs.ts'
 
 export const agentsPanel = 'agents'
+export const familiesCache = cell<FamiliesView | undefined>(undefined)
+
+let revision: string | undefined
+let loading: Promise<void> | undefined
+
+export function refresh(fetch: () => Promise<FamiliesView>) {
+  loading ??= fetch()
+    .then(familiesCache.set)
+    .catch((error: unknown) => console.error('models: families not loaded', error))
+    .finally(() => {
+      loading = undefined
+    })
+  return loading
+}
+
+export function refreshFor(next: string, fetch: () => Promise<FamiliesView>) {
+  if (revision === next) return undefined
+  revision = next
+  return refresh(fetch)
+}
 
 export const runsOn = (family: FamilyView) => family.model ?? family.follows
 export const thinkingOf = (family: FamilyView) =>

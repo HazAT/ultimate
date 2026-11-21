@@ -46,7 +46,7 @@ import { openLogin } from '../../state.ts'
 import models from '../../web.solid.tsx'
 
 const agent = createAgent()
-const server = fakeSubscriptions(harness.sources, (path, init) => harness.fetch(path, init))
+const server = fakeSubscriptions(harness.sources)
 const side = parseConversationId(17)
 const catalog: ModelsResponse = {
   providers: [
