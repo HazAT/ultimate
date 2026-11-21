@@ -321,10 +321,13 @@ export default defineConfig({
           ...solidRules,
           'ultimate/solid-jsx-pragma': 'error',
           'ultimate/ui-kit-roles': 'error',
+          'ultimate/no-aria-pressed-button': 'off',
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [
             'error',
-            { controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput'] },
+            {
+              controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput', 'Toggle'],
+            },
           ],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',

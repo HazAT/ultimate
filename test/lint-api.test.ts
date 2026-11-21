@@ -325,6 +325,31 @@ it('sends a Solid bare button to the kit Button, which the agent bridge can see 
   expect(lint('ui-kit-roles', 'web/src/components/ui/button.solid.tsx', source)).toEqual([])
 })
 
+it('rejects a pressed Button because the agent cannot read its state', () => {
+  const source = `import { Button } from '@/components/ui/button.solid.tsx'
+export const Fast = () => <Button aria-pressed={state().on ? 'true' : 'false'}>Fast mode</Button>`
+  const check = (code: string) =>
+    diagnose('no-aria-pressed-button', 'extensions/fast/toggle.solid.tsx', code)
+  const message =
+    'The agent bridge sees only press on a Button, never its pressed state. Use Toggle from @/components/ui/toggle.solid.tsx, or SegmentedControl or Tabs for a one-of-many selection.'
+  expect(check(source)).toEqual([message])
+  expect(
+    check(`import { Toggle } from '@/components/ui/toggle.solid.tsx'
+export const Fast = () => <Toggle pressed={state().on}>Fast mode</Toggle>`),
+  ).toEqual([])
+  expect(
+    check(`import { Button as Action } from '@/components/ui/button.solid.tsx'
+import { TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
+import { PopoverTrigger } from '@/components/ui/popover.solid.tsx'
+export const Fast = () => <>
+  <TooltipTrigger aria-pressed="true" render={(trigger) => <Action {...trigger} />} />
+  <PopoverTrigger aria-pressed="true" render={Action} />
+  <TooltipTrigger aria-pressed="true" />
+  <Action>Run</Action>
+</>`),
+  ).toEqual([message, message])
+})
+
 it('keeps server helpers out of web tests, which the web tsconfig type-checks', () => {
   const source = `import { until } from '../../../../test/helpers.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'`

@@ -17,7 +17,7 @@ interface Node {
   end?: number
   name?: string
   id?: Node
-  specifiers?: { type?: string; imported?: Node; exported?: Node }[]
+  specifiers?: { type?: string; imported?: Node; exported?: Node; local?: Node }[]
   source?: Node
   value?: unknown
   computed?: boolean
@@ -443,6 +443,51 @@ export default {
                 node,
                 message: `A hand-made role="${role}" lacks the keyboard, focus and ARIA behavior people and agents rely on, and the agent bridge cannot see it. Use the kit's ${component} from @/components/ui.`,
               })
+          },
+        }
+      },
+    },
+    'no-aria-pressed-button': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const buttons = new Set<string | undefined>()
+        const triggers = new Set<string | undefined>()
+        return {
+          ImportDeclaration(node: Node) {
+            const source = staticString(node.source)
+            if (typeof source !== 'string') return
+            const target = localModule(context.filename, source)
+            const part = target && repositoryPath(target)
+            for (const specifier of node.specifiers ?? []) {
+              const imported = specifier.imported?.name
+              if (part === 'web/src/components/ui/button.solid.tsx' && imported === 'Button')
+                buttons.add(specifier.local?.name)
+              if (
+                (part === 'web/src/components/ui/tooltip.solid.tsx' &&
+                  imported === 'TooltipTrigger') ||
+                (part === 'web/src/components/ui/popover.solid.tsx' &&
+                  imported === 'PopoverTrigger')
+              )
+                triggers.add(specifier.local?.name)
+            }
+          },
+          JSXOpeningElement(node: Node & { name?: Node; attributes?: (Node & { name?: Node })[] }) {
+            const pressed = node.attributes?.find((attr) => attr.name?.name === 'aria-pressed')
+            const name = node.name?.name
+            if (!pressed || !name) return
+            if (!buttons.has(name)) {
+              if (!triggers.has(name)) return
+              const render = node.attributes?.find((attr) => attr.name?.name === 'render')
+              const value = (render?.value as Node | undefined)?.expression
+              const body = value?.body as (Node & { openingElement?: { name?: Node } }) | undefined
+              const rendered = value?.name ?? body?.openingElement?.name?.name
+              if (!rendered || !buttons.has(rendered)) return
+            }
+            context.report({
+              node: pressed,
+              message:
+                'The agent bridge sees only press on a Button, never its pressed state. Use Toggle from @/components/ui/toggle.solid.tsx, or SegmentedControl or Tabs for a one-of-many selection.',
+            })
           },
         }
       },
