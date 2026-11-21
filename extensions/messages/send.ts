@@ -12,7 +12,7 @@ import { UserInputEvent } from '../../shared/events.ts'
 import type { Device } from '../../shared/events.ts'
 import { resolveImages } from './images.ts'
 import type { ImagesRef } from './images.ts'
-import { append } from './log.ts'
+import { append, checkConsumer } from './log.ts'
 import { parentOf, resolveRecipient, senderName, serve, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
@@ -120,8 +120,10 @@ export async function send(
       `A subagent answers the conversation that started it: give your final answer, or message #${parent}.`,
     )
   if (!input.text.trim()) throw new Error('Message text must not be empty')
-  if (input.consumer !== undefined && (!input.consumer.trim() || from === 'user'))
-    throw new Error('consumer requires an agent sender and a non-empty name')
+  if (input.consumer !== undefined) {
+    if (from === 'user') throw new Error('consumer requires an agent sender')
+    checkConsumer(input.consumer)
+  }
   if (input.questions !== undefined && (input.to !== 'user' || input.reply === false))
     throw new Error('questions go only with a reply-expected message to the user')
   const questions = input.questions === undefined ? undefined : checkQuestions(input.questions)

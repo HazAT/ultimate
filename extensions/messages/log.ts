@@ -4,6 +4,15 @@ import { isOpen } from '../../lib/message-state.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 
+export const consumerPattern = '^[a-z0-9][a-z0-9._/-]{0,63}(?![\\s\\S])'
+
+export function checkConsumer(value: unknown): asserts value is string {
+  if (typeof value !== 'string' || !new RegExp(consumerPattern).test(value))
+    throw new Error(
+      'consumer must be 1–64 lowercase ASCII letters, digits, ., _, / or -, starting with a letter or digit',
+    )
+}
+
 export async function append(tx: Tx, input: Omit<Message, 'id' | 'at'>) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
 

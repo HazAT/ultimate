@@ -31,7 +31,7 @@ export type Question = {
   placeholder?: string
 }
 
-/** An explicitly admitted message and the standing identity it had when sent. */
+/** An explicitly admitted message and its sender. Consumer names are routing identifiers and must not contain sensitive data. */
 export type Admission = {
   consumer: string
   pending: boolean
@@ -79,7 +79,7 @@ export const PendingAction = actionRef<
   { messages: { id: number; consumer: string; at: number }[]; next?: number }
 >('messages', 'pending')
 
-/** `{message, expected, consumer}` → `{id}`: retarget a still-pending message if its current consumer matches. */
+/** `{message, expected, consumer}` → `{id}`: retarget a pending message if its current consumer matches. */
 export const RetargetAction = actionRef<
   { message: number; expected: string; consumer: string },
   { id: number }
@@ -152,7 +152,7 @@ export const MessageSent = defineEvent<{
   re?: number
 }>('board.sent')
 
-/** A pending message was explicitly retargeted; consumers use its id to try consumption in the event transaction. */
-export const MessageRetargeted = defineEvent<{ message: number; consumer: string }>(
-  'messages.retargeted',
-)
+/** A pending message was retargeted; consumers use its id to try consumption in the event transaction. */
+export const MessageRetargeted = defineEvent<{ message: number }>('messages.retargeted', {
+  version: 2,
+})

@@ -96,7 +96,10 @@ export type MessagesService = {
     device?: Device,
     call?: { taskId: TaskId; callId: string },
   ): Promise<number>
-  /** Send a one-way message once per `requestId`; `consumer` opts it into retention for that named consumer. */
+  /**
+   * Send a one-way message once per `requestId`; `consumer` opts into retention. It is a 1–64 character lowercase
+   * routing identifier, not sensitive data; see the Messages README for its allowed characters.
+   */
   send(
     from: ConversationId,
     input: { to: string; text: string; reply: false; consumer?: string },

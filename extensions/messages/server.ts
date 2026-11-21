@@ -43,7 +43,7 @@ import { dropped } from './outcomes.ts'
 import { delivery, reconcileOutputs, retireOutput, settle, submitOutput } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
-import { consume } from './log.ts'
+import { checkConsumer, consumerPattern, consume } from './log.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { branchesConcluded, reported, route, working } from './route.ts'
@@ -176,13 +176,9 @@ export const actions = {
     const { message, expected, consumer } = (args ?? {}) as Record<string, unknown>
     if (!Number.isSafeInteger(message) || (message as number) < 1)
       throw new Error('message must be a message id')
-    if (
-      typeof expected !== 'string' ||
-      !expected.trim() ||
-      typeof consumer !== 'string' ||
-      !consumer.trim()
-    )
-      throw new Error('expected and consumer must be non-empty names')
+    if (typeof expected !== 'string' || !expected.trim())
+      throw new Error('expected must be the current consumer name')
+    checkConsumer(consumer)
     if (expected === consumer) throw new Error('consumer must differ from expected')
     return host.harness().commit(async (tx) => {
       const item = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
@@ -191,7 +187,7 @@ export const actions = {
       if (!item?.admission?.pending || item.admission.consumer !== expected)
         throw new Error('Message is not pending for the expected consumer')
       item.admission.consumer = consumer
-      await host.emit(tx, MessageRetargeted, { message: item.id, consumer })
+      await host.emit(tx, MessageRetargeted, { message: item.id })
       return { id: item.id }
     }, BACKGROUND_CONTEXT)
   }),
@@ -401,8 +397,10 @@ export default function messages(host: ExtensionHost) {
           consumer: opt(
             str({
               minLength: 1,
+              maxLength: 64,
+              pattern: consumerPattern,
               description:
-                'Retain this message for the named extension consumer until it acknowledges it.',
+                'Retain for this routing identifier until acknowledged. Use lowercase ASCII letters, digits, ., _, / or -, starting with a letter or digit; do not include sensitive data.',
             }),
           ),
           images: opt(imagesParameter),

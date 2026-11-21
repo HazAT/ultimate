@@ -151,8 +151,10 @@ exposes `send`, a one-way message from a conversation, and `answer`, the user's 
 ### Named consumer retention
 
 An agent may explicitly send a message with `consumer: 'name'` through `message` or a one-way message through the
-Messages service. The message's `admission` records that name, its pending status, the actual sending conversation
-and, if it was a standing agent at admission, its standing name. A side chat can send as another conversation: `from`
+Messages service. A consumer is 1–64 lowercase ASCII letters, digits, `.`, `_`, `/` or `-`, starting with a letter
+or digit. Names must not contain sensitive data: this format check cannot guarantee that. Names are stored on the
+message and shown in the pending diagnostic. The message's `admission` records that name, its pending status, the
+actual sending conversation and, if it was a standing agent at admission, its standing name. A side chat can send as another conversation: `from`
 keeps that delivery identity while `admission.sender` identifies the side chat. Neither ordinary messages nor answers
 are implicitly admitted. If an opted-in `message` is converted into an answer to an agent, that answer emits `board.sent`
 for the consumer.
@@ -166,9 +168,10 @@ replay retries it. The reactor's cursor and failure are visible in the event log
 
 For a missed or mistyped consumer, `pending({after?, limit?})` lists pending message ids, names and times without text,
 in pages of at most 100. `retarget({message, expected, consumer})` changes a still-pending message only if its current
-name equals `expected`, and commits a text-free `messages.retargeted` event with the change. A consumed message cannot
-be retargeted. The target's reactor handles the new event even if it already passed the original post; no second post or
-delivery is made. If a consumer previously skipped events by starting from now, it can also reconcile explicitly by
+name equals `expected`; the new `consumer` must follow the same identifier rule. `expected` is an exact comparison, so
+older messages with invalid names can still be recovered. The change commits `messages.retargeted` with only the message
+id; events recorded by older versions may still contain the consumer name. A consumed message cannot be retargeted. The
+target's reactor handles the new event even if it already passed the original post; no second post or delivery is made. If a consumer previously skipped events by starting from now, it can also reconcile explicitly by
 reading `Messages` in a transaction and calling `consume` with its name, committing its own writes in that transaction.
 Names route messages; they are not an authorization boundary. Pending messages have no expiry and can grow without
 bound if a consumer is missing, disabled or repeatedly failing. Once consumed, a message may be trimmed on a later append.

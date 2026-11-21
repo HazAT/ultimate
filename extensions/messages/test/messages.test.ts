@@ -619,7 +619,8 @@ it('recovers a mistyped consumer after its event was skipped and serializes reta
     actions.retarget({ message: id, expected: 'reader', consumer: 'other' }, f.action()),
   ).rejects.toThrow('expected consumer')
   const retargeted = await f.eventLog.recent({ events: [MessageRetargeted] })
-  expect(retargeted.map((event) => event.data)).toEqual([{ message: id, consumer: 'reader' }])
+  expect(retargeted.map((event) => event.data)).toEqual([{ message: id }])
+  expect(retargeted[0].v).toBe(2)
   expect(JSON.stringify(retargeted)).not.toContain('Private payload')
   await f.send('user', 'Race', { reply: false, consumer: 'race' })
   const race = (await f.log())!.messages.at(-1)!.id
@@ -651,6 +652,85 @@ it('recovers a mistyped consumer after its event was skipped and serializes reta
   await expect(
     actions.retarget({ message: race, expected: 'reader', consumer: 'other' }, f.action()),
   ).rejects.toThrow('expected consumer')
+})
+
+it('rejects invalid consumer names at admission and retarget without writing state or events', async () => {
+  const f = await fixture()
+  const invalid = ['free form message', 'a'.repeat(65), 'reader\n', '_reader', 'Reader']
+  for (let i = 0; i < invalid.length; i++) {
+    await expect(
+      f.service().send(
+        ROOT_CONVERSATION_ID,
+        {
+          to: 'user',
+          text: 'Not admitted',
+          reply: false,
+          consumer: invalid[i],
+        },
+        `invalid:${i}`,
+        context,
+      ),
+    ).rejects.toThrow('consumer must')
+  }
+  await f.send('user', 'Tool rejected', { reply: false, consumer: invalid[0] })
+  expect((await f.log())?.messages ?? []).toEqual([])
+  expect(await f.eventLog.recent({ events: [MessageSent, MessageRetargeted] })).toEqual([])
+  const id = await f.service().send(
+    ROOT_CONVERSATION_ID,
+    {
+      to: 'user',
+      text: 'Valid',
+      reply: false,
+      consumer: 'reader/v1',
+    },
+    'invalid:0',
+    context,
+  )
+  const beforeRetarget = await f.log()
+  for (const consumer of invalid)
+    await expect(
+      actions.retarget({ message: id, expected: 'reader/v1', consumer }, f.action()),
+    ).rejects.toThrow('consumer must')
+  expect(await f.log()).toEqual(beforeRetarget)
+  expect((await f.log())!.messages.find((message) => message.id === id)?.admission).toMatchObject({
+    consumer: 'reader/v1',
+    pending: true,
+  })
+  expect(await f.eventLog.recent({ events: [MessageRetargeted] })).toEqual([])
+  await actions.retarget({ message: id, expected: 'reader/v1', consumer: 'reader-2' }, f.action())
+  expect(
+    (await f.eventLog.recent({ events: [MessageRetargeted] })).map((event) => event.data),
+  ).toEqual([{ message: id }])
+})
+
+it('retargets a pending legacy name that did not follow the new rule', async () => {
+  const f = await fixture()
+  const legacy = await f.opened.harness.commit(
+    (tx) =>
+      append(tx, {
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: 'Legacy',
+        reply: false,
+        state: 'delivered',
+        admission: {
+          consumer: 'old name with spaces',
+          pending: true,
+          sender: { conversation: ROOT_CONVERSATION_ID },
+        },
+      }),
+    context,
+  )
+  await actions.retarget(
+    { message: legacy.id, expected: 'old name with spaces', consumer: 'reader' },
+    f.action(),
+  )
+  expect(
+    (await f.log())!.messages.find((message) => message.id === legacy.id)?.admission,
+  ).toMatchObject({ consumer: 'reader', pending: true })
+  expect(
+    (await f.eventLog.recent({ events: [MessageRetargeted] })).map((event) => event.data),
+  ).toEqual([{ message: legacy.id }])
 })
 
 it('deduplicates concurrent admitted sends by task and conversation receipts across reopen', async () => {
