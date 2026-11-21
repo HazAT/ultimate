@@ -140,15 +140,11 @@ const silentTooLong = 10 * 60_000
 
 function ActivityLine(props: { id: ConversationId; activity: Activity }) {
   const data = useData()
-  const working = () => data.working().has(props.id)
+  const working = () => data.working().get(props.id) === 'self'
   const idle = () => (props.activity.lastAt === undefined ? 0 : data.now() - props.activity.lastAt)
+  const silent = () => working() && idle() >= silentTooLong
   const workers = () => props.activity.workers
-  const company = () =>
-    workers() > 0
-      ? `with ${workers()} worker${workers() === 1 ? '' : 's'}`
-      : working()
-        ? 'alone'
-        : ''
+  const company = () => (workers() > 0 ? `with ${plural(workers(), 'worker')}` : 'alone')
   return (
     <span
       class="flex min-w-0 items-center gap-1.5 pr-2 pb-0.5 pl-[30px] font-mono text-[10px] leading-4 text-muted-foreground/70"
@@ -156,17 +152,17 @@ function ActivityLine(props: { id: ConversationId; activity: Activity }) {
       title={`#${props.id}: ${props.activity.turns} turns and ${props.activity.calls} tool calls of its own; ${formatCost(props.activity.cost)} with its subagents`}
     >
       <span class="min-w-0 truncate">
-        {plural(props.activity.turns, 'turn')} · {plural(props.activity.calls, 'call')} ·{' '}
-        {formatCost(props.activity.cost)}
-        <Show when={company()}> · {company()}</Show>
+        {[
+          plural(props.activity.turns, 'turn'),
+          plural(props.activity.calls, 'call'),
+          formatCost(props.activity.cost),
+          company(),
+        ].join(' · ')}
       </span>
       <Show when={props.activity.lastAt !== undefined && idle() >= 60_000}>
         <span
-          class={cn(
-            'ml-auto shrink-0',
-            working() && idle() >= silentTooLong && 'text-amber-700 dark:text-amber-300',
-          )}
-          data-silent={(working() && idle() >= silentTooLong) || undefined}
+          class={cn('ml-auto shrink-0', silent() && 'text-amber-700 dark:text-amber-300')}
+          data-silent={silent() || undefined}
           title={`Last activity ${formatAgo(props.activity.lastAt!, data.now(), { ago: true })}`}
         >
           idle {formatAgo(props.activity.lastAt!, data.now())}
@@ -330,7 +326,8 @@ function useFlightWork(branches: () => readonly ConversationId[]) {
   return (id: ConversationId) => workOf(id, data.index().items[id]?.branch, byId().get(id))
 }
 
-type Activity = { turns: number; calls: number; cost: number; lastAt?: number; workers: number }
+type ActivityStats = { turns: number; calls: number; cost: number; lastAt?: number }
+type Activity = ActivityStats & { workers: number }
 
 function useFlightActivity(branches: () => readonly ConversationId[]) {
   const data = useData()
@@ -364,18 +361,20 @@ function useFlightActivity(branches: () => readonly ConversationId[]) {
       },
     ),
   )
+  const latest = createMemo<Record<string, ActivityStats> | undefined>(
+    (previous) => reads()[0]?.data() ?? previous,
+  )
   return (id: ConversationId): Activity | undefined => {
-    const stats = reads()[0]?.data()
+    const stats = latest()
     const own = stats?.[id]
     if (!own) return undefined
     const children = trees().get(id) ?? []
     const subtree = [own, ...children.flatMap((child) => stats[child] ?? [])]
-    const times = subtree.flatMap((each) => (each.lastAt === undefined ? [] : [each.lastAt]))
     return {
       turns: own.turns,
       calls: own.calls,
       cost: subtree.reduce((sum, each) => sum + each.cost, 0),
-      lastAt: times.length ? Math.max(...times) : undefined,
+      lastAt: own.lastAt,
       workers: children.filter((child) => data.busy(child)).length,
     }
   }
@@ -391,7 +390,11 @@ export function InFlight(props: {
   const activityOf = useFlightActivity(() => props.ids)
   const reviewing = (id: ConversationId) =>
     data.conversations().some((child) => {
-      if (child.parentConversationId !== id || child.ownerTaskId === undefined || !child.busy)
+      if (
+        child.parentConversationId !== id ||
+        child.ownerTaskId === undefined ||
+        !data.busy(child.id)
+      )
         return false
       const agent = runs()?.[child.id]?.agent
       return agent === 'reviewer' || agent?.startsWith('reviewer-')

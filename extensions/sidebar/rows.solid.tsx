@@ -69,6 +69,7 @@ function Mark(props: {
   unseen?: boolean
   state: ConversationState
   wait?: string
+  inert?: boolean
 }) {
   const known = () => (props.working ? undefined : settledState(props.state))
   const label = () =>
@@ -84,7 +85,8 @@ function Mark(props: {
           <TooltipTrigger
             aria-label={`${label()} · row #${props.id}`}
             class={cn(
-              'pointer-events-auto flex items-center justify-center',
+              !props.inert && 'pointer-events-auto',
+              'flex items-center justify-center',
               known()?.tone ?? 'text-muted-foreground',
             )}
             render={(trigger) => <span {...trigger} />}
@@ -612,7 +614,7 @@ export function ChildRow(props: { id: ConversationId; depth?: number }) {
         <Show when={compact()}>
           <span class="w-2 shrink-0 text-muted-foreground/40">└</span>
         </Show>
-        <Mark id={props.id} state={state()} working={working() ? 'self' : undefined} />
+        <Mark id={props.id} inert state={state()} working={working() ? 'self' : undefined} />
         <span class="pointer-events-auto contents">
           <Provided
             point={ConversationTaskChip}

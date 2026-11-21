@@ -12,8 +12,8 @@ import type { ExtensionActionRequest, UiUpdateRequest } from '../../../../shared
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
-import { OverviewDoc } from '../../../conversations/refs.ts'
+import { reads, registry, store, uiState } from '../../../../web/src/sdk/client.ts'
+import { ActivityAction, OverviewDoc } from '../../../conversations/refs.ts'
 import { ConversationPhase } from '../../../conversations/ui.solid.tsx'
 import { RootsDoc } from '../../../lineage/refs.ts'
 import { MessagesDoc } from '../../../messages/refs.ts'
@@ -26,6 +26,7 @@ const harness = vi.hoisted(() => ({
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
   writes: [] as { key: string; value: unknown; source: string | null }[],
   renames: [] as { body: ExtensionActionRequest; source: string | null }[],
+  activity: {} as Record<string, unknown>,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -49,6 +50,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: {} })
     }
     if (path.endsWith('/workspaces/actions/repo')) return Response.json({ result: null })
+    if (path.endsWith('/conversations/actions/activity'))
+      return Response.json({ result: harness.activity })
     return harness.server?.handle(path, init) ?? Response.json({ result: [] })
   }
   const clientStore = createStore({
@@ -148,10 +151,16 @@ it('shows working, a phase word or reviewing for a busy direct reviewer by defin
       id: child,
       parentConversationId: branch,
       ownerTaskId: 3 as TaskId,
-      busy: true,
+      busy: false,
       label: 'Check changes',
     },
   ])
+  root().send('doc', {
+    kind: OverviewDoc.kind,
+    value: {
+      conversations: { [branch]: { runState: 'working' }, [child]: { runState: 'working' } },
+    },
+  })
   for (const reviewer of ['reviewer', 'reviewer-simplicity']) {
     root().send('doc', { kind: RunsDoc.kind, value: { [child]: { agent: reviewer } } })
     flush()
@@ -161,6 +170,50 @@ it('shows working, a phase word or reviewing for a busy direct reviewer by defin
   flush()
   expect(row.querySelector('[title="implementing"]')).not.toBeNull()
   expect(container.querySelector(`[data-in-flight="${branch}"]`)).toBe(row)
+})
+
+it("shows the coordinator's own turns and calls, the tree's cost, its workers and its own silence", async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers({ now: 30 * 60_000, toFake: ['Date'] })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  harness.activity = {
+    [branch]: { turns: 3, calls: 41, cost: 1.5, lastAt: 10 * 60_000 },
+    [child]: { turns: 1, calls: 9, cost: 0.75, lastAt: 29 * 60_000 },
+  }
+  await registry.setLoaders({})
+  const { container, root, stream } = await mount(onTestFinished)
+  stream.send('conversations', [
+    ...conversations,
+    { id: child, parentConversationId: branch, ownerTaskId: 3 as TaskId, busy: true },
+  ])
+  root().send('doc', {
+    kind: OverviewDoc.kind,
+    value: {
+      conversations: { [branch]: { runState: 'working' }, [child]: { runState: 'working' } },
+    },
+  })
+  const activity = (ids: number[]) =>
+    reads.get(ActivityAction.extension, ActivityAction.name, { ids }, ROOT).refetch()
+  await activity([branch, child])
+  flush()
+  const line = () =>
+    container
+      .querySelector(`[data-in-flight="${branch}"]`)
+      ?.closest('li')
+      ?.querySelector(`[data-flight-activity="${branch}"]`)
+  expect(line()?.textContent).toContain('3 turns · 41 calls · $2.25 · with 1 worker')
+  expect(line()?.textContent).toContain('idle 20m')
+  expect(line()?.querySelector('[data-silent]')).not.toBeNull()
+  stream.send('conversations', conversations)
+  root().send('doc', { kind: OverviewDoc.kind, value: { conversations: {} } })
+  await activity([branch])
+  flush()
+  expect(line()?.textContent).toContain('· alone')
+  expect(line()?.querySelector('[data-silent]')).toBeNull()
+  harness.activity = {}
 })
 
 it('uses the running preview for user waits and idle branches', async ({ onTestFinished }) => {

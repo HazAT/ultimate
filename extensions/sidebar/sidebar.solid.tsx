@@ -242,8 +242,11 @@ function Tree() {
             class="mb-2 flex min-w-0 flex-col gap-0.5 border-b border-border/60 pb-2"
           >
             <For each={agents()} keyed={(agent) => agent.id}>
-              {(agent) => (
-                <Show when={agent().label === 'lander'} fallback={tree(agent().id)}>
+              {(agent, index) => (
+                <Show
+                  when={agent().label === 'lander' && index() === 0}
+                  fallback={tree(agent().id)}
+                >
                   <div>
                     {tree(agent().id)}
                     <Landed landings={landings()} now={data.now()} />
@@ -558,7 +561,7 @@ function StandingRow(props: { id?: ConversationId }) {
       >
         <Button
           aria-current={shown() ? 'true' : undefined}
-          aria-label={`Open standing @${name()}`}
+          aria-label={`Open standing @${name()}${lander() ? ` #${props.id}` : ''}`}
           class="flex h-full min-w-0 flex-1 items-center justify-start gap-2.5 rounded-md pr-2 pl-2 text-left font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
           onClick={open}
           size={null}
