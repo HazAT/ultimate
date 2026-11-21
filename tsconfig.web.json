@@ -72,6 +72,7 @@
     "extensions/lineage/memory-chip.ts",
     "extensions/system/tab.ts",
     "extensions/phase/types.ts",
+    "extensions/phase/subtree.ts",
     "extensions/plan/body.ts",
     "extensions/plan/progress.ts",
     "extensions/plan/status.ts",
@@ -144,6 +145,7 @@
     "lib/ids.ts",
     "lib/question-cards.ts",
     "extensions/subagents/types.ts",
+    "extensions/onboarding/points.ts",
     "test/web",
     "extensions/*/test/web"
   ]

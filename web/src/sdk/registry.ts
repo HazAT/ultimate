@@ -33,7 +33,6 @@ type BuiltinUserProjectByName = Readonly<Record<string, ExtensionLoader>>
 
 export interface ExtensionRecord {
   name: string
-  /** `react` for a `web.tsx`, which runs on the compat layer; `solid` for a `web.solid.tsx`. */
   framework: 'solid' | 'react'
 
   extension?: WebExtension
@@ -268,7 +267,7 @@ export function createRegistry() {
       const extension = validate(module)
       update(name, (record) => {
         if (record.framework === 'react')
-          for (const part of reactParts(extension)) if (part) markReact(part as object)
+          for (const part of reactParts(extension)) if (part) markReact(part)
         return record.extension === extension && !record.error && !record.loading
           ? record
           : { ...record, extension, loading: false, error: undefined, version: record.version + 1 }

@@ -9,7 +9,6 @@ export type Failure = {
   onError?: (error: unknown, stack: string | undefined) => void
 }
 
-/** What the core asks of the React compat layer (`web/src/compat/bridge.tsx`); React elements stay opaque here. */
 export interface ReactBridge {
   root(
     host: HTMLElement,
@@ -39,10 +38,6 @@ export const markIsland = (island: object, component: unknown) =>
 
 export const markReact = (part: object) => reactParts.add(part)
 
-/**
- * The Solid component behind a contribution: itself from a `web.solid.tsx`, the component an `island(C)` wraps from a
- * `web.tsx`, undefined for a React one.
- */
 export const solidOf = (part: unknown) =>
   (typeof part === 'function' || typeof part === 'object') && part !== null && reactParts.has(part)
     ? solidOfIsland.get(part)
@@ -50,7 +45,6 @@ export const solidOf = (part: unknown) =>
 
 export const isReact = (part: unknown) => solidOf(part) === undefined
 
-/** A React element or a list holding one, as a React provider returns UI. */
 export const isReactNode = (value: unknown): boolean =>
   Array.isArray(value)
     ? value.some(isReactNode)
@@ -58,7 +52,6 @@ export const isReactNode = (value: unknown): boolean =>
 
 let bridge: ReactBridge | undefined
 
-/** Loads the React compat layer; the registry awaits it before it installs a `web.tsx`. */
 export const loadReact = async () => {
   bridge ??= (await import('../compat/bridge.tsx')).bridge
 }

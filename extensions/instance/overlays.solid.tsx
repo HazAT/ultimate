@@ -18,7 +18,6 @@ function usePreviews() {
   return { previews, shown }
 }
 
-/** Polls the running previews every 5 s while the page is open. */
 export function Poll() {
   const list = useAction(ListAction, null, { onError: keepLast, every: 5000 })
   createEffect(list.data, (data) => {
@@ -27,7 +26,6 @@ export function Poll() {
   return null
 }
 
-/** The shown preview, framed over the page until the surface changes. */
 export function Embedded() {
   const { shown } = usePreviews()
   const surface = useStore((state) => state.ui.surface?.id)
@@ -53,7 +51,6 @@ export function Embedded() {
   )
 }
 
-/** Whether a preview conversation `id` started is running, for the sidebar. */
 export function previewUp(id: Accessor<ConversationId | undefined>) {
   const { previews } = usePreviews()
   return createMemo(() =>

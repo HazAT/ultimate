@@ -89,7 +89,7 @@ export const bridge: ReactBridge = {
     const Icon = component as ComponentType<{ className?: string }>
     return <Icon className={className} />
   },
-  node: (value) => value as ReactNode,
+  node: (value) => value,
   provision: (item, input, report) => (
     <ExtensionBoundary
       extension={item.extension}

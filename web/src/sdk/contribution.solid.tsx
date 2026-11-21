@@ -57,10 +57,6 @@ function mountReact(host: HTMLElement, props: MountProps) {
   return host
 }
 
-/**
- * A value a provider returned: as it is, or mounted through the compat layer when a React provider returned a React
- * element.
- */
 export function ProvidedValue(props: { value: unknown }) {
   return (
     <Show when={isReactNode(props.value)} fallback={props.value as JSX.Element}>
@@ -144,10 +140,6 @@ const sameLinks = (a: readonly Link[], b: readonly Link[]) =>
       ),
   )
 
-/**
- * Renderers that wrap `core` in discovery order (tools, entries, the composer): each gets the rendering so far as
- * `core`. Solid ones render directly; a run of React ones mounts through the compat layer in one root.
- */
 export function Contributed(props: {
   renderers: readonly Rendered[]
   props: Props
@@ -278,10 +270,6 @@ export function Slot(props: {
   )
 }
 
-/**
- * A point whose providers render through the rendering so far: each gets `input` and `core` and returns it, wraps it
- * or replaces it (`EmptyTranscript`). A Solid provider is a component; a React one a hook that returns a React node.
- */
 export function RenderedPoint<Input extends object>(props: {
   point: Point<Input & { core: unknown }, unknown>
   input: Input
@@ -317,7 +305,6 @@ const hookAsComponent = (use: unknown) => {
   return component
 }
 
-/** A contribution's `icon` (a panel's, a surface's) with `class`. */
 export function ContributedIcon(props: { icon: unknown; class: string }) {
   return (
     <Show
@@ -355,11 +342,6 @@ function providerValue(
   return found
 }
 
-/**
- * Every provider's value for `point`, in discovery order. A Solid provider is `(input: Accessor<I>) => Accessor<V>`,
- * run once under the reader; a React provider's hook runs through the compat layer, and when it throws, its inline
- * error card shows in `failures`, an element the caller places, when given.
- */
 export function useAllProvided<Input, Value>(
   point: Point<Input, Value>,
   input: Accessor<Input>,
@@ -375,7 +357,6 @@ export function useAllProvided<Input, Value>(
   return createMemo(() => values().map((value) => value() as Value))
 }
 
-/** The value the last provider in discovery order gives for `point`; `failures` as in `useAllProvided`. */
 export function useProvided<Input, Value>(
   point: Point<Input, Value>,
   input: Accessor<Input>,

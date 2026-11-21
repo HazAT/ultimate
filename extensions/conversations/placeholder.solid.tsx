@@ -7,7 +7,6 @@ import { StandingDoc } from '../subagents/refs.ts'
 import { agentTitle } from './mark-style.ts'
 import { MarksDoc } from './refs.ts'
 
-/** "Message Coach…" in a standing agent's empty composer, other than @ultimate's, while it is idle. */
 export function standingPlaceholder(
   input: Accessor<{ conversation: ConversationId; busy: boolean }>,
 ) {
