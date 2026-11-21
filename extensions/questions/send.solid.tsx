@@ -46,6 +46,7 @@ export function SendButton(props: {
   const [holding, setHolding] = createSignal(false)
   let hold: { stop: AbortController; cancel: Cancel } | undefined
   let heldClick = false
+  let interruption: Event | undefined
   const end = () => {
     hold?.stop.abort()
     hold?.cancel()
@@ -79,13 +80,16 @@ export function SendButton(props: {
       }
       onPointerDown={(event) => {
         heldClick = false
+        if (event === interruption) return
         if (!event.isPrimary || event.button !== 0 || props.disabled || !answering()) return
         const pointer = event.pointerId
         const controller = new AbortController()
         window.addEventListener(
           'pointerdown',
           (other) => {
-            if (other.pointerId !== pointer) stop()
+            if (other.pointerId === pointer) return
+            interruption = other
+            stop()
           },
           { capture: true, signal: controller.signal },
         )
