@@ -7,6 +7,7 @@ import {
   McpAbortError,
   McpClient,
   McpError,
+  McpHttpError,
   McpTimeoutError,
   StdioTransport,
   StreamableHttpTransport,
@@ -15,7 +16,7 @@ import {
 import type { Tool } from '@earendil-works/pi-mcp'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
-import { retryAfter, type Cancel } from '../../lib/timers.ts'
+import { pace, retryAfter, type Cancel } from '../../lib/timers.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -28,6 +29,8 @@ export const pollActions = ['status']
 
 const PROGRESS_RENEWED_CALL_TIMEOUT_MS = 10 * 60_000
 const FIRST_RETRY = 5_000
+const RATE_LIMITED_RETRY_MS = 5_000
+const rateLimited = (error: unknown) => error instanceof McpHttpError && error.status === 429
 const LAST_RETRY = 5 * 60_000
 
 type Entry =
@@ -364,15 +367,25 @@ export default async function mcp(host: ExtensionHost) {
                 )
               if (!tool) return { output: [{ type: 'text', text: listing(server) }] }
               const client = server.client
-              try {
-                const result = await client.callTool(tool, args ?? {}, {
+              const call = () =>
+                client.callTool(tool, args ?? {}, {
                   signal: context.abortSignal,
                   timeoutMs: PROGRESS_RENEWED_CALL_TIMEOUT_MS,
                   onProgress: renewTimeoutOnProgress,
                 })
+              const callOnceMoreIfRateLimited = () =>
+                call().catch(async (error: unknown) => {
+                  if (!rateLimited(error)) throw error
+                  await pace(RATE_LIMITED_RETRY_MS, context.abortSignal)
+                  return call()
+                })
+              try {
+                const result = await callOnceMoreIfRateLimited()
                 return { output: toLlmContent(result), isError: result.isError === true }
               } catch (error) {
                 const brokenConnectionNoResend = !(
+                  rateLimited(error) ||
+                  context.abortSignal?.aborted ||
                   error instanceof McpError ||
                   error instanceof McpTimeoutError ||
                   error instanceof McpAbortError
