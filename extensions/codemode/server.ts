@@ -450,7 +450,9 @@ export const actions = {
     )
     const result = JSON.parse(JSON.stringify(value ?? null)) as JsonValue
     if (Buffer.byteLength(JSON.stringify(result)) > REMOTE_BYTES)
-      throw new Error('The answer is larger than 1 MiB; ask for a smaller limit')
+      throw new Error(
+        'The answer is larger than 1 MiB, the cap on what another project sends back, so filtering in your script comes too late. Narrow the read itself: a smaller `limit` (page on with `before`), `kinds` for only the entry kinds you need, and no `full: true`, since compact entries cut long tool results.',
+      )
     return result
   },
 }
