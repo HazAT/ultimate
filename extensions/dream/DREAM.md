@@ -107,6 +107,8 @@ Every pass starts from @ultimate's handoff in its brief, then reads with codemod
 `ultimate.search`, `ultimate.conversations`, `ultimate.trace`), `memory`, `git log` and the code. Every claim cites
 `#conversation/entry`, a trace error, a commit or `path:line`. Conversation summaries and abstracts (in the root's
 tally, `ultimate.entries(<root>)`) are the cheap way in; open a conversation only where they point at something.
+Trace rows and transcripts can hold credentials: cite the pointer, and never copy tool arguments or secret-looking
+text into a report, proposal, handoff or memory.
 
 - **memory** — hold every memory to one test: would a branch starting next month act differently without it? Delete
   what fails: what the code, docs or instructions now show, one-off or tabled decisions, finished investigations,
@@ -115,9 +117,10 @@ tally, `ultimate.entries(<root>)`) are the cheap way in; open a conversation onl
   and evidence (the memory review in extensions/lineage/README.md). Never drop or weaken the memory about the user.
 - **failures** — what failed often: `watchdog.failure` cards, tool and action errors in the trace, retries, reactor
   failures, lander rejections, runs the user had to stop. Group by cause; for the top ones propose a fix.
-- **tools** — `stats` gives calls, failures, mean duration and enabled tools never called. Explain the numbers: why a
-  tool fails, which are slow, which unused ones should be taught or removed, what agents did by hand that a tool
-  should do.
+- **tools** — `stats` gives calls, failures, mean duration and enabled tools never called. Each frequent error has a
+  masked error excerpt and `{conversation, entry}` pointers, never the call's args: read an entry with
+  `ultimate.entries` only when the cause needs it. Explain the numbers: why a tool fails, which are slow, which
+  unused ones should be taught or removed, what agents did by hand that a tool should do.
 - **corrections** — what the user had to say more than once, corrections of the agents' work, and the wishes: what
   Ultimate itself would like to have or be able to do, from friction seen in old conversations.
 - **codify** — memories that should stop depending on being remembered and become how the harness works. For each
