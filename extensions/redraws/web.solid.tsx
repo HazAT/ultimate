@@ -58,7 +58,7 @@ const total = (current: Metrics) => Object.values(current.writes).reduce((a, b) 
 
 function summary(current: Metrics) {
   const areas = byArea(current).map(([area, count]) => `${area} ${count}`)
-  const hot = topHot(current).map(([name, count]) => `${name} ×${count}`)
+  const hot = topHot(current).map((entry) => `${entry.name} ×${entry.writes}`)
   return [
     `redraws over ${seconds(current)}s: ${total(current)} node writes in ${current.frames} frames (busiest ${current.busiestFrame})`,
     `by area: ${areas.join(', ') || 'none'}`,
@@ -82,7 +82,12 @@ function Chip() {
             <span class="size-1.5 rounded-full bg-rose-500" />
             redraws {total(current())}
           </StatusPopoverTrigger>
-          <PopoverContent align="end" class="w-80 space-y-2 p-2 font-mono" side="top">
+          <PopoverContent
+            align="end"
+            class="w-80 space-y-2 p-2 font-mono"
+            side="top"
+            {...{ [ignored]: '' }}
+          >
             <Rows>
               <Row label="window">
                 {seconds(current())}s · {current().frames} frames
@@ -97,11 +102,11 @@ function Chip() {
             </Rows>
             <Show when={topHot(current()).length > 0}>
               <div class="space-y-0.5 border-t border-border/70 pt-1.5 text-[11px] text-muted-foreground">
-                <For each={topHot(current())} keyed={(entry) => entry[0]}>
+                <For each={topHot(current())} keyed={(entry) => entry.element}>
                   {(entry) => (
                     <div class="flex gap-2">
-                      <span class="min-w-0 flex-1 truncate">{entry()[0]}</span>
-                      <span class="text-foreground/80">×{entry()[1]}</span>
+                      <span class="min-w-0 flex-1 truncate">{entry().name}</span>
+                      <span class="text-foreground/80">×{entry().writes}</span>
                     </div>
                   )}
                 </For>

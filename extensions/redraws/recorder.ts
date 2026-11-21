@@ -12,12 +12,12 @@ const landmarks: [string, string][] = [
 
 export function areaOf(element: Element, width: number) {
   for (const [area, selector] of landmarks) if (element.closest(selector)) return area
-  const aside = element.closest('aside')
-  if (aside) return aside.getBoundingClientRect().left < width / 2 ? 'sidebar' : 'panel'
+  const aside = element.closest('aside')?.getBoundingClientRect()
+  if (aside) return aside.left + aside.right < width ? 'sidebar' : 'panel'
   return 'other'
 }
 
-function nameOf(element: Element) {
+export function nameOf(element: Element) {
   const named = element.closest('[data-ui], [aria-label]')
   const where = named?.getAttribute('data-ui') ?? named?.getAttribute('aria-label')
   const own = `${element.tagName.toLowerCase()}${element.classList[0] ? `.${element.classList[0]}` : ''}`
@@ -31,7 +31,7 @@ export type Metrics = {
   busiestFrame: number
   longFrames: number
   worstFrameMs: number
-  hot: Record<string, number>
+  hot: Map<Element, number>
 }
 
 const empty = (since: number): Metrics => ({
@@ -41,20 +41,25 @@ const empty = (since: number): Metrics => ({
   busiestFrame: 0,
   longFrames: 0,
   worstFrameMs: 0,
-  hot: {},
+  hot: new Map(),
 })
 
 export const enabled = cell(false)
 export const metrics = cell<Metrics>(empty(0))
-export const reset = () => metrics.set(empty(performance.now()))
+let discardPending = () => {}
+export function reset() {
+  discardPending()
+  metrics.set(empty(performance.now()))
+}
 
 export const byArea = (current: Metrics) =>
   Object.entries(current.writes).toSorted((a, b) => b[1] - a[1])
 
 export function topHot(current: Metrics, count = 5) {
-  return Object.entries(current.hot)
+  return [...current.hot]
     .toSorted((a, b) => b[1] - a[1])
     .slice(0, count)
+    .map(([element, writes]) => ({ element, name: nameOf(element), writes }))
 }
 
 export function record(options: {
@@ -62,22 +67,25 @@ export function record(options: {
   frame: (paint: () => void) => void
   flash: (element: Element) => void
 }) {
-  reset()
   let pending = new Set<Element>()
   let scheduled = false
+  let stopped = false
+  discardPending = () => {
+    pending = new Set()
+  }
+  reset()
   const paint = () => {
     scheduled = false
     const elements = [...pending].filter((element) => element.isConnected)
     pending = new Set()
-    if (elements.length === 0) return
+    if (stopped || elements.length === 0) return
     const current = metrics.get()
     const writes = { ...current.writes }
-    const hot = { ...current.hot }
+    const hot = new Map(current.hot)
     for (const element of elements) {
       const area = areaOf(element, window.innerWidth)
       writes[area] = (writes[area] ?? 0) + 1
-      const name = nameOf(element)
-      hot[name] = (hot[name] ?? 0) + 1
+      hot.set(element, (hot.get(element) ?? 0) + 1)
       options.flash(element)
     }
     metrics.set({
@@ -122,6 +130,9 @@ export function record(options: {
   if (PerformanceObserver.supportedEntryTypes.includes('long-animation-frame'))
     frames.observe({ type: 'long-animation-frame' })
   return () => {
+    stopped = true
+    pending = new Set()
+    discardPending = () => {}
     changes.disconnect()
     frames.disconnect()
   }

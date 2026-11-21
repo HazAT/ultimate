@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { metrics, record } from '../../recorder.ts'
+import { metrics, record, reset, topHot } from '../../recorder.ts'
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -18,9 +18,9 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-const settle = () => new Promise<void>((resolve) => queueMicrotask(resolve))
+const delivered = () => new Promise<void>((resolve) => queueMicrotask(resolve))
 
-it('coalesces a frame of writes into one flash per element and counts them by area', async () => {
+function start() {
   const frames: (() => void)[] = []
   const flashed: Element[] = []
   const stop = record({
@@ -28,13 +28,19 @@ it('coalesces a frame of writes into one flash per element and counts them by ar
     frame: (paint) => frames.push(paint),
     flash: (element) => flashed.push(element),
   })
+  return { frames, flashed, stop }
+}
+
+it('paints writes from several deliveries once per frame, one flash per element, counted by area', async () => {
+  const { frames, flashed, stop } = start()
   const [first, second] = document.querySelectorAll('p')
   first.firstChild!.textContent = 'one more'
+  document.querySelector('[data-redraws-ignore] span')!.textContent = 'chip 2'
+  await delivered()
   first.firstChild!.textContent = 'one more still'
   second.append(' too')
   document.querySelector('footer span')!.textContent = '4'
-  document.querySelector('[data-redraws-ignore] span')!.textContent = 'chip 2'
-  await settle()
+  await delivered()
 
   expect(frames).toHaveLength(1)
   frames[0]()
@@ -44,9 +50,30 @@ it('coalesces a frame of writes into one flash per element and counts them by ar
     busiestFrame: 3,
     writes: { transcript: 2, 'status line': 1 },
   })
-
+  expect(topHot(metrics.get()).map((entry) => entry.element)).toEqual([
+    first,
+    second,
+    document.querySelector('footer span'),
+  ])
   stop()
+})
+
+it('drops queued writes on reset and on stop', async () => {
+  const { frames, flashed, stop } = start()
+  const [first] = document.querySelectorAll('p')
+  first.textContent = 'before reset'
+  await delivered()
+  reset()
+  frames[0]()
+  expect(flashed).toEqual([])
+  expect(metrics.get().frames).toBe(0)
+
+  first.textContent = 'before stop'
+  await delivered()
+  stop()
+  frames[1]()
   first.textContent = 'after stop'
-  await settle()
-  expect(frames).toHaveLength(1)
+  await delivered()
+  expect(frames).toHaveLength(2)
+  expect(flashed).toEqual([])
 })
