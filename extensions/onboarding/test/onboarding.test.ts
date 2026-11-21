@@ -158,10 +158,10 @@ it('applies extension choices live at project and user scope, keeping other sett
     const { action, enabled, web } = drive(server)
     await action('setExtension', { name: 'splash', enabled: false, scope: 'project' })
     expect(enabled('splash')).toBe(false)
-    expect((await web()).some((path) => path.endsWith('/splash/web.tsx'))).toBe(false)
+    expect((await web()).some((path) => path.endsWith('/splash/web.solid.tsx'))).toBe(false)
     await action('setExtension', { name: 'splash', enabled: true, scope: 'project' })
     expect(enabled('splash')).toBe(true)
-    expect((await web()).some((path) => path.endsWith('/splash/web.tsx'))).toBe(true)
+    expect((await web()).some((path) => path.endsWith('/splash/web.solid.tsx'))).toBe(true)
     const projectSettings = JSON.parse(await readFile(projectFile, 'utf8'))
     expect(projectSettings).toMatchObject({
       custom: { keep: 1 },
@@ -187,10 +187,10 @@ it('applies extension choices live at project and user scope, keeping other sett
     await rename(userFile + '.tmp', userFile)
     await action('setExtension', { name: 'sounds', enabled: true, scope: 'user' })
     expect(enabled('sounds')).toBe(true)
-    expect((await web()).some((path) => path.endsWith('/sounds/web.tsx'))).toBe(true)
+    expect((await web()).some((path) => path.endsWith('/sounds/web.solid.tsx'))).toBe(true)
     await action('setExtension', { name: 'sounds', enabled: false, scope: 'user' })
     expect(enabled('sounds')).toBe(false)
-    expect((await web()).some((path) => path.endsWith('/sounds/web.tsx'))).toBe(false)
+    expect((await web()).some((path) => path.endsWith('/sounds/web.solid.tsx'))).toBe(false)
     expect(JSON.parse(await readFile(userFile, 'utf8'))).toMatchObject({
       custom: 'user',
       extensions: { extra: 2, enable: [], disable: ['sounds'] },

@@ -9,7 +9,7 @@ app comes up once the page is ready.
   the splash installs.
 - **The show** (Web Animations API and WebGL): lightning draws the name, sweeping across its outline from left to
   right; at the end it bursts from the middle, a ripple with a flash and a spray of arcs that fades into a steady
-  electric outline until the overlay goes. The lightning is `electric.tsx`, adapted from React Bits' ElectricLogo on
+  electric outline until the overlay goes. The lightning is `electric.solid.tsx`, adapted from React Bits' ElectricLogo on
   `ogl`, its click burst included. Still loading after that, a quiet rule draws out beneath the name.
   Once ready, a drawing still in progress finishes within a quarter second and the overlay fades into the app. It
   stays at least 0.7 s, so a warm start does not flash.
@@ -22,7 +22,7 @@ app comes up once the page is ready.
 - **Once per page load**: mounted when the page is already ready (a very warm start), it shows nothing,
   and nothing after ready brings it back.
 - **Fresh starts only**: a reload of a rendered page (a core restart, a switch to a new web bundle, F5) shows the previous
-  page's view until the app is back (`resumed` from `@/sdk`), so the splash stays away.
+  page's view until the app is back, so the splash stays away.
 - **Rehearsal**: `?splash` holds the splash on screen, automated browsers included, and a click replays it;
   `?splash=first` plays the first run's version. For polishing it on a preview instance.
 - **Automated browsers** (`navigator.webdriver`, as in the agent's `browser` and `screenshot` tools): no show, so the
@@ -41,7 +41,7 @@ is `aria-hidden`.
 
 ## The wordmark
 
-`web.tsx` holds the outlines of ULTIMATE as the header sets it, Inter SemiBold tracked 0.28em, taken from the
+`web.solid.tsx` holds the outlines of ULTIMATE as the header sets it, Inter SemiBold tracked 0.28em, taken from the
 display optical size (`opsz` 32, `wght` 600) of the Inter variable font that `@fontsource-variable/inter` ships, with
 overlaps removed and kerned by HarfBuzz. Its colours are theme tokens (`brand`, `foreground`), so it follows light and
 dark. The lightning traces the same outlines.

@@ -107,6 +107,7 @@
     "extensions/sidebar/landings.ts",
     "extensions/subagents/landing.ts",
     "extensions/subagents/source.ts",
+    "extensions/onboarding/choices.ts",
     "extensions/onboarding/onboarded.ts",
     "extensions/onboarding/dialogs.ts",
     "extensions/side-chat/front.ts",
