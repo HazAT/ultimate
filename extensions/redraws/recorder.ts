@@ -17,7 +17,7 @@ export function areaOf(element: Element, width: number) {
   return 'other'
 }
 
-export function nameOf(element: Element) {
+function nameOf(element: Element) {
   const named = element.closest('[data-ui], [aria-label]')
   const where = named?.getAttribute('data-ui') ?? named?.getAttribute('aria-label')
   const own = `${element.tagName.toLowerCase()}${element.classList[0] ? `.${element.classList[0]}` : ''}`
@@ -31,7 +31,7 @@ export type Metrics = {
   busiestFrame: number
   longFrames: number
   worstFrameMs: number
-  hot: Map<Element, number>
+  hot: Map<number, { name: string; writes: number }>
 }
 
 const empty = (since: number): Metrics => ({
@@ -57,9 +57,18 @@ export const byArea = (current: Metrics) =>
 
 export function topHot(current: Metrics, count = 5) {
   return [...current.hot]
-    .toSorted((a, b) => b[1] - a[1])
+    .map(([id, entry]) => ({ id, ...entry }))
+    .toSorted((a, b) => b.writes - a.writes)
     .slice(0, count)
-    .map(([element, writes]) => ({ element, name: nameOf(element), writes }))
+}
+
+const ids = new WeakMap<Element, number>()
+let lastId = 0
+const idOf = (element: Element) => {
+  const known = ids.get(element)
+  if (known !== undefined) return known
+  ids.set(element, ++lastId)
+  return lastId
 }
 
 export function record(options: {
@@ -70,10 +79,6 @@ export function record(options: {
   let pending = new Set<Element>()
   let scheduled = false
   let stopped = false
-  discardPending = () => {
-    pending = new Set()
-  }
-  reset()
   const paint = () => {
     scheduled = false
     const elements = [...pending].filter((element) => element.isConnected)
@@ -85,7 +90,8 @@ export function record(options: {
     for (const element of elements) {
       const area = areaOf(element, window.innerWidth)
       writes[area] = (writes[area] ?? 0) + 1
-      hot.set(element, (hot.get(element) ?? 0) + 1)
+      const id = idOf(element)
+      hot.set(id, { name: nameOf(element), writes: (hot.get(id)?.writes ?? 0) + 1 })
       options.flash(element)
     }
     metrics.set({
@@ -118,6 +124,11 @@ export function record(options: {
     characterData: true,
     attributes: true,
   })
+  discardPending = () => {
+    changes.takeRecords()
+    pending = new Set()
+  }
+  reset()
   const frames = new PerformanceObserver((list) => {
     const current = metrics.get()
     const durations = list.getEntries().map((entry) => entry.duration)

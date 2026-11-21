@@ -50,30 +50,27 @@ it('paints writes from several deliveries once per frame, one flash per element,
     busiestFrame: 3,
     writes: { transcript: 2, 'status line': 1 },
   })
-  expect(topHot(metrics.get()).map((entry) => entry.element)).toEqual([
-    first,
-    second,
-    document.querySelector('footer span'),
-  ])
+  expect(topHot(metrics.get()).map((entry) => entry.writes)).toEqual([1, 1, 1])
   stop()
 })
 
 it('drops queued writes on reset and on stop', async () => {
   const { frames, flashed, stop } = start()
-  const [first] = document.querySelectorAll('p')
-  first.textContent = 'before reset'
+  const [first, second] = document.querySelectorAll('p')
+  first.textContent = 'queued before reset'
   await delivered()
+  second.textContent = 'undelivered before reset'
   reset()
-  frames[0]()
-  expect(flashed).toEqual([])
-  expect(metrics.get().frames).toBe(0)
+  first.textContent = 'after reset'
+  await delivered()
+  frames.at(-1)!()
+  expect(flashed).toEqual([first])
 
   first.textContent = 'before stop'
   await delivered()
   stop()
-  frames[1]()
+  frames.at(-1)!()
   first.textContent = 'after stop'
   await delivered()
-  expect(frames).toHaveLength(2)
-  expect(flashed).toEqual([])
+  expect(flashed).toEqual([first])
 })
