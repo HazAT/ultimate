@@ -159,10 +159,11 @@ it('keeps two scoped snapshots, ops, transcripts and documents independent of th
   expect(getConversation().id).toBe(1)
 
   // A nested scope must not inherit its parent's paged transcript.
+  const parentHistory = view(7, 'parent history').entries
   const nested = renderToStaticMarkup(
     h(
       TranscriptContext,
-      { value: createTranscriptFrame(() => view(7, 'parent history').entries).frame },
+      { value: createTranscriptFrame(() => parentHistory).frame },
       scoped(9, h(Probe)),
     ),
   )

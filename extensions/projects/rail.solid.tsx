@@ -105,7 +105,8 @@ function ProjectsRail() {
     const saved: { pinned: boolean } | undefined = yield api
       .action(PinAction, { pinned: next })
       .catch(keepLast)
-    if (saved) setAcknowledged(saved.pinned)
+    if (!saved) return
+    setAcknowledged(saved.pinned)
     yield shared.refetch()
   })
   let saving: Promise<void> | undefined

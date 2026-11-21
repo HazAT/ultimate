@@ -75,7 +75,7 @@ export function AutomationsSection() {
         <div class="mx-2 flex h-6 items-center gap-1">
           <CollapsibleTrigger class="group/automations flex h-6 items-center gap-1 rounded-md px-1 section-label outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
             <ChevronRight class="size-3 transition-transform group-data-open/automations:rotate-90" />
-            Automations
+            Active automations
           </CollapsibleTrigger>
           <Button
             aria-label={`${list().length} active${failing() ? `, ${failing()} need attention` : ''}: show all automations`}

@@ -10,7 +10,9 @@ export interface TranscriptFrame {
   content: { readonly current: HTMLElement | null }
 }
 
-export function createTranscriptFrame(entries: Accessor<readonly EntryRecord[]> = () => []) {
+const none: readonly EntryRecord[] = []
+
+export function createTranscriptFrame(entries: Accessor<readonly EntryRecord[]> = () => none) {
   let atBottom = true
   const listeners = new Set<() => void>()
   const scroll: { current: HTMLElement | null } = { current: null }
