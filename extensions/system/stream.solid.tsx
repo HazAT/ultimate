@@ -164,7 +164,7 @@ function Filters(props: ViewProps) {
       <SegmentedControl
         aria-label="Event source"
         bind={[() => props.view.source, (source) => update({ source })]}
-        class="gap-1 border-0 p-0"
+        class="min-w-0 shrink flex-wrap gap-1 border-0 p-0"
       >
         <For each={sourceNames}>
           {(source) => (
