@@ -4,6 +4,21 @@ Run `git worktree add ../ultimate-preview -b preview`, then `cd ../ultimate-prev
 
 Start a subagent with `isolate: "worktree"` (the worker default) to give its tools a separate checkout; verify its commits, then `land` them or `discard` the checkout while keeping its branch. For Ultimate itself, `instance start` with `subagent: <child id>` previews that child's code on a free port with a separate temporary home; stop the preview afterwards.
 
+### Comparing before and after
+
+To compare a change against its base (a measurement, a test that should fail before), check the base out in a
+throwaway detached worktree and run the same thing in both:
+
+```bash
+git worktree add --detach /tmp/before <base-sha>
+(cd /tmp/before && pnpm install --offline --frozen-lockfile)
+# run the same command in /tmp/before and in your checkout
+git worktree remove --force /tmp/before
+```
+
+Never `git stash`: stashes are shared by every worktree of the clone, and a `stash pop` once applied another branch's
+stash.
+
 ### Main-agent final integration
 
 Coordinator branches started by @ultimate are isolated in their own worktrees by default: under `<home>/worktrees`, or

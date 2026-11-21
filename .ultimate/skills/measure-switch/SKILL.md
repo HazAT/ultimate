@@ -60,10 +60,23 @@ node .ultimate/skills/measure-switch/profile-summary.ts ~/switch-perf/a.cpuprofi
   Many mutations on every `ops` event are a reason to look for a part that rebuilds DOM where a keyed list or a
   narrower read would only update what changed; `--profile` shows which functions the time went to.
 
-- Compare before and after in one session, on one instance home: run main, stop, apply the change, start again on the
-  same home. Numbers drift between sessions with machine load; repeat runs and compare medians.
 - Server changes (`server/`, `shared/`) need the instance restarted; web and extension changes hot-reload.
 
-## 4. Clean up
+## 4. Compare two trees
 
-Stop the instance and `rm -rf ~/switch-perf`. Nothing from the copy goes into the repository.
+One run's warm median moves 30–50 ms with machine load, so compare the two sides interleaved, against one snapshot.
+Check the base out in a throwaway detached worktree ([comparing before and after](../../../docs/worktrees.md#comparing-before-and-after);
+never `git stash`), copy the paused snapshot once, `cp -r` it to a second home, and start one server per tree, each on
+its own home: `instance start {home}` previews your checkout; for the base tree start a scratch server from its
+worktree (`docs/running.md`). Confirm both are paused, then:
+
+```bash
+node .ultimate/skills/measure-switch/paired.ts $URL_A $URL_B 1 <id,id,...> --runs 4 --rounds 3
+```
+
+It runs `switch.ts` against A, then B, `--runs` times, and prints each run's warm median, the warm medians per side
+and B minus A. Main against main came out 494 against 504 ms settled: differences of that size are noise.
+
+## 5. Clean up
+
+Stop the instances, remove the worktree and `rm -rf ~/switch-perf`. Nothing from the copy goes into the repository.
