@@ -17,7 +17,7 @@ diff is unified. The diff stack is virtualized; the viewer loads with the surfac
 
 **Comments.** Click a line number (shift-click or drag for a range, on either side) or the gutter `+` to open an
 inline composer; the range highlights as it grows, with a bar down its line numbers. **Add to review** keeps it as a
-draft under its lines, which can be edited or deleted. Drafts are durable UI state (`drafts.ts`) keyed by spec and by
+draft under its lines, which can be edited or deleted. Drafts are durable UI state (`drafts.solid.tsx`) keyed by spec and by
 the conversation whose checkout the diff came from (`draftsKey`; a spec too long for a key is named by its SHA-256), so
 a reload and other tabs keep them. A draft holds only its lines and text; its excerpt (at most 40 lines and 8 KB) is
 read from the diff on screen when the review is sent. One spec's drafts may take 96 KB of the 256 KiB UI state: past
@@ -33,11 +33,11 @@ in them, with control characters such as a newline written as`\n`.
 
 Links: `/?review=<spec>` opens Review at that spec, and the address carries `?review=` while Review is on screen;
 `&file=<path>&line=<n>` (and `&side=old`) scrolls to that line and marks it.
-`openReview(spec, at?)` from `link.tsx` does the same from code. Review provides the `workspaces.review` point, so the
-landing card, the Activity feed and a root's landed list open a landing's commit count here (DiffsHub stays as a small
-↗ beside it), and a branch row's menu has **Review changes**. Without review those stay plain DiffsHub links. Solid
-code, which cannot read a React point, emits `events.emit('review:open', { spec })` on the page bus instead, from a kit
-control's handler: `openReview` takes the writer at that moment, so an agent's open is recorded as the agent's.
+`events.emit('review:open', { spec, at })` does the same from code, with optional `at: { file, line, side }`. Review
+provides the `workspaces.review` point, so the landing card, the Activity feed and a root's landed list open a landing's
+commit count here (DiffsHub stays as a small ↗ beside it), and a branch row's menu has **Review changes**. Without
+Review those stay plain DiffsHub links. A kit control's handler emits as its writer, so an agent's open is recorded
+as the agent's.
 
 Actions (`refs.ts`):
 

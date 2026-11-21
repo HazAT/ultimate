@@ -17,26 +17,45 @@ afterEach(async () => {
 })
 
 const panel = `/** @jsxImportSource @solidjs/web */
+import { createSignal } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import { useExtensionUiState } from '@/sdk/solid'
 
 export function Digest() {
   const digest = useExtensionUiState('digest', false)
+  const [pressed, setPressed] = createSignal('none')
+  const [many, setMany] = createSignal(false)
+  const [hidden, setHidden] = createSignal(false)
   return (
     <>
       <Switch aria-label="Weekly digest" bind={digest} />
+      <Switch aria-label="Many fields" checked={many()} onCheckedChange={setMany} />
+      <Switch aria-label="Hide the last filler" checked={hidden()} onCheckedChange={setHidden} />
+      {many() && Array.from({ length: 120 }, (_, index) => (
+        <span aria-hidden={hidden() && index === 119 ? 'true' : undefined}>
+          <Switch aria-label={'Filler ' + index} />
+        </span>
+      ))}
+      <Button aria-label="Read digest-archive.png" data-pressed={pressed()} onClick={() => setPressed('read')}>read</Button>
+      <Button aria-label="Digest archive" onClick={() => setPressed('archive')}>Archive</Button>
+      <Button aria-label="Archive c9999" onClick={() => setPressed('c9999')}>c9999</Button>
       <Popover>
         <PopoverTrigger aria-label="Digest details">details</PopoverTrigger>
-        <PopoverContent>Sent on Mondays</PopoverContent>
+        <PopoverContent>
+          Sent on Mondays
+          <Button aria-label="Archive" onClick={() => setPressed('popover archive')}>Archive</Button>
+          <Switch aria-label="Monday only" />
+        </PopoverContent>
       </Popover>
     </>
   )
 }
 `
-const web = `import { defineWebExtension, island } from '@/sdk'
+const web = `import { defineWebExtension } from '@/sdk/solid'
 import { Digest } from './digest.solid.tsx'
-export default defineWebExtension({ slots: { 'statusline.left': island(Digest) } })
+export default defineWebExtension({ slots: { 'statusline.left': Digest } })
 `
 
 type Component = { ref: string; label?: string; component: string }
@@ -47,7 +66,7 @@ async function serve(settings?: object) {
   const folder = join(home, '.ultimate/extensions/digest')
   await mkdir(folder, { recursive: true })
   await writeFile(join(folder, 'digest.solid.tsx'), panel)
-  await writeFile(join(folder, 'web.tsx'), web)
+  await writeFile(join(folder, 'web.solid.tsx'), web)
   if (settings) await writeFile(join(home, '.ultimate/settings.json'), JSON.stringify(settings))
   const server = await fauxServer({
     ultimateRoot: resolve('.'),
@@ -67,14 +86,14 @@ async function serve(settings?: object) {
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
   } as unknown as ExtensionHost
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
-  const api = { output() {} } as unknown as ToolExecutionApi
+  const api = { output() {}, watchDoc: async () => undefined } as unknown as ToolExecutionApi
   const drive = async (steps: object[]) => {
     const result = await browser.execute(
       { url: server.url, screenshot: false, steps: steps as never },
       api,
       context,
     )
-    expect(result).not.toHaveProperty('isError', true)
+    if (result.isError) throw new Error(JSON.stringify(result.output))
     const { outcomes } = (result as unknown as { structuredContent: { outcomes: string[] } })
       .structuredContent
     return (n: number) => {
@@ -170,6 +189,119 @@ it('sends a final keypress’s UI-state write on pagehide in one keepalive reque
       }),
     },
   ])
+})
+
+// Pressing 'System' pressed a transcript row named "read ~/fw-verify/live-system.png" instead of the System tab:
+// ui-sdk ranks a whole-word match with the exact label and then prefers the open one (#835504).
+it('acts on the one control with the exact label, also one an earlier step brought onto the page', async () => {
+  const { drive } = await serve()
+  const value = await drive([
+    { ui: 'act', steps: [{ ref: 'Digest archive', action: 'press' }] },
+    { eval: "document.querySelector('[data-pressed]').dataset.pressed" },
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+        { ref: 'Archive', action: 'press' },
+      ],
+    },
+    { eval: "document.querySelector('[data-pressed]').dataset.pressed" },
+  ])
+  expect(value(1)).toMatchObject({ ok: true })
+  expect(value(2)).toBe('archive')
+  expect(value(3)).toMatchObject({ ok: true, steps: [{ step: 0 }, { step: 1 }] })
+  expect(value(4)).toBe('popover archive')
+  const closed = await drive([
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [false] },
+      ],
+    },
+  ])
+  expect(closed(1)).toMatchObject({ ok: true, appeared: [] })
+  expect(closed(1)).not.toHaveProperty('open')
+  const later = await drive([
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+        { ref: 'Monday only', action: 'setChecked', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [false] },
+      ],
+    },
+  ])
+  const { values } = later(1) as { values: Record<string, unknown> }
+  expect(Object.entries(values).find(([key]) => key.endsWith(' Monday only'))?.[1]).toBe(true)
+  expect(Object.keys(values).some((key) => key.endsWith(' Weekly digest'))).toBe(true)
+})
+
+it('keeps the fields a batch touched within the 100-field cap, with the right count, unless they left', async () => {
+  const { drive } = await serve()
+  const value = await drive([
+    { ui: 'act', steps: [{ ref: 'Many fields', action: 'setChecked', args: [true] }] },
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Filler 119', action: 'setChecked', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+      ],
+    },
+    {
+      ui: 'act',
+      steps: [
+        { ref: 'Filler 119', action: 'setChecked', args: [false] },
+        { ref: 'Hide the last filler', action: 'setChecked', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+      ],
+    },
+  ])
+  const kept = (value(2) as { values: Record<string, unknown> }).values
+  const keys = Object.keys(kept).filter((key) => key !== 'more')
+  expect(Object.entries(kept).find(([key]) => key.endsWith(' Filler 119'))?.[1]).toBe(true)
+  expect(keys.length).toBe(100)
+  expect(keys.length + (kept.more as number)).toBe(125)
+  const hiddenLater = (value(3) as { values: Record<string, unknown> }).values
+  expect(Object.keys(hiddenLater).some((key) => key.endsWith(' Filler 119'))).toBe(false)
+  expect(Object.keys(hiddenLater).filter((key) => key !== 'more').length).toBe(100)
+  const all = await drive([
+    { ui: 'act', steps: [{ ref: 'Many fields', action: 'setChecked', args: [true] }] },
+    {
+      ui: 'act',
+      steps: [
+        ...Array.from({ length: 101 }, (_, index) => ({
+          ref: `Filler ${index}`,
+          action: 'setChecked',
+          args: [true],
+        })),
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+      ],
+    },
+  ])
+  const touchedAll = (all(2) as { values: Record<string, unknown> }).values
+  const listed = Object.keys(touchedAll).filter((key) => key !== 'more')
+  expect(listed.length).toBe(100)
+  expect(listed.length + (touchedAll.more as number)).toBe(125)
+})
+
+it('until a control’s state wakes on its change, by label or by ref, and a missing ref is never a label', async () => {
+  const { drive } = await serve()
+  const waitThenToggle = (target: string) =>
+    `(async () => { const ui = window.ultimate.ui; const [{ ref }] = await ui.query({ text: 'Weekly digest' }); const target = ${target}; let toggled = false; let early = false; const waiting = window.ultimate.until({ ui: target, is: { checked: !document.querySelector('[aria-label="Weekly digest"]').matches('[aria-checked="true"]') } }, { timeoutMs: 5000 }).then((found) => { early = !toggled; return found }); await new Promise((later) => setTimeout(later, 300)); toggled = true; document.querySelector('[aria-label="Weekly digest"]').click(); const found = await waiting; return { early, same: found.ref === ref, checked: found.checked } })()`
+  const value = await drive([
+    { eval: waitThenToggle("'Weekly digest'") },
+    { eval: waitThenToggle('ref') },
+    { ui: 'act', steps: [{ ref: 'c9999', action: 'press' }] },
+    { eval: "document.querySelector('[data-pressed]').dataset.pressed" },
+  ])
+  expect(value(1)).toEqual({ early: false, same: true, checked: true })
+  expect(value(2)).toEqual({ early: false, same: true, checked: false })
+  expect(value(3)).toMatchObject({
+    ok: false,
+    error: { step: 0, message: 'No component c9999 on the page.' },
+  })
+  expect(value(4)).toBe('none')
 })
 
 it('records nothing from the agent when it opens and closes a popover', async () => {

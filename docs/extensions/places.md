@@ -42,7 +42,7 @@ source when `info` is enabled; the building-blocks prompt names the clone root. 
 project is Ultimate itself, that is `.ultimate/extensions/` in the clone, not `extensions/`, which holds the built-ins.
 
 Extensions outside the clone import exactly what built-ins import (`@/sdk`, `@/components/…`, `react`,
-`lucide-react`, any package installed in the clone): Ultimate resolves those from its clone, and Tailwind picks up their
+`@lucide/solid`, any package installed in the clone): Ultimate resolves those from its clone, and Tailwind picks up their
 classes. In the clone, `pnpm check` type-checks and lints `extensions/` and `.ultimate/extensions/`. Elsewhere,
 `node <clone>/scripts/check-extension.ts [folder…]` type-checks them against the clone (default: the current project's
 `.ultimate/extensions/*`; pass a user extension's folder to check it) and writes nothing into the clone or the project.

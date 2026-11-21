@@ -4,6 +4,24 @@ The migration's purpose is a front end that is more robust, faster, simpler and 
 reports its delta on the numbers below against this baseline, and after the UI kit and the first batch of extensions a
 decision gate compares the migrated extensions with their React originals on lines, renders and bundle size.
 
+The migration is done (C5, `f3e6078`): the core and every built-in extension are Solid, and React remains only in the
+lazily loaded compat layer for outside `web.tsx` facets ([React facets on a Solid core](extensions/react-compat.md)).
+Result against pure React, both trees measured on 2026-11-21 from one paused snapshot on a quiet machine (load 1–3),
+in two interleaved sessions (each value the median of three runs; the range spans the sessions):
+
+|                                  | `a0638de4` (pure React) |          `f3e6078` (C5) |
+| -------------------------------- | ----------------------: | ----------------------: |
+| Switch, cold                     |              565–633 ms |              443–598 ms |
+| Switch, warm                     |              171–196 ms |              210–219 ms |
+| Streamed event: task, mutations  |               4.9 ms, 1 |               4.1 ms, 1 |
+| React components per stream op   |                      92 |                       0 |
+| Entry assets / all JS, gzip      |          432 / 2 823 KB |          410 / 3 003 KB |
+| Front-end lines (Solid / compat) |          49 954 (0 / 0) | 56 750 (48 557 / 2 525) |
+
+Cold switches overlapped between the trees; warm switches were slower at C5 in both sessions. The `pure React` entry in `docs/frontend-progress.json` was measured under heavy load
+on an older snapshot (748.5 / 273.5 ms), so the progress page's switch percentages overstate the gain. The series of
+every step is in that file; the sections below say how each number is measured.
+
 Measured on main at `1c5d056` (step 0.3 landed; three Solid files: the keep-warm chip and two kit controls), 2026-11-19,
 on one machine. Speed numbers drift with machine load: compare within one session, medians of repeated runs.
 
@@ -16,13 +34,17 @@ the median of three runs, the range after it is the spread of those runs (the no
 
 ### The series: `docs/frontend-progress.json`
 
-Every migration step adds one entry, measured the same way on one machine:
+Every migration step adds one entry with its lines and bundle, which come from files and do not depend on machine load:
 
 ```bash
 git worktree add --detach ~/fw/<sha> <sha> && (cd ~/fw/<sha> && pnpm install --frozen-lockfile --prefer-offline)
-node .ultimate/skills/measure-switch/copy-paused.ts ~/.ultimate/projects/<home>/state.sqlite ~/fw/snap
-node scripts/frontend-progress.ts ~/fw/<sha> --label 0.8 --summary "<what the step did, one line>" --snapshot ~/fw/snap/state.sqlite
+node scripts/frontend-progress.ts ~/fw/<sha> --label 0.8 --summary "<what the step did, one line>"
 ```
+
+Timing (`switch`, `stream`, `previews`) is measured on main only, on a quiet machine, after C2 (transcript), C4
+(shell) and C5 (React removed): add `--only switch,stream,previews --snapshot ~/fw/snap/state.sqlite`, the snapshot
+copied with `node .ultimate/skills/measure-switch/copy-paused.ts ~/.ultimate/projects/<home>/state.sqlite ~/fw/snap`.
+Other entries keep `null` there, which the progress page shows as not measured.
 
 Run it from the newest checkout: it measures the given tree with today's scripts, starts each server on a scratch home
 outside the real home, with a scripted model, `claude-code` disabled and no provider credentials, refuses a snapshot
@@ -48,13 +70,15 @@ dropped, so the file keeps every step. Per entry:
     framework, plus any work already queued ahead of it, so it is latency rather than time spent on the event alone.
     The median is the steady cost; the p95 is the slow events a reader feels as jank. One run's p95 can jump with
     machine load (27 ms in one of three C0 runs, 6–7 ms in the other two), so read the median of runs.
-- `previews` (`scripts/preview-bench.ts`) runs three status-line tasks (keep-warm, pause, reading the setup issues)
-  three times each from a fresh page, once with CSS selectors and screenshots and once with `ui` steps (`null` before
-  `ui` steps existed at `1c5d056`). `tokens` estimates what the agent reads back: text at 4 bytes a token, a
-  1440×900 screenshot at width × height / 750. `agent` is a worker on `openai-codex/gpt-6.2-sol` given the keep-warm task
-  in plain words, three runs, counted from its stored entries; measured by hand and only at some commits.
+- `previews` (`scripts/preview-bench.ts`) compares keep-warm, pause, setup issues, switching to System, toggling the
+  theme from the palette, and reading a streamed reply. It takes the median of three runs: selectors, screenshots
+  and fixed sleeps (`sleepMs`) versus `ui` actions and state-based waits, without screenshots or sleeps (`ui` is
+  `null` before the bridge existed). `tokens` estimates the output the agent reads: text at 4 bytes a token, a
+  1440×900 screenshot at width × height / 750. The original `agent` measurement used a real worker on keep-warm;
+  `agentTasks`, when present, compares real workers using the old and new styles per task.
 - `previewUsage` (`node scripts/preview-usage.ts ~/.ultimate/projects/<home>`) counts browser calls, `ui`/click/eval
-  steps and screenshots per week over every chapter of the project's history, read-only.
+  steps, screenshots, and total numeric waits (`waitMs`) per week across all chapters, read-only. The page shows
+  `ui`'s share of the three counted step types and the waits in seconds.
 
 ### Code and bundle: `node scripts/frontend-weight.ts`
 

@@ -43,7 +43,7 @@ it('orders facets by source so a project bash tool and renderer win regardless o
   ]) {
     const folder = join(root, '.ultimate/extensions', name)
     await mkdir(folder, { recursive: true })
-    await writeFile(join(folder, 'web.tsx'), 'export default { tools: { bash: () => null } }')
+    await writeFile(join(folder, 'web.solid.tsx'), 'export default { tools: { bash: () => null } }')
     await writeFile(
       join(folder, 'server.ts'),
       `

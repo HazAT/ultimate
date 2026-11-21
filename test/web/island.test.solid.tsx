@@ -11,9 +11,9 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   return { store: createStore(), uiState: createUiState(undefined), api: {} }
 })
 
-import { ConversationIdContext } from '../../web/src/sdk/conversation-scope.tsx'
-import { ExtensionNameContext } from '../../web/src/sdk/hooks.ts'
-import { island } from '../../web/src/sdk/island.tsx'
+import { ConversationIdContext } from '../../web/src/compat/conversation-scope.tsx'
+import { ExtensionNameContext } from '../../web/src/compat/conversation-scope.tsx'
+import { island } from '../../web/src/compat/island.tsx'
 import { ConversationScope, ExtensionName } from '../../web/src/sdk/solid.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -27,6 +27,23 @@ function Status() {
   return <span data-island>{label}</span>
 }
 const Island = island(Status)
+
+it('delivers a click inside an island that no Solid root encloses', () => {
+  const pressed = vi.fn<() => void>()
+  const Clickable = island(() => (
+    <button onClick={() => pressed()} type="button">
+      press
+    </button>
+  ))
+  const container = document.createElement('div')
+  document.body.append(container)
+  const react = createRoot(container)
+  act(() => react.render(h(Clickable)))
+  container.querySelector('button')!.click()
+  expect(pressed).toHaveBeenCalledOnce()
+  act(() => react.unmount())
+  container.remove()
+})
 
 it('mounts a Solid component in React with its extension and conversation, and disposes it', () => {
   const container = document.createElement('div')

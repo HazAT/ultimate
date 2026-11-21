@@ -29,7 +29,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       harness.secrets.push({ name: args.name, declaredBy: [], set: true })
       return Response.json({ result: { name: args.name, set: true } })
     }
-    return Response.json({ ok: true })
+    return Response.json({ ok: true, refused: {} })
   })
   const clientStore = createStore({
     eventSource: (url) => (harness.stream = new FakeSource(url)),

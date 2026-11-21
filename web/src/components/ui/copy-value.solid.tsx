@@ -2,7 +2,7 @@
 import { Check, Copy } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { Show } from 'solid-js'
-import { useCopy } from '@/sdk/solid'
+import { useCopy } from '../../sdk/hooks.ts'
 import { Button } from './button.solid.tsx'
 
 function CopyValue(props: { value: string; field: string; children?: JSX.Element }) {

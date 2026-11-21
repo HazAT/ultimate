@@ -2,11 +2,9 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/inter';
 
-/* Classes used by extensions and by Streamdown's own renderers. */
+/* Classes used by extensions. */
 @source '../../extensions';
 @source '../../lib/conversation-ref.ts';
-@source '../../node_modules/streamdown/dist/*.js';
-@source '../../node_modules/@streamdown/code/dist/*.js';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -171,6 +169,13 @@
   }
 }
 
+@utility empty-row {
+  &:empty,
+  &:has(> [data-empty]:only-child) {
+    display: none;
+  }
+}
+
 /* A section or group heading in the chrome (panels, sidebar sections, picker groups): quiet sentence-case mono. */
 @utility section-label {
   @apply font-mono text-[11px] font-normal tracking-normal text-muted-foreground normal-case;
@@ -266,15 +271,10 @@
     --gutter: 0.75rem;
     padding-inline: var(--gutter);
   }
-  /* use-stick-to-bottom reserves a scrollbar gutter on both edges inline; a phone's scrollbar overlays the content, so
-     the reserved 10px would keep every row off the screen's edges. */
-  :has(> [data-ui='transcript']) {
-    scrollbar-gutter: auto !important;
-  }
   /* Rows that reach the screen's edges: a transcript entry's tool call, card, message card, final answer. Inside an
      opened step list they stay in its indented column, only losing their rounded box. The user's own bubble stays. */
   :is(
-    [data-ui='transcript'] [data-tool-call-id] > [data-ui='tool'],
+    [data-ui='transcript'] [data-tool-call-id] [data-ui='tool']:not([data-ui='tool'] *),
     [data-ui='transcript'] [data-ui='card'],
     [data-ui='transcript'] [data-ui='message-card-body'],
     [data-ui='transcript'] [data-ui='message-card'][data-message-input],
@@ -295,8 +295,8 @@
   }
   /* Back-to-back tool calls form one list: the gap closes and their hairlines overlap. */
   :is([data-ui='transcript'], [data-ui='transcript-steps'])
-    > :has(> [data-from] > [data-tool-call-id]:only-child > [data-ui='tool'])
-    + :has(> [data-from] > [data-tool-call-id]:first-child > [data-ui='tool']) {
+    > :has([data-from] > [data-tool-call-id]:only-child [data-ui='tool'])
+    + :has([data-from] > [data-tool-call-id]:first-child [data-ui='tool']) {
     margin-top: calc(-0.75rem - 1px);
   }
   [data-ui='pinned-prompt'] [data-ui='turn-header'] {
@@ -332,12 +332,15 @@
 }
 
 /*
- * Streamdown's markdown, tuned for a dense transcript. Unlayered on purpose: it wins over the utility classes
- * Streamdown puts on its elements.
+ * Markdown (web/src/components/markdown), tuned for a dense transcript. It styles the plain elements the renderer
+ * draws, so raw HTML in a message looks like the Markdown around it. Unlayered, so it wins over utilities.
  */
 .markdown {
   /* A long path, hash range or URL breaks inside its line instead of widening the transcript on a phone. */
   overflow-wrap: break-word;
+  & > :where(:not(:last-child)) {
+    margin-bottom: 1rem;
+  }
   & > :first-child {
     @apply mt-0;
   }
@@ -345,58 +348,99 @@
     @apply mb-0;
   }
   & h1 {
-    @apply mt-5 mb-2 text-[17px] font-semibold tracking-tight;
+    @apply mt-5 mb-2 text-[17px] leading-[1.2] font-semibold tracking-tight;
   }
   & h2 {
-    @apply mt-5 mb-2 text-[15.5px] font-semibold tracking-tight;
+    @apply mt-5 mb-2 text-[15.5px] leading-[1.333] font-semibold tracking-tight;
   }
   & :is(h3, h4, h5, h6) {
-    @apply mt-4 mb-1.5 text-[14px] font-semibold;
+    @apply mt-4 mb-1.5 text-[14px] leading-[1.4] font-semibold;
   }
   & :is(p, ul, ol, blockquote) {
     @apply my-2.5;
   }
-  & :is(a, [data-streamdown='link']):not([data-conversation-mention]) {
-    @apply font-normal text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand;
+  & strong {
+    @apply font-semibold;
   }
-  & [data-streamdown='list-item'] {
+  & :is(a, button.link):not([data-conversation-mention], [data-preview-link]) {
+    @apply font-normal wrap-anywhere text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand;
+  }
+  & button.link {
+    @apply inline appearance-none text-left;
+  }
+  & ul {
+    @apply list-inside list-disc;
+  }
+  & ol {
+    @apply list-inside list-decimal;
+  }
+  & li :is(ul, ol) {
+    @apply pl-6;
+  }
+  & li {
     @apply py-0.5;
   }
+  & li > p {
+    @apply inline;
+  }
   & blockquote {
-    @apply border-l-2 border-border pl-3 text-muted-foreground;
+    @apply border-l-2 border-border pl-3 text-muted-foreground italic;
   }
   & hr {
     @apply my-5 border-border/70;
   }
-  & [data-streamdown='inline-code'] {
-    @apply rounded-sm bg-muted px-1 py-px font-mono text-[0.86em];
+  & :is(sup, sub) {
+    @apply text-sm;
   }
-  & [data-streamdown='code-block'] {
-    @apply my-3 gap-0 rounded-md border-border/80 bg-terminal p-0;
+  & :not(pre) > code {
+    @apply rounded-sm bg-muted px-1 py-px font-mono text-[0.86em] leading-[1.43];
   }
-  & [data-streamdown='code-block-header'] {
-    @apply h-7 px-3 text-[11px];
+  & .image {
+    @apply relative my-4 inline-block;
+    & img {
+      @apply max-w-full rounded-lg;
+    }
   }
-  & [data-streamdown='code-block'] > div.absolute {
-    @apply top-0 right-0.5;
+  & .code-block {
+    @apply relative my-3 flex w-full flex-col rounded-md border border-border/80 bg-terminal;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
   }
-  & [data-streamdown='code-block-actions'] {
-    @apply border-none bg-transparent;
+  & .code-block-header {
+    @apply flex h-7 items-center px-3 text-[11px] leading-[1.333] text-muted-foreground;
+    & > span {
+      @apply ml-1 font-mono lowercase;
+    }
+    & > button {
+      @apply absolute top-1 right-2 p-1 text-muted-foreground transition-colors hover:text-foreground;
+    }
   }
-  & [data-streamdown='code-block-body'] {
-    @apply rounded-none border-none bg-transparent px-3 pt-0 pb-2.5 font-mono text-[12px] leading-[1.6];
+  & .code-block pre {
+    @apply max-h-[400px] overflow-auto px-3 pt-0 pb-2.5 font-mono text-[12px] leading-[1.6];
   }
-  & [data-streamdown='table-wrapper'] {
-    @apply my-3 gap-0 rounded-md border-border/80 bg-transparent p-0;
+  & .table {
+    @apply my-3 flex flex-col rounded-md border border-border/80;
+    & > div {
+      @apply overflow-auto rounded-md;
+    }
+    & table {
+      @apply w-full divide-y divide-border;
+    }
+    & thead {
+      @apply bg-muted/50;
+    }
+    & tbody {
+      @apply divide-y divide-border;
+    }
+    & :is(th, td) {
+      @apply px-3 py-1.5 text-[13px] leading-[1.43];
+    }
+    & th {
+      @apply text-left font-semibold whitespace-nowrap;
+    }
   }
-  & [data-streamdown='table-wrapper'] > div {
-    @apply rounded-md border-none bg-transparent;
-  }
-  & [data-streamdown='table-header'] {
-    @apply bg-muted/50;
-  }
-  & :is([data-streamdown='table-header-cell'], [data-streamdown='table-cell']) {
-    @apply px-3 py-1.5 text-[13px];
+  & .sr-only {
+    @apply sr-only;
   }
 }
 
@@ -413,7 +457,7 @@
   & :is(p, ul, ol, blockquote) {
     margin-block: 0.8em;
   }
-  & [data-streamdown='list-item'] {
+  & li {
     padding-block: 0.2em;
   }
   & :is(h1, h2, h3, h4, h5, h6) {
@@ -440,10 +484,10 @@
   & :is(code, pre) {
     letter-spacing: 0;
   }
-  & [data-streamdown='code-block-body'] {
+  & .code-block pre {
     font-size: 12.5px;
   }
-  & :is([data-streamdown='table-header-cell'], [data-streamdown='table-cell']) {
+  & .table :is(th, td) {
     font-size: 13.5px;
     letter-spacing: 0;
   }

@@ -3,7 +3,7 @@ import { Button as ButtonRoot } from '@ui-sdk/solid/button'
 import { cn } from 'cn'
 import { merge, omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 import { buttonVariants } from './button-variants.ts'
 import type { ButtonVariants } from './button-variants.ts'
 

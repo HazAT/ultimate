@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
-const path = (name: string) => `/extensions/${name}/web.tsx`
+const path = (name: string) => `/extensions/${name}/web.solid.tsx`
 
 it('delivers to independent subscribers, isolates sync and async errors, and unsubscribes', async () => {
   const error = new Error('broken handler')

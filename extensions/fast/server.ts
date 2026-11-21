@@ -101,7 +101,7 @@ export function fastStream(
         options?.sessionId !== undefined && definitionFastSessions.has(options.sessionId)
       if (!definitionRequestsPriority && !(await listed()).has(`${model.provider}/${model.id}`))
         return api.streamSimple(model, context, options)
-      // Pi upstream: @earendil-works/pi-ai@1.5.2 src/api/simple-options.ts — simple stream options drop serviceTier, so it goes into the payload. Drop when buildBaseOptions forwards serviceTier and Pi Durable stream settings accept it.
+      // Pi upstream: @earendil-works/pi-ai@1.6.0 src/api/simple-options.ts — simple stream options drop serviceTier, so it goes into the payload. Drop when buildBaseOptions forwards serviceTier and Pi Durable stream settings accept it.
       return api.streamSimple(model, context, {
         ...options,
         onPayload: async (payload, payloadModel) => {

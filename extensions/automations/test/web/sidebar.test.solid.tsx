@@ -9,11 +9,13 @@ import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { refreshList } from '../../live.solid.tsx'
 import type { AutomationListItem } from '../../refs.ts'
 import { AutomationsSection } from '../../sidebar.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   stream: undefined as FakeSource | undefined,
+  updated: undefined as AutomationListItem[] | undefined,
   writes: [] as { key: string; value: unknown; source: string | null }[],
 }))
 const automations: AutomationListItem[] = ['Check reports', 'Review notes'].map((name, index) => ({
@@ -34,8 +36,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
   const fetch = async (path: RequestInfo | URL, init?: RequestInit) => {
     if (path === '/api/extensions/automations/actions/list')
-      return Response.json({ result: automations })
-    if (path !== '/api/ui') return Response.json({ ok: true })
+      return Response.json({ result: harness.updated ?? automations })
+    if (path !== '/api/ui') return Response.json({ ok: true, refused: {} })
     const { ops } = JSON.parse(init!.body as string) as UiUpdateRequest
     const source = new Headers(init?.headers).get(SOURCE_HEADER)
     for (const { key, value } of ops) harness.writes.push({ key, value, source })
@@ -66,6 +68,12 @@ it('lets an agent collapse the automation rows and persist the change as theirs'
   flush()
   const rows = () => container.querySelectorAll('[data-sidebar-automation]')
   expect(rows()).toHaveLength(2)
+  harness.updated = [{ ...automations[0], name: 'Read reports' }, automations[1]]
+  await refreshList()
+  flush()
+  expect(container.querySelector('[data-sidebar-automation="A1"]')?.textContent).toContain(
+    'Read reports',
+  )
   const collapsible = agent
     .snapshot()
     .find((entry) => !entry.offPage && entry.label === 'Automations')

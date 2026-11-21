@@ -698,20 +698,17 @@ it('lets a standing agent message the user and ends its run with it', async () =
   const view = await f.recipient.context(context)
   expect(view.entries.at(-1)?.kind).toBe('pi.tool-result')
 })
-it('refuses messages to the user from conversations that are not standing agents or branches', async () => {
+it('lets an ownerless conversation without a parent or starter message the user', async () => {
   const f = await fixture()
-  await f.send('@scout', 'SEND ' + JSON.stringify({ to: 'user', text: 'Update' }))
-  await until(async () => (await replies(f)).length === 1)
-  expect((await f.log())!.messages).toHaveLength(2)
-  expect(f.observed.join('\n')).toContain(
-    'Only @ultimate, standing agents and branches message the user; send this to the conversation that started you.',
-  )
-  await f.send('user', 'Relayed update')
-  expect((await f.log())!.messages.at(-1)).toMatchObject({
-    from: 1,
-    to: 'user',
-    text: 'Relayed update',
-  })
+  await (
+    await f.recipient.submit(
+      { type: 'input', content: 'SEND ' + JSON.stringify({ to: 'user', text: 'Design ready' }) },
+      context,
+    )
+  ).wait(context)
+  expect((await f.log())!.messages).toMatchObject([
+    { from: f.recipient.id, to: 'user', text: 'Design ready', state: 'delivered' },
+  ])
 })
 it('resolves a standing address and returns unanswered inputs as failure replies', async () => {
   const f = await fixture()
@@ -914,13 +911,9 @@ it('lets a subagent message only the conversation that started it', async () => 
   const view = await (await f.opened.harness.conversation(workerId, context))!.context(context)
   expect(JSON.stringify(view.entries)).toContain('Use message only to update #1')
 
-  // An owned conversation that is no subagent cannot bypass @ultimate either.
   const run = await child(false)
   await send(run, 'user')
-  expect((await f.log())!.messages).toHaveLength(1)
-  expect(f.observed.join('\n')).toContain(
-    'Only @ultimate, standing agents and branches message the user',
-  )
+  expect((await f.log())!.messages.at(-1)).toMatchObject({ from: run, to: 'user' })
 })
 it('refuses self, unknown ids, tally roots and unknown names with valid names', async () => {
   const f = await fixture()

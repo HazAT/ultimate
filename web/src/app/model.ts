@@ -30,7 +30,7 @@ export function slotsOf(tools: LiveState['tools']): Map<string, ToolSlot> {
   return new Map((tools ?? []).map((slot) => [slot.callId, slot]))
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.5.2 src/harness/tool.ts — internal trailing <harness> text block duplicates diagnostics and is stripped for display. Drop when Pi exports a diagnostic-free tool-result content accessor.
+// Pi upstream: @earendil-works/pi-durable@1.6.0 src/harness/tool.ts — internal trailing <harness> text block duplicates diagnostics and is stripped for display. Drop when Pi exports a diagnostic-free tool-result content accessor.
 export function resultText(result: ToolResult): string {
   const texts = result.message.content.flatMap((block) =>
     block.type === 'text' ? [block.text] : [],
@@ -57,7 +57,9 @@ export function toolCallView(
   const { result, slot, streaming, busy } = context
   let status: ToolCallView['status']
   if (result) status = result.message.isError ? 'error' : 'done'
-  else if (slot) status = slot.status === 'done' ? 'interrupted' : slot.status
+  else if (slot)
+    status =
+      slot.status === 'done' ? 'interrupted' : slot.status === 'running' ? 'running' : 'pending'
   else if (streaming) status = 'streaming'
   else status = busy ? 'pending' : 'interrupted'
 

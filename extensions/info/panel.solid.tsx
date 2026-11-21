@@ -4,7 +4,7 @@ import { For, Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { CopyValue } from '@/components/ui/copy-value.solid.tsx'
 import { Row, Rows } from '@/components/ui/rows.solid.tsx'
-import type { SystemInfo, Usage } from '@/sdk'
+import type { SystemInfo, Usage } from '@/sdk/solid'
 import {
   cn,
   elidePath,

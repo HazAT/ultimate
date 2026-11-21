@@ -224,7 +224,7 @@ export default (host: ExtensionHost) => {
   return defineExtension({
     name: 'plan',
     hooks: [
-      // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
+      // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
       hook(GenerationTask, {
         beforeInput: async (_input, { tx, conversationId }) => {
           if ((await tx.doc(Started, conversationId)).started) return undefined

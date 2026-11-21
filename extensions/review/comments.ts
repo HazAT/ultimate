@@ -61,7 +61,7 @@ export function draftsKey(spec: string, conversation?: ConversationId) {
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
-const line = (value: unknown) =>
+const line = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 
 export function checkReview(input: unknown): ReviewComments {
@@ -143,6 +143,8 @@ export function code(value: string) {
     escapedControlCharacters.startsWith('`') || escapedControlCharacters.endsWith('`') ? ' ' : ''
   return `${delimiterLongerThanContentBackticks}${pad}${escapedControlCharacters}${pad}${delimiterLongerThanContentBackticks}`
 }
+
+export const shortSpec = (spec: string) => spec.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/g, '$1')
 
 export const location = (comment: Pick<ReviewComment, 'file' | 'start' | 'end'>) =>
   `${comment.file}:${comment.start}${comment.end === comment.start ? '' : `-${comment.end}`}`

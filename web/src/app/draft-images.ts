@@ -1,4 +1,4 @@
-import type { DraftFile, PastedImage } from '@/components/image-paste'
+import type { DraftFile, PastedImage } from './attachments.ts'
 
 export const maxStoredImageChars = 2_000_000
 

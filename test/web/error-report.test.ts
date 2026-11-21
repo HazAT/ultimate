@@ -1,13 +1,6 @@
-import { expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import type { SystemInfo } from '../../shared/protocol.ts'
-import { errorReport, stackFrames } from '../../web/src/app/boundary.tsx'
-
-// The real hooks connect to a server; errorReport reads only the system snapshot it is given.
-vi.mock('../../web/src/sdk/hooks.ts', async () => ({
-  ExtensionNameContext: (await import('react')).createContext<string | undefined>(undefined),
-  useExtensions: () => [],
-  useSystem: () => undefined,
-}))
+import { errorReport, stackFrames } from '../../web/src/app/error-report.ts'
 
 const system = {
   build: { id: 'b1', generation: 4 },
@@ -56,14 +49,14 @@ it('shortens Vite URLs in stack frames to paths', () => {
     context: 'a component threw',
     stack: [
       'at Crash (http://127.0.0.1:4747/@fs/home/me/.ultimate/extensions/shell/web.tsx?t=17:4:8)',
-      'at Slot (http://127.0.0.1:4747/@fs/home/me/ultimate/web/src/app/boundary.tsx:305:24)',
+      'at Slot (http://127.0.0.1:4747/@fs/home/me/ultimate/web/src/compat/boundary.tsx:305:24)',
       'at ExtensionBoundary (http://127.0.0.1:4747/src/app/boundary.tsx?t=17:162:8)',
     ].join('\n'),
   })
   expect(report).toContain(
     [
       'at Crash (~/.ultimate/extensions/shell/web.tsx:4:8)',
-      'at Slot (web/src/app/boundary.tsx:305:24)',
+      'at Slot (web/src/compat/boundary.tsx:305:24)',
       'at ExtensionBoundary (src/app/boundary.tsx:162:8)',
     ].join('\n'),
   )

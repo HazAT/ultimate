@@ -157,7 +157,15 @@ export function Chip() {
   )
 }
 
-export function Details() {
+export function Details(props: { name: string }) {
+  return (
+    <Show when={props.name === 'mcp'}>
+      <ServerDetails />
+    </Show>
+  )
+}
+
+function ServerDetails() {
   const { servers, refresh } = useServers()
   return (
     <Show

@@ -3,7 +3,7 @@ import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { BACKGROUND_CONTEXT as context, withAbortSignal } from '@earendil-works/chord/context'
 import {
   defineDoc,
   defineExtension,
@@ -31,10 +31,12 @@ import type { ActionInput } from '../../lib/actions.ts'
 import { updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import { Overview, overviewBehavior } from './overview.ts'
 import { activityBehavior } from './activity.ts'
+import { activityStats } from './activity-stats.ts'
 import { compactionEvents } from './compactions.ts'
 import { contextBehavior } from './context.ts'
 import { ContextUsageDoc, ConversationsApi, Marks, Previews, Release, Trees } from './api.ts'
 import {
+  ActivityAction,
   ConcludeAction,
   Concluded,
   RenameAction,
@@ -125,6 +127,9 @@ async function effectiveSummaryModel(host: ExtensionHost) {
 export const order = 100
 
 export const actions = {
+  activity: implementAction(ActivityAction, (args, { host, signal }) =>
+    activityStats(host.harness(), conversationIds(args), withAbortSignal(signal, context)),
+  ),
   conclude: implementAction(ConcludeAction, async (args, { host, conversationId, device }) =>
     concludeAndStopOtherTrees(host, conversationIds(args), device ? undefined : conversationId),
   ),
@@ -348,7 +353,7 @@ export default (host: ExtensionHost) => {
     ...summaries,
     hooks: [
       ...summaries.hooks,
-      // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
+      // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
       hook(GenerationTask, {
         beforeInput: async (_input, api) => {
           await resumeWithAncestorsIn(api.tx, [api.conversationId])

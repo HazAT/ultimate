@@ -7,8 +7,10 @@ import {
 import {
   defineDoc,
   defineExtension,
+  defineTask,
   GenerationTask,
   hook,
+  hookTask,
   InboxDoc,
 } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
@@ -106,6 +108,75 @@ it('places hook entries transactionally before initial and queued run inputs, no
     expect(
       (await f.root.context(context)).entries.filter((entry) => entry.kind === 'input-test.note'),
     ).toHaveLength(2)
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
+it('places hook entries before a follow-up queued while an onYield task decides', async () => {
+  const home = await temp()
+  const gate = Promise.withResolvers<void>()
+  let deciding = false
+  const decided = {
+    status: 'terminal' as const,
+    outcome: { status: 'completed' as const, result: null },
+  }
+  const Decide = defineTask<null, { phase: 'decide' }, null>({
+    name: 'input-test.decide',
+    version: 1,
+    initial: () => ({ phase: 'decide' }),
+    abort: async (_task, runtime, ctx) => runtime.commit(() => decided, ctx),
+    phases: {
+      decide: async (_task, runtime, ctx) => {
+        deciding = true
+        await gate.promise
+        await runtime.commit(() => decided, ctx)
+      },
+    },
+  })
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  let yields = 0
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      tasks: [Decide],
+      hooks: [
+        hook(GenerationTask, {
+          beforeInput: async () => ({
+            entries: [
+              {
+                kind: 'input-test.note',
+                data: {},
+                model: [{ role: 'user', content: 'before', timestamp: 1 }],
+              },
+            ],
+          }),
+          onYield: () => (yields++ === 0 ? { tasks: [hookTask(Decide, null)] } : undefined),
+        }),
+      ],
+    }),
+  )
+  prepared.faux!.setResponses([fauxAssistantMessage('first answer'), fauxAssistantMessage('next')])
+  const f = await prepared.open()
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => deciding)
+    const next = await f.root.submit(
+      { type: 'input', content: 'next', whenBusy: 'followUp' },
+      context,
+    )
+    gate.resolve()
+    await Promise.all([first.wait(context), next.wait(context)])
+    const messages = (await f.root.context(context)).messages
+    expect(
+      messages.flatMap((message) => (message.role === 'user' ? [message.content] : [])),
+    ).toEqual(['before', 'first', 'before', 'next'])
   } finally {
     gate.resolve()
     await f.close()
