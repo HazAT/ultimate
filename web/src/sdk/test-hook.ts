@@ -144,6 +144,7 @@ export function createTestHook(
     const done: ActResult['steps'] = []
     const appeared = new Set<string>()
     let values: ActResult['values'] = {}
+    const touchedFields = new Map<string, [string, unknown]>()
     const touched = new Set<string>()
     let error: ActResult['error']
     for (const [index, step] of steps.entries()) {
@@ -157,6 +158,8 @@ export function createTestHook(
       for (const item of one.appeared) appeared.add(item.ref)
       values = one.values
       for (const item of one.steps) touched.add(item.ref)
+      for (const field of Object.entries(one.values))
+        if (touched.has(field[0].split(' ')[0])) touchedFields.set(field[0].split(' ')[0], field)
       if (!one.ok) {
         error = one.error && { ...one.error, step: index }
         break
@@ -169,6 +172,10 @@ export function createTestHook(
     const open = (await Promise.all([...touched].map(now))).filter(
       (item): item is UiComponent => item?.open === true,
     )
+    if ('more' in values)
+      for (const [ref, [name, value]] of touchedFields)
+        if (!Object.keys(values).some((key) => key.startsWith(`${ref} `)))
+          values = { [name]: value, ...values }
     return {
       ok: !error,
       ...(error && { error }),

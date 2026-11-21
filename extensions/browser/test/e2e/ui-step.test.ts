@@ -37,6 +37,7 @@ export function Digest() {
         <PopoverContent>
           Sent on Mondays
           <Button aria-label="Archive" onClick={() => setPressed('popover archive')}>Archive</Button>
+          <Switch aria-label="Monday only" />
         </PopoverContent>
       </Popover>
     </>
@@ -216,14 +217,15 @@ it('acts on the one control with the exact label, also one an earlier step broug
     {
       ui: 'act',
       steps: [
-        { ref: 'Weekly digest', action: 'setChecked', args: [true] },
         { ref: 'Digest details', action: 'setOpen', args: [true] },
+        { ref: 'Monday only', action: 'setChecked', args: [true] },
+        { ref: 'Digest details', action: 'setOpen', args: [false] },
       ],
     },
   ])
-  const { open, values } = later(1) as { open: Component[]; values: Record<string, unknown> }
-  expect(open.map((item) => item.label)).toEqual(['Digest details'])
-  expect(Object.entries(values).find(([key]) => key.endsWith(' Weekly digest'))?.[1]).toBe(true)
+  const { values } = later(1) as { values: Record<string, unknown> }
+  expect(Object.entries(values).find(([key]) => key.endsWith(' Monday only'))?.[1]).toBe(true)
+  expect(Object.keys(values).some((key) => key.endsWith(' Weekly digest'))).toBe(true)
 })
 
 it('until a control’s state wakes on its change, by label or by ref, and a missing ref is never a label', async () => {
