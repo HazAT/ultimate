@@ -25,7 +25,7 @@ The contribution:
 | ------------- | --------------------------------------------------------------------------------------------------------- |
 | `id`          | Global and stored in `shell.surface`: use the extension name (`commits`) or prefix it (`commits.graph`)   |
 | `title`       | Shown in the switcher, the title bar, ⌘K, and the window title                                            |
-| `icon`        | A `lucide-react` icon                                                                                     |
+| `icon`        | An `@lucide/solid` icon                                                                                   |
 | `description` | One line under the title in the switcher                                                                  |
 | `order`       | Position after Agent; lower first (default 0), then by title. It decides which `mod+<n>` selects it       |
 | `component`   | The surface itself                                                                                        |
