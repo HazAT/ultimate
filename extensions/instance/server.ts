@@ -15,7 +15,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve as resolvePath } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@earendil-works/chord/context'
 import { int, nullable, obj, opt, str } from '@earendil-works/pi-schema'
@@ -86,8 +86,8 @@ const PRIVATE_CONFIG_COPIES = [
   'claude-accounts.json',
   'agents',
   'skills',
+  'extensions',
 ]
-const SHARED_CODE_AND_REGISTRY = ['extensions', 'tailscale.json']
 
 export async function seedUserHome(from: string, to: string) {
   const source = join(from, '.ultimate')
@@ -104,7 +104,7 @@ export async function seedUserHome(from: string, to: string) {
       force: false,
     }).catch(missing)
   await makeOwnerWritable(target)
-  for (const name of SHARED_CODE_AND_REGISTRY) await symlink(join(source, name), join(target, name))
+  await symlink(join(source, 'tailscale.json'), join(target, 'tailscale.json'))
 }
 
 export async function linkHome(from: string, to: string) {
@@ -404,6 +404,10 @@ export default function instanceExtension(
     let pendingHome: string | undefined
     try {
       context.abortSignal?.throwIfAborted()
+      if (args.home !== undefined && !isAbsolute(args.home))
+        throw new Error(
+          `home must be an absolute path, got ${JSON.stringify(args.home)}: "~" is not expanded, so build it from $HOME`,
+        )
       if ([...instances.values()].filter(live).length + starts.pending >= 3)
         throw new Error('At most three instances may run at once')
       starts.pending++
@@ -411,8 +415,8 @@ export default function instanceExtension(
       const { cwd, project, conversationId } = await prepare()
       let home: string
       if (args.home) {
-        await mkdir(resolvePath(args.home), { recursive: true })
-        home = await realpath(resolvePath(args.home))
+        await mkdir(args.home, { recursive: true })
+        home = await realpath(args.home)
       } else {
         const stagingBeforeStartupLease = await mkdtemp(join(tmpdir(), '.ultimate-instance-'))
         home = join(tmpdir(), basename(stagingBeforeStartupLease).slice(1))

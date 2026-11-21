@@ -16,7 +16,7 @@ it when done.
 
 ```bash
 SRC=~/.ultimate/projects/<project-home>/state.sqlite   # or chapters/<name>/state.sqlite for a later chapter
-node .ultimate/skills/measure-switch/copy-paused.ts $SRC ~/switch-perf/home
+node .ultimate/skills/measure-switch/copy-paused.ts $SRC $HOME/switch-perf/home
 ```
 
 It reads the source with `VACUUM INTO` (never moves or writes it) and appends a manual pause to the copy's root
@@ -26,7 +26,7 @@ checkout whose `pause` extension matches the source's version. Pick the chapter 
 
 ## 2. Start a preview on it and confirm the pause
 
-`instance start {home: "~/switch-perf/home"}`, then:
+`instance start {home: "<absolute $HOME>/switch-perf/home"}` (an absolute path: `instance` refuses `~`), then:
 
 ```bash
 curl -s -X POST -H 'content-type: application/json' -H "origin: $URL" -d '{"args":null}' \

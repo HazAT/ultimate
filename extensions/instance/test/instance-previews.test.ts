@@ -2,10 +2,12 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { join, resolve as resolvePath } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import {
+import instance, {
   linkHome,
   previewEnv,
   previewWorkspace,
@@ -174,6 +176,45 @@ it('copies linked read-only skills into the preview as owner-writable files', as
 
   expect(await readFile(join(store, 'locked/SKILL.md'), 'utf8')).toBe('x')
   await chmod(join(store, 'locked'), 0o755)
+})
+
+// Regression: previews wrote through linked ~/.ultimate/extensions/* into the user's dotfiles repository.
+it("gives a preview a private copy of the user's linked extensions", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ultimate-preview-extensions-'))
+  homes.push(root)
+  const [dotfiles, user, copy] = ['dotfiles', 'user', 'preview'].map((name) => join(root, name))
+  await mkdir(join(dotfiles, 'shell'), { recursive: true })
+  await writeFile(join(dotfiles, 'shell/server.ts'), 'live')
+  await mkdir(join(user, '.ultimate/extensions'), { recursive: true })
+  await symlink(join(dotfiles, 'shell'), join(user, '.ultimate/extensions/shell'))
+
+  await seedUserHome(user, copy)
+  await writeFile(join(copy, '.ultimate/extensions/shell/server.ts'), 'edited')
+
+  expect(await readFile(join(dotfiles, 'shell/server.ts'), 'utf8')).toBe('live')
+  expect(await readFile(join(copy, '.ultimate/extensions/shell/server.ts'), 'utf8')).toBe('edited')
+})
+
+// Regression: `home: "~/…"` was resolved against the server's cwd and created a literal `~` in the clone.
+it('refuses a home that is not absolute before creating anything', async () => {
+  const name = `ultimate-refused-${randomUUID()}`
+  const extension = instance({
+    want: () => undefined,
+    need: () => ({}),
+    implement: () => {},
+    resource: <T>(_key: string, create: () => T) => create(),
+    onClose: () => {},
+    onOpen: () => {},
+  } as never)
+  const result = await extension.tools![0].execute(
+    { action: 'start', home: `~/${name}` },
+    { conversationId: 1, output: () => {} } as never,
+    BACKGROUND_CONTEXT,
+  )
+
+  expect(result.isError).toBe(true)
+  expect(JSON.stringify(result.output)).toContain('absolute path')
+  expect(existsSync(resolvePath('~', name))).toBe(false)
 })
 
 it('remembers stopped previews across restarts, one per port, the last 50', async () => {
