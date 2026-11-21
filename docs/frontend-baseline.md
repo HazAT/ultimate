@@ -4,6 +4,21 @@ The migration's purpose is a front end that is more robust, faster, simpler and 
 reports its delta on the numbers below against this baseline, and after the UI kit and the first batch of extensions a
 decision gate compares the migrated extensions with their React originals on lines, renders and bundle size.
 
+The migration is done (C5, `f3e6078`): the core and every built-in extension are Solid, and React remains only in the
+lazily loaded compat layer for outside `web.tsx` facets ([React facets on a Solid core](extensions/react-compat.md)).
+Result against pure React (switch and stream for `a0638de4` come from the 2026-11-20 backfill under heavy load and an
+older snapshot, `f3e6078` from a quiet machine on 2026-11-21: read the switch row as direction, not exact gain):
+
+|                                  | `a0638de4` (pure React) | `f3e6078` (C5) |
+| -------------------------------- | ----------------------: | -------------: |
+| Switch, cold / warm              |         748.5 / 273.5 ms |  443.5 / 210 ms |
+| Streamed event: task, mutations  |             6.2 ms, –    |   4.1 ms, 1    |
+| React components per stream op   |                      92 |              0 |
+| Entry assets / all JS, gzip      |       432 / 2 823 KB    | 410 / 3 003 KB |
+| Front-end lines (Solid / compat) |       49 954 (0 / 0)    | 56 750 (48 557 / 2 525) |
+
+The series of every step is `docs/frontend-progress.json`; the sections below say how each number is measured.
+
 Measured on main at `1c5d056` (step 0.3 landed; three Solid files: the keep-warm chip and two kit controls), 2026-11-19,
 on one machine. Speed numbers drift with machine load: compare within one session, medians of repeated runs.
 
