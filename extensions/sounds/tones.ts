@@ -21,8 +21,8 @@ export function setVolume(nextGain01: number) {
 
 export const play = async (sound: Sound) => (await engine()).play(sound)
 
-export const say = async (sound: Sound, text: string, pcm?: ArrayBuffer) =>
-  (await engine()).say(sound, text, pcm)
+export const say = async (sound: Sound, text: string, encodedAudio?: ArrayBuffer) =>
+  (await engine()).say(sound, text, encodedAudio)
 
 export const playNotes = async (notes: readonly Note[], gain01 = 0.18) =>
   (await engine()).playNotes(notes, gain01)

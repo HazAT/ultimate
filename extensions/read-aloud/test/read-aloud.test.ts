@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { actions } from '../server.ts'
 import { plainSpeech, sections } from '../speech.ts'
-import { writeSecret } from '../../secrets/store.ts'
+import type { SpeechService } from '../../speech/api.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { removeTemp, temp } from '../../../test/helpers.ts'
 
@@ -11,10 +11,9 @@ afterEach(async () => {
   for (const root of cleanup.splice(0)) await removeTemp(root)
 })
 
-async function context(rewrite: (input: string) => string, key?: string) {
+async function context(rewrite: (input: string) => string, speak?: SpeechService['speak']) {
   const userHome = await temp()
   cleanup.push(userHome)
-  if (key) await writeSecret(userHome, 'OPENAI_API_KEY', key)
   const asked: string[] = []
   const resources = new Map<string, unknown>()
   const conversations = {
@@ -26,12 +25,8 @@ async function context(rewrite: (input: string) => string, key?: string) {
   }
   const host = {
     userHome,
-    modelRuntime: {
-      getProviderAuthStatus: () => ({ configured: false }),
-      isUsingOAuth: () => false,
-      getAuth: async () => undefined,
-    },
     need: () => conversations,
+    want: () => speak && { speak },
     resource: <T>(name: string, create: () => T) => {
       if (!resources.has(name)) resources.set(name, create())
       return resources.get(name) as T
@@ -43,36 +38,37 @@ async function context(rewrite: (input: string) => string, key?: string) {
 const message =
   'Landed as `95a6f16` (#654228). It changes only test config.\n\n- **Faster checks:** e2e runs on 8 workers.\n- **No retry wait:** a test skips the backoff.'
 
-it('rewrites a section with the summary model, voices it with OpenAI, and serves a replay from the cache', async () => {
-  const fetch = vi
-    .fn<typeof globalThis.fetch>()
-    .mockResolvedValue(new Response(new Uint8Array([1, 2, 3])))
-  vi.stubGlobal('fetch', fetch)
-  const { asked, ctx } = await context((input) => `Spoken: ${plainSpeech(input)}`, 'sk-sentinel')
+it('rewrites a section once with the summary model and has the speech service voice it', async () => {
+  const speak = vi.fn<SpeechService['speak']>(async () => ({
+    audio: 'AQID',
+    mimeType: 'audio/mpeg',
+  }))
+  const { asked, ctx } = await context((input) => `Spoken: ${plainSpeech(input)}`, speak)
   const first = await actions.speak({ text: message, section: 0 }, ctx)
   expect(first).toEqual({
     sections: sections(message).length,
     spoken: `Spoken: ${plainSpeech(sections(message)[0])}`,
-    audio: Buffer.from([1, 2, 3]).toString('base64'),
+    audio: 'AQID',
+    mimeType: 'audio/mpeg',
   })
-  const [url, init] = fetch.mock.calls[0]
-  expect(url).toBe('https://api.openai.com/v1/audio/speech')
-  expect(JSON.parse(init?.body as string)).toMatchObject({
-    model: 'gpt-4o-mini-tts',
-    input: first.spoken,
-  })
+  expect(speak).toHaveBeenCalledWith(
+    {
+      text: first.spoken,
+      openai: expect.objectContaining({ model: 'gpt-4o-mini-tts', voice: 'marin' }),
+      timeoutMs: 60_000,
+    },
+    expect.any(AbortSignal),
+  )
+  expect(asked).toEqual([sections(message)[0]])
   expect(await actions.speak({ text: message, section: 0 }, ctx)).toEqual(first)
-  expect([asked.length, fetch.mock.calls.length]).toEqual([1, 1])
+  expect(asked.length).toBe(1)
 })
 
-it('reads the plain strip when the rewrite drops most of the text, and leaves speech to the browser without a key', async () => {
-  const fetch = vi.fn<typeof globalThis.fetch>()
-  vi.stubGlobal('fetch', fetch)
+it('reads the plain strip when the rewrite drops most of the text, and leaves speech to the browser without the speech service', async () => {
   const { ctx } = await context(() => 'A summary.')
   const result = await actions.speak({ text: message, section: 0 }, ctx)
-  expect(result.audio).toBeNull()
+  expect(result).toMatchObject({ audio: null, mimeType: null })
   expect(result.spoken).toBe(plainSpeech(sections(message)[0]))
-  expect(fetch).not.toHaveBeenCalled()
 })
 
 it('strips what does not work heard and keeps every point', () => {

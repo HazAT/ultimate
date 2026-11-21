@@ -57,8 +57,8 @@ async function sayLine(line: Line) {
     console.warn('Narrator voice failed', error)
     return { audio: null }
   })
-  const pcm = audio ? Uint8Array.from(atob(audio), (c) => c.charCodeAt(0)).buffer : undefined
-  await tones.say(line.sound, line.text, pcm)
+  const encoded = audio ? Uint8Array.from(atob(audio), (c) => c.charCodeAt(0)).buffer : undefined
+  await tones.say(line.sound, line.text, encoded)
 }
 
 function resumeSwitchedNarrator() {
