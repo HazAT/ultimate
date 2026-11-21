@@ -51,7 +51,7 @@ it('opens a linked task when its plan arrives and keeps the row open through edi
       epics: {
         E1: {
           key: 'E1',
-          title: 'Solid migration',
+          title: 'Search history',
           body: 'A plan',
           status: 'in_progress',
           tasks: {

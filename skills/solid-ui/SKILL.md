@@ -297,8 +297,6 @@ Tooling:
   through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
 - A test fixture that registers a Solid facet names it `web.solid.tsx`; `web.tsx` loads the React compat layer and is
   only for testing that layer.
-- Check the entry bundle after a change that may grow it (`node scripts/frontend-weight.ts`, `entryAssetsGzip`);
-  measure each commit in a throwaway detached worktree to find the one that grew it.
 
 ## Testing
 
@@ -340,9 +338,6 @@ Tooling:
   clashes between extensions.
 
 ## Measuring
-
-`docs/frontend-baseline.md` says how each number is measured (`node scripts/frontend-weight.ts`, the `measure-switch`
-skill) and holds the migration's end result against pure React.
 
 A slower switch is found by what one warm switch does, not by guessing: the `measure-switch` skill's `--profile`, a
 DevTools trace of one switch (forced layouts and their stacks). Compare against the parent commit in the same

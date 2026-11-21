@@ -25,7 +25,7 @@ that the composer stays open and says it is too long to keep, and a write the se
 `N comments pending · + note · Discard · Send review (N)` and the header has a **to** picker (standing agents and
 recent conversations). Its default comes from `recipient`. Sending posts one `review.comments` input into that
 conversation; the drafts it sent clear (ones added meanwhile stay), and the footer links to it (`Sent to #id`), or
-says why it was not sent. The recipient's transcript shows a review card on the user's side (`card.tsx`), each
+says why it was not sent. The recipient's transcript shows a review card on the user's side (`card.solid.tsx`), each
 comment's `file:line` chip opening Review there. The model reads `reviewText` (`comments.ts`):
 `Review of \`<spec>\` (N comments)`, the note, then per comment `` `path:start-end`(old|new) ``, a fenced excerpt
 (language from the extension) and the text. Paths and specs are inline code delimited by a backtick run longer than any

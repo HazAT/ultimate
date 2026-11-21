@@ -162,11 +162,11 @@ Server side, imported in one direction (`log`, `images`, `addresses`, `questions
 - `addresses.ts`: resolving `to`, sender names, a subagent's parent and the lander.
 - `images.ts`, `questions.ts`, `log.ts`: forwarded images, questions and the `board.open` line, the bounded log.
 
-`api.ts` and `refs.ts` are the contract; `caller.ts` is shared with the browser; the `.tsx` files are the UI.
+`api.ts` and `refs.ts` are the contract; `caller.ts` is shared with the browser; the `.solid.tsx` files are the UI.
 
 ## UI
 
-There is no Messages surface: everything renders in transcripts. Every sender has a stable accent (`accent.tsx`).
+There is no Messages surface: everything renders in transcripts. Every sender has a stable accent (`accent.ts`).
 
 - **Cards:** typed messages and replies render as compact cards with Source / Return navigation, showing reply or
   one-way and the delivery mode. A `message` call renders as an outgoing card with its live state; a `branch` call as a

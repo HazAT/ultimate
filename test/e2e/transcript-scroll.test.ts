@@ -1,5 +1,4 @@
-// The transcript's own scroll-to-bottom (web/src/app/follow.ts) replaced use-stick-to-bottom in the core switch's step
-// C2. It must follow a streaming reply, let the reader scroll up and stay there, take a wheel inside a tool's output
+// The transcript's own scroll-to-bottom (web/src/app/follow.ts) must follow a streaming reply, let the reader scroll up and stay there, take a wheel inside a tool's output
 // without unpinning, return with the scroll button or a sent message, and keep the row the reader looks at in place
 // when earlier history arrives above it.
 import { join, resolve } from 'node:path'

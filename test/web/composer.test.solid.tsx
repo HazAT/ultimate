@@ -403,10 +403,10 @@ it('keeps the queued row and its cancel when a React inbox renderer throws', asy
 
 it('mounts a React inbox renderer through the bridge, with the core row as its core', async () => {
   await registry.setLoaders({
-    '/extensions/legacy/web.tsx': async () => ({
+    '/extensions/outside/web.tsx': async () => ({
       default: {
         inbox: ({ item, core }: { item: { id: number }; core: ReactNode }) =>
-          h('div', { 'data-legacy-inbox': item.id }, core),
+          h('div', { 'data-react-inbox': item.id }, core),
       },
     }),
   })
@@ -417,9 +417,9 @@ it('mounts a React inbox renderer through the bridge, with the core row as its c
   const container = renderSolid(() => <Composer />)
   await settle()
   flush()
-  const legacy = container.querySelector('[data-legacy-inbox="110"]')
-  expect(legacy?.textContent).toContain('queued steer')
-  expect(legacy?.querySelector('[aria-label^="Cancel queued input 110"]')).not.toBeNull()
+  const react = container.querySelector('[data-react-inbox="110"]')
+  expect(react?.textContent).toContain('queued steer')
+  expect(react?.querySelector('[aria-label^="Cancel queued input 110"]')).not.toBeNull()
   await registry.setLoaders({})
 })
 
