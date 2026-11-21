@@ -35,7 +35,7 @@ async function startProjectOnDemand(
   const lockPath = join(projectHome, 'ultimate.lock')
   execFile('ultimate', [projectInfo.root, '--no-open'], {
     stdio: 'ignore',
-    env: { ...process.env, ULTIMATE_SUPERVISED: '1' },
+    env: { ...process.env, ULTIMATE_SUPERVISED: '1', ULTIMATE_HOME: projectHome },
   })
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
