@@ -44,10 +44,7 @@ export function ModelButton() {
         {(current) => <FamilyDot color={current().color} class="mx-0.5" />}
       </Show>
       <span
-        class={cn(
-          'flex min-w-0',
-          !loading() && (ref() ? 'text-foreground/85' : 'text-warning'),
-        )}
+        class={cn('flex min-w-0', !loading() && (ref() ? 'text-foreground/85' : 'text-warning'))}
       >
         <Show
           when={!loading() && family()}
