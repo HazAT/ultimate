@@ -10,7 +10,7 @@ transcript's parts from `@/sdk/parts.solid.tsx` (`Card`, `Fold`, `MessageActions
 read another extension's point with its `Provided`, which renders an `island(C)` provider as Solid and a React one through
 the bridge; a React host's `Provided` renders an `island(C)` provider as an element. Points meant for `island(C)`
 providers take an object input (`MessageAnswers`, `MessageExtras`: `{ message }`; `LandingExtras`: `{ conversation }`).
-React callers outside the transcript (inbox's reading pane, side chat, voice-live, review's surface, sidebar, lineage)
+React callers outside the transcript (inbox's reading pane, side chat, voice-live, review's surface, lineage)
 reach the moved parts through `island` wrappers in the owner's `ui.tsx`; voice-live keeps a small React `Bubble` shell
 because it passes React prompt and answer nodes into it.
 
@@ -53,13 +53,13 @@ review's link overlay are `island(C)`. Review's `workspaces.review` point provid
 Conversations' standing empty state and MCP's extension details are island providers; the Automations panel reads the
 shell's panel and requested conversation state directly in Solid.
 
-**Remaining:** 26 rows (a row is one part or a group of one extension's parts). By core host:
+**Summary (after C4b):** 38 rows (a row is one part or a group of one extension's parts). By core host:
 
 | Core host                                                       | Rows | Extensions |
 | --------------------------------------------------------------- | ---- | ---------- |
-| The transcript's points and overlays (host done in C2)          | 6    | 6          |
-| The sidebar (React rows and sections other extensions provide)  | 3    | 3          |
-| Panel and surface hosts, System's tab host, documents' views    | 10   | 7          |
+| The transcript's points and overlays (host done in C2)          | 11   | 10         |
+| The sidebar (React providers bridged into its Solid host)       | 8    | 8          |
+| Panel and surface hosts, System's tab host, documents' views    | 11   | 8          |
 | The composer (React parts the Solid host mounts)                | 2    | 2          |
 | React points of other extensions (onboarding, the Agents panel) | 5    | 5          |
 
@@ -85,11 +85,19 @@ breaks them unless they move to `island(C)` first.
 
 ## The sidebar
 
-| Extension | Part                         | Where              | Notes                   | Moves in |
-| --------- | ---------------------------- | ------------------ | ----------------------- | -------- |
-| phase     | provided `ConversationPhase` | `phase/web.tsx`    | also read by voice-live | C4       |
-| instance  | provided `PreviewUp`         | `instance/web.tsx` | preview marks           | C4       |
-| inbox     | provided `UnderUltimate`     | `inbox/web.tsx`    | returns an island       | C4       |
+The sidebar and its title bar contributions are Solid (C4b). `sidebar.top` uses `Slot` to render contributions
+in either framework. The remaining React providers sit behind the bridge until their own extensions move:
+
+| Extension  | Part                                   | Where                | What the Solid host reads                                 |
+| ---------- | -------------------------------------- | -------------------- | --------------------------------------------------------- |
+| phase      | `ConversationPhase`                    | `phase/web.tsx`      | The phase word and waiting flag, not its React label      |
+| plan       | `ConversationTask`, `ConversationEpic` | `plan/web.tsx`       | Task title and epic data; `ConversationTaskChip` is Solid |
+| instance   | `PreviewUp`                            | `instance/web.tsx`   | Whether the branch has a running preview                  |
+| pause      | `ParkedRuns`                           | `pause/web.tsx`      | Which conversations' runs are parked                      |
+| review     | `Review`                               | `review/web.tsx`     | Optional actions for reviews, commits, and edits          |
+| side-chat  | `UnderUltimate`, `Unlisted`            | `side-chat/web.tsx`  | Side-chat rows and conversations to exclude               |
+| voice-live | `UnderUltimate`, `Unlisted`            | `voice-live/web.tsx` | The Voice row and its conversation to exclude             |
+| inbox      | `UnderUltimate`                        | `inbox/web.tsx`      | The Inbox row, returned as an island                      |
 
 ## Panel and surface hosts
 
@@ -123,7 +131,7 @@ The host is Solid (C3); these React parts mount through the bridge and wait on t
 | side-chat   | provided `CardActions` (`useTalkItThrough`)                                                                                                         | `side-chat/web.tsx` | questions' Solid answer card, through `Provided`                    | any (provider) |
 | plan        | provided `LandedNote`                                                                                                                               | `plan/web.tsx`      | workspaces' Solid landing card, through `Provided`                  | any (provider) |
 | models      | `FamilyPopover`, `AddFamily`, `moveFeature` (`family-editor.tsx`); `FamilyDot`, `FamilyLabel`, `useFamilies`, `usePicks` (`families.tsx`, `ui.tsx`) | `models/`           | subagents' Agents panel and definition form, onboarding's Get ready | C4             |
-| automations | `useAutomations`, `timerWaits` (`ui.tsx`)                                                                                                           | `automations/`      | sidebar, system                                                     | C4             |
+| automations | `useAutomations`, `timerWaits` (`ui.tsx`)                                                                                                           | `automations/`      | System (the sidebar uses `ui.solid.tsx`)                            | C4             |
 
 ## Shared state and keys
 

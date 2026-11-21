@@ -75,6 +75,11 @@ list. No state-key migration runs automatically.
   `{ resumed: number[] }` for the removed ids. The next input recreates a released checkout from the target tip;
   Resume itself does not create one.
 
+`activity {ids:number[]}` returns `{ [id]: { turns, calls, cost, lastAt? } }` for the sidebar's in-flight rows.
+It counts each conversation's own inputs and tool calls, excluding inherited history, and sums model and tool spend in
+`pi.usage` in dollars. `lastAt` is the newest model message timestamp in Unix milliseconds. Unknown ids are omitted;
+later reads count only newly appended entries, using an in-process checkpoint rather than new stored state.
+
 The single-conversation actions below reject bad args, unknown conversations, and subagents:
 
 - `rename {id, title}`: sets the `ultimate.metadata` title, with whitespace runs (newlines too) collapsed to one space,

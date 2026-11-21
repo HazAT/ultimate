@@ -3,7 +3,8 @@ Hands-off goals: put @ultimate on a goal and go away; it decides what it would o
 ## Flow
 
 1. The user opens ⌘K **Go hands-off…** and writes the goal in their own words (what to reach, and when to stop if
-   they want). User-only `start` records goal N in the `goal` document on conversation 1 and submits a `goal.started`
+   they want), or presses **Start this goal** on a goal @ultimate proposed with `goal {action: 'propose', text}`, after
+   editing it if they like. User-only `start` records goal N in the `goal` document on conversation 1 and submits a `goal.started`
    input to @ultimate (request id `goal.started:N`, a follow-up when busy). Only one goal is open at a time.
 2. While the goal is open, every run of @ultimate starts with a `goal.note`: the goal, its criteria with their state,
    and the rule: decide instead of asking, record each decision, keep going. The note is per input, never a
@@ -40,10 +41,13 @@ and the rest is @ultimate's judgement. Pause in the status line stops everything
   hands-off**; once ended, it points to the report.
 - `goal.report`: the outcome (met, stuck, ended by you), the summary, the criteria and every decision with its time,
   its conversation, what it would have asked, what it picked and why, and any screenshots it judged.
+- `goal {action: 'propose'}`: the proposed goal in an editable field and **Start this goal**, disabled with "Goal N is
+  still open" while one is; once started from it, the goal's text and "you started it as goal N". The goal keeps the
+  call id as `proposal`.
 - A quiet **Hands-off** mark in the status line while a goal is open; it opens @ultimate.
 
 ## Actions
 
-- `start { text }` → the new goal. User-only.
+- `start { text, proposal? }` → the new goal; `proposal` is the id of the proposal's tool call. User-only.
 - `end` → the ended goal. User-only.
 - `images { goal, entry }` → the images of a decision's screenshot entry, for the report card.

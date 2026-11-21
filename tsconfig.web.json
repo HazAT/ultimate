@@ -43,6 +43,7 @@
     "extensions/messages/working.ts",
     "extensions/projects/links.ts",
     "extensions/sidebar/colour.ts",
+    "extensions/sidebar/points.ts",
     "extensions/cloud/types.ts",
     "extensions/conversations/mark-style.ts",
     "extensions/conversations/points.ts",

@@ -5,6 +5,7 @@ import { For, Show, createMemo } from 'solid-js'
 import { Tool, ToolContent, ToolHeader, ToolSection } from '@/components/ai/tool.solid.tsx'
 import { useToolDuration } from '@/sdk/parts.solid.tsx'
 import type { ToolCallView } from '@/sdk'
+import { ProposedGoal } from './propose.solid.tsx'
 
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 const prose = 'font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90'
@@ -33,6 +34,22 @@ function headline(args: ToolCallView['args']): [string, string?] {
 }
 
 export function GoalCall(props: { call: ToolCallView; core: JSX.Element }) {
+  return (
+    <Show
+      when={props.call.status !== 'error' && props.call.status !== 'interrupted'}
+      fallback={props.core}
+    >
+      <Show
+        when={props.call.args.action !== 'propose'}
+        fallback={<ProposedGoal call={props.call} />}
+      >
+        <GoalTool call={props.call} />
+      </Show>
+    </Show>
+  )
+}
+
+function GoalTool(props: { call: ToolCallView }) {
   const duration = useToolDuration(() => props.call)
   const args = () => props.call.args
   const title = createMemo(() => headline(args()))
@@ -43,48 +60,43 @@ export function GoalCall(props: { call: ToolCallView; core: JSX.Element }) {
   const summary = () => words(args().summary)
   const paused = () => args().action === 'pause'
   return (
-    <Show
-      when={props.call.status !== 'error' && props.call.status !== 'interrupted'}
-      fallback={props.core}
-    >
-      <Tool>
-        <ToolHeader
-          aria-label={`Goal tool call #${props.call.id}`}
-          icon={Flag}
-          meta={duration()}
-          name=""
-          state={props.call.status}
-          title={
-            <>
-              <span class="text-foreground">{title()[0]}</span>
-              <Show when={title()[1]}>
-                <span> · {title()[1]}</span>
-              </Show>
-            </>
-          }
-        />
-        <ToolContent>
-          <Show when={criteria().length}>
-            <ToolSection label="Done means">
-              <ol class={`list-decimal space-y-0.5 pl-5 ${prose}`}>
-                <For each={criteria()} keyed={false}>
-                  {(item) => <li>{item()}</li>}
-                </For>
-              </ol>
-            </ToolSection>
-          </Show>
-          <Show when={reason() && !paused()}>
-            <ToolSection label="Why">
-              <p class={prose}>{reason()}</p>
-            </ToolSection>
-          </Show>
-          <Show when={summary() || paused() || args().action === 'failed'}>
-            <ToolSection label={summary() ? 'Summary' : undefined}>
-              <p class={prose}>{summary() || reason() || props.call.output}</p>
-            </ToolSection>
-          </Show>
-        </ToolContent>
-      </Tool>
-    </Show>
+    <Tool>
+      <ToolHeader
+        aria-label={`Goal tool call #${props.call.id}`}
+        icon={Flag}
+        meta={duration()}
+        name=""
+        state={props.call.status}
+        title={
+          <>
+            <span class="text-foreground">{title()[0]}</span>
+            <Show when={title()[1]}>
+              <span> · {title()[1]}</span>
+            </Show>
+          </>
+        }
+      />
+      <ToolContent>
+        <Show when={criteria().length}>
+          <ToolSection label="Done means">
+            <ol class={`list-decimal space-y-0.5 pl-5 ${prose}`}>
+              <For each={criteria()} keyed={false}>
+                {(item) => <li>{item()}</li>}
+              </For>
+            </ol>
+          </ToolSection>
+        </Show>
+        <Show when={reason() && !paused()}>
+          <ToolSection label="Why">
+            <p class={prose}>{reason()}</p>
+          </ToolSection>
+        </Show>
+        <Show when={summary() || paused() || args().action === 'failed'}>
+          <ToolSection label={summary() ? 'Summary' : undefined}>
+            <p class={prose}>{summary() || reason() || props.call.output}</p>
+          </ToolSection>
+        </Show>
+      </ToolContent>
+    </Tool>
   )
 }

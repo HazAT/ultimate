@@ -6,12 +6,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
+import { GoalCall } from '../../call.solid.tsx'
 import { StartedCard } from '../../cards.solid.tsx'
 import { HandsOff } from '../../chip.solid.tsx'
 import { GoalDialog, goalDialog } from '../../dialog.solid.tsx'
 import { GoalDoc } from '../../refs.ts'
 import type { Goal } from '../../refs.ts'
-import type { EntryRecord } from '@/sdk'
+import type { EntryRecord, ToolCallView } from '@/sdk'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -174,6 +175,54 @@ it('ends hands-off from the transcript only after the person approves the agent 
   await publish({ ...goal, ended: { at: 1, by: 'user', outcome: 'ended' } })
   expect(view.querySelector('[data-goal-end]')).toBeNull()
   expect(view.textContent).toContain('report below')
+})
+
+async function proposal() {
+  const call = {
+    id: 'c1',
+    name: 'goal',
+    args: { action: 'propose', text: goal.text },
+    status: 'done',
+    output: '',
+    images: [],
+    diagnostics: [],
+  } as unknown as ToolCallView
+  const view = renderSolid(() => <GoalCall call={call} core={null} />)
+  await settle()
+  await publish()
+  return view
+}
+const proposedStart = 'Start this goal (call c1)'
+
+it('starts a proposed goal with the text the person edited', async () => {
+  const view = await proposal()
+  await expectDistinctAgentNames(agent)
+  const text = view.querySelector<HTMLTextAreaElement>('[data-goal-proposal-text]')!
+  expect(text.value).toBe(goal.text)
+  text.setRangeText(' by 8:00', text.value.length, text.value.length)
+  text.dispatchEvent(new Event('input', { bubbles: true }))
+  flush()
+  view.querySelector<HTMLButtonElement>('[data-goal-proposal-start]')!.click()
+  await settle()
+  expect(harness.action.mock.calls[0]).toEqual([
+    '/api/extensions/goal/actions/start',
+    { text: `${goal.text} by 8:00`, proposal: 'c1' },
+    'person',
+  ])
+  await publish({ ...goal, proposal: 'c1' })
+  expect(view.querySelector('[data-goal-proposal-started]')?.textContent).toContain('goal 1')
+  expect(view.querySelector('[data-goal-proposal-start]')).toBeNull()
+})
+
+it('refuses an agent pressing Start on a proposed goal without the person', async () => {
+  await proposal()
+  expect(control(proposedStart)!.confirm).toBe('Hands decisions to @ultimate until the goal ends.')
+  approved = false
+  const refused = await agent.act({
+    steps: [{ ref: control(proposedStart)!.ref, action: 'press' }],
+  })
+  expect(refused.ok).toBe(false)
+  expect(harness.action).not.toHaveBeenCalled()
 })
 
 it('shows the status chip only for an open goal', async () => {

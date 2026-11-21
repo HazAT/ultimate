@@ -7,13 +7,27 @@ import { icons } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { ROOT, cn, useConversations, useDocOf, useUiState } from '@/sdk/solid'
+import type { Presence } from './marks.tsx'
 import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
 import { agentMark, agentTitle } from './mark-style.ts'
 import { MarksDoc, OverviewDoc } from './refs.ts'
 
-export { Unsummarized } from './points.ts'
+/** A working conversation's phase `word` and whether it is only `waiting` on its subagents. The `label` is React. */
+export { ConversationPhase } from './points.ts'
+/** The plan task a conversation works on. Use its `title` and render its chip through `ConversationTaskChip`. */
+export { ConversationTask } from './points.ts'
+/** The epic a coordinator works directly, with its status, progress and an action that opens it. */
+export { ConversationEpic } from './points.ts'
+export { ConversationTaskChip, Unsummarized } from './points.ts'
 export { hiddenConversationIds } from './visible.ts'
-export { ConversationTaskChip } from './points.ts'
+export type { Presence } from './marks.tsx'
+
+/** Since when each conversation counts as concluded: forever while concluded, otherwise its last conclusion time. */
+export function useConcludedSince() {
+  const [concluded] = useUiState<ConversationId[]>('ext.conversations.concluded', [])
+  const [at] = useUiState<Record<string, number>>('ext.conversations.concludedAt', {})
+  return (id: ConversationId) => (concluded().includes(id) ? Infinity : at()[id])
+}
 
 /** Conversations that are currently concluded, excluding those that have been resumed. */
 export const useConcluded = () => useUiState<ConversationId[]>('ext.conversations.concluded', [])[0]
@@ -29,8 +43,25 @@ export function AgentTitle(props: { name: string }) {
   return <>{title().title}</>
 }
 
-/** The agent's mark for a transcript header, or large for the empty transcript. */
-export function AgentMark(props: { name: string; size?: 'lg' }) {
+const markSize = {
+  lg: 'size-10 rounded-[8px] text-[18px]',
+  md: 'size-6 rounded-[5px] text-[12px]',
+  sm: 'size-4 rounded-[4px] text-[9.5px]',
+  xs: 'size-3.5 rounded-[3px] text-[8.5px]',
+}
+const presenceClass: Record<Presence, string> = {
+  working: 'animate-pulse-dot bg-brand',
+  waiting: 'bg-amber-400',
+  awaiting: 'bg-brand',
+  idle: 'bg-muted-foreground/60',
+}
+
+/** The standing agent's mark, at transcript size by default, with an optional presence dot. */
+export function AgentMark(props: {
+  name: string
+  size?: keyof typeof markSize
+  presence?: Presence
+}) {
   const marks = useDocOf(() => ROOT, MarksDoc)
   const tile = createMemo(() => agentMark(props.name, marks(), icons))
   const Icon = dynamic(() => tile().Icon)
@@ -39,10 +70,8 @@ export function AgentMark(props: { name: string; size?: 'lg' }) {
       aria-hidden="true"
       class={cn(
         'relative inline-flex shrink-0 items-center justify-center ring-1 ring-inset',
-        props.size === 'lg'
-          ? 'size-10 rounded-[8px] text-[18px]'
-          : 'size-4 rounded-[4px] text-[9.5px]',
         tile().tint,
+        markSize[props.size ?? 'sm'],
       )}
       data-agent-mark={props.name}
     >
@@ -51,6 +80,18 @@ export function AgentMark(props: { name: string; size?: 'lg' }) {
         fallback={<Icon class={tile().iconClass} stroke-width={tile().strokeWidth} />}
       >
         {(initial) => <span class="font-sans leading-none font-semibold">{initial()}</span>}
+      </Show>
+      <Show when={props.presence}>
+        {(presence) => (
+          <span
+            class={cn(
+              'absolute -right-0.5 -bottom-0.5 rounded-full ring-2 ring-sidebar',
+              props.size === 'md' ? 'size-2' : 'size-1.5 ring-[1.5px]',
+              presenceClass[presence()],
+            )}
+            data-presence={presence()}
+          />
+        )}
       </Show>
     </span>
   )

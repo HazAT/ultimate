@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { useProvided } from '@/sdk/parts.solid.tsx'
 import { ROOT, cn, plural, useAction } from '@/sdk/solid'
 import { Review } from './landing-points.ts'
-import { GithubAction } from './refs.ts'
+import { GithubAction, RepoAction } from './refs.ts'
 
+export { Review } from './landing-points.ts'
 export { Open } from './landing.solid.tsx'
 export { Workspaces, useWorkspacesMeta } from './panel.solid.tsx'
 
@@ -20,16 +21,26 @@ export function useGithubRepo() {
   return repo.data
 }
 
+/** The project's GitHub repository and its visibility, null when `origin` is not on GitHub. */
+export function useProjectRepo() {
+  return useAction(RepoAction, null, { conversation: ROOT }).data
+}
+
 function External(props: {
   href: string
   range?: string
   label?: string
   class?: string
   card?: number
+  name?: string
 }) {
   return (
     <Button
-      aria-label={`Compare ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range ?? props.href)} on DiffsHub`}
+      aria-label={
+        props.name
+          ? `Compare on DiffsHub: ${props.name}`
+          : `Compare ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range ?? props.href)} on DiffsHub`
+      }
       class={cn(
         'h-auto shrink-0 gap-0.5 p-0 font-[inherit] text-[length:inherit] font-normal hover:text-foreground hover:underline',
         props.class,
@@ -49,11 +60,14 @@ function External(props: {
 
 /**
  * `N commits`: with `range` and a Review provider, a button that opens Review at it (DiffsHub as a small ↗ beside
- * it when `href` is given); otherwise a DiffsHub link at `href`, or plain text.
+ * it when `href` is given); otherwise a DiffsHub link at `href`, or plain text. `card` names the landing it belongs to;
+ * `name` (`sidebar landing #N`) names the controls instead where the same landing shows twice on a page (the sidebar's
+ * Landed list beside History).
  */
 export function CommitCount(props: {
   count: number
   card?: number
+  name?: string
   href?: string
   range?: string
   class?: string
@@ -65,6 +79,7 @@ export function CommitCount(props: {
         <External
           card={props.card}
           class={props.class}
+          name={props.name}
           href={href()}
           label={label()}
           range={props.range}
@@ -78,6 +93,7 @@ export function CommitCount(props: {
         <ReviewCommitCount
           card={props.card}
           class={props.class}
+          name={props.name}
           fallback={plain()}
           href={props.href}
           label={label()}
@@ -93,6 +109,7 @@ function ReviewCommitCount(props: {
   label: string
   fallback: JSX.Element
   card?: number
+  name?: string
   href?: string
   class?: string
 }) {
@@ -101,7 +118,10 @@ function ReviewCommitCount(props: {
     <Show fallback={props.fallback} when={open()}>
       <span class={cn('inline-flex shrink-0 items-center gap-1', props.class)}>
         <Button
-          aria-label={`Review ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range)}`}
+          aria-label={
+            (props.name && `Review ${props.name}`) ??
+            `Review ${props.card === undefined ? '' : `landing #${props.card}: `}${short(props.range)}`
+          }
           class="font-[inherit] text-[length:inherit] font-normal hover:text-foreground hover:underline"
           onClick={() => open()?.()}
           size={null}
@@ -111,7 +131,9 @@ function ReviewCommitCount(props: {
           {props.label}
         </Button>
         <Show when={props.href}>
-          {(href) => <External card={props.card} href={href()} range={props.range} />}
+          {(href) => (
+            <External card={props.card} href={href()} name={props.name} range={props.range} />
+          )}
         </Show>
       </span>
     </Show>
