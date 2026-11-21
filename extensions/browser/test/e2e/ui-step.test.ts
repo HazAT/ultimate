@@ -34,9 +34,9 @@ export function Digest() {
   )
 }
 `
-const web = `import { defineWebExtension, island } from '@/sdk'
+const web = `import { defineWebExtension } from '@/sdk/solid'
 import { Digest } from './digest.solid.tsx'
-export default defineWebExtension({ slots: { 'statusline.left': island(Digest) } })
+export default defineWebExtension({ slots: { 'statusline.left': Digest } })
 `
 
 type Component = { ref: string; label?: string; component: string }
@@ -47,7 +47,7 @@ async function serve(settings?: object) {
   const folder = join(home, '.ultimate/extensions/digest')
   await mkdir(folder, { recursive: true })
   await writeFile(join(folder, 'digest.solid.tsx'), panel)
-  await writeFile(join(folder, 'web.tsx'), web)
+  await writeFile(join(folder, 'web.solid.tsx'), web)
   if (settings) await writeFile(join(home, '.ultimate/settings.json'), JSON.stringify(settings))
   const server = await fauxServer({
     ultimateRoot: resolve('.'),
