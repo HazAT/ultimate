@@ -1026,6 +1026,12 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect((await batch([{ sub: 7, ...docs }])).status).toBe(200)
     expect((await batch([], [6])).status).toBe(200)
     expect((await batch([{ sub: 9, ...docs }], [9])).status).toBe(200)
+    const invalid = await fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url },
+      body: JSON.stringify({ subscribe: [null], unsubscribe: [] }),
+    })
+    expect(invalid.status).toBe(400)
     expect((await batch([], [1], crypto.randomUUID())).status).toBe(410)
     const of = (name: string) =>
       stream.events.filter((event) => event.name === name).map((event) => event.sub)
@@ -1043,6 +1049,23 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     // Closing the stream ends it with all its subscriptions.
     await stream.close()
     await until(async () => (await batch([], [5])).status === 410)
+  })
+  it('ends a stream whose closes of never-opened subscriptions pile up, so it starts over clean', async () => {
+    const { server } = await fixture(true)
+    const stream = await attach(server, { view: false })
+    const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
+    const close = (subs: number[]) =>
+      fetch(`${server.url}/api/events/${id}`, {
+        method: 'POST',
+        headers: { Origin: server.url },
+        body: JSON.stringify({ subscribe: [], unsubscribe: subs }),
+      }).then((response) => response.status)
+    const range = (from: number) => Array.from({ length: 500 }, (_, index) => from + index)
+    expect(await close(range(100))).toBe(200)
+    expect(await close(range(600))).toBe(200)
+    expect(await close(range(1100))).toBe(410)
+    await until(() => stream.connections() > 1)
+    await stream.close()
   })
   it('runs logins in the models extension: prompt, answer, cancel, no credential leak, dead flows cancelled', async () => {
     const { server, options } = await fixture(false, {

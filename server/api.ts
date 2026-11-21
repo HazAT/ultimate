@@ -101,6 +101,7 @@ const maxResentSummaryTitleCharacters = 200
 const asSent = (value: unknown) => JSON.parse(JSON.stringify(value)) as JsonValue
 const taskGraphBroadcastIntervalMs = 100
 const liveViewMinimumEntries = 150
+const maxClosesAwaitingTheirOpen = 1000
 type StreamUniqueSubscriptionId = number
 
 interface Connection {
@@ -108,6 +109,7 @@ interface Connection {
   subscriptions: Map<StreamUniqueSubscriptionId, () => Promise<void>>
   closedBeforeOpen: Set<StreamUniqueSubscriptionId>
   ended: boolean
+  stop: () => Promise<void>
 }
 function reply(response: ServerResponse, status: number, data: unknown) {
   response.writeHead(status, { 'Content-Type': 'application/json' })
@@ -328,6 +330,7 @@ export async function createApi(
       subscriptions: new Map(),
       closedBeforeOpen: new Set(),
       ended: false,
+      stop: async () => {},
     }
     connections.set(id, connection)
     const { send } = sse
@@ -350,6 +353,7 @@ export async function createApi(
       await Promise.all([...connection.subscriptions.values()].map((close) => close()))
       sse.end()
     }
+    connection.stop = stop
     streams.add(stop)
     response.on('close', () => {
       inProcess(
@@ -467,7 +471,10 @@ export async function createApi(
             !closes.every(Number.isSafeInteger)
           )
             throw new HttpError(400, 'Invalid subscriptions')
-          const specs = opens.map((spec: Record<string, unknown>) => {
+          const specs = opens.map((item: unknown) => {
+            if (typeof item !== 'object' || item === null || Array.isArray(item))
+              throw new HttpError(400, 'Invalid subscription')
+            const spec = item as Record<string, unknown>
             const docs = spec.docs ?? []
             if (!Number.isSafeInteger(spec.sub)) throw new HttpError(400, 'Invalid subscription id')
             if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
@@ -484,6 +491,10 @@ export async function createApi(
             connection.subscriptions.delete(sub)
             if (close) await close()
             else connection.closedBeforeOpen.add(sub)
+          }
+          if (connection.closedBeforeOpen.size > maxClosesAwaitingTheirOpen) {
+            await connection.stop()
+            throw new HttpError(410, 'Event stream ended')
           }
           const refused: Record<number, number> = {}
           await Promise.all(

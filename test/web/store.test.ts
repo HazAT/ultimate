@@ -351,6 +351,32 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('takes an answer that does not match its request for a lost one, and leaves other subscriptions alone', async () => {
+    for (const refused of [[], 'shown view', { 1: 200 }] as const) {
+      const { store, server, latest, fetch } = setup(1000)
+      latest().open()
+      const counter = store.watchDoc('test.counter')
+      await tick()
+      const shown = server.of(undefined, true)!
+      const doc = server.of(undefined, false)!
+      // The close never reaches the server, and the answer that comes back does not fit the request.
+      fetch.mockImplementationOnce(async () =>
+        Response.json({
+          ok: true,
+          refused: refused === 'shown view' ? { [shown.sub]: 404 } : refused,
+        }),
+      )
+      counter()
+      await tick()
+      expect(doc.closed).toBe(false)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(doc.closed).toBe(true)
+      shown.send('view', view([user(1, 'still shown')]))
+      expect(store.getState().view?.entries.map((entry) => entry.id)).toEqual([1])
+      store.stop()
+    }
+  })
+
   it('falls back to the root without closing what the server refused alongside the view', async () => {
     const { store, server, latest, fetch, onFallback } = setup()
     latest().open()

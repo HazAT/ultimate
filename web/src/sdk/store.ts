@@ -301,9 +301,10 @@ export function createStore(options: StoreOptions = {}) {
     })
       .then(async (response) => {
         if (!response.ok) return unanswered(response.status)
-        const { refused } = (await response.json()) as Partial<SubscriptionsAnswer>
-        if (typeof refused !== 'object' || refused === null) return unanswered(0)
-        return { refused, confirmed: true }
+        const answer = (await response.json()) as Partial<SubscriptionsAnswer>
+        return answeredFor(opens, answer)
+          ? { refused: answer.refused, confirmed: true }
+          : unanswered(0)
       })
       .catch(() => unanswered(0))
       .then(({ refused, confirmed }) => {
@@ -318,6 +319,22 @@ export function createStore(options: StoreOptions = {}) {
         }
         for (const [sub, status] of Object.entries(refused)) opens.get(Number(sub))?.failed(status)
       })
+  }
+
+  function answeredFor(
+    opens: ReadonlyMap<number, unknown>,
+    answer: Partial<SubscriptionsAnswer>,
+  ): answer is SubscriptionsAnswer {
+    const { ok, refused } = answer
+    return (
+      ok === true &&
+      typeof refused === 'object' &&
+      refused !== null &&
+      !Array.isArray(refused) &&
+      Object.entries(refused).every(
+        ([sub, status]) => opens.has(Number(sub)) && Number.isInteger(status) && status >= 400,
+      )
+    )
   }
 
   const shownKey = () => `shown:${state.requested ?? 'root'}`
