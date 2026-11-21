@@ -163,6 +163,44 @@ it('names the failure before the console errors', async () => {
   }
 })
 
+// Playwright's strict-mode error printed each match's whole HTML, class lists included, so agents retried the same
+// bare selector instead of a scoped one.
+it('names each match of an ambiguous selector by role and name, and suggests scoping it', async () => {
+  const directory = await temp('ultimate-browser-strict-')
+  const closers: (() => Promise<void>)[] = []
+  const host = {
+    home: join(directory, 'home'),
+    projectRoot: directory,
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose: (close: () => Promise<void>) => closers.push(close),
+    system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
+  } as unknown as ExtensionHost
+  const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
+  const api = { output() {} } as unknown as ToolExecutionApi
+  const wide = 'x'.repeat(400)
+  try {
+    const result = await browser.execute(
+      {
+        url: `data:text/html,<button class="${wide}">Save</button><button aria-label="Save draft" class="${wide}">Save</button>`,
+        steps: [{ click: 'button:has-text("Save")' }],
+        screenshot: false,
+      },
+      api,
+      context,
+    )
+    expect(result.isError).toBe(true)
+    const text = (result.output as { text: string }[])[0].text
+    expect(text).toContain('matches 2 elements')
+    expect(text).toContain('1) button "Save"')
+    expect(text).toContain('2) button "Save draft"')
+    expect(text).toContain('Scope it')
+    expect(text).not.toContain(wide)
+  } finally {
+    for (const close of closers) await close()
+    await removeTemp(directory)
+  }
+})
+
 it('saves screenshots at the given path, relative to the conversation cwd, creating parents', async () => {
   const directory = await temp('ultimate-browser-path-')
   const closers: (() => Promise<void>)[] = []
