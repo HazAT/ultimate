@@ -7,7 +7,7 @@ import type {
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { mkdir, readdir, realpath, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { availableParallelism, loadavg, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { copyJson } from '@earendil-works/chord/json'
@@ -15,6 +15,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { debounce, deadline } from '../../lib/timers.ts'
+import { exec } from '../../lib/exec.ts'
 import { git } from '../../lib/git.ts'
 import { overshadowed, retriedLater, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
@@ -276,6 +277,25 @@ export const contains = (cwd: string, ancestor: string, descendant: string) =>
     () => false,
   )
 const lines = (text: string) => text.split('\n').filter(Boolean)
+
+type MachineLoad = { line: string; top: string }
+export const describeLoad = (oneMinute: number, cores: number, ps: string): MachineLoad => ({
+  line: `load ${oneMinute.toFixed(1)} on ${cores} cores`,
+  top: [
+    'Top CPU (pid %cpu command):',
+    ...lines(ps)
+      .map((line) => line.trim().replace(/\s+/g, ' '))
+      .filter((line) => line.split(' ')[2] !== 'ps')
+      .slice(0, 5)
+      .map((line) => `  ${line.slice(0, 100)}`),
+  ].join('\n'),
+})
+const machineLoad = async () =>
+  describeLoad(
+    loadavg()[0],
+    availableParallelism(),
+    (await exec('ps', ['-eo', 'pid,pcpu,args', '--sort=-pcpu', '--no-headers'])).stdout,
+  )
 const failure = (error: unknown) => {
   const output = error as Error & { stdout?: string; stderr?: string }
   return `${output.stdout ?? ''}${output.stderr ?? ''}${output.stdout || output.stderr ? '' : output.message}`
@@ -503,7 +523,7 @@ export function createLander(
             ...(landed.commits.length ? [`Commits:\n${landed.commits.join('\n')}`] : []),
             ...landed.flaky.map((command) => `Flaky: ${command}`),
           ].join('\n')
-        const fail = async (reason: string, output?: string, hint?: string) => {
+        const fail = async (reason: string, output?: string, hint?: string, load?: string) => {
           const landed = await recordedFirstFastForward()
           const detail = [output ? `${reason}:\n${output}` : reason, ...(hint ? [hint] : [])].join(
             '\n',
@@ -512,6 +532,7 @@ export function createLander(
             reason: landed ? `Push failed: ${reason}` : reason,
             ...(output ? { output } : {}),
             ...(hint ? { hint } : {}),
+            ...(load ? { load } : {}),
           }
           return landed
             ? commitLandingOutcome(
@@ -675,7 +696,10 @@ export function createLander(
                   checkTemp(host.home),
                   limitsFor(members[member], limits),
                 )
-              const runCheckWithOneDurableRerun = async (command: string, member: number) => {
+              const runCheckWithOneDurableRerun = async (
+                command: string,
+                member: number,
+              ): Promise<{ failure?: string; load?: MachineLoad; flaky?: string }> => {
                 const attemptMemoKey = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`
                 const causeMemoKey = `${attemptMemoKey}:cause`
                 let memoizedFirstRun =
@@ -735,7 +759,13 @@ export function createLander(
                     context,
                   )
                 }
-                if (rerun.failure !== undefined) return { failure: rerun.failure }
+                if (rerun.failure !== undefined)
+                  return {
+                    failure: rerun.failure,
+                    load:
+                      (await runtime.memo<MachineLoad>(`${attemptMemoKey}:load`, context)) ??
+                      (await runtime.memo(`${attemptMemoKey}:load`, await machineLoad(), context)),
+                  }
                 const cause = await runtime.memo<string>(causeMemoKey, context)
                 return { flaky: cause ? `${command} · ${cause}` : command }
               }
@@ -747,12 +777,15 @@ export function createLander(
                 return outcome.value
               })
               const failed = results.findIndex((result) => result.failure !== undefined)
-              if (failed !== -1)
+              if (failed !== -1) {
+                const { failure: output, load } = results[failed]
                 return await fail(
                   `check failed twice: ${commands[failed]}`,
-                  results[failed].failure,
+                  `${output}\n\n${load!.line}\n${load!.top}`,
                   'Fix it at its cause (a flaky test too: fix or delete it), verify and submit again.',
+                  load!.line,
                 )
+              }
               flaky.push(...results.flatMap((result) => result.flaky ?? []))
             }
             const checkedTreeChanged =
