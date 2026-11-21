@@ -58,6 +58,8 @@ import { subscribeViewport, viewport } from './viewport.ts'
 import type { Viewport } from './viewport.ts'
 
 export { api, bundle, switched } from './client.ts'
+/** Whether the device's main pointer is touch, so its keyboard's return should break a line rather than send. */
+export { touchKeyboard } from './viewport.ts'
 /** The page's event bus: `events.emit('secrets:open', { name })`; subscribe for a component's life with `useEvent`. */
 export { events } from './events.ts'
 /**

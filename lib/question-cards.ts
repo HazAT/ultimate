@@ -29,6 +29,7 @@ export type CardState = {
   note: string
   current: number
   text: string
+  seen?: number[]
 }
 
 export const CARDS_KEY = 'ext.questions.cards'
