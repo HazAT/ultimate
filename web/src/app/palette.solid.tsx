@@ -56,7 +56,8 @@ export function CommandPalette() {
   return (
     <Dialog onOpenChange={(next) => store.setUi({ paletteOpen: next })} open={open()}>
       <DialogContent
-        class="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 font-mono sm:max-w-xl"
+        backdropClass="data-ending-style:transition-none"
+        class="top-[18%] translate-y-0 gap-0 overflow-hidden p-0 font-mono data-ending-style:transition-none sm:max-w-xl"
         showCloseButton={false}
       >
         <DialogTitle class="sr-only">Command Palette</DialogTitle>

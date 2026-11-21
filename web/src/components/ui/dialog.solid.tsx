@@ -32,13 +32,16 @@ function Dialog(props: ComponentProps<typeof DialogRoot>) {
 function DialogContent<Payload>(
   props: ComponentProps<typeof DialogContentRoot<Payload>> & {
     class?: string
+    backdropClass?: string
     showCloseButton?: boolean
   },
 ) {
-  const rest = omit(props, 'class', 'children', 'showCloseButton')
+  const rest = omit(props, 'class', 'backdropClass', 'children', 'showCloseButton')
   return (
     <>
-      <DialogBackdrop class={cn(dialogStyles.overlay, dialogStyles.overlaySolid)} />
+      <DialogBackdrop
+        class={cn(dialogStyles.overlay, dialogStyles.overlaySolid, props.backdropClass)}
+      />
       <DialogContentRoot<Payload>
         {...rest}
         class={cn(dialogStyles.content, dialogStyles.contentSolid, props.class)}
