@@ -160,17 +160,22 @@ async function mount() {
 const rail = (container: HTMLElement) => container.querySelector('nav')?.parentElement
 const calls = (name: string) => harness.calls.filter((call) => call === name).length
 
-it('lists each running project as a link with its state, opens on hover, and an agent pins it for every instance', async () => {
+it('lists projects by name, leaves the current project unfocusable, and an agent pins the rail', async () => {
   const container = await mount()
-  const rows = [...container.querySelectorAll<HTMLAnchorElement>('a[data-project]')]
+  const rows = [...container.querySelectorAll<HTMLElement>('[data-project]')]
   expect(rows.map((row) => [row.dataset.project, row.getAttribute('href'), row.title])).toEqual([
     ['ultimate', null, 'Ultimate · :4747 · working · this tab'],
     ['ultimate-eval', 'http://127.0.0.1:4748/', 'Ultimate Eval · :4748 · 2 for you'],
     ['my-app', 'http://127.0.0.1:4750/', 'My App · owner/my-app · :4750'],
   ])
-  expect(container.querySelector<HTMLElement>('a[aria-current="page"]')?.dataset.project).toBe(
-    'ultimate',
-  )
+  const currentRow = container.querySelector<HTMLButtonElement>('button[aria-current="page"]')!
+  expect(currentRow.dataset.project).toBe('ultimate')
+  expect(currentRow.disabled).toBe(true)
+  rows[1].focus()
+  currentRow.focus()
+  expect(document.activeElement).toBe(rows[1])
+  rows[1].blur()
+  flush()
 
   rail(container)!.dispatchEvent(new MouseEvent('mouseenter'))
   await advance(149)
@@ -179,8 +184,13 @@ it('lists each running project as a link with its state, opens on hover, and an 
   expect(container.textContent).toContain('2 for you · 1 working')
   await expectDistinctAgentNames(agent)
 
-  const current = agent.snapshot().find((entry) => !entry.offPage && entry.label === rows[0].title)
+  const current = agent
+    .snapshot()
+    .find((entry) => !entry.offPage && entry.label === currentRow.title)
   expect(current).toMatchObject({ disabled: true })
+  expect(await agent.query({ text: 'Ultimate' })).toEqual(
+    expect.arrayContaining([expect.objectContaining({ ref: current!.ref })]),
+  )
   const blocked = agent.act({ steps: [{ ref: current!.ref, action: 'press' }] })
   await advance(100)
   expect((await blocked).ok).toBe(false)
@@ -325,7 +335,7 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
   ]
   setVisibility('visible')
   await advance(10)
-  expect(container.querySelectorAll('a[data-project]')).toHaveLength(2)
+  expect(container.querySelectorAll('[data-project]')).toHaveLength(2)
   expect([calls('list'), calls('pin')]).toEqual([hidden[0] + 1, hidden[1] + 1])
   await advance(3_989)
   expect(calls('list')).toBe(hidden[0] + 1)

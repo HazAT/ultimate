@@ -3,7 +3,7 @@ import { Zap } from '@lucide/solid'
 import { createMemo, createSignal, Show } from 'solid-js'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { api, errorMessage, events, useAction, useAgent, useEvent } from '@/sdk/solid'
+import { api, errorMessage, ROOT, useAction, useAgent } from '@/sdk/solid'
 import { SetAction, StatusAction } from './refs.ts'
 
 const fastProviders = new Set(['openai-codex', 'openai'])
@@ -17,8 +17,7 @@ const hint = (fast: { modelId: string; on: boolean; project: boolean }) =>
 
 export function FastToggle() {
   const agent = useAgent()
-  const status = useAction(StatusAction)
-  useEvent('fast:changed', () => void status.refetch())
+  const status = useAction(StatusAction, null, { conversation: ROOT })
   const fast = createMemo(() => {
     const ref = agent().model
     const data = status.data()
@@ -37,7 +36,7 @@ export function FastToggle() {
     const { model } = fast()!
     try {
       await api.action(SetAction, { model, on })
-      events.emit('fast:changed', undefined)
+      await status.refetch()
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
