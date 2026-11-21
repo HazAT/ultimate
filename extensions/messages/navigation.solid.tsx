@@ -10,9 +10,8 @@ import {
   useConversation,
   useDocOf,
   useEvent,
-  useExtensions,
+  useReady,
   useStore,
-  useSystem,
 } from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
 import { callerOf } from './caller.ts'
@@ -31,14 +30,6 @@ function fromAddress(): Target | undefined {
   if (Number.isSafeInteger(message) && Number.isSafeInteger(conversation) && conversation > 0)
     return { conversation, message }
   return undefined
-}
-
-function useReady() {
-  const system = useSystem()
-  const extensions = useExtensions()
-  const [settled, setSettled] = createSignal(false)
-  useEvent('ultimate:ready', () => setSettled(true))
-  return () => ({ ready: settled() || (!!system() && extensions().every((item) => !item.loading)) })
 }
 
 export function MessageNavigation() {

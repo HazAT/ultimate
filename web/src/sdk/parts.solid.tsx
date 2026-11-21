@@ -15,8 +15,6 @@ export { Fold, useFold } from '../app/fold.solid.tsx'
 export { MessageActions } from '../app/message-actions.solid.tsx'
 export { UserText, UserView } from '../app/user-turn.solid.tsx'
 export { useToolDuration } from '../app/tool-call.solid.tsx'
-/** Renders the contributions to a slot, in either framework, with the host's error fallback. */
-export { Slot } from './react-island.solid.tsx'
 /** The values all React providers give for `point`, in discovery order. */
 export { useAllProvided } from './react-island.solid.tsx'
 /** The value the last provider in discovery order gives for `point`, from a React provider's hook. */

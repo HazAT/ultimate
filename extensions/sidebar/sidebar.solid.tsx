@@ -3,7 +3,6 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { ChevronRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from 'solid-js'
-import { ContributionError } from '@/app/contribution-error.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Collapsible,
@@ -256,12 +255,7 @@ function Tree() {
             </For>
           </fieldset>
         </Show>
-        <Slot
-          name="sidebar.top"
-          fallback={(extension, failure) => (
-            <ContributionError error={failure} extension={extension} inline />
-          )}
-        />
+        <Slot name="sidebar.top" variant="inline" />
         <InFlight ids={flights()} onConclude={onConclude} />
       </nav>
       <Show when={summary()}>
