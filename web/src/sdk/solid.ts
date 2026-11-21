@@ -33,8 +33,10 @@ import { EVENT_FEED } from '../../../shared/events.ts'
 import type { EventData, EventRecord, EventToken } from '../../../shared/events.ts'
 import { deadline, every } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
-import { actions, allCommands } from './actions.ts'
+import { actions, allCommands, ownDefault, regionKeys, shellKeys } from './actions.ts'
+import type { Region } from './actions.ts'
 import type { CommandItem, ExtensionRecord } from './registry.ts'
+import { panelItems, shownPanels } from './registry.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
 import { api as client, reads, registry, reportCompact, store, uiState } from './client.ts'
@@ -106,16 +108,20 @@ export type {
 } from './types.ts'
 /**
  * The points the core reads: a run's start, the parked runs, a message's reference, the upload target, the empty
- * transcript, the composer's placeholder.
+ * transcript, the composer's placeholder, a conversation's kind and where an error card sends its report.
  */
 export {
   ComposerPlaceholder,
+  ConversationKind,
   EmptyTranscript,
+  ErrorReport,
   FileUpload,
   MessageReference,
   ParkedRuns,
   RunStart,
 } from './types.ts'
+/** Whether `region` overlays the page on `viewport` (a phone's sidebar, a phone's or tablet's panel) instead of docking. */
+export { overlays } from './viewport.ts'
 /** True while the previous page's picture still covers this one after a reload. */
 export { covered } from './resume.ts'
 /** A transcript's shared frame: its entries and scroll elements, for the contributions it renders. */
@@ -260,14 +266,18 @@ export function useDocOf<T>(
   }
 }
 
-/** Durable UI state under `key`, as `useUiState` from `@/sdk` keeps it: `[value, set]`; the setter applies at once. */
+/**
+ * Durable UI state under `key`, as `useUiState` from `@/sdk` keeps it: `[value, set]`; the setter applies at once. A key
+ * given as an accessor follows it, the setter writing under its current value.
+ */
 export function useUiState<T extends JsonValue>(
-  key: string,
+  key: string | Accessor<string>,
   initial: T,
 ): [Accessor<Widen<T>>, (next: UiUpdate<T>) => void] {
   const { ui } = shared()
-  const value = createMemo(() => (ui()[key] ?? initial) as Widen<T>)
-  return [value, (next: UiUpdate<T>) => writeUiState(uiState, key, initial, next)]
+  const current = typeof key === 'string' ? () => key : key
+  const value = createMemo(() => (ui()[current()] ?? initial) as Widen<T>)
+  return [value, (next: UiUpdate<T>) => writeUiState(uiState, current(), initial, next)]
 }
 
 /** `useUiState` under `ext.<extension name>.<key>`, for state an extension's UI keeps across reloads. */
@@ -407,6 +417,16 @@ export const useExtensions = once((): Accessor<readonly ExtensionRecord[]> => {
   return records
 })
 
+/**
+ * Whether the page's extensions have loaded (or the wait for them timed out), as `useReady` from `@/sdk` reads it:
+ * `ready`, `timedOut`, and the names that `failed` or are still `pending`.
+ */
+export const useReady = once((): Accessor<ReturnType<typeof registry.getReady>> => {
+  const [ready, setReady] = createSignal(registry.getReady())
+  registry.subscribe(() => setReady(registry.getReady()))
+  return ready
+})
+
 /** Core and extension commands, as the palette lists them. */
 export const useCommands = once((): Accessor<CommandItem[]> =>
   createMemo(() => allCommands(useExtensions()())),
@@ -420,7 +440,8 @@ export const useViewport = once((): Accessor<Viewport> => {
 })
 
 /** Shell navigation and commands, as `useUltimate()` from `@/sdk` gives them. */
-export const { switchConversation, showSurface, runCommand, openPanel, focusComposer } = actions
+export const { switchConversation, showSurface, runCommand, openPanel, closePanel, focusComposer } =
+  actions
 /** The composer input a person can type into now (the main one or a side chat's); `dataset.conversation` is its conversation. */
 export { uncoveredComposer } from './actions.ts'
 /**
@@ -471,6 +492,31 @@ export function useAgent(): Accessor<AgentState> {
 export const useNotices = selected((state) => state.notices)
 /** Fetches the model list again, as `refreshModels` from `@/sdk` does, such as after a login changed it. */
 export const refreshModels = () => store.refreshModels()
+
+/** Whether the sidebar or the right panel is open on this viewport, as the shell shows it. */
+export function useRegionOpen(region: Region): Accessor<boolean> {
+  const [key, fallback] = regionKeys[region]
+  const [desktop] = useUiState<boolean>(key, fallback)
+  const { state } = shared()
+  const on = useViewport()
+  return createMemo(() => {
+    const size = on()
+    if (size === 'desktop') return desktop()
+    return state().ui.open?.[size]?.[region] ?? ownDefault(region, size)
+  })
+}
+
+/**
+ * The right panel's state, as `usePanels` from `@/sdk` gives it: whether it is open, the panel it shows (the chosen one,
+ * else the first with a tab) and the panels in its tab row.
+ */
+export function usePanels() {
+  const extensions = useExtensions()
+  const open = useRegionOpen('panels')
+  const [chosen] = useUiState<string | null>(shellKeys.panel, null)
+  const panels = createMemo(() => shownPanels(panelItems(extensions()), chosen()))
+  return { open, active: () => panels().active, tabs: () => panels().tabs }
+}
 
 /** Whether dialog `id` is open, and a setter, as `useDialog` from `@/sdk` gives them. */
 export function useDialog(id: string): [Accessor<boolean>, (open: boolean) => void] {
