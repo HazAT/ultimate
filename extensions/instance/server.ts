@@ -31,7 +31,7 @@ import type { WorkspaceService } from '../workspaces/api.ts'
 import { cleanPreview, makeOwnerWritable, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
-import { rebuiltOnOpen, meansNone, overshadowed } from '../../lib/errors.ts'
+import { ignoring, isMissing, rebuiltOnOpen, meansNone, overshadowed } from '../../lib/errors.ts'
 import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import { within } from '../../lib/timers.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
@@ -95,17 +95,10 @@ export async function seedUserHome(from: string, to: string) {
   await mkdir(dirname(to), { recursive: true })
   const staging = await mkdtemp(`${to}.seed-`)
   const target = join(staging, '.ultimate')
-  await mkdir(target, { mode: 0o700 })
   try {
+    await mkdir(target, { mode: 0o700 })
     for (const name of PRIVATE_CONFIG_COPIES) {
-      const absent = await lstat(join(source, name)).then(
-        () => false,
-        (error: NodeJS.ErrnoException) => {
-          if (error.code !== 'ENOENT') throw error
-          return true
-        },
-      )
-      if (absent) continue
+      if (!(await lstat(join(source, name)).catch(ignoring(isMissing)))) continue
       await cp(join(source, name), join(target, name), {
         recursive: true,
         dereference: true,
