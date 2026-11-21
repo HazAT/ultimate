@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon, XIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
-import { For, Show, createEffect, createMemo, createSignal } from 'solid-js'
+import { For, Loading, Show, createEffect, createMemo, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Dialog,
@@ -20,42 +20,37 @@ const FRAME_MS = 1600
 const SWIPE_PX = 40
 const NEAR = 3
 
+type Image = { src?: string; error?: string }
+
 function useImage(current: () => Frame | undefined) {
-  const [src, setSrc] = createSignal<{ key: string; src?: string; error?: string }>()
-  const key = () => {
+  return createMemo(() => {
     const frame = current()
-    return frame && `${frame.entry}:${frame.image}`
-  }
-  createEffect(current, (frame) => {
-    if (!frame) return undefined
-    const frameKey = `${frame.entry}:${frame.image}`
-    let live = true
-    imageOf(frame).then(
-      (loaded) => live && setSrc({ key: frameKey, src: loaded }),
-      (error: unknown) => live && setSrc({ key: frameKey, error: String(error) }),
+    return (
+      frame &&
+      imageOf(frame).then<Image, Image>(
+        (src) => ({ src }),
+        (error: unknown) => ({ error: String(error) }),
+      )
     )
-    return () => {
-      live = false
-    }
   })
-  return () => (src()?.key === key() ? src() : undefined)
 }
 
-export function Peek(props: { frame: Frame }) {
+function Still(props: { frame: Frame }) {
   const image = useImage(() => props.frame)
   return (
-    <span class="block h-9 w-14 shrink-0 overflow-hidden rounded-sm border border-border/60 bg-terminal">
-      {image()?.src && <img alt="" class="size-full object-cover object-top" src={image()?.src} />}
-    </span>
+    <Loading fallback={null}>
+      <Show when={image()?.src}>
+        {(src) => <img alt="" class="size-full object-cover object-top" src={src()} />}
+      </Show>
+    </Loading>
   )
 }
 
-function ThumbImage(props: { frame: Frame }) {
-  const image = useImage(() => props.frame)
+export function Peek(props: { frame: Frame }) {
   return (
-    <Show when={image()?.src}>
-      {(src) => <img alt="" class="size-full object-cover object-top" src={src()} />}
-    </Show>
+    <span class="block h-9 w-14 shrink-0 overflow-hidden rounded-sm border border-border/60 bg-terminal">
+      <Still frame={props.frame} />
+    </span>
   )
 }
 
@@ -79,7 +74,7 @@ function Thumb(props: {
       onClick={() => props.onClick()}
       type="button"
     >
-      {props.near && <ThumbImage frame={props.frame} />}
+      {props.near && <Still frame={props.frame} />}
     </Button>
   )
 }
@@ -236,11 +231,13 @@ export function Player(props: {
               />
             )}
           </For>
-          {image()?.error && (
-            <span class="absolute inset-0 grid place-items-center font-mono text-[12px] font-normal text-muted-foreground">
-              This screenshot is no longer stored.
-            </span>
-          )}
+          <Loading fallback={null} on={at()}>
+            {image()?.error && (
+              <span class="absolute inset-0 grid place-items-center font-mono text-[12px] font-normal text-muted-foreground">
+                This screenshot is no longer stored.
+              </span>
+            )}
+          </Loading>
           <ChevronLeftIcon class="pointer-events-none absolute top-1/2 left-2 hidden size-6 -translate-y-1/2 text-muted-foreground/60 sm:block" />
           <ChevronRightIcon class="pointer-events-none absolute top-1/2 right-2 hidden size-6 -translate-y-1/2 text-muted-foreground/60 sm:block" />
         </Button>

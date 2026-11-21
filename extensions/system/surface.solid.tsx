@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { ChevronRight, GanttChart } from '@lucide/solid'
-import { children, createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { children, createMemo, For, Show } from 'solid-js'
 import {
   Collapsible,
   CollapsibleContent,
@@ -132,17 +132,10 @@ function useLanes(currentRange: () => number, isLive: () => boolean) {
     },
     { onError: keepLast, every: () => (isLive() ? 2000 : undefined) },
   )
-  const [kept, setKept] = createSignal<{ range: number; data: LanesResult }>()
-  createEffect(
-    () => read.data(),
-    (data) => {
-      if (data) setKept({ range: currentRange(), data })
-    },
-  )
-  return createMemo(() => {
-    const data = read.data() ?? (kept()?.range === currentRange() ? kept()?.data : undefined)
-    const error = read.error()
-    return data || error ? { range: currentRange(), data, error } : undefined
+  return createMemo<{ range: number; data?: LanesResult; error?: unknown }>((previous) => {
+    const range = currentRange()
+    const data = read.data() ?? (previous?.range === range ? previous.data : undefined)
+    return { range, data, error: read.error() }
   })
 }
 
