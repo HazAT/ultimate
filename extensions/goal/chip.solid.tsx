@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { Flag } from '@lucide/solid'
-import { For, Show, createEffect, createSignal } from 'solid-js'
+import { For, Show, createSignal, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
@@ -17,7 +17,7 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import { StandingAction } from '../subagents/refs.ts'
-import { CriterionIcon, EndGoalButton } from './cards.solid.tsx'
+import { CriterionRow, EndGoalButton } from './cards.solid.tsx'
 import { GoalDoc } from './refs.ts'
 import type { Goal } from './refs.ts'
 
@@ -99,24 +99,7 @@ function GoalSummary(props: { goal: Goal }) {
           >
             <ol class="space-y-0.5">
               <For each={props.goal.criteria} keyed={false}>
-                {(item) => (
-                  <li class="flex items-start gap-1.5" data-goal-criterion={item().status}>
-                    <CriterionIcon class="mt-0.5 size-3 shrink-0" status={item().status} />
-                    <span
-                      class={[
-                        'min-w-0 font-sans text-[12px] leading-snug',
-                        { 'text-muted-foreground': item().status === 'met' },
-                      ]}
-                    >
-                      {item().text}
-                      <Show when={item().status !== 'met' && item().tries}>
-                        <span class="ml-1.5 font-mono text-[10.5px] text-muted-foreground">
-                          {plural(item().tries!, 'failed attempt')}
-                        </span>
-                      </Show>
-                    </span>
-                  </li>
-                )}
+                {(item) => <CriterionRow compact item={item()} />}
               </For>
             </ol>
           </Show>
@@ -126,7 +109,7 @@ function GoalSummary(props: { goal: Goal }) {
           <ul class="space-y-1.5">
             <For each={props.goal.decisions.slice(-2).toReversed()} keyed={false}>
               {(decision) => (
-                <li class="line-clamp-3 font-sans text-[12px] leading-snug" data-goal-decision>
+                <li class="font-sans text-[12px] leading-snug" data-goal-decision>
                   <span class="mr-1.5 font-mono text-[10.5px] text-muted-foreground">
                     {formatTime(decision().at)}
                   </span>
@@ -158,12 +141,13 @@ function GoalText(props: { text: string }) {
   const [expanded, setExpanded] = createSignal(false)
   const [clamped, setClamped] = createSignal(false)
   let paragraph!: HTMLParagraphElement
-  createEffect(
-    () => props.text,
-    () => {
-      setClamped(paragraph.scrollHeight > paragraph.clientHeight)
-    },
-  )
+  onSettled(() => {
+    const observer = new ResizeObserver(() =>
+      setClamped(paragraph.scrollHeight > paragraph.clientHeight),
+    )
+    observer.observe(paragraph)
+    return () => observer.disconnect()
+  })
   return (
     <div class="px-3 pt-1.5 pb-2">
       <p

@@ -53,18 +53,39 @@ function GoalCard(props: {
 
 const loading = () => <p class="px-3 py-3 text-[12px] text-muted-foreground">Loading…</p>
 
-export function CriterionIcon(props: { status: Criterion['status']; class: string }) {
+export function CriterionRow(props: { item: Criterion; compact?: boolean }) {
+  const icon = () => (props.compact ? 'size-3' : 'size-3.5')
   return (
-    <>
-      {props.status === 'met' ? (
-        <Check class={cn(props.class, 'text-success')} />
-      ) : props.status === 'blocked' ? (
-        <CircleSlash class={cn(props.class, 'text-warning')} />
-      ) : (
-        <CircleDashed class={cn(props.class, 'text-muted-foreground')} />
+    <li
+      class={cn(
+        'flex items-start',
+        props.compact
+          ? 'gap-1.5 font-sans text-[12px] leading-snug'
+          : 'gap-2 text-[13px] leading-5',
       )}
-      <span class="sr-only">{props.status}: </span>
-    </>
+      data-goal-criterion={props.item.status}
+    >
+      <span class="mt-0.5 shrink-0">
+        {props.item.status === 'met' ? (
+          <Check class={cn(icon(), 'text-success')} />
+        ) : props.item.status === 'blocked' ? (
+          <CircleSlash class={cn(icon(), 'text-warning')} />
+        ) : (
+          <CircleDashed class={cn(icon(), 'text-muted-foreground')} />
+        )}
+      </span>
+      <span class={['min-w-0', { 'text-muted-foreground': props.item.status === 'met' }]}>
+        <span class="sr-only">{props.item.status}: </span>
+        {props.item.text}
+        <Show when={props.item.status !== 'met' && props.item.tries}>
+          {' '}
+          <span class="ml-1 font-mono text-[11px] text-muted-foreground">
+            {props.item.status === 'blocked' ? 'blocked after ' : ''}
+            {plural(props.item.tries!, 'failed attempt')}
+          </span>
+        </Show>
+      </span>
+    </li>
   )
 }
 
@@ -111,25 +132,7 @@ function Criteria(props: { items: Goal['criteria'] }) {
     >
       <ol class="space-y-1 px-4 py-2.5" data-goal-criteria>
         <For each={props.items} keyed={false}>
-          {(item) => (
-            <li
-              class="flex items-start gap-2 text-[13px] leading-5"
-              data-goal-criterion={item().status}
-            >
-              <span class="mt-0.5 shrink-0">
-                <CriterionIcon class="size-3.5" status={item().status} />
-              </span>
-              <span class={['min-w-0', { 'text-muted-foreground': item().status === 'met' }]}>
-                {item().text}
-                <Show when={item().status !== 'met' && item().tries}>
-                  <span class="ml-2 font-mono text-[11px] text-muted-foreground">
-                    {item().status === 'blocked' ? 'blocked after ' : ''}
-                    {plural(item().tries!, 'failed attempt')}
-                  </span>
-                </Show>
-              </span>
-            </li>
-          )}
+          {(item) => <CriterionRow item={item()} />}
         </For>
       </ol>
     </Show>

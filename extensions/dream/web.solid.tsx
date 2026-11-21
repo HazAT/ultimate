@@ -2,6 +2,7 @@
 import { LibraryIcon, MoonIcon } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import {
   ROOT,
   attention,
@@ -94,17 +95,15 @@ function DreamHint() {
   })
   return (
     <Show when={active()}>
-      <Button
-        class="-mx-1 flex items-center gap-1.5 rounded-sm px-1 font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      <StatusButton
+        class="text-muted-foreground"
         data-dream-hint
         onClick={() => setDream(true)}
-        size={null}
         title="@ultimate has learned a lot since its last dream: see what dreaming does"
-        variant={null}
       >
         <MoonIcon class="size-3 text-brand/80" />
         Time to dream?
-      </Button>
+      </StatusButton>
     </Show>
   )
 }

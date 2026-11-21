@@ -9,6 +9,7 @@ import {
 import { dynamic } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import {
   Card,
@@ -162,8 +163,7 @@ function SetupLink(props: { card: 'project' | 'git'; off?: boolean; children: st
   return (
     <Tooltip delay={400}>
       <TooltipTrigger
-        render={(trigger) => <Button {...trigger} size={null} variant={null} />}
-        class="-mx-1 flex items-center gap-1.5 rounded-sm px-1 text-[length:inherit] leading-[inherit] font-normal transition-colors hover:bg-accent hover:text-foreground"
+        render={(trigger) => <StatusButton {...trigger} />}
         aria-label={props.children}
         onClick={click}
       >
