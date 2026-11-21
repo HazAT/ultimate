@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { ChevronDown } from '@lucide/solid'
-import { createSignal, For, onSettled, Show } from 'solid-js'
+import { For, Show } from 'solid-js'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,21 +9,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
-import { cn, useConversations } from '@/sdk/solid'
+import { cn, useConversations, useExternal } from '@/sdk/solid'
 import { getPreviews, getShown, refetchPreviews, show, subscribe } from './previews.ts'
 import type { Preview } from './refs.ts'
 
 const port = (url: string) => `:${new URL(url).port}`
 
 export function Switcher() {
-  const [previews, setPreviews] = createSignal(getPreviews())
-  const [shown, setShown] = createSignal(getShown())
-  onSettled(() =>
-    subscribe(() => {
-      setPreviews(getPreviews())
-      setShown(getShown())
-    }),
-  )
+  const previews = useExternal(getPreviews, subscribe)
+  const shown = useExternal(getShown, subscribe)
   const running = () => previews()?.filter((preview) => preview.running) ?? []
   const current = () => shown()?.preview
   const conversations = useConversations()

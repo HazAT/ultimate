@@ -2,7 +2,7 @@
 import { PanelLeft, PanelRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import {
@@ -18,6 +18,7 @@ import {
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { actions, layout } from '../sdk/actions.ts'
 import { Slot, useProvided } from '../sdk/contribution.solid.tsx'
+import { useExternal } from '../sdk/page.ts'
 import { panelItems, slotItems } from '../sdk/registry.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
 import { Shortcut } from './palette.solid.tsx'
@@ -128,12 +129,7 @@ function Trail() {
 }
 
 export function useRegion(region: 'sidebar' | 'panels') {
-  const [mounted, setMounted] = createSignal(layout.has(region))
-  onSettled(() => {
-    setMounted(layout.has(region))
-    return layout.subscribe(() => setMounted(layout.has(region)))
-  })
-  return mounted
+  return useExternal(() => layout.has(region), layout.subscribe)
 }
 
 export const inlineFailure = (extension: string, error: unknown) => (

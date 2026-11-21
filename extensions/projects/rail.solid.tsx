@@ -12,6 +12,7 @@ import {
   prettyName,
   useAction,
   useExtensions,
+  usePageVisible,
   useViewport,
 } from '@/sdk/solid'
 import { deadline, debounce } from '../../lib/timers.ts'
@@ -52,23 +53,6 @@ export function OpeningBar() {
   )
 }
 
-const [visible, setVisible] = createRoot(() => createSignal(true))
-const shownNow = () => document.visibilityState === 'visible'
-
-function refetchWhenShown(...reads: { refetch: () => unknown }[]) {
-  onSettled(() => {
-    setVisible(shownNow())
-    const changed = () => {
-      setVisible(shownNow())
-      if (shownNow()) for (const read of reads) void read.refetch()
-    }
-    document.addEventListener('visibilitychange', changed)
-    return () => document.removeEventListener('visibilitychange', changed)
-  })
-}
-
-const whileVisible = (ms: number) => () => (visible() ? ms : undefined)
-
 export function Rail() {
   const viewport = useViewport()
   const extensions = useExtensions()
@@ -85,16 +69,24 @@ export function Rail() {
 }
 
 function ProjectsRail() {
+  const visible = usePageVisible()
+  const showCount = createMemo<number>((previous) => (previous ?? 0) + Number(visible()))
+  const whileVisible = (ms: number) => () => (visible() ? ms : undefined)
   const list = useAction(ListAction, null, {
+    on: showCount,
     onError: keepLast,
     every: whileVisible(VISIBLE_PROJECTS_POLL_MS),
   })
   const shared = useAction(
     PinAction,
     {},
-    { conversation: ROOT, onError: keepLast, every: whileVisible(SHARED_PIN_POLL_MS) },
+    {
+      conversation: ROOT,
+      on: showCount,
+      onError: keepLast,
+      every: whileVisible(SHARED_PIN_POLL_MS),
+    },
   )
-  refetchWhenShown(list, shared)
   const [writing, setWriting] = createSignal<boolean>()
   const [saved, setSaved] = createSignal<{ pinned: boolean; over: unknown }>()
   const pinned = () => {

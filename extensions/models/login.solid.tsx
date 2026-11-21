@@ -37,6 +37,7 @@ import {
   useConversationId,
   useDialog,
   useDocOf,
+  useExternal,
   useModels,
   useNow,
   writingAs,
@@ -45,7 +46,6 @@ import type { AuthEvent, AuthPrompt } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { meansNone } from '../../lib/errors.ts'
 import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'
-import { useCell } from './readers.solid.tsx'
 import { authLabel, dialogs, loginProvider, pickerTarget, termsOf } from './state.ts'
 import type { ProviderInfo } from './state.ts'
 
@@ -145,7 +145,7 @@ function LoginSession(props: {
   onAttempt: (attempt: Attempt | undefined) => void
 }) {
   const shown = useConversationId()
-  const requested = useCell(loginProvider)
+  const requested = useExternal(loginProvider.get, loginProvider.subscribe)
   const [attempt, setAttempt] = createSignal<Attempt>()
   let active: Attempt | undefined
   function start(method: Method) {

@@ -10,7 +10,7 @@ import {
   SquareArrowOutUpRightIcon,
   Trash2Icon,
 } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
@@ -36,9 +36,11 @@ import {
   switchConversation,
   useConversation,
   useConversationId,
+  useConversationWidth,
   useConversations,
   useDoc,
   useDocOf,
+  useExternal,
   useSurface,
   useUiState,
   useViewport,
@@ -102,7 +104,7 @@ function SideStage(props: { id?: ConversationId; index?: SideChatIndex }) {
   const viewport = useViewport()
   const phone = createMemo(() => viewport() === 'phone')
   let overlay!: HTMLDivElement
-  const [width, setWidth] = createSignal(0)
+  const width = useConversationWidth(() => overlay)
   const current = () => frontSide(front(), props.index)
   const currentId = createMemo(() => current()?.id)
   const inFront = createMemo(() => currentId() !== undefined)
@@ -114,15 +116,6 @@ function SideStage(props: { id?: ConversationId; index?: SideChatIndex }) {
       return undefined
     }
     return deadline(sheetTransitionMs + unmountAfterExitPaddingMs, () => setPrevious(undefined))
-  })
-
-  onSettled(() => {
-    const parent = overlay.closest<HTMLElement>('[data-ui="conversation"]')
-    if (!parent) return undefined
-    setWidth(parent.clientWidth)
-    const observer = new ResizeObserver(() => setWidth(parent.clientWidth))
-    observer.observe(parent)
-    return () => observer.disconnect()
   })
 
   createEffect(
@@ -240,15 +233,9 @@ function SidePane(props: {
   const state = useDoc(SideChatDoc)
   const conversation = useConversation()
   const can = createMemo(() => endings(state() ?? undefined))
-  const [endingState, setEndingState] = createSignal(() => sideEndings.get(props.side))
+  const endingState = useExternal(() => sideEndings.get(props.side), sideEndings.subscribe)
   const ending = () => endingState().ending
   const error = () => endingState().error
-  onSettled(() => {
-    const side = props.side
-    const update = () => setEndingState(sideEndings.get(side))
-    update()
-    return sideEndings.subscribe(update)
-  })
   const openedAt = () => props.index?.sides.find((item) => item.id === props.side)?.openedAt
   createEffect(
     () => (props.front ? props.side : undefined),
