@@ -71,7 +71,10 @@ const message: Message = {
     {
       text: 'Where should it sit?',
       kind: 'choice',
-      options: [{ label: 'Sidebar' }, { label: 'Status line' }],
+      options: [
+        { label: 'Sidebar', key: 'a' },
+        { label: 'Status line', key: 'b' },
+      ],
     },
     { text: 'Land it?', kind: 'confirm' },
   ],
@@ -98,10 +101,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function press(label: string, action = 'press', args?: unknown[]) {
+async function press(label: string) {
   const control = agent.snapshot().find((entry) => !entry.offPage && entry.label === label)
   expect(control).toBeDefined()
-  const result = agent.act({ steps: [{ ref: control!.ref, action, args }] })
+  const result = agent.act({ steps: [{ ref: control!.ref, action: 'press' }] })
   await vi.advanceTimersByTimeAsync(100)
   flush()
   expect(await result).toMatchObject({ ok: true })
@@ -125,9 +128,35 @@ it('shows the saved picks, note and open question on a fresh mount', () => {
   expect(card.querySelector<HTMLTextAreaElement>('textarea[data-note]')?.value).toBe(
     'Peak colour on the phone too',
   )
-  expect(
-    card.querySelector('fieldset[data-current] button[aria-pressed=true]')?.textContent,
-  ).toContain('Yes')
+  expect(card.querySelector('fieldset[data-current] button[data-selected]')?.textContent).toContain(
+    'Yes',
+  )
+})
+
+it('clears a single pick without advancing and still accepts letter shortcuts', async () => {
+  const card = renderSolid(() => (
+    <MessageQuestions message={message} keys={true} withActions={false} />
+  ))
+  const field = (index: number) => card.querySelector(`[data-question="${index}"] fieldset`)
+  const choice = (label: string) => card.querySelector(`[aria-label="${label}"]`)
+  const sidebar = 'Option 1 · Sidebar · question 1 · message 5'
+  const status = 'Option 2 · Status line · question 1 · message 5'
+  await press(sidebar)
+  expect(choice(sidebar)?.hasAttribute('data-selected')).toBe(true)
+  const key = (value: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key: value }))
+  key('Escape')
+  await vi.advanceTimersByTimeAsync(350)
+  flush()
+  expect(choice(sidebar)?.hasAttribute('data-selected')).toBe(false)
+  expect(field(0)?.hasAttribute('data-current')).toBe(true)
+  key('b')
+  flush()
+  expect(choice(status)?.hasAttribute('data-selected')).toBe(true)
+  key('a')
+  flush()
+  expect(choice(sidebar)?.hasAttribute('data-selected')).toBe(true)
+  expect(choice(status)?.hasAttribute('data-selected')).toBe(false)
+  await uiState.flush()
 })
 
 it('lets an agent choose, undo a send, send again, and dismiss another card', async () => {
@@ -161,9 +190,9 @@ it('lets an agent choose, undo a send, send again, and dismiss another card', as
     ]),
   )
   const option = 'Option 2 · Status line · question 1 · message 5'
-  expect(agent.snapshot().find((entry) => entry.label === option)?.pressed).toBe(false)
-  await press(option, 'setPressed', [true])
-  expect(card.querySelector(`[aria-label="${option}"]`)?.getAttribute('aria-pressed')).toBe('true')
+  await press(option)
+  expect(card.querySelector(`[aria-label="${option}"]`)?.hasAttribute('data-selected')).toBe(true)
+  await uiState.flush()
   expect(harness.writers).toEqual(['agent'])
   await vi.advanceTimersByTimeAsync(320)
   expect(

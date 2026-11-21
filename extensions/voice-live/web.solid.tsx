@@ -163,21 +163,21 @@ function StartButton() {
         <TooltipTrigger
           aria-label={label()}
           class={cn(
-            'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-pressed:bg-brand/15 data-pressed:text-brand data-pressed:hover:bg-brand/20 data-pressed:hover:text-brand pointer-coarse:size-9',
+            'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
+            on() && 'bg-brand/15 text-brand hover:bg-brand/20 hover:text-brand',
             missing() && 'opacity-50 hover:bg-transparent hover:text-muted-foreground',
           )}
           data-voice-live={missing() ? 'unavailable' : mode().phase}
+          onClick={() => {
+            if (status.loading()) return
+            if (missing()) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
+            if (on()) return toggleFront()
+            void live.start()
+          }}
           onPointerDown={(event) => event.preventDefault()}
           render={(trigger) => (
-            <Toggle
+            <Button
               {...trigger}
-              pressed={on()}
-              onPressedChange={() => {
-                if (status.loading()) return
-                if (missing()) return events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
-                if (on()) return toggleFront()
-                void live.start()
-              }}
               disabled={status.loading()}
               focusableWhenDisabled
               size={null}

@@ -2,7 +2,6 @@
 import { Brain, Check, ChevronDown, Cpu } from '@lucide/solid'
 import { createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Toggle, ToggleGroup } from '@/components/ui/toggle.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { api, cn, errorMessage, useDialog, writingAs } from '@/sdk/solid'
@@ -137,7 +136,10 @@ function ThinkingLevels(props: {
   close: () => void
 }) {
   const [error, setError] = createSignal<string>()
+  let changing = false
   async function choose(level: ThinkingLevel, source: string) {
+    if (changing) return
+    changing = true
     const close = props.close
     setError(undefined)
     try {
@@ -145,32 +147,27 @@ function ThinkingLevels(props: {
       writingAs(source, close)
     } catch (failure) {
       setError(errorMessage(failure))
+    } finally {
+      changing = false
     }
   }
   return (
     <>
-      <ToggleGroup<ThinkingLevel>
-        aria-label="Thinking effort"
-        class="block"
-        orientation="vertical"
-        value={[props.current]}
-        onValueChange={([level], details) => void choose(level ?? props.current, details.source)}
-      >
-        <For each={props.levels}>
-          {(level) => (
-            <Toggle
-              aria-label={`${level} effort`}
-              value={level}
-              class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] data-pressed:bg-transparent data-pressed:text-brand data-pressed:hover:bg-accent dark:data-pressed:hover:bg-accent/50"
-              size={null}
-              variant="ghost"
-            >
-              <Check class="size-3.5 opacity-0 in-data-pressed:opacity-100" />
-              {level}
-            </Toggle>
-          )}
-        </For>
-      </ToggleGroup>
+      <For each={props.levels}>
+        {(level) => (
+          <Button
+            aria-label={`${level} effort`}
+            data-selected={level === props.current ? '' : undefined}
+            class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] data-selected:text-brand"
+            onClick={(_, details) => choose(level, details.source)}
+            size={null}
+            variant="ghost"
+          >
+            <Check class="size-3.5 opacity-0 in-data-selected:opacity-100" />
+            {level}
+          </Button>
+        )}
+      </For>
       <div class="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
         <Show
           when={error()}

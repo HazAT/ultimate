@@ -144,6 +144,28 @@ const writes = () =>
     ]
   })
 
+it('keeps the picked effort pending and ignores a quick second choice', async () => {
+  const pending = Promise.withResolvers<Response>()
+  const respond = harness.fetch.getMockImplementation()!
+  harness.fetch.mockImplementation((url, init) =>
+    typeof url === 'string' && url.endsWith('/configure') ? pending.promise : respond(url, init),
+  )
+  const page = renderSolid(() => <ThinkingButton />)
+  expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
+  const high = page.querySelector<HTMLButtonElement>('[aria-label="high effort"]')!
+  const low = page.querySelector<HTMLButtonElement>('[aria-label="low effort"]')!
+  high.click()
+  low.click()
+  await sync()
+  expect(high.hasAttribute('data-pending')).toBe(true)
+  expect(writes()).toEqual([
+    { path: '/api/conversations/1/configure', body: { thinkingLevel: 'high' }, source: 'person' },
+  ])
+  pending.resolve(Response.json({ ok: true }))
+  await sync()
+  expect(page.querySelector('[aria-label="high effort"]')).toBeNull()
+})
+
 it('lets an agent pick a model and a family by name, recording both writes as the agent', async () => {
   const container = renderSolid(() => (
     <>
@@ -209,8 +231,7 @@ it('targets the side chat from thinking controls and the picker, including after
     )
     expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
     await expectDistinctAgentNames(agent)
-    expect(agent.snapshot().find((entry) => entry.label === 'high effort')?.pressed).toBe(false)
-    expect(await act('high effort', 'setPressed', true)).toMatchObject({ ok: true })
+    expect(await act('high effort', 'press')).toMatchObject({ ok: true })
     const cycle = models.commands!.find((command) => command.id === 'model.thinking.cycle')!
     expect(cycle).toMatchObject({ keys: 'shift+tab', whileTyping: true })
     await cycle.run(currentContext(side))

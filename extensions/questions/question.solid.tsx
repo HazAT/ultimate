@@ -1,5 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { Check } from '@lucide/solid'
+import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
@@ -13,6 +14,52 @@ import type { Draft } from './state.ts'
 const mark =
   'size-3 transition-[scale,opacity] duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] starting:scale-40 starting:opacity-0'
 const ring = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+
+const optionClass =
+  'group/option flex h-auto min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug font-normal whitespace-normal motion-safe:active:scale-[0.995] max-md:min-h-11'
+
+function OptionControl(props: {
+  name: string
+  chosen: boolean
+  multi: boolean
+  disabled: boolean
+  onSelect: (pressed?: boolean) => void
+  onFocus: () => void
+  children: JSX.Element
+}) {
+  return (
+    <Show
+      when={props.multi}
+      fallback={
+        <Button
+          aria-label={props.name}
+          data-selected={props.chosen ? '' : undefined}
+          disabled={props.disabled}
+          onClick={() => props.onSelect()}
+          onFocus={props.onFocus}
+          class={cn(optionClass, ring)}
+          size={null}
+          variant={null}
+        >
+          {props.children}
+        </Button>
+      }
+    >
+      <Toggle
+        aria-label={props.name}
+        pressed={props.chosen}
+        disabled={props.disabled}
+        onPressedChange={(pressed) => props.onSelect(pressed)}
+        onFocus={props.onFocus}
+        class={cn(optionClass, ring, 'data-pressed:bg-transparent data-pressed:text-inherit')}
+        size={null}
+        variant={null}
+      >
+        {props.children}
+      </Toggle>
+    </Show>
+  )
+}
 
 type FieldKey = KeyboardEvent & { currentTarget: HTMLInputElement }
 
@@ -57,7 +104,7 @@ export function QuestionItem(props: {
   disabled: boolean
   hints: boolean
   onOpen: () => void
-  onSelect: (choice: number) => void
+  onSelect: (choice: number, pressed?: boolean) => void
   onText: (text: string) => void
   onFieldKey: (event: FieldKey) => void
 }) {
@@ -123,18 +170,13 @@ export function QuestionItem(props: {
               )}
               onPointerEnter={showPreview}
             >
-              <Toggle
-                aria-label={`Option ${index + 1} · ${choice().label} · ${name()}`}
-                pressed={chosen()}
+              <OptionControl
+                name={`Option ${index + 1} · ${choice().label} · ${name()}`}
+                chosen={chosen()}
+                multi={multi()}
                 disabled={props.disabled}
-                onPressedChange={() => props.onSelect(index)}
+                onSelect={(pressed) => props.onSelect(index, pressed)}
                 onFocus={showPreview}
-                class={cn(
-                  'group/option flex h-auto min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug font-normal whitespace-normal motion-safe:active:scale-[0.995] data-pressed:bg-transparent data-pressed:text-inherit max-md:min-h-11',
-                  ring,
-                )}
-                size={null}
-                variant={null}
               >
                 <span
                   aria-hidden="true"
@@ -169,7 +211,7 @@ export function QuestionItem(props: {
                     my pick
                   </span>
                 </Show>
-              </Toggle>
+              </OptionControl>
               <Show when={choice().custom && chosen()}>
                 <div class="px-2.5 pb-2.5 pl-10">{field('Your answer…', true)}</div>
               </Show>
@@ -302,16 +344,16 @@ function Scale(props: {
       <div class="flex gap-1">
         <For each={choices(props.question)} keyed={false}>
           {(step, index) => (
-            <Toggle
-              pressed={value() === index}
+            <Button
+              data-selected={value() === index ? '' : undefined}
               aria-label={`Rating ${step().label} · ${props.name}`}
               disabled={props.disabled}
-              onPressedChange={() => props.onSelect(index)}
+              onClick={() => props.onSelect(index)}
               style={{ 'transition-delay': value() >= index ? `${index * 20}ms` : undefined }}
               class={cn(
                 'h-9 min-w-0 flex-1 rounded-md border font-mono text-[13px] transition-[background-color,border-color,color,scale] duration-150 motion-safe:active:scale-95 max-md:h-11',
                 ring,
-                'data-pressed:border-brand data-pressed:bg-brand data-pressed:text-brand-foreground',
+                'data-selected:border-brand data-selected:bg-brand data-selected:text-brand-foreground',
                 value() >= index
                   ? 'border-brand/30 bg-brand/15 text-foreground'
                   : 'border-border/70 bg-background/40 text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground',
@@ -320,7 +362,7 @@ function Scale(props: {
               variant={null}
             >
               {step().label}
-            </Toggle>
+            </Button>
           )}
         </For>
       </div>
