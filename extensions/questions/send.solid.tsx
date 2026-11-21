@@ -44,13 +44,11 @@ export function SendButton(props: {
   onUndo: () => void
 }) {
   const [holding, setHolding] = createSignal(false)
-  let gesture: { pointer: number; stop: AbortController; cancel?: Cancel } | undefined
-  let interruption: Event | undefined
-  let released = false
+  let hold: { stop: AbortController; cancel: Cancel } | undefined
   const end = () => {
-    gesture?.stop.abort()
-    gesture?.cancel?.()
-    gesture = undefined
+    hold?.stop.abort()
+    hold?.cancel()
+    hold = undefined
   }
   const stop = () => {
     end()
@@ -66,15 +64,6 @@ export function SendButton(props: {
   const answering = () => props.phase === 'answering'
   const undo = () => props.phase === 'undo'
   const status = () => (undo() ? 'Undo' : props.phase === 'sending' ? 'Sending…' : 'Sent')
-  const inside = (event: PointerEvent & { currentTarget: HTMLElement }) => {
-    const box = event.currentTarget.getBoundingClientRect()
-    return (
-      event.clientX >= box.left &&
-      event.clientX <= box.right &&
-      event.clientY >= box.top &&
-      event.clientY <= box.bottom
-    )
-  }
   return (
     <Button
       size="sm"
@@ -88,51 +77,31 @@ export function SendButton(props: {
           : 'Click to send with a moment to undo; hold (or ⇧↵) to send at once'
       }
       onPointerDown={(event) => {
-        released = false
-        if (
-          interruption === event ||
-          !event.isPrimary ||
-          event.button !== 0 ||
-          props.disabled ||
-          (!answering() && !undo())
-        )
-          return
-        event.currentTarget.setPointerCapture(event.pointerId)
+        if (!event.isPrimary || event.button !== 0 || props.disabled || !answering()) return
         const pointer = event.pointerId
         const controller = new AbortController()
         window.addEventListener(
           'pointerdown',
           (other) => {
-            if (other.pointerId !== pointer) {
-              interruption = other
-              stop()
-            }
+            if (other.pointerId !== pointer) stop()
           },
           { capture: true, signal: controller.signal },
         )
-        gesture = { pointer, stop: controller }
-        if (undo()) return
         setHolding(true)
         const sendNow = props.onSendNow
-        gesture.cancel = deadline(HOLD_TO_SEND_MS, () => {
-          stop()
-          sendNow()
-        })
+        hold = {
+          stop: controller,
+          cancel: deadline(HOLD_TO_SEND_MS, () => {
+            stop()
+            sendNow()
+          }),
+        }
       }}
-      onPointerMove={(event) => {
-        if (gesture?.pointer === event.pointerId && !inside(event)) stop()
-      }}
-      onPointerUp={(event) => {
-        released = gesture?.pointer === event.pointerId && inside(event)
-        if (gesture?.pointer === event.pointerId) stop()
-      }}
-      onPointerCancel={(event) => {
-        if (gesture?.pointer === event.pointerId) stop()
-      }}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
       onContextMenu={(event) => event.preventDefault()}
-      onClick={(event, details) => {
-        if (!released && event.detail !== 0 && details.source !== 'agent') return
-        released = false
+      onClick={(_event, details) => {
         if (undo()) props.onUndo()
         else if (answering()) props.onSend(details.source)
       }}
