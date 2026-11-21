@@ -265,6 +265,24 @@ it('keeps the fields a batch touched within the 100-field cap, with the right co
   const hiddenLater = (value(3) as { values: Record<string, unknown> }).values
   expect(Object.keys(hiddenLater).some((key) => key.endsWith(' Filler 119'))).toBe(false)
   expect(Object.keys(hiddenLater).filter((key) => key !== 'more').length).toBe(100)
+  const all = await drive([
+    { ui: 'act', steps: [{ ref: 'Many fields', action: 'setChecked', args: [true] }] },
+    {
+      ui: 'act',
+      steps: [
+        ...Array.from({ length: 101 }, (_, index) => ({
+          ref: `Filler ${index}`,
+          action: 'setChecked',
+          args: [true],
+        })),
+        { ref: 'Digest details', action: 'setOpen', args: [true] },
+      ],
+    },
+  ])
+  const touchedAll = (all(2) as { values: Record<string, unknown> }).values
+  const listed = Object.keys(touchedAll).filter((key) => key !== 'more')
+  expect(listed.length).toBe(100)
+  expect(listed.length + (touchedAll.more as number)).toBe(125)
 })
 
 it('until a control’s state wakes on its change, by label or by ref, and a missing ref is never a label', async () => {

@@ -193,15 +193,10 @@ export function createTestHook(
       if (now && key && now.open !== true) restored.push([name, now[key]])
     }
     const touchedRefs = new Set(touchedNames.keys())
-    const evictable = Object.keys(listed)
-      .filter((name) => !touchedRefs.has(name.split(' ')[0]))
-      .slice(restored.length ? -restored.length : Infinity)
-    for (const name of evictable) delete listed[name]
-    return {
-      ...Object.fromEntries(restored),
-      ...listed,
-      more: (more as number) - restored.length + evictable.length,
-    }
+    const untouched = Object.keys(listed).filter((name) => !touchedRefs.has(name.split(' ')[0]))
+    const kept = restored.slice(0, untouched.length)
+    for (const name of untouched.slice(untouched.length - kept.length)) delete listed[name]
+    return { ...Object.fromEntries(kept), ...listed, more }
   }
 
   const same = (a: unknown, b: unknown): boolean => {
