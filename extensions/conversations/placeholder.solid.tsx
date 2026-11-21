@@ -4,7 +4,7 @@ import type { Accessor } from 'solid-js'
 import { createMemo } from 'solid-js'
 import { ROOT, useDocOf } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'
-import { agentTitle } from './mark-style.ts'
+import { agentTitle, standingPlaceholder as placeholderText } from './mark-style.ts'
 import { MarksDoc } from './refs.ts'
 
 export function standingPlaceholder(
@@ -15,8 +15,6 @@ export function standingPlaceholder(
   return createMemo(() => {
     const { conversation, busy } = input()
     const name = Object.entries(standing() ?? {}).find(([, id]) => id === conversation)?.[0]
-    if (!name || name === 'ultimate' || busy) return undefined
-    const { title } = agentTitle(name, marks())
-    return title ? `Message ${title}…` : undefined
+    return placeholderText(name, name ? agentTitle(name, marks()).title : '', busy)
   })
 }

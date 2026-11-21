@@ -19,7 +19,8 @@ import {
 } from 'solid-js'
 import type { Accessor, Component } from 'solid-js'
 import { nextTurn } from '../../../lib/timers.ts'
-import { isReact, isReactNode, reactBridge, solidOf } from './framework.ts'
+import { ContributionError } from '../app/contribution-error.solid.tsx'
+import { isReact, isReactNode, markReact, reactBridge, solidOf } from './framework.ts'
 import type { Rendered, SolidPart } from './framework.ts'
 import { provisionsOf, slotItems } from './registry.ts'
 import { ConversationScope, ExtensionName, Transcript, useExtensions } from './solid.ts'
@@ -300,6 +301,7 @@ const hookAsComponent = (use: unknown) => {
   let component = hookComponents.get(hook)
   if (!component) {
     component = (input: object) => hook(input)
+    markReact(component)
     hookComponents.set(hook, component)
   }
   return component
@@ -322,13 +324,53 @@ const sameProviders = (a: readonly Provider[], b: readonly Provider[]) =>
   a.length === b.length &&
   a.every((item, at) => item.use === b[at].use && item.version === b[at].version)
 
+const failed = Symbol('failed provider')
+
+const markReactValue = (value: unknown) => {
+  if (typeof value === 'function') markReact(value)
+  else if (value && typeof value === 'object' && !isReactNode(value))
+    for (const field of Object.values(value)) if (typeof field === 'function') markReact(field)
+  return value
+}
+
+function runProvider(use: unknown, input: Accessor<unknown>): Accessor<unknown> {
+  try {
+    return (use as (input: Accessor<unknown>) => Accessor<unknown>)(input)
+  } catch (error) {
+    return () => {
+      throw error
+    }
+  }
+}
+
 function providerValue(
   provider: Provider,
   input: Accessor<unknown>,
   failures: HTMLElement | undefined,
 ): Accessor<unknown> {
-  if (!isReact(provider.use))
-    return (provider.use as (input: Accessor<unknown>) => Accessor<unknown>)(input)
+  if (!isReact(provider.use)) {
+    const read = runProvider(provider.use, input)
+    const outcome = createMemo(() => {
+      try {
+        return { value: read() }
+      } catch (error) {
+        return { error }
+      }
+    })
+    createEffect(
+      () => outcome().error,
+      (error) => {
+        if (error !== undefined) console.error(`[extension ${provider.extension}]`, error)
+      },
+    )
+    if (failures)
+      insert(failures, () => (
+        <Show when={'error' in outcome()}>
+          <ContributionError error={outcome().error} extension={provider.extension} inline />
+        </Show>
+      ))
+    return () => ('error' in outcome() ? failed : outcome().value)
+  }
   const value = createMemo(input, { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) })
   const [found, setFound] = createSignal<unknown>(undefined)
   const root = reactBridge().root(failures ?? document.createElement('div'), {
@@ -337,7 +379,9 @@ function providerValue(
   })
   onCleanup(() => nextTurn(root.unmount))
   createEffect(value, (next) =>
-    root.render(reactBridge().provision(provider, next, (latest) => setFound(() => latest))),
+    root.render(
+      reactBridge().provision(provider, next, (latest) => setFound(() => markReactValue(latest))),
+    ),
   )
   return found
 }
@@ -354,7 +398,12 @@ export function useAllProvided<Input, Value>(
   const values = mapArray(providers, (provider) =>
     providerValue(provider, input as Accessor<unknown>, failures),
   )
-  return createMemo(() => values().map((value) => value() as Value))
+  return createMemo(
+    () =>
+      values()
+        .map((value) => value())
+        .filter((value) => value !== failed) as Value[],
+  )
 }
 
 export function useProvided<Input, Value>(

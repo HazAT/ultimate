@@ -31,7 +31,7 @@ import type {
 import { attention } from '../../web/src/sdk/types.ts'
 import type { WebExtension } from '../../web/src/sdk/types.ts'
 
-const path = (name: string) => `../../extensions/${name}/web.tsx`
+const path = (name: string) => `../../extensions/${name}/web.solid.tsx`
 /** The shown panel's id and the tab row's ids. */
 const ids = ({ active, tabs }: ReturnType<typeof shownPanels>) => [
   active?.id,

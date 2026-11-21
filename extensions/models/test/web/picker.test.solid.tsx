@@ -43,7 +43,7 @@ import { LoginDialog } from '../../login.solid.tsx'
 import { ModelPicker } from '../../picker.solid.tsx'
 import { ModelButton, ThinkingButton } from '../../toolbar.solid.tsx'
 import { openLogin } from '../../state.ts'
-import models from '../../web.tsx'
+import models from '../../web.solid.tsx'
 
 const agent = createAgent()
 const server = fakeSubscriptions(harness.sources)

@@ -145,19 +145,23 @@ it("renders the React Header's children inside the Solid header with React conte
   host.remove()
 })
 
-it('renders an island provider of a rendered point as Solid around the core, inside a React one', async () => {
-  const Wrapped = definePoint<{ id: number; core: ReactNode }, ReactNode>('test.wrapped')
-  const Frame = island((props: { id: number; core: unknown }) => (
+it('renders a Solid provider of a rendered point around the core, inside a React one', async () => {
+  const Wrapped = definePoint<{ id: number; core: unknown }, unknown>('test.wrapped')
+  const Frame = (props: { id: number; core: unknown }) => (
     <section data-island={props.id}>{props.core as never}</section>
-  ))
+  )
   await registry.setLoaders({
-    'extensions/frame/web.tsx': async () => ({ default: { provides: [provide(Wrapped, Frame)] } }),
+    'extensions/frame/web.solid.tsx': async () => ({
+      default: { provides: [{ point: Wrapped.point, use: Frame }] },
+    }),
     'extensions/hook/web.tsx': async () => ({
       default: {
         provides: [
-          provide(Wrapped, (input: { id: number; core: ReactNode }) =>
-            h('aside', { 'data-react': input.id }, input.core),
-          ),
+          {
+            point: Wrapped.point,
+            use: (input: { id: number; core: ReactNode }) =>
+              h('aside', { 'data-react': input.id }, input.core),
+          },
         ],
       },
     }),
@@ -181,10 +185,10 @@ it('renders an island provider of a rendered point as Solid around the core, ins
 it('renders one inline card for an error-report provider that throws, without recursing', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   await registry.setLoaders({
-    'extensions/reporter/web.tsx': async () => ({
+    'extensions/reporter/web.solid.tsx': async () => ({
       default: {
         provides: [
-          provide(ErrorReport, () => {
+          provide(ErrorReport, () => () => {
             throw new Error('reporter broke')
           }),
         ],
@@ -217,8 +221,10 @@ it('reports a throwing React overlay with its JavaScript frames and component st
     'extensions/broken/web.tsx': async () => ({
       default: { slots: { overlay: [BrokenOverlay] } },
     }),
-    'extensions/reporter/web.tsx': async () => ({
-      default: { provides: [provide(ErrorReport, () => ({ title: 'Report it', send: sent }))] },
+    'extensions/reporter/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(ErrorReport, () => () => ({ title: 'Report it', send: sent }))],
+      },
     }),
   })
   registry.receiveSystem()

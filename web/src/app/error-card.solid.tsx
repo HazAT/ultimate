@@ -27,9 +27,12 @@ function ReactCompatNote(props: { extension: string }) {
     extensions().some((record) => record.name === props.extension && record.framework === 'react')
   return (
     <Show when={react()}>
-      <div class="mt-1.5 font-sans text-[12px] leading-snug text-muted-foreground" data-react-compat>
-        Ultimate's core is Solid now; this React facet (web.tsx) runs on a frozen compat layer, and this part of it
-        broke there.{' '}
+      <div
+        class="mt-1.5 font-sans text-[12px] leading-snug text-muted-foreground"
+        data-react-compat
+      >
+        Ultimate's core is Solid now; this React facet (web.tsx) runs on a frozen compat layer, and
+        this part of it broke there.{' '}
         <a
           class="text-foreground underline underline-offset-2 hover:text-brand"
           href={reactCompatDoc}

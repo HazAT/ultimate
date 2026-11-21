@@ -1,12 +1,16 @@
 /** @jsxImportSource @solidjs/web */
 import type { Entry, TypedEntry } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { createMemo, For, Show } from 'solid-js'
+import { createEffect, createMemo, For, Show } from 'solid-js'
+import type { JSX } from '@solidjs/web'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Component } from 'solid-js'
 import { ContributionError } from '../app/contribution-error.solid.tsx'
 import { Contribution, Slot as BridgeSlot } from './contribution.solid.tsx'
 import { isReact } from './framework.ts'
-import { provisionsOf, useExtensions } from './solid.ts'
+import { store } from './client.ts'
+import { scopeAttribute } from './scope.ts'
+import { ConversationScope, provisionsOf, Transcript, useExtensions } from './solid.ts'
 import type { Point, SlotName, SolidEntryProps } from './types.ts'
 
 export { Card } from '../app/card.solid.tsx'
@@ -127,4 +131,25 @@ export function renderEntry<D extends JsonValue>(
       </Show>
     )
   }
+}
+
+/**
+ * Gives `children` their own live conversation `id` without switching the shown one: the SDK readers, the transcript and
+ * composer inside follow it, and so do shortcuts pressed inside it. Scopes of the same id share one stream, released when
+ * the last one unmounts.
+ */
+export function ScopedConversation(props: { id: ConversationId; children: JSX.Element }) {
+  createEffect(
+    () => props.id,
+    (id) => store.watchConversation(id),
+  )
+  return (
+    <ConversationScope value={props.id}>
+      <Transcript value={null}>
+        <div class="contents" {...{ [scopeAttribute]: props.id }}>
+          {props.children}
+        </div>
+      </Transcript>
+    </ConversationScope>
+  )
 }

@@ -21,7 +21,7 @@ import { ConversationIdContext } from '../../web/src/compat/conversation-scope.t
 import { ExtensionNameContext } from '../../web/src/compat/hooks.ts'
 import { island } from '../../web/src/compat/island.tsx'
 import { registry } from '../../web/src/sdk/client.ts'
-import { Contributed, Contribution, useProvided } from '../../web/src/sdk/contribution.solid.tsx'
+import { Contributed, Contribution, Slot, useProvided } from '../../web/src/sdk/contribution.solid.tsx'
 import { loadReact, markReact } from '../../web/src/sdk/framework.ts'
 import { definePoint } from '../../web/src/sdk/types.ts'
 import { ConversationScope } from '../../web/src/sdk/solid.ts'
@@ -253,4 +253,25 @@ it('keeps the Solid host running when a React contribution throws', () => {
   expect(container.querySelector('[data-extension-error="echo"]')?.textContent).toContain(
     'renderer broke',
   )
+})
+
+it('takes a facet’s framework from its file name: web.tsx parts mount through the compat layer, web.solid.tsx parts as Solid', async () => {
+  const ReactItem = () => h('u', null, 'react item')
+  const SolidItem = () => <b>solid item</b>
+  await registry.setLoaders({
+    'extensions/old/web.tsx': async () => ({ default: { slots: { overlay: [ReactItem] } } }),
+    'extensions/new/web.solid.tsx': async () => ({ default: { slots: { overlay: [SolidItem] } } }),
+  })
+  expect(registry.getSnapshot().map((record) => [record.name, record.framework])).toEqual([
+    ['old', 'react'],
+    ['new', 'solid'],
+  ])
+  let container!: HTMLElement
+  act(() => {
+    container = renderSolid(() => <Slot fallback={failed} name="overlay" />)
+    flush()
+  })
+  expect(container.querySelector('u')?.parentElement?.className).toContain('contents')
+  expect(container.querySelector('b')?.parentElement).toBe(container)
+  expect(container.textContent).toBe('react itemsolid item')
 })

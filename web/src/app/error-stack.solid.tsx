@@ -9,8 +9,14 @@ import type { ErrorCardProps } from './error-card.solid.tsx'
 import { extensionPath, stackFrames } from './error-report.ts'
 
 export function ReportedErrorCard(props: Omit<ErrorCardProps, 'report'>) {
-  const report = useProvided(ErrorReport, () => null)
-  return <ErrorCard {...props} report={report()} />
+  const failures = (<span class="contents" />) as HTMLElement
+  const report = useProvided(ErrorReport, () => null, failures)
+  return (
+    <>
+      <ErrorCard {...props} report={report()} />
+      {failures}
+    </>
+  )
 }
 
 export const reportedFailure = (extension: string, error: unknown, trace?: string) => (
@@ -48,7 +54,8 @@ function StackedErrorCard(props: {
       />
       <div class="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground/80">
         <Puzzle aria-hidden="true" class="size-3" />
-        {extensionPath(system(), props.extension, `/${facetFile(props.extension)}`)} · {props.footer}
+        {extensionPath(system(), props.extension, `/${facetFile(props.extension)}`)} ·{' '}
+        {props.footer}
       </div>
     </div>
   )

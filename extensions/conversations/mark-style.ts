@@ -90,3 +90,6 @@ export function agentMark<Icon>(
     strokeWidth: 2,
   }
 }
+
+export const standingPlaceholder = (name: string | undefined, title: string, busy: boolean) =>
+  name && name !== 'ultimate' && title && !busy ? `Message ${title}…` : undefined

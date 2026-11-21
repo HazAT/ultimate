@@ -72,7 +72,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { CommandPalette } from '../../../../web/src/app/palette.solid.tsx'
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { WireTab } from '../../tab.solid.tsx'
-import wire from '../../web.tsx'
+import wire from '../../web.solid.tsx'
 
 const agent = createAgent()
 harness.server = fakeSubscriptions(harness.sources)
