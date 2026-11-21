@@ -69,6 +69,7 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
     step: (feed: Feed, page: Page) => Feed,
   ) => {
     setState(asking)
+    const chasing = target
     void api
       .action(
         StreamAction,
@@ -78,9 +79,11 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
       .then(
         (page) => {
           if (controller.signal.aborted) return
-          setState((previous) => step(previous, page))
-          if (cursor.after !== undefined && !page.rows.length) target = undefined
-          catchUp()
+          if (cursor.after !== undefined && !page.rows.length && target === chasing)
+            target = undefined
+          const stepped = step(state(), page)
+          setState(stepped)
+          catchUp(stepped)
         },
         (error: unknown) => {
           if (!controller.signal.aborted)
@@ -88,9 +91,9 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
         },
       )
   }
-  function catchUp() {
+  function catchUp(current = state()) {
     const newestPage = target
-    const { head, loading } = state()
+    const { head, loading } = current
     if (!newestPage || head === newestPage.head) return
     if (head === undefined) setState((previous) => loaded(previous, newestPage))
     else if (!loading) request({ after: head }, (feed, page) => followed(feed, head, page))
