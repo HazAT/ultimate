@@ -10,7 +10,9 @@ import type {
   ToolExecutionApi,
   ToolTaskInput,
   SubmissionRecord,
+  TaskRuntime,
 } from '@earendil-works/pi-durable'
+import { settledSubmission, submitAndSleep } from '../../lib/settled.ts'
 import { existsSync } from 'node:fs'
 import { onCommit } from '../../lib/commits.ts'
 import { readFile } from 'node:fs/promises'
@@ -146,18 +148,39 @@ const replyText = (id: ConversationId, message: AssistantMessage | undefined) =>
   hasCompletedTextAnswer(message)
     ? answerText(message)
     : `Subagent ${id} ${unanswered(message)}. Message it to continue.`
+type ReporterInput = {
+  conversationId: ConversationId
+  text: string
+  steer: boolean
+  sourceEntry?: EntryId
+  answer?: EntryId
+}
+type ReporterCheckpoint =
+  | { phase: 'deliver' }
+  | { phase: 'settled' }
+  | { phase: 'report'; report?: string; answer?: EntryId }
+async function reportFailure(
+  reporter: TaskId,
+  runtime: TaskRuntime<ReporterInput, ReporterCheckpoint, null, object>,
+  error: unknown,
+  context: Context,
+) {
+  if (runtime.signal.aborted) throw error
+  await runtime.commit(async (tx) => {
+    const state = await tx.doc(Subagents, runtime.conversationId)
+    Object.values(state.actions).find((candidate) => candidate.reporter === reporter)!.status =
+      'failed'
+    return {
+      status: 'running',
+      checkpoint: {
+        phase: 'report',
+        report: error instanceof Error ? error.message : String(error),
+      },
+    }
+  }, context)
+}
 function createReporter(failures: () => ChildFailuresService | undefined) {
-  return defineTask<
-    {
-      conversationId: ConversationId
-      text: string
-      steer: boolean
-      sourceEntry?: EntryId
-      answer?: EntryId
-    },
-    { phase: 'deliver' } | { phase: 'report'; report?: string; answer?: EntryId },
-    null
-  >({
+  return defineTask<ReporterInput, ReporterCheckpoint, null>({
     name: 'ultimate.subagent-reporter',
     version: 1,
     initial: (input) =>
@@ -169,35 +192,44 @@ function createReporter(failures: () => ChildFailuresService | undefined) {
         try {
           const child = (await runtime.conversation(task.input.conversationId, context))!
           const content = task.input.text
-          const settled = await (
-            await child.submit(
-              {
-                type: 'input',
-                content,
-                entry: {
-                  kind: 'subagents.instruction',
-                  data: {
-                    sender: runtime.conversationId,
-                    kind: 'instruction',
-                    agent: (await runtime.snapshot(Subagents, runtime.conversationId, context))!
-                      .agents[String(child.id)].agent,
-                    body: content,
-                    ...(task.input.sourceEntry ? { entry: task.input.sourceEntry } : {}),
-                  },
+          await submitAndSleep(
+            runtime,
+            child,
+            {
+              type: 'input',
+              content,
+              entry: {
+                kind: 'subagents.instruction',
+                data: {
+                  sender: runtime.conversationId,
+                  kind: 'instruction',
+                  agent: (await runtime.snapshot(Subagents, runtime.conversationId, context))!
+                    .agents[String(child.id)].agent,
+                  body: content,
+                  ...(task.input.sourceEntry ? { entry: task.input.sourceEntry } : {}),
                 },
-                whenBusy: task.input.steer ? 'steer' : 'followUp',
-                requestId: `subagent:${task.id}`,
               },
-              context,
-            )
-          ).wait(context)
+              whenBusy: task.input.steer ? 'steer' : 'followUp',
+              requestId: `subagent:${task.id}`,
+            },
+            { phase: 'settled' },
+            context,
+          )
+        } catch (error) {
+          await reportFailure(task.id, runtime, error, context)
+        }
+      },
+      settled: async (task, runtime, context) => {
+        try {
+          const settled = await settledSubmission(runtime, context)
+          const child = task.input.conversationId
           await runtime.commit(async (tx) => {
             const state = await tx.doc(Subagents, runtime.conversationId)
             const action = Object.values(state.actions).find(
               (candidate) => candidate.reporter === task.id,
             )!
             action.status = settled.status
-            const agent = state.agents[String(child.id)]
+            const agent = state.agents[String(child)]
             if (settled.status === 'done' && settled.type === 'input') {
               action.answer = settled.answer
               if (agent.reported.includes(settled.answer))
@@ -210,7 +242,7 @@ function createReporter(failures: () => ChildFailuresService | undefined) {
                 status: 'running',
                 checkpoint: {
                   phase: 'report',
-                  report: reportText(child.id, agent.agent, answer),
+                  report: reportText(child, agent.agent, answer),
                   answer: settled.answer,
                 },
               }
@@ -231,22 +263,7 @@ function createReporter(failures: () => ChildFailuresService | undefined) {
             return { status: 'running', checkpoint: { phase: 'report' } }
           }, context)
         } catch (error) {
-          if (runtime.signal.aborted) throw error
-          const message = error instanceof Error ? error.message : String(error)
-          await runtime.commit(async (tx) => {
-            const state = await tx.doc(Subagents, runtime.conversationId)
-            const action = Object.values(state.actions).find(
-              (candidate) => candidate.reporter === task.id,
-            )!
-            action.status = 'failed'
-            return {
-              status: 'running',
-              checkpoint: {
-                phase: 'report',
-                report: message,
-              },
-            }
-          }, context)
+          await reportFailure(task.id, runtime, error, context)
         }
       },
       report: async (task, runtime, context) => {

@@ -12,6 +12,7 @@ import { discoverAgents, hostDefault } from '../../lib/agents.ts'
 import { nextAt } from './schedule.ts'
 import type { Automation, Run } from './types.ts'
 import { RUN_TASK } from './types.ts'
+import { settledSubmission, submitAndSleep } from '../../lib/settled.ts'
 import type { Automations as Ledger } from './server.ts'
 import { Escalated, Fired } from './refs.ts'
 import { RunLabel } from './types.ts'
@@ -47,7 +48,7 @@ export function scheduler(
 ) {
   const RunTask = defineTask<
     { automation: Automation; firedAt: number; text?: string },
-    { phase: 'create' } | { phase: 'deliver'; conversationId: ConversationId },
+    { phase: 'create' } | { phase: 'deliver' | 'settled'; conversationId: ConversationId },
     null
   >({
     name: RUN_TASK,
@@ -98,19 +99,31 @@ export function scheduler(
       },
       deliver: async (task, runtime, context) => {
         try {
-          const child = (await runtime.conversation(task.state.checkpoint.conversationId, context))!
-          const result = await (
-            await child.submit(
-              {
-                type: 'input',
-                content:
-                  task.input.automation.prompt! +
-                  (task.input.text ? `\n\nFired: ${task.input.text}` : ''),
-                requestId: `automation-run:${task.id}`,
-              },
-              context,
-            )
-          ).wait(context)
+          const { conversationId } = task.state.checkpoint
+          await submitAndSleep(
+            runtime,
+            (await runtime.conversation(conversationId, context))!,
+            {
+              type: 'input',
+              content:
+                task.input.automation.prompt! +
+                (task.input.text ? `\n\nFired: ${task.input.text}` : ''),
+              requestId: `automation-run:${task.id}`,
+            },
+            { phase: 'settled', conversationId },
+            context,
+          )
+        } catch (error) {
+          if (runtime.signal.aborted) throw error
+          await runtime.commit(async (tx) => {
+            await settle(tx, task.input.automation.id, String(task.id), 'failed', String(error))
+            return terminal
+          }, context)
+        }
+      },
+      settled: async (task, runtime, context) => {
+        try {
+          const result = await settledSubmission(runtime, context)
           await runtime.commit(async (tx) => {
             const entry =
               result.status === 'done' && result.type === 'input'
@@ -197,7 +210,7 @@ export function scheduler(
     const cached = activeRuns.get(tx)
     if (cached) return cached
     const ids = new Set<string>()
-    for (const status of ['pending', 'running', 'waiting', 'completing'] as const) {
+    for (const status of ['pending', 'running', 'waiting', 'sleeping', 'completing'] as const) {
       let cursor: Cursor | undefined
       do {
         const page = await tx.scanTasks(

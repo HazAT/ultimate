@@ -26,6 +26,7 @@ import {
   InboxDoc,
   LiveDoc,
   ROOT_CONVERSATION_ID,
+  SubmissionSettled,
 } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -63,15 +64,22 @@ afterEach(async () => {
   for (const host of closing) await host.close()
   for (const home of taken) await removeTemp(home)
 })
-/** Stands in for a subagent's report on its way to the branch: live until the test releases it. */
-const pendingReport = Promise.withResolvers<void>()
-const reporter = defineTask<{ delivered: boolean }, { phase: 'deliver' }, null>({
+/** Stands in for a subagent's report on its way to the branch: asleep on its child's answer, as the real one is. */
+const reporter = defineTask<{ delivered: boolean }, { phase: 'deliver' | 'report' }, null>({
   name: 'ultimate.subagent-reporter',
   version: 1,
-  initial: () => ({ phase: 'deliver' }),
+  initial: (input) => ({ phase: input.delivered ? 'report' : 'deliver' }),
   phases: {
-    deliver: async (task, runtime, caller) => {
-      if (!task.input.delivered) await awaitWithContext(pendingReport.promise, caller)
+    deliver: (_task, runtime, caller) =>
+      runtime.commit(
+        () => ({
+          status: 'sleeping',
+          signals: [SubmissionSettled.key('settled')],
+          checkpoint: { phase: 'report' },
+        }),
+        caller,
+      ),
+    report: async (_task, runtime, caller) => {
       await runtime.commit(
         () => ({ status: 'terminal', outcome: { status: 'completed', result: null } }),
         caller,
@@ -1621,7 +1629,7 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
   const b = await branched(f)
   // The child answered, but its report is not yet an input of the branch (#431701's gap), and it is older than
   // 120 reports that finished since (#433005).
-  await f.opened.harness.commit(
+  const pending = await f.opened.harness.commit(
     (tx) =>
       tx.createTask(
         reporter,
@@ -1646,19 +1654,19 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
         },
       )
   }, context)
-  // Only the undelivered report stays live.
-  await until(
-    async () =>
-      (await f.opened.harness.inspect(context)).tasks.filter(
-        ({ record }) => record.kind === reporter.definition.name,
-      ).length === 1,
-  )
+  // Only the undelivered report stays live, asleep.
+  await until(async () => {
+    const live = (await f.opened.harness.inspect(context)).tasks.filter(
+      ({ record }) => record.kind === reporter.definition.name,
+    )
+    return live.length === 1 && live[0].state.kind === 'sleeping'
+  })
   await (
     await b.branch.submit({ type: 'input', content: 'Waiting on the scout' }, context)
   ).wait(context)
   await until(async () => (await b.from()).length === 2)
   expect((await b.from())[1].report).toBeUndefined()
-  pendingReport.resolve()
+  await f.opened.harness.abortTask(pending, context)
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()
@@ -2081,12 +2089,13 @@ it('reaches Paused · safe while a delivery waits for its held recipient to answ
   const pausing = await pause('pause')
   expect(pausing.running.map((task) => task.what)).toEqual(['hold'])
   f.hold.release()
-  // The tool ends; the recipient's next step is held, so its delivery waits on a receipt that settles on Play.
+  // The tool ends; the recipient's next step is held, so its delivery sleeps until the input settles on Play.
   await until(async () => (await pause('state')).running.length === 0)
-  const delivery = (await f.opened.harness.inspect(context)).tasks.find(
-    ({ record }) => record.kind === 'board.delivery',
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.some(
+      ({ record, state }) => record.kind === 'board.delivery' && state.kind === 'sleeping',
+    ),
   )
-  expect(delivery?.state.kind).toBe('running')
   expect((await f.log())!.messages[0].state).toBe('delivered')
   await pause('play')
   await f.recipient.waitForIdle(context)
