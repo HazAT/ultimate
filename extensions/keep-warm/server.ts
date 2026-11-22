@@ -68,7 +68,7 @@ export function plan(
 ) {
   if (id === undefined || !model || !hourLong(model.provider)) return undefined
   const ping = lastOn(doc.last, model)
-  const last = ping?.conversation === id ? ping : undefined
+  const last = ping && (ping.conversation ?? id) === id ? ping : undefined
   const lastRequest = Math.max(
     doc.answers?.[key(id, model)] ?? 0,
     last && !last.error ? last.at : 0,
@@ -194,7 +194,7 @@ async function send(
   }
 }
 
-type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' } | { phase: 'replan'; sent?: number }
+type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' } | { phase: 'replan' }
 
 function pinger(host: ExtensionHost) {
   const sleepOrStop = (
@@ -288,7 +288,7 @@ function pinger(host: ExtensionHost) {
               text: '',
               stopReason: answer.stopReason,
             })
-          return { status: 'running', checkpoint: { phase: 'replan', sent: sending!.at } }
+          return { status: 'running', checkpoint: { phase: 'replan' } }
         }, ctx)
       },
       interrupted: (_task, runtime, ctx) =>

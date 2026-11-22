@@ -111,6 +111,10 @@ export function triggers(
     if (/^#[1-9]\d*$/.test(of)) return parseConversationId(Number(of.slice(1)))
     return undefined
   }
+  async function recorded(tx: Tx, of: string): Promise<ConversationId | undefined> {
+    if (STANDING.test(of)) return (await tx.doc(Standing, ROOT_CONVERSATION_ID))[of.slice(1)]
+    return /^#[1-9]\d*$/.test(of) ? parseConversationId(Number(of.slice(1))) : undefined
+  }
   async function evaluate(tx: Tx, a: Automation, id?: ConversationId, measured?: ContextUsage) {
     if (!a.enabled || !a.condition || !id) return
     const usage = measured ?? (await tx.doc(ContextUsageDoc, id))
@@ -164,12 +168,8 @@ export function triggers(
           runtime.commit(async (tx) => {
             const a = (await tx.doc(Automations)).automations[task.input.id]
             if (a?.condition?.waker === task.id) {
-              const of = a.condition.of
-              const target = STANDING.test(of)
-                ? (await tx.doc(Standing, ROOT_CONVERSATION_ID))[of.slice(1)]
-                : parseConversationId(Number(of.slice(1)))
               delete a.condition.waker
-              await evaluate(tx, a, target)
+              await evaluate(tx, a, await recorded(tx, a.condition.of))
             }
             return { status: 'terminal', outcome: { status: 'completed', result: null } }
           }, ctx),
@@ -192,12 +192,12 @@ export function triggers(
     const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
     for (const a of Object.values(state?.automations ?? {})) {
       if (closed || !a.enabled || !a.condition) continue
-      const target = await resolve(a.condition.of)
-      if (!target || (changed && !changed.has(target))) continue
       await host.harness().commit(async (tx) => {
         const current = (await tx.doc(Automations)).automations[a.id]
-        if (current?.condition?.of === a.condition!.of)
-          await evaluate(tx, current, target, changed?.get(target))
+        if (current?.condition?.of !== a.condition!.of) return
+        const target = await recorded(tx, current.condition.of)
+        if (target === undefined || (changed && !changed.has(target))) return
+        await evaluate(tx, current, target, changed?.get(target))
       }, BACKGROUND_CONTEXT)
     }
   }

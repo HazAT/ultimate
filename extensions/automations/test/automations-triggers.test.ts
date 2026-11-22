@@ -370,6 +370,9 @@ it('rolls back a fire and its cursor together, then retries exactly once', async
 it('uses context hysteresis and cooldown and catches a missed crossing on open once', async () => {
   vi.useFakeTimers({ toFake: ['Date'] })
   const f = await fixture()
+  await f.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = f.target
+  }, context)
   const a = (await f.action('create', {
     name: 'Context',
     condition: { metric: 'context', of: '@ultimate', above: 80 },
@@ -491,6 +494,9 @@ it('fires an idle condition only after the pause, at the threshold, and re-arms 
 
 it('sees a re-arm and the crossing after it even when both commit before evaluation', async () => {
   const f = await fixture()
+  await f.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = f.target
+  }, context)
   const a = (await f.action('create', {
     name: 'Lagging',
     condition: { metric: 'context', of: '@ultimate', above: 80, cooldownMs: 0 },

@@ -8,7 +8,7 @@ import { actionRef, docRef } from '../../shared/extension-api.ts'
  */
 export type Ping = {
   at: number
-  /** @ultimate's conversation whose cache it renewed. */
+  /** @ultimate's conversation whose cache it renewed; absent on pings recorded before it was, which count for @ultimate's current one. */
   conversation?: number
   provider: string
   model: string
