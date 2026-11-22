@@ -11,6 +11,8 @@ export { stemOf } from './colour.ts'
 export { PreviewUp } from './points.ts'
 /** Rows nested under @ultimate's row, in discovery order; the input names @ultimate's conversation when it exists. */
 export { UnderUltimate } from './points.ts'
+/** A small badge on a conversation's In flight row, such as the model it runs on; every provider's badge is shown. */
+export { FlightBadge } from './points.ts'
 /** Conversations hidden from the top-level lists; the sidebar takes the union of the providers' sets. */
 export { Unlisted } from './points.ts'
 

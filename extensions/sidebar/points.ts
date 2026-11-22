@@ -8,4 +8,7 @@ export const UnderUltimate = definePoint<{ conversation: ConversationId | undefi
 export const Unlisted = definePoint<ConversationId | undefined, ReadonlySet<number>>(
   'sidebar.unlisted',
 )
+export const FlightBadge = definePoint<{ conversation: ConversationId }, JSX.Element>(
+  'sidebar.flight-badge',
+)
 export const PreviewUp = definePoint<ConversationId | undefined, boolean>('sidebar.preview-up')

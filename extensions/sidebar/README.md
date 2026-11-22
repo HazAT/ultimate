@@ -82,6 +82,9 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
   epic in the plan panel. Its subagents follow, one line each at any depth (`ChildRow`, `rows.solid.tsx`): their mark, plan
   chip, role and `#id`, and their state word, with the latest activity or plan task on hover.
 
+An In flight branch row and a subagent row also show what the `sidebar.flight-badge` point's providers draw (`FlightBadge`, `points.ts`), such as
+the model the conversation runs on; the sidebar draws every provider's badge and adds none of its own.
+
 Landed branches and older conversations that are neither roots nor branches live in the collapsed "Earlier · N" group,
 above "Concluded · N". There, branches nest under their source (`branchOf.conversationId`), with a hairline guide
 and one indent per depth; siblings sort by latest input. Isolated rows carry a short `#<conversationId>` badge;
