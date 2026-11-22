@@ -48,7 +48,25 @@ function keepLoopbackOffProxies() {
   process.env.NO_PROXY = value
 }
 
-function modelOf(found: Discovery['models'][number]): Model<'google-generative-ai'> {
+type Cost = Model<'google-generative-ai'>['cost']
+
+const FREE: Cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+const SOURCE_PROVIDERS = ['google', 'anthropic', 'openai']
+const EFFORT_SUFFIX = /-(?:minimal|low|medium|high|xhigh)$/
+
+export function officialCost(
+  id: string,
+  getModel: (provider: string, id: string) => { cost: Cost } | undefined,
+): Cost {
+  const base = id.replace(EFFORT_SUFFIX, '')
+  for (const provider of SOURCE_PROVIDERS) {
+    const official = getModel(provider, base)
+    if (official) return official.cost
+  }
+  return FREE
+}
+
+function modelOf(found: Discovery['models'][number], cost: Cost): Model<'google-generative-ai'> {
   const info = found.info
   return {
     id: found.id,
@@ -58,7 +76,7 @@ function modelOf(found: Discovery['models'][number]): Model<'google-generative-a
     baseUrl: RELAY_ON_DISPATCH,
     reasoning: info?.supportsThinking ?? true,
     input: info?.supportsImages === false ? ['text'] : ['text', 'image'],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    cost,
     contextWindow: info?.maxTokens ?? 1_048_576,
     maxTokens: info?.maxOutputTokens ?? 65_536,
   }
@@ -151,7 +169,14 @@ export default function antigravity(host: ExtensionHost) {
     models: [],
     async fetchModels({ signal, force }) {
       const found = (!force && state.last) || (await state.discover(signal))
-      return found.loggedIn ? found.models.map(modelOf) : []
+      if (!found.loggedIn) return []
+      const catalog = host.modelRuntime
+      return found.models.map((model) =>
+        modelOf(
+          model,
+          officialCost(model.id, (source, id) => catalog.getModel(source, id)),
+        ),
+      )
     },
     api: googleGenerativeAIApi(),
   })

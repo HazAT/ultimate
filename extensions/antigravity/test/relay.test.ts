@@ -5,7 +5,7 @@ import type { Model } from '@earendil-works/pi-ai'
 import { streamSimple } from '@earendil-works/pi-ai/api/google-generative-ai'
 import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript'
 import { startRelay } from '../relay.ts'
-import { noProxyWithLoopback } from '../server.ts'
+import { noProxyWithLoopback, officialCost } from '../server.ts'
 import type { RunAgy } from '../relay.ts'
 
 const closers: (() => Promise<void>)[] = []
@@ -378,4 +378,18 @@ it('stops agy and the upstream stream when Pi goes away mid-turn', async () => {
   await upstreamClosed.promise
   await relay.close()
   expect(aborted).toHaveLength(1)
+})
+
+it('prices each Antigravity model at its own provider’s official catalog price', () => {
+  const price = (input: number) => ({
+    cost: { input, output: input * 5, cacheRead: 0, cacheWrite: 0 },
+  })
+  const catalog: Record<string, { cost: Model<'google-generative-ai'>['cost'] }> = {
+    'google/gemini-4-neon': price(3),
+    'anthropic/claude-opus-5-5': price(4),
+  }
+  const lookup = (provider: string, id: string) => catalog[`${provider}/${id}`]
+  expect(officialCost('gemini-4-neon-xhigh', lookup)).toEqual(price(3).cost)
+  expect(officialCost('claude-opus-5-5-low', lookup)).toEqual(price(4).cost)
+  expect(officialCost('gemini-pro-orchestrator-neon', lookup)).toEqual(price(0).cost)
 })
