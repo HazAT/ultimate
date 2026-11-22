@@ -1,5 +1,5 @@
-import { createProvider } from '@earendil-works/pi-ai'
-import type { Model } from '@earendil-works/pi-ai'
+import { createProvider, renderSystemMessageUpdate } from '@earendil-works/pi-ai'
+import type { Message, Model, ProviderStreams, TranscriptContext } from '@earendil-works/pi-ai'
 import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy'
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -79,6 +79,48 @@ function modelOf(found: Discovery['models'][number], cost: Cost): Model<'google-
     cost,
     contextWindow: info?.maxTokens ?? 1_048_576,
     maxTokens: info?.maxOutputTokens ?? 65_536,
+  }
+}
+
+export function withPromptUpdatesInPlace(context: TranscriptContext): TranscriptContext {
+  const messages: Message[] = []
+  let held: Message[] = []
+  const awaited = new Set<string>()
+  const release = () => {
+    if (awaited.size === 0) messages.push(...held.splice(0))
+  }
+  for (const [index, message] of context.messages.entries()) {
+    if (message.role === 'system' && index > 0) {
+      const { toolsAdded, toolsRemoved, timestamp } = message
+      if (toolsAdded?.length || toolsRemoved?.length)
+        messages.push({ role: 'system', content: '', toolsAdded, toolsRemoved, timestamp })
+      const update = renderSystemMessageUpdate(message)
+      if (update) held.push({ role: 'user', content: update, timestamp })
+      release()
+      continue
+    }
+    if (message.role === 'assistant' || message.role === 'user') {
+      awaited.clear()
+      messages.push(...held.splice(0))
+    }
+    messages.push(message)
+    if (message.role === 'assistant')
+      for (const part of message.content) if (part.type === 'toolCall') awaited.add(part.id)
+    if (message.role === 'toolResult') {
+      awaited.delete(message.toolCallId)
+      release()
+    }
+  }
+  messages.push(...held)
+  return { ...context, messages }
+}
+
+function keepingPromptPrefix(api: ProviderStreams): ProviderStreams {
+  return {
+    stream: (model, context, options) =>
+      api.stream(model, withPromptUpdatesInPlace(context), options),
+    streamSimple: (model, context, options) =>
+      api.streamSimple(model, withPromptUpdatesInPlace(context), options),
   }
 }
 
@@ -178,7 +220,7 @@ export default function antigravity(host: ExtensionHost) {
         ),
       )
     },
-    api: googleGenerativeAIApi(),
+    api: keepingPromptPrefix(googleGenerativeAIApi()),
   })
 
   host.onClose(async () => {
