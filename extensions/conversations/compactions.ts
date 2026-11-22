@@ -40,19 +40,33 @@ export function compactionEvents(
       ...(reason ? { reason } : {}),
     })
   }
+  const markHistoryAnnounced = async (tx: Tx) => {
+    const announced = await tx.doc(Announced, ROOT_CONVERSATION_ID)
+    if (announced.through !== undefined) return
+    let newest = parseEntryId(0)
+    let page: Cursor | undefined
+    do {
+      const conversations = await tx.scanConversations({}, 256, page)
+      for (const { id } of conversations.items) {
+        const latest = await tx.latestEntryId(id)
+        if (latest !== undefined && latest > newest) newest = latest
+      }
+      page = conversations.next
+    } while (page !== undefined)
+    announced.through = newest
+  }
   const announceMissed = async (tx: Tx) => {
     const announced = await tx.doc(Announced, ROOT_CONVERSATION_ID)
-    const through = announced.through
-    let newest = through ?? parseEntryId(0)
+    const through = announced.through!
+    let newest = through
     const missed: TypedEntry<{ reason?: string }>[] = []
     let page: Cursor | undefined
     do {
       const conversations = await tx.scanConversations({}, 256, page)
       for (const { id } of conversations.items) {
         const latest = await tx.latestEntryId(id)
-        if (latest === undefined || (through !== undefined && latest <= through)) continue
+        if (latest === undefined || latest <= through) continue
         if (latest > newest) newest = latest
-        if (through === undefined) continue
         let cursor: Cursor | undefined
         do {
           const entries = await tx.scanEntries(
@@ -73,11 +87,7 @@ export function compactionEvents(
       page = conversations.next
     } while (page !== undefined)
     for (const entry of missed.toSorted((a, b) => a.id - b.id)) await announce(tx, entry)
-    const firstOpenLeavesObservedToTheObserver =
-      through === undefined && firstObserved !== undefined && newest >= firstObserved
-    announced.through = firstOpenLeavesObservedToTheObserver
-      ? offsetEntryId(firstObserved!, -1)
-      : newest
+    announced.through = newest
   }
   const advanceTo =
     (newest: EntryId, entry?: TypedEntry<{ reason?: string }>) => async (tx: Tx) => {
@@ -86,7 +96,6 @@ export function compactionEvents(
       if (entry) await announce(tx, entry)
       announced.through = newest
     }
-  let firstObserved: EntryId | undefined
   let observed: EntryId | undefined
   let failed = false
   let inCommitOrder: Promise<void> = Promise.resolve()
@@ -103,7 +112,8 @@ export function compactionEvents(
   host.onOpen(async () => {
     stop?.()
     failed = false
-    firstObserved = undefined
+    await next(markHistoryAnnounced)
+    if (failed) return
     stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'task') {
@@ -121,7 +131,6 @@ export function compactionEvents(
         }
         if (change.type !== 'entry') continue
         const entry = change.value
-        firstObserved ??= entry.id
         if (observed === undefined || entry.id > observed) observed = entry.id
         if (!CompactionEntry.is(entry)) continue
         rebuiltOnOpen(
