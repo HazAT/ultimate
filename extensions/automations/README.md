@@ -51,7 +51,8 @@ override either. Enabled automations add a line each to the prompt, such as `whe
 ## Tool
 
 `automation` is replay-safe and takes `events`, `list`, `create`, `update`, `pause`, `resume`, `run`, `runs`, `log`,
-`abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`.
+`abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`. Its receipt and `list` give each scheduled automation's next
+fire in UTC and from now (`next: 2026-11-20T13:00:00Z, in 18h`), so a wrong day shows at once.
 
 - `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
   scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
