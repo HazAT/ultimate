@@ -292,8 +292,9 @@ export function openMessages(
   automations?: WaitFacts['automations'],
 ) {
   const owedBranches = branches.filter((branch) => {
+    if (branch.concluded || branch.starter !== id) return false
     const wait = waitsOn(branch.id, { ...branch, messages, automations })
-    return !branch.concluded && branch.starter === id && wait?.on === 'agent' && wait.to === id
+    return wait?.on === 'agent' && wait.to === id
   })
   return {
     waiting: messages.filter((m) => m.from === id && isOwed(m)),

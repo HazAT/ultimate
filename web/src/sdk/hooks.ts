@@ -46,7 +46,7 @@ import { extensionUiKey, writeUiState } from './ui-state.ts'
 import type { UiUpdate, Widen } from './ui-state.ts'
 import type { State } from './store.ts'
 import { compactDocs, compactTools } from './registry.ts'
-import type { CompactRow, ComposerTarget } from './types.ts'
+import type { CompactDocs, CompactRow, ComposerTarget } from './types.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import type { TranscriptFrame } from './transcript-frame.ts'
@@ -620,7 +620,16 @@ export function useCompact() {
     const releases = joined ? joined.split(',').map((kind) => store.watchDocOf(ROOT, kind)) : []
     return () => releases.forEach((release) => release())
   })
-  const docs = createMemo(() => (kinds() ? state().docsOf[ROOT] : undefined) ?? noDocs)
+  const docs = createMemo(
+    (): CompactDocs =>
+      Object.fromEntries(
+        kinds()
+          .split(',')
+          .filter(Boolean)
+          .map((kind) => [kind, immutableDoc(state(), ROOT, kind)]),
+      ) as CompactDocs,
+    { equals: sameDocs },
+  )
   const conversation = createMemo(() => {
     const shown = id()
     return shown === undefined
@@ -639,7 +648,9 @@ export function useCompact() {
     }
   })
 }
-const noDocs = {}
+const sameDocs = (a: CompactDocs, b: CompactDocs) =>
+  Object.keys(a).length === Object.keys(b).length &&
+  Object.keys(a).every((kind) => Object.hasOwn(b, kind) && a[kind] === b[kind])
 
 /** Shows a notice in the page's notice stack, as a failed command does. */
 export const notify = (notice: Parameters<typeof store.notify>[0]) => store.notify(notice)

@@ -1,5 +1,6 @@
 import * as Tone from 'tone'
 import { deadline, pace } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import type { Sound } from './cues.ts'
 import type { Happening, Role, Tool } from './agents.ts'
 import type { Variant } from './variants.ts'
@@ -15,7 +16,43 @@ export function setVolume(gain01: number) {
   limitedMaster.volume.rampTo(Tone.gainToDb(gain01) - 6, 0.05)
 }
 
-export const unlock = () => Tone.start()
+const reverbTailSeconds = 5
+let bandPlaying = false
+let cancelRest: Cancel | undefined
+let quietAtAudioSeconds = 0
+
+function tick() {
+  cancelRest?.()
+  cancelRest = undefined
+  if (Tone.getContext().clockSource !== 'worker') Tone.getContext().clockSource = 'worker'
+}
+
+function restAfter(seconds: number) {
+  quietAtAudioSeconds = Math.max(quietAtAudioSeconds, Tone.now() + seconds)
+  cancelRest?.()
+  cancelRest = bandPlaying ? undefined : deadline(seconds * 1000, rest)
+}
+
+function rest() {
+  const audioStillDue = quietAtAudioSeconds - Tone.now()
+  const contextCanStillPlay = Tone.getContext().state !== 'suspended'
+  if (audioStillDue > 0 && contextCanStillPlay) {
+    cancelRest = deadline(audioStillDue * 1000, rest)
+    return
+  }
+  cancelRest = undefined
+  Tone.getContext().clockSource = 'offline'
+  ;(Tone.getContext().rawContext as AudioContext)
+    .suspend()
+    .catch((error: unknown) => console.warn('Audio suspend failed', error))
+}
+rest()
+
+export const unlock = async () => {
+  tick()
+  await Tone.start()
+  restAfter(reverbTailSeconds)
+}
 export const running = () => Tone.getContext().state === 'running'
 
 const bells = new Tone.PolySynth(Tone.FMSynth, {
@@ -79,14 +116,14 @@ function strike(tune: Sound, time: number) {
 }
 
 export async function play(sound: Sound) {
-  await Tone.start()
+  await unlock()
   strike(sound, Tone.now() + 0.03)
 }
 
 const voiceLeadInSeconds = 0.45
 
 export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffer | undefined) {
-  await Tone.start()
+  await unlock()
   const now = Tone.now() + 0.03
   strike(sound, now)
   if (!mono24kHzPcm16) {
@@ -106,14 +143,17 @@ export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffe
   const voice = new Tone.Player(buffer).connect(limitedMaster)
   voice.onstop = () => voice.dispose()
   voice.start(now + voiceLeadInSeconds)
+  restAfter(voiceLeadInSeconds + buffer.duration + reverbTailSeconds)
   await pace((voiceLeadInSeconds + buffer.duration) * 1000)
 }
 
 export async function playNotes(notes: readonly Note[], gain01 = 0.18) {
-  await Tone.start()
+  await unlock()
   const now = Tone.now() + 0.03
   for (const [start, frequency, length] of notes)
     bells.triggerAttackRelease(frequency, length, now + start, Math.min(1, gain01 * 3))
+  const end = Math.max(0, ...notes.map(([start, , length]) => start + length))
+  restAfter(end + reverbTailSeconds)
 }
 
 const dMajorIviIVV = [
@@ -171,6 +211,8 @@ export function band(variant: Variant): Band {
   const queue: Happening[] = []
   let step = 0
   const transport = Tone.getTransport()
+  bandPlaying = true
+  tick()
 
   transport.bpm.value = part.fixedBpm
   const loop = new Tone.Loop((time) => {
@@ -197,6 +239,8 @@ export function band(variant: Variant): Band {
       deadline(releaseTailMs, () => {
         for (const node of part.nodes) node.dispose()
       })
+      bandPlaying = false
+      restAfter(releaseTailMs / 1000)
     },
   }
 }
