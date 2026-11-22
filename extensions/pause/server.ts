@@ -60,6 +60,8 @@ function serializePause<T>(
 }
 
 const HELD_WAIT_PHASES: Record<string, string[]> = {
+  'ultimate.subagent-reporter': ['deliver'],
+  'ultimate.automation-run': ['deliver'],
   'board.delivery': ['deliver', 'reply'],
   'board.settle': ['observe'],
   'lineage.notify': ['wait'],

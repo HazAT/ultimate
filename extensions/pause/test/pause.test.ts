@@ -645,6 +645,7 @@ const at = (kind: string, phase: string) => ({ kind, state: { checkpoint: { phas
 it('treats message deliveries as passive waiters', () => {
   expect(passive(at('board.delivery', 'deliver'))).toBe(true)
   expect(passive(at('board.delivery', 'reply'))).toBe(true)
+  expect(passive(at('ultimate.subagent-reporter', 'deliver'))).toBe(true)
   expect(passive(at('conversations.summary', 'generate'))).toBe(false)
 })
 

@@ -91,7 +91,10 @@ export function meaning(
         until: sleeping,
       }
     case 'ultimate.automation-run':
-      return { group: 'running', text: `Automation · ${facts?.automation ?? 'run'}` }
+      return {
+        group: phase === 'settled' ? 'waiting' : 'running',
+        text: `Automation · ${facts?.automation ?? 'run'}`,
+      }
     case 'watchdog.failure':
       if (phase === 'wait')
         return {
