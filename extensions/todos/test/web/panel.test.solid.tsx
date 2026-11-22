@@ -206,7 +206,7 @@ it('links the URLs in a to-do, and only its checkbox ticks it', async ({ onTestF
   harness.actions.length = 0
   const container = renderSolid(() => (
     <ExtensionName value="todos">
-      <TodoList inbox={0} />
+      <TodoList />
     </ExtensionName>
   ))
   await settle()
