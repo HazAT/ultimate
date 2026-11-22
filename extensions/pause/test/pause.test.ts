@@ -24,7 +24,7 @@ import type { ExtensionHost } from '../../../server/extensions.ts'
 import pauseExtension, { actions, autoPlay, passive, userActions } from '../server.ts'
 import { lasted } from '../lasted.ts'
 import { PauseApi } from '../api.ts'
-import { apis, removeTemp, temp, until } from '../../../test/helpers.ts'
+import { apis, openers, removeTemp, temp, until } from '../../../test/helpers.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Standing } from '../../subagents/api.ts'
@@ -101,7 +101,7 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
   )
   let opened: OpenHost | undefined
   const services = apis()
-  const openers: (() => Promise<void>)[] = []
+  const lifecycle = openers()
   const host = {
     ...services,
     harness: () => opened!.harness,
@@ -112,16 +112,16 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
         return resources.get(key) as T
       }
     })(),
-    onOpen: (callback: () => Promise<void>) => void openers.push(callback),
-    onClose: () => {},
+    onOpen: lifecycle.onOpen,
     conversations: () => [],
   } as unknown as ExtensionHost
   prepared.registry.install(pauseExtension(host))
   /** Open as the server does: the openers settle first, then scheduling resumes. */
   const open = async () => {
+    await lifecycle.close()
     opened = await prepared.open(false)
     hosts.push(opened)
-    for (const callback of openers) await callback()
+    await lifecycle.open()
     opened.harness.resume()
     return opened
   }

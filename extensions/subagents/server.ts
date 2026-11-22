@@ -802,7 +802,7 @@ export default function subagents(
       }
     }, BACKGROUND_CONTEXT)
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     await pruneRetired(BACKGROUND_CONTEXT)
     for (const { name } of await residentDefinitions()) {
       const eagerResident = name !== 'ultimate'
@@ -821,16 +821,16 @@ export default function subagents(
           })
       }
     })
+    opened.defer(async () => {
+      unsubscribe()
+      await recovery
+    })
     let cursor: Cursor | undefined
     do {
       const page = await host.scanSubmissions({ status: 'done' }, 500, cursor, BACKGROUND_CONTEXT)
       for (const submission of page.items) await recoverUnreportedAnswer(submission)
       cursor = page.next
     } while (cursor)
-    return async () => {
-      unsubscribe()
-      await recovery
-    }
   })
   return defineExtension({
     name: 'subagents',

@@ -321,7 +321,7 @@ function watchTally(host: ExtensionHost, ctx: Context) {
         host.notice(`Could not count a tally's tokens: ${String(error)}`)
       })
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     roots = new Set(await rootsOf(host, ctx))
     const unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes)
@@ -344,12 +344,12 @@ function watchTally(host: ExtensionHost, ctx: Context) {
           dirty.add(change.conversationId)
       if (dirty.size > before) recountContextAndMemoryBriefTokens()
     })
-    for (const id of roots) dirty.add(id)
-    recountContextAndMemoryBriefTokens()
-    return async () => {
+    opened.defer(async () => {
       unsubscribe()
       await serializedTokenRecounts
-    }
+    })
+    for (const id of roots) dirty.add(id)
+    recountContextAndMemoryBriefTokens()
   })
 }
 

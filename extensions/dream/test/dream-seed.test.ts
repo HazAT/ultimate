@@ -22,7 +22,7 @@ import dream, { Next } from '../server.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from '../seed.ts'
 import { CloudApi } from '../../cloud/api.ts'
 import type { CloudService, LastBackup } from '../../cloud/api.ts'
-import { temp, until, eventHost } from '../../../test/helpers.ts'
+import { openers, temp, until, eventHost } from '../../../test/helpers.ts'
 
 const openedHosts: OpenHost[] = []
 afterEach(async () => {
@@ -38,7 +38,7 @@ async function fixture() {
     faux: fauxProvider(),
   })
   let opened: OpenHost
-  let opener: () => Promise<void>
+  const lifecycle = openers()
   let scripts: (Seed['scripts'][number] & { enabled: boolean })[] = []
   /** A faked `CloudApi`: never the real Worker. */
   let cloud: CloudService | undefined
@@ -76,9 +76,7 @@ async function fixture() {
     doc: (kind: string) =>
       tokens.find((token) => token.definition.kind === kind) ??
       eventHost(() => opened.harness, 'automations').doc(kind),
-    onOpen: (callback: () => Promise<void>) => {
-      opener = callback
-    },
+    onOpen: lifecycle.onOpen,
     react: () => {},
     notice: () => {},
     want: (api: { name: string }) => (api.name === CloudApi.name ? cloud : undefined),
@@ -101,10 +99,11 @@ async function fixture() {
   const open = async () => {
     opened = await prepared.open(false)
     openedHosts.push(opened)
-    await opener()
+    await lifecycle.open()
   }
   const close = async () => {
     openedHosts.splice(openedHosts.indexOf(opened), 1)
+    await lifecycle.close()
     await opened.close()
   }
   await open()
@@ -115,7 +114,10 @@ async function fixture() {
     open,
     close,
     /** What a facet reload does: onOpen again on the open harness. */
-    reopen: () => opener(),
+    reopen: async () => {
+      await lifecycle.close()
+      await lifecycle.open()
+    },
     get harness() {
       return opened.harness
     },

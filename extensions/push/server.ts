@@ -201,9 +201,9 @@ export default function pushExtension(host: ExtensionHost) {
     last.tag = push.tag
     await pushToHiddenBrowsers(tx, push)
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     await committed(pushNewFailure)
-    return onCommit(host.harness(), (publication) => {
+    const stop = onCommit(host.harness(), (publication) => {
       if (
         !publication.changes.some(
           (change) =>
@@ -218,6 +218,7 @@ export default function pushExtension(host: ExtensionHost) {
         committed(pushNewFailure),
       )
     })
+    opened.defer(stop)
   })
   return defineExtension({ name: 'push', tasks: [Deliver] })
 }

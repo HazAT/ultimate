@@ -851,13 +851,11 @@ export default function automations(host: ExtensionHost) {
     },
   })
   api.trigger.install()
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
+    opened.defer(api.close)
     await api.open()
+    opened.defer(api.trigger.close)
     await api.trigger.open()
-    return async () => {
-      await api.trigger.close()
-      await api.close()
-    }
   })
   return defineExtension({
     name: 'automations',

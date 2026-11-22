@@ -31,8 +31,8 @@ export function compactionEvents(
         .catch((error: unknown) => host.notice(`Compaction event: ${String(error)}`)),
     )
   }
-  host.onOpen(async () => {
-    return onCommit(host.harness(), (publication) => {
+  host.onOpen(async (opened) => {
+    const stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'task') {
           const task = change.value
@@ -56,5 +56,6 @@ export function compactionEvents(
         emitWithoutCrashRecovery(entry, reason)
       }
     })
+    opened.defer(stop)
   })
 }

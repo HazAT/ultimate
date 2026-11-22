@@ -368,7 +368,8 @@ async function noteRunsThenRelease(host: Host, auto = false) {
 
 export default function pauseExtension(host: Host) {
   host.implement(PauseApi, { paused: () => sharedPauseFlag(host).paused })
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
+    opened.defer(() => outsideSchedulerTimer(host).cancel?.())
     await serializePause(host, async () => {
       const doc = await read(host)
       sharedPauseFlag(host).paused = doc.paused
@@ -413,10 +414,7 @@ export default function pauseExtension(host: Host) {
         )
       }
     })
-    return () => {
-      unsubscribe()
-      outsideSchedulerTimer(host).cancel?.()
-    }
+    opened.defer(unsubscribe)
   })
   return { name: 'pause' }
 }

@@ -105,7 +105,7 @@ export function contextBehavior(
     return job
   }
 
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     closed = false
     const stop = onCommit(host.harness(), (publication) => {
       const ids = new Set<ConversationId>()
@@ -126,6 +126,12 @@ export function contextBehavior(
         rebuiltOnOpen('open reconciles every conversation context', schedule(id))
       }
     })
+    opened.defer(async () => {
+      closed = true
+      stop()
+      await backgroundSerialBackfill
+      await Promise.all(pending.values())
+    })
     backgroundSerialBackfill = (async () => {
       let cursor: Cursor | undefined
       do {
@@ -142,11 +148,5 @@ export function contextBehavior(
     })().catch((error: unknown) => {
       if (!closed) host.notice(`Conversation context backfill: ${String(error)}`)
     })
-    return async () => {
-      closed = true
-      stop()
-      await backgroundSerialBackfill
-      await Promise.all(pending.values())
-    }
   })
 }

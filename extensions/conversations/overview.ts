@@ -113,7 +113,7 @@ export function overviewBehavior(
         if (pending.size && !closed) schedule()
       })
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     closed = false
     const stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
@@ -137,6 +137,11 @@ export function overviewBehavior(
       }
       if (pending.size) schedule()
     })
+    opened.defer(async () => {
+      closed = true
+      stop()
+      await draining
+    })
     await host.harness().commit(async (tx) => {
       let cursor: Cursor | undefined
       do {
@@ -147,10 +152,5 @@ export function overviewBehavior(
     }, context)
     schedule()
     await draining
-    return async () => {
-      closed = true
-      stop()
-      await draining
-    }
   })
 }

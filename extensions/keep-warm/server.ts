@@ -291,26 +291,22 @@ export default function keepWarm(host: ExtensionHost) {
   )
   const shared = host.resource('keep-warm.ping', () => ({
     running: undefined as Promise<void> | undefined,
-    released: new AbortController(),
   }))
-  const stopPolling = every(CACHE_CHECK_INTERVAL_MS, () => {
-    if (shared.released.signal.aborted) return
-    shared.running ??= tick(host, shared.released.signal)
-      .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
-      .finally(() => {
-        shared.running = undefined
-      })
-  })
-  host.onOpen(async () => {
-    if (shared.released.signal.aborted) shared.released = new AbortController()
-    return async () => {
-      shared.released.abort()
+  host.onOpen(async (opened) => {
+    const released = new AbortController()
+    opened.defer(async () => {
+      released.abort()
       await shared.running
-    }
-  })
-  host.onClose(async () => {
-    stopPolling()
-    await shared.running
+    })
+    opened.defer(
+      every(CACHE_CHECK_INTERVAL_MS, () => {
+        shared.running ??= tick(host, released.signal)
+          .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
+          .finally(() => {
+            shared.running = undefined
+          })
+      }),
+    )
   })
   return defineExtension({ name: 'keep-warm' })
 }

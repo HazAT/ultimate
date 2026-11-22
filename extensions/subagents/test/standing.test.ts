@@ -1,6 +1,6 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // Harness tests use the faux provider without token pacing.
-import { eventHost, idleNeed, temp, removeTemp } from '../../../test/helpers.ts'
+import { eventHost, idleNeed, openers, temp, removeTemp } from '../../../test/helpers.ts'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -17,7 +17,6 @@ import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { prepareHarness } from '../../../server/harness.ts'
 import { emit } from '../../../server/events.ts'
 import type { OpenHost } from '../../../server/harness.ts'
-import type { Opener } from '../../../server/extensions.ts'
 import subagents from '../server.ts'
 import { Profile, Standing, Started } from '../api.ts'
 import type { SubagentsService } from '../api.ts'
@@ -90,7 +89,7 @@ async function fixture() {
   prepared.registry.install(defineExtension({ name: 'owned', tools: [tool] }))
   let host!: OpenHost
   let service!: SubagentsService
-  const openers: Opener[] = []
+  const lifecycle = openers()
   // Holds the next commit the extension makes until `release`, so a test edits a definition between a call's start
   // and its commit.
   let held: { reached: () => void; release: Promise<void> } | undefined
@@ -134,7 +133,7 @@ async function fixture() {
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},
-    onOpen: (callback) => openers.push(callback),
+    onOpen: lifecycle.onOpen,
     emit,
   })
   prepared.registry.install(backend)
@@ -144,7 +143,8 @@ async function fixture() {
   const file = join(path, 'agents/x.md')
   await writeFile(file, definition('Original'))
   const reopen = async () => {
-    for (const callback of openers) await callback()
+    await lifecycle.close()
+    await lifecycle.open()
   }
   const open = async () => {
     host = await prepared.open()

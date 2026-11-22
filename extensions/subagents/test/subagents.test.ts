@@ -1,6 +1,6 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // First: helpers mocks the faux provider's token pacing, which must apply before the server modules load.
-import { eventHost, idleNeed, until, temp, removeTemp } from '../../../test/helpers.ts'
+import { eventHost, idleNeed, openers, until, temp, removeTemp } from '../../../test/helpers.ts'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { projectSettings } from '../../../lib/project-setup.ts'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
@@ -32,7 +32,7 @@ import { emit } from '../../../server/events.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import subagents, { actions } from '../server.ts'
 import watchdog from '../../watchdog/server.ts'
-import type { ExtensionHost, Opener } from '../../../server/extensions.ts'
+import type { ExtensionHost } from '../../../server/extensions.ts'
 import { Runs, Started, Subagents } from '../api.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import codemode from '../../codemode/server.ts'
@@ -91,8 +91,7 @@ async function fixture(
   prepared.registry.install(CodingTools)
   if (extension) prepared.registry.install(extension)
   let opened: OpenHost | undefined
-  const onOpen: Opener[] = []
-  const onClose: (() => void | Promise<void>)[] = []
+  const lifecycle = openers()
   const backend = subagents({
     projectSettings: () => projectSettings(prepared.projectRoot, prepared.userHome),
     ...prepared,
@@ -103,9 +102,7 @@ async function fixture(
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},
-    onOpen: (callback) => {
-      onOpen.push(callback)
-    },
+    onOpen: lifecycle.onOpen,
     emit,
   })
   prepared.registry.install(
@@ -149,9 +146,7 @@ async function fixture(
         implement: () => {},
         need: idleNeed,
         notice: (message: string) => errors.push(message),
-        onOpen: (callback: Opener) => {
-          onOpen.push(callback)
-        },
+        onOpen: lifecycle.onOpen,
       } as unknown as ExtensionHost),
     )
   prepared.registry.install(
@@ -235,14 +230,10 @@ async function fixture(
     opened = await prepared.open()
     const close = opened.close.bind(opened)
     opened.close = async () => {
-      for (const callback of onClose) await callback()
+      await lifecycle.close()
       await close()
     }
-    onClose.length = 0
-    for (const callback of onOpen) {
-      const cleanup = await callback()
-      if (cleanup) onClose.push(cleanup)
-    }
+    await lifecycle.open()
     hosts.push(opened)
     return opened
   }

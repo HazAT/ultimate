@@ -8,7 +8,6 @@ import { createRateSampler, keys, zero, type Rates, type RateSample } from './ra
 import { usageTotals } from './context.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { every } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
 import { RatesAction } from './refs.ts'
 
 type Totals = ReturnType<typeof usageTotals>
@@ -42,14 +41,10 @@ export default function statusLine(host: Host) {
   let latest: RateSample | null = null
   let spend: Totals = usageTotals({ models: {}, tools: {} })
   snapshots.set(host, () => latest && { ...latest, totals: { ...spend } })
-  host.onOpen(async () => {
-    let unsubscribe: (() => void) | undefined
-    let stopSampling: Cancel | undefined
-    const stop = () => {
-      stopSampling?.()
-      unsubscribe?.()
+  host.onOpen(async (opened) => {
+    opened.defer(() => {
       latest = null
-    }
+    })
     const harness = host.harness()
     const documents = new Map<number, { settled: Rates; partial: Rates }>()
     const spending = new Map<number, Totals>()
@@ -85,7 +80,7 @@ export default function statusLine(host: Host) {
           cursor = page.next
         } while (cursor !== undefined)
         sample(performance.now(), total)
-        unsubscribe = onCommit(harness, (publication) => {
+        const unsubscribe = onCommit(harness, (publication) => {
           for (const change of publication.changes) {
             if (change.type !== 'document' || change.conversationId === undefined) continue
             if (change.record.kind === UsageDoc.definition.kind) {
@@ -101,15 +96,17 @@ export default function statusLine(host: Host) {
               )
           }
         })
+        opened.defer(unsubscribe)
       }, context)
-      stopSampling = every(1000, () => {
-        latest = sample(performance.now(), total)
-      })
+      opened.defer(
+        every(1000, () => {
+          latest = sample(performance.now(), total)
+        }),
+      )
     } catch (error) {
-      stop()
+      await opened.disposeAsync()
       host.notice(`Instance token rates unavailable: ${String(error)}`)
     }
-    return stop
   })
   return defineExtension({ name: 'status-line' })
 }

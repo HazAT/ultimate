@@ -17,7 +17,7 @@ import { context, prepareHarness } from '../../../../server/harness.ts'
 import { Metadata } from '../../../../server/metadata.ts'
 import { eventLog } from '../../../../server/events.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
-import type { ExtensionHost, Opener } from '../../../../server/extensions.ts'
+import type { ExtensionHost } from '../../../../server/extensions.ts'
 import type { ActionContext } from '../../../../server/actions.ts'
 import workspaceExtension, { actions, order as workspacesOrder } from '../../server.ts'
 import { Workspaces, workspaces } from '../../workspaces.ts'
@@ -45,7 +45,7 @@ import { Serving, Started } from '../../../messages/addresses.ts'
 import promptExtension, { order as promptOrder } from '../../../prompt/server.ts'
 import subagents from '../../../subagents/server.ts'
 import { Standing, Subagents } from '../../../subagents/api.ts'
-import { seedTally, temp, until } from '../../../../test/helpers.ts'
+import { openers, seedTally, temp, until } from '../../../../test/helpers.ts'
 
 /** The part of the conversations service a test stands in for; standing a lander turns its summaries off and marks it standing. */
 const conversations = (service: Partial<ConversationsService>) =>
@@ -98,17 +98,12 @@ async function fixture(
   const restart = vi.fn<ExtensionHost['restart']>(async () => 'RESTART_CALLED')
   const notice = vi.fn<ExtensionHost['notice']>()
   // As the server: openers run each time the harness opens, cleanups each time it closes.
-  const openers: Opener[] = []
+  const lifecycle = openers()
   const closers: (() => Promise<void>)[] = []
-  const openEnds: (() => void | Promise<void>)[] = []
-  const openAll = async () => {
-    for (const open of openers) {
-      const end = await open()
-      if (end) openEnds.push(end)
-    }
-  }
+  const lateStops: (() => Promise<void>)[] = []
   const closeAll = async () => {
-    for (const end of openEnds.splice(0)) await end()
+    for (const stop of lateStops.splice(0)) await stop()
+    await lifecycle.close()
     for (const close of closers) await close()
   }
   const lookup = ({ name }: { name: string }) => services.get(name)
@@ -126,12 +121,15 @@ async function fixture(
     eventLog: events.eventLog,
     react: (...[name, tokens, handler]: Parameters<typeof events.reactor>) => {
       const reactor = events.reactor(name, tokens, handler)
-      openers.push(async () => {
+      lifecycle.onOpen(async (thisOpen) => {
+        thisOpen.defer(reactor.stop)
         await reactor.start()
-        return reactor.stop
       })
-      // oxlint-disable-next-line typescript/no-floating-promises -- reactor start waits for its drain chain, which records handler failures rather than rejecting.
-      if (started) void reactor.start()
+      if (started) {
+        lateStops.push(reactor.stop)
+        // oxlint-disable-next-line typescript/no-floating-promises -- reactor start waits for its drain chain, which records handler failures rather than rejecting.
+        void reactor.start()
+      }
     },
     implement: (api: { name: string }, value: unknown) => {
       services.set(api.name, value)
@@ -147,7 +145,7 @@ async function fixture(
     },
     restart,
     notice,
-    onOpen: (callback: Opener) => openers.push(callback),
+    onOpen: lifecycle.onOpen,
     onClose: (close: () => Promise<void>) => closers.push(close),
     doc: () => undefined,
     conversations: () => [],
@@ -222,7 +220,7 @@ async function fixture(
   }
   prepared.faux!.setResponses([route])
   opened = await prepared.open()
-  await openAll()
+  await lifecycle.open()
   started = true
   cleanup.push(async () => {
     await closeAll()
@@ -268,7 +266,7 @@ async function fixture(
       await closeAll()
       await opened.close()
       opened = await prepared.open()
-      await openAll()
+      await lifecycle.open()
     },
   }
 }

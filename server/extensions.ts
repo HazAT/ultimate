@@ -91,8 +91,7 @@ export type ExtensionHost = Pick<
   doc(kind: string): ConversationDocToken<JsonObject> | undefined
   metadata: typeof Metadata
 } & EventHost
-type CleanupWhenOpenEnds = () => void | Promise<void>
-export type Opener = () => Promise<void | CleanupWhenOpenEnds>
+export type Opener = (opened: AsyncDisposableStack) => Promise<void>
 export type Watch = (attach: (watcher: ViteDevServer['watcher']) => () => void) => () => void
 export async function loadExtensions(
   vite: ViteDevServer,
@@ -233,10 +232,11 @@ export async function loadExtensions(
       },
       react: (reactorName, tokens, handler, options) => {
         const reactor = log.reactor(`${name}/${reactorName}`, tokens, handler, options)
-        facetHost.onOpen(async () => {
+        facetHost.onOpen(async (opened) => {
+          opened.defer(reactor.stop)
           await reactor.start()
-          return reactor.stop
         })
+        stops.add(reactor.stop)
       },
     } satisfies ExtensionHost
     stagedServicesByFacet.set(facetHost, new Map())
@@ -260,24 +260,38 @@ export async function loadExtensions(
       ...[...documents.values()].flat(),
     ].find((doc) => doc.definition.kind === kind)
   const openers = new Set<Opener>()
-  const openRuns = new Map<Opener, ReturnType<Opener>>()
+  type OpenRun = { run: Promise<void>; opened: AsyncDisposableStack; ending?: Promise<void> }
+  const openRuns = new Map<Opener, OpenRun>()
   const runOpener = (callback: Opener) => {
-    const run = callback().catch((error: unknown) => {
-      console.error('Extension onOpen:', error)
-    })
-    openRuns.set(callback, run)
+    const startedThisOpen = openRuns.get(callback)
+    if (startedThisOpen && !startedThisOpen.ending) return startedThisOpen.run
+    const opened = new AsyncDisposableStack()
+    const run = (async () => {
+      await startedThisOpen?.ending
+      try {
+        await callback(opened)
+      } catch (error) {
+        console.error('Extension onOpen:', error)
+        await opened.disposeAsync()
+      }
+    })().catch((error: unknown) => notice(`Extension open cleanup failed: ${String(error)}`))
+    openRuns.set(callback, { run, opened })
     return run
   }
   const endOpen = async (callback: Opener) => {
-    const run = openRuns.get(callback)
-    openRuns.delete(callback)
-    try {
-      await (
-        await run
-      )?.()
-    } catch (error) {
-      notice(`Extension open cleanup failed: ${String(error)}`)
-    }
+    const current = openRuns.get(callback)
+    if (!current) return
+    current.ending ??= (async () => {
+      try {
+        await current.run
+        await current.opened.disposeAsync()
+      } catch (error) {
+        notice(`Extension open cleanup failed: ${String(error)}`)
+      } finally {
+        if (openRuns.get(callback) === current) openRuns.delete(callback)
+      }
+    })()
+    await current.ending
   }
   const loadErrorListeners = new Set<(name: string, error: string) => void>()
   const beforeLoad = new Set<() => Promise<void>>()

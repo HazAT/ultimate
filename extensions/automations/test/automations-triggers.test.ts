@@ -11,7 +11,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { afterEach, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
-import type { ExtensionHost, Opener } from '../../../server/extensions.ts'
+import type { ExtensionHost } from '../../../server/extensions.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { callTrace } from '../../../server/trace.ts'
 import { Metadata } from '../../../server/metadata.ts'
@@ -24,7 +24,7 @@ import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../types.ts'
 import { IDLE_TICK } from '../triggers.ts'
-import { temp, eventHost, until, apis } from '../../../test/helpers.ts'
+import { temp, eventHost, until, apis, openers } from '../../../test/helpers.ts'
 
 const closes: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -43,8 +43,7 @@ async function fixture() {
   let opened: OpenHost
   const events = eventHost(() => opened.harness, 'automations')
   const resources = new Map<string, unknown>()
-  let opener: () => Promise<void>
-  let closer: () => void | Promise<void> = () => {}
+  const lifecycle = openers()
   let fail = false
   let rolledBack = false
   const send = vi.fn<() => Promise<object>>(async () => ({}))
@@ -66,11 +65,7 @@ async function fixture() {
       if (!resources.has(key)) resources.set(key, create())
       return resources.get(key)
     },
-    onOpen: (fn: Opener) => {
-      opener = async () => {
-        closer = (await fn()) ?? closer
-      }
-    },
+    onOpen: lifecycle.onOpen,
     ...apis(
       new Map<string, unknown>([
         [
@@ -114,11 +109,11 @@ async function fixture() {
     await configure(tx, child.id, {})
     return child.id
   }, context)
-  await opener!()
+  await lifecycle.open()
   await events.start()
   closes.push(async () => {
     await events.stop()
-    await closer()
+    await lifecycle.close()
     await opened.close()
   })
   const action = (name: keyof typeof actions, args: JsonValue = {}) =>
@@ -153,8 +148,8 @@ async function fixture() {
     get harness() {
       return opened.harness
     },
-    opener: () => opener!(),
-    closer: () => closer(),
+    opener: lifecycle.open,
+    closer: lifecycle.close,
     fail: () => {
       fail = true
     },
