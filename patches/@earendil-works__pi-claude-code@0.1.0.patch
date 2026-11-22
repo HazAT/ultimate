@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4479c2517 100644
+index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..d0e1ef6bd6360d518f8a0c187fd10c003a20bfde 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -1,4 +1,5 @@
@@ -46,18 +46,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4
    const plan = typeof payload.subscriptionType === "string" ? payload.subscriptionType : undefined;
    return {
      available: true,
-@@ -322,6 +325,10 @@ export async function discoverClaudeModels(
- ): Promise<DiscoveredClaudeModel[]> {
-   signal?.throwIfAborted();
-   const env = processEnvironment(envInput, {}, "discovery");
-+  // Inherited, either switch still makes Claude Code answer from its built-in model list instead of the account's, so
-+  // a model released after that CLI build (Fable 5.2 on 2.1.321) never appears.
-+  delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
-+  delete env.DISABLE_TELEMETRY;
-   const command = await resolveClaudeExecutable(env);
-   if (!command) throw new Error(INSTALL_HINT);
- 
-@@ -368,6 +375,9 @@ export async function discoverClaudeModels(
+@@ -368,6 +371,9 @@ export async function discoverClaudeModels(
    }, timeoutMs);
  
    const requestId = `pi-models-${Date.now()}`;
@@ -67,7 +56,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4
    child.stdin?.write(
      `${JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } })}\n`,
    );
-@@ -412,6 +422,24 @@ export async function discoverClaudeModels(
+@@ -412,6 +418,24 @@ export async function discoverClaudeModels(
    }
  }
  
@@ -92,7 +81,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4
  // cmd.exe reparses the whole `/c` string, so tokens need cmd-level escaping in
  // addition to the quoting the receiving program's own command line parser
  // (CommandLineToArgvW) expects. The token rules below follow https://qntm.org/cmd.
-@@ -452,7 +480,7 @@ function spawnPowerShellScript(
+@@ -452,7 +476,7 @@ function spawnPowerShellScript(
      "if (-not $ok) { exit 1 }",
    ].join("; ");
    const encoded = Buffer.from(script, "utf16le").toString("base64");
@@ -101,7 +90,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4
      shell,
      ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
      options,
-@@ -469,28 +497,36 @@ export function spawnCommand(
+@@ -469,28 +493,36 @@ export function spawnCommand(
    args: string[],
    options: Parameters<typeof spawn>[2],
  ): ChildProcess {
@@ -145,7 +134,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4
    if (process.platform === "win32") {
      const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
        stdio: "ignore",
-@@ -500,6 +536,11 @@ export function killProcessTree(child: ChildProcess): void {
+@@ -500,6 +532,11 @@ export function killProcessTree(child: ChildProcess): void {
      return;
    }
    try {
@@ -157,7 +146,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4
      process.kill(-child.pid, "SIGKILL");
    } catch {
      try {
-@@ -590,7 +631,8 @@ function processEnvironment(
+@@ -590,7 +627,8 @@ function processEnvironment(
      CLAUDE_CODE_DISABLE_FILE_MENTIONS: "1",
      // Claude Code would add these as reminders to user messages and tool
      // results. The relay also strips anything else it adds there.
@@ -167,6 +156,23 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..561a4e73cfa9f17de70311f57c1385f4
      CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
      CLAUDE_CODE_MAX_RETRIES: "0",
      DISABLE_AUTO_COMPACT: "1",
+@@ -599,9 +637,13 @@ function processEnvironment(
+     DISABLE_ERROR_REPORTING: "1",
+   });
+   // These flags also disable the feature flags that unlock Claude Code's served
+-  // model catalog. Discovery inherits the user's choices instead of forcing them;
+-  // conversation workers remain isolated from nonessential traffic.
+-  if (purpose === "request") {
++  // model catalog, so discovery runs without them, inherited ones included
++  // (Fable 5.2 on 2.1.321); conversation workers remain isolated from
++  // nonessential traffic.
++  if (purpose === "discovery") {
++    delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
++    delete env.DISABLE_TELEMETRY;
++  } else {
+     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+     env.DISABLE_TELEMETRY = "1";
+   }
 @@ -614,10 +656,7 @@ async function writeFrame(child: ChildProcess, frame: NativeFrame): Promise<stri
    if (!child.stdin?.writable) throw new Error("Claude Code stdin closed during history replay");
    const uuid = randomUUID();
