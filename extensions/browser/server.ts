@@ -4,8 +4,9 @@ import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { arr, bool, int, lit, map, obj, opt, str, union, unknown } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
-import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
+import { fitImage } from '@earendil-works/pi-durable/images/fit'
+import { DEFAULT_IMAGE_LIMITS, type ImageProcessor } from '@earendil-works/pi-durable/tools'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { groupTarget, identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -137,7 +138,13 @@ function waitForCompositorSurface(page: Page) {
   )
 }
 
-async function capture(page: Page, file: string, selector?: string, fullPage = false) {
+async function capture(
+  images: ImageProcessor,
+  page: Page,
+  file: string,
+  selector?: string,
+  fullPage = false,
+) {
   await waitForCompositorSurface(page)
   await mkdir(dirname(file), { recursive: true })
   const target = selector ? page.locator(selector) : page
@@ -146,16 +153,15 @@ async function capture(page: Page, file: string, selector?: string, fullPage = f
     type: 'png',
     ...(selector ? {} : { fullPage }),
   })
-  const resized = await resizeImage(png, 'image/png', { maxWidth: 1600, maxHeight: 1600 })
-  return {
-    file,
-    image: resized
-      ? { type: 'image' as const, mimeType: resized.mimeType, data: resized.data }
-      : undefined,
-    note: resized
-      ? formatDimensionNote(resized)
-      : '[Image omitted: could not be resized below the inline image size limit.]',
-  }
+  const fitted = await fitImage(
+    new Uint8Array(png),
+    'image/png',
+    { ...DEFAULT_IMAGE_LIMITS, maxWidth: 1600, maxHeight: 1600 },
+    images,
+  )
+  return fitted.kind === 'fitted'
+    ? { file, image: fitted.image, note: fitted.notes.join(' ') }
+    : { file, image: undefined, note: fitted.note }
 }
 
 export default function browserExtension(host: ExtensionHost) {
@@ -213,7 +219,7 @@ export default function browserExtension(host: ExtensionHost) {
           const waitMs = args.waitMs ?? 1500
           return run(args, waitMs, api, context, async (page, _outcomes, png, guard) => {
             await guard(page.waitForTimeout(waitMs), waitMs)
-            return guard(capture(page, png, args.selector, args.fullPage))
+            return guard(capture(host.images, page, png, args.selector, args.fullPage))
           })
         },
       }),
@@ -432,7 +438,7 @@ export default function browserExtension(host: ExtensionHost) {
                 throw error
               }
             }
-            return args.screenshot === false ? undefined : guard(capture(page, png))
+            return args.screenshot === false ? undefined : guard(capture(host.images, page, png))
           })
         },
       }),

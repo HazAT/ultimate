@@ -14,6 +14,7 @@ afterEach(() => vi.unstubAllEnvs())
 
 const inertHost = {
   home: '',
+  images: undefined as never,
   need: (() => ({})) as ExtensionHost['need'],
   notice: () => {},
   onOpen: () => {},
