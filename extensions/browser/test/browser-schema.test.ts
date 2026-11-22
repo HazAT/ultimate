@@ -32,6 +32,7 @@ it('preserves browser fill and typed tool enum schemas in provider payloads', as
     onClose() {},
     onOpen() {},
     need: vi.fn<ExtensionHost['need']>(),
+    want: vi.fn<ExtensionHost['want']>(),
     implement: vi.fn<ExtensionHost['implement']>(),
   } as unknown as ExtensionHost
   const tools = [

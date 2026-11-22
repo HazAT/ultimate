@@ -17,17 +17,21 @@ queued steering while the child keeps running; it then returns status text and t
 or wait again. Follow-ups do not wake waits; steering and other children's answers do.
 
 Each start or message creates a reporter that delivers the answer once, including after a restart. Undelivered answers
-steer the current run at its next tool-round boundary, or start a run when the parent is idle. Before each request, a
-reminder lists running children and inputs waiting to start. Answers say `Returned model: provider/model`, read from
+steer the current run at its next tool-round boundary, or start a run when the parent is idle. While children run or
+have inputs waiting to start, each run starts with a model-only `subagents.note` listing them, after the cached system
+prompt, which stays unchanged. Answers say `Returned model: provider/model`, read from
 the stored assistant message.
 
 - **No answer.** A turn with no text, or one that stopped as `aborted` or `error`, is not an answer: the parent gets
   `[subagent <id> failed: ended its turn without an answer]` (foreground: `… Message it to continue.`), and nothing
   retries.
-- **Provider errors and interrupted runs** belong to the [watchdog](../watchdog/README.md): up to four continuations (after
-  1, 5, 15 and 30 minutes) for temporary provider errors, else a `watchdog.failure` card to the parent. A run that a restart cut off
-  (`interrupted`, `restart_limit`) is never retried. A later answer (a watchdog retry, or someone typing `continue` in the
-  child) is delivered as a normal report, once.
+- **Provider errors and interrupted runs** belong to the `subagents.failures` provider, the [watchdog](../watchdog/README.md):
+  up to four continuations (after 1, 5, 15 and 30 minutes) for temporary provider errors, else a `watchdog.failure` card to
+  the parent. A run that a restart cut off (`interrupted`, `restart_limit`) is never retried. A later answer (a watchdog
+  retry, or someone typing `continue` in the child) is delivered as a normal report, once. With the watchdog disabled the
+  parent gets `[subagent <id> failed: <reason>: <error>]` instead.
+- **When Ultimate opens** it reports answers that arrived while it was closed, reading only the submissions after its
+  high-water mark.
 - **Answers without a reporter.** The answer to the parent's one-way message, or to its reply to the child's own
   question, is reported too, or an idle parent would never wake.
 

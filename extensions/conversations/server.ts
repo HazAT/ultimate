@@ -1,4 +1,4 @@
-import { parseConversationId } from '../../lib/ids.ts'
+import { conversationIdentity, parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import type { Context } from '@earendil-works/chord/context'
@@ -77,7 +77,7 @@ async function identityNoteOncePerContextHead(tx: Tx, id: ConversationId) {
       {
         kind: 'conversations.identity',
         model: [
-          { role: 'user' as const, content: `You are conversation #${id}.`, timestamp: Date.now() },
+          { role: 'user' as const, content: conversationIdentity(id), timestamp: Date.now() },
         ],
       },
     ],
@@ -360,7 +360,7 @@ export default (host: ExtensionHost) => {
           return identityNoteOncePerContextHead(api.tx, api.conversationId)
         },
         beforeRequest: (request, api) => {
-          const cacheStableIdentityPrefix = `You are conversation #${api.conversationId}.`
+          const cacheStableIdentityPrefix = conversationIdentity(api.conversationId)
           const { messages } = request
           if (
             messages.some(

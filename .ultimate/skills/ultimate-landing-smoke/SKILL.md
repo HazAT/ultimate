@@ -24,7 +24,11 @@ read back (memory `verify-cross-project-status`): the sha, the errors, the model
 Run it in codemode after any restart; it returns steps 1 and 3 as one small object. Add the feature proof by hand.
 
 ```js
-const sh = async (command) => (await tools.bash({ command })).trim()
+const sh = async (command) => {
+  const { output, exitCode } = await tools.bash({ command })
+  if (exitCode !== 0) throw new Error(`${command} exited ${exitCode}: ${output}`)
+  return output.trim()
+}
 const sys = await ultimate.system()
 const clone = await sh(`cd ${sys.code.ultimateRoot} && git log --oneline -1 && git status --short`)
 const claudeCode = JSON.parse(

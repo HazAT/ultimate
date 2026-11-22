@@ -634,16 +634,8 @@ export const actions = {
   }),
 }
 
-const readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks = [
-  'draft_answers',
-  'read',
-  'bash',
-  'memory',
-  'web_search',
-  'web_fetch',
-]
-const readOnlyCall = (name: string) =>
-  readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks.includes(name)
+const readOnlyTools = ['draft_answers', 'read', 'bash', 'memory', 'web_search', 'web_fetch']
+const readOnlyCall = (name: string) => readOnlyTools.includes(name)
 
 export function tracksEffect(name: string, args: Record<string, unknown>) {
   if (name === 'todo') return args.action === 'add' || args.action === 'done'

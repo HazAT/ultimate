@@ -6,3 +6,5 @@ export const parseTaskId = (value: number): TaskId => value as TaskId
 
 export const offsetEntryId = (value: EntryId, offset: number): EntryId =>
   parseEntryId(value + offset)
+
+export const conversationIdentity = (id: number) => `You are conversation #${id}.`

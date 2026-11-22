@@ -141,14 +141,15 @@ function questionsOf(
         result.content.some((block) => block.type === 'text' && SENT.test(block.text)))
       ? [call.id]
       : []
-  const nested = ((result?.details as { calls?: NestedCall[] } | undefined)?.calls ?? []).flatMap(
-    (item, index) =>
+  const nested = ((result?.details as { calls?: NestedCall[] } | undefined)?.calls ?? [])
+    .filter((item) => !item.name?.startsWith('ultimate.'))
+    .flatMap((item, index) =>
       item.name === 'message' &&
       item.status === 'ok' &&
       asksTheUser(item.args as Readonly<Record<string, unknown>>)
         ? [`${call.id}/${index + 1}`]
         : [],
-  )
+    )
   const live = [...logged].filter((id) => id.startsWith(`${call.id}/`) && !nested.includes(id))
   return [...nested, ...live].toSorted((a, b) => Number(a.split('/')[1]) - Number(b.split('/')[1]))
 }

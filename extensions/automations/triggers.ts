@@ -1,3 +1,4 @@
+import { formatDuration } from '../../lib/format.ts'
 import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
@@ -75,14 +76,9 @@ export function describeTrigger(a: Automation): string {
         : ''
     }`
   if (a.condition)
-    return `when ${a.condition.of} context ≥ ${a.condition.above}%${a.condition.idleFor ? ` after ${hours(a.condition.idleFor)} without the user's input` : ''}`
+    return `when ${a.condition.of} context ≥ ${a.condition.above}%${a.condition.idleFor ? ` after ${+(a.condition.idleFor / 3_600_000).toFixed(2)}h without the user's input` : ''}`
   return a.script!.state
 }
-
-export const hours = (ms: number) =>
-  ms % 3600_000 === 0 || ms >= 10 * 3600_000
-    ? `${Math.round((ms / 3600_000) * 10) / 10}h`
-    : `${Math.round(ms / 60_000)}m`
 
 export const IDLE_TICK = 60_000
 
@@ -136,7 +132,7 @@ export function triggers(
         tx,
         a,
         now,
-        `${condition.of} context ${Math.round(usage.percent)}%${usage.tokens !== undefined && usage.window !== undefined ? ` (${count(usage.tokens)}/${count(usage.window)})` : ''}${paused === undefined ? '' : ` after ${hours(paused)} without the user's input`}`,
+        `${condition.of} context ${Math.round(usage.percent)}%${usage.tokens !== undefined && usage.window !== undefined ? ` (${count(usage.tokens)}/${count(usage.window)})` : ''}${paused === undefined ? '' : ` after ${formatDuration(paused)} without the user's input`}`,
       )
       condition.armed = false
       condition.firedAt = now

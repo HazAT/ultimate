@@ -15,18 +15,8 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`
 }
 
-/** 420ms, 3.2s, 1m 04s, 2h 05m. */
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 3600)
-    return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
-  return `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}m`
-}
-
-/** How long ago a time was; in lib/ so server code (model text, range lists) says it the same way. */
-export { formatAgo } from '../../../lib/ago.ts'
+/** How long ago a time was (`5m`, `3d`) and how long something took in its two largest units (`420ms`, `3.2s`, `1m 4s`, `3d 4h`); in lib/ so server code (model text, receipts) says it the same way. */
+export { formatAgo, formatDuration } from '../../../lib/format.ts'
 
 /** Show `path` relative to `cwd` when inside it, else with `~` for `home` (`system.machine.home`). */
 export function shortenPath(path: string, options: { cwd?: string; home?: string } = {}): string {

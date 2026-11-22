@@ -25,10 +25,7 @@ const Announced = defineDoc<{ through?: EntryId }>({
 type Compaction = TypedEntry<{ reason?: string }>
 
 export function compactionEvents(
-  host: Pick<
-    ExtensionHost,
-    'harness' | 'emit' | 'onOpen' | 'onRelease' | 'onClose' | 'notice' | 'resource'
-  >,
+  host: Pick<ExtensionHost, 'harness' | 'emit' | 'onOpen' | 'notice' | 'resource'>,
 ) {
   const failuresNoticedAcrossReloads = host.resource(
     'conversations.compaction-failures',
@@ -112,13 +109,12 @@ export function compactionEvents(
       )
     return inCommitOrder
   }
-  let stop: (() => void) | undefined
-  host.onOpen(async () => {
-    stop?.()
+  host.onOpen(async (opened) => {
     failed = false
+    observed = undefined
     await next(markHistoryAnnounced)
     if (failed) return
-    stop = onCommit(host.harness(), (publication) => {
+    const stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'task') {
           const task = change.value
@@ -143,17 +139,13 @@ export function compactionEvents(
         )
       }
     })
+    opened.defer(async () => {
+      stop()
+      const upTo = observed
+      await (upTo === undefined
+        ? inCommitOrder
+        : next(() => host.harness().commit(announce([], upTo), context)))
+    })
     rebuiltOnOpen('a failed catch-up runs again on the next open', next(catchUp))
   })
-  const settle = async () => {
-    if (!stop) return
-    stop()
-    stop = undefined
-    const upTo = observed
-    await (upTo === undefined
-      ? inCommitOrder
-      : next(() => host.harness().commit(announce([], upTo), context)))
-  }
-  host.onRelease(settle)
-  host.onClose(settle)
 }

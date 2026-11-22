@@ -6,7 +6,7 @@ import type { Tx } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { expect, it } from 'vitest'
 import { compactionEvents } from '../compactions.ts'
-import { until } from '../../../test/helpers.ts'
+import { openers, until } from '../../../test/helpers.ts'
 import { parseConversationId } from '../../../lib/ids.ts'
 
 async function watched(storage = new MemoryStorage()) {
@@ -21,24 +21,14 @@ async function watched(storage = new MemoryStorage()) {
   const notices: string[] = []
   const emitted: unknown[] = []
   const resources = new Map<string, unknown>()
-  let open!: () => Promise<void>
-  let release = async () => {}
-  let close!: () => Promise<void>
+  const { onOpen, open, close } = openers()
   compactionEvents({
     harness: () => harness,
     emit: async (tx: Tx, _event: unknown, data: JsonValue) => {
       await tx.appendEntry(root.id, { kind: 'test.compacted', data })
       emitted.push(data)
     },
-    onOpen: (callback: () => Promise<void>) => {
-      open = callback
-    },
-    onRelease: (callback: () => Promise<void>) => {
-      release = callback
-    },
-    onClose: (callback: () => Promise<void>) => {
-      close = callback
-    },
+    onOpen,
     notice: (message: string) => notices.push(message),
     resource: (key: string, create: () => unknown) => {
       if (!resources.has(key)) resources.set(key, create())
@@ -46,7 +36,7 @@ async function watched(storage = new MemoryStorage()) {
     },
   } as unknown as Parameters<typeof compactionEvents>[0])
   await open()
-  return { harness, root, faux, notices, emitted, release, close }
+  return { harness, root, faux, notices, emitted, close }
 }
 
 // A background compaction that failed was reported nowhere: the agent ran on until its blocking one failed the run.
@@ -102,7 +92,6 @@ it('announces a compaction committed while it was not watching once, after reope
   )
   const watchedCompaction = await compact(first.harness, first.root.id)
   await until(() => first.emitted.length === 1)
-  await first.release()
   await first.close()
   const missedCompaction = await compact(first.harness, first.root.id)
   await first.harness.commit(
@@ -113,7 +102,6 @@ it('announces a compaction committed while it was not watching once, after reope
   for (let open = 0; open < 2; open++) {
     const again = await watched(storage)
     try {
-      await again.release()
       await again.close()
       expect(await announced(again.harness, again.root.id)).toEqual([
         watchedCompaction,

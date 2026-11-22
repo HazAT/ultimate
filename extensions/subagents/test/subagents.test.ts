@@ -1,6 +1,15 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // First: helpers mocks the faux provider's token pacing, which must apply before the server modules load.
-import { eventHost, idleNeed, until, temp, removeTemp } from '../../../test/helpers.ts'
+import {
+  apis,
+  eventHost,
+  idleNeed,
+  openers,
+  until,
+  temp,
+  removeTemp,
+} from '../../../test/helpers.ts'
+import type { Api } from '../../../shared/extension-api.ts'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { projectSettings } from '../../../lib/project-setup.ts'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
@@ -33,7 +42,7 @@ import type { OpenHost } from '../../../server/harness.ts'
 import subagents, { actions } from '../server.ts'
 import watchdog from '../../watchdog/server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
-import { Runs, Started, Subagents } from '../api.ts'
+import { ChildFailures, Runs, Started, Subagents } from '../api.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import codemode from '../../codemode/server.ts'
 import { Metadata } from '../../../server/metadata.ts'
@@ -64,7 +73,7 @@ async function fixture(
   respond?: (
     transcript: Parameters<FauxResponseFactory>[0],
   ) => ReturnType<FauxResponseFactory> | undefined,
-  watch = false,
+  failures?: 'watchdog' | 'held',
 ) {
   const ultimateRoot = await directory()
   const userHome = await directory()
@@ -91,24 +100,22 @@ async function fixture(
   prepared.registry.install(CodingTools)
   if (extension) prepared.registry.install(extension)
   let opened: OpenHost | undefined
-  const onOpen: (() => Promise<void>)[] = []
-  const onClose: (() => Promise<void>)[] = []
+  const lifecycle = openers()
+  const services = apis()
+  const need = <S>(api: Api<string, S>) =>
+    services.provided.has(api.name) ? services.need(api) : idleNeed(api)
   const backend = subagents({
     projectSettings: () => projectSettings(prepared.projectRoot, prepared.userHome),
     ...prepared,
     harness: () => opened!.harness,
     metadata: Metadata,
-    implement: () => {},
-    need: idleNeed,
+    implement: services.implement,
+    want: services.want,
+    need,
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},
-    onOpen: (callback) => {
-      onOpen.push(callback)
-    },
-    onClose: (callback) => {
-      onClose.push(callback)
-    },
+    onOpen: lifecycle.onOpen,
     emit,
   })
   prepared.registry.install(
@@ -143,22 +150,22 @@ async function fixture(
         }
       : backend,
   )
-  if (watch)
+  if (failures === 'held')
+    services.implement(ChildFailures, {
+      holds: (reason) => reason === 'model_error' || reason === 'no_model',
+      continues: (input) => input.requestId?.startsWith('watchdog-retry:') === true,
+      continuations: async () => [],
+    })
+  if (failures === 'watchdog')
     prepared.registry.install(
       watchdog({
         ...prepared,
         harness: () => opened!.harness,
         metadata: Metadata,
-        implement: () => {},
-        need: idleNeed,
+        implement: services.implement,
+        need,
         notice: (message: string) => errors.push(message),
-        onOpen: (callback: () => Promise<void>) => {
-          onOpen.push(callback)
-        },
-        onClose: (callback: () => Promise<void>) => {
-          onClose.push(callback)
-        },
-        onRelease: () => {},
+        onOpen: lifecycle.onOpen,
       } as unknown as ExtensionHost),
     )
   prepared.registry.install(
@@ -180,7 +187,6 @@ async function fixture(
       },
       resource: (_key, create) => create(),
       onOpen: () => {},
-      onRelease: () => {},
       onClose: () => {},
       onLoadError: () => {},
       onBeforeLoad: () => {},
@@ -243,10 +249,10 @@ async function fixture(
     opened = await prepared.open()
     const close = opened.close.bind(opened)
     opened.close = async () => {
-      for (const callback of onClose) await callback()
+      await lifecycle.close()
       await close()
     }
-    for (const callback of onOpen) await callback()
+    await lifecycle.open()
     hosts.push(opened)
     return opened
   }
@@ -585,17 +591,38 @@ async function reports(opened: OpenHost) {
 }
 
 describe('provider error recovery', () => {
+  it('reports a provider failure to the parent itself when nothing takes child failures over', async () => {
+    const f = await fixture(undefined, undefined, undefined, (transcript) =>
+      transcript.messages.at(-1)?.role === 'user' && transcript.messages.at(-1)?.content === 'fail'
+        ? fauxAssistantMessage('', {
+            stopReason: 'error',
+            errorMessage: 'invalid model configuration',
+          })
+        : undefined,
+    )
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'fail', background: true })
+    await until(async () => (await reports(f.opened)).length === 1)
+    const [child] = await children(f.opened)
+    expect((await reports(f.opened))[0].model![0].content).toBe(
+      `[subagent ${child.conversationId} failed: model_error: invalid model configuration]`,
+    )
+  })
   it.each([false, true])(
     'delivers a successful watchdog retry of a finished child’s one-way message once (offline: %s)',
     async (offlineAnswer) => {
-      const f = await fixture(undefined, undefined, undefined, (transcript) =>
-        transcript.messages.at(-1)?.role === 'user' &&
-        transcript.messages.at(-1)?.content === 'one-way failure'
-          ? fauxAssistantMessage('', {
-              stopReason: 'error',
-              errorMessage: 'Our servers are currently overloaded. Please try again later.',
-            })
-          : undefined,
+      const f = await fixture(
+        undefined,
+        undefined,
+        undefined,
+        (transcript) =>
+          transcript.messages.at(-1)?.role === 'user' &&
+          transcript.messages.at(-1)?.content === 'one-way failure'
+            ? fauxAssistantMessage('', {
+                stopReason: 'error',
+                errorMessage: 'Our servers are currently overloaded. Please try again later.',
+              })
+            : undefined,
+        'held',
       )
       await call(f.opened, { action: 'start', agent: 'scout', task: 'initial answer' })
       const [child] = await children(f.opened)
@@ -671,7 +698,7 @@ describe('provider error recovery', () => {
               errorMessage: 'invalid model configuration',
             })
           : undefined,
-      true,
+      'watchdog',
     )
     await call(f.opened, { action: 'start', agent: 'scout', task: 'fail', background: true })
     const failures = async () =>
@@ -698,12 +725,21 @@ describe('provider error recovery', () => {
     'leaves provider failures to watchdog and delivers its retry answer once (offline: %s)',
     async (offlineAnswer) => {
       const held = { ...gate(), entered: false, phase: 'deliver' }
-      const f = await fixture(undefined, undefined, held, (transcript) => {
-        const last = transcript.messages.at(-1)!
-        if (last.role === 'user' && last.content === 'provider failure')
-          return fauxAssistantMessage([], { stopReason: 'error', errorMessage: 'provider failed' })
-        return undefined
-      })
+      const f = await fixture(
+        undefined,
+        undefined,
+        held,
+        (transcript) => {
+          const last = transcript.messages.at(-1)!
+          if (last.role === 'user' && last.content === 'provider failure')
+            return fauxAssistantMessage([], {
+              stopReason: 'error',
+              errorMessage: 'provider failed',
+            })
+          return undefined
+        },
+        'held',
+      )
       await call(f.opened, {
         action: 'start',
         agent: 'scout',
@@ -789,13 +825,19 @@ describe('provider error recovery', () => {
   )
 
   it('returns provider failure to foreground start without sending a parent failure report', async () => {
-    const f = await fixture(undefined, undefined, undefined, (transcript) =>
-      transcript.messages.at(-1)?.role === 'user' && transcript.messages.at(-1)?.content === 'fail'
-        ? fauxAssistantMessage('', {
-            stopReason: 'error',
-            errorMessage: 'invalid model configuration',
-          })
-        : undefined,
+    const f = await fixture(
+      undefined,
+      undefined,
+      undefined,
+      (transcript) =>
+        transcript.messages.at(-1)?.role === 'user' &&
+        transcript.messages.at(-1)?.content === 'fail'
+          ? fauxAssistantMessage('', {
+              stopReason: 'error',
+              errorMessage: 'invalid model configuration',
+            })
+          : undefined,
+      'held',
     )
     const result = await call(f.opened, { action: 'start', agent: 'scout', task: 'fail' })
     expect(result.text).toContain('failed')
@@ -1195,7 +1237,7 @@ describe('subagents', () => {
           (message) => message.role === 'user' && message.content === 'change direction',
         ),
       )!
-      expect(JSON.stringify(request.messages)).toContain(`Still running subagents: ${id} (scout)`)
+      expect(JSON.stringify(request.messages)).toContain('A yielded wait is not its answer')
       expect(
         request.messages.filter(
           (message) => message.role === 'user' && message.content === 'change direction',
@@ -1206,18 +1248,35 @@ describe('subagents', () => {
       await f.opened.harness.waitForIdle(context)
       expect(await reports(f.opened)).toHaveLength(1)
       expect((await children(f.opened))[0].reported).toHaveLength(action === 'message' ? 2 : 1)
-      expect(
-        f.requests
-          .at(-1)
-          ?.messages.findLast(
-            (message) =>
-              message.role === 'system' && Object.hasOwn(message.sections ?? {}, 'subagent_state'),
-          ),
-      ).toMatchObject({ sections: { subagent_state: '' } })
       await call(f.opened, { action: 'wait', id })
       expect(await reports(f.opened)).toHaveLength(1)
     },
   )
+  it('notes running children before each run while they run, never in the system prompt', async () => {
+    const f = await gatedFixture()
+    const systemEntries = async () =>
+      (await f.opened.root.context(context)).entries.filter((entry) => entry.kind === 'pi.system')
+    await call(f.opened, { action: 'list' })
+    const before = (await systemEntries()).length
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    await until(async () => f.holding.has(child.conversationId))
+    await call(f.opened, { action: 'list' })
+    await call(f.opened, { action: 'list' })
+    f.childGate.release()
+    await until(async () => (await reports(f.opened)).length === 1)
+    await f.opened.harness.waitForIdle(context)
+    await call(f.opened, { action: 'list' })
+    const notes = (await f.opened.root.context(context)).entries.flatMap((entry) =>
+      entry.kind === 'subagents.note' ? [entry.model?.[0]?.content] : [],
+    )
+    expect(notes).toEqual(
+      Array(2).fill(
+        `As this run starts: still running subagents: ${child.conversationId} (scout). Use message, stop, or wait with these IDs; parent stop does not stop them.`,
+      ),
+    )
+    expect(await systemEntries()).toHaveLength(before)
+  })
   it('does not wake for followUp, but does wake for an already queued steer', async () => {
     const f = await gatedFixture()
     await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
@@ -1596,6 +1655,25 @@ describe('subagents', () => {
       label: 'scout',
       title: 'fork task',
     })
+    // A nested call's task has no assistant entry of its own; the fork point is its model-issued ancestor's.
+    await (
+      await opened.root.submit(
+        {
+          type: 'input',
+          content: `CODE text(await tools.subagent({action:'start',agent:'scout',task:'nested fork',fork:true}));`,
+        },
+        context,
+      )
+    ).wait(context)
+    expect(JSON.stringify((await opened.root.context(context)).entries)).toContain(
+      'Child: nested fork',
+    )
+    const nested = requests.find((candidate) =>
+      candidate.messages.some(
+        (message) => message.role === 'user' && message.content === 'nested fork',
+      ),
+    )!
+    expect(JSON.stringify(nested.messages)).toContain('Remember the parent secret: violet')
   })
   it('keeps nested parallel starts distinct and delivers a subsequent nested message', async () => {
     const { opened } = await fixture()
