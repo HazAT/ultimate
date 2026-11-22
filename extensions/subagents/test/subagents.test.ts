@@ -1210,7 +1210,7 @@ describe('subagents', () => {
       expect(await reports(f.opened)).toHaveLength(1)
     },
   )
-  it('notes running children before a run when they change, never in the system prompt', async () => {
+  it('notes running children before each run while they run, never in the system prompt', async () => {
     const f = await gatedFixture()
     const systemEntries = async () =>
       (await f.opened.root.context(context)).entries.filter((entry) => entry.kind === 'pi.system')
@@ -1228,10 +1228,11 @@ describe('subagents', () => {
     const notes = (await f.opened.root.context(context)).entries.flatMap((entry) =>
       entry.kind === 'subagents.note' ? [entry.model?.[0]?.content] : [],
     )
-    expect(notes).toEqual([
-      `Still running subagents: ${child.conversationId} (scout). Use message, stop, or wait with these IDs; parent stop does not stop them.`,
-      'No subagents are running.',
-    ])
+    expect(notes).toEqual(
+      Array(2).fill(
+        `As this run starts: still running subagents: ${child.conversationId} (scout). Use message, stop, or wait with these IDs; parent stop does not stop them.`,
+      ),
+    )
     expect(await systemEntries()).toHaveLength(before)
   })
   it('does not wake for followUp, but does wake for an already queued steer', async () => {

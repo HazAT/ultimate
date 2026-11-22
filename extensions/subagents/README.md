@@ -17,9 +17,9 @@ queued steering while the child keeps running; it then returns status text and t
 or wait again. Follow-ups do not wake waits; steering and other children's answers do.
 
 Each start or message creates a reporter that delivers the answer once, including after a restart. Undelivered answers
-steer the current run at its next tool-round boundary, or start a run when the parent is idle. A run starts with a
-model-only `subagents.note` listing running children and inputs waiting to start, only when that list changed since
-the conversation last saw it, so the system prompt stays cached. Answers say `Returned model: provider/model`, read from
+steer the current run at its next tool-round boundary, or start a run when the parent is idle. While children run or
+have inputs waiting to start, each run starts with a model-only `subagents.note` listing them, after the cached system
+prompt, which stays unchanged. Answers say `Returned model: provider/model`, read from
 the stored assistant message.
 
 - **No answer.** A turn with no text, or one that stopped as `aborted` or `error`, is not an answer: the parent gets

@@ -301,18 +301,6 @@ function createReporter() {
   })
 }
 
-async function noteInContext(tx: Tx, conversationId: ConversationId) {
-  const head = (await tx.latestHeadMarker(conversationId))?.head
-  let cursor: Cursor | undefined
-  do {
-    const page = await tx.scanEntries({ conversationId, minEntryId: head }, 200, cursor)
-    const note = page.items.find((entry) => entry.kind === 'subagents.note')
-    if (note) return (note.data as { key: string }).key
-    cursor = page.next
-  } while (cursor)
-  return ''
-}
-
 async function stateNote(tx: Tx, conversationId: ConversationId, now: number) {
   const state = await tx.doc(Subagents, conversationId)
   const pending = new Set<ConversationId>()
@@ -329,26 +317,16 @@ async function stateNote(tx: Tx, conversationId: ConversationId, now: number) {
     if ((await tx.doc(LiveDoc, agent.conversationId)).run !== undefined) running.push(label)
     else if (pending.has(agent.conversationId)) queued.push(label)
   }
-  const key = [
-    ...(running.length ? [`Still running subagents: ${running.join(', ')}.`] : []),
+  if (!running.length && !queued.length) return undefined
+  const content = [
+    'As this run starts:',
+    ...(running.length ? [`still running subagents: ${running.join(', ')}.`] : []),
     ...(queued.length ? [`Pending subagent inputs: ${queued.join(', ')}.`] : []),
+    'Use message, stop, or wait with these IDs; parent stop does not stop them.',
   ].join(' ')
-  if ((await noteInContext(tx, conversationId)) === key) return undefined
   return {
     entries: [
-      {
-        kind: 'subagents.note',
-        data: { key },
-        model: [
-          {
-            role: 'user' as const,
-            content: key
-              ? `${key} Use message, stop, or wait with these IDs; parent stop does not stop them.`
-              : 'No subagents are running.',
-            timestamp: now,
-          },
-        ],
-      },
+      { kind: 'subagents.note', model: [{ role: 'user' as const, content, timestamp: now }] },
     ],
   }
 }

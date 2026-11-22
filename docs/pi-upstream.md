@@ -24,7 +24,7 @@
 - `extensions/plan/server.ts` — uses the same hook to empty a new branch's inherited plan in the commit that places its first input.
 - `extensions/setup/server.ts` — uses the same hook to place changed setup warnings before the primary agent's input, recording the note and its deduplication state in one commit.
 - `extensions/todos/server.ts` — uses the same hook to place a changed to-do list before @ultimate's input, recording the note and its deduplication state in one commit. Drop the coupling when Pi ships input-placement hooks.
-- `extensions/subagents/server.ts` — uses the same hook to place a changed list of running and pending children before a parent's input, so the system prompt stays cached.
+- `extensions/subagents/server.ts` — uses the same hook to place the list of running and pending children before a parent's input, so the system prompt stays cached.
 - `extensions/models/server.ts` — uses the same hook to switch a conversation whose model lost its login before the run its input starts; the patch also routes a failed run's afterFailedRun "continue" boundary through it.
 - `extensions/goal/server.ts` — uses the patched transactional beforeInput hook to place an open hands-off goal's note before @ultimate's input. Drop the coupling when Pi ships input-placement hooks.
 - `extensions/pause/server.ts` — uses the patched Harness.hold()/release() for the user's soft pause. Drop the patch when Pi Durable ships a scheduler hold.
