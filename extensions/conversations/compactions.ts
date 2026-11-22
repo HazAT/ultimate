@@ -1,14 +1,14 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
 import { rebuiltOnOpen } from '../../lib/errors.ts'
-import { offsetEntryId } from '../../lib/ids.ts'
+import { offsetEntryId, parseEntryId } from '../../lib/ids.ts'
 import {
   CompactionEntry,
   CompactionTask,
   defineDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, EntryId, Tx, TypedEntry } from '@earendil-works/pi-durable'
+import type { Cursor, EntryId, Tx, TypedEntry } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Compacted } from './refs.ts'
 
@@ -22,8 +22,6 @@ const Announced = defineDoc<{ through?: EntryId }>({
   initial: () => ({}),
 })
 
-type Compaction = TypedEntry<{ reason?: string }>
-
 export function compactionEvents(
   host: Pick<
     ExtensionHost,
@@ -34,74 +32,70 @@ export function compactionEvents(
     'conversations.compaction-failures',
     () => new Set<number>(),
   )
-  const announce = async (tx: Tx, compactions: Compaction[], newest: EntryId) => {
+  const announce = async (tx: Tx, entry: TypedEntry<{ reason?: string }>) => {
+    const reason = entry.data?.reason
+    await host.emit(tx, Compacted, {
+      conversation: entry.conversationId,
+      entry: entry.id,
+      ...(reason ? { reason } : {}),
+    })
+  }
+  const announceMissed = async (tx: Tx) => {
     const announced = await tx.doc(Announced, ROOT_CONVERSATION_ID)
     const through = announced.through
-    for (const entry of compactions) {
-      if (through !== undefined && entry.id <= through) continue
-      const reason = entry.data?.reason
-      await host.emit(tx, Compacted, {
-        conversation: entry.conversationId,
-        entry: entry.id,
-        ...(reason ? { reason } : {}),
-      })
-    }
-    if (through === undefined || newest > through) announced.through = newest
+    let newest = through ?? parseEntryId(0)
+    let page: Cursor | undefined
+    do {
+      const conversations = await tx.scanConversations({}, 256, page)
+      for (const { id } of conversations.items) {
+        const latest = await tx.latestEntryId(id)
+        if (latest === undefined || (through !== undefined && latest <= through)) continue
+        if (latest > newest) newest = latest
+        if (through === undefined) continue
+        let cursor: Cursor | undefined
+        do {
+          const entries = await tx.scanEntries(
+            {
+              conversationId: id,
+              minEntryId: offsetEntryId(through, 1),
+              maxEntryId: latest,
+              order: 'ascending',
+            },
+            256,
+            cursor,
+          )
+          for (const entry of entries.items)
+            if (entry.conversationId === id && CompactionEntry.is(entry)) await announce(tx, entry)
+          cursor = entries.next
+        } while (cursor !== undefined)
+      }
+      page = conversations.next
+    } while (page !== undefined)
+    announced.through = newest
   }
-  const announceMissed = async () => {
-    const harness = host.harness()
-    const through = (await harness.snapshot(Announced, ROOT_CONVERSATION_ID, context))?.through
-    let newest = through
-    const moved = await harness.commit(async (tx) => {
-      const found: ConversationId[] = []
-      let cursor: Cursor | undefined
-      do {
-        const page = await tx.scanConversations({}, 256, cursor)
-        for (const { id } of page.items) {
-          const latest = await tx.latestEntryId(id)
-          if (latest === undefined || (through !== undefined && latest <= through)) continue
-          if (newest === undefined || latest > newest) newest = latest
-          found.push(id)
-        }
-        cursor = page.next
-      } while (cursor !== undefined)
-      return through === undefined ? [] : found
-    }, context)
-    const missed: Compaction[] = []
-    for (const id of moved) {
-      const conversation = await harness.conversation(id, context)
-      if (!conversation) continue
-      const sinceMark = { minEntryId: offsetEntryId(through!, 1), order: 'ascending' as const }
-      let cursor: Cursor | undefined
-      do {
-        const page = await conversation.entries(sinceMark, 256, cursor, context)
-        for (const entry of page.items)
-          if (entry.conversationId === id && CompactionEntry.is(entry)) missed.push(entry)
-        cursor = page.next
-      } while (cursor !== undefined)
+  const advanceTo =
+    (newest: EntryId, entry?: TypedEntry<{ reason?: string }>) => async (tx: Tx) => {
+      const announced = await tx.doc(Announced, ROOT_CONVERSATION_ID)
+      if (announced.through !== undefined && newest <= announced.through) return
+      if (entry) await announce(tx, entry)
+      announced.through = newest
     }
-    if (newest === undefined) return
-    const beforeObserved = (id: EntryId) => firstObserved === undefined || id < firstObserved
-    const upTo = beforeObserved(newest) ? newest : offsetEntryId(firstObserved!, -1)
-    const unobserved = missed.filter((entry) => beforeObserved(entry.id))
-    unobserved.sort((a, b) => a.id - b.id)
-    await harness.commit((tx) => announce(tx, unobserved, upTo), context)
-  }
-  let firstObserved: EntryId | undefined
   let observed: EntryId | undefined
   let failed = false
   let inCommitOrder: Promise<void> = Promise.resolve()
-  const next = (work: () => Promise<void>) => {
-    inCommitOrder = inCommitOrder.then(work).catch((error: unknown) => {
-      failed = true
-      host.notice(`Compaction event: ${String(error)}`)
-    })
+  const next = (work: (tx: Tx) => Promise<void>) => {
+    inCommitOrder = inCommitOrder
+      .then(() => (failed ? undefined : host.harness().commit(work, context)))
+      .catch((error: unknown) => {
+        failed = true
+        host.notice(`Compaction event, announced again on the next open: ${String(error)}`)
+      })
     return inCommitOrder
   }
   let stop: (() => void) | undefined
   host.onOpen(async () => {
     stop?.()
-    firstObserved = undefined
+    failed = false
     stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'task') {
@@ -119,12 +113,11 @@ export function compactionEvents(
         }
         if (change.type !== 'entry') continue
         const entry = change.value
-        firstObserved ??= entry.id
         if (observed === undefined || entry.id > observed) observed = entry.id
         if (!CompactionEntry.is(entry)) continue
         rebuiltOnOpen(
           'opening announces every compaction past the high-water entry',
-          next(() => host.harness().commit((tx) => announce(tx, [entry], entry.id), context)),
+          next(advanceTo(entry.id, entry)),
         )
       }
     })
@@ -134,9 +127,7 @@ export function compactionEvents(
     if (!stop) return
     stop()
     stop = undefined
-    const upTo = observed
-    if (upTo !== undefined && !failed)
-      await next(() => host.harness().commit((tx) => announce(tx, [], upTo), context))
+    if (observed !== undefined) await next(advanceTo(observed))
     await inCommitOrder
   }
   host.onRelease(settle)

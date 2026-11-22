@@ -22,7 +22,7 @@ async function watched(storage = new MemoryStorage()) {
   const emitted: unknown[] = []
   const resources = new Map<string, unknown>()
   let open!: () => Promise<void>
-  let release!: () => Promise<void>
+  let release = async () => {}
   let close!: () => Promise<void>
   compactionEvents({
     harness: () => harness,
@@ -78,29 +78,37 @@ it('a failed compaction its conversation owns raises a notice', async () => {
 it('announces a compaction committed while it was not watching once, after reopening', async () => {
   const storage = new MemoryStorage()
   storage.close = async () => {}
-  const compact = (harness: Harness, id: number) =>
-    harness.commit(
-      (tx) => tx.appendEntry(parseConversationId(id), { kind: 'pi.compaction', head: 'self' }),
-      context,
-    )
+  const compact = async (harness: Harness, id: number) =>
+    (
+      await harness.commit(
+        (tx) => tx.appendEntry(parseConversationId(id), { kind: 'pi.compaction', head: 'self' }),
+        context,
+      )
+    ).id
   const announced = async (harness: Harness, id: number) =>
     (
       await harness.commit(
-        (tx) => tx.scanEntries({ conversationId: parseConversationId(id) }, 100),
+        (tx) =>
+          tx.scanEntries({ conversationId: parseConversationId(id), order: 'ascending' }, 100),
         context,
       )
-    ).items.filter((entry) => entry.kind === 'test.compacted').length
+    ).items.flatMap((entry) =>
+      entry.kind === 'test.compacted' ? [(entry.data as { entry: number }).entry] : [],
+    )
   const first = await watched(storage)
-  await compact(first.harness, first.root.id)
+  const watchedCompaction = await compact(first.harness, first.root.id)
   await until(() => first.emitted.length === 1)
   await first.release()
   await first.close()
-  await compact(first.harness, first.root.id)
+  const missedCompaction = await compact(first.harness, first.root.id)
   await first.harness.close(context)
   for (let open = 0; open < 2; open++) {
     const again = await watched(storage)
     try {
-      expect(await announced(again.harness, again.root.id)).toBe(2)
+      expect(await announced(again.harness, again.root.id)).toEqual([
+        watchedCompaction,
+        missedCompaction,
+      ])
     } finally {
       await again.release()
       await again.close()
