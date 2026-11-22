@@ -29,13 +29,22 @@ import { parseSummaryModel } from './summary-model-ref.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import { updateSettings, userSettingsPath } from '../../lib/settings.ts'
-import { Overview, overviewBehavior } from './overview.ts'
+import { overviewBehavior } from './overview.ts'
 import { activityBehavior } from './activity.ts'
 import { activityStats } from './activity-stats.ts'
 import { compactionEvents } from './compactions.ts'
 import { contextBehavior } from './context.ts'
 import { concludedIn } from './projection.ts'
-import { ContextUsageDoc, ConversationsApi, Marks, Previews, Release, Trees } from './api.ts'
+import { SubmitAfter, submitAfter } from './submit.ts'
+import {
+  ContextUsageDoc,
+  ConversationsApi,
+  Marks,
+  Overview,
+  Previews,
+  Release,
+  Trees,
+} from './api.ts'
 import {
   ActivityAction,
   ConcludeAction,
@@ -100,14 +109,13 @@ async function topLevelId(host: ExtensionHost, args: ActionInput<{ id: number }>
 }
 
 async function refuseFixed(
-  host: Pick<ExtensionHost, 'doc'>,
+  host: Pick<ExtensionHost, 'want'>,
   tx: Tx,
   id: ConversationId,
   verb: string,
 ) {
-  const roots = host.doc('lineage.roots')
-  const listed = roots && ((await tx.doc(roots, ROOT_CONVERSATION_ID)) as { roots?: number[] })
-  if (listed?.roots?.includes(id)) throw new Error(`#${id} is a root; roots cannot be ${verb}`)
+  if (await host.want(Trees)?.isRoot(tx, id))
+    throw new Error(`#${id} is a root; roots cannot be ${verb}`)
   if ((await tx.doc(Fixed, id)).fixed)
     throw new Error(`#${id} is a standing agent; standing agents cannot be ${verb}`)
 }
@@ -226,7 +234,7 @@ async function ownedTree(tx: Tx, ids: ConversationId[]) {
   return tree
 }
 export async function concludeIn(
-  host: Pick<ExtensionHost, 'doc' | 'emit'>,
+  host: Pick<ExtensionHost, 'want' | 'emit'>,
   tx: Tx,
   ids: ConversationId[],
   by: ConversationId | 'landing' | 'user',
@@ -325,6 +333,7 @@ export default (host: ExtensionHost) => {
     requestSummary: (tx, id, request, model) => requestSummary(tx, host, id, request, model),
     setAutomaticSummaries,
     setStanding,
+    submitAfter,
     askSummaryModel,
     accountResponse,
     concluded: async (caller) => {
@@ -347,6 +356,7 @@ export default (host: ExtensionHost) => {
   return defineExtension({
     name: 'conversations',
     ...summaries,
+    tasks: [...summaries.tasks, SubmitAfter],
     hooks: [
       ...summaries.hooks,
       // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.

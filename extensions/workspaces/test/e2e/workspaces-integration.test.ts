@@ -38,6 +38,7 @@ import { ConversationsApi } from '../../../conversations/api.ts'
 import type { ConversationsService } from '../../../conversations/api.ts'
 import { setAutomaticSummaries, Summaries } from '../../../conversations/summary.ts'
 import { setStanding } from '../../../conversations/server.ts'
+import { SubmitAfter, submitAfter } from '../../../conversations/submit.ts'
 import self from '../../../self/server.ts'
 import messagesExtension from '../../../messages/server.ts'
 import { Messages, MessagesApi } from '../../../messages/api.ts'
@@ -49,7 +50,7 @@ import { openers, seedTally, temp, until } from '../../../../test/helpers.ts'
 
 /** The part of the conversations service a test stands in for; standing a lander turns its summaries off and marks it standing. */
 const conversations = (service: Partial<ConversationsService>) =>
-  ({ setAutomaticSummaries, setStanding, ...service }) as ConversationsService
+  ({ setAutomaticSummaries, setStanding, submitAfter, ...service }) as ConversationsService
 
 // Every test has its own repository and harness, so they all run concurrently; fixtures close when the file ends.
 vi.setConfig({ maxConcurrency: 16 })
@@ -165,6 +166,7 @@ async function fixture(
   const service = workspaces(host)
   if (messagesEnabled) prepared.registry.install(messagesExtension(host))
   prepared.registry.install(workspaceExtension(host))
+  prepared.registry.install(defineExtension({ name: 'conversations', tasks: [SubmitAfter] }))
   prepared.registry.install(self(host))
   prepared.registry.install(subagents(host))
   prepared.registry.install(CodingTools)

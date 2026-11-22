@@ -1,4 +1,10 @@
-import type { ConversationId, GenerationHooks, Tx, EntryId } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  GenerationHooks,
+  SubmissionDraft,
+  Tx,
+  EntryId,
+} from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { expect, it } from 'vitest'
 import { reminderTask } from '../reminder.ts'
@@ -32,9 +38,11 @@ function fakeTx(
     },
     { id: 10, conversationId: 9, model: [{ role: 'user', content: [screenshot] }] },
   ]
-  const tasks: { name: string; input: { kind: string; content: string; to: number } }[] = []
+  const tasks: { name: string; input: object }[] = []
+  const submitted: { to: number; draft: SubmissionDraft }[] = []
   return {
     tasks,
+    submitted,
     createTask: async ({ definition }: { definition: { name: string } }, input: never) => {
       tasks.push({ name: definition.name, input })
     },
@@ -54,7 +62,7 @@ function fakeTx(
     scanEntries: async ({ conversationId }: { conversationId: number }) => ({
       items: entries.filter((entry) => entry.conversationId === conversationId),
     }),
-  } as unknown as Tx & { tasks: typeof tasks }
+  } as unknown as Tx & { tasks: typeof tasks; submitted: typeof submitted }
 }
 
 type Reminder = {
@@ -81,16 +89,20 @@ function fakeHost(tx: ReturnType<typeof fakeTx>) {
     delete: async (id: string) => void ledger.delete(id),
     pause: async (id: string) => void (ledger.get(id)!.enabled = false),
     resume: async (id: string) => void (ledger.get(id)!.enabled = true),
+    read: async (_tx: Tx, id: string) => structuredClone(ledger.get(id)),
+    submitAfter: async (_tx: Tx, to: number, draft: SubmissionDraft) =>
+      void tx.submitted.push({ to, draft }),
+    readByKey: async (_tx: Tx, key: string) =>
+      structuredClone([...ledger.values()].find((item) => item.key === key)),
   }
   const host = {
     harness: () => ({ commit: (fn: (tx: Tx) => unknown) => fn(tx) }),
     need: () => service,
     want: () => service,
     doc: () => undefined,
-    invoke: async () => structuredClone([...ledger.values()]),
   } as unknown as ExtensionHost
   const sync = async () => {
-    const runtime = { commit: (fn: () => unknown) => fn() }
+    const runtime = { commit: (fn: (tx: Tx) => unknown) => fn(tx) }
     for (const task of tx.tasks.splice(0).filter((item) => item.name === 'goal.reminder'))
       await reminderTask(host, Goals).definition.phases.sync(
         { input: task.input } as never,
@@ -199,7 +211,10 @@ it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep i
   const tx = fakeTx()
   const extension = goalExtension({
     doc: () => undefined,
-    need: () => undefined,
+    need: () => ({
+      submitAfter: async (_tx: Tx, to: number, draft: SubmissionDraft) =>
+        void tx.submitted.push({ to, draft }),
+    }),
     want: () => undefined,
   } as unknown as ExtensionHost)
   const hooks = extension.hooks![0].handlers as GenerationHooks
@@ -227,12 +242,19 @@ it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep i
   })
   expect((await tx.doc(Goals, 1 as ConversationId)).goals[0].criteria).toHaveLength(1)
 
-  // Finishing ends the goal and creates the report's delivery in the same commit; the note stops.
+  // Finishing ends the goal and creates the report's submission in the same commit; the note stops.
   await run(ULTIMATE, { action: 'finish', outcome: 'met', summary: 'Done' })
-  expect(tx.tasks).toEqual([
-    { name: 'goal.deliver', input: expect.objectContaining({ to: ULTIMATE, kind: 'goal.report' }) },
-    { name: 'goal.reminder', input: { goal: 1 } },
+  expect(tx.submitted).toEqual([
+    {
+      to: ULTIMATE,
+      draft: {
+        type: 'write',
+        requestId: 'goal.report:1',
+        entry: expect.objectContaining({ kind: 'goal.report', data: { goal: 1 } }),
+      },
+    },
   ])
+  expect(tx.tasks).toEqual([{ name: 'goal.reminder', input: { goal: 1 } }])
   expect(await before(ULTIMATE)).toBeUndefined()
 })
 
@@ -311,15 +333,16 @@ it('grants nothing through a start card still queued after the user ended its go
   const extension = goalExtension(host)
   await actions.start({ text: 'Make it fast' }, { host } as never)
   await actions.end(null, { host } as never)
-  const [started, report] = tx.tasks
-    .filter((task) => task.name === 'goal.deliver')
-    .map((task) => task.input)
+  const [started, report] = tx.submitted.map(({ draft }) => draft)
   expect(started).toMatchObject({
-    kind: 'goal.started',
+    type: 'input',
+    requestId: 'goal.started:1',
     content: 'The user started hands-off goal 1.',
+    entry: { kind: 'goal.started' },
+    whenBusy: 'followUp',
   })
-  expect(report).toMatchObject({ kind: 'goal.report' })
-  expect(report.content).toContain('ask them as usual')
+  expect(report).toMatchObject({ type: 'write', entry: { kind: 'goal.report' } })
+  expect(JSON.stringify(report)).toContain('ask them as usual')
   // The queued start runs now: no goal is open, so no note says to decide for the user.
   const hooks = extension.hooks![0].handlers as GenerationHooks
   expect(

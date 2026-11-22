@@ -507,9 +507,13 @@ it('rolls back the entire application when a required document is unavailable', 
     (await f.harness.snapshot(resolve('lineage.memory')!, ROOT_CONVERSATION_ID, context))
       ?.memories ?? {},
   ).toEqual({})
+  const ultimate = (await f.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate
   expect(
-    (await f.harness.commit((tx) => tx.scanTasks({ kind: 'dream.deliver' }, 10), context)).items,
-  ).toHaveLength(0)
+    await f.harness.commit(
+      (tx) => tx.submissionByRequest(ultimate, 'dream.chapter:retry'),
+      context,
+    ),
+  ).toBeUndefined()
   f.host.doc = resolve
   await applySeed(f.host)
   expect(
@@ -518,6 +522,12 @@ it('rolls back the entire application when a required document is unavailable', 
   expect(
     (await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))!.applied,
   ).toBeGreaterThan(0)
+  expect(
+    await f.harness.commit(
+      (tx) => tx.submissionByRequest(ultimate, 'dream.chapter:retry'),
+      context,
+    ),
+  ).toMatchObject({ type: 'input' })
 })
 
 it('merges root memories by updated, maps automation options, and rejects duplicate schedule names', async () => {

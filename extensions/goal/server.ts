@@ -16,9 +16,9 @@ import { implementAction } from '../../lib/actions.ts'
 import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
+import { ConversationsApi } from '../conversations/api.ts'
 import { Standing } from '../subagents/api.ts'
-import { deliver, deliverTask } from './delivery.ts'
-import { reminderTask } from './reminder.ts'
+import { enqueueReminderSync as enqueue, reminderTask } from './reminder.ts'
 import { EndAction, GoalDoc, ImagesAction, StartAction } from './refs.ts'
 import type { Criterion, Decision, Ending, Goal } from './refs.ts'
 
@@ -213,7 +213,7 @@ const reportText = (goal: Goal) =>
     ? `The user ended hands-off goal ${goal.id}. From now on ask them as usual.`
     : `Hands-off goal ${goal.id} ended (${goal.ended?.outcome}); its report card is here for the user. From now on ask them as usual.`
 
-async function enqueueGoalNotice(
+async function goalNotice(
   host: ExtensionHost,
   tx: Tx,
   kind: 'goal.started' | 'goal.report',
@@ -221,35 +221,43 @@ async function enqueueGoalNotice(
 ) {
   const to = await ultimateOf(tx)
   if (to === undefined) throw new Error('@ultimate has no conversation yet')
-  await deliver(host, tx, {
+  const requestId = `${kind}:${goal.id}`
+  const data = { goal: goal.id }
+  await host.need(ConversationsApi).submitAfter(
+    tx,
     to,
-    goal: goal.id,
-    kind,
-    content:
-      kind === 'goal.started' ? `The user started hands-off goal ${goal.id}.` : reportText(goal),
-  })
+    kind === 'goal.started'
+      ? {
+          type: 'input',
+          requestId,
+          content: `The user started hands-off goal ${goal.id}.`,
+          entry: { kind, data },
+          whenBusy: 'followUp',
+        }
+      : {
+          type: 'write',
+          requestId,
+          entry: {
+            kind,
+            data,
+            model: [{ role: 'user', content: reportText(goal), timestamp: Date.now() }],
+          },
+        },
+  )
 }
 
 const field = (args: unknown, name: string) =>
   args && typeof args === 'object' ? (args as Record<string, unknown>)[name] : undefined
 
 const enqueueReminderSync = (host: ExtensionHost, tx: Tx, goal: number) =>
-  tx.createTask(
-    reminderTask(host, Goals),
-    { goal },
-    {
-      conversationId: ROOT_CONVERSATION_ID,
-      ownership: { kind: 'conversation' },
-      background: true,
-    },
-  )
+  enqueue(tx, reminderTask(host, Goals), goal)
 
 export const userActions = ['start', 'end']
 export const actions = {
   start: implementAction(StartAction, (args, { host }) =>
     host.harness().commit(async (tx) => {
       const goal = await start(tx, field(args, 'text'), Date.now(), field(args, 'proposal'))
-      await enqueueGoalNotice(host, tx, 'goal.started', goal)
+      await goalNotice(host, tx, 'goal.started', goal)
       await enqueueReminderSync(host, tx, goal.id)
       return detachGoal(goal)
     }, context),
@@ -257,7 +265,7 @@ export const actions = {
   end: implementAction(EndAction, (_args, { host }) =>
     host.harness().commit(async (tx) => {
       const goal = await end(tx, { at: Date.now(), by: 'user', outcome: 'ended' })
-      await enqueueGoalNotice(host, tx, 'goal.report', goal)
+      await goalNotice(host, tx, 'goal.report', goal)
       await enqueueReminderSync(host, tx, goal.id)
       return goal
     }, context),
@@ -282,7 +290,7 @@ export default function goalExtension(host: ExtensionHost) {
   host.need(AutomationsApi)
   return defineExtension({
     name: 'goal',
-    tasks: [deliverTask(host), reminderTask(host, Goals)],
+    tasks: [reminderTask(host, Goals)],
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
@@ -355,7 +363,7 @@ export default function goalExtension(host: ExtensionHost) {
               },
               Date.now(),
             )
-            if (acted.ended) await enqueueGoalNotice(host, tx, 'goal.report', acted.ended)
+            if (acted.ended) await goalNotice(host, tx, 'goal.report', acted.ended)
             const changed = acted.sync ?? acted.ended?.id
             if (changed !== undefined) await enqueueReminderSync(host, tx, changed)
             return acted

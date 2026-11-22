@@ -177,8 +177,7 @@ async function fixture(
       throw new Error(message)
     },
     conversations: () => [],
-    doc: (kind: string) =>
-      kind === 'lineage.roots' ? Roots : kind === 'lineage.tally' ? Tally : undefined,
+    doc: () => undefined,
   } as unknown as ExtensionHost
   let backend = messagesExtension(host)
   if (sendGate)

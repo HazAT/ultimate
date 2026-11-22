@@ -23,9 +23,9 @@ Hands-off goals: put @ultimate on a goal and go away; it decides what it would o
 4. **Goal reminder.** While a goal is open, a "Goal reminder · goal N" automation wakes @ultimate: `every 30m`, no
    prompt, @ultimate as its subscriber; its id is the goal's `reminder`. Every goal change (start, pause, resume,
    end) creates a `goal.reminder` task in its own commit, which brings the automation in line with the goal through
-   the automations service (`AutomationsApi`): create and link, pause, resume or delete. A crash leaves the
-   task to rerun; a rerun adopts the automation an earlier try made by its name, and one the user deleted in the
-   Automations panel stays deleted. On a fire, the goal note adds what to check: the goal's branches moving, the lander queue, reactor lag
+   the automations service (`AutomationsApi`) in one pass: create and link, pause, resume or delete. A goal change
+   during that pass makes it queue another. A crash leaves the task to rerun; a rerun adopts the automation an
+   earlier try made by its key, and one the user deleted in the Automations panel stays deleted. On a fire, the goal note adds what to check: the goal's branches moving, the lander queue, reactor lag
    and watchdog cards; nudge or fix what is stuck, record a `decide` only when it changed something, else stay quiet. This replaces the manual night watch while a goal is open.
 5. The goal ends when @ultimate finishes it or the user presses **End hands-off** on its card (user-only `end`). Either
    way a `goal.report` card is written into @ultimate's conversation (`goal.report:N`), and from then on it asks the

@@ -194,7 +194,10 @@ It provides the `conversations` service: `subject(id)` returns a conversation's 
 which workspaces snapshots for each submission. `concluded(caller)` returns a `Promise<Set<ConversationId>>`
 from the server-owned concluded list, used by workspaces to release checkouts on open.
 `generatedTitle(tx, id, title)` marks a new branch's or root's intent title as generated, so its summary may replace
-it; lineage calls it from its `named` reactor. This extension declares two extension points in `api.ts`:
+it; lineage calls it from its `named` reactor. `submitAfter(tx, to, draft)` has the `conversations.submit` task submit
+`draft` to `to` right after the commit, for commits that cannot admit it with `submit(tx, draft)` themselves: one that
+creates `to` (a branch's prompt, a side chat's first input), or a reactor's commit that holds no handle of `to` (a
+landing note, a dream request on a fire). An input keeps `to` busy until it is admitted. This extension declares two extension points in `api.ts`:
 `conversations.trees` (`rootOf`, `branchOf`, `abstract`; lineage provides it) and `conversations.release`
 (workspaces provides it), so it depends on neither.
 

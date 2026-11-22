@@ -8,6 +8,7 @@ import type {
   EntryRecord,
   JsonObject,
   ModelRef,
+  SubmissionDraft,
   TaskId,
   Tx,
 } from '@earendil-works/pi-durable'
@@ -42,7 +43,17 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
-import { Branch, Branched, LineageApi, MemorySearch, Rooted, Roots, Tally } from './api.ts'
+import {
+  Branch,
+  Branched,
+  LineageApi,
+  Memory,
+  MemorySearch,
+  Replies,
+  Rooted,
+  Roots,
+  Tally,
+} from './api.ts'
 import { ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing, Started } from '../subagents/api.ts'
 import { spawn } from 'node:child_process'
@@ -61,7 +72,6 @@ import {
   applyMemoryOps,
   BODY_CHARS,
   LINE_CHARS,
-  Memory,
   memoryBrief,
   MEMORY_RULES,
   MEMORY_SLUG,
@@ -109,7 +119,6 @@ const ASK_TOKENS = 8192
 const TRANSCRIPT_TOOL_RESULT_CHARS = 2000
 const STARTER_TITLE_CHARS = 60
 const PROMPT_DERIVED_TITLE_CHARS = 80
-const REPLAY_STABLE_PROMPT_REQUEST_ID = 'lineage:prompt'
 
 function promptContent(prompt: string, images: readonly BranchImage[] = []) {
   return images.length
@@ -354,34 +363,6 @@ function watchTally(host: ExtensionHost, ctx: Context) {
 }
 
 function lineage(host: ExtensionHost) {
-  const PromptCreatedWithBranch = defineTask<
-    { id: ConversationId; prompt: string; images?: BranchImage[] },
-    { phase: 'deliver' },
-    null
-  >({
-    name: 'lineage.prompt',
-    version: 1,
-    initial: () => ({ phase: 'deliver' }),
-    phases: {
-      deliver: async (task, runtime, ctx) => {
-        const { id, prompt, images } = task.input
-        await (await host.harness().conversation(id, ctx))!.submit(
-          {
-            type: 'input',
-            content: promptContent(prompt, images),
-            requestId: REPLAY_STABLE_PROMPT_REQUEST_ID,
-          },
-          ctx,
-        )
-        await runtime.commit(
-          () => ({ status: 'terminal', outcome: { status: 'completed', result: null } }),
-          ctx,
-        )
-      },
-    },
-    abort: (_task, runtime, ctx) =>
-      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
-  })
   const Notify = defineTask<
     { target: ConversationId; wake: boolean },
     { phase: 'wait' } | { phase: 'deliver'; title?: string; text: string; answer: EntryId | 0 },
@@ -424,12 +405,8 @@ function lineage(host: ExtensionHost) {
             const caller = runtime.conversationId
             const lastNotifiedAnswer = (await host.harness().snapshot(Notified, caller, ctx))
               ?.answers[target]
-            const boardByKind = host.doc('board')
-            const log =
-              boardByKind && (await host.harness().snapshot(boardByKind, ROOT_CONVERSATION_ID, ctx))
-            const answerAlreadyReplied = (
-              log?.messages as { from: unknown; to: unknown; answer?: EntryId }[] | undefined
-            )?.some((m) => m.from === target && m.to === caller && m.answer === answerId)
+            const answerAlreadyReplied =
+              answerId !== 0 && (await host.want(Replies)?.replied(target, caller, answerId, ctx))
             const callerHasNotReceivedAnswer =
               !answerAlreadyReplied &&
               (lastNotifiedAnswer === undefined || answerId > lastNotifiedAnswer)
@@ -507,41 +484,30 @@ function lineage(host: ExtensionHost) {
     abort: (_task, runtime, ctx) =>
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
   })
-  const ReplaySafeNonTallyLandingNote = defineTask<
-    { to: ConversationId; text: string; source: NoteSource },
-    { phase: 'deliver' },
-    null
-  >({
-    name: 'lineage.landing-note',
-    version: 1,
-    initial: () => ({ phase: 'deliver' }),
-    phases: {
-      deliver: async (task, runtime, ctx) => {
-        await leaveNote(host, task.input.to, task.input.text, task.input.source)
-        await runtime.commit(
-          () => ({ status: 'terminal', outcome: { status: 'completed', result: null } }),
-          ctx,
-        )
-      },
-    },
-    abort: (_task, runtime, ctx) =>
-      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
-  })
   const done = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
   const WakeAfterPlacedManualCompaction = defineTask<
     { id: ConversationId; compaction: TaskId },
-    { phase: 'deliver' },
+    { phase: 'deliver' } | { phase: 'compacted' },
     null
   >({
     name: 'lineage.woken',
     version: 1,
     initial: () => ({ phase: 'deliver' }),
     phases: {
-      deliver: async (task, runtime, ctx) => {
+      deliver: (task, runtime, ctx) =>
+        runtime.commit(
+          () => ({
+            status: 'waiting',
+            checkpoint: { phase: 'compacted' },
+            on: [task.input.compaction],
+            policy: 'allSettled',
+          }),
+          ctx,
+        ),
+      compacted: async (task, runtime, ctx) => {
         const { id, compaction } = task.input
-        const settled = await runtime.waitForTask(compaction as TaskId<CompactionResult>, ctx)
-        const result =
-          settled.state.outcome.status === 'completed' ? settled.state.outcome.result : {}
+        const [outcome] = await runtime.outcomes([compaction as TaskId<CompactionResult>], ctx)
+        const result = outcome.status === 'completed' ? outcome.result : {}
         const summaryPlacement =
           result.submissionId &&
           (await (await host.harness().submission(result.submissionId, ctx))?.wait(ctx))
@@ -567,12 +533,7 @@ function lineage(host: ExtensionHost) {
     abort: (_task, runtime, ctx) =>
       runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
   })
-  return {
-    Notify,
-    PromptCreatedWithBranch,
-    ReplaySafeNonTallyLandingNote,
-    WakeAfterPlacedManualCompaction,
-  }
+  return { Notify, WakeAfterPlacedManualCompaction }
 }
 
 const WOKEN_TEXT =
@@ -718,7 +679,6 @@ async function forkBranch(
     return receipts.branches[input.receipt.callId]
   const prompt = input.prompt.trim()
   const from = input.from
-  const { PromptCreatedWithBranch } = lineage(host)
   if (!(await tx.conversation(from))) throw new Error(`No conversation #${from}`)
   let at = input.at
   if (at === undefined) {
@@ -819,11 +779,11 @@ async function forkBranch(
   if (root !== from)
     await tx.appendEntry(from, { kind: BranchedEntry.kind, data: displayOnlyBranchMarker })
   if (input.deliver !== false)
-    await tx.createTask(
-      PromptCreatedWithBranch,
-      { id: fork.id, prompt, ...(images ? { images: input.images } : {}) },
-      { conversationId: fork.id, ownership: { kind: 'conversation' }, background: false },
-    )
+    await host.need(ConversationsApi).submitAfter(tx, fork.id, {
+      type: 'input',
+      content: promptContent(prompt, input.images),
+      requestId: 'lineage:prompt',
+    })
   if (receipts && input.receipt) receipts.branches[input.receipt.callId] = fork.id
   return fork.id
 }
@@ -917,21 +877,22 @@ export async function leaveNote(
       .commit((tx) => freezeAndLandAtomically(tx, target, text, { ...source, from }), context))
   )
     return target
+  await conversation.submit(noteWrite(text, source), context)
+  return target
+}
+
+function noteWrite(text: string, source?: NoteSource): SubmissionDraft {
   const { data, content } = note(text, source)
   const requestId = source?.requestId
-  await conversation.submit(
-    {
-      type: 'write',
-      ...(requestId ? { requestId } : {}),
-      entry: {
-        kind: NoteEntry.kind,
-        data,
-        model: [{ role: 'user', content, timestamp: Date.now() }],
-      },
+  return {
+    type: 'write',
+    ...(requestId ? { requestId } : {}),
+    entry: {
+      kind: NoteEntry.kind,
+      data,
+      model: [{ role: 'user', content, timestamp: Date.now() }],
     },
-    context,
-  )
-  return target
+  }
 }
 
 const ZOOM =
@@ -1243,6 +1204,7 @@ export default function lineageExtension(host: ExtensionHost) {
     },
   })
   host.implement(Trees, {
+    isRoot: async (tx, id) => (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id),
     rootOf: (id, ctx) => rootOf(host, id, ctx),
     branchOf: (id, ctx) => branchOf(host, id, ctx),
     abstract,
@@ -1254,12 +1216,7 @@ export default function lineageExtension(host: ExtensionHost) {
     const { title } = data as { title?: string }
     await conversations.generatedTitle(tx, id, intentLine(data.intent, title))
   })
-  const {
-    Notify,
-    PromptCreatedWithBranch,
-    ReplaySafeNonTallyLandingNote,
-    WakeAfterPlacedManualCompaction,
-  } = lineage(host)
+  const { Notify, WakeAfterPlacedManualCompaction } = lineage(host)
   host.react('landing-notes', [SubmissionLanded], async (tx, { data: landing }) => {
     const from = landing.conversationId
     const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
@@ -1273,23 +1230,13 @@ export default function lineageExtension(host: ExtensionHost) {
       data,
     }
     if (await freezeAndLandAtomically(tx, root, text, source)) return
-    await tx.createTask(
-      ReplaySafeNonTallyLandingNote,
-      { to: root, text, source },
-      { conversationId: root, ownership: { kind: 'conversation' }, background: true },
-    )
+    await conversations.submitAfter(tx, root, noteWrite(text, source))
   })
   watchSeen(host, context)
   watchTally(host, context)
   return defineExtension({
     name: 'lineage',
-    tasks: [
-      Notify,
-      PromptCreatedWithBranch,
-      ReplaySafeNonTallyLandingNote,
-      WakeAfterPlacedManualCompaction,
-      rewindTask(host),
-    ],
+    tasks: [Notify, WakeAfterPlacedManualCompaction, rewindTask(host)],
     sections: [section('lineage', (input, ctx) => lineageSection(host, input.conversationId, ctx))],
     hooks: [
       hook(GenerationTask, {

@@ -24,7 +24,7 @@ import { readSecret, secretMetadata } from '../../lib/secrets.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { HealthApi } from '../health/api.ts'
-import type { MemoryDoc, RootsDoc, TallyDoc } from '../lineage/refs.ts'
+import { Memory, Roots, Tally } from '../lineage/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { TailscaleApi } from '../tailscale/api.ts'
 import { CheckAction } from './refs.ts'
@@ -54,7 +54,6 @@ type CheckHost = Pick<
   | 'extensions'
   | 'need'
   | 'want'
-  | 'doc'
   | 'harness'
 >
 
@@ -347,10 +346,10 @@ async function worktreeArea(host: AreaHost, inputs: AreaInputs): Promise<SetupIs
   }
 }
 
-type ReadCurrentDoc = (
-  doc: ConversationDocToken<JsonObject>,
+type ReadCurrentDoc = <T extends JsonObject>(
+  doc: ConversationDocToken<T>,
   id: ConversationId,
-) => Promise<Readonly<JsonObject> | undefined>
+) => Promise<Readonly<T> | undefined>
 
 const snapshots =
   (host: Pick<CheckHost, 'harness'>): ReadCurrentDoc =>
@@ -362,19 +361,12 @@ type AreaHost = Omit<CheckHost, 'projectSettings' | 'projectSetup'>
 type AreaInputs = { read: ReadCurrentDoc; settings: Promise<JsonObject | undefined> }
 
 async function memoryArea(host: AreaHost, { read }: AreaInputs): Promise<SetupIssue | undefined> {
-  const rootsDoc = host.doc('lineage.roots')
-  const memoryDoc = host.doc('lineage.memory')
-  const tallyDoc = host.doc('lineage.tally')
-  if (!rootsDoc || !memoryDoc || !tallyDoc) return undefined
-  const listed = (await read(rootsDoc, ROOT_CONVERSATION_ID)) as
-    | (typeof RootsDoc)['value']
-    | undefined
+  const listed = await read(Roots, ROOT_CONVERSATION_ID)
   const empty: number[] = []
   for (const root of listed?.roots ?? []) {
-    const tally = (await read(tallyDoc, root)) as (typeof TallyDoc)['value'] | undefined
-    const rootHasNeverBranched = tally?.since === undefined
+    const rootHasNeverBranched = (await read(Tally, root))?.since === undefined
     if (rootHasNeverBranched) continue
-    const doc = (await read(memoryDoc, root)) as (typeof MemoryDoc)['value'] | undefined
+    const doc = await read(Memory, root)
     if (!Object.keys(doc?.memories ?? {}).length) empty.push(root)
   }
   if (!empty.length) return undefined
@@ -487,7 +479,11 @@ export default function setup(host: ExtensionHost) {
   const burstCheckCacheMs = 30_000
   const current = async (tx: Tx) => {
     if (Date.now() - cache.at > burstCheckCacheMs) {
-      cache.issues = await check(host, (doc, id) => tx.doc(doc, id))
+      cache.issues = await check(
+        host,
+        <T extends JsonObject>(doc: ConversationDocToken<T>, id: ConversationId) =>
+          tx.doc(doc, id) as Promise<Readonly<T>>,
+      )
       cache.at = Date.now()
     }
     return cache.issues

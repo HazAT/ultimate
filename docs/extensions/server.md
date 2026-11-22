@@ -25,6 +25,7 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
 
 - `ultimateRoot`, `projectRoot`, `userHome`, `home`: source, work, user and instance-state roots.
 - `modelRuntime`, `settings`: Pi model/auth runtime and settings.
+- `images`: the host's one Photon `ImageProcessor` (Pi Durable's `createNodePhotonImages()`), shared by every extension that fits images for the model and kept across reloads.
 - `models()`: model descriptors, including availability.
 - `skills(cwd)`: merged clone, user and project skills for a working directory, each with its `scope` and `overrides`.
 - `restart(approved)`: request a verified core swap; the async callback records the approved generation before activation.

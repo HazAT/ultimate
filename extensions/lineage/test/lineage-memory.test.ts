@@ -10,9 +10,9 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { afterEach, beforeAll, expect, it } from 'vitest'
-import { applyMemoryOps, Memory, MEMORY_LIMIT } from '../memory.ts'
+import { applyMemoryOps, MEMORY_LIMIT } from '../memory.ts'
 import { abstract } from '../server.ts'
-import { Roots, Tally } from '../api.ts'
+import { Memory, Roots, Tally } from '../api.ts'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { Standing } from '../../subagents/api.ts'
 import { context } from '../../../server/harness.ts'
@@ -380,6 +380,14 @@ it('wakes @ultimate once after its manual compaction, never after an automatic o
   const asked = state.condensed.length
   const stale = await ultimate.compact(undefined, context)
   await until(() => state.condensed.length > asked)
+  // It waits on the compaction without holding an invocation.
+  await until(async () =>
+    (await wakeTasks()).some(
+      (task) =>
+        (task.input as { compaction: number }).compaction === stale &&
+        task.state.status === 'waiting',
+    ),
+  )
   await ultimate.reset(undefined, context)
   release.resolve()
   await server.harness.waitForTask(stale, context)

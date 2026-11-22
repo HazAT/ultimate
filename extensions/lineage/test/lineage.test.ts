@@ -516,22 +516,26 @@ it('refuses inputs in a tally and keeps notes as writes', async () => {
 
 it('delivers a branch’s prompt once when the process stops before it is submitted', async () => {
   const { server, home } = await fixture()
-  // Without the prompt task's definition the task waits, as if the process went down right after creating the branch.
-  const lineage = server.host.registry.snapshot().extension('lineage')!
+  // Without the submit task's definition the task waits, as if the process went down right after creating the branch.
+  const conversations = server.host.registry.snapshot().extension('conversations')!
   server.host.registry.install(
     defineExtension({
-      ...lineage,
-      tasks: lineage.tasks!.filter((task) => task.definition.name !== 'lineage.prompt'),
+      ...conversations,
+      tasks: conversations.tasks!.filter((task) => task.definition.name !== 'conversations.submit'),
     }),
   )
   const id = await branchFrom(server, { from: 1, prompt: 'Survive a crash', isolated: false })
   const prompts = (target: Server) =>
     target.harness.commit(
-      async (tx) => (await tx.scanTasks({ conversationId: id, kind: 'lineage.prompt' }, 10)).items,
+      async (tx) =>
+        (await tx.scanTasks({ conversationId: id, kind: 'conversations.submit' }, 10)).items,
       context,
     )
   expect((await prompts(server)).map((task) => [task.input, task.state.status])).toEqual([
-    [{ id, prompt: 'Survive a crash' }, 'pending'],
+    [
+      { draft: { type: 'input', content: 'Survive a crash', requestId: 'lineage:prompt' } },
+      'pending',
+    ],
   ])
   expect(
     (await (await server.harness.conversation(id, context))!.context(context)).entries.filter(

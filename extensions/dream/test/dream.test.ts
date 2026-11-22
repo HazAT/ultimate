@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
-import { configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { configure, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
 import { writeJson } from '../../../lib/json-file.ts'
 import { prepareHarness } from '../../../server/harness.ts'
@@ -17,6 +17,7 @@ import { Messages } from '../../messages/api.ts'
 import { Todos } from '../../todos/server.ts'
 import { Standing } from '../../subagents/api.ts'
 import { ContextUsageDoc } from '../../conversations/api.ts'
+import { SubmitAfter, submitAfter } from '../../conversations/submit.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
 import dream, { actions, branched, Next, toolStats, userActions } from '../server.ts'
 import { buildSeed } from '../seed.ts'
@@ -60,6 +61,7 @@ async function fixture() {
     new Map<string, unknown>([
       ['messages', { send: async () => ({}), dropped: async () => {} }],
       ['lineage', { rootOf: async () => undefined }],
+      ['conversations', { submitAfter }],
       [
         'subagents',
         {
@@ -100,6 +102,7 @@ async function fixture() {
     notice: () => {},
     invoke,
   } as unknown as ExtensionHost
+  prepared.registry.install(defineExtension({ name: 'conversations', tasks: [SubmitAfter] }))
   prepared.registry.install(automations(host))
   prepared.registry.install(dream(host))
   opened = await prepared.open(false)
@@ -129,17 +132,17 @@ async function fixture() {
       })
     }, context)
   /** @ultimate's `dream.*` submissions, oldest first: their request ids and types. */
-  const requests = () =>
-    harness.commit(async (tx) => {
-      const deliveries = (await tx.scanTasks({ kind: 'dream.deliver' }, 50)).items
-      const found = []
-      for (const task of deliveries) {
-        const { requestId } = task.input as { requestId: string }
-        const submission = await tx.submissionByRequest(ultimate, requestId)
-        if (submission) found.push({ requestId, type: submission.type })
-      }
-      return found
-    }, context)
+  const requests = async () =>
+    (
+      await prepared.scanSubmissions(
+        { conversationId: ultimate, order: 'ascending' },
+        50,
+        undefined,
+        context,
+      )
+    ).items.flatMap(({ requestId, type }) =>
+      requestId?.startsWith('dream.') ? [{ requestId, type }] : [],
+    )
   return {
     host,
     harness,
