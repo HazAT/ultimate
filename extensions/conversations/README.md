@@ -33,7 +33,9 @@ blocking startup. The status line reads this same document, independent of which
 
 `compactions.ts` emits `conversations.compacted` `{ conversation, entry, reason? }` (`Compacted` in `refs.ts`) for
 each compaction summary Pi places. Pi appends it in its compaction task with no hook in that commit, so a commit
-watcher emits it in a commit of its own: a crash between the two loses the event, nothing repeats it. The same
+watcher emits it in a commit of its own. A root document keeps the newest entry announced; each open catches up, in the
+background, on compactions committed past it while nothing watched, so a stop between the two commits delays the event
+rather than losing it. The first open marks existing history as announced. The same
 watcher raises a notice when a compaction its conversation owns (background or manual) fails; a blocking one's failure
 ends the run waiting on it, which reports itself.
 
