@@ -1,6 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { spawn } from 'node:child_process'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
+import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { Metadata } from '../../../../server/metadata.ts'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
@@ -927,4 +928,169 @@ it('closes during a pending start without spawning a process after cleanup', asy
     resume.resolve()
     snapshot.mockRestore()
   }
+})
+
+it('re-aiming a running or fired script stops it without false exit-0 failures and resets stale state', async () => {
+  const { app, folder } = sharedFixture()
+  const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
+  const invoke = (action: string, args: JsonValue) =>
+    app.extensions.invoke('automations', action, args, new AbortController().signal, caller.id)
+  const get = async (id: string) =>
+    (await app.harness.snapshot(Automations, context))!.automations[id]
+  const entries = async (id: number, kind: string) => {
+    const conversation = (await app.harness.conversation(id as ConversationId, context))!
+    return (await conversation.context(context)).entries.filter(
+      (e) => e.conversationId === id && e.kind === kind,
+    )
+  }
+
+  // 1. Re-aiming a live script that traps TERM and exits 0 must not record a false exit-0 failure.
+  const sub = (await invoke('create', { name: 'Watch', ask: 'Watch branch 1' })) as Automation
+  await failed(app, sub.script!.conversationId)
+  await writeRun(folder(sub.id), "trap 'exit 0' TERM; echo ready; while :; do sleep 1; done")
+  const running = (await invoke('resume', { id: sub.id })) as Automation
+  await until(async () =>
+    ((await invoke('log', { id: sub.id })) as { text: string }).text.includes('ready'),
+  )
+  const reaimed = (await invoke('update', { id: sub.id, ask: 'Watch branch 2' })) as Automation
+  expect(reaimed).toMatchObject({
+    enabled: true,
+    script: { state: 'writing', ask: 'Watch branch 2', revision: 1 },
+  })
+  expect(reaimed.script?.pid).toBeUndefined()
+  expect(() => process.kill(-running.script!.pid!, 0)).toThrow(
+    expect.objectContaining({ code: 'ESRCH' }),
+  )
+  await until(
+    async () => (await entries(sub.script!.conversationId, 'automations.writing')).length === 2,
+  )
+  expect(await entries(sub.script!.conversationId, 'automations.failed')).toHaveLength(0)
+
+  // 2. Re-aiming after a failure clears the failure count; re-aiming after a one-shot fire re-enables and clears $AUTOMATION_STATE.
+  await writeRun(folder(sub.id), 'exit 1')
+  await invoke('resume', { id: sub.id })
+  await until(async () => (await get(sub.id)).script!.failures === 1)
+  const resetAfterFailure = (await invoke('update', {
+    id: sub.id,
+    ask: 'Watch branch 2b',
+  })) as Automation
+  expect(resetAfterFailure).toMatchObject({
+    enabled: true,
+    script: { state: 'writing', ask: 'Watch branch 2b', revision: 2 },
+  })
+  expect(resetAfterFailure.script?.failures).toBeUndefined()
+  await writeRun(
+    folder(sub.id),
+    'if [ -f "$AUTOMATION_STATE/fired" ]; then exit 0; fi; touch "$AUTOMATION_STATE/fired"; echo FIRE branch 2; exit 0',
+  )
+  await invoke('resume', { id: sub.id })
+  await until(
+    async () =>
+      (await get(sub.id)).script!.state === 'done' &&
+      (await entries(caller.id, 'automations.fired')).length === 1,
+  )
+  expect(await get(sub.id)).toMatchObject({ enabled: false, fires: 1, script: { state: 'done' } })
+  expect(await readFile(join(folder(sub.id), 'state/fired'), 'utf8')).toBe('')
+
+  // Re-aim the completed one-shot: enabled becomes true, $AUTOMATION_STATE/fired is cleared, and the new script fires.
+  const reaimedAgain = (await invoke('update', {
+    id: sub.id,
+    ask: 'Watch branch 3',
+  })) as Automation
+  expect(reaimedAgain).toMatchObject({
+    enabled: true,
+    script: { state: 'writing', ask: 'Watch branch 3', revision: 3 },
+  })
+  await expect(readFile(join(folder(sub.id), 'state/fired'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  })
+  await writeRun(
+    folder(sub.id),
+    'if [ -f "$AUTOMATION_STATE/fired" ]; then exit 0; fi; touch "$AUTOMATION_STATE/fired"; echo FIRE branch 3; exit 0',
+  )
+  await invoke('resume', { id: sub.id })
+  await until(
+    async () =>
+      (await get(sub.id)).script!.state === 'done' &&
+      (await entries(caller.id, 'automations.fired')).length === 2,
+  )
+  expect(
+    (await entries(caller.id, 'automations.fired')).map((e) => (e.data as { text: string }).text),
+  ).toEqual(['branch 2', 'branch 3'])
+  // Only the deliberate exit-1 test failure was ever recorded; zero false exit-0 failures.
+  expect(await entries(sub.script!.conversationId, 'automations.failed')).toHaveLength(1)
+
+  // 3. Changing once without changing ask also stops a running script and sends the watcher back to writing.
+  await writeRun(
+    folder(sub.id),
+    "trap 'exit 0' TERM; echo recurring-check; while :; do sleep 1; done",
+  )
+  await invoke('resume', { id: sub.id })
+  const switching = (await invoke('update', { id: sub.id, once: false })) as Automation
+  expect(switching).toMatchObject({
+    enabled: true,
+    script: { state: 'writing', once: false, revision: 4 },
+  })
+  expect(await entries(sub.script!.conversationId, 'automations.failed')).toHaveLength(1)
+})
+
+it('does not skip a re-aimed fire or clobber the updated automation when an older prompt run is still active', async () => {
+  const { app, folder } = sharedFixture()
+  const firstRunStarted = Promise.withResolvers<void>()
+  const releaseFirstRun = Promise.withResolvers<void>()
+  const route: FauxResponseFactory = async (transcript) => {
+    app.host.faux!.appendResponses([route])
+    const last = transcript.messages.findLast((m) => m.role === 'user')
+    const text =
+      typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content ?? '')
+    if (text.includes('Handle first')) {
+      firstRunStarted.resolve()
+      await releaseFirstRun.promise
+      return fauxAssistantMessage('First done')
+    }
+    if (text.includes('Handle second')) return fauxAssistantMessage('Second done')
+    return fauxAssistantMessage('Ack')
+  }
+  app.host.faux!.setResponses([route])
+
+  const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
+  const invoke = (action: string, args: JsonValue) =>
+    app.extensions.invoke('automations', action, args, new AbortController().signal, caller.id)
+  const get = async (id: string) =>
+    (await app.harness.snapshot(Automations, context))!.automations[id]
+  const finished = async () =>
+    (await (await app.harness.conversation(caller.id, context))!.context(context)).entries.filter(
+      (e) => e.conversationId === caller.id && e.kind === 'automations.finished',
+    )
+
+  const sub = (await invoke('create', {
+    name: 'Deploy watch',
+    ask: 'Watch deploy 1',
+    prompt: 'Handle first',
+    subscribers: [caller.id],
+  })) as Automation
+  await writeRun(folder(sub.id), 'echo FIRE deploy 1')
+  await invoke('resume', { id: sub.id })
+  await firstRunStarted.promise
+  await until(async () => (await get(sub.id)).script!.state === 'done')
+
+  // Re-aim while the first prompt run is still active.
+  await invoke('update', {
+    id: sub.id,
+    ask: 'Watch deploy 2',
+    prompt: 'Handle second',
+  })
+  await writeRun(folder(sub.id), 'echo FIRE deploy 2')
+  await invoke('resume', { id: sub.id })
+
+  // The second fire must start its own run instead of being skipped by the first run.
+  await until(async () => (await finished()).length === 1)
+  expect((await finished()).map((e) => (e.data as { text: string }).text)).toEqual(['Second done'])
+  expect((await get(sub.id)).runs.some((r) => r.status === 'skipped')).toBe(false)
+
+  // Release the older run: it finishes its run record without delivering a stale completion to subscribers.
+  releaseFirstRun.resolve()
+  await until(async () => (await get(sub.id)).runs.every((r) => r.status === 'done'))
+  expect((await get(sub.id)).runs).toHaveLength(2)
+  expect((await finished()).map((e) => (e.data as { text: string }).text)).toEqual(['Second done'])
 })

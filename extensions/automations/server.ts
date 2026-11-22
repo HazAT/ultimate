@@ -258,6 +258,7 @@ function backend(host: ExtensionHost) {
     ) {
       const script = sub.script!
       prepared.previousAsk = script.ask
+      prepared.previousOnce = script.once
       await writeJson(
         join(projectDir(id), MANIFEST),
         committedManifest({
@@ -409,10 +410,13 @@ function backend(host: ExtensionHost) {
       sub.subscribers = sub.subscribers.filter((s) => s !== prepared.subscriber)
       reachesSomeone(sub)
     } else if (args.action === 'resume' || args.action === 'run') {
+      if (caller === sub.script!.conversationId && sub.script!.reaiming)
+        throw new Error(`Automation ${id} was updated; wait for the new brief`)
       if (sub.script!.state === 'stopped' && caller === sub.script!.conversationId)
         throw new Error(`Automation ${id} is stopped; only its owner resumes it`)
       sub.enabled = true
       sub.script!.state = 'running'
+      delete sub.script!.reaiming
       const crashSweepPid = () => sub.script!.pid
       delete sub.script!.error
       return {
@@ -426,7 +430,10 @@ function backend(host: ExtensionHost) {
     } else if (args.action === 'pause' || args.action === 'delete' || args.action === 'escalate') {
       const pid = sub.script!.pid
       const watcher = sub.script!.conversationId
+      if (args.action === 'escalate' && caller === watcher && sub.script!.reaiming)
+        throw new Error(`Automation ${id} was updated; wait for the new brief`)
       const stopsWatcher = args.action !== 'escalate' && caller !== watcher
+      delete sub.script!.reaiming
       if (args.action === 'escalate')
         await scripts.escalate(tx, sub, required(args.reason, 'reason'))
       else {
@@ -632,6 +639,7 @@ function backend(host: ExtensionHost) {
     const abort = a.scheduler
     const oldSchedule = a.schedule && { ...a.schedule }
     const preDiscoveryAsk = prepared.previousAsk ?? a.script?.ask
+    const preDiscoveryOnce = prepared.previousOnce ?? a.script?.once
     delete a.scheduler
     if (args.action !== 'update') delete a.nextAt
     if (args.action === 'delete') {
@@ -695,13 +703,26 @@ function backend(host: ExtensionHost) {
       }
       if (args.model !== undefined) a.model = args.model
       if (args.thinking !== undefined) a.thinking = args.thinking
-      if (a.script && a.script.ask !== preDiscoveryAsk) {
+      if (a.script && (a.script.ask !== preDiscoveryAsk || a.script.once !== preDiscoveryOnce)) {
+        const previousPid = a.script.pid
+        const revision = (a.script.revision ?? 0) + 1
+        a.enabled = true
+        a.script.revision = revision
         a.script.state = 'writing'
+        a.script.reaiming = true
         delete a.script.error
+        delete a.script.failures
+        delete a.script.pid
+        delete a.script.startedAt
+        delete a.script.exitedAt
+        delete a.script.exitCode
+        delete a.script.lastOutputAt
         effect = {
           id,
-          action: 'pause',
-          ...(a.script.pid ? { previousPid: a.script.pid } : {}),
+          action: 'reaim',
+          revision,
+          stopWatcher: caller !== a.script.conversationId,
+          ...(previousPid ? { previousPid } : {}),
         }
       }
     } else if (args.action === 'pause') {
@@ -714,7 +735,15 @@ function backend(host: ExtensionHost) {
       await trigger.evaluate(tx, a, prepared.target)
     else if (args.action === 'update') await trigger.schedule(tx, a)
     a.updatedAt = Date.now()
-    if (effect) await deliver(tx, a, `update:${a.updatedAt}`, 'writing', a.script!.ask)
+    if (effect?.action === 'reaim')
+      await deliver(
+        tx,
+        a,
+        `update:${a.script!.revision}:${a.updatedAt}`,
+        'writing',
+        a.script!.ask,
+        { reaim: effect },
+      )
     if (!isDeepStrictEqual(a.schedule, oldSchedule)) delete a.nextAt
     if (a.enabled && a.schedule) {
       a.nextAt ??= nextAt(a.schedule, Date.now(), a.lastFireAt ?? Date.now())
