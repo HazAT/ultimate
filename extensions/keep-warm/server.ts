@@ -196,7 +196,7 @@ async function send(
 
 const MODEL_RETRY_MS = 60_000
 
-type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' } | { phase: 'replan' }
+type Checkpoint = { phase: 'plan' } | { phase: 'attempted' }
 
 function pinger(host: ExtensionHost) {
   const sleepOrStop = (
@@ -240,7 +240,12 @@ function pinger(host: ExtensionHost) {
           const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
           const model = id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model
           if (id !== undefined && model) {
-            const newest = await newestCachedAnswer(tx, id, model)
+            const newest = await newestCachedAnswer(
+              tx,
+              id,
+              model,
+              Math.max(doc.answers?.[key(id, model)] ?? 0, Date.now() - TTL),
+            )
             if (newest !== undefined && newest > (doc.answers?.[key(id, model)] ?? 0))
               doc.answers = { ...doc.answers, [key(id, model)]: newest }
           }
@@ -272,7 +277,7 @@ function pinger(host: ExtensionHost) {
           }
           doc.pings = (doc.pings ?? 0) + 1
           sending = { next, at: now }
-          return { status: 'running', checkpoint: { phase: 'interrupted' } }
+          return { status: 'running', checkpoint: { phase: 'attempted' } }
         }, ctx)
         if (!sending) return
         messages!.push({ role: 'user', content: QUESTION, timestamp: sending.at })
@@ -297,12 +302,10 @@ function pinger(host: ExtensionHost) {
               text: '',
               stopReason: answer.stopReason,
             })
-          return { status: 'running', checkpoint: { phase: 'replan' } }
+          return { status: 'running', checkpoint: { phase: 'attempted' } }
         }, ctx)
       },
-      interrupted: (_task, runtime, ctx) =>
-        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
-      replan: (_task, runtime, ctx) =>
+      attempted: (_task, runtime, ctx) =>
         runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
     },
     abort: (task, runtime, ctx) =>
@@ -314,12 +317,18 @@ function pinger(host: ExtensionHost) {
   })
 }
 
-async function newestCachedAnswer(tx: Tx, id: ConversationId, model: ModelRef) {
-  for (const entry of (await tx.scanEntries({ conversationId: id }, 20)).items) {
-    const message = entry.model?.[0]
-    if (message?.role === 'assistant' && cached(message) && lastOn(message, model))
-      return message.timestamp
-  }
+async function newestCachedAnswer(tx: Tx, id: ConversationId, model: ModelRef, since: number) {
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanEntries({ conversationId: id }, 100, cursor)
+    for (const entry of page.items) {
+      const message = entry.model?.[0]
+      if (message?.role !== 'assistant') continue
+      if (message.timestamp <= since) return undefined
+      if (cached(message) && lastOn(message, model)) return message.timestamp
+    }
+    cursor = page.next
+  } while (cursor)
   return undefined
 }
 

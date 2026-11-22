@@ -81,6 +81,7 @@ export function describeTrigger(a: Automation): string {
 }
 
 export const IDLE_WAKER = 'ultimate.automation-idle'
+const DISCOVERY_RETRY_MS = 60_000
 const onRoot = {
   ownership: { kind: 'conversation' as const },
   conversationId: ROOT_CONVERSATION_ID,
@@ -145,7 +146,7 @@ export function triggers(
       condition.waker = await tx.createTask(IdleWaker, { id: a.id, until }, onRoot)
   }
   async function schedule(tx: Tx, a: Automation) {
-    if (a.enabled && a.condition?.idleFor) await sleepUntil(tx, a, Math.max(firesAt(a), Date.now()))
+    if (a.enabled && a.condition?.idleFor) await sleepUntil(tx, a, Date.now())
   }
   async function evaluate(tx: Tx, a: Automation, id?: ConversationId, measured?: ContextUsage) {
     if (!a.enabled || !a.condition || !id) return
@@ -176,7 +177,7 @@ export function triggers(
   }
   const IdleWaker = defineTask<
     { id: string; until: number },
-    { phase: 'sleep' } | { phase: 'evaluate' },
+    { phase: 'sleep' } | { phase: 'evaluate' } | { phase: 'retry' },
     null
   >({
     name: IDLE_WAKER,
@@ -185,11 +186,21 @@ export function triggers(
     phases: {
       sleep: (task, runtime, ctx) =>
         runtime.sleepUntil(task.input.until, { phase: 'evaluate' }, ctx),
+      retry: (_task, runtime, ctx) =>
+        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'evaluate' } }), ctx),
       evaluate: async (task, runtime, ctx) => {
         const inMeasurementOrder = measurementsInCommitOrder.then(async () => {
           const of = (await runtime.snapshot(Automations, ctx))?.automations[task.input.id]
             ?.condition?.of
-          const standing = of && STANDING.test(of) ? await residents() : new Set<string>()
+          let standing: Set<string>
+          try {
+            standing = of && STANDING.test(of) ? await residents() : new Set<string>()
+          } catch (error) {
+            if (runtime.signal.aborted) throw error
+            runtime.report(error)
+            await runtime.sleepUntil(runtime.now() + DISCOVERY_RETRY_MS, { phase: 'retry' }, ctx)
+            return
+          }
           await runtime.commit(async (tx) => {
             const a = (await tx.doc(Automations)).automations[task.input.id]
             if (a?.condition?.waker === task.id) {
