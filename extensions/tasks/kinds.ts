@@ -74,9 +74,9 @@ export function meaning(
         : { group: 'waiting', text: 'Delivered to', who: m.to, by: m.from, detail }
     }
     case 'ultimate.subagent-reporter':
-      return phase === 'deliver'
-        ? { group: 'waiting', text: 'Waiting on subagent', who: facts?.conversation }
-        : { group: 'background', text: 'Reporting back from', who: facts?.conversation }
+      return phase === 'report'
+        ? { group: 'background', text: 'Reporting back from', who: facts?.conversation }
+        : { group: 'waiting', text: 'Waiting on subagent', who: facts?.conversation }
     case 'lineage.notify':
       return phase === 'wait'
         ? { group: 'waiting', text: 'Watching until it finishes', who: facts?.conversation }

@@ -1261,6 +1261,10 @@ describe('subagents', () => {
     await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
     const [child] = await children(f.opened)
     await until(async () => f.holding.has(child.conversationId))
+    const reporter = (await f.opened.harness.inspect(context)).tasks.find(
+      ({ record }) => record.kind === 'ultimate.subagent-reporter',
+    )
+    expect(reporter?.state.kind).toBe('sleeping')
     await call(f.opened, { action: 'list' })
     await call(f.opened, { action: 'list' })
     f.childGate.release()

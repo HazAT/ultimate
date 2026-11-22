@@ -2081,12 +2081,12 @@ it('reaches Paused · safe while a delivery waits for its held recipient to answ
   const pausing = await pause('pause')
   expect(pausing.running.map((task) => task.what)).toEqual(['hold'])
   f.hold.release()
-  // The tool ends; the recipient's next step is held, so its delivery waits on a receipt that settles on Play.
+  // The tool ends; the recipient's next step is held, so its delivery sleeps until the input settles on Play.
   await until(async () => (await pause('state')).running.length === 0)
   const delivery = (await f.opened.harness.inspect(context)).tasks.find(
     ({ record }) => record.kind === 'board.delivery',
   )
-  expect(delivery?.state.kind).toBe('running')
+  expect(delivery?.state.kind).toBe('sleeping')
   expect((await f.log())!.messages[0].state).toBe('delivered')
   await pause('play')
   await f.recipient.waitForIdle(context)
