@@ -3,6 +3,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo, For, mapArray, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
+  Provided,
   useProvided,
   cn,
   formatAgo,
@@ -31,7 +32,7 @@ import { ProgressAction } from '../workspaces/refs.ts'
 import type { WorkspaceIndex } from '../workspaces/types.ts'
 import { CommitCount, Review } from '../workspaces/ui.solid.tsx'
 import type { Landing } from './landings.ts'
-import { PreviewUp } from './points.ts'
+import { FlightBadge, PreviewUp } from './points.ts'
 import { ChildRow, EpicLine, RenameField, RowMenu, useRename } from './rows.solid.tsx'
 import { Section } from './section.solid.tsx'
 import { shell, useData, useSurface } from './state.solid.tsx'
@@ -241,6 +242,7 @@ function PhasedFlightRow(props: {
             <span class={cn('min-w-0 truncate', looks()[0])} title={state().label}>
               {state().label}
             </span>
+            <Provided point={FlightBadge} input={{ conversation: props.id }} />
             <Show when={latest()}>
               {(at) => (
                 <span class="ml-auto shrink-0 pl-1 text-muted-foreground/60">

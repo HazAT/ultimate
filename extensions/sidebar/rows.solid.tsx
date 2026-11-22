@@ -36,6 +36,7 @@ import type { ConversationState } from '../messages/ui.solid.tsx'
 import { RunName } from '../subagents/ui.solid.tsx'
 import { Review } from '../workspaces/ui.solid.tsx'
 import { parseConversationId } from '../../lib/ids.ts'
+import { FlightBadge } from './points.ts'
 import { compactConversation, shell, useData } from './state.solid.tsx'
 import type { SidebarConversation } from './state.solid.tsx'
 import { SummaryHistory } from './summaries.solid.tsx'
@@ -640,6 +641,9 @@ export function ChildRow(props: { id: ConversationId; depth?: number }) {
           <Show when={compact()} fallback={<> · #{props.id}</>}>
             <span class="text-muted-foreground/60"> #{props.id}</span>
           </Show>
+        </span>
+        <span class="pointer-events-auto contents">
+          <Provided point={FlightBadge} input={{ conversation: props.id }} />
         </span>
         <Show when={!compact() && conversation().workspace}>
           <GitBranch aria-label="Isolated checkout" class="size-3 shrink-0 text-muted-foreground" />
