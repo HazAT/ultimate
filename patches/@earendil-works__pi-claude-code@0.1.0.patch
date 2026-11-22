@@ -1,8 +1,14 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4f8379f70 100644
+index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..d0e1ef6bd6360d518f8a0c187fd10c003a20bfde 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
-@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
+@@ -1,4 +1,5 @@
+ import { createHash, randomUUID } from "node:crypto";
++import { once } from "node:events";
+ import { constants as fsConstants, existsSync } from "node:fs";
+ import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+@@ -7,7 +8,7 @@ import { fileURLToPath } from "node:url";
  import { createInterface } from "node:readline";
  import { spawn, type ChildProcess } from "node:child_process";
  import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
@@ -11,105 +17,36 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
  import { usageCreditsAllowed, usageCreditsChargeError, type RateLimitInfo } from "./billing.ts";
  import { envFlagEnabled } from "./env.ts";
  import type { DiscoveredClaudeModel } from "./model-catalog.ts";
-@@ -19,7 +19,7 @@ import type {
-   NativeResult,
-   NativeUsage,
- } from "./native-types.ts";
--import { TOOL_PREFIX, type NativeSystemInjection, type ToolManifestEntry } from "./transcript.ts";
-+import type { NativeSystemInjection, ToolManifestEntry } from "./transcript.ts";
- 
- export const INSTALL_HINT =
-   "Claude Code is not installed. Install it with `npm install -g @anthropic-ai/claude-code` " +
-@@ -31,6 +31,8 @@ export interface ClaudeStatus {
-   loggedIn: boolean;
-   /** True when Claude Code reports a Claude Pro/Max-style subscription login. */
-   subscription: boolean;
-+  /** True when Claude Code gave no answer (a timeout, a crash, unreadable output): `loggedIn` says nothing then. */
-+  unknown?: boolean;
-   authMethod?: string;
-   plan?: string;
-   detail?: string;
-@@ -45,7 +47,6 @@ export interface RunClaudeInput {
-   systemPrompt: string;
-   manifest: ToolManifestEntry[];
-   extraBody: Record<string, unknown>;
--  toolNames: Set<string>;
-   signal?: AbortSignal;
-   timeoutMs?: number;
-   env?: Record<string, string | undefined>;
-@@ -158,26 +159,36 @@ export async function getClaudeStatus(
-   const env = withConfigDirectory(envInput);
-   const command = await resolveClaudeExecutable(env);
-   if (!command) return { available: false, loggedIn: false, subscription: false, detail: INSTALL_HINT };
-+  // Only a parsed answer says whether Claude Code is logged in. A timeout, a crash or unreadable output says nothing:
-+  // it is `unknown`, never "logged out".
-+  let result: { code: number; stdout: string; stderr: string };
-   try {
--    const result = await captureProcess(command, ["auth", "status"], env, signal);
--    const payload = result.stdout.trim().startsWith("{")
--      ? (JSON.parse(result.stdout) as { loggedIn?: unknown; authMethod?: unknown; subscriptionType?: unknown })
--      : {};
--    const loggedIn = payload.loggedIn === true;
--    const plan = typeof payload.subscriptionType === "string" ? payload.subscriptionType : undefined;
--    return {
--      available: true,
--      loggedIn,
--      subscription: loggedIn && !!plan,
--      command,
--      authMethod: typeof payload.authMethod === "string" ? payload.authMethod : undefined,
--      plan,
--      detail: loggedIn ? undefined : LOGIN_HINT,
--    };
-+    result = await captureProcess(command, ["auth", "status"], env, signal);
-   } catch (error) {
-     if (signal?.aborted) throw error;
--    return { available: true, loggedIn: false, subscription: false, command, detail: LOGIN_HINT };
-+    return { available: true, loggedIn: false, subscription: false, unknown: true, command, detail: String(error) };
-+  }
-+  let payload: { loggedIn?: unknown; authMethod?: unknown; subscriptionType?: unknown } | undefined;
-+  try {
-+    payload = JSON.parse(result.stdout) as typeof payload;
-+  } catch {
-+    payload = undefined;
-+  }
-+  if (typeof payload?.loggedIn !== "boolean") {
-+    const detail = `claude auth status gave no status (exit ${result.code}): ${result.stderr.trim().slice(0, 300)}`;
-+    return { available: true, loggedIn: false, subscription: false, unknown: true, command, detail };
+@@ -242,22 +243,24 @@ export async function getClaudeStatus(
    }
+ 
+   const payload = statusPayload(result.stdout);
+-  if (!payload) {
++  // Only a boolean loggedIn says whether Claude Code is logged in; `{}` says nothing.
++  if (typeof payload?.loggedIn !== "boolean") {
+     // A launch or CLI failure must not masquerade as a logged-out account.
+-    const output = outputTail(result.stdout) || outputTail(result.stderr) || "(no output)";
++    // stdout may hold the account's email: report stderr only.
++    const output = outputTail(result.stderr) || "(no output)";
+     return {
+       available: true,
+       loggedIn: false,
+       subscription: false,
+       command,
+       diagnostic: true,
+-      detail: `Claude Code status check failed (exit ${result.code}): unexpected auth status output: ${output}`,
++      detail: `Claude Code status check failed (exit ${result.code}): unparsable auth status (stderr: ${output})`,
+     };
+   }
+ 
+   // Claude Code reports a logout as JSON with `loggedIn: false`, sometimes with
+   // a non-zero exit code. Only a JSON payload is authoritative for login state.
+-  const loggedIn = payload.loggedIn === true;
 +  const loggedIn = payload.loggedIn;
-+  const plan = typeof payload.subscriptionType === "string" ? payload.subscriptionType : undefined;
-+  return {
-+    available: true,
-+    loggedIn,
-+    subscription: loggedIn && !!plan,
-+    command,
-+    authMethod: typeof payload.authMethod === "string" ? payload.authMethod : undefined,
-+    plan,
-+    detail: loggedIn ? undefined : LOGIN_HINT,
-+  };
- }
- 
- const READY_STATUS_TTL_MS = 60_000;
-@@ -199,6 +210,7 @@ async function readyClaudeCommand(
- 
-   const status = await getClaudeStatus(env, signal);
-   if (!status.available || !status.command) throw new Error(INSTALL_HINT);
-+  if (status.unknown) throw new Error(status.detail ?? "Claude Code status unknown");
-   if (!status.loggedIn) {
-     readyStatusCache.delete(key);
-     throw new Error(LOGIN_HINT);
-@@ -226,6 +238,10 @@ export async function discoverClaudeModels(
- ): Promise<DiscoveredClaudeModel[]> {
-   signal?.throwIfAborted();
-   const env = processEnvironment(envInput, {});
-+  // Either switch makes Claude Code answer from its built-in model list instead of the account's current one, so a
-+  // model released after that CLI build (Fable 5.2 on 2.1.321) never appears. Turns keep both.
-+  delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
-+  delete env.DISABLE_TELEMETRY;
-   const command = await resolveClaudeExecutable(env);
-   if (!command) throw new Error(INSTALL_HINT);
- 
-@@ -272,6 +288,9 @@ export async function discoverClaudeModels(
+   const plan = typeof payload.subscriptionType === "string" ? payload.subscriptionType : undefined;
+   return {
+     available: true,
+@@ -368,6 +371,9 @@ export async function discoverClaudeModels(
    }, timeoutMs);
  
    const requestId = `pi-models-${Date.now()}`;
@@ -119,7 +56,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
    child.stdin?.write(
      `${JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } })}\n`,
    );
-@@ -316,6 +335,24 @@ export async function discoverClaudeModels(
+@@ -412,6 +418,24 @@ export async function discoverClaudeModels(
    }
  }
  
@@ -141,16 +78,31 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
 +  tap = next;
 +}
 +
- function spawnCommand(
-   command: string,
+ // cmd.exe reparses the whole `/c` string, so tokens need cmd-level escaping in
+ // addition to the quoting the receiving program's own command line parser
+ // (CommandLineToArgvW) expects. The token rules below follow https://qntm.org/cmd.
+@@ -452,7 +476,7 @@ function spawnPowerShellScript(
+     "if (-not $ok) { exit 1 }",
+   ].join("; ");
+   const encoded = Buffer.from(script, "utf16le").toString("base64");
+-  return spawn(
++  return launch(
+     shell,
+     ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
+     options,
+@@ -469,28 +493,36 @@ export function spawnCommand(
    args: string[],
-@@ -324,23 +361,31 @@ function spawnCommand(
-   if (process.platform === "win32" && /\.(?:cmd|bat)$/iu.test(command)) {
-     const comspec = options?.env?.COMSPEC || process.env.COMSPEC || "cmd.exe";
-     const quote = (value: string) => `"${value.replace(/"/gu, '""')}"`;
--    return spawn(comspec, ["/d", "/s", "/c", [quote(command), ...args.map(quote)].join(" ")], options);
-+    return launch(comspec, ["/d", "/s", "/c", [quote(command), ...args.map(quote)].join(" ")], options);
+   options: Parameters<typeof spawn>[2],
+ ): ChildProcess {
+-  if (process.platform !== "win32") return spawn(command, args, options);
++  if (process.platform !== "win32") return launch(command, args, options);
+   if (/\.(?:cmd|bat)$/iu.test(command)) {
+     const comspec = envValue(options?.env ?? {}, "COMSPEC") || process.env.COMSPEC || "cmd.exe";
+     const line = `"${[escapeCmdCommand(command), ...args.map(escapeCmdArgument)].join(" ")}"`;
+-    return spawn(comspec, ["/d", "/s", "/c", line], { ...options, windowsVerbatimArguments: true });
++    return launch(comspec, ["/d", "/s", "/c", line], { ...options, windowsVerbatimArguments: true });
    }
+   if (/\.ps1$/iu.test(command)) return spawnPowerShellScript(command, args, options);
 -  return spawn(command, args, options);
 +  return launch(command, args, options);
  }
@@ -182,7 +134,7 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
    if (process.platform === "win32") {
      const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
        stdio: "ignore",
-@@ -350,6 +395,11 @@ export function killProcessTree(child: ChildProcess): void {
+@@ -500,6 +532,11 @@ export function killProcessTree(child: ChildProcess): void {
      return;
    }
    try {
@@ -194,59 +146,46 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
      process.kill(-child.pid, "SIGKILL");
    } catch {
      try {
-@@ -433,6 +483,11 @@ function processEnvironment(
-   Object.assign(env, {
-     ENABLE_TOOL_SEARCH: "false",
-     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-+    // Pi's prompts address agents as "@name". Without this, Claude Code
-+    // 2.1.319 and newer read an "@" before an existing path as a file mention
-+    // and put that file's content or folder listing into the request
-+    // (Ultimate #566809; upstream sets it since 799943e).
-+    CLAUDE_CODE_DISABLE_FILE_MENTIONS: "1",
+@@ -590,7 +627,8 @@ function processEnvironment(
+     CLAUDE_CODE_DISABLE_FILE_MENTIONS: "1",
+     // Claude Code would add these as reminders to user messages and tool
+     // results. The relay also strips anything else it adds there.
+-    CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
++    // Ultimate opts back in with an explicit "0" (extensions/claude-code).
++    CLAUDE_CODE_DISABLE_AUTO_MEMORY: env.CLAUDE_CODE_DISABLE_AUTO_MEMORY === "0" ? "0" : "1",
+     CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
      CLAUDE_CODE_MAX_RETRIES: "0",
      DISABLE_AUTO_COMPACT: "1",
-     DISABLE_COMPACT: "1",
-@@ -488,9 +543,23 @@ function requestMessages(body: Buffer | undefined): NativeRequestMessage[] | und
+@@ -599,9 +637,13 @@ function processEnvironment(
+     DISABLE_ERROR_REPORTING: "1",
+   });
+   // These flags also disable the feature flags that unlock Claude Code's served
+-  // model catalog. Discovery inherits the user's choices instead of forcing them;
+-  // conversation workers remain isolated from nonessential traffic.
+-  if (purpose === "request") {
++  // model catalog, so discovery runs without them, inherited ones included
++  // (Fable 5.2 on 2.1.321); conversation workers remain isolated from
++  // nonessential traffic.
++  if (purpose === "discovery") {
++    delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
++    delete env.DISABLE_TELEMETRY;
++  } else {
+     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+     env.DISABLE_TELEMETRY = "1";
    }
+@@ -614,10 +656,7 @@ async function writeFrame(child: ChildProcess, frame: NativeFrame): Promise<stri
+   if (!child.stdin?.writable) throw new Error("Claude Code stdin closed during history replay");
+   const uuid = randomUUID();
+   if (!child.stdin.write(`${JSON.stringify({ ...frame, uuid })}\n`)) {
+-    await new Promise<void>((resolve, reject) => {
+-      child.stdin!.once("drain", resolve);
+-      child.stdin!.once("error", reject);
+-    });
++    await once(child.stdin, "drain");
+   }
+   return uuid;
  }
- 
-+/**
-+ * Where the request's leading user messages end. Claude Code can put user
-+ * messages of its own in front of the initial one: since 2.1.319 a mention of
-+ * an existing path ("@notes.md") arrives as a "Called the Read tool" message
-+ * ahead of it (Ultimate #566809). The last of the run is Pi's initial user
-+ * message, and the initial system messages follow the run.
-+ */
-+function leadingUserEnd(messages: NativeRequestMessage[] | undefined): number {
-+  let end = 0;
-+  while (messages?.[end]?.role === "user") end += 1;
-+  return end;
-+}
-+
- function deriveInitialUserPrefix(body: Buffer | undefined, canonicalContent: unknown[]): unknown[] | undefined {
-   if (canonicalContent.length === 0) return undefined;
--  const actual = requestMessages(body)?.[0];
-+  const messages = requestMessages(body);
-+  const actual = messages?.[leadingUserEnd(messages) - 1];
-   if (actual?.role !== "user" || !Array.isArray(actual.content) || actual.content.length < canonicalContent.length) {
-     return undefined;
-   }
-@@ -501,10 +570,11 @@ function deriveInitialUserPrefix(body: Buffer | undefined, canonicalContent: unk
- 
- function deriveInitialSystemMessages(body: Buffer | undefined): unknown[] | undefined {
-   const messages = requestMessages(body);
--  if (messages?.[0]?.role !== "user") return undefined;
--  let end = 1;
-+  const start = leadingUserEnd(messages);
-+  if (!messages || start === 0) return undefined;
-+  let end = start;
-   while (messages[end]?.role === "system") end += 1;
--  const systems = messages.slice(1, end);
-+  const systems = messages.slice(start, end);
- 
-   // A replayed history from an older carrier has the date reminder at the
-   // moving tail rather than in the initial environment reminder. Snapshot it
-@@ -544,15 +614,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
+@@ -713,15 +752,23 @@ function setReplayCacheBreakpoints(messages: NativeRequestMessage[]): void {
    const userIndexes = messages
      .map((message, index) => (message.role === "user" ? index : -1))
      .filter((index) => index >= 0);
@@ -277,61 +216,32 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
    }
    const final = messages.at(-1);
    if (final) setCacheBreakpoint(final);
-@@ -563,7 +641,7 @@ function removeRepeatedUserReminders(messages: NativeRequestMessage[], prefix: u
-   if (!reminder || !prefix) return;
-   const normalizedPrefix = JSON.stringify(prefix.map(withoutCacheControl));
- 
--  for (let index = 1; index < messages.length; index++) {
-+  for (let index = leadingUserEnd(messages); index < messages.length; index++) {
-     const message = messages[index];
-     if (message?.role !== "user" || !Array.isArray(message.content)) continue;
-     const leading = message.content.slice(0, prefix.length).map(withoutCacheControl);
-@@ -641,16 +719,28 @@ export function rewriteInitialRequest(
-     system?: unknown;
+@@ -859,7 +906,9 @@ export function rewriteInitialRequest(
    };
    let messages = payload.messages;
--  const first = messages?.[0];
-+  const leadingEnd = leadingUserEnd(messages);
-+  const first = messages?.[leadingEnd - 1];
+   const first = messages?.[0];
+-  if (first?.role !== "user" || !Array.isArray(first.content)) {
 +  // Replaying a history whose first message starts with "/", Claude Code sends
-+  // that message as a bare string without its reminder blocks.
-+  if (first?.role === "user" && typeof first.content === "string") {
-+    first.content = [{ type: "text", text: first.content }];
-+  }
-   if (first?.role !== "user" || !Array.isArray(first.content)) {
++  // that message as a bare string; restoreCanonicalUserContent rebuilds it.
++  if (first?.role !== "user" || (!Array.isArray(first.content) && typeof first.content !== "string")) {
      throw new Error("Claude Code request is missing its initial user message");
    }
-   if (prefix) first.content = [...structuredClone(prefix), ...structuredClone(canonicalContent)];
- 
-   if (initialSystemMessages?.length && messages) {
--    let systemEnd = 1;
-+    // A system message must precede an assistant message or end the array, so
-+    // the initial ones go after the whole leading user run, never inside it.
-+    let systemEnd = leadingEnd;
-     while (messages[systemEnd]?.role === "system") systemEnd += 1;
--    messages.splice(1, systemEnd - 1, ...(structuredClone(initialSystemMessages) as NativeRequestMessage[]));
-+    messages.splice(
-+      leadingEnd,
-+      systemEnd - leadingEnd,
-+      ...(structuredClone(initialSystemMessages) as NativeRequestMessage[]),
-+    );
- 
-     const initialText = initialSystemMessages
-       .map((message) => contentText((message as NativeRequestMessage).content))
-@@ -666,9 +756,11 @@ export function rewriteInitialRequest(
+   if (messages) restoreCanonicalUserContent(messages, frames);
+@@ -882,9 +931,11 @@ export function rewriteInitialRequest(
    if (nativeSystemInjections) {
      messages = injectNativeSystemMessages(messages!, nativeSystemInjections);
      payload.messages = messages;
-+  }
-+  if (initialSystemMessages?.length || nativeSystemInjections) {
-     normalizeLeadingSystemCache(payload.system);
-+    setReplayCacheBreakpoints(messages!);
+-    normalizeLeadingSystemCache(payload.system);
    }
 -  if (initialSystemMessages?.length || nativeSystemInjections) setReplayCacheBreakpoints(messages!);
++  if (initialSystemMessages?.length || nativeSystemInjections) {
++    normalizeLeadingSystemCache(payload.system);
++    setReplayCacheBreakpoints(messages!);
++  }
  
    return Buffer.from(JSON.stringify(payload));
  }
-@@ -726,6 +818,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
+@@ -942,6 +993,20 @@ function launchPlan(input: RunClaudeInput): ClaudeLaunchPlan {
    };
  }
  
@@ -352,8 +262,16 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
  class ClaudeProcess {
    busy = false;
    readonly createdAt = Date.now();
-@@ -912,6 +1018,8 @@ class ClaudeProcess {
-         : undefined,
+@@ -1034,6 +1099,7 @@ class ClaudeProcess {
+         windowsHide: true,
+         stdio: ["pipe", "pipe", "pipe"],
+       });
++      child.stdin?.on("error", () => {});
+       const queue = new AsyncQueue<NativeOutputEvent>();
+       const reader = createInterface({ input: child.stdout!, crlfDelay: Infinity });
+       const readTask = (async () => {
+@@ -1129,6 +1195,8 @@ class ClaudeProcess {
+       (body) => rewriteInitialRequest(body, input.frames, input.initialSystemMessages, input.nativeSystemInjections),
        input.betas,
      );
 +    const observe = tap;
@@ -361,44 +279,24 @@ index 6c0595e212349b18f3d980cd2de5ea07e8b5ab65..301d537cda81fc2337b90bf142ae26f4
  
      const abort = () => {
        this.relay.abort();
-@@ -976,11 +1084,14 @@ class ClaudeProcess {
-         message = assistants.at(-1);
-       }
+@@ -1214,11 +1282,7 @@ class ClaudeProcess {
  
+       // Native error assistants are not collected; report their text instead of "Incomplete".
+       if (!message && nativeError) throw new Error(`Claude Code API error: ${nativeError}`);
 -      if (!message || !sawMessageStop || !result) {
 -        throw new Error(
 -          `Incomplete Claude Code response: assistant, message_stop and one result required${this.stderr ? ` (${this.stderr.trim().slice(-500)})` : ""}`,
 -        );
-+      // Claude Code can refuse a turn itself, without a request: a synthetic
-+      // assistant error and an is_error result, e.g. "Prompt is too long" from
-+      // its own context check in a warm process. That is its reason, not an
-+      // incomplete response (Ultimate #562356).
-+      if (!this.relay.used && nativeError !== undefined && result.is_error) {
-+        throw new Error(`Claude Code request failed: ${nativeError}`);
-       }
+-      }
 +      if (!message || !sawMessageStop || !result) throw incompleteResponseError(this.stderr);
  
        const nativeFailureHandled = this.relay.denied > 0 || message.stop_reason === "refusal";
        if (nativeError && !nativeFailureHandled) throw new Error(`Claude Code API error: ${nativeError}`);
-@@ -990,13 +1101,6 @@ class ClaudeProcess {
-         throw new Error(`Claude Code request failed: ${result.subtype ?? "unknown result"}`);
-       }
- 
--      for (const block of message.content) {
--        if (block.type !== "tool_use") continue;
--        if (!block.name.startsWith(TOOL_PREFIX) || !input.toolNames.has(block.name.slice(TOOL_PREFIX.length))) {
--          throw new Error("Claude Code returned a tool outside Pi's current tool inventory");
--        }
--      }
--
-       const usage = message.usage ?? result.usage;
-       if (!usage || typeof usage.input_tokens !== "number" || typeof usage.output_tokens !== "number") {
-         throw new Error("Claude Code response did not include complete token usage");
 diff --git a/src/model-catalog.ts b/src/model-catalog.ts
-index a174cad1161ac6eb1ca859a60b70646144b028cc..6b1a7a6e109cd27d35f267efdc2c26f3d58dfacc 100644
+index 69e6a6e98b345c0be2412ec00355cb96aac8bb2e..a5c86ae6c2c9a80a8794591dc957c2f736e9b732 100644
 --- a/src/model-catalog.ts
 +++ b/src/model-catalog.ts
-@@ -99,6 +99,14 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
+@@ -100,6 +100,14 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
    const thinkingLevelMap = supported?.length
      ? (Object.fromEntries(supported.map((level) => [level, level])) as ClaudeCodeModel["thinkingLevelMap"])
      : undefined;
@@ -413,7 +311,7 @@ index a174cad1161ac6eb1ca859a60b70646144b028cc..6b1a7a6e109cd27d35f267efdc2c26f3
    return {
      id,
      name: `${info.displayName} (Claude Code)`,
-@@ -109,8 +117,8 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
+@@ -110,8 +118,8 @@ function fallbackModel(info: DiscoveredClaudeModel, id: string): ClaudeCodeModel
      ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
      input: ["text", "image"],
      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -425,16 +323,16 @@ index a174cad1161ac6eb1ca859a60b70646144b028cc..6b1a7a6e109cd27d35f267efdc2c26f3
  }
  
 diff --git a/src/provider.ts b/src/provider.ts
-index e579496219793f8668e0c8b26dc38efc453fe3bb..50d13a1013f6056bdaa5a4bdefd527226d0eed53 100644
+index e15020da6ad2187d90590caf991511ca03483995..3196fc031440f2531e780e28641d66ef00993f98 100644
 --- a/src/provider.ts
 +++ b/src/provider.ts
 @@ -1,4 +1,4 @@
 -import { createProvider, type AuthContext, type ProviderEnv } from "@earendil-works/pi-ai";
 +import { createProvider, type AuthCheck, type AuthContext, type ProviderEnv } from "@earendil-works/pi-ai";
- import { discoverClaudeModels, getClaudeStatus, LOGIN_HINT } from "./claude-cli.ts";
+ import { discoverClaudeModels, getClaudeStatus, LOGIN_HINT, POWERSHELL_ENV } from "./claude-cli.ts";
  import { API_ID, CLAUDE_CODE_MODELS, modelFromDiscovery, PROVIDER_ID } from "./model-catalog.ts";
  import { streamClaudeCode } from "./stream.ts";
-@@ -20,6 +20,8 @@ async function providerEnvironment(ctx: AuthContext): Promise<ProviderEnv | unde
+@@ -25,6 +25,8 @@ async function providerEnvironment(ctx: AuthContext): Promise<ProviderEnv | unde
  // through auth hooks. Remember the latest values so model discovery and the
  // status command look at the same Claude Code installation as requests do.
  let lastProviderEnv: ProviderEnv | undefined;
@@ -443,7 +341,7 @@ index e579496219793f8668e0c8b26dc38efc453fe3bb..50d13a1013f6056bdaa5a4bdefd52722
  
  /** The environment used to locate and configure Claude Code. */
  export function claudeCodeEnv(): Record<string, string | undefined> {
-@@ -47,14 +49,27 @@ export function createClaudeCodeProvider() {
+@@ -52,14 +54,27 @@ export function createClaudeCodeProvider() {
          async check({ ctx, signal }) {
            const providerEnv = await providerEnvironment(ctx);
            lastProviderEnv = providerEnv;
@@ -451,10 +349,10 @@ index e579496219793f8668e0c8b26dc38efc453fe3bb..50d13a1013f6056bdaa5a4bdefd52722
            const status = await getClaudeStatus(claudeCodeEnv(), signal);
 +          // A status Claude Code did not give (a timeout or a crash under load) is no logout: a login it confirmed
 +          // before stands, so its models never vanish for one failed probe; without one the check fails as unknown.
-+          if (status.unknown) {
++          if (status.diagnostic) {
 +            const known = knownChecks.get(key);
 +            if (known) return known;
-+            throw new Error(status.detail ?? "Claude Code status unknown");
++            throw new Error(status.detail);
 +          }
            // Only report the provider as configured when Claude Code is
            // installed and logged in, so Pi hides its models otherwise.
@@ -477,7 +375,7 @@ index e579496219793f8668e0c8b26dc38efc453fe3bb..50d13a1013f6056bdaa5a4bdefd52722
          async resolve({ ctx, signal }) {
            signal.throwIfAborted();
 diff --git a/src/stream.ts b/src/stream.ts
-index b516241c794b5dd7054822921d445a2169c6b70e..00ccb6aa5ddec60e64ccc4d339942be8124567fb 100644
+index a80889e462a1e844b170199a516944458b1940b0..763d1d8940caa1b5ae6957d457decf7dcec9bb20 100644
 --- a/src/stream.ts
 +++ b/src/stream.ts
 @@ -6,6 +6,7 @@ import {
@@ -488,11 +386,14 @@ index b516241c794b5dd7054822921d445a2169c6b70e..00ccb6aa5ddec60e64ccc4d339942be8
    type AssistantMessage,
    type AssistantMessageEventStream,
    type Model,
-@@ -122,7 +123,17 @@ function comparableContent(content: AssistantMessage["content"]): unknown[] {
+@@ -122,10 +123,13 @@ function comparableContent(content: AssistantMessage["content"]): unknown[] {
    });
  }
  
--function nativeContent(content: NativeContentBlock[], toolNames: Set<string>): AssistantMessage["content"] {
+-// Claude can name a tool that Pi never declared. Pi's agent loop answers that
+-// with a "not found" tool result the model can recover from, so the name passes
+-// through rather than failing the turn.
+-function piToolName(nativeName: string): string {
 +/**
 + * Resolve a native tool name to Pi's. Claude Code runs without built-in tools and offers Pi's as
 + * `mcp__pi__<name>`, yet the model sometimes names one bare (`bash` for `mcp__pi__bash`). Both resolve to
@@ -500,38 +401,13 @@ index b516241c794b5dd7054822921d445a2169c6b70e..00ccb6aa5ddec60e64ccc4d339942be8
 + * the model recovers from, instead of ending the turn.
 + */
 +export function piToolName(nativeName: string): string {
-+  return nativeName.startsWith(TOOL_PREFIX) ? nativeName.slice(TOOL_PREFIX.length) : nativeName;
-+}
-+
-+function nativeContent(content: NativeContentBlock[]): AssistantMessage["content"] {
-   const converted: AssistantMessage["content"] = [];
-   for (const block of content) {
-     if (block.type === "text") {
-@@ -141,9 +152,7 @@ function nativeContent(content: NativeContentBlock[], toolNames: Set<string>): A
-         redacted: true,
-       });
-     } else if (block.type === "tool_use") {
--      if (!block.name.startsWith(TOOL_PREFIX)) throw new Error(`Claude Code returned unexpected tool ${block.name}`);
--      const name = block.name.slice(TOOL_PREFIX.length);
--      if (!toolNames.has(name)) throw new Error(`Claude Code returned unavailable tool ${name}`);
-+      const name = piToolName(block.name);
-       converted.push({ type: "toolCall", id: block.id, name, arguments: block.input as never });
-     }
-   }
-@@ -158,7 +167,6 @@ class EventTranslator {
-     private readonly model: Model<any>,
-     private readonly output: AssistantMessage,
-     private readonly stream: AssistantMessageEventStream,
--    private readonly toolNames: Set<string>,
-   ) {}
+   return nativeName.startsWith(TOOL_PREFIX) ? nativeName.slice(TOOL_PREFIX.length) : nativeName;
+ }
  
-   event(event: AnthropicStreamEvent): void {
-@@ -195,7 +203,11 @@ class EventTranslator {
-     initialUserPrefix?: unknown[],
+@@ -198,6 +202,10 @@ class EventTranslator {
      initialSystemMessages?: unknown[],
    ): void {
--    const authoritative = nativeContent(message.content, this.toolNames);
-+    const authoritative = nativeContent(message.content);
+     const authoritative = nativeContent(message.content);
 +    // Replay the call under the name the request offers, so the history never shows a bare name working.
 +    for (const block of message.content) {
 +      if (block.type === "tool_use") block.name = `${TOOL_PREFIX}${piToolName(block.name)}`;
@@ -539,18 +415,7 @@ index b516241c794b5dd7054822921d445a2169c6b70e..00ccb6aa5ddec60e64ccc4d339942be8
      if (!this.sawContentEvent) {
        this.emitComplete(authoritative);
      } else if (JSON.stringify(comparableContent(this.output.content)) !== JSON.stringify(comparableContent(authoritative))) {
-@@ -239,9 +251,7 @@ class EventTranslator {
-       } as IndexedThinking);
-       this.stream.push({ type: "thinking_start", contentIndex, partial: this.output });
-     } else if (native.type === "tool_use") {
--      if (!native.name.startsWith(TOOL_PREFIX)) throw new Error(`Claude Code returned unexpected tool ${native.name}`);
--      const name = native.name.slice(TOOL_PREFIX.length);
--      if (!this.toolNames.has(name)) throw new Error(`Claude Code returned unavailable tool ${name}`);
-+      const name = piToolName(native.name);
-       this.output.content.push({
-         type: "toolCall",
-         id: native.id,
-@@ -270,7 +280,8 @@ class EventTranslator {
+@@ -269,7 +277,8 @@ class EventTranslator {
        block.thinkingSignature = (block.thinkingSignature ?? "") + delta.signature;
      } else if (delta.type === "input_json_delta" && block.type === "toolCall") {
        block.partialJson += delta.partial_json;
@@ -560,25 +425,8 @@ index b516241c794b5dd7054822921d445a2169c6b70e..00ccb6aa5ddec60e64ccc4d339942be8
        this.stream.push({ type: "toolcall_delta", contentIndex, delta: delta.partial_json, partial: this.output });
      }
    }
-@@ -368,7 +379,7 @@ export function streamClaudeCode(
-         nativeTranscript?.requestTools ?? preparedTools.nativeTools,
-         options,
-       );
--      const translator = new EventTranslator(model, output, stream, preparedTools.names);
-+      const translator = new EventTranslator(model, output, stream);
- 
-       stream.push({ type: "start", partial: output });
-       const response = await runClaudeRequest({
-@@ -378,7 +389,6 @@ export function streamClaudeCode(
-         systemPrompt,
-         manifest: preparedTools.manifest,
-         extraBody,
--        toolNames: preparedTools.names,
-         signal: options?.signal,
-         timeoutMs: options?.timeoutMs,
-         env: options?.env,
 diff --git a/src/transcript.ts b/src/transcript.ts
-index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a69978ecf60d9 100644
+index 8dd5f884633b118769b06edd73c24f0a19e1d9f0..70279e652fadd74a4208caf8ec76e8b72315dc85 100644
 --- a/src/transcript.ts
 +++ b/src/transcript.ts
 @@ -1,7 +1,5 @@
@@ -589,12 +437,12 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
    renderSystemMessageUpdate,
    type AssistantMessage,
    type ImageContent,
-@@ -12,12 +10,13 @@ import {
+@@ -13,12 +11,13 @@ import {
    type Tool,
    type ToolResultMessage,
  } from "@earendil-works/pi-ai";
 +import { createHash } from "node:crypto";
- import { supportsAdaptiveThinking } from "./model-catalog.ts";
+ import { supportsAdaptiveThinking, supportsDisabledThinking } from "./model-catalog.ts";
  import type { NativeContentBlock, NativeFrame, NativeMessage } from "./native-types.ts";
  
  export const TOOL_PREFIX = "mcp__pi__";
@@ -604,45 +452,23 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
  
  const DEFERRED_TOOL_PLACEHOLDER = {
    name: "__pi_deferred_placeholder__",
-@@ -50,6 +49,19 @@ interface AssistantProjection {
-   toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }>;
- }
- 
-+const VALID_TOOL_ID = /^[a-zA-Z0-9_-]{1,64}$/;
-+
-+/**
-+ * Anthropic accepts tool ids matching ^[a-zA-Z0-9_-]+$, at most 64 characters; other providers' ids (OpenAI
-+ * Responses `call_…|fc_…`) do not. A pure function of the id, so a call and its result always agree and replays
-+ * stay stable; the hash suffix keeps distinct ids distinct.
-+ */
-+export function anthropicToolId(id: string): string {
-+  if (VALID_TOOL_ID.test(id)) return id;
-+  const hash = createHash("sha256").update(id).digest("hex").slice(0, 16);
-+  return `${id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 47)}_${hash}`;
-+}
-+
- function sanitizeSurrogates(text: string): string {
+@@ -54,8 +53,14 @@ function sanitizeSurrogates(text: string): string {
    return text.replace(/[\uD800-\uDFFF]/gu, "\uFFFD");
  }
-@@ -151,7 +163,7 @@ function canonicalAssistantContent(message: AssistantMessage): NativeContentBloc
-     } else if (block.type === "toolCall") {
-       blocks.push({
-         type: "tool_use",
--        id: block.id,
-+        id: anthropicToolId(block.id),
-         name: `${TOOL_PREFIX}${block.name}`,
-         input: clone(block.arguments) as Record<string, unknown>,
-       });
-@@ -198,7 +210,7 @@ export function prepareFrames(messages: Message[]): NativeFrame[] {
-       blocks = [
-         {
-           type: "tool_result",
--          tool_use_id: message.toolCallId,
-+          tool_use_id: anthropicToolId(message.toolCallId),
-           content: toolResultContent(message),
-           is_error: message.isError,
-         },
-@@ -292,28 +304,35 @@ export function prepareTools(tools: Tool[]): {
+ 
++/**
++ * Anthropic accepts ^[a-zA-Z0-9_-]{1,64}$. A pure function of the id, so a call and its result agree; the hash suffix
++ * keeps distinct ids distinct (`call_a|b` and `call_a_b`, or ids that differ past 64 characters).
++ */
+ function nativeToolUseId(id: string): string {
+-  return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
++  if (/^[a-zA-Z0-9_-]{1,64}$/u.test(id)) return id;
++  const hash = createHash("sha256").update(id).digest("hex").slice(0, 16);
++  return `${id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 47)}_${hash}`;
+ }
+ 
+ export function prepareMessages(messages: Message[], model: Model<any>): Message[] {
+@@ -318,28 +323,35 @@ export function prepareTools(tools: Tool[]): {
    return { manifest, nativeTools, names };
  }
  
@@ -684,7 +510,7 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
   */
  export function prepareNativeTranscript(
    messages: Message[],
-@@ -321,19 +340,10 @@ export function prepareNativeTranscript(
+@@ -347,19 +359,10 @@ export function prepareNativeTranscript(
  ): NativeTranscriptPlan | undefined {
    const initial = getInitialSystemMessage(messages);
    const initialTools = initial?.toolsAdded ?? [];
@@ -706,7 +532,7 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
  
    const systemInjections: NativeSystemInjection[] = [];
    let pending: Array<Array<Record<string, unknown>>> = [];
-@@ -356,7 +366,7 @@ export function prepareNativeTranscript(
+@@ -382,7 +385,7 @@ export function prepareNativeTranscript(
    flush(null);
  
    return {
@@ -716,12 +542,12 @@ index e0a824be43db62a92a0329ff7c63fc0f14f3af65..c87a148f71260f353bca9b0aa56a6997
    };
  }
 diff --git a/src/turn-relay.ts b/src/turn-relay.ts
-index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..2ef1b17ce73de770481db520565de74e2dc82a85 100644
+index 17d5e02e01e0bc3220a6571c541bc2d39b00123d..f4244adc57e9f23c91531d7aad5d3403ec791d02 100644
 --- a/src/turn-relay.ts
 +++ b/src/turn-relay.ts
-@@ -111,7 +111,51 @@ const STRIPPED_REQUEST_HEADERS = new Set([
- 
- const STRIPPED_RESPONSE_HEADERS = new Set(["connection", "transfer-encoding", "server", "date"]);
+@@ -127,7 +127,51 @@ export function describeFailure(error: unknown): string {
+   return text;
+ }
  
 +const TRANSPORT_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT"]);
 +
@@ -771,7 +597,7 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..2ef1b17ce73de770481db520565de74e
    capture: AnthropicCapture;
    used = false;
    denied = 0;
-@@ -177,6 +221,7 @@ export class TurnRelay {
+@@ -196,6 +240,7 @@ export class TurnRelay {
      this.errorBody = Buffer.alloc(0);
      this.originalRequestBody = undefined;
      this.requestBody = undefined;
@@ -779,7 +605,7 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..2ef1b17ce73de770481db520565de74e
      this.transformRequest = transformRequest;
      this.requestBetas = requestBetas;
      this.cancelled = false;
-@@ -257,6 +302,13 @@ export class TurnRelay {
+@@ -276,6 +321,13 @@ export class TurnRelay {
      this.sockets.add(response);
  
      let upstreamRequest: http.ClientRequest | undefined;
@@ -793,7 +619,7 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..2ef1b17ce73de770481db520565de74e
      try {
        let body = await this.readBody(request);
        this.originalRequestBody = Buffer.from(body);
-@@ -282,26 +334,41 @@ export class TurnRelay {
+@@ -301,26 +353,41 @@ export class TurnRelay {
          ].join(",");
        }
  
@@ -851,7 +677,7 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..2ef1b17ce73de770481db520565de74e
        this.requestId =
          String(upstreamResponse.headers["request-id"] ?? upstreamResponse.headers["x-request-id"] ?? "") || undefined;
  
-@@ -314,6 +381,10 @@ export class TurnRelay {
+@@ -333,6 +400,10 @@ export class TurnRelay {
  
        for await (const rawChunk of upstreamResponse) {
          const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
@@ -862,12 +688,7 @@ index 08ec86e5df1baac866a1cd97cea4dc94a523fbd7..2ef1b17ce73de770481db520565de74e
          if (this.status === 200) this.capture.feed(chunk);
          else if (this.errorBody.length < 65_536) {
            this.errorBody = Buffer.concat([this.errorBody, chunk]).subarray(0, 65_536);
-@@ -323,10 +394,29 @@ export class TurnRelay {
-       if (this.status === 200) this.capture.finish();
-       response.end();
-     } catch (error) {
--      this.failure = error instanceof Error ? error.name : "UnknownError";
-+      this.failure = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+@@ -347,6 +418,25 @@ export class TurnRelay {
        if (!response.headersSent) response.writeHead(this.cancelled ? 499 : 502).end();
        else response.destroy();
      } finally {

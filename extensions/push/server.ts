@@ -7,7 +7,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { onCommit } from '../../lib/commits.ts'
 import { readSecret } from '../../lib/secrets.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import type { OverviewState } from '../conversations/types.ts'
+import { Overview } from '../conversations/api.ts'
 import { Messages, MessageSent } from '../messages/api.ts'
 import { SecretsApi } from '../secrets/api.ts'
 import { Standing } from '../subagents/api.ts'
@@ -27,7 +27,6 @@ import { failedPush, landingPush, questionPush } from './rules.ts'
 import type { Push } from './rules.ts'
 
 const KEY = 'WEB_PUSH_VAPID_KEY'
-const OVERVIEW = 'ultimate.conversation-overview'
 
 const ServerOnlySubscriptions = defineDoc<{ subscriptions: Subscription[] }>({
   kind: 'push.subscriptions',
@@ -185,13 +184,10 @@ export default function pushExtension(host: ExtensionHost) {
     },
   )
 
-  let stop: (() => void) | undefined
   const pushNewFailure = async (tx: Tx) => {
-    const token = host.doc(OVERVIEW)
-    if (!token) return
     const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
     if (ultimate === undefined) return
-    const overview = (await tx.doc(token, ROOT_CONVERSATION_ID)) as OverviewState
+    const overview = await tx.doc(Overview, ROOT_CONVERSATION_ID)
     const push = failedPush(overview.conversations[ultimate], ultimate)
     const last = await tx.doc(LastFailureTag, ROOT_CONVERSATION_ID)
     if (last.tag === undefined) {
@@ -202,15 +198,15 @@ export default function pushExtension(host: ExtensionHost) {
     last.tag = push.tag
     await pushToHiddenBrowsers(tx, push)
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     await committed(pushNewFailure)
-    stop = onCommit(host.harness(), (publication) => {
+    const stop = onCommit(host.harness(), (publication) => {
       if (
         !publication.changes.some(
           (change) =>
             change.type === 'document' &&
             change.conversationId === ROOT_CONVERSATION_ID &&
-            change.record.kind === OVERVIEW,
+            change.record.kind === Overview.definition.kind,
         )
       )
         return
@@ -219,13 +215,8 @@ export default function pushExtension(host: ExtensionHost) {
         committed(pushNewFailure),
       )
     })
+    opened.defer(stop)
   })
-  const close = async () => {
-    stop?.()
-    stop = undefined
-  }
-  host.onRelease(close)
-  host.onClose(close)
   return defineExtension({ name: 'push', tasks: [Deliver] })
 }
 

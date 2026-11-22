@@ -25,6 +25,7 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
 
 - `ultimateRoot`, `projectRoot`, `userHome`, `home`: source, work, user and instance-state roots.
 - `modelRuntime`, `settings`: Pi model/auth runtime and settings.
+- `images`: the host's one Photon `ImageProcessor` (Pi Durable's `createNodePhotonImages()`), shared by every extension that fits images for the model and kept across reloads.
 - `models()`: model descriptors, including availability.
 - `skills(cwd)`: merged clone, user and project skills for a working directory, each with its `scope` and `overrides`.
 - `restart(approved)`: request a verified core swap; the async callback records the approved generation before activation.
@@ -47,8 +48,8 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
 - `trace`: the recorded calls (services, actions, reactor runs, tools); see [tracing](introspection.md#tracing).
 - `access.allow({ origin, verify })`: register an HTTP origin with an identity verifier; returns a disposer and is automatically removed when the facet unloads or reloads. HTTP, API, and websocket upgrades use the same admission rules.
 - `notice(message, { untilSecretSet? })`: publish a warning notice and retain it in this facet's system diagnostics for later clients, until unload/reload. With `untilSecretSet: 'NAME'` the diagnostic is gone as soon as that secret is stored.
-- `resource(key, create)`, `onOpen(callback)`, `onRelease(callback)`, `onClose(cleanup)`: shared reload-stable resources, async work each
-  time the harness opens (at once if it is open; the server serves once it settles), async work each time before it closes while the process stays (a core swap; drop commit subscriptions there), and async cleanup. Facet-level callbacks are removed on unload/reload, with cleanup run before the replacement opens. Callbacks registered inside a shared resource's creation belong to that reload-stable resource and survive until server shutdown.
+- `resource(key, create)`, `onOpen(callback)`, `onClose(cleanup)`: shared reload-stable resources, async work each
+  time the harness opens (at once if it is open; the server serves once it settles), and async cleanup at unload or shutdown. `onOpen(async (opened) => …)` gets an `AsyncDisposableStack`: `opened.defer(cleanup)` each thing the open starts (commit subscriptions, timers, background work) right after starting it. The stack is disposed, newest first, when that open ends (a core swap's release, a reload or unload of the facet, or shutdown) and at once if the open throws, so a half-done open leaves nothing running. Facet-level callbacks are removed on unload/reload, with cleanup run before the replacement opens. Callbacks registered inside a shared resource's creation belong to that reload-stable resource and survive until server shutdown.
   Keep only process state in a resource (running children, in-flight promises, flags); never capture document or task
   tokens or facet functions in it, since they go stale on reload. Build those on each install around the shared state.
 - `onLoadError(callback)`: run `callback(name, error)` each time an extension's server facet fails to load; facet-scoped.

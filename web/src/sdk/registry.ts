@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react'
+import type { Component } from 'solid-js'
 import { deadline } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
@@ -32,7 +32,6 @@ type BuiltinUserProjectByName = Readonly<Record<string, ExtensionLoader>>
 
 export interface ExtensionRecord {
   name: string
-
   extension?: WebExtension
 
   error?: string
@@ -45,7 +44,7 @@ export interface SlotItem {
   key: string
   extension: string
   version: number
-  component: ComponentType
+  component: Component
   phone: boolean
 }
 export interface PanelItem extends PanelContribution {
@@ -64,8 +63,10 @@ export interface DocumentItem extends DocumentContribution {
   version: number
 }
 
+const facetPath = /extensions\/([^/]+)\/web(\.solid)?\.tsx(?:\?.*)?$/
+
 export function extensionName(path: string): string | undefined {
-  return /extensions\/([^/]+)\/web\.tsx(?:\?.*)?$/.exec(path)?.[1]
+  return facetPath.exec(path)?.[1]
 }
 
 type Check = (value: unknown) => boolean
@@ -76,7 +77,7 @@ const isNumber: Check = (value) => typeof value === 'number'
 const isBoolean: Check = (value) => typeof value === 'boolean'
 const isFunction: Check = (value) => typeof value === 'function'
 
-const isComponent: Check = (value) => isFunction(value) || (isObject(value) && '$$typeof' in value)
+const isComponent: Check = isFunction
 const optional =
   (check: Check): Check =>
   (value) =>
@@ -185,7 +186,8 @@ const shapes: Record<keyof WebExtension, [Check, string]> = {
 
 function validate(module: unknown): WebExtension {
   const extension = isObject(module) && 'default' in module ? module.default : undefined
-  if (!isObject(extension)) throw new Error('web.tsx must default-export defineWebExtension({ … })')
+  if (!isObject(extension))
+    throw new Error('A web facet must default-export defineWebExtension({ … })')
   for (const [key, [check, shape]] of Object.entries(shapes))
     if (!optional(check)(extension[key])) throw new Error(`${key} must be ${shape}`)
   return extension
@@ -232,11 +234,11 @@ export function createRegistry() {
   const install = (name: string, module: unknown) => {
     try {
       const extension = validate(module)
-      update(name, (record) =>
-        record.extension === extension && !record.error && !record.loading
+      update(name, (record) => {
+        return record.extension === extension && !record.error && !record.loading
           ? record
-          : { name, extension, loading: false, version: record.version + 1 },
-      )
+          : { ...record, extension, loading: false, error: undefined, version: record.version + 1 }
+      })
       events.emit('ultimate:extension-loaded', { name })
     } catch (error) {
       fail(name, error)
@@ -339,10 +341,6 @@ export function provisionsOf(records: readonly ExtensionRecord[], point: string)
   )
 }
 
-export function provisionOf(records: readonly ExtensionRecord[], point: string) {
-  return provisionsOf(records, point).at(-1)
-}
-
 export function panelItems(records: readonly ExtensionRecord[]): PanelItem[] {
   return records
     .flatMap(({ name, extension, version }) =>
@@ -354,14 +352,17 @@ export function panelItems(records: readonly ExtensionRecord[]): PanelItem[] {
 export function panelBadges(
   records: readonly ExtensionRecord[],
   id: string,
-): { extension: string; version: number; component: ComponentType }[] {
+): { extension: string; version: number; component: Component }[] {
   return records.flatMap((record) => {
     const component = record.extension?.panelBadges?.[id]
     return component ? [{ extension: record.name, version: record.version, component }] : []
   })
 }
 
-export function shownPanels(panels: readonly PanelItem[], selected: string | null) {
+export function shownPanels<P extends Pick<PanelItem, 'id' | 'tab'>>(
+  panels: readonly P[],
+  selected: string | null,
+) {
   const active =
     panels.find((panel) => panel.id === selected) ?? panels.find((panel) => panel.tab !== false)
   return { active, tabs: panels.filter((panel) => panel.tab !== false || panel === active) }
@@ -505,10 +506,6 @@ export function codeBlockRenderers(
   })
 }
 
-export function codeBlockLanguages(records: readonly ExtensionRecord[]): string[] {
-  return [...new Set(records.flatMap((record) => Object.keys(record.extension?.codeBlocks ?? {})))]
-}
-
 export function messageItems<
   C extends 'messageActions' | 'messageDetails' | 'answerLabels' | 'userBubble',
 >(
@@ -545,7 +542,7 @@ export function compactTools(
       summary?: {
         extension: string
         version: number
-        component: ComponentType<CompactSummaryProps>
+        component: Component<CompactSummaryProps>
       }
     }
   | undefined {

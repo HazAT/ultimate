@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { SystemInfo } from '../../shared/protocol.ts'
@@ -184,8 +183,7 @@ it('marks a copy for a moment', async () => {
     return null
   })
   flush()
-  copy.copy('hello')
-  await vi.advanceTimersByTimeAsync(0)
+  await copy.copy('hello')
   flush()
   expect([writeText.mock.calls[0], copy.copied()]).toEqual([['hello'], true])
   await vi.advanceTimersByTimeAsync(1_300)

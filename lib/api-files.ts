@@ -14,7 +14,7 @@ const contracts = [
 
 export function apiSummary(text: string) {
   const header = /^\/\*\*([\s\S]*?)\*\//
-    .exec(text.trimStart().replace(/^\/\*\* @jsxImportSource \S+ \*\/\s*/, ''))?.[1]
+    .exec(text.trimStart())?.[1]
     .replace(/^\s*\*\s?/gm, ' ')
     .replace(/\s+/g, ' ')
     .trim()

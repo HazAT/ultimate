@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { createSignal, flush } from 'solid-js'
@@ -23,6 +22,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
   const { createReads } = await import('../../../../web/src/sdk/reads.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
+  const { createRegistry } = await import('../../../../web/src/sdk/registry.ts')
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
     if (path === '/api/ui') {
@@ -50,25 +50,30 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     }
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return {
     store,
     api,
     reads: createReads(api, store),
+    registry: createRegistry(),
     uiState: createUiState(api.updateUi),
   }
 })
 
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { CommandPalette } from '../../../../web/src/app/palette.solid.tsx'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { WireTab } from '../../tab.solid.tsx'
+import wire from '../../web.solid.tsx'
 
 const agent = createAgent()
 harness.server = fakeSubscriptions(harness.sources)
@@ -164,4 +169,31 @@ it('records an agent’s call and part under Wire without changing the System ta
     value: { conversation, n: 13 },
     source: 'agent',
   })
+})
+
+it('opens Wire as the agent that runs Open Wire from the palette', async () => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  uiState.receive({ 'ext.system.tab': 'agents' })
+  harness.writes.length = 0
+  await registry.setLoaders({ 'extensions/wire/web.solid.tsx': async () => ({ default: wire }) })
+  renderSolid(() => <CommandPalette />)
+  store.setUi({ paletteOpen: true })
+  flush()
+  await settle()
+  expect(
+    await agent.act({
+      steps: [{ ref: control('Search commands').ref, action: 'run', args: ['wire.open'] }],
+    }),
+  ).toMatchObject({ ok: true })
+  await vi.waitFor(() => expect(store.getState().ui.paletteOpen).toBe(false))
+  await uiState.flush()
+  expect(harness.writes).toEqual([
+    { key: 'ext.system.tab', value: 'wire', source: 'agent' },
+    { key: 'shell.surface', value: 'system', source: 'agent' },
+  ])
+  vi.unstubAllGlobals()
 })

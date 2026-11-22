@@ -1,16 +1,12 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { onCommit } from '../../lib/commits.ts'
 import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import { isInput } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { projection } from './projection.ts'
 
 export function activityBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'metadata' | 'onOpen' | 'onClose' | 'notice'>,
+  host: Pick<ExtensionHost, 'harness' | 'metadata' | 'onOpen' | 'notice' | 'resource'>,
 ) {
-  let stop: (() => void) | undefined
-  let closed = false
-  let draining: Promise<void> | undefined
-  const pending = new Set<ConversationId>()
   const reconcile = async (id: ConversationId) => {
     const conversation = await host.harness().conversation(id, context)
     if (!conversation) return
@@ -60,53 +56,19 @@ export function activityBehavior(
       else delete metadata.answerAt
     }, context)
   }
-  const schedule = () => {
-    if (draining || closed) return
-    draining = (async () => {
-      while (pending.size) {
-        if (closed) break
-        const ids = [...pending]
-        pending.clear()
-        for (const id of ids) await reconcile(id)
-      }
-    })()
-      .catch((error: unknown) => {
-        if (!closed) host.notice(`Conversation activity: ${String(error)}`)
-      })
-      .finally(() => {
-        draining = undefined
-        if (pending.size && !closed) schedule()
-      })
-  }
-  host.onOpen(async () => {
-    closed = false
-    stop = onCommit(host.harness(), (publication) => {
-      for (const change of publication.changes) {
-        if (change.type === 'conversation') pending.add(change.value.id)
-        if (
-          change.type === 'entry' &&
-          (isInput(change.value) ||
-            change.value.model?.[0]?.role === 'assistant' ||
-            change.value.head !== undefined)
-        )
-          pending.add(change.value.conversationId)
-      }
-      if (pending.size) schedule()
-    })
-    await host.harness().commit(async (tx) => {
-      let cursor: Cursor | undefined
-      do {
-        const page = await tx.scanConversations({}, 256, cursor)
-        for (const own of page.items) pending.add(own.id)
-        cursor = page.next
-      } while (cursor !== undefined)
-    }, context)
-    schedule()
-    await draining
-  })
-  host.onClose(async () => {
-    closed = true
-    stop?.()
-    await draining
-  })
+  projection(
+    host,
+    { name: 'activity' },
+    (change, add) => {
+      if (change.type === 'conversation') add(change.value.id)
+      if (
+        change.type === 'entry' &&
+        (isInput(change.value) ||
+          change.value.model?.[0]?.role === 'assistant' ||
+          change.value.head !== undefined)
+      )
+        add(change.value.conversationId)
+    },
+    ([id]) => reconcile(id),
+  )
 }

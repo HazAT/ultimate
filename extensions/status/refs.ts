@@ -39,6 +39,7 @@ export type Status = {
     at: number
     error: string
     retried: boolean
+    retries?: number
   }[]
   /** Each model provider with a login on this machine. Absent while Health is off. */
   providers?: { provider: string; state: 'ok' | 'failing' | 'unknown'; error?: string }[]

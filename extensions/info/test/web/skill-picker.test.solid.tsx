@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
@@ -18,7 +17,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       sources.push(stream)
       return stream
     },
-    fetch: async () => Response.json({ ok: true }),
+    fetch: async () => Response.json({ ok: true, refused: {} }),
   })
   return { store, uiState: createUiState(undefined), api: {} }
 })

@@ -1,12 +1,12 @@
 // Pasting an image too large to attach resizes it in the browser: the chip says how, and the conversation receives a
 // WebP within 2000 px and 2 MiB.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { maxImageBytes } from '../../shared/protocol.ts'
-import { fauxServer, removeTemp, temp, until } from '../helpers.ts'
+import { prebuiltServer, removeTemp, temp, until } from '../helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -16,9 +16,7 @@ afterEach(async () => {
 it('resizes a pasted image over the limit and sends it', async () => {
   const home = await temp('ultimate-image-resize-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,

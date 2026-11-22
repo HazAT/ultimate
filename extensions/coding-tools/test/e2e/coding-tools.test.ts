@@ -3,7 +3,42 @@ import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { expect, it, vi } from 'vitest'
 import { context } from '../../../../server/harness.ts'
-import { fauxServer, temp, removeTemp } from '../../../../test/helpers.ts'
+import { sweepEarlierProcesses } from '../../background.ts'
+import { fauxServer, temp, removeTemp, until } from '../../../../test/helpers.ts'
+
+it("runs foreground and background commands without the host's NODE_ENV", async () => {
+  vi.stubEnv('NODE_ENV', 'development')
+  const directory = await temp('ultimate-bash-node-env-')
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    home: join(directory, 'home'),
+    userHome: directory,
+  })
+  try {
+    const bash = async (background: boolean) => {
+      server.host.faux!.setResponses([
+        fauxAssistantMessage(
+          [fauxToolCall('bash', { command: 'echo "NODE_ENV=${NODE_ENV-unset}"', background })],
+          { stopReason: 'toolUse' },
+        ),
+        fauxAssistantMessage('Complete'),
+      ])
+      await (await server.root.submit({ type: 'input', content: 'Run' }, context)).wait(context)
+      const view = await server.root.context(context)
+      return JSON.stringify(
+        view.entries.filter((entry) => entry.kind === 'pi.tool-result').at(-1)?.model,
+      )
+    }
+    expect(await bash(false)).toContain('NODE_ENV=unset')
+    const log = /Output: ([^\\]+)/.exec(await bash(true))![1]
+    await until(async () => (await readFile(log, 'utf8')) === 'NODE_ENV=unset\n')
+  } finally {
+    vi.unstubAllEnvs()
+    await server.close()
+    await sweepEarlierProcesses(join(directory, 'home'), () => false)
+    await removeTemp(directory)
+  }
+})
 
 it('stops default bash at the tripwire, kills its process, and preserves explicit timeout errors', async () => {
   vi.stubEnv('ULTIMATE_BASH_TIMEOUT', '0.1')

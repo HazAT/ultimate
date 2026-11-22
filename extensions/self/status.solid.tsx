@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { LoaderCircle, RotateCw, TriangleAlert, Zap } from '@lucide/solid'
 import {
   For,

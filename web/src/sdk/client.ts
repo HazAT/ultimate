@@ -2,6 +2,7 @@ import { parseConversationId } from '../../../lib/ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ActionError, actionMessage, createApi } from './api.ts'
 import { createReads } from './reads.ts'
+import { errorMessage } from './format.ts'
 import { deadline } from '../../../lib/timers.ts'
 import { linkedConversation } from './link.ts'
 import { HOME, createRegistry } from './registry.ts'
@@ -10,13 +11,6 @@ import { createTestHook } from './test-hook.ts'
 import { createUiAgent } from './agent.ts'
 import { agentsPage } from './writer.ts'
 import { firstRender } from './resume.ts'
-import type { TestHook } from './test-hook.ts'
-
-declare global {
-  interface Window {
-    ultimate?: TestHook
-  }
-}
 import { createUiState, tabWrites } from './ui-state.ts'
 
 const initialUrl = new URL(location.href)
@@ -49,7 +43,6 @@ export const store = createStore({
 const driven = sessionStorage.getItem('ultimate.driven') === '1'
 if (driven) agentsPage()
 
-/** Server commands; conversation commands default to the shown conversation. Each write says who made it. */
 export const api = createApi(store)
 
 export const reads = createReads(api, store)
@@ -69,7 +62,6 @@ export const uiState = createUiState(followsSharedUiState ? api.updateUi : undef
   ...tabOnly,
 })
 
-/** The page's one ui-sdk agent bridge, created at start so it hears every component. */
 export const uiAgent = createUiAgent()
 
 export const registry = createRegistry()
@@ -79,14 +71,12 @@ if (driven)
     reads.settledInUse(signal),
   )
 
-/** The web bundle this page runs (`server/web.ts` names it in the page). */
 export const bundle = document.querySelector<HTMLMetaElement>('meta[name=ultimate-web]')?.content
 
 const reloadNoticeMs = 600
 let switching = false
 
 const switchKey = 'ultimate.web-switch'
-/** Set when this page load is a switch to a new bundle: when, and the sources that changed. */
 export const switched = ((): { at: number; changed: string[] } | undefined => {
   const stored = sessionStorage.getItem(switchKey)
   sessionStorage.removeItem(switchKey)
@@ -157,6 +147,15 @@ store.subscribe(() => {
     .querySelector('meta[name=theme-color]')
     ?.setAttribute('content', ui.theme === 'dark' ? '#111112' : '#f9fafb')
 })
+
+const compactFailures = new Set<string>()
+
+export function reportCompact(extension: string, error: unknown) {
+  const failure = `extension ${extension}: compact is off, its when() threw: ${errorMessage(error)}`
+  if (compactFailures.has(failure)) return
+  compactFailures.add(failure)
+  queueMicrotask(() => store.notify({ level: 'error', message: failure }))
+}
 
 export function replaceNextSelection() {
   replaceSelection = true

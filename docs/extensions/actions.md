@@ -23,14 +23,16 @@ export const actions = {
 ```
 
 ```tsx
-// web.tsx
-import { actionRef, useAction } from '@/sdk'
+// web.solid.tsx
+import { actionRef, useAction } from '@/sdk/solid'
 
 /** No arguments → every `TODO` line as `file:line:text`. */
 const ListAction = actionRef<null, string[]>('todos', 'list')
 
-const todos = useAction(ListAction)
-// todos.data, todos.error, todos.loading, todos.refetch()
+function TodoCount() {
+  const todos = useAction(ListAction)
+  return <span>{todos.loading() ? 'Loading…' : (todos.data()?.length ?? 0)}</span>
+}
 ```
 
 An action is `(args, ctx)`; `ctx` has:
@@ -45,8 +47,8 @@ An action is `(args, ctx)`; `ctx` has:
 
 The `ActionContext` import is type-only. The path above is right for `.ultimate/extensions/<name>/` in Ultimate's clone
 (built-ins use `../../server/actions.ts`); in another project the path does not resolve and the import is erased, so it
-runs either way (`scripts/check-extension.ts` reports it there; type `ctx` by hand or leave the import out). A project extension keeps its refs in `web.tsx`, from `@/sdk`; built-ins keep them in `refs.ts` and
-check their handlers against them with `implementAction` (see [contracts](contracts.md#the-browser-side-refsts-and-uitsx)).
+runs either way (`scripts/check-extension.ts` reports it there; type `ctx` by hand or leave the import out). A project extension can keep its refs in `web.solid.tsx`, from `@/sdk/solid`; built-ins keep them in `refs.ts` and
+check their handlers against them with `implementAction` (see [contracts](contracts.md#the-browser-side-refsts-and-uisolidtsx)).
 
 - **Arguments are untrusted, from the browser or an agent**: make actions safe to call from an agent and validate args before they reach a command line. `exec` takes an argument list,
   never a shell string, so quoting is never the problem; meaning is.
@@ -61,13 +63,17 @@ check their handlers against them with `implementAction` (see [contracts](contra
 
 Call actions from the UI in one of two ways:
 
-- `useAction(ref, args?, { enabled?, onError?, on?, every?, focus? })` reads. It calls on mount and again whenever
-  the action or `args` (compared as JSON) change, when `on` changes (a document, an event id, a busy flag: anything
-  that means the answer may be stale), every `every` ms, on window focus with `focus`, and after the server restarts;
-  never while `enabled` is false. Every component reading the same action and args shares one call and one result,
-  so a remount shows the last answer at once while it asks again. It returns `{ data, error, loading, refetch }`:
-  `data` stays while a refetch runs; `refetch()` calls again, also when not `enabled`. A failure shows as a notice
-  unless a reader passes `onError`. Pass the signal as `on` rather than calling `refetch()` from an effect.
+- `useAction(ref, args?, { conversation?, onError?, on?, every?, focus? })` reads. It subscribes over the page's one
+  stream: the server runs the read once for every tab and device reading the same action, args (compared as JSON)
+  and conversation, again `every` ms after its last answer while anyone reads it, and pushes an answer only when it
+  changed; a reconnect or restart brings the values back. `on()` changing (a document, an event id, a busy flag),
+  window focus with `focus`, and `refetch()` ask again at once, and that answer reaches every reader. It follows the
+  scoped or shown conversation unless `conversation` is set. A remount shows the last answer at once. Never poll with
+  a timer of your own that calls `api.action` or `refetch`: lint rejects it (`no-raw-stream`), since it runs once per
+  page instead of once for all. It returns `{ data, error, loading, refetch }`: the first three are accessors, and
+  `data()` stays while a refetch runs. A failure shows as a notice unless a reader passes `onError`. Pass an accessor
+  as `on` rather than refetching from an effect. Mount the reader only when its arguments are ready; for changing
+  object arguments, use getters or remount the reader on the new input (see the [Commits example](example-app.md)).
 - `api.action(ref, args?, { conversationId?, signal?, keepalive? })` acts, once: a click that saves,
   closes, or labels something; `keepalive` lets a call sent on `pagehide` outlive the page. It returns a promise of
   the result; afterwards, `refetch()` what changed. A rejection (an `ActionError` with `extension`, `action`,
@@ -97,6 +103,9 @@ export const userActions = ['decide']
 ```
 
 Codemode rejects these calls with `<extension>/<action> is a user-only action`; the HTTP path still calls them.
+`userActions` restrict codemode and tools, not pages: a page an agent drives with the browser tool may press the
+control that calls one, by design. To have the UI ask a person, mark that control `data-agent-confirm="what it does"`:
+the browser tool's step on it fails with "Needs a person" (`skills/solid-ui/SKILL.md`).
 
 Likewise `pollActions: string[]` names read-only actions a surface polls with changing arguments (cursors, windows):
 the call trace counts their successful calls in `host.trace.polls()` instead of writing them, with the plain action

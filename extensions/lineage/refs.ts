@@ -128,7 +128,7 @@ export const Rooted = defineEvent<{ id: ConversationId; intent: string }>('linea
 
 /** Lineage metadata on resets written as tally genesis or branch memory briefs. */
 export const LineageResetEntry = defineEntry<{
-  lineage?: { tally?: true; brief?: { tally?: EntryId | null } }
+  lineage?: { tally?: true; brief?: true }
 }>('pi.reset')
 
 /** A branch abstract, or a carrier replacing its anchor. */

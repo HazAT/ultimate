@@ -1,15 +1,15 @@
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
 import solid from '@solidjs/vite-plugin'
 import solidV2Strict from 'eslint-plugin-solid/configs/v2-strict'
 import { defineConfig } from 'vite-plus'
+import { webAliases } from './lib/web-alias.ts'
 
 const solidFiles = /\.solid\.tsx$/
 const uiSdkSolidBuild = /\/@ui-sdk\/solid\/dist\/solid\/.*\.jsx$/
 const lucideSolidSource = /\/@lucide\/solid\/dist\/source\/.*\.jsx$/
 const solidPlugin = () => solid({ include: [solidFiles, uiSdkSolidBuild, lucideSolidSource] })
-const alias = { '@': fileURLToPath(new URL('web/src', import.meta.url)) }
+const alias = webAliases(fileURLToPath(new URL('.', import.meta.url)))
 const excludeE2e = ['test/e2e/**', 'extensions/*/test/e2e/**']
 const maxWorkers = 8
 const solidRules = Object.fromEntries(
@@ -17,67 +17,17 @@ const solidRules = Object.fromEntries(
     .filter(([rule, level]) => rule.startsWith('solid/') && level > 0)
     .map(([rule]) => [rule, 'error' as const]),
 )
-const reactRulesEnabledByCategory = [
-  'capitalized-calls',
-  'error-boundaries',
-  'exhaustive-deps',
-  'exhaustive-effect-dependencies',
-  'forward-ref-uses-ref',
-  'globals',
-  'hooks',
-  'iframe-missing-sandbox',
-  'immutability',
-  'incompatible-library',
-  'jsx-key',
-  'jsx-no-comment-textnodes',
-  'jsx-no-duplicate-props',
-  'jsx-no-script-url',
-  'jsx-no-undef',
-  'jsx-props-no-spread-multi',
-  'memo-dependencies',
-  'no-children-prop',
-  'no-danger-with-children',
-  'no-did-mount-set-state',
-  'no-did-update-set-state',
-  'no-direct-mutation-state',
-  'no-find-dom-node',
-  'no-is-mounted',
-  'no-namespace',
-  'no-render-return-value',
-  'no-string-refs',
-  'no-this-in-sfc',
-  'no-unsafe',
-  'no-unstable-nested-components',
-  'no-will-update-set-state',
-  'preserve-manual-memoization',
-  'purity',
-  'react-in-jsx-scope',
-  'refs',
-  'set-state-in-effect',
-  'set-state-in-render',
-  'static-components',
-  'style-prop-object',
-  'use-memo',
-  'void-dom-elements-no-children',
-  'void-use-memo',
-]
-const noReactRules = Object.fromEntries(
-  reactRulesEnabledByCategory.map((rule) => [`react/${rule}`, 'off' as const]),
-)
-
 export default defineConfig({
   root: 'web',
-  plugins: [react({ exclude: [solidFiles, /\/node_modules\//] }), solidPlugin(), tailwindcss()],
+  plugins: [solidPlugin(), tailwindcss()],
   resolve: { alias },
   lint: {
-    plugins: ['typescript', 'unicorn', 'import', 'promise', 'vitest', 'react'],
+    plugins: ['typescript', 'unicorn', 'import', 'promise', 'vitest'],
     jsPlugins: ['./lint/ultimate.ts', 'eslint-plugin-solid'],
     settings: solidV2Strict.settings,
     categories: { correctness: 'error', suspicious: 'error' },
     rules: {
       'import/no-cycle': 'error',
-      'react/no-array-index-key': 'off',
-      'react/no-children-prop': 'off',
       'typescript/no-unsafe-type-assertion': 'off',
       'promise/always-return': 'off',
       'typescript/no-floating-promises': ['error', { ignoreVoid: false }],
@@ -102,14 +52,6 @@ export default defineConfig({
       {
         files: ['web/public/sw.js'],
         rules: { 'unicorn/require-post-message-target-origin': 'off' },
-      },
-      {
-        files: ['extensions/instance/web.tsx'],
-        rules: { 'react/iframe-missing-sandbox': 'off' },
-      },
-      {
-        files: ['web/src/app/transcript.tsx'],
-        rules: { 'react/immutability': 'off' },
       },
       {
         files: ['test/**', 'extensions/*/test/**'],
@@ -253,8 +195,8 @@ export default defineConfig({
         },
       },
       {
-        // Another extension at runtime only through its contract: api.ts from server code, ui.tsx from React and
-        // refs.ts or ui.solid.tsx from Solid.
+        // Another extension at runtime only through its contract: api.ts from server code, refs.ts or ui.solid.tsx
+        // from the browser.
         // A core-tier extension (`export const tier = 'core'` in its api.ts) imports only the core tier.
         files: ['extensions/**/*.ts', 'extensions/**/*.tsx'],
         excludeFiles: ['extensions/*/test/**'],
@@ -275,7 +217,18 @@ export default defineConfig({
         rules: { 'ultimate/api-file-shape': 'error', 'ultimate/api-naming': 'error' },
       },
       {
-        files: ['extensions/**/*.tsx'],
+        files: [
+          'extensions/**/*.ts',
+          'extensions/**/*.tsx',
+          '.ultimate/extensions/**/*.ts',
+          '.ultimate/extensions/**/*.tsx',
+        ],
+        excludeFiles: [
+          'extensions/*/server.ts',
+          '.ultimate/extensions/*/server.ts',
+          'extensions/*/test/**',
+          '.ultimate/extensions/*/test/**',
+        ],
         rules: { 'ultimate/no-raw-stream': 'error' },
       },
       {
@@ -304,34 +257,18 @@ export default defineConfig({
         },
       },
       {
-        files: ['web/src/**', 'extensions/**/*.tsx', '.ultimate/extensions/**/*.tsx'],
-        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**', '**/*.solid.tsx'],
-        rules: {
-          'react/rules-of-hooks': 'error',
-          'react/exhaustive-deps': 'error',
-          'react/jsx-key': 'error',
-          'react/react-in-jsx-scope': 'off',
-          'react/hooks': 'off',
-          'react/set-state-in-effect': 'off',
-          'react/refs': 'off',
-          'react/purity': 'off',
-          'react/memo-dependencies': 'off',
-          'react/exhaustive-effect-dependencies': 'off',
-        },
-      },
-      {
         files: ['**/*.solid.tsx'],
         plugins: ['jsx-a11y'],
         rules: {
-          ...noReactRules,
           'no-unassigned-vars': 'off',
           ...solidRules,
-          'ultimate/solid-jsx-pragma': 'error',
           'ultimate/ui-kit-roles': 'error',
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [
             'error',
-            { controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput'] },
+            {
+              controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput', 'Toggle'],
+            },
           ],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',
@@ -340,6 +277,10 @@ export default defineConfig({
           'jsx-a11y/prefer-tag-over-role': 'error',
           'jsx-a11y/no-autofocus': 'error',
         },
+      },
+      {
+        files: ['**/*.solid.tsx'],
+        rules: { 'ultimate/no-aria-pressed-button': 'error' },
       },
       {
         files: ['web/**', 'extensions/**', '.ultimate/extensions/**'],
@@ -376,7 +317,7 @@ export default defineConfig({
   test: {
     root: '.',
     environment: 'node',
-    globalSetup: ['test/sweep-temp.ts'],
+    globalSetup: ['test/sweep-temp.ts', 'test/whole-suite-lock.ts'],
     setupFiles: ['test/setup.ts', 'test/no-group-signals.ts'],
     // Core and integration tests in test/, each extension's own in extensions/<name>/test/: `pnpm test extensions/<name>/`
     // runs one extension's.

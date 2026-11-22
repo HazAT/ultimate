@@ -26,6 +26,7 @@ import {
   InboxDoc,
   LiveDoc,
   ROOT_CONVERSATION_ID,
+  SubmissionSettled,
 } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -49,7 +50,8 @@ import type { BranchInput } from '../../lineage/server.ts'
 import { Branch, Roots, Tally } from '../../lineage/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
 import { landingPending, pendingLandingCards, Workspaces } from '../../workspaces/workspaces.ts'
-import { actions as conversationActions, concludedIn } from '../../conversations/server.ts'
+import { actions as conversationActions } from '../../conversations/server.ts'
+import { concludedIn } from '../../conversations/projection.ts'
 import { UiState } from '../../../shared/ui-state.ts'
 
 const homes: string[] = []
@@ -62,15 +64,22 @@ afterEach(async () => {
   for (const host of closing) await host.close()
   for (const home of taken) await removeTemp(home)
 })
-/** Stands in for a subagent's report on its way to the branch: live until the test releases it. */
-const pendingReport = Promise.withResolvers<void>()
-const reporter = defineTask<{ delivered: boolean }, { phase: 'deliver' }, null>({
+/** Stands in for a subagent's report on its way to the branch: asleep on its child's answer, as the real one is. */
+const reporter = defineTask<{ delivered: boolean }, { phase: 'deliver' | 'report' }, null>({
   name: 'ultimate.subagent-reporter',
   version: 1,
-  initial: () => ({ phase: 'deliver' }),
+  initial: (input) => ({ phase: input.delivered ? 'report' : 'deliver' }),
   phases: {
-    deliver: async (task, runtime, caller) => {
-      if (!task.input.delivered) await awaitWithContext(pendingReport.promise, caller)
+    deliver: (_task, runtime, caller) =>
+      runtime.commit(
+        () => ({
+          status: 'sleeping',
+          signals: [SubmissionSettled.key('settled')],
+          checkpoint: { phase: 'report' },
+        }),
+        caller,
+      ),
+    report: async (_task, runtime, caller) => {
       await runtime.commit(
         () => ({ status: 'terminal', outcome: { status: 'completed', result: null } }),
         caller,
@@ -176,8 +185,7 @@ async function fixture(
       throw new Error(message)
     },
     conversations: () => [],
-    doc: (kind: string) =>
-      kind === 'lineage.roots' ? Roots : kind === 'lineage.tally' ? Tally : undefined,
+    doc: () => undefined,
   } as unknown as ExtensionHost
   let backend = messagesExtension(host)
   if (sendGate)
@@ -698,20 +706,17 @@ it('lets a standing agent message the user and ends its run with it', async () =
   const view = await f.recipient.context(context)
   expect(view.entries.at(-1)?.kind).toBe('pi.tool-result')
 })
-it('refuses messages to the user from conversations that are not standing agents or branches', async () => {
+it('lets an ownerless conversation without a parent or starter message the user', async () => {
   const f = await fixture()
-  await f.send('@scout', 'SEND ' + JSON.stringify({ to: 'user', text: 'Update' }))
-  await until(async () => (await replies(f)).length === 1)
-  expect((await f.log())!.messages).toHaveLength(2)
-  expect(f.observed.join('\n')).toContain(
-    'Only @ultimate, standing agents and branches message the user; send this to the conversation that started you.',
-  )
-  await f.send('user', 'Relayed update')
-  expect((await f.log())!.messages.at(-1)).toMatchObject({
-    from: 1,
-    to: 'user',
-    text: 'Relayed update',
-  })
+  await (
+    await f.recipient.submit(
+      { type: 'input', content: 'SEND ' + JSON.stringify({ to: 'user', text: 'Design ready' }) },
+      context,
+    )
+  ).wait(context)
+  expect((await f.log())!.messages).toMatchObject([
+    { from: f.recipient.id, to: 'user', text: 'Design ready', state: 'delivered' },
+  ])
 })
 it('resolves a standing address and returns unanswered inputs as failure replies', async () => {
   const f = await fixture()
@@ -914,13 +919,9 @@ it('lets a subagent message only the conversation that started it', async () => 
   const view = await (await f.opened.harness.conversation(workerId, context))!.context(context)
   expect(JSON.stringify(view.entries)).toContain('Use message only to update #1')
 
-  // An owned conversation that is no subagent cannot bypass @ultimate either.
   const run = await child(false)
   await send(run, 'user')
-  expect((await f.log())!.messages).toHaveLength(1)
-  expect(f.observed.join('\n')).toContain(
-    'Only @ultimate, standing agents and branches message the user',
-  )
+  expect((await f.log())!.messages.at(-1)).toMatchObject({ from: run, to: 'user' })
 })
 it('refuses self, unknown ids, tally roots and unknown names with valid names', async () => {
   const f = await fixture()
@@ -1628,7 +1629,7 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
   const b = await branched(f)
   // The child answered, but its report is not yet an input of the branch (#431701's gap), and it is older than
   // 120 reports that finished since (#433005).
-  await f.opened.harness.commit(
+  const pending = await f.opened.harness.commit(
     (tx) =>
       tx.createTask(
         reporter,
@@ -1653,19 +1654,19 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
         },
       )
   }, context)
-  // Only the undelivered report stays live.
-  await until(
-    async () =>
-      (await f.opened.harness.inspect(context)).tasks.filter(
-        ({ record }) => record.kind === reporter.definition.name,
-      ).length === 1,
-  )
+  // Only the undelivered report stays live, asleep.
+  await until(async () => {
+    const live = (await f.opened.harness.inspect(context)).tasks.filter(
+      ({ record }) => record.kind === reporter.definition.name,
+    )
+    return live.length === 1 && live[0].state.kind === 'sleeping'
+  })
   await (
     await b.branch.submit({ type: 'input', content: 'Waiting on the scout' }, context)
   ).wait(context)
   await until(async () => (await b.from()).length === 2)
   expect((await b.from())[1].report).toBeUndefined()
-  pendingReport.resolve()
+  await f.opened.harness.abortTask(pending, context)
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()
@@ -1764,55 +1765,58 @@ it("sends @ultimate's answer to a branch it concluded to the agent whose request
     }),
   ])
 })
-it("sends @ultimate's answer to a run its automation woke to the agent whose request the automation served", async () => {
-  // ultimate-eval #53: @ultimate answered "I've started the A/B" to another Ultimate's request and made automation A8;
-  // the result, written in the run A8's fire woke (#53/5281), reached no one.
-  const f = await fixture()
-  await f.send('@scout', 'SEND ' + JSON.stringify({ to: '#1', text: 'Run the A/B\nHOLD' }), {
-    reply: false,
-  })
-  await until(f.holding)
-  await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A8'), context)
-  f.hold.release()
-  const request = async () =>
-    (await f.log())!.messages.find((m) => m.from === f.recipient.id && m.to === 1)
-  // @ultimate's early answer ("started") settles the request.
-  await until(async () => {
-    const id = (await request())?.id
-    return id !== undefined && (await f.log())!.messages.some((m) => m.re === id)
-  })
-  const asked = (await request())!
-  const fired = (tellUser = false) =>
-    f.opened.root.submit(
-      {
-        type: 'input',
-        // It tells the user first: that message must not end the run before its answer to the asker.
-        content: `Automation A8 "ab done" fired: AB-DONE${tellUser ? ' TELLUSER' : ''}`,
-        entry: {
-          kind: 'automations.fired',
-          data: {
-            id: 'A8',
-            name: 'ab done',
-            text: 'AB-DONE',
+it.each(['automations.fired', 'automations.finished'])(
+  "sends @ultimate's answer to a run its automation woke (%s) to the agent whose request the automation served",
+  async (kind) => {
+    // ultimate-eval #53: @ultimate answered "I've started the A/B" to another Ultimate's request and made automation A8;
+    // the result, written in the run A8's fire woke (#53/5281), reached no one.
+    const f = await fixture()
+    await f.send('@scout', 'SEND ' + JSON.stringify({ to: '#1', text: 'Run the A/B\nHOLD' }), {
+      reply: false,
+    })
+    await until(f.holding)
+    await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A8'), context)
+    f.hold.release()
+    const request = async () =>
+      (await f.log())!.messages.find((m) => m.from === f.recipient.id && m.to === 1)
+    // @ultimate's early answer ("started") settles the request.
+    await until(async () => {
+      const id = (await request())?.id
+      return id !== undefined && (await f.log())!.messages.some((m) => m.re === id)
+    })
+    const asked = (await request())!
+    const fired = (tellUser = false) =>
+      f.opened.root.submit(
+        {
+          type: 'input',
+          // It tells the user first: that message must not end the run before its answer to the asker.
+          content: `Automation A8 "ab done" fired: AB-DONE${tellUser ? ' TELLUSER' : ''}`,
+          entry: {
+            kind,
+            data: {
+              id: 'A8',
+              name: 'ab done',
+              text: 'AB-DONE',
+            },
           },
         },
-      },
-      context,
+        context,
+      )
+    await (await fired(true)).wait(context)
+    await until(async () =>
+      (await f.log())!.messages.some((m) => m.from === 1 && m.to === f.recipient.id && m.routed),
     )
-  await (await fired(true)).wait(context)
-  await until(async () =>
-    (await f.log())!.messages.some((m) => m.from === 1 && m.to === f.recipient.id && m.routed),
-  )
-  await (await fired()).wait(context)
-  await f.opened.root.waitForIdle(context)
-  expect((await f.log())!.messages.filter((m) => m.from === 1 && m.routed)).toEqual([
-    expect.objectContaining({
-      to: f.recipient.id,
-      reply: false,
-      text: `Result of automation A8 "ab done", which worked on your message ${asked.id}:\n\nDone`,
-    }),
-  ])
-})
+    await (await fired()).wait(context)
+    await f.opened.root.waitForIdle(context)
+    expect((await f.log())!.messages.filter((m) => m.from === 1 && m.routed)).toEqual([
+      expect.objectContaining({
+        to: f.recipient.id,
+        reply: false,
+        text: `Result of automation A8 "ab done", which worked on your message ${asked.id}:\n\nDone`,
+      }),
+    ])
+  },
+)
 it("routes the answer of a run an automation woke to the branches whose report the automation's creating run read", async () => {
   // #626775: @ultimate read the branch's reply, made check-back A3 and told it to hold; the branch held (an echo). A3's
   // run answered with the A/B result in prose, which reached no one, and the branch waited 44 minutes.
@@ -2069,7 +2073,6 @@ function pauser(f: Awaited<ReturnType<typeof fixture>>) {
     },
     onOpen: () => {},
     onClose: () => {},
-    onRelease: () => {},
     implement: () => {},
     conversations: () => [],
   } as unknown as ExtensionHost
@@ -2086,12 +2089,13 @@ it('reaches Paused · safe while a delivery waits for its held recipient to answ
   const pausing = await pause('pause')
   expect(pausing.running.map((task) => task.what)).toEqual(['hold'])
   f.hold.release()
-  // The tool ends; the recipient's next step is held, so its delivery waits on a receipt that settles on Play.
+  // The tool ends; the recipient's next step is held, so its delivery sleeps until the input settles on Play.
   await until(async () => (await pause('state')).running.length === 0)
-  const delivery = (await f.opened.harness.inspect(context)).tasks.find(
-    ({ record }) => record.kind === 'board.delivery',
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.some(
+      ({ record, state }) => record.kind === 'board.delivery' && state.kind === 'sleeping',
+    ),
   )
-  expect(delivery?.state.kind).toBe('running')
   expect((await f.log())!.messages[0].state).toBe('delivered')
   await pause('play')
   await f.recipient.waitForIdle(context)

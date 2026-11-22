@@ -11,6 +11,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
+import { reactFacetRemoved } from '../lib/discovery.ts'
 
 const clone = resolve(import.meta.dirname, '..')
 const own = resolve('.ultimate/extensions')
@@ -28,9 +29,15 @@ if (!folders.length) {
   )
   process.exit(0)
 }
+const reactFacets = folders.filter((folder) => existsSync(join(folder, 'web.tsx')))
+if (reactFacets.length) {
+  for (const folder of reactFacets)
+    console.error(`${join(folder, 'web.tsx')}: ${reactFacetRemoved}`)
+  process.exit(1)
+}
 for (const folder of folders)
-  if (!existsSync(join(folder, 'web.tsx')) && !existsSync(join(folder, 'server.ts'))) {
-    console.error(`${folder} is not an extension folder (no web.tsx or server.ts).`)
+  if (!['web.solid.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))) {
+    console.error(`${folder} is not an extension folder (no web.solid.tsx or server.ts).`)
     process.exit(2)
   }
 
@@ -59,9 +66,13 @@ try {
         outDir: undefined,
         noEmit: true,
         types: [...cloneWebAndBundlerOptions.types, 'node'],
-        paths: { '@/*': [join(clone, 'web/src/*')] },
+        paths: Object.fromEntries(
+          Object.entries(cloneWebAndBundlerOptions.paths as Record<string, string[]>).map(
+            ([alias, targets]) => [alias, targets.map((target) => join(clone, target))],
+          ),
+        ),
       },
-      include: ['ext/*/web.tsx', 'ext/*/server.ts'],
+      include: ['ext/*/web.solid.tsx', 'ext/*/server.ts'],
     }),
   )
   const tsc = spawnSync(join(clone, 'node_modules/.bin/tsc'), ['-p', '.', '--pretty', 'false'], {

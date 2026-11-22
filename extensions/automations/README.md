@@ -17,14 +17,17 @@ Exactly one per automation:
 - **Context.** `condition: {metric: 'context', of: '@name' | '#id', above: 80, cooldownMs?: 3600000, idleFor?}` fires
   when the conversation's context crosses `above`, then re-arms only after it drops below `above - 10`. The cooldown
   counts from the condition's own last crossing, not manual runs. With `idleFor` (ms) it also waits until the user gave
-  `of` no input for that long (`idleFor: 0` on update removes it). Dream ships two of these on `@ultimate`
+  `of` no input for that long (`idleFor: 0` on update removes it): above the threshold it sleeps in an
+  `ultimate.automation-idle` task until then, and user input in the meantime makes it sleep again from that input. Dream ships two of these on `@ultimate`
   (`extensions/dream/README.md`).
 - **Script.** `ask` instead of a schedule: a `watcher` agent writes an executable `run`, tests it by hand until one
   check succeeds and calls `automation resume {id}`. Stdout `FIRE [text]` fires; stderr and other stdout are progress. `once` (default true)
   makes the first FIRE finish the automation. A recurring script may print `DONE [text]` and exit 0 to stop cleanly.
   Any other unplanned exit wakes only the watcher, to repair or escalate. The third failure in a row (a FIRE or an hour
   of running resets the count), or a watcher whose turn ends mid-repair, escalates instead: the script stops as
-  `failed`, subscribers get `automations.escalated`, and @ultimate a message.
+  `failed`, subscribers get `automations.escalated`, and @ultimate a message. Pausing stops the watcher's turn and
+  its queued inputs, deleting also concludes it, and briefs or failures still on their way to a stopped automation's
+  watcher are dropped. A watcher cannot resume an automation its owner stopped.
 
 ## Actions
 
@@ -34,27 +37,31 @@ Each automation has one or both:
   nonempty FIRE text is appended as `\n\nFired: <text>`. Runs record status and the first answer line; the ledger keeps
   the last 50 per automation.
 - `subscribers` wakes existing conversations with an `automations.fired` input `{id, name, text}`. A subscriber is
-  `#12` or a standing agent's `@name`, resolved at delivery, so `@ultimate` follows it across chapters.
+  `#12` or a standing agent's `@name`, resolved at delivery, so `@ultimate` follows it across chapters. With a
+  `prompt`, subscribers are woken when each run ends instead, with an `automations.finished` input whose text is the
+  run's answer (or `Run failed: …`); an aborted run wakes no one.
 
 Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
 a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,
 escalating with `Fired more than 6 times in an hour; paused`. Only fires that start a run or wake a subscriber count:
 one skipped beside a still-working run starts nothing, so a long deploy run does not pause its train.
 
-An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation` and `subagent`),
-model and thinking, discovered as in subagents; its isolate is ignored and unknown names are refused. Without one, runs
-copy the root agent minus the automation tool, on the default model. `model {provider, modelId}` and `thinking`
-override either. Enabled automations add a line each to the prompt, such as `when @ultimate context ≥ 80%`.
+An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation`, and `subagent`
+unless its `tools` lists it), model and thinking, discovered as in subagents; its isolate is ignored and unknown names
+are refused. Without one, runs copy the root agent minus the automation tool, on the default model.
+`model {provider, modelId}` and `thinking` override either. Enabled automations add a line each to the prompt, such as `when @ultimate context ≥ 80%`.
 
 ## Tool
 
 `automation` is replay-safe and takes `events`, `list`, `create`, `update`, `pause`, `resume`, `run`, `runs`, `log`,
-`abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`.
+`abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`. Its receipt and `list` give each scheduled automation's next
+fire in UTC and from now (`next: 2026-11-20T13:00:00Z, in 18h`), so a wrong day shows at once.
 
 - `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
   scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
   New ids are `A<n>`; project scripts use slugs.
-- `update {id, …}` may switch between schedule, event and condition; a script stays a script.
+- `update {id, …}` may switch between schedule, event and condition; a script stays a script. `subscribers` replaces
+  the whole list; `subscribe` / `unsubscribe` change one.
 - `pause` / `resume`; `run` fires now, or relaunches a script; `runs {id}`; `abort {id, runId}`; `log {id, lines?}`
   (default 50, at most 2000); `subscribe` / `unsubscribe {id, to?}` (default the caller); `escalate {id, reason}`;
   `delete` keeps files and conversations.
@@ -92,7 +99,7 @@ edits apply after landing.
 
 `AutomationsApi` (`api.ts`, token `automations`, core tier: consumers `need` it) offers `create(args)` (`subscribers` stand in for a
 caller; `key` makes it safe to retry), `delete`, `resume`, `pause`, `run` and `status`, each returning the record with
-`alive`. Mutating methods commit: call them outside transactions, and from a reactor do not await them.
+`alive`; `read(tx, id)` and `readByKey(tx, key)` return the record as a transaction sees it. Mutating methods commit: call them outside transactions, and from a reactor do not await them.
 
 `POST /api/extensions/automations/actions/<operation>` with `{args}` returns `{result}` for every tool operation, plus
 `describe {schedule}` → `{schedule, description, next}` (up to three fire times) and `script {id}` → `{path, text}`

@@ -9,31 +9,34 @@ behind an error boundary that falls back to `core`.
 How a tool call looks in the transcript, by tool name. Without one, a generic card shows name, arguments, and output.
 
 ```tsx
-import { Tool, ToolContent, ToolHeader, ToolOutput } from '@/components/ai/tool'
-import type { ToolCallView } from '@/sdk'
+import { Tool, ToolContent, ToolHeader, ToolOutput } from '@/components/ai/tool.solid.tsx'
+import { defineWebExtension } from '@/sdk/solid'
+import type { SolidToolProps } from '@/sdk/solid'
 
-function Grep({ call }: { call: ToolCallView }) {
+function Grep(props: SolidToolProps) {
   return (
     <Tool>
-      <ToolHeader name="grep" state={call.status} title={String(call.args.pattern ?? '')} />
+      <ToolHeader
+        name="grep"
+        state={props.call.status}
+        title={String(props.call.args.pattern ?? '')}
+      />
       <ToolContent>
-        <ToolOutput output={call.output} isError={call.status === 'error'} />
+        <ToolOutput output={props.call.output} isError={props.call.status === 'error'} />
       </ToolContent>
     </Tool>
   )
 }
-tools: {
-  grep: Grep
-}
+
+export default defineWebExtension({ tools: { grep: Grep } })
 ```
 
 `ToolCallView`: `id`, `name`, `args` (partial while the model streams them), `status` (`streaming`, `pending`,
 `running`, `done`, `error`, `interrupted`), `output` (streamed while running, the result's text when done), `images`
 (the result's images, such as screenshots), `details` (the tool's `details()`; cast to its shape), `diagnostics`,
-`dropped`, `startedAt`/`endedAt`, and `result`. `useToolDuration(call)` gives a ticking duration. `ToolImages` (or one
-`ToolImage`) from `@/components/ai/tool` shows images as thumbnails that open full size; the generic card already does.
-To put a button beside the header (such as "open"), wrap `ToolHeader` in a flex row inside `Tool`: a button inside the
-header would toggle it.
+`dropped`, `startedAt`/`endedAt`, and `result`. `useToolDuration(() => props.call)` from `@/sdk/solid` gives a ticking duration. `ToolImages` (or one
+`ToolImage`) from `@/components/ai/tool.solid.tsx` shows images as thumbnails that open full size; the generic card
+already does. Use `ToolHeader`'s `action` prop for a button beside the toggle, not inside it.
 
 Tool renderers also receive `core`, starting with the generic tool card. Like entry renderers, they compose in
 discovery order (built-in → user → project): each receives the previous rendering, and its error boundary falls back
@@ -41,41 +44,60 @@ to that rendering. Return `core` to leave it unchanged, wrap it to decorate it, 
 
 ## Link renderers
 
-`link` renders the links in Markdown that `MessageResponse` shows (messages, reports). It receives `{ href, children,
-core }`; `core` starts as Streamdown's link, which asks "Open external link?" before opening a new tab. Like tool
-renderers, link renderers compose in discovery order behind error boundaries that fall back to `core`: return `core`
-for links you leave alone. A link still streaming never reaches them. `instance` renders links to its previews as chips
-that open in the window. `MessageResponse` also turns `#id` and `#id/entry` mentions (three or more digits, outside
+`Markdown` (from `@/components/markdown/markdown.solid.tsx`) shows messages and reports. Contribute its link,
+inline-code and code-block renderers as plain components under `link`, `inlineCode` or `codeBlocks` in
+`web.solid.tsx`. Read props where you use them, as in any Solid component.
+
+`link` renders the links in Markdown. It receives `{ href, children, core }`; `core` starts as the default link, which asks
+"Open external link?" before opening a new tab. A link still streaming stays text and never reaches a renderer.
+Link renderers compose in discovery order, with `core` as the fallback. Return `core` for links you leave alone.
+`instance` renders links to its previews as chips that open in the window. `Markdown` also turns `#id` and `#id/entry` mentions (three or more digits, outside
 code and links) into `#conversation-<id>[-<entry>]` links, and `MentionText` does the same for plain text;
 `conversations` renders those of known conversations as their feature chip, others stay text.
 
 ```tsx
-link: ({ href, children, core }) =>
-  href.startsWith('https://docs.example.com/') ? <a href={href}>{children}</a> : core
+export const DocsLink: LinkRenderer = (props) => (
+  <Show when={props.href.startsWith('https://docs.example.com/')} fallback={props.core}>
+    <a href={props.href}>{props.children}</a>
+  </Show>
+)
 ```
 
 ## Inline code renderers
 
-`inlineCode` renders the inline code spans in Markdown that `MessageResponse` shows; fenced blocks never reach it. It
+`inlineCode` renders the inline code spans in Markdown; fenced blocks never reach it. It
 receives `{ code, core }`, where `code` is the span's text and `core` starts as the default `<code>`. They compose like
-link renderers: return `core` for spans you leave alone. For example, an extension can make file paths clickable:
+link renderers: return `core` for spans you leave alone. To make paths clickable, use the kit `Button`:
 
 ```tsx
-inlineCode: ({ code, core }) =>
-  code.startsWith('src/') ? <button onClick={() => open(code)}>{core}</button> : core
+export const PathCode: InlineCodeRenderer = (props) => (
+  <Show when={props.code.startsWith('src/')} fallback={props.core}>
+    <Button
+      aria-label={`Open ${props.code}`}
+      class="inline font-normal"
+      onClick={() => open(props.code)}
+      size={null}
+      variant={null}
+    >
+      {props.core}
+    </Button>
+  </Show>
+)
 ```
 
 ## Code block renderers
 
-`codeBlocks` renders the fenced code blocks of one language in Markdown that `MessageResponse` shows, keyed by the
+`codeBlocks` renders the fenced code blocks of one language in Markdown, keyed by the
 fence's language. Each receives `{ code, language, incomplete, core }`; `core` starts as the highlighted block with its
 copy button, and `incomplete` is true while the fence still streams. They compose in discovery order behind error
 boundaries that fall back to `core`. Return `core` while `incomplete`, so a half-written block never renders.
 
 ```tsx
-codeBlocks: {
-  dot: ({ code, incomplete, core }) => (incomplete ? core : <Graph source={code} />),
-}
+export const Dot: CodeBlockRenderer = (props) => (
+  <Show when={!props.incomplete} fallback={props.core}>
+    <Graph source={props.code} />
+  </Show>
+)
 ```
 
 ## Message actions
@@ -87,15 +109,16 @@ accessible label and a tooltip.
 
 ```tsx
 messageActions: [
-  ({ entry }) => (
-    <button
-      aria-label="Pin message"
+  (props) => (
+    <Button
+      aria-label={`Pin message #${props.entry.id}`}
       title="Pin message"
-      onClick={() => pin(entry.id)}
-      type="button"
+      onClick={() => pin(props.entry.id)}
+      size="icon"
+      variant="ghost"
     >
-      <PinIcon className="size-3" />
-    </button>
+      <PinIcon class="size-3" />
+    </Button>
   ),
 ]
 ```
@@ -137,7 +160,7 @@ How an entry kind looks in the transcript. Extensions that append their own entr
 `pi.*` kind takes over from the core one. Unknown kinds show as JSON.
 
 ```tsx
-entries: { 'notes.pinned': ({ entry }) => <div className="text-muted-foreground">📌 {String(entry.data)}</div> }
+entries: { 'notes.pinned': (props) => <div class="text-muted-foreground">📌 {String(props.entry.data)}</div> }
 ```
 
 A renderer also gets `core`, the rendering of the same entry so far: return it for the entries you leave alone, wrap
@@ -148,13 +171,13 @@ which falls back to its `core` when it throws. `self` renders `pi.system` entrie
 reload marker and returns `core` for the rest; `subagents` and `workspaces` both render `pi.user`, each only the inputs
 it owns (agent messages, lander reports).
 
-Entry renderers and message contributions relate an entry to its neighbours with `useTranscript()`: the entries the
+Entry renderers and message contributions relate an entry to its neighbours with `useTranscript()`, an accessor of the entries the
 transcript has loaded, oldest first, which grows as the reader pages in earlier history. `models` marks a response that
 ran on another model or thinking level than the one before it this way.
 
 ## Inbox renderers
 
-An optional `inbox` renderer wraps each queued composer input with `{ item, core, cancel }`. Return `core` for inputs you do not own; when replacing it, include `cancel` to retain core cancellation. Like entry renderers, the last facet in discovery order wins and runs behind an extension boundary with core fallback. Keep provenance and domain-specific UI in the extension.
+An optional `inbox` renderer wraps each queued composer input with `{ item, core, cancel }`. Return `core` for inputs you do not own; when replacing it, include `cancel` to retain core cancellation. Like entry renderers, the last facet in discovery order wins and runs behind an extension boundary with core fallback. Keep provenance and domain-specific UI in the extension. Contribute a component taking `SolidInboxProps` (`extensions/subagents/inbox.solid.tsx`).
 
 ## Composer renderers
 
@@ -163,11 +186,13 @@ narrow side region). Render `core` to preserve the existing composer, optionally
 discovery order: each receives the previous rendering as `core`, behind its own extension boundary with that rendering
 as fallback. These renderers can use `useTranscript()` for the shown conversation's current entries.
 Lineage uses this to show a root's read-only History banner, with the way back to @ultimate, instead of a composer.
-To send what the composer submits elsewhere, wrap `core` in `<ComposerRedirect to={{ placeholder, send }}>` (from `@/sdk`):
-while `to` is set, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
+Contribute a component taking `SolidComposerProps`. To send what the composer submits
+elsewhere, wrap `core` in `<ComposerRedirect value={target}>` (from `@/sdk/solid`, `target` an accessor of
+`{ placeholder, send }`, inheriting the outer one with `useContext(ComposerRedirect)` while it has nothing of its own):
+while it gives a target, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
 sending states (side-chat forks @ultimate this way). A redirect also sets aside images, `composer.actions` and steer
 and queue; to only change what the box says, provide `ComposerPlaceholder` instead:
-`provide(ComposerPlaceholder, ({ conversation, busy }) => (conversation === mine ? 'Ask the coach…' : undefined))`.
+`provide(ComposerPlaceholder, (input) => () => (input().conversation === mine ? 'Ask the coach…' : undefined))`.
 Only the shown conversation's composer takes typing shortcuts
 (Escape, Shift+Tab); a scoped one does not.
 `switchConversation(id, { replace: true })` takes the current history entry instead of adding one, as a redirect does.

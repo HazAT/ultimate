@@ -162,13 +162,17 @@ async function workLostWithCheckout(
     ),
   }
 }
+const failure = (error: unknown) => (error instanceof Error ? error.message : String(error))
 const workHeldByRegisteredCheckout = (
   id: ConversationId,
   workspace: WorkspaceIndex['items'][string],
   registered: boolean,
 ): Promise<KeptWork> =>
   registered
-    ? workLostWithCheckout(workspace).then((work) => ({ id, ...work }))
+    ? workLostWithCheckout(workspace).then(
+        (work) => ({ id, ...work }),
+        (error: unknown) => ({ id, uncommitted: 0, unlanded: 0, reason: failure(error) }),
+      )
     : Promise.resolve({ id, uncommitted: 0, unlanded: 0 })
 async function listedBySource(workspace: WorkspaceIndex['items'][string]) {
   return (await git(workspace.source, 'worktree', 'list', '--porcelain'))
@@ -548,7 +552,7 @@ export function workspaces(host: Host) {
       }
       return undefined
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
+      const reason = failure(error)
       const present = await registeredCheckout(workspace)
       await host.harness().commit(async (tx) => {
         const saved = (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)]
@@ -602,14 +606,14 @@ export function workspaces(host: Host) {
               if (descendant.state !== 'removed') item.descendant = Number(child)
             }
           } while (size !== sources.size)
-          if (!item.uncommitted && !item.unlanded && !item.descendant)
+          if (!item.uncommitted && !item.unlanded && !item.reason && !item.descendant)
             index.items[String(id)].state = 'removed'
           else if (registered && index.items[String(id)].state === 'removed')
             index.items[String(id)].state = 'ready'
           return undefined
         }, context)
         if (reason) item.busy = reason
-        if (item.uncommitted || item.unlanded || item.busy || item.descendant) {
+        if (item.uncommitted || item.unlanded || item.reason || item.busy || item.descendant) {
           kept.push(item)
           return
         }
@@ -669,8 +673,10 @@ export function workspaces(host: Host) {
         const branch = record
           .find((line) => line.startsWith('branch refs/heads/'))
           ?.slice('branch refs/heads/'.length)
-        const work = await workLostWithCheckout({ path, branch: branch ?? '', target })
-        if (work.uncommitted || work.unlanded) {
+        const work = await workLostWithCheckout({ path, branch: branch ?? '', target }).catch(
+          (error: unknown) => ({ uncommitted: 0, unlanded: 0, reason: failure(error) }),
+        )
+        if (work.uncommitted || work.unlanded || work.reason) {
           kept.push(path)
           return
         }

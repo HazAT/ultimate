@@ -1,17 +1,28 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import type { Context } from '@earendil-works/chord/context'
 import { copyJson } from '@earendil-works/chord/json'
 import {
+  AgentDoc,
   defineDoc,
   defineExtension,
+  defineTask,
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Cursor, ModelRef } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  Cursor,
+  ModelRef,
+  NextTaskState,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { every } from '../../lib/timers.ts'
+import { conversationIdentity } from '../../lib/ids.ts'
+import { onCommit } from '../../lib/commits.ts'
+import { rebuiltOnOpen } from '../../lib/errors.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { PauseApi } from '../pause/api.ts'
@@ -31,127 +42,87 @@ const State = defineDoc<WarmDocState>({
 })
 export const docs = [State]
 
-const CACHE_CHECK_INTERVAL_MS = 60_000
 export const hourLong = (provider: string) =>
   provider === 'claude-code' ||
   (provider === 'anthropic' && process.env.PI_CACHE_RETENTION === 'long')
 const QUESTION = 'Cache keep-warm check from Ultimate, not from the user. Reply with just: ok'
 
-const read = async (host: ExtensionHost) =>
-  (await host.harness().snapshot(State, ROOT_CONVERSATION_ID, context)) ?? {}
+export const lastOn = <R extends { provider: string; model: string }>(
+  last: R | undefined,
+  model: ModelRef,
+) => (last?.provider === model.provider && last.model === model.modelId ? last : undefined)
 
-const ultimateOf = async (host: ExtensionHost) =>
-  (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
-
-export const lastOn = (last: Ping | undefined, model: ModelRef) =>
-  last?.provider === model.provider && last.model === model.modelId ? last : undefined
-
-export const cached = (message: AssistantMessage, model: ModelRef) =>
-  message.provider === model.provider &&
-  message.model === model.modelId &&
+export const cached = (message: AssistantMessage) =>
+  hourLong(message.provider) &&
   message.stopReason !== 'error' &&
   message.stopReason !== 'aborted' &&
   message.usage.cacheRead + message.usage.cacheWrite > 0
 
-async function lastCacheRenewingAnswerAtMs(
-  host: ExtensionHost,
-  id: ConversationId,
-  model: ModelRef,
+const key = (id: ConversationId, model: ModelRef) => `${id}:${model.provider}/${model.modelId}`
+
+export function plan(
+  doc: WarmDocState,
+  id: ConversationId | undefined,
+  model: ModelRef | undefined,
   now: number,
 ) {
-  const conversation = (await host.harness().conversation(id, context))!
-  let cursor: Cursor | undefined
-  do {
-    const page = await conversation.entries({}, 100, cursor, context)
-    for (const entry of page.items) {
-      const message = entry.model?.[0]
-      if (message?.role !== 'assistant') continue
-      if (now - message.timestamp >= TTL) return undefined
-      if (cached(message, model)) return message.timestamp
-    }
-    cursor = page.next
-  } while (cursor)
-  return undefined
-}
-
-async function activity(host: ExtensionHost, doc: WarmDocState, now: number) {
-  const id = await ultimateOf(host)
-  const conversation = id === undefined ? undefined : await host.harness().conversation(id, context)
-  if (!conversation) return undefined
-  const model = (await conversation.agent(context)).model
-  if (!model || !hourLong(model.provider)) return undefined
-  const answered = await lastCacheRenewingAnswerAtMs(host, id!, model, now)
-  const last = lastOn(doc.last, model)
-  const pinged = last && !last.error ? last.at : undefined
-  const lastRequest = Math.max(answered ?? 0, pinged ?? 0) || undefined
-  return {
-    id: id!,
-    provider: model.provider,
-    model: model.modelId,
+  if (id === undefined || !model || !hourLong(model.provider)) return undefined
+  const ping = lastOn(doc.last, model)
+  const last = ping && (ping.conversation ?? id) === id ? ping : undefined
+  const lastRequest = Math.max(
+    doc.answers?.[key(id, model)] ?? 0,
+    last && !last.error ? last.at : 0,
+  )
+  if (!lastRequest) return undefined
+  const at = lastRequest + LEAD
+  const found = {
     lastRequest,
     failedAfter: last?.error ? last.at : undefined,
     inputAt: doc.inputAt,
+  }
+  return {
+    provider: model.provider,
+    model: model.modelId,
+    lastRequest,
+    at,
+    due: !doc.off && due({ ...found, now: Math.max(now, at) }),
   }
 }
 
 export const open = (paused: boolean | undefined, lastRequest: number, now: number) =>
   !paused && now - lastRequest < TTL
 
-async function commitIdleUnchangedAttempt(
-  host: ExtensionHost,
-  id: ConversationId,
-  attempt: Ping,
-  previous?: number,
-) {
-  return host.harness().commit(async (tx) => {
-    const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-    if (doc.off || doc.last?.at !== previous || (await tx.doc(LiveDoc, id)).run) return false
-    doc.last = attempt
-    doc.pings = (doc.pings ?? 0) + 1
-    return true
-  }, context)
+const owner = {
+  ownership: { kind: 'conversation' as const },
+  conversationId: ROOT_CONVERSATION_ID,
+  background: true,
+}
+const stop = {
+  status: 'terminal' as const,
+  outcome: { status: 'completed' as const, result: null },
 }
 
-async function commitPingOutcomeAndUsage(
-  host: ExtensionHost,
-  id: ConversationId,
-  last: Ping,
-  answer?: AssistantMessage,
-) {
-  await host.harness().commit(async (tx) => {
-    ;(await tx.doc(State, ROOT_CONVERSATION_ID)).last = last
-    if (answer)
-      await host.need(ConversationsApi).accountResponse(tx, id, {
-        provider: answer.provider,
-        model: answer.model,
-        usage: copyJson(answer.usage, {
-          omitUndefinedProperties: true,
-        }) as ResponseReceipt['usage'],
-        text: '',
-        stopReason: answer.stopReason,
-      })
-  }, context)
+async function ultimate(host: ExtensionHost, caller: Context) {
+  const id = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, caller))?.ultimate
+  const conversation = id === undefined ? undefined : await host.harness().conversation(id, caller)
+  return (
+    conversation && {
+      id: id!,
+      agent: await conversation.agent(caller),
+      conversation,
+    }
+  )
 }
 
-async function sendOneShotPingWithoutSession(
-  host: ExtensionHost,
-  found: {
-    id: ConversationId
-    provider: string
-    model: string
-    lastRequest: number
-    previous?: number
+async function pingRequest(
+  conversation: {
+    context: (c: Context) => Promise<{ messages: readonly Message[] }>
   },
-  signal: AbortSignal,
+  id: ConversationId,
+  caller: Context,
 ) {
-  const paused = () => host.want(PauseApi)?.paused()
-  const { id, provider } = found
-  const conversation = (await host.harness().conversation(id, context))!
-  const agent = await conversation.agent(context)
-  const model = host.modelRuntime.getModel(provider, found.model)
-  if (!model) return
-  let messages: Message[] = [...(await conversation.context(context)).messages]
-  const leadingConversationIdentity = `You are conversation #${id}.`
+  let messages: Message[] = [...(await conversation.context(caller)).messages]
+  const leadingConversationIdentity = conversationIdentity(id)
   if (
     !messages.some(
       (message) => message.role === 'user' && message.content === leadingConversationIdentity,
@@ -164,120 +135,245 @@ async function sendOneShotPingWithoutSession(
       ...messages.slice(place),
     ]
   }
-  const at = Date.now()
-  messages.push({ role: 'user', content: QUESTION, timestamp: at })
-  if (!open(paused(), found.lastRequest, Date.now())) return
-  if (
-    !(await commitIdleUnchangedAttempt(
-      host,
-      id,
-      { at, provider, model: found.model, error: 'interrupted' },
-      found.previous,
-    ))
-  )
-    return
-  const startPingIfCacheOpen = ():
-    | { answer: Promise<AssistantMessage> }
-    | { error: unknown }
-    | undefined => {
-    if (!open(paused(), found.lastRequest, Date.now())) return undefined
-    try {
-      return {
-        answer: host.modelRuntime
-          .streamSimple(
-            model,
-            { messages },
-            {
-              ...(agent.thinkingLevel === 'off' ? {} : { reasoning: agent.thinkingLevel }),
-              signal: AbortSignal.any([AbortSignal.timeout(180_000), signal]),
-            },
-          )
-          .result(),
-      }
-    } catch (error) {
-      return { error }
-    }
-  }
-  const started = startPingIfCacheOpen()
-  if (!started) {
-    await commitPingOutcomeAndUsage(host, id, {
-      at,
-      provider,
-      model: found.model,
-      error: 'skipped: paused or expired',
-    })
-    return
-  }
-  let answer: AssistantMessage
-  try {
-    if ('error' in started) throw started.error
-    answer = await started.answer
-  } catch (error) {
-    await commitPingOutcomeAndUsage(host, id, {
-      at,
-      provider,
-      model: found.model,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return
-  }
-  const failed = answer.stopReason === 'error' || answer.stopReason === 'aborted'
-  await commitPingOutcomeAndUsage(
-    host,
-    id,
-    failed
-      ? { at, provider, model: found.model, error: answer.errorMessage ?? answer.stopReason }
-      : {
-          at,
-          provider,
-          model: found.model,
-          read: answer.usage.cacheRead,
-          write: answer.usage.cacheWrite,
-        },
-    answer,
-  )
+  return messages
 }
 
-async function tick(host: ExtensionHost, signal: AbortSignal) {
-  if (host.want(PauseApi)?.paused()) return
-  const doc = await read(host)
-  if (doc.off) return
-  const now = Date.now()
-  const found = await activity(host, doc, now)
-  if (!found?.lastRequest || !due({ now, ...found })) return
-  await sendOneShotPingWithoutSession(
-    host,
-    {
-      ...found,
-      lastRequest: found.lastRequest,
-      previous: doc.last?.at,
+type Planned = NonNullable<ReturnType<typeof plan>>
+
+async function send(
+  host: ExtensionHost,
+  found: NonNullable<Awaited<ReturnType<typeof ultimate>>>,
+  messages: Message[],
+  next: Planned,
+  at: number,
+  runtime: { now(): number; signal: AbortSignal },
+): Promise<{ last: Ping; answer?: AssistantMessage }> {
+  const attempt = { at, provider: next.provider, model: next.model }
+  const model = host.modelRuntime.getModel(next.provider, next.model)
+  if (!model)
+    return {
+      last: {
+        ...attempt,
+        error: `unknown model ${next.provider}/${next.model}`,
+      },
+    }
+  try {
+    if (!open(host.want(PauseApi)?.paused(), next.lastRequest, runtime.now()))
+      return { last: { ...attempt, error: 'skipped: paused or expired' } }
+    const thinking = found.agent.thinkingLevel
+    const answer = await host.modelRuntime
+      .streamSimple(
+        model,
+        { messages },
+        {
+          ...(thinking === 'off' ? {} : { reasoning: thinking }),
+          signal: AbortSignal.any([AbortSignal.timeout(180_000), runtime.signal]),
+        },
+      )
+      .result()
+    if (answer.stopReason === 'error' || answer.stopReason === 'aborted')
+      return {
+        last: { ...attempt, error: answer.errorMessage ?? answer.stopReason },
+        answer,
+      }
+    return {
+      last: {
+        ...attempt,
+        read: answer.usage.cacheRead,
+        write: answer.usage.cacheWrite,
+      },
+      answer,
+    }
+  } catch (error) {
+    return {
+      last: {
+        ...attempt,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }
+  }
+}
+
+const MODEL_RETRY_MS = 60_000
+
+type Checkpoint = { phase: 'plan' } | { phase: 'attempted' }
+
+function pinger(host: ExtensionHost) {
+  const sleepOrStop = (
+    doc: WarmDocState,
+    next: Planned | undefined,
+    now: number,
+  ): NextTaskState<Checkpoint, null> => {
+    if (next?.due && next.at > now)
+      return {
+        status: 'sleeping',
+        until: next.at,
+        checkpoint: { phase: 'plan' },
+      }
+    delete doc.waker
+    return stop
+  }
+  return defineTask<null, Checkpoint, null>({
+    name: 'keep-warm.ping',
+    version: 1,
+    initial: () => ({ phase: 'plan' }),
+    phases: {
+      plan: async (task, runtime, ctx) => {
+        const found = await ultimate(host, ctx)
+        const ready =
+          found &&
+          plan(
+            (await runtime.snapshot(State, ROOT_CONVERSATION_ID, ctx)) ?? {},
+            found.id,
+            found.agent.model,
+            runtime.now(),
+          )
+        const messages =
+          ready?.due && ready.at <= runtime.now()
+            ? await pingRequest(found!.conversation, found!.id, ctx)
+            : undefined
+        let sending: { next: Planned; at: number } | undefined
+        await runtime.commit(async (tx) => {
+          const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
+          if (doc.waker !== task.id) return stop
+          const now = runtime.now()
+          const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+          const model = id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model
+          if (id !== undefined && model) await recordRenewal(tx, doc, id, model)
+          const next = plan(doc, id, model, now)
+          if (!next?.due || next.at > now) return sleepOrStop(doc, next, now)
+          const prepared = !!messages && id === found!.id && !!lastOn(next, found!.agent.model!)
+          if (!prepared || host.want(PauseApi)?.paused())
+            return { status: 'sleeping', until: now, checkpoint: { phase: 'plan' } }
+          if (!host.modelRuntime.getModel(next.provider, next.model))
+            return {
+              status: 'sleeping',
+              until: Math.min(now + MODEL_RETRY_MS, next.lastRequest + TTL),
+              checkpoint: { phase: 'plan' },
+            }
+          const run = (await tx.doc(LiveDoc, found!.id)).run
+          if (run)
+            return {
+              status: 'waiting',
+              on: [run.taskId],
+              policy: 'any',
+              checkpoint: { phase: 'plan' },
+            }
+          doc.last = {
+            at: now,
+            conversation: id,
+            provider: next.provider,
+            model: next.model,
+            error: 'interrupted',
+          }
+          doc.pings = (doc.pings ?? 0) + 1
+          sending = { next, at: now }
+          return { status: 'running', checkpoint: { phase: 'attempted' } }
+        }, ctx)
+        if (!sending) return
+        messages!.push({ role: 'user', content: QUESTION, timestamp: sending.at })
+        const { last, answer } = await send(
+          host,
+          found!,
+          messages!,
+          sending.next,
+          sending.at,
+          runtime,
+        )
+        await runtime.commit(async (tx) => {
+          const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
+          doc.last = { ...last, conversation: found!.id }
+          if (answer)
+            await host.need(ConversationsApi).accountResponse(tx, found!.id, {
+              provider: answer.provider,
+              model: answer.model,
+              usage: copyJson(answer.usage, {
+                omitUndefinedProperties: true,
+              }) as ResponseReceipt['usage'],
+              text: '',
+              stopReason: answer.stopReason,
+            })
+          return { status: 'running', checkpoint: { phase: 'attempted' } }
+        }, ctx)
+      },
+      attempted: (_task, runtime, ctx) =>
+        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
     },
-    signal,
-  )
+    abort: (task, runtime, ctx) =>
+      runtime.commit(async (tx) => {
+        const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
+        if (doc.waker === task.id) delete doc.waker
+        return { status: 'terminal', outcome: { status: 'aborted' } }
+      }, ctx),
+  })
+}
+
+async function newestCachedAnswer(tx: Tx, id: ConversationId, model: ModelRef, since: number) {
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanEntries({ conversationId: id }, 100, cursor)
+    for (const entry of page.items) {
+      const message = entry.model?.[0]
+      if (message?.role !== 'assistant') continue
+      if (message.timestamp <= since) return undefined
+      if (cached(message) && lastOn(message, model)) return message.timestamp
+    }
+    cursor = page.next
+  } while (cursor)
+  return undefined
+}
+
+async function arm(tx: Tx, host: ExtensionHost) {
+  const Pinger = pingers.get(host)!
+  const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
+  const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+  const next =
+    id === undefined ? undefined : plan(doc, id, (await tx.doc(AgentDoc, id)).model, Date.now())
+  if (!next?.due) return
+  const waker = doc.waker === undefined ? undefined : (await tx.task(doc.waker))?.state
+  const sleepsPast = waker?.status === 'sleeping' && (waker.until ?? Infinity) > next.at
+  if (!waker || waker.status === 'terminal' || sleepsPast)
+    doc.waker = await tx.createTask(Pinger, null, owner)
+}
+
+async function recordRenewal(tx: Tx, doc: WarmDocState, id: ConversationId, model: ModelRef) {
+  if (!hourLong(model.provider)) return
+  const known = doc.answers?.[key(id, model)] ?? 0
+  const newest = await newestCachedAnswer(tx, id, model, Math.max(known, Date.now() - TTL))
+  if (newest !== undefined) doc.answers = { ...doc.answers, [key(id, model)]: newest }
+}
+
+async function catchUp(host: ExtensionHost, changed?: Set<ConversationId>) {
+  const found = await ultimate(host, context)
+  if (changed && !(found && changed.has(found.id))) return
+  await host.harness().commit(async (tx) => {
+    const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+    const model = id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model
+    if (id !== undefined && model)
+      await recordRenewal(tx, await tx.doc(State, ROOT_CONVERSATION_ID), id, model)
+    await arm(tx, host)
+  }, context)
 }
 
 async function state(host: ExtensionHost): Promise<WarmState> {
-  const doc = await read(host)
-  const now = Date.now()
-  const found = await activity(host, doc, now)
-  const on = !doc.off
-  const base = {
-    on,
+  const doc = (await host.harness().snapshot(State, ROOT_CONVERSATION_ID, context)) ?? {}
+  const found = await ultimate(host, context)
+  const next = plan(doc, found?.id, found?.agent.model, Date.now())
+  return {
+    on: !doc.off,
     pings: doc.pings ?? 0,
     ...(doc.last ? { last: doc.last } : {}),
     ...(doc.inputAt === undefined ? {} : { inputAt: doc.inputAt }),
-  }
-  if (!found) return base
-  const nextAt = found.lastRequest === undefined ? undefined : found.lastRequest + LEAD
-  const will = on && nextAt !== undefined && due({ ...found, now: Math.max(now, nextAt) })
-  return {
-    ...base,
-    ...(found.lastRequest === undefined ? {} : { lastRequest: found.lastRequest }),
-    ...(will ? { nextAt } : {}),
+    ...(next ? { lastRequest: next.lastRequest } : {}),
+    ...(next?.due ? { nextAt: next.at } : {}),
   }
 }
 
+const pingers = new WeakMap<ExtensionHost, ReturnType<typeof pinger>>()
+
 export default function keepWarm(host: ExtensionHost) {
+  const Pinger = pinger(host)
+  pingers.set(host, Pinger)
   host.need(ConversationsApi)
   host.want(PauseApi)
   host.react(
@@ -286,33 +382,33 @@ export default function keepWarm(host: ExtensionHost) {
     async (tx, { data, at }) => {
       if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== data.conversation) return
       ;(await tx.doc(State, ROOT_CONVERSATION_ID)).inputAt = Date.parse(at)
+      await arm(tx, host)
     },
     { from: 'now' },
   )
-  const shared = host.resource('keep-warm.ping', () => ({
-    running: undefined as Promise<void> | undefined,
-    released: new AbortController(),
-  }))
-  const stopPolling = every(CACHE_CHECK_INTERVAL_MS, () => {
-    if (shared.released.signal.aborted) return
-    shared.running ??= tick(host, shared.released.signal)
-      .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
-      .finally(() => {
-        shared.running = undefined
-      })
+  host.onOpen(async (opened) => {
+    const stopWatching = onCommit(host.harness(), (publication) => {
+      const changed = new Set<ConversationId>()
+      for (const change of publication.changes) {
+        if (
+          change.type === 'document' &&
+          change.record.kind === AgentDoc.definition.kind &&
+          change.conversationId !== undefined
+        )
+          changed.add(change.conversationId)
+        const message = change.type === 'entry' ? change.value.model?.[0] : undefined
+        if (change.type === 'entry' && message?.role === 'assistant' && cached(message))
+          changed.add(change.value.conversationId)
+      }
+      if (changed.size) rebuiltOnOpen('open catches up again', catchUp(host, changed))
+    })
+    opened.defer(stopWatching)
+    await catchUp(host)
   })
-  host.onRelease(async () => {
-    shared.released.abort()
-    await shared.running
+  return defineExtension({
+    name: 'keep-warm',
+    tasks: [Pinger],
   })
-  host.onOpen(async () => {
-    if (shared.released.signal.aborted) shared.released = new AbortController()
-  })
-  host.onClose(async () => {
-    stopPolling()
-    await shared.running
-  })
-  return defineExtension({ name: 'keep-warm' })
 }
 
 export const actions = {
@@ -324,9 +420,14 @@ export const actions = {
     await host.harness().commit(async (tx) => {
       const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
       if (on === !doc.off) return
-      await action.uiChanged(tx, { key: 'keep-warm.on', value: on, previous: !on })
       if (on) delete doc.off
       else doc.off = true
+      await arm(tx, host)
+      await action.uiChanged(tx, {
+        key: 'keep-warm.on',
+        value: on,
+        previous: !on,
+      })
     }, context)
     return state(host)
   }),

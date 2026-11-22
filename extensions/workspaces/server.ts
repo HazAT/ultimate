@@ -151,25 +151,25 @@ export default function workspaceExtension(host: ExtensionHost) {
     service.resume(context).catch((error: unknown) => {
       host.notice(`Lander resume failed: ${String(error)}`)
     })
-  let unsubscribe: (() => void) | undefined
-  let releasing: Promise<unknown> | undefined
-  let releaseController: AbortController | undefined
   const stand = () =>
     service.standLander(context).catch((error: unknown) => {
       host.notice(`Lander setup failed: ${String(error)}`)
     })
-  host.onOpen(async () => {
-    releaseController = new AbortController()
+  host.onOpen(async (opened) => {
+    const releaseController = new AbortController()
     const { signal } = releaseController
-    releasing = conversations
+    const releasing = conversations
       .concluded(context)
       .then((ids) => service.release([...ids], context, signal))
       .then(() => service.sweep(context, signal))
       .catch((error: unknown) => {
         host.notice(`Workspace release failed: ${String(error)}`)
       })
-    unsubscribe?.()
-    unsubscribe = onCommit(host.harness(), (publication) => {
+    opened.defer(async () => {
+      releaseController.abort()
+      await releasing
+    })
+    const unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (
           change.type !== 'task' ||
@@ -186,17 +186,12 @@ export default function workspaceExtension(host: ExtensionHost) {
         else rebuiltOnOpen('open resumes every lander queue', resume())
       }
     })
+    opened.defer(unsubscribe)
     await stand()
     await sweepChecks(host.home).catch((error: unknown) => {
       host.notice(`Lander check sweep failed: ${String(error)}`)
     })
     await resume()
-  })
-  host.onClose(async () => {
-    releaseController?.abort()
-    await releasing
-    unsubscribe?.()
-    unsubscribe = undefined
   })
   return defineExtension({
     name: 'workspaces',

@@ -9,13 +9,14 @@ import type {
 } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
+import { FiredEntry, FinishedEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry, WorkspacesApi } from '../workspaces/api.ts'
 import type { DeliveredMessage } from './refs.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
 import type { Remote, Serves } from './refs.ts'
 import { Messages } from './api.ts'
+import { Roots, Tally } from '../lineage/api.ts'
 import { isOpen } from '../../lib/message-state.ts'
 
 export type { Serves }
@@ -78,7 +79,7 @@ export async function ownerOutput(
   to: ConversationId,
   entry: EntryRecord | undefined,
 ): Promise<{ owner: Owner; source: string } | undefined> {
-  if (FiredEntry.is(entry))
+  if (FiredEntry.is(entry) || FinishedEntry.is(entry))
     return {
       owner: { kind: 'automation', id: entry.data.id },
       source: `automation ${entry.data.id} "${entry.data.name}"`,
@@ -261,19 +262,9 @@ export async function resolveRecipient(
   if (id === from) throw new Error('You cannot message yourself')
   await host.harness().commit(async (tx) => {
     if (!(await tx.conversation(id))) throw new Error(`Unknown conversation #${id}`)
-    const roots = host.doc('lineage.roots')
-    const tally = host.doc('lineage.tally')
-    if (roots && tally) {
-      const index = (await tx.doc(roots, ROOT_CONVERSATION_ID)) as {
-        roots?: number[]
-      }
-      const state = (await tx.doc(tally, id)) as {
-        since?: number
-        converting?: unknown
-      }
-      if (index.roots?.includes(id) && (state.since !== undefined || state.converting))
-        throw new Error(`#${id} is a tally and takes no inputs; use note instead`)
-    }
+    const { roots } = await tx.doc(Roots, ROOT_CONVERSATION_ID)
+    if (roots.includes(id) && (await tx.doc(Tally, id)).since !== undefined)
+      throw new Error(`#${id} is a tally and takes no inputs; use note instead`)
   }, ctx)
   return id
 }

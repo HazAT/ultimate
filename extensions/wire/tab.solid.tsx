@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Cable, ChevronDown } from '@lucide/solid'
 import { For, Match, Show, Switch, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

@@ -5,7 +5,7 @@ documents, tools and model-facing text.
 
 ## Concepts
 
-- **Roots.** `lineage.roots` on conversation 1 (`{ roots }`, initially `[1]`; `useRoots()` in `roots.tsx`) lists them.
+- **Roots.** `lineage.roots` on conversation 1 (`{ roots }`, initially `[1]`; `useRoots()` in `ui.solid.tsx`) lists them.
   A conversation's root is found up through owners (subagents) and fork sources (branches). A project has one root;
   independent work goes into branches. The first branch of an empty root makes it a tally from that entry
   (`lineage.tally.since`). Tallies refuse inputs and run no turns.
@@ -39,12 +39,16 @@ documents, tools and model-facing text.
   `landed`), or `#id concluded` when it was concluded without landing. It is checked on each `workspaces.landed` and
   `conversations.concluded` event, survives restarts, and ends without delivering when the waiting conversation is
   concluded.
-- **Catch-up on resume.** When an idle conversation gets input, a "Meanwhile in #R's tree" note goes in before it: new
-  or updated abstracts, prompts without one, landings with divergence and breadcrumbs, notes, and any tally compaction,
-  excluding its own activity. Within about 6000 tokens the newest stay in full and older ones collapse to one line.
-  The note also lists up to 30 new target commits, overlaps first, with conversation trailers and an isolate's behind
-  count. Nothing new means no note; mid-run inputs and tallies get none. `lineage.seen` `{ main?, at?, tally? }` keeps
-  the baseline.
+- **Catch-up on resume.** When an idle top-level conversation gets input, a note about new target commits goes in
+  before it. A branch hears only of other conversations' commits that touch files it changed ("N new commits on main
+  overlap your checkout", with conversation trailers and paths) and an isolate's behind count; other commits bring it
+  no note. An isolate's changed files are its diff from the target plus untracked files; a branch in the shared
+  checkout counts the files its `edit` and `write` calls touched. Other
+  top-level conversations get up to 30 new target commits, overlaps first. @ultimate gets none: its landing cards
+  already name each landing. No conversation is told what its siblings did: abstracts, landings and notes stay in the
+  root's tally, which a branch reads with `ultimate.entries(root)` when it needs it. Nothing new means no note; mid-run
+  inputs and tallies get none. `lineage.seen` `{ main?, at? }` keeps the baseline: set when the conversation is
+  created (a branch in its fork commit) and advanced at each first input.
 - **Prompt.** Branches are told their origin, intent, tree root and inherited tally (or, with a brief, the memory index
   and where the full tally is), and how to follow `#conversation/entry` breadcrumbs with `ultimate.entries(id)` and
   `ultimate.search()`. Other top-level conversations get their own id and lookup guidance; roots and subagents get
@@ -78,7 +82,7 @@ of at most 120 characters, `body` at most 2000, `source` a `#<conversation>/<ent
   incidents. Landings write no memory; @ultimate remembers by judgment, and each dream's memory pass prunes what no
   longer passes that test.
 
-The **Memory** surface (`MEMORY_SURFACE` in `ui.tsx`, opened from the sidebar's Memory row) shows every root's memory
+The **Memory** surface (`MEMORY_SURFACE` in `ui.solid.tsx`, opened from the sidebar's Memory row) shows every root's memory
 grouped into Decisions, Facts and Lessons, newest first, with a filter, the count and brief size, and the `MemoryHeader`
 point (dream's Dream button). A row expands to its body and source; its trash icon calls `forget`. `useOpenMemory(slug?)`
 and `MemoryChip` open it on one memory.

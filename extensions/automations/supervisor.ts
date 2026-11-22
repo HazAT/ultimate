@@ -97,7 +97,7 @@ const committedManifest = ({ to, ...rest }: Manifest) => ({
 type Delivery = {
   sub: Automation
   event: number | string
-  kind: 'writing' | 'fired' | 'failed' | 'escalated'
+  kind: 'writing' | 'fired' | 'finished' | 'failed' | 'escalated'
   text: string
   targets: Subscriber[]
 }
@@ -228,7 +228,7 @@ export function supervisor(
               once: m.once,
               ...(m.secrets ? { secrets: m.secrets } : {}),
               to: m.to,
-              conversationId: await agentConversation(tx, prepared, id, m.name, host.projectRoot),
+              conversationId: await agentConversation(tx, prepared, id, m.name),
               state: 'stopped',
             },
             subscribers: [m.to],
@@ -267,13 +267,7 @@ export function supervisor(
     }, BACKGROUND_CONTEXT)
     for (const stop of removed) await apply(stop)
   }
-  async function agentConversation(
-    tx: Tx,
-    prepared: Prepared,
-    id: string,
-    name: string,
-    cwd: string,
-  ) {
+  async function agentConversation(tx: Tx, prepared: Prepared, id: string, name: string) {
     const child = await host.need(SubagentsApi).createChild(tx, {
       owner: { kind: 'ownerless' },
       definition: prepared.profile,
@@ -282,7 +276,7 @@ export function supervisor(
       metadata: host.metadata,
       label: WatcherLabel,
       title: `${id} · ${name}`,
-      cwd,
+      cwd: host.projectRoot,
     })
     return child.id
   }
@@ -337,7 +331,12 @@ export function supervisor(
     phases: {
       deliver: async (task, runtime, ctx) => {
         const { sub, event, kind, text, targets } = task.input
-        if (kind === 'writing') await mkdir(join(folder(sub.id), 'state'), { recursive: true })
+        const now = (await runtime.snapshot(Automations, ctx))?.automations[sub.id]
+        const toWatcherOfStoppedAutomation =
+          (kind === 'writing' || kind === 'failed') &&
+          (!now || (!now.enabled && now.script?.state !== 'writing'))
+        if (kind === 'writing' && !toWatcherOfStoppedAutomation)
+          await mkdir(join(folder(sub.id), 'state'), { recursive: true })
         const content =
           kind === 'writing'
             ? `${brief(sub)}\nWrite and briefly test run, then use automation resume {id:"${sub.id}"}. Ending your turn before resume or escalate escalates it.`
@@ -357,7 +356,7 @@ export function supervisor(
               `automations:${sub.id}:${event}:ultimate`,
               ctx,
             )
-        for (const target of targets) {
+        for (const target of toWatcherOfStoppedAutomation ? [] : targets) {
           const id =
             typeof target === 'string'
               ? await host.need(SubagentsApi).standing(target.slice(1), ctx)
@@ -384,13 +383,13 @@ export function supervisor(
                 id: sub.id,
                 name: sub.name,
                 text,
-                ...(kind === 'fired' && sub.branches?.by === id
+                ...((kind === 'fired' || kind === 'finished') && sub.branches?.by === id
                   ? { branches: sub.branches.ids }
                   : {}),
               },
             },
           }
-          if (kind === 'fired')
+          if (kind === 'fired' || kind === 'finished')
             await host
               .harness()
               .commit((tx) => host.need(MessagesApi).submitFire(tx, conversation, input, sub), ctx)

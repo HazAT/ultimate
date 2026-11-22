@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Flame } from '@lucide/solid'
 import { Show } from 'solid-js'
 import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'

@@ -21,7 +21,8 @@ One compact, read-only summary of this Ultimate for dashboards that poll several
       "title": "Fix the build",
       "at": 1793101000000,
       "error": "429 rate limited",
-      "retried": true
+      "retried": true,
+      "retries": 4
     }
   ],
   "providers": [

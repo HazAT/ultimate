@@ -15,6 +15,7 @@ export type Condition =
   | 'quiet'
   | { entry: string }
   | { event: string; where?: Record<string, unknown> }
+  | { ui: string; is?: Record<string, unknown> }
 export interface UntilOptions {
   conversation?: number
   timeoutMs?: number
@@ -28,6 +29,14 @@ interface Sent {
 }
 
 const SENT_KEY = 'ultimate.sent'
+
+type UiComponent = ReturnType<UiAgent['snapshot']>[number]
+type ActResult = Awaited<ReturnType<UiAgent['act']>>
+
+const isRef = (name: string) => /^c\d+$/.test(name)
+
+const fold = (text: string) =>
+  text.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase()
 
 export function createTestHook(
   store: Store,
@@ -93,14 +102,14 @@ export function createTestHook(
     })
   }
 
-  const controlsMounted = () => {
+  const controlsMounted = (timeoutMs = 30_000) => {
     const gaveUp = new AbortController()
     return within(
-      30_000,
+      timeoutMs,
       rendered.then(() => readsSettled(gaveUp.signal)),
       () => {
         const error = new Error(
-          'Timed out after 30s: the page never rendered its surface with the data its components read',
+          `Timed out after ${timeoutMs / 1000}s: the page never rendered its surface with the data its components read`,
         )
         gaveUp.abort(error)
         return error
@@ -114,6 +123,172 @@ export function createTestHook(
       timeoutMs,
       () => 'the page never received its first snapshot',
     )
+
+  async function named(name: string): Promise<UiComponent | undefined> {
+    const bridge = agent.bridge()
+    if (isRef(name)) {
+      const byRef = await bridge.query({ within: name })
+      return Array.isArray(byRef) && byRef[0]?.ref === name && !byRef[0].offPage
+        ? byRef[0]
+        : undefined
+    }
+    const found = await bridge.query({ text: name })
+    const exact = Array.isArray(found)
+      ? found.filter((item) => !item.offPage && item.label && fold(item.label) === fold(name))
+      : []
+    return exact.length === 1 ? exact[0] : undefined
+  }
+
+  async function act({ steps }: Parameters<UiAgent['act']>[0]) {
+    const bridge = agent.bridge()
+    const done: ActResult['steps'] = []
+    const appeared = new Set<string>()
+    let values: ActResult['values'] = {}
+    const touchedNames = new Map<string, string>()
+    const touched = new Set<string>()
+    let error: ActResult['error']
+    for (const [index, step] of steps.entries()) {
+      const found = await named(step.ref)
+      if (!found && isRef(step.ref)) {
+        error = { step: index, message: `No component ${step.ref} on the page.` }
+        break
+      }
+      const one = await bridge.act({ steps: [{ ...step, ref: found?.ref ?? step.ref }] })
+      done.push(...one.steps.map((item) => ({ ...item, step: index })))
+      for (const item of one.appeared) appeared.add(item.ref)
+      values = one.values
+      for (const item of one.steps) touched.add(item.ref)
+      for (const name of Object.keys(one.values))
+        if (touched.has(name.split(' ')[0])) touchedNames.set(name.split(' ')[0], name)
+      if (!one.ok) {
+        error = one.error && { ...one.error, step: index }
+        break
+      }
+    }
+    const now = async (ref: string) => named(ref)
+    const live = (await Promise.all([...appeared].map(now))).filter(
+      (item): item is UiComponent => !!item,
+    )
+    const open = (await Promise.all([...touched].map(now))).filter(
+      (item): item is UiComponent => item?.open === true,
+    )
+    if ('more' in values) values = await keepTouched(values, touchedNames)
+    return {
+      ok: !error,
+      ...(error && { error }),
+      steps: done,
+      ...(open.length ? { open } : {}),
+      appeared: live,
+      values,
+    }
+  }
+
+  async function keepTouched(values: ActResult['values'], touchedNames: Map<string, string>) {
+    const { more, ...listed } = values
+    const restored: [string, unknown][] = []
+    for (const [ref, name] of touchedNames) {
+      if (Object.keys(listed).some((key) => key.startsWith(`${ref} `))) continue
+      const now = await named(ref)
+      const key = now && ('checked' in now ? 'checked' : 'value' in now ? 'value' : undefined)
+      if (now && key && now.open !== true) restored.push([name, now[key]])
+    }
+    const touchedRefs = new Set(touchedNames.keys())
+    const untouched = Object.keys(listed).filter((name) => !touchedRefs.has(name.split(' ')[0]))
+    const kept = restored.slice(0, untouched.length)
+    for (const name of untouched.slice(untouched.length - kept.length)) delete listed[name]
+    return { ...Object.fromEntries(kept), ...listed, more }
+  }
+
+  const same = (a: unknown, b: unknown): boolean => {
+    if (Array.isArray(a) || Array.isArray(b))
+      return (
+        Array.isArray(a) &&
+        Array.isArray(b) &&
+        a.length === b.length &&
+        a.every((item, index) => same(item, b[index]))
+      )
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const keys = Object.keys(a)
+      return (
+        keys.length === Object.keys(b).length &&
+        keys.every((key) => same((a as never)[key], (b as never)[key]))
+      )
+    }
+    return Object.is(a, b)
+  }
+
+  function untilUi(name: string, is: Record<string, unknown>, timeoutMs: number) {
+    return new Promise<UiComponent>((resolve, reject) => {
+      let ready = false
+      let stopped = false
+      let last: UiComponent | undefined
+      let checking = false
+      let again = false
+      let stopChanges = () => {}
+      const observer = new MutationObserver(() => recheck())
+      const cancel = deadline(timeoutMs, () => {
+        stop()
+        const seen = !ready
+          ? 'the page never rendered its controls'
+          : last
+            ? `${name} is ${JSON.stringify(last)}`
+            : `no component named ${name}`
+        reject(new Error(`Timed out after ${timeoutMs / 1000}s: ${seen}`))
+      })
+      function stop() {
+        stopped = true
+        stopChanges()
+        observer.disconnect()
+        cancel()
+      }
+      const check = async () => {
+        if (checking) {
+          again = true
+          return
+        }
+        checking = true
+        do {
+          again = false
+          last = await named(name)
+          if (
+            !stopped &&
+            last &&
+            Object.entries(is).every(([key, value]) => same(last![key], value))
+          ) {
+            stop()
+            resolve(last)
+          }
+        } while (again && !stopped)
+        checking = false
+      }
+      function recheck() {
+        if (stopped) return
+        check().catch((error: unknown) => {
+          stop()
+          reject(error instanceof Error ? error : new Error(String(error)))
+        })
+      }
+      controlsMounted(timeoutMs).then(
+        () => {
+          if (stopped) return
+          ready = true
+          stopChanges = agent.bridge().subscribe(recheck)
+          observer.observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            characterData: true,
+          })
+          recheck()
+        },
+        (error: unknown) => {
+          if (stopped) return
+          stop()
+          reject(error instanceof Error ? error : new Error(String(error)))
+        },
+      )
+    })
+  }
 
   function busyLine(state: State, id: ConversationId) {
     const item = summary(state, id)
@@ -140,8 +315,9 @@ export function createTestHook(
       },
       async act(input: Parameters<UiAgent['act']>[0]) {
         await controlsMounted()
-        return agent.bridge().act(input)
+        return act(input)
       },
+      ready: () => controlsMounted(),
       flush: () => uiState.flush(),
     },
 
@@ -182,6 +358,8 @@ export function createTestHook(
 
     async until(condition: Condition, options: UntilOptions = {}) {
       const timeoutMs = options.timeoutMs ?? 300_000
+      if (typeof condition === 'object' && 'ui' in condition)
+        return untilUi(condition.ui, condition.is ?? {}, timeoutMs)
       const started = Date.now()
       await firstSnapshotReady(timeoutMs)
       const left = () => Math.max(0, timeoutMs - (Date.now() - started))
@@ -282,3 +460,9 @@ export function createTestHook(
   }
 }
 export type TestHook = ReturnType<typeof createTestHook>
+
+declare global {
+  interface Window {
+    ultimate?: TestHook
+  }
+}

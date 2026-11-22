@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
@@ -61,15 +60,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       result: path === endpoint(JoinStateAction) ? harness.join : harness.state,
     })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const source = new FakeSource(url)
       harness.sources.push(source)
       return source
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
 })
 

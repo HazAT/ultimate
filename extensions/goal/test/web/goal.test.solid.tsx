@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
@@ -6,10 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
+import { GoalCall } from '../../call.solid.tsx'
+import { StartedCard } from '../../cards.solid.tsx'
 import { HandsOff } from '../../chip.solid.tsx'
 import { GoalDialog, goalDialog } from '../../dialog.solid.tsx'
 import { GoalDoc } from '../../refs.ts'
 import type { Goal } from '../../refs.ts'
+import type { EntryRecord, ToolCallView } from '@/sdk/solid'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -69,6 +71,7 @@ beforeEach(() => {
   harness.sources.at(-1)!.open()
 })
 afterEach(() => {
+  approved = true
   store.stop()
   vi.unstubAllGlobals()
 })
@@ -147,14 +150,125 @@ it('blocks starting when an open goal arrives even after a draft has been filled
   expect(harness.action).not.toHaveBeenCalled()
 })
 
-it('shows the status chip only for an open goal', async () => {
-  renderSolid(() => <HandsOff />)
+it('ends hands-off from the transcript only after the person approves the agent press', async () => {
+  const entry = {
+    kind: 'goal.started',
+    id: 10,
+    conversationId: 42,
+    data: { goal: goal.id },
+  } as unknown as EntryRecord
+  const view = renderSolid(() => <StartedCard entry={entry} />)
+  await settle()
+  await publish(goal)
+  await expectDistinctAgentNames(agent)
+  const button = control('End hands-off')!
+  expect(button.confirm).toBe('Ends the hands-off goal and returns decisions to you.')
+  const press = () => agent.act({ steps: [{ ref: button.ref, action: 'press' }] })
+
+  approved = false
+  expect((await press()).ok).toBe(false)
+  expect(harness.action).not.toHaveBeenCalled()
+  approved = true
+  expect((await press()).ok).toBe(true)
+  expect(harness.action.mock.calls).toEqual([['/api/extensions/goal/actions/end', null, 'agent']])
+  await publish({ ...goal, ended: { at: 1, by: 'user', outcome: 'ended' } })
+  expect(view.querySelector('[data-goal-end]')).toBeNull()
+  expect(view.textContent).toContain('report below')
+})
+
+async function proposal() {
+  const call = {
+    id: 'c1',
+    name: 'goal',
+    args: { action: 'propose', text: goal.text },
+    status: 'done',
+    output: '',
+    images: [],
+    diagnostics: [],
+  } as unknown as ToolCallView
+  const view = renderSolid(() => <GoalCall call={call} core={null} />)
+  await settle()
+  await publish()
+  return view
+}
+const proposedStart = 'Start this goal (call c1)'
+
+it('starts a proposed goal with the text the person edited', async () => {
+  const view = await proposal()
+  await expectDistinctAgentNames(agent)
+  const text = view.querySelector<HTMLTextAreaElement>('[data-goal-proposal-text]')!
+  expect(text.value).toBe(goal.text)
+  text.setRangeText(' by 8:00', text.value.length, text.value.length)
+  text.dispatchEvent(new Event('input', { bubbles: true }))
+  flush()
+  view.querySelector<HTMLButtonElement>('[data-goal-proposal-start]')!.click()
+  await settle()
+  expect(harness.action.mock.calls[0]).toEqual([
+    '/api/extensions/goal/actions/start',
+    { text: `${goal.text} by 8:00`, proposal: 'c1' },
+    'person',
+  ])
+  await publish({ ...goal, proposal: 'c1' })
+  expect(view.querySelector('[data-goal-proposal-started]')?.textContent).toContain('goal 1')
+  expect(view.querySelector('[data-goal-proposal-start]')).toBeNull()
+})
+
+it('refuses an agent pressing Start on a proposed goal without the person', async () => {
+  await proposal()
+  expect(control(proposedStart)!.confirm).toBe('Hands decisions to @ultimate until the goal ends.')
+  approved = false
+  const refused = await agent.act({
+    steps: [{ ref: control(proposedStart)!.ref, action: 'press' }],
+  })
+  expect(refused.ok).toBe(false)
+  expect(harness.action).not.toHaveBeenCalled()
+})
+
+it('shows the open goal in the status chip popover and ends it from there', async () => {
+  const view = renderSolid(() => <HandsOff />)
   await settle()
   const chip = `Hands-off goal: ${goal.text}`
   expect(control(chip)).toBeUndefined()
-  await publish(goal)
-  expect(control(chip)).toMatchObject({ component: 'button', actions: ['press'] })
+  const decision = (picked: string) => ({
+    at: 0,
+    question: 'Which?',
+    picked,
+    reason: `${picked} fits`,
+  })
+  await publish({
+    ...goal,
+    criteria: [
+      { text: 'Loads in 100 ms', status: 'met' },
+      { text: 'No layout shift', status: 'blocked', tries: 3 },
+    ],
+    decisions: [decision('first'), decision('second'), decision('third')],
+  })
+  expect(
+    (await agent.act({ steps: [{ ref: control(chip)!.ref, action: 'setOpen', args: [true] }] })).ok,
+  ).toBe(true)
+  await settle()
   await expectDistinctAgentNames(agent)
+  const popover = view.ownerDocument.querySelector('[data-goal-popover]')!
+  expect(
+    [...popover.querySelectorAll('[data-goal-criterion]')].map((item) =>
+      item.getAttribute('data-goal-criterion'),
+    ),
+  ).toEqual(['met', 'blocked'])
+  const blocked = popover.querySelector('[data-goal-criterion="blocked"]')!
+  expect(blocked.querySelector('.sr-only')?.textContent).toBe('blocked: ')
+  expect(blocked.textContent).toContain('No layout shift blocked after 3 failed attempts')
+  expect(
+    [...popover.querySelectorAll('[data-goal-decision]')].map((item) => item.textContent),
+  ).toEqual([
+    expect.stringContaining('third · third fits'),
+    expect.stringContaining('second · second fits'),
+  ])
+  expect(popover.textContent).toContain('3 decisions taken')
+
+  const end = control('End the hands-off goal')!
+  expect(end.confirm).toBe('Ends the hands-off goal and returns decisions to you.')
+  expect((await agent.act({ steps: [{ ref: end.ref, action: 'press' }] })).ok).toBe(true)
+  expect(harness.action.mock.calls).toEqual([['/api/extensions/goal/actions/end', null, 'agent']])
   await publish({ ...goal, ended: { at: 1, by: 'user', outcome: 'ended' } })
   expect(control(chip)).toBeUndefined()
 })

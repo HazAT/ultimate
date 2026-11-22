@@ -3,16 +3,15 @@ import type {
   ConversationId,
   Cursor,
   JsonObject,
+  NestedToolExecutionResult,
   ToolExecutionApi,
   ToolRegistration,
-  ToolExecutionResult,
   Tx,
 } from '@earendil-works/pi-durable'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { obj, str } from '@earendil-works/pi-schema'
-import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import {
   CodemodeSandbox,
   parseCodemodeSource,
@@ -66,24 +65,38 @@ export { SummaryDoc }
 export const docs = [Store, SummaryDoc, PendingDoc]
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
 
-type StructuredTool = ToolRegistration & { outputSchema?: CodemodeJsonSchema }
-type StructuredResult = ToolExecutionResult & { structuredContent?: unknown }
-
 function declarations(tools: readonly ToolRegistration[]): CodemodeTool[] {
   return tools
     .filter(
       (tool) =>
         tool.name !== 'restart' && (tool.callers === undefined || tool.callers.includes('tools')),
     )
-    .map((tool: StructuredTool) => ({
+    .map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: tool.parameters as CodemodeJsonSchema,
-      outputSchema: tool.outputSchema ?? { type: 'string' },
+      outputSchema: (tool.structuredOutputSchema as CodemodeJsonSchema) ?? { type: 'string' },
       execute: () => {
         throw new Error('Declaration only')
       },
     }))
+}
+
+function scriptValue(name: string, structured: boolean, result: NestedToolExecutionResult) {
+  if (structured && result.structuredOutput !== undefined) return result.structuredOutput
+  const text = structured ? '' : textOf(result.structuredOutput)
+  if (!result.isError) return text
+  const diagnostics = result.diagnostics
+    .filter((diagnostic) => diagnostic.severity === 'error')
+    .map((diagnostic) => diagnostic.message)
+    .join('\n')
+  throw new Error([text, diagnostics].filter(Boolean).join('\n') || `Tool ${name} failed`)
+}
+
+function textOf(value: unknown) {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return ''
+  return value.flatMap((item) => (item?.type === 'text' ? [item.text as string] : [])).join('\n')
 }
 
 function localReads(host: ExtensionHost, context: Context) {
@@ -464,7 +477,7 @@ export default function codemode(host: ExtensionHost) {
     callers: ['model'],
     replay: 'unsafe',
     description:
-      'Run an async JavaScript function body in a QuickJS/WASM sandbox. Call tools.<name>(args), use Promise.all for parallel calls, text()/console.log() for output, return for JSON, store(key,value)/load(key) for durable conversation values (at most 256K characters of JSON per value, 1M in all). Store writes are saved only when the script finishes successfully; a yielded wait discards them. No host I/O except injected functions. Nested results stay out of model context. Nested tool hooks do not run. Optional first line: // @options: {"timeout_ms":60000,"max_output_tokens":10000}.\n\n' +
+      'Run an async JavaScript function body in a QuickJS/WASM sandbox. Call tools.<name>(args), use Promise.all for parallel calls, text()/console.log() for output, return for JSON, store(key,value)/load(key) for durable conversation values (at most 256K characters of JSON per value, 1M in all). Store writes are saved only when the script finishes successfully; a yielded wait discards them. No host I/O except injected functions. Nested results stay out of model context; nested calls run tool hooks like top-level calls. Tools with structured output resolve to it: tools.bash gives {output, truncated, exitCode} and a nonzero exit does not throw, so check exitCode. Optional first line: // @options: {"timeout_ms":60000,"max_output_tokens":10000}.\n\n' +
       renderDeclarations({ globals: globalDeclarations }),
     parameters: obj({ code: str() }),
     async execute({ code: source }, api, context) {
@@ -501,50 +514,14 @@ export default function codemode(host: ExtensionHost) {
       const tools = declarations(agent.tools).map((declaration): CodemodeTool => ({
         ...declaration,
         execute: async (args, { signal }) => {
-          const resolved = agent.tools.find(
-            (tool) => tool.name === declaration.name,
-          )! as StructuredTool
+          const name = declaration.name
           const started = performance.now()
-          const call: (typeof calls)[number] = {
-            name: resolved.name,
-            args,
-            status: 'running',
-            ms: 0,
-          }
+          const call: (typeof calls)[number] = { name, args, status: 'running', ms: 0 }
           calls.push(call)
-          let output = ''
-          let active = true
-          const nested: ToolExecutionApi = {
-            ...api,
-            callId: `${api.callId}/${calls.length}`,
-            output: (chunk) => {
-              if (active)
-                output += typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk)
-            },
-            details: async () => {},
-            diagnostic: (diagnostic) => {
-              if (active) output += `\n${diagnostic.message}`
-            },
-            memo: (name: string, candidateOrContext: JsonValue | Context, memoContext?: Context) =>
-              memoContext === undefined
-                ? api.memo(`${nested.callId}/${name}`, candidateOrContext as Context)
-                : api.memo(
-                    `${nested.callId}/${name}`,
-                    candidateOrContext as JsonValue,
-                    memoContext,
-                  ),
-          }
           try {
-            const prepared = resolved.prepareArguments ? resolved.prepareArguments(args) : args
-            const validated = validateToolArguments(resolved, {
-              type: 'toolCall',
-              id: nested.callId,
-              name: resolved.name,
-              arguments: prepared as JsonObject,
-            })
-            const result: StructuredResult = await resolved.execute(
-              validated,
-              nested,
+            const result = await api.executeTool(
+              name,
+              (args ?? {}) as JsonObject,
               withAbortSignal(signal, context),
             )
             signal.throwIfAborted()
@@ -552,7 +529,7 @@ export default function codemode(host: ExtensionHost) {
               result.details && typeof result.details === 'object' && !Array.isArray(result.details)
                 ? result.details
                 : undefined
-            if (resolved.name === 'subagent' && details?.yielded === true) {
+            if (name === 'subagent' && details?.yielded === true) {
               call.status = 'yielded'
               if (typeof details.conversationId === 'number')
                 call.conversationId = parseConversationId(details.conversationId)
@@ -561,28 +538,18 @@ export default function codemode(host: ExtensionHost) {
               terminateSandboxBeforeYield()
               return undefined
             }
-            const text =
-              result.output === undefined
-                ? output
-                : result.output.map((block) => (block.type === 'text' ? block.text : '')).join('\n')
-            const error = [
-              text,
-              ...(result.diagnostics ?? []).map((diagnostic) => diagnostic.message),
-            ]
-              .filter(Boolean)
-              .join('\n')
-            if (result.isError) throw new Error(error || `Tool ${resolved.name} failed`)
-            if (resolved.name === 'subagent' && typeof details?.answerId === 'number')
+            const structured = agent.tools.some(
+              (tool) => tool.name === name && tool.structuredOutputSchema !== undefined,
+            )
+            const value = scriptValue(name, structured, result)
+            if (name === 'subagent' && typeof details?.answerId === 'number')
               subagentAnswers.add(details.answerId)
-            call.status = 'ok'
-            return resolved.outputSchema && result.structuredContent !== undefined
-              ? result.structuredContent
-              : text
+            call.status = result.isError ? 'error' : 'ok'
+            return value
           } catch (error) {
             call.status = signal.aborted ? 'cancelled' : 'error'
             throw error
           } finally {
-            active = false
             call.ms = Math.round(performance.now() - started)
             streamSettledCall(`tools.${call.name}`, call)
           }
@@ -797,7 +764,7 @@ export default function codemode(host: ExtensionHost) {
               : '') +
             ' Only text(), image() and return values enter context; filter to concise findings. The sandbox has no setTimeout or setInterval: wait with a bash sleep.' +
             ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action. ' +
-            'tools.<name>(args) uses the top-level tool schemas and rules (same arguments and results). Available: ' +
+            'tools.<name>(args) takes the top-level tool arguments and rules; a tool that declares structured output resolves to it (bash: {output, exitCode}), others to their text. Available: ' +
             declarations(agent.tools)
               .map((tool) => tool.name)
               .join(', ')

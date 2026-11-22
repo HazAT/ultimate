@@ -1,4 +1,4 @@
-// Pi upstream: @earendil-works/pi-coding-agent@1.5.2 src/modes/interactive/components/footer.ts — copied formatTokens helper, not exported. Drop when Pi exports formatTokens.
+// Pi upstream: @earendil-works/pi-coding-agent@1.6.0 src/modes/interactive/components/footer.ts — copied formatTokens helper, not exported. Drop when Pi exports formatTokens.
 /** Compact token counts, as Pi's footer prints them: 950, 1.2k, 18k, 1.4M. */
 export function formatTokens(count: number): string {
   if (count < 1000) return count.toString()
@@ -15,18 +15,8 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`
 }
 
-/** 420ms, 3.2s, 1m 04s, 2h 05m. */
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 3600)
-    return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
-  return `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}m`
-}
-
-/** How long ago a time was; in lib/ so server code (model text, range lists) says it the same way. */
-export { formatAgo } from '../../../lib/ago.ts'
+/** How long ago a time was (`5m`, `3d`) and how long something took in its two largest units (`420ms`, `3.2s`, `1m 4s`, `3d 4h`); in lib/ so server code (model text, receipts) says it the same way. */
+export { formatAgo, formatDuration } from '../../../lib/format.ts'
 
 /** Show `path` relative to `cwd` when inside it, else with `~` for `home` (`system.machine.home`). */
 export function shortenPath(path: string, options: { cwd?: string; home?: string } = {}): string {
@@ -68,12 +58,18 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+const clock = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const clockWithSeconds = new Intl.DateTimeFormat([], {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+
 /** The app's one clock format, 24-hour: `21:45`, or `21:45:08` with seconds. */
 export function formatTime(at: number | string | Date, seconds = false): string {
-  return new Date(at).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    ...(seconds ? { second: '2-digit' } : {}),
-    hourCycle: 'h23',
-  })
+  const date = new Date(at)
+  return Number.isNaN(date.getTime())
+    ? date.toString()
+    : (seconds ? clockWithSeconds : clock).format(date)
 }

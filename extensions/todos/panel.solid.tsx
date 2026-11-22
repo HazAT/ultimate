@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { JSX } from '@solidjs/web'
 import { Check, ChevronRight, Inbox, Play, Plus } from '@lucide/solid'
 import { For, Show, createMemo, createSignal } from 'solid-js'
@@ -26,13 +25,18 @@ import {
   useNow,
   writingAs,
 } from '@/sdk/solid'
+import { Waiting } from '../inbox/ui.solid.tsx'
 import { StandingAction } from '../subagents/refs.ts'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
 
 const waits = 'text-amber-700 dark:text-amber-300'
+const webOrObsidianLinkWithoutClosingPunctuation =
+  /((?:https?|obsidian):\/\/[^\s<>()]*[^\s<>().,;:!?'"])/
 
-export function TodoList(props: { inbox: number }) {
+export function TodoList() {
+  const { entries, failures } = Waiting()
+  const inbox = () => entries().length
   const doc = useDocOf(() => ROOT, TodosDoc)
   const now = useNow(60_000)
   const [error, setError] = createSignal<string>()
@@ -83,21 +87,22 @@ export function TodoList(props: { inbox: number }) {
       <div class="flex items-center gap-2 px-3 pb-2 section-label">
         To-dos
         <span class="ml-auto text-muted-foreground/70">
-          <Show when={props.inbox > 0}>
+          <Show when={inbox() > 0}>
             <span class={waits}>
-              {props.inbox} in Inbox
+              {inbox()} in Inbox
               {open().length > 0 && ' · '}
             </span>
           </Show>
-          {open().length ? `${open().length} open` : props.inbox ? '' : 'none open'}
+          {open().length ? `${open().length} open` : inbox() ? '' : 'none open'}
         </span>
       </div>
       <AddTodo add={(text, owner) => run(api.action(AddAction, { text, owner }))} />
       <Show when={error()}>
         <p class="px-3 pt-1.5 font-mono text-[11px] break-words text-error">{error()}</p>
       </Show>
+      {failures}
       <Show
-        when={props.inbox + open().length > 0}
+        when={inbox() + open().length > 0}
         fallback={
           <p class="flex items-center gap-2 px-3 py-6 text-xs text-muted-foreground">
             <Check class="size-3.5 text-success" />
@@ -105,8 +110,8 @@ export function TodoList(props: { inbox: number }) {
           </p>
         }
       >
-        <Section empty={!props.inbox && !yours().length} owner="user" title="For you">
-          <Show when={props.inbox > 0}>
+        <Section empty={!inbox() && !yours().length} owner="user" title="For you">
+          <Show when={inbox() > 0}>
             <li data-todo-inbox>
               <Button
                 class="flex h-auto w-full items-center justify-start gap-2.5 rounded px-2 py-1.5 text-left font-normal hover:bg-muted/50"
@@ -115,7 +120,7 @@ export function TodoList(props: { inbox: number }) {
                 variant={null}
               >
                 <Inbox class={cn('size-4 shrink-0', waits)} />
-                <span class={cn('min-w-0 flex-1 text-[13px]', waits)}>Inbox · {props.inbox}</span>
+                <span class={cn('min-w-0 flex-1 text-[13px]', waits)}>Inbox · {inbox()}</span>
                 <ChevronRight class="size-3.5 shrink-0 text-muted-foreground/60" />
               </Button>
             </li>
@@ -177,7 +182,7 @@ function TodoRow(props: {
     props.todo.owner === 'user' ? 'Ask @ultimate to help with this' : 'Have @ultimate work on this'
   return (
     <li class="group/todo flex items-start rounded hover:bg-muted/50" data-todo={props.todo.id}>
-      <label class="flex min-w-0 flex-1 items-start gap-2.5 py-1.5 pl-2">
+      <label class="flex shrink-0 cursor-pointer self-stretch py-1.5 pr-1.5 pl-2">
         <Checkbox
           aria-label={`${props.todo.done ? 'Reopen' : 'Done'} #${props.todo.id}: ${props.todo.text}`}
           bind={[() => !!props.todo.done, () => void props.toggle(props.todo)]}
@@ -187,13 +192,32 @@ function TodoRow(props: {
               'data-checked:border-muted-foreground/40 data-checked:bg-muted data-checked:text-muted-foreground',
           )}
         />
+      </label>
+      <div class="flex min-w-0 flex-1 items-start gap-2.5 py-1.5 pl-1">
         <span
           class={cn(
             'min-w-0 flex-1 text-[13px] leading-snug break-words',
             props.todo.done && 'text-muted-foreground line-through decoration-muted-foreground/50',
           )}
+          data-todo-text
         >
-          {props.todo.text}
+          <For
+            each={props.todo.text.split(webOrObsidianLinkWithoutClosingPunctuation)}
+            keyed={false}
+          >
+            {(part, index) => (
+              <Show when={index % 2} fallback={part()}>
+                <a
+                  class="wrap-anywhere text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+                  href={part()}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {part()}
+                </a>
+              </Show>
+            )}
+          </For>
         </span>
         <time
           class="shrink-0 pt-px font-mono text-[11px] text-muted-foreground/70"
@@ -203,7 +227,7 @@ function TodoRow(props: {
           {props.todo.done && props.todo.owner === 'ultimate' ? '@ultimate · ' : ''}
           {props.todo.id} · {formatAgo(at(), props.now)}
         </time>
-      </label>
+      </div>
       <Show when={props.start && !props.todo.done} fallback={<span class="w-2 shrink-0" />}>
         <Button
           aria-label={`${help()} #${props.todo.id}: ${props.todo.text}`}

@@ -12,27 +12,34 @@ import { context } from '../../../../server/harness.ts'
 import { groupAlive, groupTarget, spawnGroup, stopGroup } from '../../../../lib/process-group.ts'
 import { fauxServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
+type Server = Awaited<ReturnType<typeof fauxServer>>
 let directory: string
-let server: Awaited<ReturnType<typeof fauxServer>>
+const servers: Server[] = []
 const started: number[] = []
 
 beforeEach(async () => {
   directory = await temp('ultimate-background-')
-  server = await fauxServer({
+})
+afterEach(async () => {
+  const [closing, home, groups] = [servers.splice(0), directory, started.splice(0)]
+  for (const server of closing) await server.close()
+  await sweepEarlierProcesses(join(home, 'home'), () => false)
+  await until(() => groups.every((pgid) => !groupAlive(pgid)))
+  await removeTemp(home)
+})
+
+/** Boot this test's server in its body: a boot slowed by other files' boots counts against the test, not a hook. */
+async function boot() {
+  const server = await fauxServer({
     ultimateRoot: resolve('.'),
     home: join(directory, 'home'),
     userHome: directory,
   })
-})
-afterEach(async () => {
-  await server.close()
-  await sweepEarlierProcesses(join(directory, 'home'), () => false)
-  const groups = started.splice(0)
-  await until(() => groups.every((pgid) => !groupAlive(pgid)))
-  await removeTemp(directory)
-})
+  servers.push(server)
+  return server
+}
 
-async function background(conversation: ConversationId, command: string) {
+async function background(server: Server, conversation: ConversationId, command: string) {
   server.host.faux!.setResponses([
     fauxAssistantMessage([fauxToolCall('bash', { command, background: true })], {
       stopReason: 'toolUse',
@@ -50,33 +57,36 @@ async function background(conversation: ConversationId, command: string) {
   return { pgid, log: /Output: ([^\\]+)/.exec(text)![1] }
 }
 
-const create = async () => (await post(server, '/api/conversations', {})).data.id as ConversationId
-const conversationAction = (name: string, ids: number[]) =>
+const create = async (server: Server) =>
+  (await post(server, '/api/conversations', {})).data.id as ConversationId
+const conversationAction = (server: Server, name: string, ids: number[]) =>
   post(server, `/api/extensions/conversations/actions/${name}`, { args: { ids } })
-const groupsOf = async (id: number) =>
+const groupsOf = async (server: Server, id: number) =>
   readdir(join(server.host.home, 'background', String(id))).catch(() => [])
 
 it('starts a command in its own group, logs its output and stops by the returned group', async () => {
-  const id = await create()
-  const { pgid, log } = await background(id, 'echo ready; echo oops >&2; exec sleep 300')
+  const server = await boot()
+  const id = await create(server)
+  const { pgid, log } = await background(server, id, 'echo ready; echo oops >&2; exec sleep 300')
   expect(log.startsWith(join(server.host.home, 'background', String(id)))).toBe(true)
   await until(async () => (await readFile(log, 'utf8')) === 'ready\noops\n')
   expect(groupAlive(pgid)).toBe(true)
   process.kill(groupTarget(pgid), 'SIGTERM')
   await until(() => !groupAlive(pgid))
-  await until(async () => !(await groupsOf(id)).some((file) => file.endsWith('.pid')))
+  await until(async () => !(await groupsOf(server, id)).some((file) => file.endsWith('.pid')))
 })
 
 it('concluding stops the groups started before it, and a resumed conversation keeps its new ones', async () => {
-  const [concluded, other] = [await create(), await create()]
-  const before = await background(concluded, 'exec sleep 300')
-  const untouched = await background(other, 'exec sleep 300')
-  expect((await conversationAction('conclude', [concluded])).status).toBe(200)
+  const server = await boot()
+  const [concluded, other] = [await create(server), await create(server)]
+  const before = await background(server, concluded, 'exec sleep 300')
+  const untouched = await background(server, other, 'exec sleep 300')
+  expect((await conversationAction(server, 'conclude', [concluded])).status).toBe(200)
   await until(() => !groupAlive(before.pgid))
-  await until(async () => (await groupsOf(concluded)).length === 0)
-  expect((await conversationAction('resume', [concluded])).status).toBe(200)
-  const after = await background(concluded, 'exec sleep 300')
-  expect((await conversationAction('conclude', [other])).status).toBe(200)
+  await until(async () => (await groupsOf(server, concluded)).length === 0)
+  expect((await conversationAction(server, 'resume', [concluded])).status).toBe(200)
+  const after = await background(server, concluded, 'exec sleep 300')
+  expect((await conversationAction(server, 'conclude', [other])).status).toBe(200)
   await until(() => !groupAlive(untouched.pgid))
   expect(groupAlive(after.pgid)).toBe(true)
 })
@@ -85,6 +95,7 @@ it('stops the new group when the commit that records it fails', async () => {
   const home = join(directory, 'direct')
   const bash = codingTools({
     home,
+    images: undefined as never,
     need: (() => ({ concludedIn: async () => new Set() })) as never,
     notice: () => {},
     emit: (async () => undefined) as never,
@@ -115,8 +126,9 @@ it('stops the new group when the commit that records it fails', async () => {
 })
 
 it('stops on open what an earlier process recorded and keeps its own', async () => {
-  const id = await create()
-  const own = await background(id, 'exec sleep 300')
+  const server = await boot()
+  const id = await create(server)
+  const own = await background(server, id, 'exec sleep 300')
   const earlier = join(server.host.home, 'background', '999')
   await mkdir(earlier, { recursive: true })
   const leftover = spawnGroup('sleep', ['300'], { pidFile: join(earlier, '1234567-x.pid') })

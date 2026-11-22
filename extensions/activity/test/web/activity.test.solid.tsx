@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
@@ -35,15 +34,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: 'github.com/example/ultimate' })
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return {
     store,
     api,
@@ -56,6 +57,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { ExtensionName, ROOT, events } from '../../../../web/src/sdk/solid.ts'
 import { writerNow } from '../../../../web/src/sdk/writer.ts'
+import { provide } from '../../../../web/src/sdk/types.ts'
+import { Review } from '../../../workspaces/landing-points.ts'
 import { ActivityPanel } from '../../panel.solid.tsx'
 
 const agent = createAgent()
@@ -186,13 +189,18 @@ it('renders the live rows and opens the landing at its entry, with Review using 
     container.querySelector('li[data-activity="workspaces.landed"] a')?.getAttribute('href'),
   ).toBe(compare)
 
-  await registry.setLoaders({ '/extensions/review/web.tsx': async () => ({ default: {} }) })
+  const review = vi.fn<(spec: string, who: string) => void>()
+  await registry.setLoaders({
+    '/extensions/review/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(Review, (spec) => () => () => review(spec(), writerNow()))],
+      },
+    }),
+  })
   flush()
-  const review = vi.fn<(value: unknown, who: string) => void>()
-  onTestFinished(events.on('review:open', (value) => review(value, writerNow())))
   const landing = container.querySelector('li[data-activity="workspaces.landed"]')!
   await act('Review 9057c43...45a315f0', 'press')
-  expect(review).toHaveBeenCalledWith({ spec: '9057c43...45a315f0' }, 'agent')
+  expect(review).toHaveBeenCalledWith('9057c43...45a315f0', 'agent')
   expect(landing.querySelector('a')?.getAttribute('href')).toBe(compare)
 
   const open = vi.fn<(value: unknown) => void>()
@@ -255,7 +263,7 @@ it('filters problems and time through durable state, and offers System only when
   )
 
   await registry.setLoaders({
-    '/extensions/system/web.tsx': async () => ({
+    '/extensions/system/web.solid.tsx': async () => ({
       default: {
         surfaces: [{ id: 'system', title: 'System', icon: () => null, component: () => null }],
       },

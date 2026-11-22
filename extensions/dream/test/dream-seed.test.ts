@@ -22,7 +22,7 @@ import dream, { Next } from '../server.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from '../seed.ts'
 import { CloudApi } from '../../cloud/api.ts'
 import type { CloudService, LastBackup } from '../../cloud/api.ts'
-import { temp, until, eventHost } from '../../../test/helpers.ts'
+import { openers, temp, until, eventHost } from '../../../test/helpers.ts'
 
 const openedHosts: OpenHost[] = []
 afterEach(async () => {
@@ -38,7 +38,7 @@ async function fixture() {
     faux: fauxProvider(),
   })
   let opened: OpenHost
-  let opener: () => Promise<void>
+  const lifecycle = openers()
   let scripts: (Seed['scripts'][number] & { enabled: boolean })[] = []
   /** A faked `CloudApi`: never the real Worker. */
   let cloud: CloudService | undefined
@@ -70,20 +70,18 @@ async function fixture() {
     metadata: Metadata,
     ...eventHost(() => opened.harness, 'automations'),
     implement: () => {},
-    onRelease: () => {},
     onClose: () => {},
     projectSetup: async () => ({ decision: false }),
     extensions: () => [{ name: 'subagents', enabled: true }],
     doc: (kind: string) =>
       tokens.find((token) => token.definition.kind === kind) ??
       eventHost(() => opened.harness, 'automations').doc(kind),
-    onOpen: (callback: () => Promise<void>) => {
-      opener = callback
-    },
+    onOpen: lifecycle.onOpen,
     react: () => {},
     notice: () => {},
     want: (api: { name: string }) => (api.name === CloudApi.name ? cloud : undefined),
     need: () => ({
+      residents: async () => [{ name: 'ultimate', description: '' }],
       standing: async () =>
         opened.harness.commit(async (tx) => {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
@@ -101,8 +99,13 @@ async function fixture() {
   prepared.registry.install(dream(host))
   const open = async () => {
     opened = await prepared.open(false)
+    const closeHarness = opened.close.bind(opened)
+    opened.close = async () => {
+      await lifecycle.close()
+      await closeHarness()
+    }
     openedHosts.push(opened)
-    await opener()
+    await lifecycle.open()
   }
   const close = async () => {
     openedHosts.splice(openedHosts.indexOf(opened), 1)
@@ -116,7 +119,10 @@ async function fixture() {
     open,
     close,
     /** What a facet reload does: onOpen again on the open harness. */
-    reopen: () => opener(),
+    reopen: async () => {
+      await lifecycle.close()
+      await lifecycle.open()
+    },
     get harness() {
       return opened.harness
     },
@@ -502,9 +508,13 @@ it('rolls back the entire application when a required document is unavailable', 
     (await f.harness.snapshot(resolve('lineage.memory')!, ROOT_CONVERSATION_ID, context))
       ?.memories ?? {},
   ).toEqual({})
+  const ultimate = (await f.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate
   expect(
-    (await f.harness.commit((tx) => tx.scanTasks({ kind: 'dream.deliver' }, 10), context)).items,
-  ).toHaveLength(0)
+    await f.harness.commit(
+      (tx) => tx.submissionByRequest(ultimate, 'dream.chapter:retry'),
+      context,
+    ),
+  ).toBeUndefined()
   f.host.doc = resolve
   await applySeed(f.host)
   expect(
@@ -513,6 +523,12 @@ it('rolls back the entire application when a required document is unavailable', 
   expect(
     (await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))!.applied,
   ).toBeGreaterThan(0)
+  expect(
+    await f.harness.commit(
+      (tx) => tx.submissionByRequest(ultimate, 'dream.chapter:retry'),
+      context,
+    ),
+  ).toMatchObject({ type: 'input' })
 })
 
 it('merges root memories by updated, maps automation options, and rejects duplicate schedule names', async () => {

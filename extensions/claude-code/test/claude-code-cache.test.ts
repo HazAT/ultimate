@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import { rewriteInitialRequest } from '@earendil-works/pi-claude-code/src/claude-cli.ts'
 import { prepareNativeTranscript } from '@earendil-works/pi-claude-code/src/transcript.ts'
+import type { NativeFrame } from '@earendil-works/pi-claude-code/src/native-types.ts'
 
 // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — replay must rebuild message cache breakpoints, not accumulate native/carrier markers. Drop with the matching pnpm patch when upstream fixes this.
 const cache = { type: 'ephemeral', ttl: '1h' }
@@ -17,10 +18,20 @@ function cachePaths(value: unknown, path = ''): string[] {
   )
 }
 
-function strip(value: unknown) {
+function strip<T>(value: T): T {
   return JSON.parse(
     JSON.stringify(value, (key, child) => (key === 'cache_control' ? undefined : child)),
   )
+}
+
+/** Pi's history for a request: one user frame per user message, as Claude Code received it. */
+function userFrames(messages: { role: string; content: unknown }[]): NativeFrame[] {
+  return messages
+    .filter((message) => message.role === 'user')
+    .map((message) => ({
+      type: 'user',
+      message: { role: 'user', content: strip(message.content) as unknown[] },
+    }))
 }
 
 const tools = prepareNativeTranscript(
@@ -51,14 +62,10 @@ it('reproduces five accumulated breakpoints with native tools and three user mes
       { role: 'user', content: [text('Now test it', true)] },
     ],
   }
+  const frames = userFrames(payload.messages)
+  frames[0].message.content = canonical
   const rewritten = JSON.parse(
-    rewriteInitialRequest(
-      Buffer.from(JSON.stringify(payload)),
-      prefix,
-      canonical,
-      environment,
-      [],
-    ).toString(),
+    rewriteInitialRequest(Buffer.from(JSON.stringify(payload)), frames, environment, []).toString(),
   )
   expect(cachePaths(rewritten)).toEqual([
     '.tools.0.cache_control',
@@ -66,14 +73,14 @@ it('reproduces five accumulated breakpoints with native tools and three user mes
     '.messages.3.content.0.cache_control',
     '.messages.5.content.0.cache_control',
   ])
-  // Cache normalization must not change content or tool definitions.
+  // Cache normalization changes neither content nor tool definitions; Claude Code's reminder prefix is not Pi's history.
+  payload.messages[0] = { role: 'user', content: canonical }
   expect(strip(rewritten)).toEqual(strip(payload))
   expect(
     JSON.parse(
       rewriteInitialRequest(
         Buffer.from(JSON.stringify(rewritten)),
-        prefix,
-        canonical,
+        frames,
         environment,
         [],
       ).toString(),
@@ -122,8 +129,7 @@ it.each([false, true])('normalizes all replay markers with native injections=%s'
   const rewritten = JSON.parse(
     rewriteInitialRequest(
       Buffer.from(JSON.stringify(payload)),
-      undefined,
-      [],
+      userFrames(payload.messages),
       environment,
       injections,
     ).toString(),
@@ -166,8 +172,7 @@ it.each([1, 2])('keeps environment and final boundaries for %s user messages', (
           messages,
         }),
       ),
-      undefined,
-      [],
+      userFrames(messages),
       undefined,
       [],
     ).toString(),

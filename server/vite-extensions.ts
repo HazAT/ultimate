@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import type { Plugin } from 'vite-plus'
-import { discoverExtensions } from '../lib/discovery.ts'
+import { discoverExtensions, reactFacetRemoved, webFacet } from '../lib/discovery.ts'
+import { webModule } from '../lib/web-alias.ts'
 import { discoveryRoots } from '../lib/project-paths.ts'
 import { useProjectSetup } from '../lib/project-setup.ts'
 import { extensionTests } from '../shared/extension-api.ts'
@@ -55,7 +56,7 @@ export function extensionModules(
       )
         return undefined
       if (id.startsWith('@/'))
-        return this.resolve(join(ultimateRoot, 'web/src', id.slice(2)), importer, {
+        return this.resolve(webModule(ultimateRoot, id), importer, {
           ...options,
           skipSelf: true,
         })
@@ -99,16 +100,17 @@ export function extensionModules(
         )
       }
       if (id !== resolved) return undefined
-      const facets = (await discoverExtensions(ultimateRoot, projectRoot, userHome)).filter(
-        (entry) => entry.enabled && entry.files.includes('web.tsx'),
-      )
-      const entries = facets.map(
-        (entry) =>
-          `${JSON.stringify(join(entry.path, 'web.tsx'))}: ${
-            entry.name in broken
-              ? `() => Promise.reject(new Error(${JSON.stringify(broken[entry.name])}))`
-              : `() => import(${JSON.stringify(join(entry.target, 'web.tsx'))})`
-          }`,
+      const entries = (await discoverExtensions(ultimateRoot, projectRoot, userHome)).flatMap(
+        (entry) => {
+          const facet = webFacet(entry.files)
+          if (!entry.enabled || !facet) return []
+          const error = facet === 'web.tsx' ? reactFacetRemoved : broken[entry.name]
+          const load =
+            error === undefined
+              ? `() => import(${JSON.stringify(join(entry.target, facet))})`
+              : `() => Promise.reject(new Error(${JSON.stringify(error)}))`
+          return [`${JSON.stringify(join(entry.path, facet))}: ${load}`]
+        },
       )
       return `export const loaders = {${entries.join(',')}};`
     },

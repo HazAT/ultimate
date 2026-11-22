@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   createToaster,
   Toast as ToastRoot,

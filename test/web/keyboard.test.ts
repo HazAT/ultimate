@@ -17,18 +17,13 @@ vi.mock('../../web/src/sdk/actions.ts', () => ({
   currentContext: (scoped?: number) => ({ conversationId: scoped ?? 1 }),
   applies: (command: { when?: () => boolean }) => command.when?.() !== false,
 }))
-vi.mock('../../web/src/sdk/conversation-scope.tsx', () => ({
+vi.mock('../../web/src/sdk/scope.ts', () => ({
   scopeOf: (target: { scope?: number }) => target.scope,
 }))
 vi.mock('../../web/src/sdk/client.ts', () => ({
   store: { getState: () => ({ ui }), setUi: (change: object) => Object.assign(ui, change) },
 }))
-vi.mock('react', () => ({
-  useEffect: (effect: () => () => void) => {
-    cleanup = effect()
-  },
-}))
-import { useShortcuts } from '../../web/src/app/keyboard.ts'
+import { installShortcuts } from '../../web/src/app/keyboard.ts'
 
 let cleanup: (() => void) | undefined
 afterEach(() => {
@@ -73,7 +68,7 @@ it('respects typing, dialogs, sequences, timeout, composition and listener teard
       { id: 'hidden', keys: 'y', when: () => false },
     ].map((command) => ({ extension: 'test', title: command.id, run() {}, ...command })),
   )
-  useShortcuts()
+  cleanup = installShortcuts()
   const send = (key: string, target: Element = new Element(), extra = {}) => {
     const event = new Event('keydown', { cancelable: true })
     Object.defineProperty(event, 'target', { value: target })
@@ -140,7 +135,7 @@ it('respects typing, dialogs, sequences, timeout, composition and listener teard
   await vi.advanceTimersByTimeAsync(1200)
   expect(send('m', input)).toBe(false)
   const count = runCommand.mock.calls.length
-  cleanup!()
+  cleanup()
   cleanup = undefined
   send('x')
   expect(runCommand).toHaveBeenCalledTimes(count)

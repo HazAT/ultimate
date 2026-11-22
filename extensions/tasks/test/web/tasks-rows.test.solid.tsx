@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { TaskGraphNode } from '@earendil-works/pi-durable'
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'

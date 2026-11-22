@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ChevronRight } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'
 import type { JSX } from '@solidjs/web'

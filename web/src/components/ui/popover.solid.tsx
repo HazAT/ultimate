@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   Popover,
   PopoverContent as PopoverContentRoot,

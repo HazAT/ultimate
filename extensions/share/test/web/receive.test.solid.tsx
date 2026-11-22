@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'

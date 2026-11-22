@@ -28,17 +28,12 @@ const chores: Record<string, string> = {
   'codemode.summary': 'Summarising a script in',
   'phase.classify': 'Classifying the phase of',
   'pi.compaction': 'Compacting',
-  'lineage.prompt': 'Starting branch',
-  'lineage.landing-note': 'Leaving a landing note in',
-  'lineage.conclude-landed': 'Concluding after landing',
+  'conversations.submit': 'Submitting to',
   'lineage.woken': 'Waking after compaction',
   'lineage.rewind': 'Rewinding',
   'workspaces.prepare': 'Preparing a worktree for',
   'watchdog.failure': 'Reporting a failed run of',
   'goal.reminder': 'Updating the goal reminder',
-  'goal.deliver': 'Delivering a goal card',
-  'dream.deliver': 'Starting a dream',
-  'side-chat.start': 'Opening a side chat',
   'side-chat.end': 'Closing a side chat',
   'voice-live.answer': 'Answering by voice',
   'ultimate.automation-delivery': 'Delivering automation',
@@ -74,9 +69,9 @@ export function meaning(
         : { group: 'waiting', text: 'Delivered to', who: m.to, by: m.from, detail }
     }
     case 'ultimate.subagent-reporter':
-      return phase === 'deliver'
-        ? { group: 'waiting', text: 'Waiting on subagent', who: facts?.conversation }
-        : { group: 'background', text: 'Reporting back from', who: facts?.conversation }
+      return phase === 'report'
+        ? { group: 'background', text: 'Reporting back from', who: facts?.conversation }
+        : { group: 'waiting', text: 'Waiting on subagent', who: facts?.conversation }
     case 'lineage.notify':
       if (phase === 'waitForLanding')
         return { group: 'waiting', text: 'Watching until it lands', who: facts?.conversation }
@@ -95,7 +90,10 @@ export function meaning(
         until: sleeping,
       }
     case 'ultimate.automation-run':
-      return { group: 'running', text: `Automation · ${facts?.automation ?? 'run'}` }
+      return {
+        group: phase === 'settled' ? 'waiting' : 'running',
+        text: `Automation · ${facts?.automation ?? 'run'}`,
+      }
     case 'watchdog.failure':
       if (phase === 'wait')
         return {

@@ -12,9 +12,8 @@ import {
   setAsideIds,
 } from '../../web/src/app/compact.ts'
 import type { CompactPart, WorkRun } from '../../web/src/app/compact.ts'
-import { threadRow } from '../../extensions/messages/data.tsx'
+import { threadRow } from '../../extensions/messages/data.ts'
 
-vi.mock('@/sdk', async () => import('../../web/src/sdk/format.ts'))
 vi.mock('../../extensions/lineage/ui.tsx', async () => import('../../extensions/lineage/refs.ts'))
 vi.mock(
   '../../extensions/workspaces/ui.tsx',

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check, ChevronRight, Inbox } from '@lucide/solid'
 import { For, Show, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

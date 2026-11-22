@@ -233,28 +233,6 @@ async function end(
   return { id }
 }
 
-const Start = defineTask<{ side: ConversationId; text: string }, { phase: 'submit' }, null>({
-  name: 'side-chat.start',
-  version: 1,
-  initial: () => ({ phase: 'submit' }),
-  phases: {
-    submit: async (task, runtime, ctx) => {
-      const id = task.input.side
-      await (await runtime.conversation(id, ctx))!.submit(
-        {
-          type: 'input',
-          content: task.input.text,
-          requestId: `sidechat:open:${id}`,
-        },
-        ctx,
-      )
-      await runtime.commit(() => terminal, ctx)
-    },
-  },
-  abort: (_task, runtime, ctx) =>
-    runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
-})
-
 export function endTask(host: ExtensionHost) {
   const summaries = host.need(ConversationsApi)
   return defineTask<
@@ -615,11 +593,11 @@ export const actions = {
       })
       await host.need(ConversationsApi).setAutomaticSummaries(tx, fork.id, false)
       ;(await tx.doc(Index, main)).sides.push({ id: fork.id, at, openedAt: Date.now() })
-      await tx.createTask(
-        Start,
-        { side: fork.id, text },
-        { conversationId: fork.id, ownership: { kind: 'conversation' }, background: false },
-      )
+      await host.need(ConversationsApi).submitAfter(tx, fork.id, {
+        type: 'input',
+        content: text,
+        requestId: `sidechat:open:${fork.id}`,
+      })
       return fork.id
     }, context)
     host.harness().resume()
@@ -634,31 +612,13 @@ export const actions = {
   }),
 }
 
-const readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks = [
-  'draft_answers',
-  'read',
-  'bash',
-  'memory',
-  'web_search',
-  'web_fetch',
-]
-const readOnlyCall = (name: string) =>
-  readOnlyToolsCodemodeExcludedSinceItsNestedCallsSkipHooks.includes(name)
+const readOnlyTools = ['draft_answers', 'read', 'bash', 'memory', 'web_search', 'web_fetch']
+const readOnlyCall = (name: string) => readOnlyTools.includes(name)
 
 export function tracksEffect(name: string, args: Record<string, unknown>) {
   if (name === 'todo') return args.action === 'add' || args.action === 'done'
   if (name === 'automation') return !['list', 'runs', 'log'].includes(String(args.action))
-  return [
-    'branch',
-    'message',
-    'note',
-    'notify',
-    'remember',
-    'setup',
-    'restart',
-    'edit',
-    'write',
-  ].includes(name)
+  return ['branch', 'message', 'note', 'notify', 'setup', 'restart', 'edit', 'write'].includes(name)
 }
 
 export function questionReminder(
@@ -697,7 +657,7 @@ export function sideReminder(side: ConversationId, main: number, at: Date) {
   return [
     `You are in a side chat (#${side}): a temporary copy of @ultimate (#${main}), forked at ${at.toTimeString().slice(0, 5)}. Main keeps running without you.`,
     'It is for quick lookups and small side tasks. Answer here, in place.',
-    'Persistent actions (branch, message, note, notify, remember, todo, automation changes, setup, restart, edit, write) remove Discard for good and count as main’s, so their replies land in main. Use them only when the user clearly wants a lasting change.',
+    'Persistent actions (branch, message, note, notify, todo, automation changes, setup, restart, edit, write) remove Discard for good and count as main’s, so their replies land in main. Use them only when the user clearly wants a lasting change.',
     'When the user is done, they choose Discard or Summarize & inject. There is no side chat inside a side chat.',
   ].join('\n')
 }
@@ -705,7 +665,7 @@ export function sideReminder(side: ConversationId, main: number, at: Date) {
 export default (host: ExtensionHost) =>
   defineExtension({
     name: 'side-chat',
-    tasks: [Start, endTask(host)],
+    tasks: [endTask(host)],
     tools: [draftAnswersTool(host)],
     hooks: [
       hook(GenerationTask, {

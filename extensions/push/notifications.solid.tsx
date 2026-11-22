@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Bell as BellIcon, BellOff, Send } from '@lucide/solid'
 import { createEffect, createMemo, createRoot, createSignal, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

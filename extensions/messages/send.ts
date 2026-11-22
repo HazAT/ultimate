@@ -15,7 +15,6 @@ import type { ImagesRef } from './images.ts'
 import { append } from './log.ts'
 import { parentOf, resolveRecipient, senderName, serve, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
-import { notice } from './notice.ts'
 
 const AtomicallyCommittedCallReceipts = defineDoc<{ ids: Record<string, number> }>({
   kind: 'board.sent-calls',
@@ -91,23 +90,18 @@ export async function send(
   }
   const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
   const primaryId = standing?.ultimate
+  const primary =
+    primaryId === undefined ? undefined : await host.harness().conversation(primaryId, ctx)
 
   const primaryMessagesSteerByDefault = from !== 'user' && from === primaryId
   const steer = input.steer ?? primaryMessagesSteerByDefault
 
   const parent = from === 'user' ? undefined : await parentOf(host, from, ctx)
   const starter = parent ?? (await starterOf(host, from, ctx))
-  if (input.to === 'user') {
-    if (parent !== undefined)
-      throw new Error(
-        `A subagent answers the conversation that started it: give your final answer, or message #${parent}.`,
-      )
-    const isStanding = from !== 'user' && Object.values(standing ?? {}).includes(from)
-    if (!isStanding && starter === undefined)
-      throw new Error(
-        'Only @ultimate, standing agents and branches message the user; send this to the conversation that started you.',
-      )
-  }
+  if (input.to === 'user' && parent !== undefined)
+    throw new Error(
+      `A subagent answers the conversation that started it: give your final answer, or message #${parent}.`,
+    )
   if (!input.text.trim()) throw new Error('Message text must not be empty')
   if (input.questions !== undefined && (input.to !== 'user' || input.reply === false))
     throw new Error('questions go only with a reply-expected message to the user')
@@ -209,13 +203,6 @@ export async function send(
       ...(options.echo ? { echo: true as const } : {}),
       ...(via ? { via } : {}),
     })
-    await host.emit(tx, MessageSent, {
-      message: message.id,
-      from,
-      to,
-      reply: message.reply,
-      steer,
-    })
     if (primaryId !== undefined) {
       const asked = to === 'user' && message.reply && from !== primaryId && typeof from === 'number'
       const answered =
@@ -253,17 +240,22 @@ export async function send(
                   : `The user answered #${to}'s questions (message ${answerId}):\n${input.text}`,
             }
           : undefined
-      if (notification)
-        await tx.createTask(
-          notice(host),
-          { to: primaryId, ...notification },
-          {
-            conversationId: primaryId,
-            ownership: { kind: 'conversation' },
-            background: true,
-          },
-        )
+      if (notification && primary) {
+        const { kind, data, content } = notification
+        await primary.submit(tx, {
+          type: 'write',
+          requestId: `${kind}:${data.message}`,
+          entry: { kind, data, model: [{ role: 'user', content, timestamp: Date.now() }] },
+        })
+      }
     }
+    await host.emit(tx, MessageSent, {
+      message: message.id,
+      from,
+      to,
+      reply: message.reply,
+      steer,
+    })
 
     const userAnswerNotAlreadyCountedInChat =
       from === 'user' && answerId !== undefined && typeof to === 'number' && !via

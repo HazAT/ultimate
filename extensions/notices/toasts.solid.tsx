@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { CircleAlert, Info, TriangleAlert, X } from '@lucide/solid'
 import { createEffect, onSettled } from 'solid-js'
 import { Dynamic } from '@solidjs/web'
@@ -9,7 +8,7 @@ import {
   ToastRegion,
   ToastTitle,
 } from '@/components/ui/toast.solid.tsx'
-import type { Notice } from '@/sdk'
+import type { Notice } from '@/sdk/solid'
 import { cn, useNotices } from '@/sdk/solid'
 
 const shownAtOnce = 4

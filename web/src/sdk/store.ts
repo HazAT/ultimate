@@ -2,15 +2,19 @@ import { parseConversationId } from '../../../lib/ids.ts'
 import type { JsonObject, TaskGraph, ConversationId } from '@earendil-works/pi-durable'
 import { applyImmutable } from '@earendil-works/chord/delta'
 import { nextTurn, retryAfter } from '../../../lib/timers.ts'
-import { keepLast, meansNone } from '../../../lib/errors.ts'
+import { keepLast } from '../../../lib/errors.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import type {
   ConversationSummary,
   ModelsResponse,
   Notice,
+  ReadEvent,
+  ReadSpec,
   ServerEvents,
   StreamedView,
+  SubscriptionsAnswer,
+  SubscriptionsRequest,
   SystemInfo,
 } from '../../../shared/protocol.ts'
 
@@ -56,7 +60,7 @@ export interface State {
 export interface EventSourceLike {
   readonly readyState: number
   addEventListener(name: string, listener: (event: Event) => void): void
-  close(): void
+  close: () => void
 }
 export interface StoreOptions {
   eventSource?: (url: string) => EventSourceLike
@@ -79,20 +83,32 @@ const names = [
   'doc',
   'docOps',
   'tasks',
+  'conversationsOps',
+  'tasksOps',
   'notice',
+  'read',
 ] as const satisfies readonly (keyof ServerEvents)[]
 
-const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>(['view', 'ops', 'doc', 'docOps'])
-type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps', raw: string) => void
+const subscriptionIdPrefixedEvents = new Set<keyof ServerEvents>([
+  'view',
+  'ops',
+  'doc',
+  'docOps',
+  'read',
+])
+type Handler = (name: 'view' | 'ops' | 'doc' | 'docOps' | 'read', raw: string) => void
+type Spec =
+  | { conversation?: ConversationId; docs: string[]; view: boolean }
+  | { read: ReadSpec; every?: number }
+type Refused = (status: number) => void
 
-interface DocStream {
-  kinds: string
-  view: boolean
-  sub: number
-  cancelRetry?: Cancel
+type DocChange = ServerEvents['doc'] | ServerEvents['docOps']
+interface Wanted {
+  spec: Spec
+  handler: Handler
 }
 
-function applyDoc(docs: Docs, event: ServerEvents['doc'] | ServerEvents['docOps']): Docs {
+function applyDoc(docs: Docs, event: DocChange): Docs {
   if ('value' in event) return { ...docs, [event.kind]: event.value }
   const subscriptionSnapshot = docs[event.kind]
   if (subscriptionSnapshot === undefined) return docs
@@ -121,19 +137,25 @@ export function createStore(options: StoreOptions = {}) {
 
   const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
   const watchedViews = new Map<ConversationId, number>()
-
-  const sharedSubscriptionsByConversation = new Map<ConversationId, DocStream>()
+  const watchedReads = new Map<
+    string,
+    { read: ReadSpec; every?: number; onEvent: (event: ReadEvent) => void }
+  >()
 
   let multiplexedEventSource: EventSourceLike | undefined
 
   let streamId: string | undefined
   const handlers = new Map<number, Handler>()
   let nextSub = 0
-  let main: number | undefined
+  const live = new Map<string, number>()
+  const opening = new Map<number, { spec: Spec; failed: Refused }>()
+  const closing = new Set<number>()
   let opened = false
   let cancelRetry: Cancel | undefined
+  let cancelReconcile: Cancel | undefined
   let cancelResubscribe: Cancel | undefined
-  let cancelSync: Cancel | undefined
+  let cancelCloseRetry: Cancel | undefined
+  let flushQueued = false
   let noticeId = 0
   let stopped = true
 
@@ -143,8 +165,7 @@ export function createStore(options: StoreOptions = {}) {
   >()
   const retainedConversationLimit = 6
 
-  const lastWholeStateEventText: Partial<Record<keyof ServerEvents, string>> = {}
-  const snapshots = new Set<keyof ServerEvents>(['system', 'conversations', 'tasks'])
+  let lastSystemText: string | undefined
   function remember(view: StreamedView, raw?: string) {
     const id = view.conversation.id
     recentViewsWithRawSnapshots.delete(id)
@@ -165,6 +186,7 @@ export function createStore(options: StoreOptions = {}) {
     switch (name) {
       case 'stream':
       case 'view':
+      case 'read':
         break
       case 'system': {
         const system = data as SystemInfo
@@ -183,9 +205,24 @@ export function createStore(options: StoreOptions = {}) {
           const unchangedRowKeepsIdentity = kept && JSON.stringify(kept) === JSON.stringify(summary)
           return unchangedRowKeepsIdentity ? kept : summary
         })
-        set({ conversations })
+        const unchanged =
+          conversations.length === state.conversations.length &&
+          conversations.every((summary, index) => summary === state.conversations[index])
+        if (!unchanged) set({ conversations })
         break
       }
+      case 'conversationsOps':
+        set({
+          conversations: applyImmutable(
+            state.conversations,
+            data as ServerEvents['conversationsOps'],
+          ),
+        })
+        break
+      case 'tasksOps':
+        if (state.tasks)
+          set({ tasks: applyImmutable(state.tasks, data as ServerEvents['tasksOps']) })
+        break
       case 'ops':
         if (state.view) {
           const view = applyImmutable(state.view, data as ServerEvents['ops'])
@@ -204,9 +241,7 @@ export function createStore(options: StoreOptions = {}) {
         break
       case 'doc':
       case 'docOps': {
-        const event = data as ServerEvents['doc'] | ServerEvents['docOps']
-        if (!docKinds.has(event.kind)) break
-        const docs = applyDoc(state.docs, event)
+        const docs = applyDoc(state.docs, data as DocChange)
         if (docs !== state.docs) set({ docs })
         break
       }
@@ -236,55 +271,220 @@ export function createStore(options: StoreOptions = {}) {
     set({ view, restored: false })
   }
 
-  function subscribe(
-    spec: { conversation?: ConversationId; docs: string[]; view: boolean },
-    handler: Handler,
-    failed: (status: number) => void,
-  ) {
+  function subscribe(spec: Spec, handler: Handler, failed: Refused) {
     const sub = ++nextSub
     handlers.set(sub, handler)
-    const stream = streamId
-    if (stream === undefined) return sub
-    const refused = (status: number) => {
-      if (handlers.has(sub) && streamId === stream) failed(status)
-    }
-    void request(`/api/events/${stream}/${sub}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(spec),
-    }).then(
-      (response) => {
-        if (!response.ok) refused(response.status)
-      },
-      () => refused(0),
-    )
+    if (streamId === undefined) return sub
+    opening.set(sub, { spec, failed })
+    scheduleFlush()
     return sub
   }
-  function unsubscribe(sub: number | undefined) {
-    if (sub === undefined || !handlers.delete(sub) || streamId === undefined) return
-    request(`/api/events/${streamId}/${sub}`, { method: 'DELETE' }).catch(meansNone)
+  function retire(sub: number) {
+    if (!handlers.delete(sub) || streamId === undefined) return false
+    if (opening.delete(sub)) return false
+    closing.add(sub)
+    return true
+  }
+  function unsubscribe(sub: number) {
+    if (retire(sub)) scheduleFlush()
+  }
+  function scheduleFlush() {
+    if (flushQueued) return
+    flushQueued = true
+    queueMicrotask(flush)
+  }
+  function flush() {
+    if (!flushQueued) return
+    flushQueued = false
+    const stream = streamId
+    const opens = new Map(opening)
+    const closes = [...closing]
+    opening.clear()
+    closing.clear()
+    if (stream === undefined || (!opens.size && !closes.length)) return
+    const batch: SubscriptionsRequest = {
+      subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
+      unsubscribe: closes,
+    }
+    const unanswered = (status = 0) => ({
+      refused: Object.fromEntries(
+        [...opens].map(([sub, { spec }]) => [sub, 'read' in spec ? status : 0]),
+      ),
+      confirmed: false,
+    })
+    void request(`/api/events/${stream}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(batch),
+    })
+      .then(async (response) => {
+        if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return undefined
+        if (!response.ok) return unanswered(response.status)
+        const answer = (await response.json()) as Partial<SubscriptionsAnswer>
+        return answeredFor(opens, answer)
+          ? { refused: answer.refused, confirmed: true }
+          : unanswered()
+      })
+      .catch(() => unanswered())
+      .then((result) => {
+        if (streamId !== stream || result === undefined) return
+        const { refused, confirmed } = result
+        if (confirmed) for (const sub of Object.keys(refused)) handlers.delete(Number(sub))
+        else if (closes.length) {
+          for (const sub of closes) closing.add(sub)
+          cancelCloseRetry ??= retryAfter(options.retryMs ?? 1000, () => {
+            cancelCloseRetry = undefined
+            scheduleFlush()
+          })
+        }
+        for (const [sub, status] of Object.entries(refused)) opens.get(Number(sub))?.failed(status)
+      })
   }
 
-  function openMain() {
-    cancelResubscribe?.()
-    unsubscribe(main)
-    const requested = state.requested
-    main = subscribe(
-      { conversation: requested, docs: [...docKinds.keys()].toSorted(), view: true },
-      (name, raw) =>
-        name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
-      (status) => {
-        if (status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return
-
-        const requestedConversationNeverOpened =
-          status === 404 && requested !== undefined && !state.view
-        if (requestedConversationNeverOpened) {
-          set({ requested: undefined })
-          options.onFallback?.()
-          openMain()
-        } else cancelResubscribe = retryAfter(options.retryMs ?? 1000, openMain)
-      },
+  function answeredFor(
+    opens: ReadonlyMap<number, unknown>,
+    answer: Partial<SubscriptionsAnswer>,
+  ): answer is SubscriptionsAnswer {
+    const { ok, refused } = answer
+    return (
+      ok === true &&
+      typeof refused === 'object' &&
+      refused !== null &&
+      !Array.isArray(refused) &&
+      Object.entries(refused).every(
+        ([sub, status]) =>
+          opens.has(Number(sub)) &&
+          String(Number(sub)) === sub &&
+          Number.isInteger(status) &&
+          status >= 400 &&
+          status < 600 &&
+          status !== STREAM_GONE_RECONNECT_RESUBSCRIBES,
+      )
     )
+  }
+
+  const shownKey = () => `shown:${state.requested ?? 'root'}`
+  function docSubscription(
+    conversation: ConversationId | undefined,
+    kind: string,
+    apply: (change: DocChange) => void,
+  ): Wanted {
+    return {
+      spec: { conversation, docs: [kind], view: false },
+      handler: (_name, raw) => {
+        const change = JSON.parse(raw) as DocChange
+        if (change.kind === kind) apply(change)
+      },
+    }
+  }
+  function wanted() {
+    const result = new Map<string, Wanted>()
+    const shown = shownKey()
+    result.set(`${shown}:view`, {
+      spec: { conversation: state.requested, docs: [], view: true },
+      handler: (name, raw) =>
+        name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
+    })
+    for (const kind of docKinds.keys())
+      result.set(
+        `${shown}:doc:${kind}`,
+        docSubscription(state.requested, kind, (change) => handle('doc', change)),
+      )
+    for (const conversation of watchedViews.keys())
+      result.set(`${conversation}:view`, {
+        spec: { conversation, docs: [], view: true },
+        handler: (name, raw) => {
+          const data = JSON.parse(raw)
+          const current = state.viewsOf[conversation]
+          const view =
+            name === 'view'
+              ? (data as StreamedView)
+              : current && applyImmutable(current, data as ServerEvents['ops'])
+          if (view) set({ viewsOf: { ...state.viewsOf, [conversation]: view } })
+        },
+      })
+    for (const [conversation, kinds] of docWatchCountsByConversation)
+      for (const kind of kinds.keys())
+        result.set(
+          `${conversation}:doc:${kind}`,
+          docSubscription(conversation, kind, (change) => {
+            const docs = state.docsOf[conversation] ?? {}
+            const next = applyDoc(docs, change)
+            if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
+          }),
+        )
+    for (const [key, { read, every }] of watchedReads)
+      result.set(`read:${key}`, {
+        spec: every === undefined ? { read } : { read, every },
+        handler: (name, raw) => {
+          if (name === 'read') watchedReads.get(key)?.onEvent(JSON.parse(raw) as ReadEvent)
+        },
+      })
+    return result
+  }
+
+  function refusedOpen(key: string, sub: number, status: number) {
+    if (live.get(key) !== sub) return
+    const read = key.startsWith('read:') ? watchedReads.get(key.slice(5)) : undefined
+    if (read && status >= 400 && status < 500) {
+      read.onEvent({ error: 'The server refused this read', status })
+      return
+    }
+    live.delete(key)
+    unsubscribe(sub)
+    const requestedConversationNeverOpened =
+      key === `${shownKey()}:view` && status === 404 && state.requested !== undefined && !state.view
+    if (requestedConversationNeverOpened) {
+      retireShownUntilReconcile()
+      set({ requested: undefined, docs: {} })
+      options.onFallback?.()
+      reconcile()
+    } else
+      cancelResubscribe ??= retryAfter(options.retryMs ?? 1000, () => {
+        cancelResubscribe = undefined
+        reconcile()
+      })
+  }
+  function retireShownUntilReconcile() {
+    for (const [key, sub] of live)
+      if (key.startsWith('shown:')) {
+        live.delete(key)
+        retire(sub)
+      }
+  }
+
+  function reconcile() {
+    cancelReconcile?.()
+    cancelReconcile = undefined
+    if (stopped) return
+    const want = wanted()
+    for (const [key, sub] of live)
+      if (!want.has(key)) {
+        live.delete(key)
+        retire(sub)
+      }
+    if (closing.size) scheduleFlush()
+    if (streamId !== undefined)
+      for (const [key, { spec, handler }] of want)
+        if (!live.has(key)) {
+          const sub: number = subscribe(spec, handler, (status) => refusedOpen(key, sub, status))
+          live.set(key, sub)
+        }
+    const keep = <T>(record: Readonly<Record<string, T>>, has: (key: string) => boolean) =>
+      Object.keys(record).every(has)
+        ? record
+        : Object.fromEntries(Object.entries(record).filter(([key]) => has(key)))
+    const docsOf: Record<number, Docs> = {}
+    for (const [conversation, kinds] of docWatchCountsByConversation)
+      docsOf[conversation] = keep(state.docsOf[conversation] ?? {}, (kind) => kinds.has(kind))
+    set({
+      docs: keep(state.docs, (kind) => docKinds.has(kind)),
+      docsOf,
+      viewsOf: keep(state.viewsOf, (id) => watchedViews.has(parseConversationId(Number(id)))),
+    })
+  }
+  function scheduleReconcile() {
+    if (!stopped) cancelReconcile ??= nextTurn(reconcile)
   }
 
   function connect() {
@@ -320,94 +520,20 @@ export function createStore(options: StoreOptions = {}) {
         } else if (name === 'stream') {
           streamId = (JSON.parse(raw) as ServerEvents['stream']).id
           handlers.clear()
-          openMain()
-
-          const subscriptionsBeforeReopen = Array.from(sharedSubscriptionsByConversation)
-          for (const [conversation, stream] of subscriptionsBeforeReopen)
-            openDocs(conversation, stream.kinds, stream.view)
-        } else if (snapshots.has(name)) {
-          if (lastWholeStateEventText[name] !== raw) {
-            lastWholeStateEventText[name] = raw
+          opening.clear()
+          closing.clear()
+          cancelCloseRetry?.()
+          cancelCloseRetry = undefined
+          live.clear()
+          reconcile()
+          flush()
+        } else if (name === 'system') {
+          if (lastSystemText !== raw) {
+            lastSystemText = raw
             handle(name, JSON.parse(raw))
-          } else if (name === 'system' && !state.models) void refreshModels()
+          } else if (!state.models) void refreshModels()
         } else handle(name, JSON.parse(raw))
       })
-  }
-  function scheduleMain() {
-    if (stopped) return
-    cancelResubscribe?.()
-    cancelResubscribe = nextTurn(openMain)
-  }
-
-  function openDocs(conversation: ConversationId, kinds: string, withView: boolean) {
-    closeDocs(conversation)
-    const stream: DocStream = { kinds, view: withView, sub: 0 }
-    sharedSubscriptionsByConversation.set(conversation, stream)
-    stream.sub = subscribe(
-      { conversation, docs: kinds ? kinds.split(',') : [], view: withView },
-      (name, raw) => {
-        const data = JSON.parse(raw)
-        if (name === 'view' || name === 'ops') {
-          if (!watchedViews.has(conversation)) return
-          const current = state.viewsOf[conversation]
-          const view =
-            name === 'view'
-              ? (data as StreamedView)
-              : current && applyImmutable(current, data as ServerEvents['ops'])
-          if (view) set({ viewsOf: { ...state.viewsOf, [conversation]: view } })
-          return
-        }
-        const change = data as ServerEvents['doc'] | ServerEvents['docOps']
-        if (!docWatchCountsByConversation.get(conversation)?.has(change.kind)) return
-        const docs = state.docsOf[conversation] ?? {}
-        const next = applyDoc(docs, change)
-        if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
-      },
-      (status) => {
-        if (status !== STREAM_GONE_RECONNECT_RESUBSCRIBES)
-          stream.cancelRetry = retryAfter(options.retryMs ?? 1000, () =>
-            openDocs(conversation, kinds, withView),
-          )
-      },
-    )
-  }
-  function closeDocs(conversation: ConversationId) {
-    const stream = sharedSubscriptionsByConversation.get(conversation)
-    unsubscribe(stream?.sub)
-    stream?.cancelRetry?.()
-    sharedSubscriptionsByConversation.delete(conversation)
-  }
-
-  function syncSharedViewAndDocSubscriptions() {
-    const conversations = new Set([...docWatchCountsByConversation.keys(), ...watchedViews.keys()])
-    for (const conversation of sharedSubscriptionsByConversation.keys())
-      if (!conversations.has(conversation)) closeDocs(conversation)
-    const docsOf: Record<number, Docs> = {}
-    for (const conversation of conversations) {
-      const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, number>()
-      const list = [...kinds.keys()].toSorted().join(',')
-      const stream = sharedSubscriptionsByConversation.get(conversation)
-      const view = watchedViews.has(conversation)
-
-      const changedWatchesNeedFreshSnapshot = stream?.kinds !== list || stream.view !== view
-      if (changedWatchesNeedFreshSnapshot) openDocs(conversation, list, view)
-
-      const current = state.docsOf[conversation] ?? {}
-      docsOf[conversation] = Object.keys(current).every((kind) => kinds.has(kind))
-        ? current
-        : Object.fromEntries(Object.entries(current).filter(([kind]) => kinds.has(kind)))
-    }
-    const viewsOf = Object.fromEntries(
-      Object.entries(state.viewsOf).filter(([id]) =>
-        watchedViews.has(parseConversationId(Number(id))),
-      ),
-    )
-    set({ docsOf, viewsOf })
-  }
-  function scheduleSync() {
-    if (stopped) return
-    cancelSync?.()
-    cancelSync = nextTurn(syncSharedViewAndDocSubscriptions)
   }
 
   async function refreshModels() {
@@ -431,26 +557,31 @@ export function createStore(options: StoreOptions = {}) {
       if (!stopped) return
       stopped = false
       connect()
-      syncSharedViewAndDocSubscriptions()
+      reconcile()
     },
     stop() {
       stopped = true
       cancelRetry?.()
+      cancelReconcile?.()
+      cancelReconcile = undefined
       cancelResubscribe?.()
-      cancelSync?.()
+      cancelResubscribe = undefined
+      cancelCloseRetry?.()
+      cancelCloseRetry = undefined
 
       streamId = undefined
-      for (const conversation of sharedSubscriptionsByConversation.keys()) closeDocs(conversation)
-      unsubscribe(main)
-      main = undefined
+      handlers.clear()
+      opening.clear()
+      closing.clear()
+      live.clear()
       multiplexedEventSource?.close()
       multiplexedEventSource = undefined
+      if (state.connection.status === 'open') setConnection('reconnecting')
     },
 
     show(id: ConversationId | undefined) {
       if (id === state.requested) return
-      unsubscribe(main)
-      main = undefined
+      retireShownUntilReconcile()
       const kept = id === undefined ? undefined : recentViewsWithRawSnapshots.get(id)?.view
       set({
         requested: id,
@@ -458,33 +589,28 @@ export function createStore(options: StoreOptions = {}) {
         restored: kept !== undefined,
         docs: {},
       })
-      scheduleMain()
+      scheduleReconcile()
     },
 
     watchConversation(id: ConversationId) {
       watchedViews.set(id, (watchedViews.get(id) ?? 0) + 1)
-      scheduleSync()
+      scheduleReconcile()
       return () => {
         const left = (watchedViews.get(id) ?? 1) - 1
         if (left > 0) watchedViews.set(id, left)
         else watchedViews.delete(id)
-        scheduleSync()
+        scheduleReconcile()
       }
     },
 
     watchDoc(kind: string) {
-      const count = docKinds.get(kind) ?? 0
-      docKinds.set(kind, count + 1)
-      if (count === 0) scheduleMain()
+      docKinds.set(kind, (docKinds.get(kind) ?? 0) + 1)
+      scheduleReconcile()
       return () => {
         const left = (docKinds.get(kind) ?? 1) - 1
         if (left > 0) docKinds.set(kind, left)
-        else {
-          docKinds.delete(kind)
-          const { [kind]: _removed, ...docs } = state.docs
-          set({ docs })
-          scheduleMain()
-        }
+        else docKinds.delete(kind)
+        scheduleReconcile()
       }
     },
 
@@ -492,13 +618,24 @@ export function createStore(options: StoreOptions = {}) {
       const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, number>()
       docWatchCountsByConversation.set(conversation, kinds)
       kinds.set(kind, (kinds.get(kind) ?? 0) + 1)
-      scheduleSync()
+      scheduleReconcile()
       return () => {
         const left = (kinds.get(kind) ?? 1) - 1
         if (left > 0) kinds.set(kind, left)
         else kinds.delete(kind)
         if (!kinds.size) docWatchCountsByConversation.delete(conversation)
-        scheduleSync()
+        scheduleReconcile()
+      }
+    },
+    watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadEvent) => void) {
+      const key = JSON.stringify([read, every ?? null])
+      const watch = { read, every, onEvent }
+      watchedReads.set(key, watch)
+      scheduleReconcile()
+      return () => {
+        if (watchedReads.get(key) !== watch) return
+        watchedReads.delete(key)
+        scheduleReconcile()
       }
     },
     refreshModels,

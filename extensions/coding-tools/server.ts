@@ -14,6 +14,7 @@ import {
   ROOT_CONVERSATION_ID,
   type ToolExecutionApi,
   type ToolExecutionResult,
+  type ToolPark,
   type ToolRegistration,
   wrapTool,
 } from '@earendil-works/pi-durable'
@@ -24,7 +25,7 @@ import {
   createReadTool,
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
-import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
+import { formatDuration } from '../../lib/format.ts'
 import { git } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -34,6 +35,7 @@ import { Concluded, ConversationsApi } from '../conversations/api.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import {
   BackgroundGroups,
+  dropHostNodeEnv,
   recordStarted,
   startBackground,
   type Started,
@@ -41,8 +43,6 @@ import {
   sweepEarlierProcesses,
   takeStarted,
 } from './background.ts'
-
-const modelSizedImages = await createNodePhotonImages()
 
 function defaultBashTimeout() {
   const seconds = Number(process.env.ULTIMATE_BASH_TIMEOUT ?? 600)
@@ -106,20 +106,12 @@ const DurableCancellations = defineDoc<{ calls: Record<string, number> }>({
 })
 export const docs = [DurableCancellations, BackgroundGroups]
 
-function took(ms: number) {
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600)
-    return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
-  return `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}m`
-}
-
 async function untilStopped(
-  run: (context: Context) => Promise<ToolExecutionResult>,
+  run: (context: Context) => Promise<ToolExecutionResult | ToolPark>,
   api: ToolExecutionApi,
   interruptible: boolean | undefined,
   context: Context,
-): Promise<ToolExecutionResult> {
+): Promise<ToolExecutionResult | ToolPark> {
   const id = api.conversationId
   const cancellationDoc = await api.snapshot(DurableCancellations, id, context)
   if (!cancellationDoc) await api.commit((tx) => tx.doc(DurableCancellations, id), context)
@@ -147,7 +139,7 @@ async function untilStopped(
   } catch (error) {
     if (!reason || context.abortSignal?.aborted) throw error
     const retained = api.retainedOutput()
-    const outputWithTrailingNotice = `${retained.text || '(no output)'}\n[${reason} after ${took(performance.now() - started)}; the output above is the last the command printed.]`
+    const outputWithTrailingNotice = `${retained.text || '(no output)'}\n[${reason} after ${formatDuration(performance.now() - started)}; the output above is the last the command printed.]`
     return {
       output: [
         {
@@ -255,7 +247,7 @@ async function madeCommits(path: string, conversation: ConversationId) {
 }
 
 export default function codingTools(
-  host: Pick<ExtensionHost, 'emit' | 'home' | 'need' | 'notice' | 'onOpen' | 'react'>,
+  host: Pick<ExtensionHost, 'emit' | 'home' | 'images' | 'need' | 'notice' | 'onOpen' | 'react'>,
 ) {
   host.onOpen(() =>
     sweepEarlierProcesses(host.home).catch((error: unknown) =>
@@ -357,6 +349,7 @@ export default function codingTools(
         )
       const invocationLog = join(tmpdir(), `ultimate-commits-${randomUUID()}.log`)
       const call = createBashTool({
+        commandPrefix: dropHostNodeEnv,
         prepare: (execution) => prepareBash(execution, api, invocationLog),
       })
       const run = (command: Context) => call.execute(args, api, command)
@@ -379,7 +372,7 @@ export default function codingTools(
     name: 'coding-tools',
     tasks: [StopBackground],
     tools: [
-      createReadTool({ images: modelSizedImages }),
+      createReadTool({ images: host.images }),
       createWriteTool(),
       createEditTool(),
       tracedBashTool,

@@ -32,7 +32,6 @@ import {
 } from './refs.ts'
 import type { Dream, Prepared, Sleep, ToolStats } from './refs.ts'
 import { busyElsewhere } from './types.ts'
-import { deliver, deliverTask } from './delivery.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from './seed.ts'
 import { BuiltInDoc, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
 
@@ -123,7 +122,7 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
       )
       .all() as { name: string; error: string; count: number }[]
     const sample = db.prepare(
-      "SELECT conversation, entry, substr(args, 1, 120) AS args FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
+      "SELECT conversation, entry FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
     )
     const errors = groups.map((group) => ({
       ...group,
@@ -131,11 +130,9 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
         sample.all(group.name, group.error) as {
           conversation: ConversationId | null
           entry: number | null
-          args: string | null
         }[]
       ).map((row) => ({
         at: `#${row.conversation ?? '?'}${row.entry === null ? '' : `/${row.entry}`}`,
-        args: row.args ?? '',
       })),
     }))
     const used = new Set(tools.map((tool) => tool.name))
@@ -206,7 +203,7 @@ async function restartChapter(
     throw new Error(
       await host.restart(async () => {
         requireNoWorkParkedBySwitch(host)
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched Harness.hold() keeps the scheduler from starting tasks.
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold() keeps the scheduler from starting tasks.
         host.harness().hold()
       }),
     )
@@ -274,10 +271,11 @@ async function fallAsleep(host: ExtensionHost, input: { name?: unknown }) {
   }
 }
 
-const ultimateOf = async (tx: Tx) => {
-  const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+async function ultimateOf(host: ExtensionHost) {
+  const ultimate = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))
+    ?.ultimate
   if (ultimate === undefined) throw new Error('@ultimate has no conversation yet')
-  return ultimate
+  return (await host.harness().conversation(ultimate, context))!
 }
 
 function resetPreparationSleep(doc: { sleep?: Sleep }) {
@@ -309,20 +307,21 @@ export const actions = {
     withChapterChangeLock(host, () => fallAsleep(host, fields(args))),
   ),
   start: implementAction(StartAction, async (_args, { host }) => {
+    const ultimate = await ultimateOf(host)
     await host.harness().commit(async (tx) => {
-      const ultimate = await ultimateOf(tx)
-      await deliver(host, tx, ultimate, {
+      await ultimate.submit(tx, {
         type: 'input',
         requestId: `dream.requested:${Date.now()}`,
-        kind: 'dream.requested',
-        data: {},
         content: `The user pressed Dream. ${DREAM_ASK}`,
+        entry: { kind: 'dream.requested', data: {} },
+        whenBusy: 'followUp',
       })
     }, context)
     host.harness().resume()
     return { requested: true as const }
   }),
   ready: implementAction(ReadyAction, async (_args, { host }) => {
+    const ultimate = await ultimateOf(host)
     const asked = await host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
       if (!doc.dream) throw new Error('No dream to wake from: start one with Dream')
@@ -331,12 +330,12 @@ export const actions = {
       const at = Date.now()
       doc.dream.asked = at
       delete doc.dream.dismissed
-      await deliver(host, tx, await ultimateOf(tx), {
+      await ultimate.submit(tx, {
         type: 'input',
         requestId: `dream.ready:${at}`,
-        kind: 'dream.ready',
-        data: { branch: doc.dream.branch },
         content: `The user pressed Fall asleep after dream #${doc.dream.branch}. Follow "Prepare the fresh chapter" in the clone's extensions/dream/DREAM.md and call prepare now: the Fall asleep card it puts up is what the user waits for. Name in the handoff any branch still running or waiting on an answer.`,
+        entry: { kind: 'dream.ready', data: { branch: doc.dream.branch } },
+        whenBusy: 'followUp',
       })
       return at
     }, context)
@@ -351,18 +350,27 @@ export const actions = {
     return { dismissed: true as const }
   }),
   prepare: implementAction(PrepareAction, async (args, { host }) => {
+    const ultimate = await ultimateOf(host)
     const prepared = await host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
       if (doc.sleep && !['asleep', 'failed'].includes(doc.sleep.phase))
         throw new Error(`Falling asleep is under way (${doc.sleep.phase})`)
       doc.prepared = prepare(args, Date.now())
       resetPreparationSleep(doc)
-      await deliver(host, tx, await ultimateOf(tx), {
+      await ultimate.submit(tx, {
         type: 'write',
         requestId: `dream.prepared:${doc.prepared.at}`,
-        kind: 'dream.prepared',
-        data: { at: doc.prepared.at },
-        content: `You prepared Chapter ${doc.prepared.chapter}; the Fall asleep card above shows it to the user, who taps Fall asleep. Never call asleep yourself.`,
+        entry: {
+          kind: 'dream.prepared',
+          data: { at: doc.prepared.at },
+          model: [
+            {
+              role: 'user',
+              content: `You prepared Chapter ${doc.prepared.chapter}; the Fall asleep card above shows it to the user, who taps Fall asleep. Never call asleep yourself.`,
+              timestamp: Date.now(),
+            },
+          ],
+        },
       })
       return detachOverlay(doc.prepared)
     }, context)
@@ -423,5 +431,5 @@ export default function dream(host: ExtensionHost) {
       at: Date.parse(event.at),
     }),
   )
-  return defineExtension({ name: 'dream', tasks: [deliverTask(host)] })
+  return defineExtension({ name: 'dream' })
 }

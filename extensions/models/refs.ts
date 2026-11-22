@@ -17,10 +17,10 @@ export type LoginFlow = {
   error?: string
 }
 
-/** The login flows started from a conversation, by flow id, on that conversation; finished ones are kept for a while. */
+/** The login flows by flow id, on the root conversation (logins are machine-wide); finished ones are kept for a while. */
 export const LoginDoc = docRef<{ flows: Record<string, LoginFlow> }>('models.login')
 
-/** `{ provider, type }` → `{ flowId }`: start logging in to `provider` for the calling conversation. */
+/** `{ provider, type }` → `{ flowId }`: start logging in to `provider`; its flow appears in `LoginDoc` on the root. */
 export const LoginAction = actionRef<{ provider: string; type: AuthType }, { flowId: string }>(
   'models',
   'login',

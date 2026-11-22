@@ -1,11 +1,11 @@
 // The panel listed only declared and stored names, so a user could not store a secret of their own.
 import { mkdir } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import { readSecret } from '../../../../lib/secrets.ts'
-import { fauxServer, removeTemp, temp } from '../../../../test/helpers.ts'
+import { prebuiltServer, removeTemp, temp } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -16,9 +16,7 @@ it('adds a secret under a name the user types, refusing an invalid one inline', 
   const home = await temp('ultimate-secrets-add-')
   cleanup.push(() => removeTemp(home))
   await mkdir(join(home, '.ultimate'), { recursive: true })
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,

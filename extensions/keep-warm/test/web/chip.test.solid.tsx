@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -29,15 +28,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     if (action[1] === 'set') harness.state = { ...harness.state!, on: (args as { on: boolean }).on }
     return Response.json({ result: harness.state })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
 })
 

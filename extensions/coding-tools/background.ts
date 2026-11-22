@@ -25,6 +25,7 @@ const groups = (home: string) => join(home, 'background')
 const conversationGroups = (home: string, id: string) => join(groups(home), id)
 const startedByThisProcess = (name: string) => name.startsWith(`${process.pid}-`)
 const quoted = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`
+export const dropHostNodeEnv = 'unset NODE_ENV'
 
 export async function startBackground(
   host: Pick<ExtensionHost, 'home' | 'notice'>,
@@ -40,10 +41,11 @@ export async function startBackground(
   const pidFile = join(directory, `${name}.pid`)
   const log = join(directory, `${name}.log`)
   writeFileSync(log, '')
-  const group = spawnGroup('bash', ['-c', `exec </dev/null >>${quoted(log)} 2>&1\n${command}`], {
-    cwd,
-    pidFile,
-  })
+  const group = spawnGroup(
+    'bash',
+    ['-c', `exec </dev/null >>${quoted(log)} 2>&1\n${dropHostNodeEnv}\n${command}`],
+    { cwd, pidFile },
+  )
   const { pid } = group.child
   if (pid === undefined) throw new Error('The background command did not start')
   group.child.stdout.resume()

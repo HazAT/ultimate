@@ -28,7 +28,7 @@ import {
 import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { context } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { Overview } from '../overview.ts'
+import { Overview } from '../api.ts'
 import type { TreesService } from '../api.ts'
 import {
   exchangeMessages,
@@ -237,6 +237,7 @@ async function launch(subagents = false, initialIntent = false, root = false, br
                 ? { request: questionsRequested }
                 : api.name === 'conversations.trees' && (root || branch)
                   ? ({
+                      isRoot: async () => root,
                       rootOf: async (id: number) => (root ? id : undefined),
                       branchOf: async () =>
                         branch

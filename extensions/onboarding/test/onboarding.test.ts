@@ -23,7 +23,7 @@ async function setupFixture(decision?: boolean) {
     join(config, 'extensions/x/server.ts'),
     "import { defineExtension } from '@earendil-works/pi-durable'; export default defineExtension({ name: 'x' })",
   )
-  await writeFile(join(config, 'extensions/x/web.tsx'), 'export default {}')
+  await writeFile(join(config, 'extensions/x/web.solid.tsx'), 'export default {}')
   await writeFile(
     join(config, 'extensions/x/README.md'),
     '# X\n\nA local extension. Another sentence.',
@@ -138,10 +138,12 @@ it('gates project resources until the local setup is chosen, and remembers the c
     expect(enabled('x')).toBe(true)
     expect(enabled('plan')).toBe(false)
     expect(await tools()).not.toContain('plan')
-    expect((await web()).some((path) => path.endsWith('/x/web.tsx'))).toBe(true)
+    expect((await web()).some((path) => path.endsWith('/x/web.solid.tsx'))).toBe(true)
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(true)
     expect(projectDecision(project, home)).toBe(true)
-    await server.close()
+    const first = server
+    server = undefined
+    await first.close()
     server = await fauxServer(options)
     expect(server.system.current().project.decision).toBe(true)
     expect(drive(server).enabled('x')).toBe(true)
@@ -158,10 +160,10 @@ it('applies extension choices live at project and user scope, keeping other sett
     const { action, enabled, web } = drive(server)
     await action('setExtension', { name: 'splash', enabled: false, scope: 'project' })
     expect(enabled('splash')).toBe(false)
-    expect((await web()).some((path) => path.endsWith('/splash/web.tsx'))).toBe(false)
+    expect((await web()).some((path) => path.endsWith('/splash/web.solid.tsx'))).toBe(false)
     await action('setExtension', { name: 'splash', enabled: true, scope: 'project' })
     expect(enabled('splash')).toBe(true)
-    expect((await web()).some((path) => path.endsWith('/splash/web.tsx'))).toBe(true)
+    expect((await web()).some((path) => path.endsWith('/splash/web.solid.tsx'))).toBe(true)
     const projectSettings = JSON.parse(await readFile(projectFile, 'utf8'))
     expect(projectSettings).toMatchObject({
       custom: { keep: 1 },
@@ -187,10 +189,10 @@ it('applies extension choices live at project and user scope, keeping other sett
     await rename(userFile + '.tmp', userFile)
     await action('setExtension', { name: 'sounds', enabled: true, scope: 'user' })
     expect(enabled('sounds')).toBe(true)
-    expect((await web()).some((path) => path.endsWith('/sounds/web.tsx'))).toBe(true)
+    expect((await web()).some((path) => path.endsWith('/sounds/web.solid.tsx'))).toBe(true)
     await action('setExtension', { name: 'sounds', enabled: false, scope: 'user' })
     expect(enabled('sounds')).toBe(false)
-    expect((await web()).some((path) => path.endsWith('/sounds/web.tsx'))).toBe(false)
+    expect((await web()).some((path) => path.endsWith('/sounds/web.solid.tsx'))).toBe(false)
     expect(JSON.parse(await readFile(userFile, 'utf8'))).toMatchObject({
       custom: 'user',
       extensions: { extra: 2, enable: [], disable: ['sounds'] },
@@ -224,7 +226,7 @@ it('withdraws the local setup, adopts it into user settings, and remembers the f
     expect(enabled('x')).toBe(false)
     expect(enabled('plan')).toBe(true)
     expect(await tools()).toContain('plan')
-    expect((await web()).some((path) => path.endsWith('/x/web.tsx'))).toBe(false)
+    expect((await web()).some((path) => path.endsWith('/x/web.solid.tsx'))).toBe(false)
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(false)
     const adoptDenied = await post(server, '/api/extensions/onboarding/actions/adoptProjectSetup', {
       args: {},
@@ -249,7 +251,9 @@ it('withdraws the local setup, adopts it into user settings, and remembers the f
     expect(await action('status')).toMatchObject({ firstRun: true, off: false })
     await action('firstRunDone')
     expect((await action('status')).firstRun).toBe(false)
-    await server.close()
+    const first = server
+    server = undefined
+    await first.close()
     server = await fauxServer(options)
     expect(server.system.current().project.decision).toBe(false)
     expect(drive(server).enabled('x')).toBe(false)

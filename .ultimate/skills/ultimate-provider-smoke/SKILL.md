@@ -44,7 +44,7 @@ Screenshot the URL. Its header shows @ultimate's `#<id>` and its composer shows 
 {"url": "<url>/?conversation=<id>", "steps": [
   {"until": "idle", "conversation": <id>},
   {"send": "Reply with exactly the word: pong. Do not call any tools.", "conversation": <id>},
-  {"until": "idle", "conversation": <id>, "timeoutMs": 180000}
+  {"until": "idle", "conversation": <id>, "timeoutMs": 120000}
 ], "screenshot": true}
 ```
 

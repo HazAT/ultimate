@@ -17,16 +17,21 @@ queued steering while the child keeps running; it then returns status text and t
 or wait again. Follow-ups do not wake waits; steering and other children's answers do.
 
 Each start or message creates a reporter that delivers the answer once, including after a restart. Undelivered answers
-steer the current run at its next tool-round boundary, or start a run when the parent is idle. Before each request, a
-reminder lists running children and inputs waiting to start. Answers say `Returned model: provider/model`, read from
+steer the current run at its next tool-round boundary, or start a run when the parent is idle. While children run or
+have inputs waiting to start, each run starts with a model-only `subagents.note` listing them, after the cached system
+prompt, which stays unchanged. Answers say `Returned model: provider/model`, read from
 the stored assistant message.
 
 - **No answer.** A turn with no text, or one that stopped as `aborted` or `error`, is not an answer: the parent gets
   `[subagent <id> failed: ended its turn without an answer]` (foreground: `… Message it to continue.`), and nothing
   retries.
-- **Provider errors** belong to the [watchdog](../watchdog/README.md): one retry after 60 seconds for temporary errors,
-  else a `watchdog.failure` card to the parent. A later answer (a watchdog retry, or someone typing `continue` in the
-  child) is delivered as a normal report, once.
+- **Provider errors and interrupted runs** belong to the `subagents.failures` provider, the [watchdog](../watchdog/README.md):
+  up to four continuations (after 1, 5, 15 and 30 minutes) for temporary provider errors, else a `watchdog.failure` card to
+  the parent. A run that a restart cut off (`interrupted`, `restart_limit`) is never retried. A later answer (a watchdog
+  retry, or someone typing `continue` in the child) is delivered as a normal report, once. With the watchdog disabled the
+  parent gets `[subagent <id> failed: <reason>: <error>]` instead.
+- **When Ultimate opens** it reports answers that arrived while it was closed, reading only the submissions after its
+  high-water mark.
 - **Answers without a reporter.** The answer to the parent's one-way message, or to its reply to the child's own
   question, is reported too, or an idle parent would never wake.
 
@@ -109,10 +114,10 @@ it leads them instead: it starts every one in parallel and returns one merged ve
 
 ### Editing definitions
 
-The right panel's **Agents** tab (`overview.tsx`) lists every definition under the model family it runs on (each family
+The right panel's **Agents** tab (`overview.solid.tsx`) lists every definition under the model family it runs on (each family
 line edits its model, thinking and caps in place; see "Model families" in the models README), then those that pin a
 model, then invalid files with their errors. A definition's **move** menu puts it on another family. Clicking one, or
-New, opens its config view (`definitions.tsx`): description, model, thinking, tools, isolate, standing agent, automatic
+New, opens its config view (`definitions.solid.tsx`): description, model, thinking, tools, isolate, standing agent, automatic
 summaries, and the instructions with a preview. Save validates as discovery reads and writes nothing when that fails.
 Built-ins are never written: saving one writes an override to the project's `.ultimate/agents/` (only once the
 project's setup is local) or `~/.ultimate/agents/`; deleting an override restores what it shadowed. Over a definition

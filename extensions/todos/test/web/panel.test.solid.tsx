@@ -1,7 +1,6 @@
-/** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
-import { createSignal, flush } from 'solid-js'
+import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
@@ -94,10 +93,9 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   store.start()
   onTestFinished(() => store.stop())
   harness.sources[0].open()
-  const [inbox, setInbox] = createSignal(0)
   const container = renderSolid(() => (
     <ExtensionName value="todos">
-      <TodoList inbox={inbox()} />
+      <TodoList />
     </ExtensionName>
   ))
   await settle()
@@ -119,7 +117,21 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   )
   expect(container.textContent).toContain('3 open')
 
-  setInbox(2)
+  harness.server!.of(1)!.send('doc', {
+    kind: 'board',
+    value: {
+      next: 3,
+      messages: [1, 2].map((id) => ({
+        id,
+        from: 69,
+        to: 'user',
+        text: `Question ${id}`,
+        at: id,
+        reply: true,
+        state: 'delivered',
+      })),
+    },
+  })
   flush()
   expect(container.querySelector('[data-todo-inbox]')?.textContent).toContain('Inbox · 2')
   expect(container.textContent).toContain('2 in Inbox')
@@ -184,4 +196,46 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
     source: 'agent',
   })
   expect(harness.submits).toEqual([{ text: 'Work on to-do #2: Tidy', source: 'agent' }])
+})
+
+it('links the URLs in a to-do, and only its checkbox ticks it', async ({ onTestFinished }) => {
+  store.start()
+  onTestFinished(() => store.stop())
+  harness.sources.at(-1)!.open()
+  harness.actions.length = 0
+  const container = renderSolid(() => (
+    <ExtensionName value="todos">
+      <TodoList />
+    </ExtensionName>
+  ))
+  await settle()
+  const note = 'obsidian://open?vault=jamie-brain&file=Marketing%20Me'
+  harness.server!.of(1)!.send('doc', {
+    kind: 'todos',
+    value: {
+      next: 2,
+      items: [todo(1, 'user', `Think (${note}), then see https://example.com/a?b=1.`)],
+    },
+  })
+  await settle()
+  flush()
+  const row = container.querySelector('[data-todo="1"]')!
+  expect(
+    [...row.querySelectorAll('a')].map((link) => [link.textContent, link.href, link.target]),
+  ).toEqual([
+    [note, note, '_blank'],
+    ['https://example.com/a?b=1', 'https://example.com/a?b=1', '_blank'],
+  ])
+  expect(row.textContent).toContain(`Think (${note}), then see https://example.com/a?b=1.`)
+
+  for (const link of row.querySelectorAll('a'))
+    link.addEventListener('click', (event) => event.preventDefault())
+  row.querySelector('a')!.click()
+  row.querySelector<HTMLElement>('[data-todo-text]')!.click()
+  await settle()
+  expect(harness.actions).toEqual([])
+
+  row.querySelector<HTMLElement>('[role="checkbox"]')!.click()
+  await settle()
+  expect(harness.actions).toEqual([{ name: 'done', args: { id: 1 }, source: 'person' }])
 })

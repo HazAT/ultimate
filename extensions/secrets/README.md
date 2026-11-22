@@ -18,4 +18,4 @@ The Secrets panel (palette: `Secrets…`) lists every secret an enabled extensio
 
 While an enabled extension lacks a secret it declares, the `setup` status-line item warns, with an Add button that opens the panel at it.
 
-Other facets open the panel at a row with `events.emit('secrets:open', { name })` from `@/sdk`, as parallel's Add key and onboarding do. Each save and delete emits `secrets:changed`.
+Other facets open the panel at a row with `events.emit('secrets:open', { name })` from `@/sdk/solid`, as parallel's Add key and onboarding do. Each save and delete emits `secrets:changed`.

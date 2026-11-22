@@ -45,8 +45,8 @@ async function extension(root: string, name: string, value: string) {
   await writeFile(join(path, 'value.ts'), `export const value = ${JSON.stringify(value)}`)
   await writeFile(join(path, 'server.ts'), source(name))
   await writeFile(
-    join(path, 'web.tsx'),
-    "import { defineWebExtension } from '@/sdk'; export default defineWebExtension({ name: 'hello' })",
+    join(path, 'web.solid.tsx'),
+    "import { defineWebExtension } from '@/sdk/solid'; export default defineWebExtension({ name: 'hello' })",
   )
   return path
 }
@@ -116,7 +116,7 @@ it('discovers late project and user roots and follows extension symlinks with br
     await until(
       () => !!server.extensions.info().find((entry) => entry.name === name)?.server?.loadedAt,
     )
-    await until(async () => (await server.web.facets()).includes(join(path, 'web.tsx')))
+    await until(async () => (await server.web.facets()).includes(join(path, 'web.solid.tsx')))
   }
   expect(
     server.extensions.info().find((entry) => entry.name === 'broken-link')?.server?.error,
@@ -168,13 +168,13 @@ it('loads external project facets over user and built-in names, actions and tran
   expect(record().server?.error).toBeUndefined()
   const added = join(projectRoot, '.ultimate/extensions/added')
   const facets = () => server.web.facets()
-  expect(await facets()).not.toContain(join(added, 'web.tsx'))
+  expect(await facets()).not.toContain(join(added, 'web.solid.tsx'))
   await mkdir(added, { recursive: true })
-  await writeFile(join(added, 'web.tsx'), 'export default {}')
-  await until(async () => (await facets()).includes(join(added, 'web.tsx')))
+  await writeFile(join(added, 'web.solid.tsx'), 'export default {}')
+  await until(async () => (await facets()).includes(join(added, 'web.solid.tsx')))
   await rm(added, { recursive: true })
-  await until(async () => !(await facets()).includes(join(added, 'web.tsx')))
-  expect(await facets()).toContain(join(path, 'web.tsx'))
+  await until(async () => !(await facets()).includes(join(added, 'web.solid.tsx')))
+  expect(await facets()).toContain(join(path, 'web.solid.tsx'))
   expect(
     await post(server.url, '/api/extensions/coding-tools/actions/hello', { ok: true }),
   ).toEqual({

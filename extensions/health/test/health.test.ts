@@ -53,6 +53,33 @@ it('reports a 402 streak as a billing failure, not a broken login', async () => 
   ])
 })
 
+it('never counts a refused request toward a failing streak', async () => {
+  // A model router advertised `medium` thinking; the backend it picked takes only low, high or max and answered 400
+  // invalid_request_error. Three such refusals in a day flagged the router's provider as failing.
+  const home = await temp()
+  const refused =
+    '400 {"type":"error","error":{"type":"invalid_request_error","message":"DeepSeek V4.1 reasoning_effort must be low, high, xhigh, max, or an integer within [1, 100] in chat_template_kwargs"}}'
+  expect(failureKind(refused)).toBe('request')
+  expect(failureKind('400 context_length_exceeded')).toBe('request')
+  // An auth code in a 400 is still a broken login.
+  expect(failureKind('400 {"error":"invalid_grant"}')).toBe('auth')
+  await record(home, 'p', { lastOk: NOW })
+  for (let i = 1; i <= 4; i++)
+    expect(
+      await record(home, 'p', { lastFail: NOW + i * 5 * MINUTE, error: refused }),
+    ).toMatchObject({
+      to: 'ok',
+    })
+  expect(await readHealth(home, NOW + HOUR)).toMatchObject([
+    { provider: 'p', state: 'ok', error: '400 invalid_request_error' },
+  ])
+})
+
+it('reads the status of an OpenAI-routed refusal', () => {
+  // pi-ai words an OpenAI SDK error as `OpenAI API error (400): …`; a gateway's capped call read as "request failed".
+  expect(failureKind('OpenAI API error (400): 400 "BadRequestError"')).toBe('request')
+})
+
 it('counts a provider failing only after an auth error or a transient streak', async () => {
   const home = await temp()
   const states = async () => (await readHealth(home)).map((entry) => entry.state)

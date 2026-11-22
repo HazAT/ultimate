@@ -211,40 +211,46 @@ it('places a landing in a tally in one transaction, so an abstract never opens b
 it('summarizes a branch into its title and its abstract in the tree root', async () => {
   const { server } = await fixture()
   const existing = server.host.registry.snapshot().extension('conversations')!
+  const summaries = summaryBehavior(
+    {
+      harness: () => server.harness,
+      metadata: Metadata,
+      userHome: server.host.userHome,
+      projectSettings: async () => ({}),
+      notice: () => {},
+      modelRuntime: {
+        getAvailableSnapshot: () =>
+          server.host.modelRuntime
+            .getModels()
+            .filter((model) => model.provider === 'openai-codex' && model.id === 'gpt-6-luna'),
+      },
+      want: ((api: { name: string }) =>
+        api.name === 'conversations.trees'
+          ? ({
+              isRoot: async () => false,
+              rootOf: (id: number, ctx: typeof context) =>
+                rootOf({ harness: () => server.harness }, id as ConversationId, ctx),
+              branchOf: (id: number, ctx: typeof context) =>
+                branchOf({ harness: () => server.harness }, id as ConversationId, ctx),
+              abstract,
+            } satisfies TreesService)
+          : undefined) as NonNullable<SummaryHost['want']>,
+    },
+    async () => ({
+      activity: 'Finished the new work.',
+      title: 'Summarized branch',
+      summary: 'Finished the new work.',
+      abstract: 'Ask: new intent\nDiverged: none\nState: done',
+    }),
+  )
   server.host.registry.install(
     defineExtension({
       ...existing,
-      ...summaryBehavior(
-        {
-          harness: () => server.harness,
-          metadata: Metadata,
-          userHome: server.host.userHome,
-          projectSettings: async () => ({}),
-          notice: () => {},
-          modelRuntime: {
-            getAvailableSnapshot: () =>
-              server.host.modelRuntime
-                .getModels()
-                .filter((model) => model.provider === 'openai-codex' && model.id === 'gpt-6-luna'),
-          },
-          want: ((api: { name: string }) =>
-            api.name === 'conversations.trees'
-              ? ({
-                  rootOf: (id: number, ctx: typeof context) =>
-                    rootOf({ harness: () => server.harness }, id as ConversationId, ctx),
-                  branchOf: (id: number, ctx: typeof context) =>
-                    branchOf({ harness: () => server.harness }, id as ConversationId, ctx),
-                  abstract,
-                } satisfies TreesService)
-              : undefined) as NonNullable<SummaryHost['want']>,
-        },
-        async () => ({
-          activity: 'Finished the new work.',
-          title: 'Summarized branch',
-          summary: 'Finished the new work.',
-          abstract: 'Ask: new intent\nDiverged: none\nState: done',
-        }),
-      ),
+      ...summaries,
+      tasks: [
+        ...existing.tasks!.filter((task) => task.definition.name !== 'conversations.summary'),
+        ...summaries.tasks,
+      ],
     }),
   )
   const id = await branchFrom(server, { from: 1, prompt: 'New intent' })

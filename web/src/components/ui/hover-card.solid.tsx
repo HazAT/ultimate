@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   HoverCardContent as HoverCardContentRoot,
   HoverCard as HoverCardRoot,
@@ -7,7 +6,7 @@ import {
 import { cn } from 'cn'
 import { merge, omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 import { hoverCardStyles } from './hover-card-styles.ts'
 
 function HoverCard(props: ComponentProps<typeof HoverCardRoot>) {

@@ -6,7 +6,7 @@ import {
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
 import { num, obj, opt, str } from '@earendil-works/pi-schema'
-import { defineExtension, defineTool } from '@earendil-works/pi-durable'
+import { defineExtension, defineTool, hook, ToolTask } from '@earendil-works/pi-durable'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ConversationId, ToolExecutionResult } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
@@ -151,7 +151,7 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   )
   expect(text).toContain('Use edit/write outside codemode')
   expect(text).toContain('filter to concise findings')
-  expect(text).toContain('top-level tool schemas and rules')
+  expect(text).toContain('a tool that declares structured output resolves to it')
   expect(text).toContain(
     'Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action.',
   )
@@ -458,7 +458,7 @@ it('applies each automation call in one script to its own arguments', async () =
      return { line: lines.find((line) => line.startsWith(id + ' ')).slice(id.length + 1), subscribers: stored.subscribers };`,
   )
   expect(result.data.details.value).toEqual({
-    line: 'Probe — Every 1 day — enabled → @ultimate',
+    line: expect.stringMatching(/^Probe — Every 1 day — next: .* — enabled → @ultimate$/),
     subscribers: ['@ultimate'],
   })
 })
@@ -524,7 +524,7 @@ it('composes read and bash with private nested results and final JSON details', 
   const path = join(server.host.home, 'scratch.txt')
   const result = await run(
     server,
-    `const source = await tools.read({path:${JSON.stringify(path)}}); const shell = await tools.bash({command:'echo nested-private'}); text(source.trim()); return {length:shell.length};`,
+    `const source = await tools.read({path:${JSON.stringify(path)}}); const shell = await tools.bash({command:'echo nested-private'}); const failed = await tools.bash({command:'exit 3'}); text(source.trim()); return {length:shell.output.length, exitCode: failed.exitCode};`,
   )
   expect(result.text).toContain('Script completed')
   expect(result.text).toContain('before')
@@ -532,26 +532,26 @@ it('composes read and bash with private nested results and final JSON details', 
   expect(result.data.details.calls.map((call) => [call.name, call.status])).toEqual([
     ['read', 'ok'],
     ['bash', 'ok'],
+    ['bash', 'error'],
   ])
-  expect(result.data.details.value).toEqual({ length: 15 })
+  // A schema tool resolves to its structured output, a nonzero exit included.
+  expect(result.data.details.value).toEqual({ length: 15, exitCode: 3 })
   const view = await server.root.context(context)
   expect(view.entries.filter((entry) => entry.kind === 'pi.tool-result')).toHaveLength(1)
   server.host.registry.install(
     defineExtension({
       name: 'structured',
       tools: [
-        {
-          ...defineTool({
-            name: 'structured',
-            description: 'Structured test',
-            parameters: obj({ answer: num() }),
-            execute: async ({ answer }) => ({
-              structuredContent: { answer },
-              output: [{ type: 'text', text: 'private fallback' }],
-            }),
+        defineTool({
+          name: 'structured',
+          description: 'Structured test',
+          parameters: obj({ answer: num() }),
+          structuredOutputSchema: { type: 'object' },
+          execute: async ({ answer }) => ({
+            structuredOutput: { answer },
+            output: [{ type: 'text', text: 'private fallback' }],
           }),
-          outputSchema: { type: 'object' },
-        },
+        }),
       ],
     }),
   )
@@ -579,6 +579,28 @@ it('composes read and bash with private nested results and final JSON details', 
     child: 7,
     title: 'T',
   })
+  server.host.registry.install(
+    defineExtension({
+      name: 'streams-then-throws',
+      tools: [
+        defineTool({
+          name: 'flaky',
+          description: 'Streams progress, then fails',
+          parameters: obj({}),
+          execute: async (_args, api) => {
+            api.output('Starting…')
+            throw new Error('disk full')
+          },
+        }),
+      ],
+    }),
+  )
+  const thrown = await run(
+    server,
+    `try { await tools.flaky({}); } catch (error) { return error.message; }`,
+  )
+  expect(thrown.data.details.value).toContain('Starting…')
+  expect(thrown.data.details.value).toContain('disk full')
   const structured = await run(server, `return await tools.structured({answer:42});`)
   expect(structured.data.details.value).toEqual({ answer: 42 })
   const invalid = await run(server, `await tools.structured({answer:'wrong'});`)
@@ -622,6 +644,45 @@ it('composes read and bash with private nested results and final JSON details', 
   expect(failed.text).toContain('kept')
   expect(failed.data.details.error).toContain('missing-file')
   expect(failed.data.isError).toBe(true)
+})
+
+it('runs tool hooks on nested calls, so a beforeTool block stops a script call', async () => {
+  const { server } = await fixture()
+  let executions = 0
+  const seen: string[] = []
+  server.host.registry.install(
+    defineExtension({
+      name: 'guard',
+      hooks: [
+        hook(ToolTask, {
+          beforeTool: async (call) => {
+            seen.push(`before ${call.name}`)
+            return call.name === 'guarded' ? { block: 'workspace failed' } : undefined
+          },
+          afterTool: async (call) => {
+            seen.push(`after ${call.name}`)
+            return undefined
+          },
+        }),
+      ],
+      tools: [
+        defineTool({
+          name: 'guarded',
+          description: 'A tool the guard blocks',
+          parameters: obj({}),
+          execute: async () => {
+            executions++
+            return { output: [{ type: 'text', text: 'ran past the guard' }] }
+          },
+        }),
+      ],
+    }),
+  )
+  const result = await run(server, 'return await tools.guarded({})')
+  expect(executions).toBe(0)
+  expect(result.data.isError).toBe(true)
+  expect(result.text).toContain('workspace failed')
+  expect(seen).toEqual(['before codemode', 'before guarded', 'after guarded', 'after codemode'])
 })
 
 it("reads another running project's history through its API, and names a project that isn't running", async () => {
@@ -929,6 +990,8 @@ it.each([
   // A sandbox-local yield does not cancel the parent's invocation or its next tool round.
   expect((await run(server, `return await tools.effect({});`)).data.details.value).toBe('effect')
   expect(effects).toBe(2)
+  const answered = await run(server, `await tools.subagent({action:'wait', id:1});`)
+  expect(answered.data.details.subagentAnswers).toEqual([101])
 })
 
 it('yields Promise.all, cancels pending host work, and preserves other waiting child IDs', async () => {

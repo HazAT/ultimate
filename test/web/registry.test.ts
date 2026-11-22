@@ -16,7 +16,6 @@ import {
   linkRenderers,
   inlineCodeRenderers,
   panelBadges,
-  codeBlockLanguages,
   codeBlockRenderers,
   messageItems,
   composerRenderers,
@@ -32,7 +31,7 @@ import type {
 import { attention } from '../../web/src/sdk/types.ts'
 import type { WebExtension } from '../../web/src/sdk/types.ts'
 
-const path = (name: string) => `../../extensions/${name}/web.tsx`
+const path = (name: string) => `../../extensions/${name}/web.solid.tsx`
 /** The shown panel's id and the tab row's ids. */
 const ids = ({ active, tabs }: ReturnType<typeof shownPanels>) => [
   active?.id,
@@ -174,7 +173,7 @@ describe('web extension registry', () => {
       slots: { overlay: Good, sidebar: [{ component: Good, order: -1 }] },
       panels: [{ id: 'hello', title: 'Hello', component: Good }],
       surfaces: [{ id: 'hello', title: 'Hello', icon: Good, component: Good }],
-      tools: { hello: Object.assign(Object.create(null), { $$typeof: Symbol.for('react.memo') }) },
+      tools: { hello: Good },
       entries: { 'hello.entry': Good },
       documents: [{ kind: 'hello.doc', title: 'Hello', icon: Good, component: Good }],
       commands: [{ id: 'hello.run', title: 'Run', keys: 'escape', whileTyping: true, run() {} }],
@@ -197,6 +196,7 @@ describe('web extension registry', () => {
       [{ slots: [Good] }, /^slots must be an object/],
       [{ slots: { overlay: { order: 1 } } }, /^slots must/],
       [{ tools: { bash: 'Bash' } }, /^tools must be an object/],
+      [{ tools: { bash: { $$typeof: Symbol.for('react.memo') } } }, /^tools must be an object/],
       [{ entries: [Good] }, /^entries must be an object/],
       [{ link: [Good] }, /^link must be a link renderer component/],
       [{ documents: {} }, /^documents must be an array of \{ kind, title, icon\?, component \}/],
@@ -313,7 +313,6 @@ describe('web extension registry', () => {
       { extension: 'a', version: 1, component: First },
       { extension: 'b', version: 1, component: Second },
     ])
-    expect(codeBlockLanguages(records)).toEqual(['mermaid', 'dot'])
     // Any extension can badge any panel's tab, its own or another's.
     expect(panelBadges(records, 'tasks')).toEqual([
       { extension: 'a', version: 1, component: First },

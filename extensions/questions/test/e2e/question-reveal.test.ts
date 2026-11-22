@@ -6,7 +6,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 // render late: the scroll clamped at the bottom, and under load the stick-to-bottom lock took it before the hold moved
 // again, leaving the newest question below the strip. A link to a question,
 // `?conversation=<c>&message=<m>`, once opened the conversation at its end, leaving the question to look for.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -17,7 +17,7 @@ import { browserBinary } from '../../../browser/server.ts'
 import { Started } from '../../../messages/addresses.ts'
 import { Messages } from '../../../messages/api.ts'
 import { context } from '../../../../server/harness.ts'
-import { fauxServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { prebuiltServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -31,9 +31,7 @@ const step = (n: number) =>
 async function setup() {
   const home = await temp('ultimate-question-reveal-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,
@@ -132,6 +130,25 @@ it('brings the question card to the top of the view below the pinned strip', asy
     await page.locator(`[data-inbox-item="${id}"] button:has-text("Open in branch")`).click()
     expect(await drift(page, id)).toBeLessThan(4)
   }
+  // After both reveals, the room a reveal added below the last row goes with the way back to the end.
+  await page.locator('[aria-label="Scroll to bottom"]').click()
+  const end = () =>
+    page.evaluate(() => {
+      const transcript = document.querySelector('[data-ui="transcript"]')!
+      const scroll = transcript.parentElement!
+      const rows = transcript.querySelectorAll(':scope > [data-entry-id]')
+      return {
+        atEnd: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 1,
+        below:
+          scroll.getBoundingClientRect().bottom -
+          rows[rows.length - 1].getBoundingClientRect().bottom,
+      }
+    })
+  await until(async () => (await end()).atEnd, 5_000)
+  // Below the last row is only the transcript's own bottom padding and the live line, never the reveal's room.
+  const { below } = await end()
+  expect(below).toBeGreaterThanOrEqual(0)
+  expect(below).toBeLessThan(120)
 })
 
 it('opens a question link at the question, once', async () => {

@@ -46,7 +46,7 @@ it('warms Claude Code, and the Anthropic API only under long cache retention', (
   vi.unstubAllEnvs()
 })
 
-it('counts only answers that read or wrote the current model’s cache', () => {
+it('counts only answers that read or wrote an hour-long cache', () => {
   const answer = (change: Record<string, unknown>) =>
     ({
       role: 'assistant',
@@ -56,13 +56,11 @@ it('counts only answers that read or wrote the current model’s cache', () => {
       usage: { cacheRead: 500_000, cacheWrite: 2_000 },
       ...change,
     }) as unknown as Parameters<typeof keepWarm.cached>[0]
-  const opus = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
-  expect(keepWarm.cached(answer({}), opus)).toBe(true)
-  expect(keepWarm.cached(answer({ stopReason: 'error' }), opus)).toBe(false)
-  expect(keepWarm.cached(answer({ model: 'claude-fable-5-1' }), opus)).toBe(false)
-  expect(keepWarm.cached(answer({ provider: 'openai-codex' }), opus)).toBe(false)
-  expect(keepWarm.cached(answer({}), { ...opus, provider: 'anthropic' })).toBe(false)
-  expect(keepWarm.cached(answer({ usage: { cacheRead: 0, cacheWrite: 0 } }), opus)).toBe(false)
+  expect(keepWarm.cached(answer({}))).toBe(true)
+  expect(keepWarm.cached(answer({ stopReason: 'error' }))).toBe(false)
+  expect(keepWarm.cached(answer({ provider: 'openai-codex' }))).toBe(false)
+  expect(keepWarm.cached(answer({ provider: 'anthropic' }))).toBe(false)
+  expect(keepWarm.cached(answer({ usage: { cacheRead: 0, cacheWrite: 0 } }))).toBe(false)
 })
 
 it('counts a ping only on the provider and model it warmed', () => {

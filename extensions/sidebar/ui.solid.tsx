@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /** The sidebar's parts for other extensions' Solid code: a project's colour swatch and its GitHub label. */
 import { Lock } from '@lucide/solid'
 import { Show } from 'solid-js'
@@ -7,6 +6,12 @@ import type { GithubRepo } from '../workspaces/refs.ts'
 import { githubMarkPath, isHiddenRepo, swatchClass, swatchStyle } from './colour.ts'
 
 export { stemOf } from './colour.ts'
+/** Whether a preview started by this conversation is running, provided by `instance`. */
+export { PreviewUp } from './points.ts'
+/** Rows nested under @ultimate's row, in discovery order; the input names @ultimate's conversation when it exists. */
+export { UnderUltimate } from './points.ts'
+/** Conversations hidden from the top-level lists; the sidebar takes the union of the providers' sets. */
+export { Unlisted } from './points.ts'
 
 /** Folder `folder`'s colour, shaded apart from its `family` (the other folders shown beside it), as the sidebar draws it. */
 export function ProjectSwatch(props: {

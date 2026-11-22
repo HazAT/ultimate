@@ -65,8 +65,9 @@ const SAFE_ERROR_WORDS = new Set([
 
 export function sanitize(error: string) {
   const parts: string[] = []
-  const status = /^\s*([45]\d\d)\b|\b(?:status|http)[\s:=]*([45]\d\d)\b/i.exec(error)
-  if (status) parts.push(status[1] ?? status[2])
+  const status =
+    /^\s*([45]\d\d)\b|\b(?:status|http)[\s:=]*([45]\d\d)\b|\berror \(([45]\d\d)\)/i.exec(error)
+  if (status) parts.push(status[1] ?? status[2] ?? status[3])
   for (const word of error.split(/[^A-Za-z_]+/)) {
     const known = SAFE_ERROR_WORDS.has(word)
       ? word
@@ -107,11 +108,23 @@ const CAPACITY = new Set([
   'quota',
 ])
 
-export function failureKind(error: string): 'auth' | 'billing' | 'capacity' | 'transient' {
+const REFUSED_REQUEST = new Set([
+  '400',
+  '413',
+  '422',
+  'invalid_request_error',
+  'context_length_exceeded',
+  'request_too_large',
+])
+
+export function failureKind(
+  error: string,
+): 'auth' | 'billing' | 'capacity' | 'request' | 'transient' {
   const parts = sanitize(error).split(' ')
   if (parts.some((part) => AUTH.has(part))) return 'auth'
   if (parts.includes('402')) return 'billing'
   if (parts.some((part) => CAPACITY.has(part))) return 'capacity'
+  if (parts.some((part) => REFUSED_REQUEST.has(part))) return 'request'
   return 'transient'
 }
 

@@ -159,6 +159,9 @@ if (process.argv.includes('status')) {
     })
     // An unreadable probe is unknown, not a logout: retain the last confirmed login.
     expect((await runtime.getAvailable()).some((m) => m.provider === 'claude-code')).toBe(true)
+    // So is JSON without a boolean loggedIn.
+    await writeFile(payload, '{}')
+    expect((await runtime.getAvailable()).some((m) => m.provider === 'claude-code')).toBe(true)
     await writeFile(payload, JSON.stringify({ loggedIn: false }))
     expect(await status()).toMatchObject({ available: true, loggedIn: false })
     expect((await runtime.getAvailable()).some((m) => m.provider === 'claude-code')).toBe(false)

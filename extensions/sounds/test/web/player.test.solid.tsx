@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ExtensionName } from '@/sdk/solid'

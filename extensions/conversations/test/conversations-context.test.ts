@@ -15,7 +15,7 @@ import {
   lastAssistant,
   promptTokens,
 } from '../../../lib/context-usage.ts'
-import { until } from '../../../test/helpers.ts'
+import { openers, until } from '../../../test/helpers.ts'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -49,8 +49,7 @@ async function fixture({ start = true } = {}) {
   const root = await harness.root(context, {
     agent: { model: { provider: 'faux', modelId: 'small' } },
   })
-  let open!: () => Promise<void>
-  let close!: () => Promise<void>
+  const { onOpen, open, close } = openers()
   const notices: string[] = []
   const modelReads: string[] = []
   let failModelLookup = false
@@ -63,12 +62,8 @@ async function fixture({ start = true } = {}) {
         return models.getModel(provider, id)
       },
     },
-    onOpen: (callback) => {
-      open = callback
-    },
-    onClose: (callback) => {
-      close = callback
-    },
+    onOpen,
+    resource: (_key, create) => create(),
     notice: (message) => {
       notices.push(message)
     },
@@ -326,7 +321,7 @@ it('backfills missing and stale docs in bounded pages, in the background, and sk
   const f = await fixture({ start: false })
   const ids = await f.harness.commit(async (tx) => {
     const created: ConversationId[] = []
-    for (let index = 0; index < 65; index++) {
+    for (let index = 0; index < 257; index++) {
       const conversation = await tx.createConversation({ ownership: { kind: 'ownerless' } })
       await tx.appendEntry(conversation.id, {
         kind: 'pi.assistant',
@@ -344,7 +339,7 @@ it('backfills missing and stale docs in bounded pages, in the background, and sk
   )
   await f.open()
   await until(async () => ((await f.read(ids.at(-1)))?.at ?? 0) > 0)
-  expect((await f.read())?.tokens).toBe(500)
+  await until(async () => (await f.read())?.tokens === 500)
   await f.close()
   answer.usage.input = 900
   const latest = await f.harness.commit(

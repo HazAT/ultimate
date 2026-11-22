@@ -1,4 +1,3 @@
-import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { AuthEvent, AuthPrompt, AuthType } from '@earendil-works/pi-ai'
@@ -138,11 +137,11 @@ export const actions = {
       throw new Error('Unsupported provider or login type')
     const live = liveFlows(host)
     const harness = host.harness()
-    const id = conversationId ?? ROOT_CONVERSATION_ID
     const flowId = randomUUID()
     await harness.commit(async (tx) => {
-      if (!(await tx.conversation(id))) throw new Error('Unknown conversation')
-      const { flows } = await tx.doc(Logins, id)
+      if (conversationId !== undefined && !(await tx.conversation(conversationId)))
+        throw new Error('Unknown conversation')
+      const { flows } = await tx.doc(Logins, ROOT_CONVERSATION_ID)
       const finished = Object.keys(flows).filter((key) => flows[key].status !== 'running')
       for (const key of finished.slice(0, -FINISHED_LOGIN_FLOW_LIMIT)) delete flows[key]
       flows[flowId] = { provider, type, status: 'running', events: [] }
@@ -155,7 +154,7 @@ export const actions = {
       flow.writes = flow.writes
         .then(() =>
           host.harness().commit(async (tx) => {
-            const state = (await tx.doc(Logins, id)).flows[flowId]
+            const state = (await tx.doc(Logins, ROOT_CONVERSATION_ID)).flows[flowId]
             if (state) change(state)
           }, context),
         )
@@ -255,38 +254,20 @@ export const actions = {
 export default function models(host: ExtensionHost) {
   const live = liveFlows(host)
   host.onOpen(async () => {
-    const harness = host.harness()
-    const ids: ConversationId[] = []
-    let cursor: Cursor | undefined
-    do {
-      const page = await harness.commit((tx) => tx.scanConversations({}, 256, cursor), context)
-      ids.push(...page.items.map((record) => record.id))
-      cursor = page.next
-    } while (cursor !== undefined)
-    for (const id of ids) {
-      const runningFlowsWithoutLiveProcess = (records: Readonly<Record<string, LoginFlow>>) =>
-        Object.keys(records).filter(
-          (flowId) => records[flowId].status === 'running' && !live.has(flowId),
-        )
-      if (
-        !runningFlowsWithoutLiveProcess((await harness.snapshot(Logins, id, context))?.flows ?? {})
-          .length
-      )
-        continue
-      await harness.commit(async (tx) => {
-        const { flows } = await tx.doc(Logins, id)
-        for (const flowId of runningFlowsWithoutLiveProcess(flows)) {
-          flows[flowId].status = 'cancel'
-          delete flows[flowId].prompt
+    await host.harness().commit(async (tx) => {
+      const { flows } = await tx.doc(Logins, ROOT_CONVERSATION_ID)
+      for (const [flowId, flow] of Object.entries(flows))
+        if (flow.status === 'running' && !live.has(flowId)) {
+          flow.status = 'cancel'
+          delete flow.prompt
         }
-      }, context)
-    }
+    }, context)
   })
   return defineExtension({
     name: 'models',
     hooks: [
       hook(GenerationTask, {
-        // Pi upstream: @earendil-works/pi-durable@1.5.2 — patched transactional beforeInput hook.
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: (_input, { tx, conversationId }) => fallback(host, tx, conversationId),
       }),
     ],

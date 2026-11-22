@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Circle } from '@lucide/solid'
 import {
   MenuContent,
@@ -14,19 +13,23 @@ import {
 import { cn } from 'cn'
 import { merge, omit } from 'solid-js'
 import type { Accessor, ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
+import { runAsItsSource } from './action-source.solid.tsx'
+import type { SourcedAction } from './action-source.solid.tsx'
 import { menuStyles } from './menu-styles.ts'
 
 function DropdownMenu(
-  props: Omit<ComponentProps<typeof MenuRoot>, 'items' | 'itemShortcuts'> & {
+  props: Omit<ComponentProps<typeof MenuRoot>, 'items' | 'itemShortcuts' | 'onAction'> & {
     items?: never
     itemShortcuts?: never
+    onAction?: SourcedAction
   },
 ) {
-  const rest = omit(props, 'onOpenChange', 'items', 'itemShortcuts')
+  const rest = omit(props, 'onOpenChange', 'items', 'itemShortcuts', 'onAction')
   return (
     <MenuRoot
       {...rest}
+      onAction={(value, details) => runAsItsSource(props.onAction, value, details)}
       onOpenChange={(open, details) => {
         const changed = props.onOpenChange
         writingAs(details.source, () => changed?.(open, details))

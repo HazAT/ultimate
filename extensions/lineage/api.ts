@@ -6,7 +6,7 @@ import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
-import { RootsDoc, TallyDoc } from './refs.ts'
+import { MemoryDoc, RootsDoc, TallyDoc } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
 import type { BranchInput, leaveNote, rootOf, startBranch, TallyState } from './server.ts'
 
@@ -30,6 +30,17 @@ export const Tally = defineDoc<TallyState>({
   history: 'latest',
   fork: 'initial',
   initial: () => ({ abstracts: {}, tokens: 0 }),
+})
+
+/** A root's project memory by slug (see `MemoryDoc`). */
+export const Memory = defineDoc<{ memories: Record<string, MemoryItem> }>({
+  kind: MemoryDoc.kind,
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ memories: {} }),
 })
 
 /** `brief`: the branch's context starts at its project's memory brief instead of the full tally. */
@@ -92,6 +103,13 @@ export type MemorySearchService = {
 }
 /** The extension point the `memory` tool's `query` searches through; recall provides it with classify. */
 export const MemorySearch = defineApi<MemorySearchService>()('lineage.memory-search')
+
+export type RepliesService = {
+  /** Whether answer `answer` of conversation `from` already reached conversation `to` as a message reply. */
+  replied(from: ConversationId, to: ConversationId, answer: EntryId, ctx: Context): Promise<boolean>
+}
+/** The extension point through which `notify` skips an answer its caller already got as a reply; messages provides it. */
+export const Replies = defineApi<RepliesService>()('lineage.replies')
 
 /** Trees, branches and notes; core, so `need` it. */
 export const LineageApi = defineApi<LineageService>()('lineage')

@@ -1,7 +1,6 @@
 import { offsetEntryId } from '../../lib/ids.ts'
-import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { onCommit } from '../../lib/commits.ts'
 import { AgentDoc } from '@earendil-works/pi-durable'
 import {
   contextUsage,
@@ -11,20 +10,20 @@ import {
 } from '../../lib/context-usage.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ContextUsageDoc } from './api.ts'
-import { rebuiltOnOpen } from '../../lib/errors.ts'
+import { projection } from './projection.ts'
 
 export function contextBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'onClose' | 'notice'> & {
+  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice' | 'resource'> & {
     modelRuntime: Pick<ExtensionHost['modelRuntime'], 'getModel'>
   },
 ) {
-  let stop: (() => void) | undefined
-  let closed = false
-  let backgroundSerialBackfill: Promise<void> | undefined
-  const pending = new Map<ConversationId, Promise<void>>()
-
+  const windowOf = async (tx: Tx, id: ConversationId) => {
+    const { model } = await tx.doc(AgentDoc, id)
+    return model
+      ? host.modelRuntime.getModel(model.provider, model.modelId)?.contextWindow
+      : undefined
+  }
   const reconcile = async (id: ConversationId) => {
-    if (closed) return
     const harness = host.harness()
     const conversation = await harness.conversation(id, context)
     if (!conversation) return
@@ -55,16 +54,11 @@ export function contextBehavior(
         : []
       tokens = estimateAfterHead(promptBaselineBeforeHead, view.messages)
     }
-    if (closed) return
     await harness.commit(async (tx) => {
-      if (closed) return
       const record = await tx.conversation(id)
       const previous = await tx.doc(ContextUsageDoc, id)
       if (record?.parent && latest === 0 && previous.at === 0) return
-      const { model } = await tx.doc(AgentDoc, id)
-      const window = model
-        ? host.modelRuntime.getModel(model.provider, model.modelId)?.contextWindow
-        : undefined
+      const window = await windowOf(tx, id)
       const at = current
         ? saved.at
         : source.message
@@ -93,63 +87,30 @@ export function contextBehavior(
     }, context)
   }
 
-  const schedule = (id: ConversationId) => {
-    const job = (pending.get(id) ?? Promise.resolve())
-      .then(() => reconcile(id))
-      .catch((error: unknown) => {
-        if (!closed) host.notice(`Conversation context: ${String(error)}`)
-      })
-      .finally(() => {
-        if (pending.get(id) === job) pending.delete(id)
-      })
-    pending.set(id, job)
-    return job
-  }
-
-  host.onOpen(async () => {
-    closed = false
-    stop?.()
-    stop = onCommit(host.harness(), (publication) => {
-      const ids = new Set<ConversationId>()
-      for (const change of publication.changes) {
-        if (
-          change.type === 'entry' &&
-          ['pi.assistant', 'pi.compaction', 'pi.reset'].includes(change.value.kind)
-        )
-          ids.add(change.value.conversationId)
-        if (
-          change.type === 'document' &&
-          change.conversationId !== undefined &&
-          change.record.kind === AgentDoc.definition.kind
-        )
-          ids.add(change.conversationId)
-      }
-      for (const id of ids) {
-        rebuiltOnOpen('open reconciles every conversation context', schedule(id))
-      }
-    })
-    backgroundSerialBackfill = (async () => {
-      let cursor: Cursor | undefined
-      do {
-        if (closed) return
-        const page = await host
-          .harness()
-          .commit((tx) => tx.scanConversations({}, 64, cursor), context)
-        for (const conversation of page.items) {
-          if (closed) return
-          await schedule(conversation.id)
-        }
-        cursor = page.next
-      } while (cursor !== undefined)
-    })().catch((error: unknown) => {
-      if (!closed) host.notice(`Conversation context backfill: ${String(error)}`)
-    })
-  })
-  host.onClose(async () => {
-    closed = true
-    stop?.()
-    stop = undefined
-    await backgroundSerialBackfill
-    await Promise.all(pending.values())
-  })
+  projection(
+    host,
+    {
+      name: 'context',
+      background: true,
+      stale: async (tx, { id, parent }) => {
+        const saved = await tx.doc(ContextUsageDoc, id)
+        const untouchedFork = !!parent && saved.at === 0 && saved.entry === undefined
+        return !untouchedFork && saved.window !== (await windowOf(tx, id))
+      },
+    },
+    (change, add) => {
+      if (
+        change.type === 'entry' &&
+        ['pi.assistant', 'pi.compaction', 'pi.reset'].includes(change.value.kind)
+      )
+        add(change.value.conversationId)
+      if (
+        change.type === 'document' &&
+        change.conversationId !== undefined &&
+        change.record.kind === AgentDoc.definition.kind
+      )
+        add(change.conversationId)
+    },
+    ([id]) => reconcile(id),
+  )
 }

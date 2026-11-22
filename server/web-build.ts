@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { webAliases } from '../lib/web-alias.ts'
 import { dirname, join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { gzipSync } from 'node:zlib'
@@ -17,7 +18,7 @@ export interface WebBuildRequest {
 export type WebBuildResult = { inputs: string[] } | { error: { file?: string; message: string } }
 
 const externalSourceMapsForStackTraces = true
-const retainReactComponentNames = true
+const componentNamesInStackTraces = true
 const absoluteSourcePath = (source: string, map: string) => resolve(dirname(map), source)
 const minPrecompressedBytes = 1024
 
@@ -29,7 +30,7 @@ try {
     root: resolve(request.ultimateRoot, 'web'),
     cacheDir: request.cacheDir,
     logLevel: 'error',
-    resolve: { alias: { '@': resolve(request.ultimateRoot, 'web/src') } },
+    resolve: { alias: webAliases(request.ultimateRoot) },
     plugins: [
       extensionModules(request.ultimateRoot, request.projectRoot, request.userHome, request.broken),
     ],
@@ -39,7 +40,7 @@ try {
       sourcemap: externalSourceMapsForStackTraces,
       rolldownOptions: {
         output: {
-          keepNames: retainReactComponentNames,
+          keepNames: componentNamesInStackTraces,
           sourcemapPathTransform: absoluteSourcePath,
         },
       },

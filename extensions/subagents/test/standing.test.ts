@@ -1,6 +1,6 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // Harness tests use the faux provider without token pacing.
-import { eventHost, idleNeed, temp, removeTemp } from '../../../test/helpers.ts'
+import { eventHost, idleNeed, openers, temp, removeTemp } from '../../../test/helpers.ts'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -89,7 +89,7 @@ async function fixture() {
   prepared.registry.install(defineExtension({ name: 'owned', tools: [tool] }))
   let host!: OpenHost
   let service!: SubagentsService
-  const openers: (() => Promise<void>)[] = []
+  const lifecycle = openers()
   // Holds the next commit the extension makes until `release`, so a test edits a definition between a call's start
   // and its commit.
   let held: { reached: () => void; release: Promise<void> } | undefined
@@ -130,11 +130,11 @@ async function fixture() {
       service = value as SubagentsService
     },
     need: idleNeed,
+    want: () => undefined,
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},
-    onOpen: (callback) => openers.push(callback),
-    onClose: () => {},
+    onOpen: lifecycle.onOpen,
     emit,
   })
   prepared.registry.install(backend)
@@ -144,7 +144,8 @@ async function fixture() {
   const file = join(path, 'agents/x.md')
   await writeFile(file, definition('Original'))
   const reopen = async () => {
-    for (const callback of openers) await callback()
+    await lifecycle.close()
+    await lifecycle.open()
   }
   const open = async () => {
     host = await prepared.open()

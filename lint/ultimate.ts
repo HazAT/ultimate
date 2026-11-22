@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { webModule } from '../lib/web-alias.ts'
 import path from 'node:path'
 import { apiSummary } from '../lib/api-files.ts'
 import { coreTier } from '../shared/extension-api.ts'
@@ -16,7 +17,7 @@ interface Node {
   end?: number
   name?: string
   id?: Node
-  specifiers?: { type?: string; imported?: Node; exported?: Node }[]
+  specifiers?: { type?: string; imported?: Node; exported?: Node; local?: Node }[]
   source?: Node
   value?: unknown
   computed?: boolean
@@ -75,9 +76,9 @@ const resolved = (filename: string, source: string) =>
   path.relative(process.cwd(), path.resolve(path.dirname(filename), source)).split(path.sep)
 /**
  * An extension's contract files: `api.ts` for server code, `refs.ts` for the documents and actions the browser reads
- * and calls, `ui.tsx` for what other extensions' React code imports and `ui.solid.tsx` for what their Solid code imports.
+ * and calls, and `ui.solid.tsx` for what other extensions' browser code imports.
  */
-const contracts = ['api.ts', 'refs.ts', 'ui.tsx', 'ui.solid.tsx'] as const
+const contracts = ['api.ts', 'refs.ts', 'ui.solid.tsx'] as const
 type Contract = (typeof contracts)[number]
 /** `extensions/<name>/<contract>`: the extension and which contract file it is. */
 const contractFile = (filename: string) => {
@@ -110,29 +111,15 @@ const membersOf = (declaration: Node): Node[] =>
 const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
-const reactIslandFile = 'web/src/sdk/react-island.tsx'
-const rendererBridges = new Set(['web/src/sdk/island.tsx', 'web/src/sdk/solid.ts', reactIslandFile])
-const rendererBridge = (filename: string) => rendererBridges.has(repositoryPath(filename))
-const solidSdk = 'web/src/sdk/solid.ts'
-const reactSdk = (module: string) => {
-  const file = repositoryPath(module)
-  return file.startsWith('web/src/sdk/') && file !== solidSdk
-}
-const extensionWebFacet = (filename: string) =>
-  /^(\.ultimate\/)?extensions\/[^/]+\/web\.tsx$/.test(repositoryPath(filename))
+const bridgeFile = 'web/src/sdk/contribution.solid.tsx'
+const sdkEntries = ['web/src/sdk/solid.ts']
 const uiKitFile = (filename: string) =>
   repositoryPath(filename).startsWith('web/src/components/ui/')
-const reactOnly =
-  /^(react|react-dom|lucide-react|radix-ui|cmdk|streamdown|use-stick-to-bottom|@radix-ui\/.*|@pierre\/diffs\/react)(\/|$)/
-const solidOnly = /^(solid-js|@solidjs\/.*|@ui-sdk\/solid)(\/|$)/
 const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
-const solidJsxPragma = '@jsxImportSource @solidjs/web'
-const isSolidJsxPragma = (comment: Comment | undefined) =>
-  comment?.type === 'Block' && comment.value.trim().replace(/^\*\s*/, '') === solidJsxPragma
 const moduleSuffixes = ['', '.ts', '.tsx', '/index.ts', '/index.tsx']
 const localModule = (filename: string, source: string) => {
   const base = source.startsWith('@/')
-    ? path.resolve(process.cwd(), 'web/src', source.slice(2))
+    ? webModule(process.cwd(), source)
     : source.startsWith('.')
       ? path.resolve(path.dirname(filename), source)
       : undefined
@@ -220,25 +207,35 @@ const isGlobal = (node: Node | undefined, name: string) =>
       ['window', 'globalThis'].includes(node.object.name ?? '') &&
       propertyName(node) === name
 
+function walk(node: Node, visit: (node: Node) => void) {
+  visit(node)
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'parent') continue
+    for (const child of Array.isArray(value) ? value : [value])
+      if (child && typeof child === 'object' && typeof (child as Node).type === 'string')
+        walk(child as Node, visit)
+  }
+}
+
 const isJsDoc = (comment: Comment) => comment.type === 'Block' && comment.value.startsWith('*')
-const inSdk = (filename: string) =>
-  path.relative(process.cwd(), filename).startsWith(`web${path.sep}src${path.sep}sdk${path.sep}`)
+const inSdk = (filename: string) => repositoryPath(filename).startsWith('web/src/sdk/')
 let sdkExports: Set<string> | undefined
-/** The names `web/src/sdk/index.ts` exports: the SDK's public surface, read once per lint process. */
 function publicSdk() {
   sdkExports ??= new Set(
-    [
-      ...readFileSync(path.join(process.cwd(), 'web/src/sdk/index.ts'), 'utf8').matchAll(
-        /export\s+(?:type\s+)?\{([^}]*)\}/g,
+    sdkEntries
+      .flatMap((entry) => [
+        ...readFileSync(path.join(process.cwd(), entry), 'utf8').matchAll(
+          /export\s+(?:type\s+)?\{([^}]*)\}/g,
+        ),
+      ])
+      .flatMap((match) =>
+        match[1].split(',').map((name) =>
+          name
+            .trim()
+            .split(/\s+as\s+/)
+            .pop()!,
+        ),
       ),
-    ].flatMap((match) =>
-      match[1].split(',').map((name) =>
-        name
-          .trim()
-          .split(/\s+as\s+/)
-          .pop()!,
-      ),
-    ),
   )
   return sdkExports
 }
@@ -248,7 +245,13 @@ const exportedNames = (statement: Node): string[] => {
   if (!declaration)
     return (statement.specifiers ?? []).map((specifier) => String(specifier.exported?.name))
   if (declaration.type === 'VariableDeclaration')
-    return (declaration.declarations ?? []).map((declarator) => String(declarator.id?.name))
+    return (declaration.declarations ?? []).flatMap(({ id }) =>
+      id?.type === 'ObjectPattern'
+        ? (id.properties ?? []).map((property) =>
+            String((property.value as Node | undefined)?.name),
+          )
+        : [String(id?.name)],
+    )
   return [String(declaration.id?.name)]
 }
 const functionTypes = ['FunctionDeclaration', 'ArrowFunctionExpression', 'FunctionExpression']
@@ -258,20 +261,12 @@ const hasBody = (statement: Node) =>
   (statement.declaration?.declarations ?? []).some((declarator) =>
     functionTypes.includes(declarator.init?.type ?? ''),
   )
-/** The SDK's public entries: `@/sdk` for React, `@/sdk/solid` for Solid. */
-const sdkEntry = (filename: string) =>
-  ['web/src/sdk/index.ts', solidSdk].includes(repositoryPath(filename))
-/**
- * Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names, and the
- * core's temporary `reactIsland`, which no SDK entry exports.
- */
+const sdkEntry = (filename: string) => sdkEntries.includes(repositoryPath(filename))
+/** Where JSDoc is a contract: the statements of a contract file, or the exports of an SDK entry's public names. */
 function contractStatements(filename: string, statements: Node[]) {
   if (contractFile(filename)) return statements
-  if (repositoryPath(filename) === solidSdk)
-    return statements.filter((statement) => statement.type === 'ExportNamedDeclaration')
   if (!inSdk(filename)) return []
-  const names =
-    repositoryPath(filename) === reactIslandFile ? new Set(['reactIsland']) : publicSdk()
+  const names = publicSdk()
   return statements.filter(
     (statement) =>
       statement.type === 'ExportNamedDeclaration' &&
@@ -307,15 +302,14 @@ export default {
             for (const comment of context.sourceCode.getAllComments()) {
               if (
                 comment.type === 'Shebang' ||
-                /^\s*Pi upstream:|License — Copyright/.test(comment.value) ||
-                (solidFile(context.filename) && isSolidJsxPragma(comment))
+                /^\s*Pi upstream:|License — Copyright/.test(comment.value)
               )
                 continue
               if (isJsDoc(comment) && contractDocs.has(comment.start)) continue
               context.report({
                 node: comment,
                 message:
-                  'A comment is an excuse for unclear code: make the names and structure say it. An invariant (ordering, durability, replay) becomes a name, a type or a small function; a workaround keeps its why in the commit message and a regression test. Only contract JSDoc (on the exports of api.ts, refs.ts, ui.tsx and web/src/sdk), `Pi upstream:` markers and licence headers of copied code stay.',
+                  'A comment is an excuse for unclear code: make the names and structure say it. An invariant (ordering, durability, replay) becomes a name, a type or a small function; a workaround keeps its why in the commit message and a regression test. Only contract JSDoc (on the exports of api.ts, refs.ts, ui.solid.tsx and web/src/sdk), `Pi upstream:` markers and licence headers of copied code stay.',
               })
             }
           },
@@ -325,49 +319,23 @@ export default {
     'ui-framework-boundaries': {
       meta: { schema: [] },
       create(context: Context) {
-        const solid = solidFile(context.filename)
         const check = (node: ImportNode) => {
           const source = staticString(node.source)
           if (typeof source !== 'string') return
-          if (node.importKind === 'type' || node.exportKind === 'type') return
           const local = localModule(context.filename, source)
-          if (local !== undefined && repositoryPath(local) === reactIslandFile) {
-            if (!repositoryPath(context.filename).startsWith('web/src/app/'))
-              context.report({
-                node,
-                message: `reactIsland is a temporary bridge for the core switch: only the core hosts in web/src/app mount leftover React in Solid, and C5 deletes it with React. Move this part to Solid, or keep it React and contribute it where a core host renders React.`,
-              })
-            return
-          }
-          const localReact = local?.endsWith('.tsx') === true && !solidFile(local)
-          const localSolid =
-            local !== undefined && (solidFile(local) || repositoryPath(local) === solidSdk)
-          const islandComponent =
-            local !== undefined &&
-            solidFile(local) &&
-            node.type === 'ImportDeclaration' &&
-            extensionWebFacet(context.filename)
-          if (solid && (reactOnly.test(source) || localReact))
-            context.report({
-              node,
-              message: `A Solid file renders with Solid alone, so React code in it never runs as written. Replace ${source} with its Solid counterpart: our UI kit (@/components/ui), @lucide/solid for icons, or a ui-sdk component in the kit.`,
-            })
-          else if (solid && local !== undefined && reactSdk(local))
-            context.report({
-              node,
-              message: `@/sdk is the SDK for React: its hooks run only inside a React render, so in a Solid file they throw or never update. Import the Solid bindings from @/sdk/solid instead of ${source}; types may still come from @/sdk with \`import type\`.`,
-            })
-          else if (
-            !solid &&
-            !rendererBridge(context.filename) &&
-            !islandComponent &&
-            (solidOnly.test(source) || localSolid)
+          const target = local === undefined ? undefined : repositoryPath(local)
+          if (
+            target === bridgeFile &&
+            !/^web\/src\/(app|sdk)\//.test(repositoryPath(context.filename))
           )
-            context.report({
+            return context.report({
               node,
-              message: `React and Solid meet only in the SDK's island mount, so each file has one renderer and one set of JSX types. Move this code into a .solid.tsx file, or import the Solid component in your extension's web.tsx and contribute it as island(Component) from @/sdk instead of importing ${source} here.`,
+              message: `Hosts render every contribution through one path, with its extension scope and error isolation. Only the core hosts in web/src import the bridge (${bridgeFile}); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/solid.`,
             })
-          else if (
+          const typeOnly =
+            node.type === 'TSImportType' || node.importKind === 'type' || node.exportKind === 'type'
+          if (
+            !typeOnly &&
             uiSdkComponents.test(source) &&
             !uiKitFile(context.filename) &&
             !inSdk(context.filename)
@@ -382,26 +350,7 @@ export default {
           ImportExpression: check,
           ExportNamedDeclaration: check,
           ExportAllDeclaration: check,
-        }
-      },
-    },
-    'solid-jsx-pragma': {
-      meta: { schema: [] },
-      create(context: Context) {
-        if (!solidFile(context.filename)) return {}
-        return {
-          Program(program: Node) {
-            const first = context.sourceCode.getAllComments()[0] as Comment | undefined
-            const statements = (program.body as Node[] | undefined) ?? []
-            if (
-              !isSolidJsxPragma(first) ||
-              (statements.length > 0 && first!.end > statements[0].start!)
-            )
-              context.report({
-                node: program,
-                message: `A Solid file shares the type-check project with React files, and TypeScript reads the JSX source only from a leading block comment, so without it the JSX is checked against React's types. Open the file with /** ${solidJsxPragma} */.`,
-              })
-          },
+          TSImportType: check,
         }
       },
     },
@@ -416,6 +365,17 @@ export default {
                 node,
                 message:
                   "A native form submit carries no source, so a change an agent submits is recorded as the person's. Use the kit's Form from @/components/ui and start the change in its type=\"submit\" Button's onClick, which Enter in a field presses too.",
+              })
+            if (
+              node.name?.type === 'JSXIdentifier' &&
+              node.name.name === 'button' &&
+              solidFile(context.filename) &&
+              !context.filename.endsWith('.test.solid.tsx')
+            )
+              context.report({
+                node,
+                message:
+                  "The agent bridge sees only kit parts, so an agent can neither find nor press a bare <button>, and its click is recorded without a source. Use the kit's Button from @/components/ui (size={null} variant={null} for an unstyled one) with a name unique on the page.",
               })
           },
           JSXAttribute(node: Node & { name?: Node }) {
@@ -432,18 +392,181 @@ export default {
         }
       },
     },
+    'no-aria-pressed-button': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const buttons = new Set<string | undefined>()
+        const triggers = new Set<string | undefined>()
+        return {
+          ImportDeclaration(node: Node) {
+            const source = staticString(node.source)
+            if (typeof source !== 'string') return
+            const target = localModule(context.filename, source)
+            const part = target && repositoryPath(target)
+            for (const specifier of node.specifiers ?? []) {
+              const imported = specifier.imported?.name
+              if (part === 'web/src/components/ui/button.solid.tsx' && imported === 'Button')
+                buttons.add(specifier.local?.name)
+              if (
+                (part === 'web/src/components/ui/tooltip.solid.tsx' &&
+                  imported === 'TooltipTrigger') ||
+                (part === 'web/src/components/ui/popover.solid.tsx' &&
+                  imported === 'PopoverTrigger')
+              )
+                triggers.add(specifier.local?.name)
+            }
+          },
+          JSXOpeningElement(node: Node & { name?: Node; attributes?: (Node & { name?: Node })[] }) {
+            const pressed = node.attributes?.find((attr) => attr.name?.name === 'aria-pressed')
+            const name = node.name?.name
+            if (!pressed || !name) return
+            if (!buttons.has(name)) {
+              if (!triggers.has(name)) return
+              const render = node.attributes?.find((attr) => attr.name?.name === 'render')
+              const value = (render?.value as Node | undefined)?.expression
+              const body = value?.body as (Node & { openingElement?: { name?: Node } }) | undefined
+              const rendered = value?.name ?? body?.openingElement?.name?.name
+              if (!rendered || !buttons.has(rendered)) return
+            }
+            context.report({
+              node: pressed,
+              message:
+                'The agent bridge sees only press on a Button, never its pressed state. Use Toggle from @/components/ui/toggle.solid.tsx, or SegmentedControl or Tabs for a one-of-many selection.',
+            })
+          },
+        }
+      },
+    },
     'no-raw-stream': {
       meta: { schema: [] },
       create(context: Context) {
-        const message =
-          'One way to the server keeps every page live, reconnecting and replay-safe: read state with useDoc/useDocOf and call the server with useAction or api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own.'
+        const why =
+          'One stream to Ultimate keeps every page live and reconnecting, and runs each read once for all of them'
+        const raw = `${why}: read state with useDoc/useDocOf and useAction, and call the server with api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own to /api. Anything else, such as an external API or your surface's own backend, is yours to call.`
+        const polled = `${why}: a timer that calls api.action or refetch polls once per page. Give useAction an \`every\` (the server runs the read and pushes changes) or an \`on\` that changes with what it reads (docs/extensions/sdk.md).`
+        const toApi = (url: Node | undefined) => {
+          const text =
+            url?.type === 'Literal'
+              ? url.value
+              : url?.type === 'TemplateLiteral'
+                ? (url as { quasis?: { value?: { raw?: string } }[] }).quasis?.[0]?.value?.raw
+                : undefined
+          return typeof text === 'string' && text.startsWith('/api')
+        }
+        const firstArgument = (node: Node) => node.arguments?.[0]
+        const declarations = new WeakMap<Node, Map<string, Node>>()
+        const declared = (node: Node) => {
+          let program = node
+          while (program.parent) program = program.parent
+          let found = declarations.get(program)
+          if (found) return found
+          const named = new Map<string, Node>()
+          walk(program, (child) => {
+            if (child.type === 'FunctionDeclaration' && child.id?.name)
+              named.set(child.id.name, child)
+            if (child.type === 'VariableDeclarator' && child.id?.name && child.init)
+              named.set(child.id.name, child.init)
+            if (
+              child.type === 'VariableDeclarator' &&
+              child.id?.type === 'ObjectPattern' &&
+              child.init
+            )
+              for (const property of child.id.properties ?? [])
+                if (property.key?.name) named.set(property.key.name, child.init)
+          })
+          declarations.set(program, (found = named))
+          return found
+        }
+        const sdkImports = (node: Node) => {
+          let program = node
+          while (program.parent) program = program.parent
+          const localToImported = new Map<string, string>()
+          for (const statement of (program.body as Node[] | undefined) ?? [])
+            if (
+              statement.type === 'ImportDeclaration' &&
+              /^@\/sdk\/|\/web\/src\/sdk\//.test(String(statement.source?.value))
+            )
+              for (const specifier of statement.specifiers ?? [])
+                if (specifier.imported?.name && specifier.local?.name)
+                  localToImported.set(specifier.local.name, specifier.imported.name)
+          return localToImported
+        }
+        const answerIsUsed = (call: Node): boolean => {
+          const parent = call.parent
+          if (parent?.type === 'MemberExpression') {
+            const method = propertyName(parent)
+            if (method === 'then') return true
+            return method === 'catch' && !!parent.parent && answerIsUsed(parent.parent)
+          }
+          if (parent?.type === 'AwaitExpression') return answerIsUsed(parent)
+          return parent?.type === 'VariableDeclarator' || parent?.type === 'AssignmentExpression'
+        }
+        const readsUltimate = (node: Node, named: Map<string, Node>, sdk: Map<string, string>) => {
+          const resultOfUseAction = (identifier: Node) => {
+            const init = named.get(identifier.name ?? '')
+            return (
+              init?.type === 'CallExpression' &&
+              init.callee?.type === 'Identifier' &&
+              sdk.get(init.callee.name ?? '') === 'useAction'
+            )
+          }
+          const isSdkAction = (callee: Node | undefined) =>
+            callee?.type === 'MemberExpression' &&
+            callee.object?.type === 'Identifier' &&
+            sdk.get(callee.object.name ?? '') === 'api' &&
+            propertyName(callee) === 'action'
+          if (node.type !== 'CallExpression') return false
+          if ((node.arguments ?? []).some(isSdkAction)) return true
+          if (isSdkAction(node.callee)) return answerIsUsed(node)
+          const callee = node.callee
+          if (callee?.type === 'MemberExpression' && propertyName(callee) === 'refetch')
+            return callee.object?.type === 'Identifier' && resultOfUseAction(callee.object)
+          if (callee?.type === 'Identifier' && callee.name === 'refetch')
+            return resultOfUseAction(callee)
+          return false
+        }
+        const reachesARead = (start: Node, named: Map<string, Node>, sdk: Map<string, string>) => {
+          const seen = new Set<Node>()
+          const queue = [start]
+          const found: Node[] = []
+          for (let next = queue.shift(); next && !found.length; next = queue.shift()) {
+            if (seen.has(next)) continue
+            seen.add(next)
+            const declaration = next.type === 'Identifier' ? named.get(next.name ?? '') : undefined
+            if (declaration) {
+              queue.push(declaration)
+              continue
+            }
+            walk(next, (child) => {
+              if (readsUltimate(child, named, sdk)) found.push(child)
+              else if (child.type === 'CallExpression' && child.callee?.type === 'Identifier')
+                queue.push(child.callee)
+            })
+          }
+          return found.length > 0
+        }
+        const callbackAt: Record<string, number> = {
+          every: 1,
+          retryAfter: 1,
+          setInterval: 0,
+          setTimeout: 0,
+        }
         return {
           CallExpression(node: Node) {
-            if (isGlobal(node.callee, 'fetch')) context.report({ node, message })
+            if (isGlobal(node.callee, 'fetch') && toApi(firstArgument(node)))
+              context.report({ node, message: raw })
+            const timer = node.callee?.type === 'Identifier' ? node.callee.name : undefined
+            const at = timer === undefined ? undefined : callbackAt[timer]
+            const callback = at === undefined ? undefined : node.arguments?.[at]
+            if (callback && reachesARead(callback, declared(node), sdkImports(node)))
+              context.report({ node, message: polled })
           },
           NewExpression(node: Node) {
-            if (isGlobal(node.callee, 'EventSource') || isGlobal(node.callee, 'WebSocket'))
-              context.report({ node, message })
+            if (
+              (isGlobal(node.callee, 'EventSource') || isGlobal(node.callee, 'WebSocket')) &&
+              toApi(firstArgument(node))
+            )
+              context.report({ node, message: raw })
           },
         }
       },
@@ -683,14 +806,11 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         if (!own) return {}
-        const solid = solidFile(context.filename)
         const browser = context.filename.endsWith('.tsx')
-        const allowed = solid ? ['refs.ts', 'ui.solid.tsx'] : browser ? ['ui.tsx'] : ['api.ts']
-        const how = solid
-          ? 'its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its Solid components; its ui.tsx is React)'
-          : browser
-            ? 'its ui.tsx (components, hooks and the refs of its documents and actions)'
-            : 'its api.ts (a service, document or event token)'
+        const allowed = browser ? ['refs.ts', 'ui.solid.tsx'] : ['api.ts']
+        const how = browser
+          ? 'its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its components, hooks and points)'
+          : 'its api.ts (a service, document or event token)'
         const check = (node: ImportNode) => {
           const source = node.source?.value
           if (typeof source !== 'string' || !source.startsWith('.')) return
@@ -793,7 +913,7 @@ export default {
                 node,
                 `Start ${file} with a doc comment on what it offers; its first sentence is the one-line summary.`,
               )
-            if (file === 'ui.tsx' || file === 'ui.solid.tsx') return
+            if (file === 'ui.solid.tsx') return
             const allowed = definers[file]
             const services = new Set<string>()
             const body = (node.body as Node[] | undefined) ?? []
@@ -867,7 +987,7 @@ export default {
       meta: { schema: [] },
       create(context: Context) {
         const contract = contractFile(context.filename)
-        if (!contract || contract.file === 'ui.tsx' || contract.file === 'ui.solid.tsx') return {}
+        if (!contract || contract.file === 'ui.solid.tsx') return {}
         const own = contract.extension
         return {
           CallExpression(node: Node) {

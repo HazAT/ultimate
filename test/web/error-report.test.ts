@@ -1,13 +1,6 @@
-import { expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import type { SystemInfo } from '../../shared/protocol.ts'
-import { errorReport, stackFrames } from '../../web/src/app/boundary.tsx'
-
-// The real hooks connect to a server; errorReport reads only the system snapshot it is given.
-vi.mock('../../web/src/sdk/hooks.ts', async () => ({
-  ExtensionNameContext: (await import('react')).createContext<string | undefined>(undefined),
-  useExtensions: () => [],
-  useSystem: () => undefined,
-}))
+import { errorReport, stackFrames } from '../../web/src/app/error-report.ts'
 
 const system = {
   build: { id: 'b1', generation: 4 },
@@ -20,10 +13,14 @@ const system = {
 it('reports a failed load with its full message, path, source and build', () => {
   const message = "The requested module '/@fs/x.ts' does not provide an export named 'attention'"
   expect(
-    errorReport(system, { extension: 'shell', error: message, context: 'web.tsx did not load' }),
+    errorReport(system, {
+      extension: 'shell',
+      error: message,
+      context: 'web.solid.tsx did not load',
+    }),
   ).toBe(
     [
-      'Extension `shell` failed: web.tsx did not load.',
+      'Extension `shell` failed: web.solid.tsx did not load.',
       'Path: ~/.ultimate/extensions/shell (user)',
       `Error: ${message}`,
       'Build: b1 · gen 4',
@@ -35,7 +32,7 @@ it("keeps a crash's own frames, capped", () => {
   const stack = Array.from({ length: 40 }, (_, line) =>
     line % 2
       ? `    at frame${line}`
-      : '    at beginWork (/@fs/tmp/vite/deps/react-dom_client.js:1:1)',
+      : '    at createComponent (/@fs/tmp/vite/deps/solid-js.js:1:1)',
   ).join('\n')
   const report = errorReport(system, {
     extension: 'shell',
@@ -46,7 +43,7 @@ it("keeps a crash's own frames, capped", () => {
   expect(report).toContain('Stack:\n```\nat frame1\n')
   expect(report).toContain('at frame15\n```')
   expect(report).not.toContain('frame17')
-  expect(report).not.toContain('react-dom')
+  expect(report).not.toContain('solid-js.js')
 })
 
 it('shortens Vite URLs in stack frames to paths', () => {
@@ -55,16 +52,16 @@ it('shortens Vite URLs in stack frames to paths', () => {
     error: 'boom',
     context: 'a component threw',
     stack: [
-      'at Crash (http://127.0.0.1:4747/@fs/home/me/.ultimate/extensions/shell/web.tsx?t=17:4:8)',
-      'at Slot (http://127.0.0.1:4747/@fs/home/me/ultimate/web/src/app/boundary.tsx:305:24)',
-      'at ExtensionBoundary (http://127.0.0.1:4747/src/app/boundary.tsx?t=17:162:8)',
+      'at Crash (http://127.0.0.1:4747/@fs/home/me/.ultimate/extensions/shell/web.solid.tsx?t=17:4:8)',
+      'at Slot (http://127.0.0.1:4747/@fs/home/me/ultimate/web/src/sdk/contribution.solid.tsx:90:24)',
+      'at ContributionError (http://127.0.0.1:4747/src/app/contribution-error.solid.tsx?t=17:18:8)',
     ].join('\n'),
   })
   expect(report).toContain(
     [
-      'at Crash (~/.ultimate/extensions/shell/web.tsx:4:8)',
-      'at Slot (web/src/app/boundary.tsx:305:24)',
-      'at ExtensionBoundary (src/app/boundary.tsx:162:8)',
+      'at Crash (~/.ultimate/extensions/shell/web.solid.tsx:4:8)',
+      'at Slot (web/src/sdk/contribution.solid.tsx:90:24)',
+      'at ContributionError (src/app/contribution-error.solid.tsx:18:8)',
     ].join('\n'),
   )
 })

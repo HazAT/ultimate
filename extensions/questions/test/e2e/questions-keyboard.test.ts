@@ -2,7 +2,7 @@
 // questions, Enter sends; the reply reaches @ultimate in the message's own numbering, with the note field's text after it.
 // The card opens with the picks chosen; Send turns into Undo over the undo window, holding Send for a second sends at
 // once, and leaving the page inside the undo window still sends the answer.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -13,7 +13,7 @@ import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import { Messages } from '../../../messages/api.ts'
 import { context } from '../../../../server/harness.ts'
-import { fauxServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { prebuiltServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
 const questions: JsonValue[] = [
   {
@@ -54,9 +54,7 @@ afterEach(async () => {
 async function openCard() {
   const home = await temp('ultimate-questions-keys-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,
@@ -106,7 +104,8 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   // The composer takes focus on desktop and keeps its keys; the card takes them once the user leaves it.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   // The picks are already chosen. Question 1: b; down to 2: a; down to 3: b; back up twice and change 1 to c.
-  expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
+  const selected = card.locator('button[aria-current="true"]')
+  expect(await selected.count()).toBe(3)
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('b')
@@ -117,7 +116,7 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('c')
-  expect(await card.locator('[aria-pressed=true]').allTextContents()).toEqual([
+  expect(await selected.allTextContents()).toEqual([
     expect.stringContaining('leave as is'),
     expect.stringContaining('assess a way to add tools'),
     expect.stringContaining('no, change something first'),
@@ -136,15 +135,19 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   const full = await undo.evaluate((node) => node.getBoundingClientRect().width)
   expect(width).toBeGreaterThan(0)
   expect(width).toBeLessThan(full * 0.8)
-  expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
+  expect(await selected.count()).toBe(3)
   // Undo keeps the picks and the note; sending again opens a new window.
   await undo.click()
-  await card.getByRole('button', { name: 'Send', exact: true }).waitFor()
+  const send = card.getByRole('button', {
+    name: `Send: answer to message ${asked.id}`,
+    exact: true,
+  })
+  await send.waitFor()
   expect(await card.locator('textarea[data-note]').inputValue()).toBe(
     'Also rename the tab.\nAnd soon.',
   )
-  expect(await card.locator('[aria-pressed=true]').count()).toBe(3)
-  await card.getByRole('button', { name: 'Send', exact: true }).click()
+  expect(await selected.count()).toBe(3)
+  await send.click()
   await undo.waitFor()
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await page.keyboard.press('Enter')
@@ -165,15 +168,18 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   const second = (await ask())!
   const next = page.locator(`[data-questions-card="message:${second.id}"]`)
   await next.locator('fieldset').nth(2).waitFor()
-  const send = next.getByRole('button', { name: 'Send', exact: true })
-  const box = (await send.boundingBox())!
+  const sendNext = next.getByRole('button', {
+    name: `Send: answer to message ${second.id}`,
+    exact: true,
+  })
+  const box = (await sendNext.boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   // Released early, the hold is an ordinary click: Send with its undo window.
   await page.mouse.down()
   await page.waitForTimeout(400)
   await page.mouse.up()
   await next.getByRole('button', { name: 'Undo' }).click()
-  await send.waitFor()
+  await sendNext.waitFor()
   const picked = async () =>
     (await log())?.messages.find((m) => m.re === second.id && m.from === 'user')
   const held = Date.now()
@@ -190,9 +196,34 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
 
 it('sends a held answer when the page is left inside the undo window', async () => {
   const { log, asked, page, card } = await openCard()
-  await card.getByRole('button', { name: 'Send', exact: true }).click()
+  await card
+    .getByRole('button', { name: `Send: answer to message ${asked.id}`, exact: true })
+    .click()
   await card.getByRole('button', { name: 'Undo' }).waitFor()
   await page.goto('about:blank')
+  const answer = async () =>
+    (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
+  await until(async () => !!(await answer()))
+  expect((await answer())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
+})
+
+// Under load the undo window ended while the page was going away: the answer went out as an ordinary fetch, which
+// the unload aborted, and the answer was lost.
+it('keeps an answer that is still in flight when the page is left', async () => {
+  const { log, asked, page, card } = await openCard()
+  const held = Promise.withResolvers<void>()
+  const requested = Promise.withResolvers<void>()
+  await page.context().route('**/actions/answer', async (route) => {
+    requested.resolve()
+    await held.promise
+    await route.continue()
+  })
+  await card
+    .getByRole('button', { name: `Send: answer to message ${asked.id}`, exact: true })
+    .click()
+  await requested.promise
+  await page.goto('about:blank')
+  held.resolve()
   const answer = async () =>
     (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
   await until(async () => !!(await answer()))

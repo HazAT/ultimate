@@ -15,7 +15,7 @@ import type { ActionContext } from '../../../server/actions.ts'
 
 export default defineExtension({ name: 'commits' })
 
-/** The UI calls these through the refs in `web.tsx`; each returns JSON. */
+/** The UI calls these through the refs in `web.solid.tsx`; each returns JSON. */
 export const actions = {
   /** The latest 50 commits of the project. */
   async list(_args: JsonValue, ctx: ActionContext) {
@@ -38,23 +38,24 @@ export const actions = {
 }
 ```
 
-`web.tsx`, the surface:
+`web.solid.tsx`, the surface:
 
 ```tsx
-import { GitCommitHorizontalIcon, MessageSquarePlusIcon } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { GitCommitHorizontalIcon, MessageSquarePlusIcon } from '@lucide/solid'
+import { For, Show, untrack } from 'solid-js'
+import { Button } from '@/components/ui/button.solid.tsx'
 import {
-  Conversation,
-  Dock,
-  Header,
-  StatusLine,
   actionRef,
   api,
   cn,
+  Conversation,
   defineWebExtension,
+  Dock,
+  Header,
+  StatusLine,
   useAction,
   useExtensionUiState,
-} from '@/sdk'
+} from '@/sdk/solid'
 
 type Commit = { sha: string; subject: string; author: string; when: string }
 
@@ -62,15 +63,19 @@ type Commit = { sha: string; subject: string; author: string; when: string }
 const ListAction = actionRef<null, Commit[]>('commits', 'list')
 const ShowAction = actionRef<string, { sha: string; text: string }>('commits', 'show')
 
-/** One commit, and a button that hands it to the agent. */
-function Detail({ sha, text }: { sha: string; text: string }) {
+/** One commit per keyed mount, and a button that hands it to the agent. */
+function Detail(props: { sha: string }) {
+  const commit = useAction(
+    ShowAction,
+    untrack(() => props.sha),
+  )
   return (
     <>
-      <div className="flex items-center gap-3">
-        <h1 className="font-mono text-[13px] text-muted-foreground">{sha.slice(0, 12)}</h1>
+      <div class="flex items-center gap-3">
+        <h1 class="font-mono text-[13px] text-muted-foreground">{props.sha.slice(0, 12)}</h1>
         <Button
-          className="ml-auto"
-          onClick={() => void api.submit(`Review commit ${sha}.`, 'followUp')}
+          class="ml-auto"
+          onClick={() => api.submit(`Review commit ${props.sha}.`, 'followUp')}
           size="sm"
           variant="outline"
         >
@@ -78,8 +83,8 @@ function Detail({ sha, text }: { sha: string; text: string }) {
           Ask the agent
         </Button>
       </div>
-      <pre className="mt-4 font-mono text-[12px] whitespace-pre-wrap text-foreground/90">
-        {text}
+      <pre class="mt-4 font-mono text-[12px] whitespace-pre-wrap text-foreground/90">
+        {commit.data()?.text}
       </pre>
     </>
   )
@@ -89,35 +94,39 @@ function Detail({ sha, text }: { sha: string; text: string }) {
 function Commits() {
   const commits = useAction(ListAction)
   const [selected, setSelected] = useExtensionUiState<string | null>('selected', null)
-  const sha = selected ?? commits.data?.[0]?.sha ?? null
-  const commit = useAction(ShowAction, sha ?? '', { enabled: sha !== null })
+  const sha = () => selected() ?? commits.data()?.[0]?.sha
   return (
     <>
       <Header />
-      <div className="flex min-h-0 flex-1">
-        <nav className="w-72 shrink-0 overflow-y-auto border-r border-border/70 bg-sidebar py-1">
-          {commits.loading && !commits.data && (
-            <p className="px-3 py-2 font-mono text-[12px] text-muted-foreground">loading…</p>
-          )}
-          {commits.data?.map((item) => (
-            <button
-              className={cn(
-                'block w-full px-3 py-1.5 text-left hover:bg-accent/60',
-                item.sha === sha && 'bg-accent',
-              )}
-              key={item.sha}
-              onClick={() => setSelected(item.sha)}
-              type="button"
-            >
-              <span className="block truncate text-[13px]">{item.subject}</span>
-              <span className="block font-mono text-[11px] text-muted-foreground">
-                {item.sha.slice(0, 7)} · {item.author} · {item.when}
-              </span>
-            </button>
-          ))}
+      <div class="flex min-h-0 flex-1">
+        <nav class="w-72 shrink-0 overflow-y-auto border-r border-border/70 bg-sidebar py-1">
+          <Show when={commits.loading() && !commits.data()}>
+            <p class="px-3 py-2 font-mono text-[12px] text-muted-foreground">loading…</p>
+          </Show>
+          <For each={commits.data()} keyed={(item) => item.sha}>
+            {(item) => (
+              <Button
+                aria-label={`Show commit ${item().sha.slice(0, 12)}`}
+                class={cn(
+                  'block w-full px-3 py-1.5 text-left font-normal hover:bg-accent/60',
+                  item().sha === sha() && 'bg-accent',
+                )}
+                onClick={() => setSelected(item().sha)}
+                size={null}
+                variant={null}
+              >
+                <span class="block truncate text-[13px]">{item().subject}</span>
+                <span class="block font-mono text-[11px] text-muted-foreground">
+                  {item().sha.slice(0, 7)} · {item().author} · {item().when}
+                </span>
+              </Button>
+            )}
+          </For>
         </nav>
-        <main className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-          {commit.data && <Detail {...commit.data} />}
+        <main class="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+          <Show keyed when={sha()}>
+            {(selectedSha) => <Detail sha={selectedSha} />}
+          </Show>
         </main>
         <Dock>
           <Conversation variant="dock" />
@@ -147,9 +156,9 @@ export default defineWebExtension({
 Browse the project's recent commits and hand one to the agent.
 ```
 
-What it shows: `useAction` loads the list on mount and the detail whenever the selection changes (disabled until there
-is one); the selection lives in `useExtensionUiState`, so it survives reloads; `api.submit(text, 'followUp')` sends a
-message to the shown conversation, queued as a follow-up if the agent is busy, and the dock shows it arrive.
+`useAction` loads the list on mount. The keyed `Show` mounts the detail only when there is a SHA and remounts it when
+that SHA changes. The selection lives in `useExtensionUiState`, so it survives reloads. `api.submit(text, 'followUp')`
+sends a message to the shown conversation, queued as a follow-up if the agent is busy, and the dock shows it arrive.
 
 ## Build an app, step by step
 
@@ -163,7 +172,7 @@ For a request such as "build a triage surface for this repo's GitHub issues":
    their args, and return small JSON shaped for the UI. Return setup states (missing tool, no login, no repository)
    as data, so the UI can say what to do.
 4. **Check each action with codemode `ultimate.action`** (see [actions](actions.md)) before any UI exists.
-5. **Write `web.tsx`** from the Commits example: a typed ref per action; keep `Header`, `Dock`
+5. **Write `web.solid.tsx`** from the Commits example: a typed ref per action; keep `Header`, `Dock`
    with `Conversation variant="dock"`, and `StatusLine`; replace the list and the detail. Read with `useAction`, act with `api.action` then `refetch`, keep
    the selection and filters in `useExtensionUiState`, and hand work to the agent with `api.submit(text, 'followUp')`,
    saying exactly what to do with which item.
@@ -179,7 +188,8 @@ Keep in mind:
 - Keep the agent on screen: a surface without a `Dock` holding `Conversation` makes the user switch away to talk.
 - Reach your server only through actions: no `fetch` to your own endpoints, no secrets in the browser.
 - One extension stays one folder. Prefer documents, commands, events, or the SDK to cross-extension imports; another
-  extension's browser code comes only from its `ui.tsx` (see [contracts](contracts.md#the-browser-side-refsts-and-uitsx)).
+  extension's browser code comes only from its `refs.ts` or `ui.solid.tsx` (see
+  [contracts](contracts.md#the-browser-side-refsts-and-uisolidtsx)).
   Lint enforces these declarations and forbids cycles.
 - The Agent surface is an extension too: to change it for one project, copy `extensions/agent` to the project's
   `.ultimate/extensions/agent/`.

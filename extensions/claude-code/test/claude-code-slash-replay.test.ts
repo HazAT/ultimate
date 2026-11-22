@@ -7,7 +7,6 @@ import { TurnRelay } from '@earendil-works/pi-claude-code/src/turn-relay.ts'
 // matching pnpm patch when upstream fixes this.
 const cache = { type: 'ephemeral', ttl: '1h' }
 const text = (value: string) => ({ type: 'text', text: value })
-const reminder = [text('<system-reminder>Repository context</system-reminder>')]
 const ask = '/home/me/Notes/Post.md Draft this post'
 const date = [
   { role: 'system', content: [{ ...text("Today's date is 2026-10-22."), cache_control: cache }] },
@@ -42,11 +41,17 @@ const slashReplay = {
 }
 
 it('replays a history whose first user message starts with a slash', () => {
+  const frames = [slashReplay.messages[0], slashReplay.messages[3]].map((message, index) => ({
+    type: 'user' as const,
+    message: {
+      role: 'user' as const,
+      content: index === 0 ? [text(ask)] : (message.content as unknown[]),
+    },
+  }))
   const rewritten = JSON.parse(
     rewriteInitialRequest(
       Buffer.from(JSON.stringify(slashReplay)),
-      reminder,
-      [text(ask)],
+      frames,
       date,
       undefined,
     ).toString(),
@@ -58,7 +63,7 @@ it('replays a history whose first user message starts with a slash', () => {
     'user',
     'system',
   ])
-  expect(rewritten.messages[0].content).toEqual([...reminder, text(ask)])
+  expect(rewritten.messages[0].content).toEqual([text(ask)])
   expect(rewritten.messages[1].content[0].text).toBe("Today's date is 2026-10-22.")
   expect(
     rewritten.messages[3].content.map((block: { is_error: boolean }) => block.is_error),

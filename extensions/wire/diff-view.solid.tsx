@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { For, Show, createMemo } from 'solid-js'
 import { cn, formatBytes, useAction } from '@/sdk/solid'
 import { parse } from './json.ts'

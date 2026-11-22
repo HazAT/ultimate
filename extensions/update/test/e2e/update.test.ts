@@ -1,9 +1,18 @@
+import { execFileSync } from 'node:child_process'
 import { mkdir, utimes, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
 import { git } from '../../../../lib/git.ts'
 import { fastForward, Refusal } from '../../../../lib/fast-forward.ts'
-import { cloneState, fetchIfDue, layersOf, withLock } from '../../clone.ts'
+import {
+  cloneState,
+  updateMessages,
+  fetchIfDue,
+  layersOf,
+  SUMMARY_INPUT_CAP,
+  summaryFor,
+  withLock,
+} from '../../clone.ts'
 import { gitIn, installOwed } from '../../server.ts'
 import { temp } from '../../../../test/helpers.ts'
 
@@ -167,6 +176,30 @@ it('admits one holder of the clone lock among simultaneous ones, and recovers a 
   // A sidecar left by a dead holder (no transaction behind it) never blocks the next.
   await writeFile(lock, JSON.stringify({ pid: 999999999 }))
   expect(await withLock(lock, async () => 'taken')).toBe('taken')
+})
+
+it('summarizes a clone 1,500 commits and 1.5 MB of messages behind', async () => {
+  const { clone } = await fixture()
+  const upstream = (await git(clone, 'remote', 'get-url', 'origin')).trim()
+  const stream = Array.from({ length: 1500 }, (_, i) => {
+    const message = `fix ${i}\n\n${'x'.repeat(1000)}`
+    const parent = i ? '' : 'from refs/heads/main^0\n'
+    return `commit refs/heads/main\ncommitter Test <test@example.com> ${i} +0000\ndata ${message.length}\n${message}\n${parent}`
+  }).join('')
+  execFileSync('git', ['fast-import', '--quiet'], { cwd: upstream, input: stream })
+  const run = gitIn(clone)
+  await git(clone, 'fetch', '-q')
+  expect((await cloneState(run, clone)).behind).toBe(1500)
+  const inputs: string[] = []
+  const summary = await summaryFor(
+    join(await temp('ultimate-update-summary-'), 'summary.json'),
+    'HEAD..origin/main',
+    () => updateMessages(run, 'HEAD..origin/main'),
+    async (input) => (inputs.push(input), 'Many fixes'),
+  )
+  expect(summary).toEqual(['Many fixes'])
+  expect(inputs[0]).toHaveLength(SUMMARY_INPUT_CAP)
+  expect(inputs[0]).toMatch(/^fix 1499\n/)
 })
 
 it('owes an install while the lockfile differs from the installed one', async () => {

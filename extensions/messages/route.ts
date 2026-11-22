@@ -16,7 +16,7 @@ import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
 import type { DeliveredMessage, Serves } from './refs.ts'
-import { FiredEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
+import { FiredEntry, FinishedEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry } from '../workspaces/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { send } from './send.ts'
@@ -131,7 +131,7 @@ export async function reported(
     const output = await ownerOutput(host, tx, starter, entry)
     if (output && (output.owner.kind !== 'branch' || concluded.has(output.owner.id)))
       outputs.push({ ...output, submission })
-    if (FiredEntry.is(entry)) {
+    if (FiredEntry.is(entry) || FinishedEntry.is(entry)) {
       for (const branch of entry.data.branches ?? []) {
         const branchSpokeLast =
           log.messages.findLast((m) => m.from === branch && m.to === starter)?.id ?? 0
@@ -219,19 +219,26 @@ export function route(host: ExtensionHost) {
       by: ConversationId
       down?: boolean
     },
-    { phase: 'observe' } | { phase: 'forward'; routes: Route[] },
+    { phase: 'observe' } | { phase: 'answered' } | { phase: 'forward'; routes: Route[] },
     null
   >({
     name: 'board.route',
     version: 1,
     initial: () => ({ phase: 'observe' }),
     phases: {
-      observe: async (task, runtime, ctx) => {
-        const settled = await runtime.waitForTask(task.input.generation, ctx)
-        const answer =
-          settled.state.outcome.status === 'completed'
-            ? settled.state.outcome.result.entryId
-            : undefined
+      observe: (task, runtime, ctx) =>
+        runtime.commit(
+          () => ({
+            status: 'waiting',
+            checkpoint: { phase: 'answered' },
+            on: [task.input.generation],
+            policy: 'allSettled',
+          }),
+          ctx,
+        ),
+      answered: async (task, runtime, ctx) => {
+        const [outcome] = await runtime.outcomes([task.input.generation], ctx)
+        const answer = outcome.status === 'completed' ? outcome.result.entryId : undefined
         const { by, down } = task.input
         const id = runtime.conversationId
         await runtime.commit(async (tx) => {

@@ -7,7 +7,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import { readFile, realpath } from 'node:fs/promises'
 import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
-import { compareExtensions, discoverExtensions } from '../lib/discovery.ts'
+import { compareExtensions, discoverExtensions, webFacet } from '../lib/discovery.ts'
 import {
   decisionRoot,
   projectSetup,
@@ -52,6 +52,7 @@ export type ExtensionHost = Pick<
   | 'modelRuntime'
   | 'settings'
   | 'build'
+  | 'images'
   | 'uiState'
   | 'scanSubmissions'
   | 'models'
@@ -67,8 +68,7 @@ export type ExtensionHost = Pick<
   catalogue(): Catalogue
   trace: TraceReader
   resource<T>(key: string, create: () => T): T
-  onOpen(callback: () => Promise<void>): void
-  onRelease(callback: () => Promise<void>): void
+  onOpen(callback: Opener): void
   onClose(cleanup: () => Promise<void>): void
   onLoadError(callback: (name: string, error: string) => void): void
   onBeforeLoad(callback: () => Promise<void>): void
@@ -92,10 +92,7 @@ export type ExtensionHost = Pick<
   doc(kind: string): ConversationDocToken<JsonObject> | undefined
   metadata: typeof Metadata
 } & EventHost
-const runOpener = (callback: () => Promise<void>) =>
-  callback().catch((error: unknown) => console.error('Extension onOpen:', error))
-const runReleaser = (callback: () => Promise<void>) =>
-  callback().catch((error: unknown) => console.error('Extension onRelease:', error))
+export type Opener = (opened: AsyncDisposableStack) => Promise<void>
 export type Watch = (attach: (watcher: ViteDevServer['watcher']) => () => void) => () => void
 export async function loadExtensions(
   vite: ViteDevServer,
@@ -114,8 +111,7 @@ export async function loadExtensions(
   const providers = new Map<string, { owner: ExtensionHost; value: unknown }>()
   const facetHosts = new Map<string, ExtensionHost>()
   const subscriptions = new Map<ExtensionHost, Set<() => void>>()
-  const facetOpeners = new Map<ExtensionHost, Set<() => Promise<void>>>()
-  const facetReleasers = new Map<ExtensionHost, Set<() => Promise<void>>>()
+  const facetOpeners = new Map<ExtensionHost, Set<Opener>>()
   const facetCleanups = new Map<ExtensionHost, Set<() => Promise<void>>>()
   type FacetNotice = { recordedInEventLog: boolean; untilSecretSet?: string }
   const facetNotices = new Map<ExtensionHost, Map<string, FacetNotice>>()
@@ -143,10 +139,11 @@ export async function loadExtensions(
     stagedServicesByFacet.delete(facetHost)
     for (const stop of subscriptions.get(facetHost) ?? []) stop()
     subscriptions.delete(facetHost)
-    for (const callback of facetOpeners.get(facetHost) ?? []) openers.delete(callback)
+    for (const callback of facetOpeners.get(facetHost) ?? []) {
+      openers.delete(callback)
+      await endOpen(callback)
+    }
     facetOpeners.delete(facetHost)
-    for (const callback of facetReleasers.get(facetHost) ?? []) releasers.delete(callback)
-    facetReleasers.delete(facetHost)
     for (const cleanup of facetCleanups.get(facetHost) ?? []) {
       try {
         await cleanup()
@@ -160,6 +157,12 @@ export async function loadExtensions(
   const scope = (name: string): ExtensionHost => {
     const stops = new Set<() => void>()
     let sharedResource = false
+    const onFacetOpen = (callback: Opener) => {
+      facetOpeners.get(facetHost)!.add(callback)
+      openers.add(callback)
+      if (open && [...facetHosts.values()].includes(facetHost))
+        inProcess('the onOpen callback belongs to this loaded extension facet', runOpener(callback))
+    }
     const facetHost = {
       ...extensionHost,
       get chapter() {
@@ -212,22 +215,7 @@ export async function loadExtensions(
       },
       onOpen: (callback) => {
         if (sharedResource) extensionHost.onOpen(callback)
-        else {
-          facetOpeners.get(facetHost)!.add(callback)
-          openers.add(callback)
-          if (open && [...facetHosts.values()].includes(facetHost))
-            inProcess(
-              'the onOpen callback belongs to this loaded extension facet',
-              runOpener(callback),
-            )
-        }
-      },
-      onRelease: (callback) => {
-        if (sharedResource) extensionHost.onRelease(callback)
-        else {
-          facetReleasers.get(facetHost)!.add(callback)
-          releasers.add(callback)
-        }
+        else onFacetOpen(callback)
       },
       onClose: (cleanup) => {
         if (sharedResource) extensionHost.onClose(cleanup)
@@ -243,15 +231,15 @@ export async function loadExtensions(
       },
       react: (reactorName, tokens, handler, options) => {
         const reactor = log.reactor(`${name}/${reactorName}`, tokens, handler, options)
-        facetHost.onOpen(reactor.start)
-        facetHost.onRelease(reactor.stop)
-        stops.add(reactor.stop)
+        onFacetOpen(async (opened) => {
+          opened.defer(reactor.stop)
+          await reactor.start()
+        })
       },
     } satisfies ExtensionHost
     stagedServicesByFacet.set(facetHost, new Map())
     subscriptions.set(facetHost, stops)
     facetOpeners.set(facetHost, new Set())
-    facetReleasers.set(facetHost, new Set())
     facetCleanups.set(facetHost, new Set())
     facetNotices.set(facetHost, new Map())
     return facetHost
@@ -269,7 +257,40 @@ export async function loadExtensions(
       LiveDoc as never as ConversationDocToken<JsonObject>,
       ...[...documents.values()].flat(),
     ].find((doc) => doc.definition.kind === kind)
-  const openers = new Set<() => Promise<void>>()
+  const openers = new Set<Opener>()
+  type OpenRun = { run: Promise<void>; opened: AsyncDisposableStack; ending?: Promise<void> }
+  const openRuns = new Map<Opener, OpenRun>()
+  const runOpener = (callback: Opener) => {
+    const startedThisOpen = openRuns.get(callback)
+    if (startedThisOpen && !startedThisOpen.ending) return startedThisOpen.run
+    const opened = new AsyncDisposableStack()
+    const run = (async () => {
+      await startedThisOpen?.ending
+      try {
+        await callback(opened)
+      } catch (error) {
+        console.error('Extension onOpen:', error)
+        await opened.disposeAsync()
+      }
+    })().catch((error: unknown) => notice(`Extension open cleanup failed: ${String(error)}`))
+    openRuns.set(callback, { run, opened })
+    return run
+  }
+  const endOpen = async (callback: Opener) => {
+    const current = openRuns.get(callback)
+    if (!current) return
+    current.ending ??= (async () => {
+      try {
+        await current.run
+        await current.opened.disposeAsync()
+      } catch (error) {
+        notice(`Extension open cleanup failed: ${String(error)}`)
+      } finally {
+        if (openRuns.get(callback) === current) openRuns.delete(callback)
+      }
+    })()
+    await current.ending
+  }
   const loadErrorListeners = new Set<(name: string, error: string) => void>()
   const beforeLoad = new Set<() => Promise<void>>()
   async function preparationError() {
@@ -291,7 +312,6 @@ export async function loadExtensions(
     for (const environment of Object.values(vite.environments))
       await environment.pluginContainer.watchChange(modules, { event: 'create' })
   }
-  const releasers = new Set<() => Promise<void>>()
   let open = false
   const cleanups = new Set<() => Promise<void>>()
   const resources = new Map<string, unknown>()
@@ -372,9 +392,6 @@ export async function loadExtensions(
       openers.add(callback)
       if (open) inProcess('the onOpen callback belongs to this extension host', runOpener(callback))
     },
-    onRelease: (callback) => {
-      releasers.add(callback)
-    },
     onClose: (cleanup) => cleanups.add(cleanup),
     onLoadError: (callback) => loadErrorListeners.add(callback),
     onBeforeLoad: (callback) => beforeLoad.add(callback),
@@ -385,6 +402,7 @@ export async function loadExtensions(
     modelRuntime: host.modelRuntime,
     settings: host.settings,
     build: host.build,
+    images: host.images,
     uiState: (caller) => host.uiState(caller),
     scanSubmissions: (query, limit, cursor, caller) =>
       host.scanSubmissions(query, limit, cursor, caller),
@@ -420,7 +438,7 @@ export async function loadExtensions(
           events: [],
           facets: {
             server: entry.files.includes('server.ts'),
-            web: entry.files.includes('web.tsx'),
+            web: webFacet(entry.files) !== undefined,
           },
           ...(existsSync(join(host.ultimateRoot, 'extensions', entry.name))
             ? { replaces: 'builtin' as const }
@@ -552,7 +570,7 @@ export async function loadExtensions(
         actions: Object.keys(actions.get(name) ?? {}),
         events: (await contractOutline({ name, path, enabled })).events,
         readme,
-        facets: { server: files.includes('server.ts'), web: files.includes('web.tsx') },
+        facets: { server: files.includes('server.ts'), web: webFacet(files) !== undefined },
         ...(previous?.server ? { server: previous.server } : {}),
       }
       if (enabled && record.facets.server && (!servers || servers.has(name))) {
@@ -835,7 +853,7 @@ export async function loadExtensions(
     },
     async released() {
       open = false
-      await Promise.all([...releasers].map(runReleaser))
+      await Promise.all([...openRuns.keys()].map(endOpen))
       trace.close()
     },
     async close() {
@@ -843,6 +861,7 @@ export async function loadExtensions(
       unwatch()
       await chain
       for (const facetHost of subscriptions.keys()) await dispose(facetHost)
+      await Promise.all([...openRuns.keys()].map(endOpen))
       const results = await Promise.allSettled([...cleanups].map(async (cleanup) => cleanup()))
       for (const result of results)
         if (result.status === 'rejected')

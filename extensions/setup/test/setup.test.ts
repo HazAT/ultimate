@@ -113,7 +113,7 @@ async function checkHost(options: { logins: string[]; oauth?: string[] }) {
       }),
     }),
     want: () => undefined,
-    doc: () => undefined,
+    harness: () => ({ snapshot: async () => undefined }),
   } as unknown as Parameters<typeof check>[0]
 }
 
@@ -252,6 +252,24 @@ it('names each file that replaces a built-in definition whole, but not an overla
   ])
 })
 
+it('warns when a modelFamilies setting is invalid, since its families then fall back to the defaults', async () => {
+  const host = await checkHost({ logins: ['openai-codex'] })
+  const issues = await check({
+    ...host,
+    projectSettings: async () => ({
+      modelFamilies: { families: { lead: { model: 'acme/lead', color: 'green' } } },
+    }),
+  })
+  expect(issues.filter((issue) => issue.area === 'Model families')).toEqual([
+    expect.objectContaining({
+      status: 'warn',
+      impact: expect.stringMatching(
+        /^project settings: modelFamilies: .*color.*None of its families apply until it is fixed\.$/,
+      ),
+    }),
+  ])
+})
+
 it('has no agent warning once the pinned provider has a login', async () => {
   const issues = await check(await checkHost({ logins: ['openrouter', 'openai-codex'] }))
   expect(issues.find((issue) => issue.area === 'Agent models')?.status).toBe('ok')
@@ -334,12 +352,9 @@ it('warns about a listed root without memories until it has one', async () => {
     'lineage.tally': { 1: { tokens: 0 } },
   }
   const row = async () =>
-    (
-      await check(
-        { ...host, doc: (kind: string) => (docs[kind] ? { kind } : undefined) } as never,
-        async (doc, id) => docs[(doc as unknown as { kind: string }).kind][id],
-      )
-    ).find((issue) => issue.area === 'Project memory')
+    (await check(host, async (doc, id) => docs[doc.definition.kind][id] as never)).find(
+      (issue) => issue.area === 'Project memory',
+    )
   // A root that never branched (a fresh project) has nothing to warn about yet.
   expect(await row()).toBeUndefined()
   docs['lineage.tally'][1] = { tokens: 0, since: 3 }

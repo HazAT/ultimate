@@ -1,7 +1,6 @@
 import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
-import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { Roots } from './api.ts'
-import { MemoryDoc } from './refs.ts'
+import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { Memory, Roots } from './api.ts'
 import type { MemoryItem } from './refs.ts'
 
 export const MEMORY_LIMIT = 150
@@ -11,15 +10,6 @@ export const LINE_CHARS = 120
 export const BODY_CHARS = 2000
 
 export const MEMORY_RULES = `slug kebab-case, matching ${MEMORY_SLUG.source} (at most 48 characters); line a single line of at most ${LINE_CHARS} characters; body at most ${BODY_CHARS} characters; at most ${MEMORY_LIMIT} memories per root`
-export const Memory = defineDoc<{ memories: Record<string, MemoryItem> }>({
-  kind: MemoryDoc.kind,
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({ memories: {} }),
-})
 
 export type MemoryOp =
   | {
@@ -172,7 +162,6 @@ async function recentLandingsBeforeTableWrites(tx: Tx, root: ConversationId, lim
 export async function memoryBrief(tx: Tx, root: ConversationId) {
   const { memories } = await tx.doc(Memory, root)
   if (!Object.keys(memories).length) return undefined
-  const tip = (await tx.scanEntries({ conversationId: root }, 1)).items[0]?.id
   const landings = await recentLandingsBeforeTableWrites(tx, root, 10)
   const text = [
     `<project_memory root="#${root}">`,
@@ -181,5 +170,5 @@ export async function memoryBrief(tx: Tx, root: ConversationId) {
     ...(landings.length ? ['Recent landings (newest first):', ...landings] : []),
     `The full project context (every branch, abstract and landing) is root #${root}: read it with codemode \`ultimate.entries(${root})\` or \`ultimate.search(text)\`; read a memory with \`memory {read: slug}\`; \`git log\` has the commits.`,
   ].join('\n')
-  return { text, tip }
+  return { text }
 }
