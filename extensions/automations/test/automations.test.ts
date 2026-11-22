@@ -495,6 +495,41 @@ it('removes the prompt on an empty update only while subscribers remain', async 
   ).rejects.toThrow('At least one')
 })
 
+it('replaces subscribers on update instead of dropping them', async () => {
+  // A prompt automation updated with subscribers: ["@ultimate"] kept none, so its runs reached no one.
+  const f = await fixture()
+  const [first, second] = await f.opened.harness.commit(async (tx) => {
+    const made = []
+    for (let i = 0; i < 2; i++) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      made.push(child.id)
+    }
+    return made
+  }, context)
+  const a = (await f.action('create', {
+    name: 'Briefing',
+    prompt: 'Hello',
+    schedule: 'every 1d',
+  })) as Automation
+  const added = (await f.action('update', {
+    id: a.id,
+    prompt: 'Hello again',
+    subscribers: [`#${first}`, second],
+  })) as Automation
+  expect(added.subscribers).toEqual([first, second])
+  expect(
+    ((await f.action('update', { id: a.id, subscribers: [] })) as Automation).subscribers,
+  ).toEqual([])
+  await f.action('update', { id: a.id, prompt: '', subscribers: [first] })
+  await expect(f.action('update', { id: a.id, subscribers: [] })).rejects.toThrow('At least one')
+  await expect(f.action('update', { id: a.id, subscribers: [99999] })).rejects.toThrow(
+    'Unknown subscriber',
+  )
+  const [kept] = await f.records()
+  expect([kept.prompt, kept.subscribers]).toEqual([undefined, [first]])
+})
+
 it('migrates schedule records saved before scripts and subscribers', async () => {
   const f = await fixture()
   const now = Date.now()
