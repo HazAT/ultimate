@@ -1195,7 +1195,7 @@ describe('subagents', () => {
           (message) => message.role === 'user' && message.content === 'change direction',
         ),
       )!
-      expect(JSON.stringify(request.messages)).toContain(`Still running subagents: ${id} (scout)`)
+      expect(JSON.stringify(request.messages)).toContain('A yielded wait is not its answer')
       expect(
         request.messages.filter(
           (message) => message.role === 'user' && message.content === 'change direction',
@@ -1206,18 +1206,35 @@ describe('subagents', () => {
       await f.opened.harness.waitForIdle(context)
       expect(await reports(f.opened)).toHaveLength(1)
       expect((await children(f.opened))[0].reported).toHaveLength(action === 'message' ? 2 : 1)
-      expect(
-        f.requests
-          .at(-1)
-          ?.messages.findLast(
-            (message) =>
-              message.role === 'system' && Object.hasOwn(message.sections ?? {}, 'subagent_state'),
-          ),
-      ).toMatchObject({ sections: { subagent_state: '' } })
       await call(f.opened, { action: 'wait', id })
       expect(await reports(f.opened)).toHaveLength(1)
     },
   )
+  it('notes running children before each run while they run, never in the system prompt', async () => {
+    const f = await gatedFixture()
+    const systemEntries = async () =>
+      (await f.opened.root.context(context)).entries.filter((entry) => entry.kind === 'pi.system')
+    await call(f.opened, { action: 'list' })
+    const before = (await systemEntries()).length
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    await until(async () => f.holding.has(child.conversationId))
+    await call(f.opened, { action: 'list' })
+    await call(f.opened, { action: 'list' })
+    f.childGate.release()
+    await until(async () => (await reports(f.opened)).length === 1)
+    await f.opened.harness.waitForIdle(context)
+    await call(f.opened, { action: 'list' })
+    const notes = (await f.opened.root.context(context)).entries.flatMap((entry) =>
+      entry.kind === 'subagents.note' ? [entry.model?.[0]?.content] : [],
+    )
+    expect(notes).toEqual(
+      Array(2).fill(
+        `As this run starts: still running subagents: ${child.conversationId} (scout). Use message, stop, or wait with these IDs; parent stop does not stop them.`,
+      ),
+    )
+    expect(await systemEntries()).toHaveLength(before)
+  })
   it('does not wake for followUp, but does wake for an already queued steer', async () => {
     const f = await gatedFixture()
     await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
