@@ -25,7 +25,6 @@ import {
   AssistantEntry,
   configure,
   ToolResultEntry,
-  defineDoc,
   defineExtension,
   defineTask,
   defineTool,
@@ -302,15 +301,17 @@ function createReporter() {
   })
 }
 
-const LastStateCommittedWithInput = defineDoc<{ key?: string; head?: number }>({
-  kind: 'subagents.seen',
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({}),
-})
+async function noteInContext(tx: Tx, conversationId: ConversationId) {
+  const head = (await tx.latestHeadMarker(conversationId))?.head
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanEntries({ conversationId, minEntryId: head }, 200, cursor)
+    const note = page.items.find((entry) => entry.kind === 'subagents.note')
+    if (note) return (note.data as { key: string }).key
+    cursor = page.next
+  } while (cursor)
+  return ''
+}
 
 async function stateNote(tx: Tx, conversationId: ConversationId, now: number) {
   const state = await tx.doc(Subagents, conversationId)
@@ -332,17 +333,12 @@ async function stateNote(tx: Tx, conversationId: ConversationId, now: number) {
     ...(running.length ? [`Still running subagents: ${running.join(', ')}.`] : []),
     ...(queued.length ? [`Pending subagent inputs: ${queued.join(', ')}.`] : []),
   ].join(' ')
-  const head = (await tx.latestHeadMarker(conversationId))?.id ?? 0
-  const seen = await tx.doc(LastStateCommittedWithInput, conversationId)
-  const compactedSinceLastNote = seen.head !== head
-  if ((seen.key ?? '') === key && !compactedSinceLastNote) return undefined
-  seen.key = key
-  seen.head = head
-  if (!key && compactedSinceLastNote) return undefined
+  if ((await noteInContext(tx, conversationId)) === key) return undefined
   return {
     entries: [
       {
         kind: 'subagents.note',
+        data: { key },
         model: [
           {
             role: 'user' as const,

@@ -1212,12 +1212,13 @@ describe('subagents', () => {
   )
   it('notes running children before a run when they change, never in the system prompt', async () => {
     const f = await gatedFixture()
+    const systemEntries = async () =>
+      (await f.opened.root.context(context)).entries.filter((entry) => entry.kind === 'pi.system')
+    await call(f.opened, { action: 'list' })
+    const before = (await systemEntries()).length
     await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
     const [child] = await children(f.opened)
     await until(async () => f.holding.has(child.conversationId))
-    const systemEntries = async () =>
-      (await f.opened.root.context(context)).entries.filter((entry) => entry.kind === 'pi.system')
-    const before = (await systemEntries()).length
     await call(f.opened, { action: 'list' })
     await call(f.opened, { action: 'list' })
     f.childGate.release()

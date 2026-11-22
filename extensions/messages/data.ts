@@ -140,6 +140,7 @@ const hiddenUncountedCompactKinds = new Set([
   'board.open',
   'board.answered',
   'setup.note',
+  'subagents.note',
   'questions.asked',
   'questions.answers',
 ])
