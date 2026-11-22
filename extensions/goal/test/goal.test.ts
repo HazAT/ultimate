@@ -65,13 +65,6 @@ function fakeTx(
   } as unknown as Tx & { tasks: typeof tasks; submitted: typeof submitted }
 }
 
-/** A conversation handle whose `submit(tx, draft)` records the draft in the fake transaction. */
-const handle = (id: number) => ({
-  id,
-  submit: async (tx: ReturnType<typeof fakeTx>, draft: SubmissionDraft) =>
-    void tx.submitted.push({ to: id, draft }),
-})
-
 type Reminder = {
   id: string
   name: string
@@ -97,15 +90,13 @@ function fakeHost(tx: ReturnType<typeof fakeTx>) {
     pause: async (id: string) => void (ledger.get(id)!.enabled = false),
     resume: async (id: string) => void (ledger.get(id)!.enabled = true),
     read: async (_tx: Tx, id: string) => structuredClone(ledger.get(id)),
+    submitAfter: async (_tx: Tx, to: number, draft: SubmissionDraft) =>
+      void tx.submitted.push({ to, draft }),
     readByKey: async (_tx: Tx, key: string) =>
       structuredClone([...ledger.values()].find((item) => item.key === key)),
   }
   const host = {
-    harness: () => ({
-      commit: (fn: (tx: Tx) => unknown) => fn(tx),
-      snapshot: async () => ({ ultimate: ULTIMATE }),
-      conversation: async (id: number) => handle(id),
-    }),
+    harness: () => ({ commit: (fn: (tx: Tx) => unknown) => fn(tx) }),
     need: () => service,
     want: () => service,
     doc: () => undefined,
@@ -220,7 +211,10 @@ it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep i
   const tx = fakeTx()
   const extension = goalExtension({
     doc: () => undefined,
-    need: () => undefined,
+    need: () => ({
+      submitAfter: async (_tx: Tx, to: number, draft: SubmissionDraft) =>
+        void tx.submitted.push({ to, draft }),
+    }),
     want: () => undefined,
   } as unknown as ExtensionHost)
   const hooks = extension.hooks![0].handlers as GenerationHooks
@@ -239,11 +233,7 @@ it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep i
   const run = (conversationId: number, args: object) =>
     tool.execute(
       args as never,
-      {
-        conversationId,
-        commit: (fn: (tx: Tx) => unknown) => fn(tx),
-        conversation: async (id: number) => handle(id),
-      } as never,
+      { conversationId, commit: (fn: (tx: Tx) => unknown) => fn(tx) } as never,
       undefined as never,
     )
   await expect(run(9, { action: 'met', n: 1 })).rejects.toThrow('Only @ultimate')
@@ -252,7 +242,7 @@ it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep i
   })
   expect((await tx.doc(Goals, 1 as ConversationId)).goals[0].criteria).toHaveLength(1)
 
-  // Finishing ends the goal and admits the report in the same commit; the note stops.
+  // Finishing ends the goal and creates the report's submission in the same commit; the note stops.
   await run(ULTIMATE, { action: 'finish', outcome: 'met', summary: 'Done' })
   expect(tx.submitted).toEqual([
     {
@@ -276,11 +266,7 @@ it('keeps a reminder while the goal is open: paused while waiting on the user, g
   const run = (args: object) =>
     tool.execute(
       args as never,
-      {
-        conversationId: ULTIMATE,
-        commit: (fn: (tx: Tx) => unknown) => fn(tx),
-        conversation: async (id: number) => handle(id),
-      } as never,
+      { conversationId: ULTIMATE, commit: (fn: (tx: Tx) => unknown) => fn(tx) } as never,
       undefined as never,
     )
   await actions.start({ text: 'Make it fast' }, { host } as never)

@@ -7,11 +7,11 @@ export const SubmitAfter = defineTask<{ draft: SubmissionDraft }, { phase: 'subm
   initial: () => ({ phase: 'submit' }),
   phases: {
     submit: async (task, runtime, ctx) => {
-      await (await runtime.conversation(runtime.conversationId, ctx))!.submit(task.input.draft, ctx)
-      await runtime.commit(
-        () => ({ status: 'terminal', outcome: { status: 'completed', result: null } }),
-        ctx,
-      )
+      const to = (await runtime.conversation(runtime.conversationId, ctx))!
+      await runtime.commit(async (tx) => {
+        await to.submit(tx, task.input.draft)
+        return { status: 'terminal', outcome: { status: 'completed', result: null } } as const
+      }, ctx)
     },
   },
   abort: (_task, runtime, ctx) =>

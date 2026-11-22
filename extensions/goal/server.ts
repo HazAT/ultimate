@@ -1,11 +1,5 @@
 import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
-import type {
-  Conversation,
-  ConversationHandle,
-  ConversationId,
-  EntryId,
-  Tx,
-} from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId, Tx } from '@earendil-works/pi-durable'
 import { arr, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import {
@@ -22,6 +16,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
+import { ConversationsApi } from '../conversations/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { enqueueReminderSync as enqueue, reminderTask } from './reminder.ts'
 import { EndAction, GoalDoc, ImagesAction, StartAction } from './refs.ts'
@@ -218,16 +213,19 @@ const reportText = (goal: Goal) =>
     ? `The user ended hands-off goal ${goal.id}. From now on ask them as usual.`
     : `Hands-off goal ${goal.id} ended (${goal.ended?.outcome}); its report card is here for the user. From now on ask them as usual.`
 
-function goalNotice(
-  to: Conversation | ConversationHandle,
+async function goalNotice(
+  host: ExtensionHost,
   tx: Tx,
   kind: 'goal.started' | 'goal.report',
   goal: Goal,
 ) {
+  const to = await ultimateOf(tx)
+  if (to === undefined) throw new Error('@ultimate has no conversation yet')
   const requestId = `${kind}:${goal.id}`
   const data = { goal: goal.id }
-  return to.submit(
+  await host.need(ConversationsApi).submitAfter(
     tx,
+    to,
     kind === 'goal.started'
       ? {
           type: 'input',
@@ -248,12 +246,6 @@ function goalNotice(
   )
 }
 
-async function ultimateConversation(host: ExtensionHost) {
-  const to = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
-  if (to === undefined) throw new Error('@ultimate has no conversation yet')
-  return (await host.harness().conversation(to, context))!
-}
-
 const field = (args: unknown, name: string) =>
   args && typeof args === 'object' ? (args as Record<string, unknown>)[name] : undefined
 
@@ -262,24 +254,22 @@ const enqueueReminderSync = (host: ExtensionHost, tx: Tx, goal: number) =>
 
 export const userActions = ['start', 'end']
 export const actions = {
-  start: implementAction(StartAction, async (args, { host }) => {
-    const ultimate = await ultimateConversation(host)
-    return host.harness().commit(async (tx) => {
+  start: implementAction(StartAction, (args, { host }) =>
+    host.harness().commit(async (tx) => {
       const goal = await start(tx, field(args, 'text'), Date.now(), field(args, 'proposal'))
-      await goalNotice(ultimate, tx, 'goal.started', goal)
+      await goalNotice(host, tx, 'goal.started', goal)
       await enqueueReminderSync(host, tx, goal.id)
       return detachGoal(goal)
-    }, context)
-  }),
-  end: implementAction(EndAction, async (_args, { host }) => {
-    const ultimate = await ultimateConversation(host)
-    return host.harness().commit(async (tx) => {
+    }, context),
+  ),
+  end: implementAction(EndAction, (_args, { host }) =>
+    host.harness().commit(async (tx) => {
       const goal = await end(tx, { at: Date.now(), by: 'user', outcome: 'ended' })
-      await goalNotice(ultimate, tx, 'goal.report', goal)
+      await goalNotice(host, tx, 'goal.report', goal)
       await enqueueReminderSync(host, tx, goal.id)
       return goal
-    }, context)
-  }),
+    }, context),
+  ),
   images: implementAction(ImagesAction, async (args, { host }) =>
     host.harness().commit(async (tx) => {
       const goal = (await tx.doc(Goals, ROOT_CONVERSATION_ID)).goals.find(
@@ -357,7 +347,6 @@ export default function goalExtension(host: ExtensionHost) {
         }),
         async execute(args, api, ctx) {
           const actingMain = await actingAs(host, api.conversationId, ctx)
-          const main = (await api.conversation(actingMain, ctx))!
           const result = await api.commit(async (tx) => {
             if ((await ultimateOf(tx)) !== actingMain)
               throw new Error('Only @ultimate keeps the hands-off goal.')
@@ -374,7 +363,7 @@ export default function goalExtension(host: ExtensionHost) {
               },
               Date.now(),
             )
-            if (acted.ended) await goalNotice(main, tx, 'goal.report', acted.ended)
+            if (acted.ended) await goalNotice(host, tx, 'goal.report', acted.ended)
             const changed = acted.sync ?? acted.ended?.id
             if (changed !== undefined) await enqueueReminderSync(host, tx, changed)
             return acted
