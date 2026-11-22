@@ -29,8 +29,8 @@ if (!folders.length) {
   process.exit(0)
 }
 for (const folder of folders)
-  if (!['web.solid.tsx', 'web.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))) {
-    console.error(`${folder} is not an extension folder (no web.solid.tsx, web.tsx or server.ts).`)
+  if (!['web.solid.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))) {
+    console.error(`${folder} is not an extension folder (no web.solid.tsx or server.ts).`)
     process.exit(2)
   }
 
@@ -65,7 +65,7 @@ try {
           ),
         ),
       },
-      include: ['ext/*/web.solid.tsx', 'ext/*/web.tsx', 'ext/*/server.ts'],
+      include: ['ext/*/web.solid.tsx', 'ext/*/server.ts'],
     }),
   )
   const tsc = spawnSync(join(clone, 'node_modules/.bin/tsc'), ['-p', '.', '--pretty', 'false'], {

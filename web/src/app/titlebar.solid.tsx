@@ -50,7 +50,7 @@ function Project() {
   const replaced = () => slotItems(extensions(), 'titlebar.project').length > 0
   return (
     <Show when={replaced()} fallback={<ProjectChip />}>
-      <Slot fallback={inlineFailure} name="titlebar.project" variant="inline" />
+      <Slot fallback={inlineFailure} name="titlebar.project" />
     </Show>
   )
 }
@@ -107,7 +107,7 @@ function Brand() {
     <>
       <span class="contents max-md:hidden">
         <Show when={replaced()} fallback={<Wordmark />}>
-          <Slot fallback={inlineFailure} name="titlebar.brand" variant="inline" />
+          <Slot fallback={inlineFailure} name="titlebar.brand" />
         </Show>
       </span>
       <DropdownMenu modal={false} onAction={(id) => showSurface(id)}>
@@ -204,14 +204,12 @@ function SurfaceItems() {
                 {(badge) => (
                   <Contribution
                     fallback={inlineFailure}
-                    inline
                     item={{
                       extension: surface().extension,
                       version: surface().version,
                       component: badge(),
                     }}
                     props={{}}
-                    variant="inline"
                   />
                 )}
               </Show>
@@ -249,14 +247,14 @@ export function TitleBar() {
         >
           <Brand />
           <Project />
-          <Slot fallback={inlineFailure} name="titlebar.left" variant="inline" />
+          <Slot fallback={inlineFailure} name="titlebar.left" />
         </div>
         <div class="flex shrink-0 items-center pl-2">
           <SurfaceItems />
         </div>
       </div>
       <div class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-        <Slot fallback={inlineFailure} name="titlebar.right" variant="inline" />
+        <Slot fallback={inlineFailure} name="titlebar.right" />
         <Button
           aria-label="Command palette"
           class="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"

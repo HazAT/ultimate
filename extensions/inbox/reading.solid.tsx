@@ -4,7 +4,6 @@ import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Provided,
-  ProvidedValue,
   cn,
   column,
   events,
@@ -137,7 +136,7 @@ export function Reading(props: { entry: Entry; now: number; phone: boolean; onBa
             </Show>
           </div>
           <div class={props.phone ? 'mt-5' : 'mt-6'}>
-            <Show when={message()} fallback={<ProvidedValue value={props.entry.item?.pane} />}>
+            <Show when={message()} fallback={props.entry.item?.pane}>
               {(question) => (
                 <div class="overflow-hidden rounded-lg border border-border/70 bg-card/60">
                   <Provided input={{ message: question() }} point={MessageExtras} />

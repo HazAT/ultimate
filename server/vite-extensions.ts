@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import type { Plugin } from 'vite-plus'
-import { discoverExtensions, webFacet } from '../lib/discovery.ts'
+import { discoverExtensions, reactFacetRemoved, webFacet } from '../lib/discovery.ts'
 import { webModule } from '../lib/web-alias.ts'
 import { discoveryRoots } from '../lib/project-paths.ts'
 import { useProjectSetup } from '../lib/project-setup.ts'
@@ -104,10 +104,11 @@ export function extensionModules(
         (entry) => {
           const facet = webFacet(entry.files)
           if (!entry.enabled || !facet) return []
+          const error = facet === 'web.tsx' ? reactFacetRemoved : broken[entry.name]
           const load =
-            entry.name in broken
-              ? `() => Promise.reject(new Error(${JSON.stringify(broken[entry.name])}))`
-              : `() => import(${JSON.stringify(join(entry.target, facet))})`
+            error === undefined
+              ? `() => import(${JSON.stringify(join(entry.target, facet))})`
+              : `() => Promise.reject(new Error(${JSON.stringify(error)}))`
           return [`${JSON.stringify(join(entry.path, facet))}: ${load}`]
         },
       )

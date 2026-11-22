@@ -15,20 +15,6 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "paths": {
-      "@/sdk": ["./web/src/compat/sdk.ts"],
-      "@/components/ui/button": ["./web/src/compat/ui/button.tsx"],
-      "@/components/ui/checkbox": ["./web/src/compat/ui/checkbox.tsx"],
-      "@/components/ui/collapsible": ["./web/src/compat/ui/collapsible.tsx"],
-      "@/components/ui/command": ["./web/src/compat/ui/command.tsx"],
-      "@/components/ui/dialog": ["./web/src/compat/ui/dialog.tsx"],
-      "@/components/ui/dropdown-menu": ["./web/src/compat/ui/dropdown-menu.tsx"],
-      "@/components/ui/kbd": ["./web/src/compat/ui/kbd.tsx"],
-      "@/components/ui/popover": ["./web/src/compat/ui/popover.tsx"],
-      "@/components/ui/skeleton": ["./web/src/compat/ui/skeleton.tsx"],
-      "@/components/ui/switch": ["./web/src/compat/ui/switch.tsx"],
-      "@/components/ui/tooltip": ["./web/src/compat/ui/tooltip.tsx"],
-      "@/components/ai/tool": ["./web/src/compat/ai/tool.tsx"],
-      "@/components/ai/message": ["./web/src/compat/ai/message.tsx"],
       "@/*": ["./web/src/*"]
     }
   },

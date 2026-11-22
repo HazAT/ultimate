@@ -20,6 +20,9 @@ export const webFacet = (files: readonly string[]) =>
       ? 'web.tsx'
       : undefined
 
+export const reactFacetRemoved =
+  'React facets were removed: rename web.tsx to web.solid.tsx and port it to Solid (extensions/README.md, "Moving a React facet to Solid").'
+
 export function compareExtensions(
   a: { name: string; source: Source; order?: number },
   b: { name: string; source: Source; order?: number },

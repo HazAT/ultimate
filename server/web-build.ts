@@ -18,7 +18,7 @@ export interface WebBuildRequest {
 export type WebBuildResult = { inputs: string[] } | { error: { file?: string; message: string } }
 
 const externalSourceMapsForStackTraces = true
-const retainReactComponentNames = true
+const componentNamesInStackTraces = true
 const absoluteSourcePath = (source: string, map: string) => resolve(dirname(map), source)
 const minPrecompressedBytes = 1024
 
@@ -40,7 +40,7 @@ try {
       sourcemap: externalSourceMapsForStackTraces,
       rolldownOptions: {
         output: {
-          keepNames: retainReactComponentNames,
+          keepNames: componentNamesInStackTraces,
           sourcemapPathTransform: absoluteSourcePath,
         },
       },

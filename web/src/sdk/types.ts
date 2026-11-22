@@ -354,8 +354,7 @@ export function provide<Input, Value>(
 }
 
 /**
- * The browser facet of an extension: `extensions/<name>/web.solid.tsx` default-exports one. A `web.tsx` is React and
- * runs on the compat layer (docs/extensions/react-compat.md).
+ * The browser facet of an extension: `extensions/<name>/web.solid.tsx` default-exports one.
  */
 export interface WebExtension {
   slots?: Partial<Record<SlotName, Contribution | readonly Contribution[]>>

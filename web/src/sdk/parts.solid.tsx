@@ -7,7 +7,6 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Component } from 'solid-js'
 import { ContributionError } from '../app/contribution-error.solid.tsx'
 import { Contribution, Slot as BridgeSlot } from './contribution.solid.tsx'
-import { isReact } from './framework.ts'
 import { store } from './client.ts'
 import { scopeAttribute } from './scope.ts'
 import { ConversationScope, provisionsOf, Transcript, useExtensions } from './hooks.ts'
@@ -25,16 +24,14 @@ export function Slot(props: { name: SlotName; variant?: 'inline' | 'block' }) {
         />
       )}
       name={props.name}
-      variant={props.variant}
     />
   )
 }
 
 /**
  * Renders what each extension provides for `point` with `input`, in discovery order (`last` keeps only the last
- * provider). A Solid provider is a component taking the live input as its props; a React provider's hook renders
- * through the compat layer with a copy of the input taken whenever any of it changes. A provider that throws shows its
- * error inline and the rest still render.
+ * provider). A provider is a component taking the live input as its props. A provider that throws shows its error inline
+ * and the rest still render.
  */
 export function Provided<Input extends object>(props: {
   point: Point<Input, unknown>
@@ -50,29 +47,11 @@ export function Provided<Input extends object>(props: {
     }))
     return props.last ? all.slice(-1) : all
   })
-  const copy = createMemo(() => readDeeply(props.input) as Record<string, unknown>)
   return (
     <For each={items()} keyed={(item) => `${item.extension}:${item.version}`}>
-      {(item) => (
-        <Show
-          fallback={<Provider item={item()} input={copy()} />}
-          when={!isReact(item().component)}
-        >
-          <Provider item={item()} input={props.input as Record<string, unknown>} />
-        </Show>
-      )}
+      {(item) => <Provider item={item()} input={props.input as Record<string, unknown>} />}
     </For>
   )
-}
-
-const plain = (value: unknown): value is object =>
-  Array.isArray(value) ||
-  (typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype)
-
-function readDeeply(value: unknown): unknown {
-  if (!plain(value)) return value
-  if (Array.isArray(value)) return value.map(readDeeply)
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, readDeeply(item)]))
 }
 
 function Provider(props: {
