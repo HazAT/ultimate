@@ -338,7 +338,7 @@ it('backfills missing and stale docs in bounded pages, in the background, and sk
     context,
   )
   await f.open()
-  await until(async () => ((await f.read(ids[0]))?.at ?? 0) > 0)
+  await until(async () => ((await f.read(ids.at(-1)))?.at ?? 0) > 0)
   await until(async () => (await f.read())?.tokens === 500)
   await f.close()
   answer.usage.input = 900

@@ -50,12 +50,11 @@ export function projection(
   )
   host.onOpen(async (opened) => {
     let closed = false
-    let complete = false
     let failed = false
     let through = parseEntryId(0)
     let draining: Promise<void> | undefined
     const live = new Set<ConversationId>()
-    const backlog: ConversationId[] = []
+    let backlog: ConversationId[] | undefined
     const next = () => {
       const ids: ConversationId[] = []
       for (const id of live) {
@@ -63,7 +62,7 @@ export function projection(
         ids.push(id)
       }
       for (const id of ids) live.delete(id)
-      return ids.length ? ids : backlog.splice(-batch)
+      return ids.length ? ids : (backlog?.splice(-batch) ?? [])
     }
     const drain = async () => {
       for (;;) {
@@ -80,7 +79,7 @@ export function projection(
       if (draining || closed) return
       draining = drain().finally(() => {
         draining = undefined
-        if ((live.size || backlog.length) && !closed) schedule()
+        if ((live.size || backlog?.length) && !closed) schedule()
       })
     }
     const harness = host.harness()
@@ -129,8 +128,7 @@ export function projection(
           return page.next
         }, context)
       } while (cursor !== undefined)
-      backlog.push(...selected)
-      complete = true
+      backlog = selected
     }
     const opening = select()
       .catch((error: unknown) => {
@@ -147,7 +145,7 @@ export function projection(
       stop()
       await opening
       await draining
-      if (!complete || failed || live.size || backlog.length) return
+      if (!backlog || failed || live.size || backlog.length) return
       const clean = through
       await harness.commit(async (tx) => {
         ;(await tx.doc(ProjectedThroughAtCleanClose, ROOT_CONVERSATION_ID))[name] = clean
