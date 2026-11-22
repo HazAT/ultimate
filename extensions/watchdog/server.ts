@@ -135,6 +135,7 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
   return {
     temporary:
       /^Incomplete Claude Code upstream response \(status (200|unknown),/.test(error) ||
+      error.startsWith('Model stream stalled: ') ||
       !!(assistant && isRetryableAssistantError(assistant)),
   }
 }
