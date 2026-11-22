@@ -177,13 +177,9 @@ async function affected(base: string | undefined) {
         : `${suite}: ${files[suite].size} test files${files[suite].size ? `\n  ${[...files[suite]].join('\n  ')}` : ''}`,
     )
   for (const suite of suites) {
-    if (whole.includes(suite)) {
-      const code = await run(commands[suite], wholeSuiteEnv)
-      if (code) return code
-    } else if (files[suite].size) {
-      const code = await run([...commands[suite], ...files[suite]])
-      if (code) return code
-    }
+    if (!whole.includes(suite) && !files[suite].size) continue
+    const code = await runSuite(suite, whole.includes(suite) ? [] : [...files[suite]])
+    if (code) return code
   }
   return 0
 }
