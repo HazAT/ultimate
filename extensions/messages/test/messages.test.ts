@@ -1468,7 +1468,12 @@ async function branched(f: Awaited<ReturnType<typeof fixture>>, prompt = 'Explor
     )
   }
   const later = async (content: string) => {
-    await (await branch.submit({ type: 'input', content }, context)).wait(context)
+    await (
+      await branch.submit(
+        { type: 'input', content, entry: { kind: 'test.wake', data: {} } },
+        context,
+      )
+    ).wait(context)
     await settled()
   }
   await settled()
@@ -1522,11 +1527,16 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   expect(f.observed).toContainEqual(
     expect.stringContaining(`Message from user:\nAnswer to message ${question.id}:\n${text}`),
   )
-  // The user's answer is input, so the branch's final result still reports to its starter.
-  expect((await b.from()).find((m) => m.report)).toMatchObject({
-    to: 1,
-    text: expect.stringContaining('A: Yes'),
-  })
+  // The user read the branch's answer where they gave theirs, so its starter gets it only as a note.
+  const toStarter = (await b.from()).find((m) => m.to === 1 && m.text.includes('A: Yes'))!
+  expect(toStarter.report).toBeUndefined()
+  const note = (await entries('board.message')).find(
+    (e) => (e.data as { id?: number }).id === toStarter.id,
+  )
+  expect([note?.data, note?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note' }),
+    undefined,
+  ])
   expect(await entries('board.asked')).toHaveLength(1)
   expect(await entries('board.answered')).toHaveLength(1)
 })
@@ -1661,12 +1671,35 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
     )
     return live.length === 1 && live[0].state.kind === 'sleeping'
   })
-  await (
-    await b.branch.submit({ type: 'input', content: 'Waiting on the scout' }, context)
-  ).wait(context)
+  await b.later('Waiting on the scout')
   await until(async () => (await b.from()).length === 2)
   expect((await b.from())[1].report).toBeUndefined()
   await f.opened.harness.abortTask(pending, context)
+})
+it("leaves a branch's answer to the user's own input as a note that does not wake @ultimate", async () => {
+  // The user talked with a branch in its conversation; each answer woke @ultimate for a turn that did nothing.
+  const f = await fixture()
+  const b = await branched(f)
+  const generations = async () =>
+    (await f.opened.root.context(context)).entries.filter((e) => e.kind === 'pi.assistant').length
+  const before = await generations()
+  await (
+    await b.branch.submit({ type: 'input', content: 'What does + Legacy mean?' }, context)
+  ).wait(context)
+  await b.settled()
+  const toStarter = (await b.from()).filter((m) => m.to === 1)
+  expect(toStarter.slice(1)).toEqual([
+    expect.objectContaining({ text: 'Answer: What does + Legacy mean?', reply: false }),
+  ])
+  expect(toStarter[1].report).toBeUndefined()
+  const note = (await f.opened.root.context(context)).entries.find(
+    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === toStarter[1].id,
+  )
+  expect([note?.data, note?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note' }),
+    undefined,
+  ])
+  expect(await generations()).toBe(before)
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()
