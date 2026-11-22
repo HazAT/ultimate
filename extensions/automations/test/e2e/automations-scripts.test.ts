@@ -4,7 +4,7 @@ import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { Metadata } from '../../../../server/metadata.ts'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { LiveDoc } from '@earendil-works/pi-durable'
 import { Messages } from '../../../messages/api.ts'
@@ -22,7 +22,7 @@ afterEach(async () => {
   await app?.close()
 })
 
-async function fixture(localSetup = true) {
+async function build(localSetup = true) {
   const root = await temp('ultimate-automations-')
   const userHome = join(root, 'user')
   const home = join(root, 'project-state')
@@ -34,16 +34,35 @@ async function fixture(localSetup = true) {
       `---\nname: ${name}\ndescription: Automation test\nmodel: faux/faux-1\ntools: []\n${name === 'ultimate' ? 'resident: true\n' : ''}---\nKeep answers short.\n`,
     )
   const options = { ultimateRoot: resolve('.'), projectRoot: root, userHome, home, localSetup }
-  server = await fauxServer(options)
+  const app = await fauxServer(options)
   return {
     root,
     userHome,
     home,
     options,
-    app: server,
+    app,
     folder: (id: string) => join(userHome, '.ultimate/automations', basename(home), id),
   }
 }
+async function fixture(localSetup = true) {
+  const built = await build(localSetup)
+  server = built.app
+  return built
+}
+
+let shared: Awaited<ReturnType<typeof build>>
+beforeAll(async () => {
+  shared = await build()
+}, 60_000)
+afterAll(async () => {
+  await shared?.app.close()
+})
+/** Tests that only start their own automations and read their own records share one server; the others reopen, reload or count project-wide state. */
+function sharedFixture() {
+  shared.app.host.faux!.setResponses([])
+  return shared
+}
+
 async function create(app: NonNullable<typeof server>) {
   const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
   return (await app.extensions.invoke(
@@ -75,7 +94,7 @@ function call(app: NonNullable<typeof server>, action: string, id: string) {
 }
 
 it('starts a prompt run from script FIRE with its payload', async () => {
-  const { app, folder } = await fixture()
+  const { app, folder } = sharedFixture()
   app.host.faux!.setResponses(Array.from({ length: 4 }, () => fauxAssistantMessage('Complete')))
   const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
   const a = (await app.extensions.invoke(
@@ -281,7 +300,7 @@ it('delivers FIRE once, investigates exits only in the owning agent, recovers, a
 })
 
 it('escalates on the third failure in a row, and when its watcher ends a turn without repairing', async () => {
-  const { app, folder } = await fixture()
+  const { app, folder } = sharedFixture()
   const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
   const invoke = (action: string, args: JsonValue) =>
     app.extensions.invoke('automations', action, args, new AbortController().signal, caller.id)
@@ -328,7 +347,7 @@ it('escalates on the third failure in a row, and when its watcher ends a turn wi
 })
 
 it('stops a recurring script that prints DONE and exits 0 without waking anyone; start resumes it with its state', async () => {
-  const { app, folder } = await fixture()
+  const { app, folder } = sharedFixture()
   const sub = (await app.extensions.invoke(
     'automations',
     'create',
@@ -343,7 +362,10 @@ it('stops a recurring script that prints DONE and exits 0 without waking anyone;
     ).entries
       .filter((e) => e.conversationId === id && e.kind.startsWith('automations.'))
       .map((e) => e.kind)
-  const done = () => eventHost(() => app.harness, 'test').eventLog.recent({ events: [Done] })
+  const done = async () =>
+    (await eventHost(() => app.harness, 'test').eventLog.recent({ events: [Done] })).filter(
+      (e) => e.data.id === sub.id,
+    )
   // Each run counts itself in its state folder, fires the count and stops itself.
   await writeRun(
     folder(sub.id),
@@ -707,7 +729,7 @@ it('creates a project automation in the checkout with a committed manifest', asy
 })
 
 it('waits for a SIGTERM-ignoring script to die before stop returns and removes its pid file', async () => {
-  const { app, folder } = await fixture()
+  const { app, folder } = sharedFixture()
   const sub = await create(app)
   await writeRun(folder(sub.id), "trap '' TERM; echo ready; exec sleep 60")
   const running = (await call(app, 'resume', sub.id)) as Automation
@@ -725,7 +747,7 @@ it('waits for a SIGTERM-ignoring script to die before stop returns and removes i
 it.each(['pause', 'delete'])(
   'awaits %s of a fired one-shot during its termination grace period',
   async (action) => {
-    const { app, folder } = await fixture()
+    const { app, folder } = sharedFixture()
     const sub = await create(app)
     await writeRun(folder(sub.id), 'trap "" TERM; echo FIRE done; exec sleep 60')
     await call(app, 'resume', sub.id)
@@ -785,7 +807,7 @@ it.each([false, true])(
 )
 
 it('records the exit metadata and event for a successful done one-shot without a failure', async () => {
-  const { app, folder } = await fixture()
+  const { app, folder } = sharedFixture()
   const sub = await create(app)
   await writeRun(folder(sub.id), "trap 'exit 0' TERM; echo FIRE done; while :; do :; done")
   await call(app, 'resume', sub.id)
