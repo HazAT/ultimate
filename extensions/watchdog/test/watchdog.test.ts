@@ -911,8 +911,7 @@ it('writes a display-only card into @ultimate’s own transcript when it fails a
     f.advance(delay)
     await until(
       async () =>
-        held.entered ||
-        (await f.tasks()).every((task) => task.state.status !== 'running'),
+        held.entered || (await f.tasks()).every((task) => task.state.status !== 'running'),
     )
   }
   await until(async () => held.entered)
