@@ -35,7 +35,8 @@ function restAfter(seconds: number) {
 
 function rest() {
   const audioStillDue = quietAtAudioSeconds - Tone.now()
-  if (audioStillDue > 0) {
+  const contextCanStillPlay = Tone.getContext().state !== 'suspended'
+  if (audioStillDue > 0 && contextCanStillPlay) {
     cancelRest = deadline(audioStillDue * 1000, rest)
     return
   }
