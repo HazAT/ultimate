@@ -18,7 +18,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { deliver, deliverTask } from './delivery.ts'
-import { reminderTask } from './reminder.ts'
+import { enqueueReminderSync as enqueue, reminderTask } from './reminder.ts'
 import { EndAction, GoalDoc, ImagesAction, StartAction } from './refs.ts'
 import type { Criterion, Decision, Ending, Goal } from './refs.ts'
 
@@ -234,15 +234,7 @@ const field = (args: unknown, name: string) =>
   args && typeof args === 'object' ? (args as Record<string, unknown>)[name] : undefined
 
 const enqueueReminderSync = (host: ExtensionHost, tx: Tx, goal: number) =>
-  tx.createTask(
-    reminderTask(host, Goals),
-    { goal },
-    {
-      conversationId: ROOT_CONVERSATION_ID,
-      ownership: { kind: 'conversation' },
-      background: true,
-    },
-  )
+  enqueue(tx, reminderTask(host, Goals), goal)
 
 export const userActions = ['start', 'end']
 export const actions = {

@@ -98,7 +98,7 @@ edits apply after landing.
 
 `AutomationsApi` (`api.ts`, token `automations`, core tier: consumers `need` it) offers `create(args)` (`subscribers` stand in for a
 caller; `key` makes it safe to retry), `delete`, `resume`, `pause`, `run` and `status`, each returning the record with
-`alive`. Mutating methods commit: call them outside transactions, and from a reactor do not await them.
+`alive`; `read(tx, id)` and `readByKey(tx, key)` return the record as a transaction sees it. Mutating methods commit: call them outside transactions, and from a reactor do not await them.
 
 `POST /api/extensions/automations/actions/<operation>` with `{args}` returns `{result}` for every tool operation, plus
 `describe {schedule}` → `{schedule, description, next}` (up to three fire times) and `script {id}` → `{path, text}`
