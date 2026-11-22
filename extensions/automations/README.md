@@ -17,7 +17,8 @@ Exactly one per automation:
 - **Context.** `condition: {metric: 'context', of: '@name' | '#id', above: 80, cooldownMs?: 3600000, idleFor?}` fires
   when the conversation's context crosses `above`, then re-arms only after it drops below `above - 10`. The cooldown
   counts from the condition's own last crossing, not manual runs. With `idleFor` (ms) it also waits until the user gave
-  `of` no input for that long (`idleFor: 0` on update removes it). Dream ships two of these on `@ultimate`
+  `of` no input for that long (`idleFor: 0` on update removes it): above the threshold it sleeps in an
+  `ultimate.automation-idle` task until then, and user input in the meantime makes it sleep again from that input. Dream ships two of these on `@ultimate`
   (`extensions/dream/README.md`).
 - **Script.** `ask` instead of a schedule: a `watcher` agent writes an executable `run`, tests it by hand until one
   check succeeds and calls `automation resume {id}`. Stdout `FIRE [text]` fires; stderr and other stdout are progress. `once` (default true)
