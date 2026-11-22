@@ -127,13 +127,27 @@ export function triggers(
         : undefined
     return /^#[1-9]\d*$/.test(of) ? parseConversationId(Number(of.slice(1))) : undefined
   }
-  async function evaluate(
-    tx: Tx,
-    a: Automation,
-    id?: ConversationId,
-    measured?: ContextUsage,
-    onlySchedule = false,
-  ) {
+  function firesAt(a: Automation) {
+    const condition = a.condition!
+    return Math.max(
+      condition.firedAt === undefined ? 0 : condition.firedAt + condition.cooldownMs,
+      condition.idleFor ? (condition.inputAt ?? a.createdAt) + condition.idleFor : 0,
+    )
+  }
+  async function sleepUntil(tx: Tx, a: Automation, until: number) {
+    const condition = a.condition!
+    const sleeper = condition.waker === undefined ? undefined : await tx.task(condition.waker)
+    const sleepsUntil =
+      sleeper && sleeper.state.status !== 'terminal'
+        ? (sleeper.input as { until: number }).until
+        : undefined
+    if (!(sleepsUntil! <= until))
+      condition.waker = await tx.createTask(IdleWaker, { id: a.id, until }, onRoot)
+  }
+  async function schedule(tx: Tx, a: Automation) {
+    if (a.enabled && a.condition?.idleFor) await sleepUntil(tx, a, Math.max(firesAt(a), Date.now()))
+  }
+  async function evaluate(tx: Tx, a: Automation, id?: ConversationId, measured?: ContextUsage) {
     if (!a.enabled || !a.condition || !id) return
     const usage = measured ?? (await tx.doc(ContextUsageDoc, id))
     if (usage.percent === undefined) return
@@ -142,22 +156,11 @@ export function triggers(
     const rearmBelowPercent = condition.above - 10
     if (usage.percent < rearmBelowPercent) condition.armed = true
     const now = Date.now()
-    const idleSince = condition.inputAt ?? a.createdAt
-    const paused = condition.idleFor ? now - idleSince : undefined
-    const firesAt = Math.max(
-      condition.firedAt === undefined ? 0 : condition.firedAt + condition.cooldownMs,
-      condition.idleFor ? idleSince + condition.idleFor : 0,
-    )
+    const paused = condition.idleFor ? now - (condition.inputAt ?? a.createdAt) : undefined
+    const due = firesAt(a)
     if (usage.percent < condition.above || !condition.armed) return
-    if (firesAt > now || onlySchedule) {
-      const sleeper = condition.waker === undefined ? undefined : await tx.task(condition.waker)
-      const sleepsUntil =
-        sleeper && sleeper.state.status !== 'terminal'
-          ? (sleeper.input as { until: number }).until
-          : undefined
-      const until = Math.max(firesAt, now)
-      if (condition.idleFor && !(sleepsUntil! <= until))
-        condition.waker = await tx.createTask(IdleWaker, { id: a.id, until }, onRoot)
+    if (due > now) {
+      if (condition.idleFor) await sleepUntil(tx, a, due)
       return
     }
     const count = (n: number) =>
@@ -324,5 +327,5 @@ export function triggers(
     stop = undefined
     await measurementsInCommitOrder
   }
-  return { resolve, evaluate, install, open, close, IdleWaker }
+  return { resolve, evaluate, schedule, install, open, close, IdleWaker }
 }

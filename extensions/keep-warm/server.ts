@@ -238,12 +238,13 @@ function pinger(host: ExtensionHost) {
           if (doc.waker !== task.id) return stop
           const now = runtime.now()
           const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
-          const next = plan(
-            doc,
-            id,
-            id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model,
-            now,
-          )
+          const model = id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model
+          if (id !== undefined && model) {
+            const newest = await newestCachedAnswer(tx, id, model)
+            if (newest !== undefined && newest > (doc.answers?.[key(id, model)] ?? 0))
+              doc.answers = { ...doc.answers, [key(id, model)]: newest }
+          }
+          const next = plan(doc, id, model, now)
           if (!next?.due || next.at > now) return sleepOrStop(doc, next, now)
           const prepared = !!messages && id === found!.id && !!lastOn(next, found!.agent.model!)
           if (!prepared || host.want(PauseApi)?.paused())
@@ -300,7 +301,7 @@ function pinger(host: ExtensionHost) {
         }, ctx)
       },
       interrupted: (_task, runtime, ctx) =>
-        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'replan' } }), ctx),
+        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
       replan: (_task, runtime, ctx) =>
         runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
     },
@@ -311,6 +312,15 @@ function pinger(host: ExtensionHost) {
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, ctx),
   })
+}
+
+async function newestCachedAnswer(tx: Tx, id: ConversationId, model: ModelRef) {
+  for (const entry of (await tx.scanEntries({ conversationId: id }, 20)).items) {
+    const message = entry.model?.[0]
+    if (message?.role === 'assistant' && cached(message) && lastOn(message, model))
+      return message.timestamp
+  }
+  return undefined
 }
 
 async function arm(tx: Tx, host: ExtensionHost) {

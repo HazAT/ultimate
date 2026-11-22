@@ -712,8 +712,7 @@ function backend(host: ExtensionHost) {
     if (args.action === 'resume' && a.event) a.event.sinceEvent = await eventActivationCursor(tx)
     if (args.action === 'create' || args.action === 'resume')
       await trigger.evaluate(tx, a, prepared.target)
-    else if (args.action === 'update' && a.condition?.idleFor)
-      await trigger.evaluate(tx, a, prepared.target, undefined, true)
+    else if (args.action === 'update') await trigger.schedule(tx, a)
     a.updatedAt = Date.now()
     if (effect) await deliver(tx, a, `update:${a.updatedAt}`, 'writing', a.script!.ask)
     if (!isDeepStrictEqual(a.schedule, oldSchedule)) delete a.nextAt
