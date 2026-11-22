@@ -60,6 +60,6 @@ it('frees the event stream of a page kept in the back/forward cache', async () =
   await page.goBack({ waitUntil: 'commit' })
   await page.locator('html[data-restored="true"]').waitFor()
   await page.locator('#app [data-ui="transcript"]').getByText(missed).waitFor()
-  expect(server.api.pages()).toBe(1)
+  await until(() => server.api.pages() === 1)
   expect(await answers()).toBe(true)
 })

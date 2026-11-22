@@ -362,7 +362,7 @@ export async function createWeb(options: {
     }),
     facets: () => webFacets(ultimateRoot, projectRoot, userHome),
     pageConnected() {
-      if (stale) scheduleUpdate()
+      if (manifest && stale) scheduleUpdate()
     },
     async rebuild() {
       stale = true
