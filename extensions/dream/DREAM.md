@@ -73,9 +73,9 @@ On `dream.ready`, call `prepare` once:
 
 It puts the Fall asleep card in your conversation and pins it in the status line. Then send the user one message: what
 the chapter carries, and that the card's Fall asleep button switches when they are ready. Only they press it; never
-call `asleep`. Fall asleep refuses while any top-level conversation is busy and names them; a branch still running is
-finished or stopped first, and one waiting on an answer should be named in the handover. `prepare` again replaces the
-card.
+call `asleep`. Fall asleep refuses while any conversation, branches included, is busy and names them; a branch still
+running is finished or stopped first, and one waiting on an answer should be named in the handover. `prepare` again
+replaces the card.
 
 ## For the dream branch
 
