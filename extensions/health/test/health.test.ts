@@ -75,6 +75,11 @@ it('never counts a refused request toward a failing streak', async () => {
   ])
 })
 
+it('reads the status of an OpenAI-routed refusal', () => {
+  // pi-ai words an OpenAI SDK error as `OpenAI API error (400): …`; a gateway's capped call read as "request failed".
+  expect(failureKind('OpenAI API error (400): 400 "BadRequestError"')).toBe('request')
+})
+
 it('counts a provider failing only after an auth error or a transient streak', async () => {
   const home = await temp()
   const states = async () => (await readHealth(home)).map((entry) => entry.state)

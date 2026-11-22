@@ -65,8 +65,9 @@ const SAFE_ERROR_WORDS = new Set([
 
 export function sanitize(error: string) {
   const parts: string[] = []
-  const status = /^\s*([45]\d\d)\b|\b(?:status|http)[\s:=]*([45]\d\d)\b/i.exec(error)
-  if (status) parts.push(status[1] ?? status[2])
+  const status =
+    /^\s*([45]\d\d)\b|\b(?:status|http)[\s:=]*([45]\d\d)\b|\berror \(([45]\d\d)\)/i.exec(error)
+  if (status) parts.push(status[1] ?? status[2] ?? status[3])
   for (const word of error.split(/[^A-Za-z_]+/)) {
     const known = SAFE_ERROR_WORDS.has(word)
       ? word
