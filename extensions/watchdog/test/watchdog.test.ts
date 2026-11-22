@@ -893,18 +893,45 @@ it('recovers no-model failures separately from earlier reply-expecting inputs an
   expect(await f.tasks()).toHaveLength(2)
 })
 
-it('uses a notice, not a card, when @ultimate fails after every retry', async () => {
-  const f = await fixture(() => error(overloaded))
+it('writes a display-only card into @ultimate’s own transcript when it fails after every retry, once across a replay', async () => {
+  let modelCalls = 0
+  const barrier = Promise.withResolvers<void>()
+  const held = { phase: 'report' as const, entered: false, promise: barrier.promise }
+  const f = await fixture(
+    () => {
+      modelCalls++
+      return error(overloaded)
+    },
+    true,
+    held,
+  )
   await (await f.submit(f.ultimate, 'fail')).wait(context)
   for (const delay of RETRY_DELAYS_MS) {
     await f.sleeping()
     f.advance(delay)
-    await until(async () => (await f.tasks()).every((task) => task.state.status !== 'running'))
-    await f.harness.waitForIdle(context)
+    await until(
+      async () =>
+        held.entered ||
+        (await f.tasks()).every((task) => task.state.status !== 'running'),
+    )
   }
-  await until(async () => f.notices.length === 1)
-  expect(f.notices[0]).toContain('After 4 automatic retries')
+  await until(async () => held.entered)
+  await f.reopen()
+  barrier.resolve()
+  const own = () => f.entries(f.ultimate, 'watchdog.standing-failure')
+  await until(async () => (await own()).length === 1)
+  await until(async () => (await f.tasks()).every((task) => task.state.status === 'terminal'))
+  await f.reopen()
+  await f.harness.waitForIdle(context)
+  expect(await own()).toHaveLength(1)
   expect(await f.entries()).toHaveLength(0)
+  expect((await own())[0].data).toMatchObject({
+    conversation: f.ultimate,
+    retried: true,
+    retries: RETRY_DELAYS_MS.length,
+  })
+  expect(f.notices).toEqual([])
+  expect(modelCalls).toBe(RETRY_DELAYS_MS.length + 1)
 })
 
 it('reports a broken login at once, with a hint to log in again and no retry', async () => {
