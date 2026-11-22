@@ -26,6 +26,8 @@ import { keyCard, openQuestions, waitsOnUser } from './open.ts'
 import type { Message } from './open.ts'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { QuestionItem } from './question.solid.tsx'
+import { sendKept } from './outbox.solid.tsx'
+import type { Outgoing } from './outbox.solid.tsx'
 import { AnswerAction, DismissAction } from './refs.ts'
 import type { Reply } from './refs.ts'
 import { ANSWER_UNDO_WINDOW_MS, SendButton } from './send.solid.tsx'
@@ -54,7 +56,8 @@ type CardProps = {
   keys?: boolean
   class?: string
   withActions?: boolean
-  answerWith?: (answer: Reply, keepalive?: boolean) => Promise<unknown>
+  answerAs?: (answer: Reply) => Outgoing
+  failed?: (failure: unknown) => string
   sendLabel?: string
 }
 
@@ -90,11 +93,14 @@ function AnswerCard(props: CardProps & { id: number }) {
   }
   const answerRequest = () => {
     const id = props.id
-    return (
-      props.answerWith ??
-      ((reply: Reply, keepalive?: boolean) =>
-        api.action(AnswerAction, { messageId: id, ...reply }, { keepalive }))
-    )
+    const outgoing =
+      props.answerAs ??
+      ((reply: Reply): Outgoing => ({ ...AnswerAction, args: { messageId: id, ...reply } }))
+    const failed = props.failed
+    return (reply: Reply, keepalive = false) =>
+      sendKept(outgoing(reply), keepalive).catch((failure: unknown) => {
+        throw failed ? new Error(failed(failure)) : failure
+      })
   }
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string>()

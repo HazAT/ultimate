@@ -95,10 +95,11 @@ async function openCard() {
   })
   cleanup.push(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
-  await page.goto(`${server.url}/?conversation=${ultimate}`)
+  const url = `${server.url}/?conversation=${ultimate}`
+  await page.goto(url)
   const card = page.locator(`[data-questions-card="message:${asked.id}"]`)
   await card.locator('fieldset').nth(2).waitFor()
-  return { conversation, log, ask, asked, page, card }
+  return { conversation, log, ask, asked, page, card, url }
 }
 
 it('answers a decisions card with letters, arrows and Enter', async () => {
@@ -196,17 +197,36 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
   expect((await picked())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
 })
 
+// Under load Chromium dropped the keepalive answer sent while the page went away, before it reached the server: the
+// browser keeps the answer and sends it again the next time the app opens.
 it('sends a held answer when the page is left inside the undo window', async () => {
-  const { log, asked, page, card } = await openCard()
+  const { log, asked, page, card, url } = await openCard()
+  await page.evaluate(() => {
+    const send = window.fetch
+    window.fetch = (input, init) =>
+      typeof input === 'string' && input.endsWith('/actions/answer')
+        ? Promise.reject(new TypeError('Failed to fetch'))
+        : send(input, init)
+  })
   await card
     .getByRole('button', { name: `Send: answer to message ${asked.id}`, exact: true })
     .click()
   await card.getByRole('button', { name: 'Undo' }).waitFor()
   await page.goto('about:blank')
-  const answer = async () =>
-    (await log())?.messages.find((m) => m.re === asked.id && m.from === 'user')
-  await until(async () => !!(await answer()))
-  expect((await answer())!.text).toMatch(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/)
+  const answers = async () =>
+    (await log())?.messages.filter((m) => m.re === asked.id && m.from === 'user') ?? []
+  expect(await answers()).toEqual([])
+  await page.goto(url)
+  await until(async () => (await answers()).length > 0)
+  expect((await answers()).map((m) => m.text)).toEqual([
+    expect.stringMatching(/^1a\. .+\n\n2a\. .+\n\n3a\. Land it: yes$/),
+  ])
+  await until(
+    async () =>
+      !(await page.evaluate(() =>
+        Object.keys(localStorage).some((key) => key.startsWith('ultimate.questions.unsent.')),
+      )),
+  )
 })
 
 // Under load the undo window ended while the page was going away: the answer went out as an ordinary fetch, which

@@ -2,10 +2,11 @@
 import { defineWebExtension, provide } from '@/sdk/solid'
 import { MessageAnswers } from '../messages/ui.solid.tsx'
 import { HiddenQuestionEntry, MessageQuestions } from './card.solid.tsx'
+import { ResendUnsentAnswers } from './outbox.solid.tsx'
 import { CrossSurfaceDraftSweep } from './sweep.solid.tsx'
 
 export default defineWebExtension({
-  slots: { overlay: [CrossSurfaceDraftSweep] },
+  slots: { overlay: [CrossSurfaceDraftSweep, ResendUnsentAnswers] },
   entries: {
     'questions.asked': HiddenQuestionEntry,
     'questions.answers': HiddenQuestionEntry,

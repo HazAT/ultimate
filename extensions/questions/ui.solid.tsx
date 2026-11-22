@@ -9,3 +9,5 @@ export type { Message as QuestionMessage } from './open.ts'
 /** How many of `questions` the drafts answer; card state, its key and storage key. */
 export { answered, cardKey, cardOf, CARDS_KEY } from './state.ts'
 export type { CardState } from './state.ts'
+/** The action and arguments a card's answer is sent as, kept until sent: `answerAs` on `MessageQuestions`. */
+export type { Outgoing } from './outbox.solid.tsx'

@@ -59,7 +59,7 @@ import {
   CARDS_KEY,
   MessageQuestions,
 } from '../questions/ui.solid.tsx'
-import type { CardState, QuestionMessage } from '../questions/ui.solid.tsx'
+import type { CardState, Outgoing, QuestionMessage } from '../questions/ui.solid.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.solid.tsx'
 import { talkToUltimate } from '../subagents/ui.solid.tsx'
 import { SideChatSummaryEntry } from './entries.ts'
@@ -279,15 +279,7 @@ function SidePane(props: {
       <Show when={question()}>
         {(id) => (
           <PinnedQuestion
-            answerWith={(answer, keepalive) =>
-              api
-                .action(InjectAction, { id: props.side, answer }, { keepalive })
-                .catch((failure: unknown) => {
-                  throw new Error(
-                    `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/\w+: /, '')}`,
-                  )
-                })
-            }
+            answerAs={(answer) => ({ ...InjectAction, args: { id: props.side, answer } })}
             keys={props.front && !props.phone}
             message={id()}
           />
@@ -369,7 +361,7 @@ function SidePane(props: {
 function PinnedQuestion(props: {
   message: number
   keys: boolean
-  answerWith: (answer: Reply, keepalive?: boolean) => Promise<unknown>
+  answerAs: (answer: Reply) => Outgoing
 }) {
   const log = useDocOf(() => ROOT, MessagesDoc)
   const message = () => log()?.messages.find((item) => item.id === props.message)
@@ -416,7 +408,10 @@ function PinnedQuestion(props: {
           <CollapsibleContent class="min-h-0 overflow-y-auto">
             <Show when={waits()}>
               <MessageQuestions
-                answerWith={props.answerWith}
+                answerAs={props.answerAs}
+                failed={(failure) =>
+                  `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/\w+: /, '')}`
+                }
                 keys={props.keys}
                 message={question()}
                 sendLabel="Summarize & send"
