@@ -58,11 +58,12 @@ const Receipts = defineDoc<{ highWater?: number; tasks: Record<string, true> }>(
   initial: () => ({ tasks: {} }),
 })
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
+const reportedReasons = ['model_error', 'no_model', 'interrupted', 'restart_limit']
 const failed = (task: TaskRecord<JsonValue, JsonValue, JsonValue>) =>
   task.kind === GenerationTask.definition.name &&
   task.state.status === 'terminal' &&
   task.state.outcome.status === 'failed' &&
-  ['model_error', 'no_model'].includes(
+  reportedReasons.includes(
     (task.state.outcome.error.detail as { reason?: string } | undefined)?.reason ?? '',
   )
 const faultedDelivery = (task: TaskRecord<JsonValue, JsonValue, JsonValue>) =>
@@ -72,9 +73,7 @@ const faultedDelivery = (task: TaskRecord<JsonValue, JsonValue, JsonValue>) =>
 const reportable = (task: TaskRecord<JsonValue, JsonValue, JsonValue>) =>
   failed(task) || faultedDelivery(task)
 const failedInput = (input: SubmissionRecord) =>
-  input.type === 'input' &&
-  input.status === 'unanswered' &&
-  ['model_error', 'no_model'].includes(input.reason)
+  input.type === 'input' && input.status === 'unanswered' && reportedReasons.includes(input.reason)
 
 async function lastErrorBeforeNextGeneration(tx: Tx, task: Generation, next?: Generation) {
   let upper = sharedOrderTaskEntryBoundary(task.id)

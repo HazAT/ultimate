@@ -138,6 +138,7 @@ let swapping = false
 let stopping = false
 let crashPage = false
 let failures = 0
+const stableAfterMs = 60000
 let generation = 0
 let announced = false
 let stderr = ''
@@ -250,6 +251,7 @@ type Core = {
   child: ChildProcess
   port: number
   generation: number
+  readyAt?: number
   stderr: string
   messages: ChildMessage[]
   reports: Map<'web' | 'access', CoreReport>
@@ -361,6 +363,7 @@ function boot(previousBuild?: BuildInfo): Core {
     children.delete(core)
     if (core === active && !swapping && !stopping) {
       active = undefined
+      failures = Date.now() - core.readyAt! < stableAfterMs ? failures + 1 : 0
       display.lifecycle('crashed')
       display.log('error', 'supervisor', `Core ${core.generation} exited unexpectedly`)
       void recover().catch((error: unknown) =>
@@ -404,9 +407,9 @@ async function start(core: Core) {
     return
   }
   active = core
+  core.readyAt = Date.now()
   display.lifecycle('ready', { generation: core.generation, pid: core.child.pid })
   for (const report of core.reports.values()) display.report(report)
-  failures = 0
   crashPage = false
   flush()
   if (!announced) {

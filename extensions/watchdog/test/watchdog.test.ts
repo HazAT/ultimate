@@ -289,6 +289,11 @@ async function fixture(
       harness = await Harness.open(storage, options, context)
       await open()
     },
+    crash: async () => {
+      for (const callback of onClose) await callback()
+      harness = await Harness.open(storage, options, context)
+      await open()
+    },
     advance: (ms: number) => {
       now += ms
       harness.resume()
@@ -378,6 +383,31 @@ it('routes a failure owned by a tally, such as a scheduled run, to @ultimate', a
   expect(await f.entries(tally)).toHaveLength(0)
   await f.harness.waitForIdle(context)
   expect((await f.tasks()).map((task) => task.state.status)).not.toContain('faulted')
+})
+
+it('reports a run that a crash interrupted at once, without a retry', async () => {
+  let answering = false
+  const f = await fixture((transcript) => {
+    if (inputText(transcript) !== 'answer slowly') return fauxAssistantMessage('ok')
+    answering = true
+    return new Promise(() => {})
+  })
+  const branch = await f.conversation('Long task')
+  await f.submit(branch, 'answer slowly')
+  await until(() => answering)
+  await f.crash()
+  await until(async () => (await f.entries()).length === 1)
+  expect((await f.entries())[0].data).toEqual({
+    conversation: branch,
+    title: 'Long task',
+    error: 'The host stopped while the model was answering, on attempt 1',
+    step: 'model request',
+    retried: false,
+  })
+  await f.harness.waitForIdle(context)
+  const [task] = await f.tasks()
+  expect(task.state.status).toBe('terminal')
+  expect(task.input).toMatchObject({ temporary: false })
 })
 
 it('ignores user Stop', async () => {
