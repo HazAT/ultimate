@@ -95,6 +95,7 @@ it('stops the new group when the commit that records it fails', async () => {
   const home = join(directory, 'direct')
   const bash = codingTools({
     home,
+    images: undefined as never,
     need: (() => ({ concludedIn: async () => new Set() })) as never,
     notice: () => {},
     emit: (async () => undefined) as never,

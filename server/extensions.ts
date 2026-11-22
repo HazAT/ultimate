@@ -52,6 +52,7 @@ export type ExtensionHost = Pick<
   | 'modelRuntime'
   | 'settings'
   | 'build'
+  | 'images'
   | 'uiState'
   | 'scanSubmissions'
   | 'models'
@@ -401,6 +402,7 @@ export async function loadExtensions(
     modelRuntime: host.modelRuntime,
     settings: host.settings,
     build: host.build,
+    images: host.images,
     uiState: (caller) => host.uiState(caller),
     scanSubmissions: (query, limit, cursor, caller) =>
       host.scanSubmissions(query, limit, cursor, caller),

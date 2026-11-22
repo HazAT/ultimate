@@ -36,6 +36,7 @@ import type {
   SubmissionRecord,
 } from '@earendil-works/pi-durable'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
+import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { createBuild } from './build.ts'
 import { spawn } from '../lib/spawn.ts'
@@ -183,6 +184,7 @@ export async function prepareHarness(options: HostOptions) {
     skills: (cwd: string) => projectSkills({ ultimateRoot, projectRoot, userHome }, cwd).skills,
     restart: (approved: (generation: number) => Promise<void>) =>
       requestSwap(approved, builds.current()),
+    images: await createNodePhotonImages(),
     ultimateRoot,
     projectRoot,
     userHome,

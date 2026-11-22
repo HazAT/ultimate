@@ -25,7 +25,6 @@ import {
   createReadTool,
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
-import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { formatDuration } from '../../lib/format.ts'
 import { git } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -44,8 +43,6 @@ import {
   sweepEarlierProcesses,
   takeStarted,
 } from './background.ts'
-
-const modelSizedImages = await createNodePhotonImages()
 
 function defaultBashTimeout() {
   const seconds = Number(process.env.ULTIMATE_BASH_TIMEOUT ?? 600)
@@ -250,7 +247,7 @@ async function madeCommits(path: string, conversation: ConversationId) {
 }
 
 export default function codingTools(
-  host: Pick<ExtensionHost, 'emit' | 'home' | 'need' | 'notice' | 'onOpen' | 'react'>,
+  host: Pick<ExtensionHost, 'emit' | 'home' | 'images' | 'need' | 'notice' | 'onOpen' | 'react'>,
 ) {
   host.onOpen(() =>
     sweepEarlierProcesses(host.home).catch((error: unknown) =>
@@ -375,7 +372,7 @@ export default function codingTools(
     name: 'coding-tools',
     tasks: [StopBackground],
     tools: [
-      createReadTool({ images: modelSizedImages }),
+      createReadTool({ images: host.images }),
       createWriteTool(),
       createEditTool(),
       tracedBashTool,
