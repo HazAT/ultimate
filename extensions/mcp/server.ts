@@ -7,6 +7,7 @@ import {
   McpAbortError,
   McpClient,
   McpError,
+  McpHttpError,
   McpTimeoutError,
   StdioTransport,
   StreamableHttpTransport,
@@ -28,6 +29,7 @@ export const pollActions = ['status']
 
 const PROGRESS_RENEWED_CALL_TIMEOUT_MS = 10 * 60_000
 const FIRST_RETRY = 5_000
+const rateLimited = (error: unknown) => error instanceof McpHttpError && error.status === 429
 const LAST_RETRY = 5 * 60_000
 
 type Entry =
@@ -162,6 +164,7 @@ const listing = (server: Server) =>
         `\n${tool.name}: ${tool.description?.trim() ?? tool.title ?? ''}\n  input: ${JSON.stringify(tool.inputSchema)}`,
     ),
   ].join('\n')
+const schemaOf = (tool: Tool) => `${tool.name} input: ${JSON.stringify(tool.inputSchema)}`
 const renewTimeoutOnProgress = () => {}
 const failure = (text: string) => ({ output: [{ type: 'text' as const, text }], isError: true })
 
@@ -373,13 +376,19 @@ export default async function mcp(host: ExtensionHost) {
                 return { output: toLlmContent(result), isError: result.isError === true }
               } catch (error) {
                 const brokenConnectionNoResend = !(
+                  rateLimited(error) ||
+                  context.abortSignal?.aborted ||
                   error instanceof McpError ||
                   error instanceof McpTimeoutError ||
                   error instanceof McpAbortError
                 )
                 if (brokenConnectionNoResend && server.client === client)
                   rebuiltOnOpen('open reconnects every configured MCP server', restart(server))
-                return failure(`MCP ${name}/${tool} failed: ${redact(server, error)}`)
+                const known = server.tools.find((entry) => entry.name === tool)
+                return failure(
+                  `MCP ${name}/${tool} failed: ${redact(server, error)}` +
+                    (error instanceof McpError && known ? `\n${schemaOf(known)}` : ''),
+                )
               }
             },
           }),

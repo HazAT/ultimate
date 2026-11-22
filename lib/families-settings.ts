@@ -46,7 +46,9 @@ export async function readFamilyLayers(
     try {
       return parseFamilies(value)
     } catch (error) {
-      errors.push(`${where}: ${error instanceof Error ? error.message : String(error)}`)
+      errors.push(
+        `${where}: ${error instanceof Error ? error.message : String(error)}. None of its families apply until it is fixed.`,
+      )
       return parseFamilies(undefined)
     }
   }
