@@ -26,11 +26,11 @@ export const EventsAction = actionRef<null, TriggerEvent[]>('automations', 'even
 export const ListAction = actionRef<null, AutomationListItem[]>('automations', 'list')
 /** Flat trigger and action arguments → new automation. */
 export const CreateAction = actionRef<CreateArgs, Automation>('automations', 'create')
-/** Update trigger settings and run profile; an empty agent copies the root agent. */
-export const UpdateAction = actionRef<
-  Id & Partial<Omit<CreateArgs, 'scope' | 'slug' | 'subscribers'>>,
-  Automation
->('automations', 'update')
+/** Update trigger settings, run profile and subscribers (replaced whole); an empty agent copies the root agent. */
+export const UpdateAction = actionRef<Id & Partial<Omit<CreateArgs, 'scope' | 'slug'>>, Automation>(
+  'automations',
+  'update',
+)
 /** Pause a trigger, terminating its script process group if present. */
 export const PauseAction = actionRef<Id, Automation>('automations', 'pause')
 /** Resume a trigger; scripts require an executable run file. */

@@ -36,17 +36,19 @@ Each automation has one or both:
   nonempty FIRE text is appended as `\n\nFired: <text>`. Runs record status and the first answer line; the ledger keeps
   the last 50 per automation.
 - `subscribers` wakes existing conversations with an `automations.fired` input `{id, name, text}`. A subscriber is
-  `#12` or a standing agent's `@name`, resolved at delivery, so `@ultimate` follows it across chapters.
+  `#12` or a standing agent's `@name`, resolved at delivery, so `@ultimate` follows it across chapters. With a
+  `prompt`, subscribers are woken when each run ends instead, with an `automations.finished` input whose text is the
+  run's answer (or `Run failed: …`); an aborted run wakes no one.
 
 Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
 a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,
 escalating with `Fired more than 6 times in an hour; paused`. Only fires that start a run or wake a subscriber count:
 one skipped beside a still-working run starts nothing, so a long deploy run does not pause its train.
 
-An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation` and `subagent`),
-model and thinking, discovered as in subagents; its isolate is ignored and unknown names are refused. Without one, runs
-copy the root agent minus the automation tool, on the default model. `model {provider, modelId}` and `thinking`
-override either. Enabled automations add a line each to the prompt, such as `when @ultimate context ≥ 80%`.
+An optional `agent` runs prompt runs with that definition's instructions, tools (minus `automation`, and `subagent`
+unless its `tools` lists it), model and thinking, discovered as in subagents; its isolate is ignored and unknown names
+are refused. Without one, runs copy the root agent minus the automation tool, on the default model.
+`model {provider, modelId}` and `thinking` override either. Enabled automations add a line each to the prompt, such as `when @ultimate context ≥ 80%`.
 
 ## Tool
 
@@ -57,7 +59,8 @@ fire in UTC and from now (`next: 2026-11-20T13:00:00Z, in 18h`), so a wrong day 
 - `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
   scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
   New ids are `A<n>`; project scripts use slugs.
-- `update {id, …}` may switch between schedule, event and condition; a script stays a script.
+- `update {id, …}` may switch between schedule, event and condition; a script stays a script. `subscribers` replaces
+  the whole list; `subscribe` / `unsubscribe` change one.
 - `pause` / `resume`; `run` fires now, or relaunches a script; `runs {id}`; `abort {id, runId}`; `log {id, lines?}`
   (default 50, at most 2000); `subscribe` / `unsubscribe {id, to?}` (default the caller); `escalate {id, reason}`;
   `delete` keeps files and conversations.

@@ -321,7 +321,7 @@ packages:
     hasBin: true
 
   '@earendil-works/pi-claude-code@https://codeload.github.com/earendil-works/pi-claude-code/tar.gz/d5b5e04c314d3452d357174d16d10dda34daa2d2':
-    resolution: {gitHosted: true, integrity: sha512-ayIGjpiEIf159fCT6MsJ2TUGEnToTW7lJnccSuQgb8l47JOwzi8AECAu68ChzTSkaArJ5baeZEcX87qncGtixw==, tarball: https://codeload.github.com/earendil-works/pi-claude-code/tar.gz/d5b5e04c314d3452d357174d16d10dda34daa2d2}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/earendil-works/pi-claude-code/tar.gz/d5b5e04c314d3452d357174d16d10dda34daa2d2}
     version: 0.1.0
     engines: {node: '>=22.19.0'}
     peerDependencies:

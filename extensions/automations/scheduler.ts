@@ -41,7 +41,7 @@ export function scheduler(
     tx: Tx,
     a: Automation,
     event: number | string,
-    kind: 'fired' | 'escalated',
+    kind: 'fired' | 'escalated' | 'finished',
     text: string,
   ) => Promise<void>,
 ) {
@@ -73,7 +73,10 @@ export function scheduler(
               metadata: host.metadata,
               label: RunLabel,
               title: `${a.name} · ${new Date(task.input.firedAt).toLocaleString()}`,
-              excludeTools: a.agent ? ['automation', 'subagent'] : ['automation'],
+              excludeTools:
+                profile && !profile.tools?.includes('subagent')
+                  ? ['automation', 'subagent']
+                  : ['automation'],
               excludeExtensions: ['automations'],
               cwd: (await tx.doc(AgentDoc, runtime.conversationId)).cwd ?? host.projectRoot,
               model: a.model,
@@ -88,13 +91,7 @@ export function scheduler(
         } catch (error) {
           if (runtime.signal.aborted) throw error
           await runtime.commit(async (tx) => {
-            finish(
-              await tx.doc(Automations),
-              task.input.automation.id,
-              String(task.id),
-              'failed',
-              String(error),
-            )
+            await settle(tx, task.input.automation.id, String(task.id), 'failed', String(error))
             return terminal
           }, context)
         }
@@ -123,9 +120,11 @@ export function scheduler(
             const text =
               answer?.role === 'assistant'
                 ? answer.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
-                : undefined
-            finish(
-              await tx.doc(Automations),
+                : result.status === 'unanswered'
+                  ? `ended without an answer (${result.reason})`
+                  : undefined
+            await settle(
+              tx,
               task.input.automation.id,
               String(task.id),
               result.status === 'done'
@@ -140,13 +139,7 @@ export function scheduler(
         } catch (error) {
           if (runtime.signal.aborted) throw error
           await runtime.commit(async (tx) => {
-            finish(
-              await tx.doc(Automations),
-              task.input.automation.id,
-              String(task.id),
-              'failed',
-              String(error),
-            )
+            await settle(tx, task.input.automation.id, String(task.id), 'failed', String(error))
             return terminal
           }, context)
         }
@@ -158,6 +151,15 @@ export function scheduler(
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, context),
   })
+  async function settle(tx: Tx, id: string, runId: string, status: Run['status'], answer?: string) {
+    const state = await tx.doc(Automations)
+    finish(state, id, runId, status, answer)
+    const a = state.automations[id]
+    if (!a || status === 'aborted') return
+    const text = status === 'done' ? answer?.trim() || '(no answer)' : `Run failed: ${answer}`
+    if (a.subscribers.length) await deliver(tx, a, `run:${runId}`, 'finished', text)
+    delete a.branches
+  }
   async function fire(tx: Tx, a: Automation, firedAt: number, text = '') {
     const skip =
       !!a.prompt &&
@@ -184,8 +186,10 @@ export function scheduler(
     a.fires++
     a.lastFireAt = firedAt
     const event = await host.emit(tx, Fired, { id: a.id, text, fire: a.fires })
-    if (a.subscribers.length) await deliver(tx, a, event.id, 'fired', text)
-    delete a.branches
+    if (!a.prompt) {
+      if (a.subscribers.length) await deliver(tx, a, event.id, 'fired', text)
+      delete a.branches
+    }
     return result
   }
   const activeRuns = new WeakMap<Tx, Set<string>>()
