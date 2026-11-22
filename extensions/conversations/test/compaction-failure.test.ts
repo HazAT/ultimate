@@ -113,13 +113,13 @@ it('announces a compaction committed while it was not watching once, after reope
   for (let open = 0; open < 2; open++) {
     const again = await watched(storage)
     try {
+      await again.release()
+      await again.close()
       expect(await announced(again.harness, again.root.id)).toEqual([
         watchedCompaction,
         missedCompaction,
       ])
     } finally {
-      await again.release()
-      await again.close()
       await again.harness.close(context)
     }
   }
