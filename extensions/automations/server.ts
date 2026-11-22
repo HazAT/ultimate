@@ -671,13 +671,15 @@ function backend(host: ExtensionHost) {
           cooldownMs: args.condition.cooldownMs ?? a.condition?.cooldownMs ?? 3600000,
           armed: a.condition?.armed ?? true,
         }
-        delete a.condition.waker
-        delete a.condition.wakeAt
+        const retargeted = previousTarget !== undefined && previousTarget !== a.condition.of
+        if (!a.condition.idleFor || retargeted) {
+          delete a.condition.waker
+          delete a.condition.wakeAt
+        }
         if (!a.condition.idleFor) {
           delete a.condition.idleFor
           delete a.condition.inputAt
-        } else if (previousTarget !== undefined && previousTarget !== a.condition.of)
-          a.condition.inputAt = Date.now()
+        } else if (retargeted) a.condition.inputAt = Date.now()
       }
       if (a.script) {
         if (args.ask !== undefined) a.script.ask = required(args.ask, 'ask')

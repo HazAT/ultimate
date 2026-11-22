@@ -26,10 +26,15 @@ afterEach(async () => {
 async function fixture() {
   vi.useFakeTimers({ toFake: ['Date'] })
   const models = createModels()
-  const faux = fauxProvider({ provider: 'claude-code' })
+  const faux = fauxProvider({
+    provider: 'claude-code',
+    models: [{ id: 'faux-1' }, { id: 'faux-2' }],
+  })
   models.setProvider(faux.provider)
-  const answer = () => {
+  let held: Promise<void> | undefined
+  const answer = async () => {
     faux.appendResponses([answer])
+    await held
     return fauxAssistantMessage('ok')
   }
   faux.setResponses([answer])
@@ -80,12 +85,14 @@ async function fixture() {
     calls: () => faux.state.callCount,
     doc: async () => (await harness.snapshot(docs[0], ROOT_CONVERSATION_ID, context))!,
     now: () => Date.now(),
-    forget: async () => {
-      for (const task of await tasks()) await harness.abortTask(task.id, context)
-      await harness.commit(async (tx) => {
-        delete (await tx.doc(docs[0], ROOT_CONVERSATION_ID)).answers
-      }, context)
+    hold: (response: Promise<void>) => {
+      held = response
     },
+    setModel: (modelId: string) =>
+      harness.commit(
+        (tx) => configure(tx, ultimate, { model: { provider: 'claude-code', modelId } }),
+        context,
+      ),
     pause: (on: boolean) => {
       paused = on
       if (on) harness.hold()
@@ -157,14 +164,25 @@ it('sends nothing while paused and pings once the pause ends within the hour', a
   expect(f.calls()).toBe(calls + 1)
 })
 
-it('picks up a cache still warm from before the upgrade when it opens', async () => {
+it('plans from the model selected while a ping was in flight', async () => {
   const f = await fixture()
   await f.input(f.ultimate)
-  const answeredAt = f.now()
+  const first = f.now()
   await f.sleeping()
-  await f.forget()
-  await f.advance(10 * 60_000)
-  await f.reopen()
+  await f.setModel('faux-2')
+  await f.advance(5 * 60_000)
+  await f.input(f.ultimate)
+  const second = f.now()
+  await f.setModel('faux-1')
+  const release = Promise.withResolvers<void>()
+  f.hold(release.promise)
+  const pinging = f.advance(LEAD - 5 * 60_000)
+  await until(async () => (await f.doc()).last?.error === 'interrupted')
+  await f.setModel('faux-2')
+  release.resolve()
+  await pinging
+  await until(async () => (await f.doc()).last?.read !== undefined)
   const [waker] = await f.sleeping()
-  expect(waker.state).toMatchObject({ until: answeredAt + LEAD })
+  expect(waker.state).toMatchObject({ until: second + LEAD })
+  expect((await f.doc()).last).toMatchObject({ at: first + LEAD, model: 'faux-1' })
 })

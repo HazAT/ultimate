@@ -187,7 +187,7 @@ async function send(
   }
 }
 
-type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' }
+type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' } | { phase: 'sent' }
 
 function pinger(host: ExtensionHost) {
   const sleepOrStop = (
@@ -221,8 +221,11 @@ function pinger(host: ExtensionHost) {
           const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
           if (doc.waker !== task.id) return stop
           const now = runtime.now()
-          const next = plan(doc, found?.agent.model, now)
+          const model = found && (await tx.doc(AgentDoc, found.id)).model
+          const next = plan(doc, model, now)
           if (!next?.due || next.at > now) return sleepOrStop(doc, next, now)
+          if (!lastOn(next, found!.agent.model!))
+            return { status: 'sleeping', until: now, checkpoint: { phase: 'plan' } }
           if (!messages || host.want(PauseApi)?.paused())
             return { status: 'sleeping', until: now, checkpoint: { phase: 'plan' } }
           const run = (await tx.doc(LiveDoc, found!.id)).run
@@ -266,11 +269,12 @@ function pinger(host: ExtensionHost) {
               text: '',
               stopReason: answer.stopReason,
             })
-          const now = runtime.now()
-          return sleepOrStop(doc, plan(doc, found!.agent.model, now), now)
+          return { status: 'running', checkpoint: { phase: 'sent' } }
         }, ctx)
       },
       interrupted: (_task, runtime, ctx) =>
+        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
+      sent: (_task, runtime, ctx) =>
         runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
     },
     abort: (task, runtime, ctx) =>
