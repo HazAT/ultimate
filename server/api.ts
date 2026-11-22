@@ -235,6 +235,7 @@ export async function createApi(
   system: Awaited<ReturnType<typeof createSystem>>,
   extensions: Extensions,
   access: Access,
+  pageConnected: () => void,
 ) {
   const { harness, root } = opened
   const streams = new Set<() => Promise<void>>()
@@ -386,6 +387,7 @@ export async function createApi(
       stop: async () => {},
     }
     connections.set(id, connection)
+    pageConnected()
     const { send } = sse
     send('stream', { id })
     send('system', system.current())

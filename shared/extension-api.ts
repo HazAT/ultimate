@@ -45,6 +45,7 @@ export const defaultOff: readonly string[] = [
   'voice-live',
   'push',
   'wire',
+  'redraws',
 ]
 
 type SortedCycleNames = string[]

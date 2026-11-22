@@ -227,7 +227,9 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     )
     await extensions.opened()
     await system.changed()
-    api = await createApi(host, harness, events, system, extensions, access)
+    api = await createApi(host, harness, events, system, extensions, access, () =>
+      web.pageConnected(),
+    )
     harness.harness.resume()
     return { ...harness, api, system }
   }
