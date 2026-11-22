@@ -178,7 +178,7 @@ export function AutomationRow(props: {
   const script = () => item().script
   const look = createMemo(() => lookOf(item(), props.now))
   const running = () => item().runs.some((run) => run.status === 'running')
-  const line = () => stateLine(item(), props.now, formatTime, formatDuration)
+  const line = () => stateLine(item(), props.now, formatTime)
   let menu: HTMLButtonElement | undefined
   let keep: HTMLButtonElement | undefined
   const [confirming, setConfirming] = createSignal(false)

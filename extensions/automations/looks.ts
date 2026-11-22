@@ -1,33 +1,11 @@
+import { formatAgo, formatDuration } from '../../lib/format.ts'
 import type { Automation, Run } from './refs.ts'
 
 export const spent = (automation: Automation, now: number) =>
   automation.schedule?.kind === 'at' && Date.parse(automation.schedule.time) <= now
 
-export function until(at: number, now: number) {
-  const seconds = Math.max(0, Math.round((at - now) / 1000))
-  if (seconds < 1) return 'now'
-  if (seconds < 60) return `in ${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `in ${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `in ${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ''}`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `in ${days}d${hours % 24 ? ` ${hours % 24}h` : ''}`
-  return `on ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-}
-
-function ago(at: number, now: number) {
-  const seconds = Math.max(0, Math.round((now - at) / 1000))
-  if (seconds < 2) return 'now'
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
-  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
+export const countdown = (at: number, now: number) =>
+  at - now < 1000 ? 'now' : `in ${formatDuration(at - now)}`
 
 type FormatTime = (at: Date, seconds: boolean) => string
 
@@ -129,28 +107,12 @@ export function automationKind(automation: Automation) {
         : 'schedule'
 }
 
-export function since(at: number, now: number) {
-  const seconds = Math.max(0, Math.floor((now - at) / 1000))
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ''}`
-  const days = Math.floor(hours / 24)
-  return `${days}d${hours % 24 ? ` ${hours % 24}h` : ''}`
-}
-
 const fired = (automation: Automation, now: number) =>
   automation.fires > 0
-    ? `fired ${automation.fires}${automation.lastFireAt ? ` · ${ago(automation.lastFireAt, now)}` : ''}`
+    ? `fired ${automation.fires}${automation.lastFireAt ? ` · ${formatAgo(automation.lastFireAt, now, { ago: true })}` : ''}`
     : undefined
 
-export function stateLine(
-  automation: Automation,
-  now: number,
-  formatTime: FormatTime,
-  formatDuration: (ms: number) => string,
-): string {
+export function stateLine(automation: Automation, now: number, formatTime: FormatTime): string {
   const look = lookOf(automation, now)
   const script = automation.script
   const last = automation.runs.at(-1)
@@ -173,24 +135,29 @@ export function stateLine(
     parts.push(
       script?.state === 'failed'
         ? (script.error ?? 'the script failed')
-        : `last run failed ${last ? ago(last.finishedAt ?? last.firedAt, now) : ''}`,
+        : `last run failed ${last ? formatAgo(last.finishedAt ?? last.firedAt, now, { ago: true }) : ''}`,
     )
   else if (look === 'investigating') parts.push('the watcher is repairing the script')
   else if (look === 'writing') parts.push('the watcher is writing the script')
   else if (look === 'working')
     parts.push(`run working · ${formatDuration(Math.max(0, now - last!.firedAt))}`)
   else if (look === 'watching') {
-    if (script?.startedAt) parts.push(`up ${since(script.startedAt, now)}`)
+    if (script?.startedAt) parts.push(`up ${formatDuration(now - script.startedAt)}`)
     parts.push(fired(automation, now) ?? 'not fired yet')
   } else if (look === 'scheduled') {
     parts.push(
-      automation.nextAt !== undefined ? `next ${until(automation.nextAt, now)}` : 'scheduling…',
+      automation.nextAt !== undefined ? `next ${countdown(automation.nextAt, now)}` : 'scheduling…',
     )
-    if (last) parts.push(`${statusLabel(last.status)} ${ago(last.finishedAt ?? last.firedAt, now)}`)
+    if (last)
+      parts.push(
+        `${statusLabel(last.status)} ${formatAgo(last.finishedAt ?? last.firedAt, now, { ago: true })}`,
+      )
   } else {
     if (script) parts.push(fired(automation, now) ?? 'never fired')
     else if (last)
-      parts.push(`last ${statusLabel(last.status)} ${ago(last.finishedAt ?? last.firedAt, now)}`)
+      parts.push(
+        `last ${statusLabel(last.status)} ${formatAgo(last.finishedAt ?? last.firedAt, now, { ago: true })}`,
+      )
   }
   return parts.filter(Boolean).join(' · ')
 }

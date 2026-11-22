@@ -11,6 +11,7 @@ import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { conversationIdentity } from '../../lib/ids.ts'
 import { every } from '../../lib/timers.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import { ConversationsApi } from '../conversations/api.ts'
@@ -151,7 +152,7 @@ async function sendOneShotPingWithoutSession(
   const model = host.modelRuntime.getModel(provider, found.model)
   if (!model) return
   let messages: Message[] = [...(await conversation.context(context)).messages]
-  const leadingConversationIdentity = `You are conversation #${id}.`
+  const leadingConversationIdentity = conversationIdentity(id)
   if (
     !messages.some(
       (message) => message.role === 'user' && message.content === leadingConversationIdentity,
@@ -289,28 +290,22 @@ export default function keepWarm(host: ExtensionHost) {
     },
     { from: 'now' },
   )
-  const shared = host.resource('keep-warm.ping', () => ({
-    running: undefined as Promise<void> | undefined,
-    released: new AbortController(),
-  }))
-  const stopPolling = every(CACHE_CHECK_INTERVAL_MS, () => {
-    if (shared.released.signal.aborted) return
-    shared.running ??= tick(host, shared.released.signal)
-      .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
-      .finally(() => {
-        shared.running = undefined
-      })
-  })
-  host.onRelease(async () => {
-    shared.released.abort()
-    await shared.running
-  })
-  host.onOpen(async () => {
-    if (shared.released.signal.aborted) shared.released = new AbortController()
-  })
-  host.onClose(async () => {
-    stopPolling()
-    await shared.running
+  host.onOpen(async (opened) => {
+    const released = new AbortController()
+    let running: Promise<void> | undefined
+    opened.defer(async () => {
+      released.abort()
+      await running
+    })
+    opened.defer(
+      every(CACHE_CHECK_INTERVAL_MS, () => {
+        running ??= tick(host, released.signal)
+          .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
+          .finally(() => {
+            running = undefined
+          })
+      }),
+    )
   })
   return defineExtension({ name: 'keep-warm' })
 }

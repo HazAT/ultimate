@@ -27,7 +27,7 @@ import {
   PAUSE_NAME,
   PauseDoc,
 } from '../built-ins.ts'
-import { apis, eventHost, temp, until } from '../../../test/helpers.ts'
+import { apis, eventHost, openers, temp, until } from '../../../test/helpers.ts'
 
 const openedHosts: OpenHost[] = []
 /** The extensions' close callbacks: automations' minute timer stops before its harness closes. */
@@ -51,7 +51,8 @@ async function fixture() {
     faux: fauxProvider(),
   })
   let opened: OpenHost
-  const openers: (() => Promise<void>)[] = []
+  const lifecycle = openers()
+  closers.push(lifecycle.close)
   const tokens = [...lineageDocs, Messages, Todos]
   const resources = new Map<string, unknown>()
   const events = eventHost(() => opened.harness, 'test')
@@ -85,9 +86,8 @@ async function fixture() {
       return resources.get(key)
     },
     metadata: Metadata,
-    onRelease: () => {},
     onClose: (callback: () => Promise<void>) => void closers.push(callback),
-    onOpen: (callback: () => Promise<void>) => void openers.push(callback),
+    onOpen: lifecycle.onOpen,
     projectSetup: async () => ({ decision: false }),
     projectSettings: async () => ({}),
     extensions: () => [
@@ -110,7 +110,7 @@ async function fixture() {
     ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = created.id
     return created.id
   }, context)
-  for (const open of openers) await open()
+  await lifecycle.open()
   await events.start()
   const harness = opened.harness
   const own = async () => (await harness.snapshot(BuiltInDoc, ROOT_CONVERSATION_ID, context))?.id

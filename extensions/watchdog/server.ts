@@ -441,15 +441,7 @@ export default function watchdog(host: ExtensionHost) {
     }, context)
   }
 
-  let unsubscribe: (() => void) | undefined
   let recovery = Promise.resolve()
-  const close = async () => {
-    unsubscribe?.()
-    unsubscribe = undefined
-    await recovery
-  }
-  host.onClose(close)
-  host.onRelease(close)
   host.implement(ChildFailures, {
     holds: (reason) => reportedReasons.includes(reason),
     continues: (input) => continuedFailure(input) !== undefined,
@@ -478,9 +470,8 @@ export default function watchdog(host: ExtensionHost) {
         (await host.harness().snapshot(Reported, ROOT_CONVERSATION_ID, context))?.failures ?? []
       ).filter((failure) => failure.at >= since),
   })
-  host.onOpen(async () => {
-    unsubscribe?.()
-    unsubscribe = onCommit(host.harness(), (publication) => {
+  host.onOpen(async (opened) => {
+    const unsubscribe = onCommit(host.harness(), (publication) => {
       const inputs = publication.changes.flatMap((change) =>
         change.type === 'submission' && failedInput(change.value) ? [change.value] : [],
       )
@@ -495,6 +486,10 @@ export default function watchdog(host: ExtensionHost) {
           )
           .catch((error: unknown) => host.notice(`Watchdog recovery failed: ${String(error)}`))
       }
+    })
+    opened.defer(async () => {
+      unsubscribe()
+      await recovery
     })
     const tasks = await host.harness().commit(async (tx) => {
       const receipts = await tx.doc(Receipts, ROOT_CONVERSATION_ID)

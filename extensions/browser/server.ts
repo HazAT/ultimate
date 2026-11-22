@@ -436,7 +436,7 @@ export default function browserExtension(host: ExtensionHost) {
           })
         },
       }),
-    ].map((tool) => ({ ...tool, outputSchema: { type: 'object' } })),
+    ].map((tool) => ({ ...tool, structuredOutputSchema: { type: 'object' } })),
   })
   async function run(
     args: {
@@ -577,7 +577,7 @@ export default function browserExtension(host: ExtensionHost) {
       )
       context.abortSignal?.throwIfAborted()
       return {
-        structuredContent: {
+        structuredOutput: {
           title,
           ...(result
             ? {

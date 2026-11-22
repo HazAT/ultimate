@@ -21,7 +21,11 @@ export default defineWebExtension({
       order: 3,
     },
   ],
-  entries: { 'subagents.instruction': AgentInput, 'subagents.report': AgentInput },
+  entries: {
+    'subagents.instruction': AgentInput,
+    'subagents.report': AgentInput,
+    'subagents.note': () => null,
+  },
   inbox: AgentInbox,
   provides: [provide(ErrorReport, () => () => errorReport)],
   slots: {

@@ -3,7 +3,6 @@ import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterAll, expect, it } from 'vitest'
 import { context } from '../../../server/harness.ts'
-import { age } from '../server.ts'
 import { apiSummary } from '../../../lib/api-files.ts'
 import { fauxServer, linkDependencies, removeTemp, temp, until } from '../../../test/helpers.ts'
 
@@ -95,9 +94,12 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
   const events = (await debug({ call: 'events', events: ['beta.pinged'] })).split('\n')
   expect(events).toHaveLength(3)
   expect(events.map((line) => line.match(/\{"n":(\d)\}/)?.[1])).toEqual(['3', '2', '1'])
-  expect(events[0]).toMatch(/^\d+s\s+#\d+ {2}beta\.pinged {2}\{"n":3\} {2}trace=\S+ conversation=1/)
+  expect(events[0]).toMatch(
+    /^\d+(\.\d)?m?s\s+#\d+ {2}beta\.pinged {2}\{"n":3\} {2}trace=\S+ conversation=1/,
+  )
   const limited = (await debug({ call: 'events', events: ['beta.pinged'], limit: 2 })).split('\n')
-  expect(limited).toEqual(events.slice(0, 2))
+  const withoutAge = (lines: string[]) => lines.map((line) => line.replace(/^\S+\s+/, ''))
+  expect(withoutAge(limited)).toEqual(withoutAge(events.slice(0, 2)))
   const oldest = Number(/#(\d+)/.exec(events[2])![1])
   expect((await debug({ call: 'events', since: oldest })).split('\n')).toHaveLength(2)
   expect(await debug({ call: 'events', events: ['nothing.here'] })).toBe('No events.')
@@ -108,7 +110,7 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
   await until(async () => (await debug({ call: 'reactors' })).includes('gamma is broken'))
   const reactors = await debug({ call: 'reactors' })
   expect(reactors).toMatch(
-    /^gamma\/on-pinged {2}on beta\.pinged {2}cursor=\d+ {2}lag=3 {2}running {2}failed \d+s ago at #\d+: Error: gamma is broken$/m,
+    /^gamma\/on-pinged {2}on beta\.pinged {2}cursor=\d+ {2}lag=3 {2}running {2}failed \d+(\.\d)?m?s ago at #\d+: Error: gamma is broken$/m,
   )
 
   const catalogue = (await debug({ call: 'catalogue' })).split('\n')
@@ -120,7 +122,7 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
   const rows = (await debug({ call: 'trace', conversation: 1, limit: 2 })).split('\n')
   expect(rows).toHaveLength(2)
   for (const row of rows)
-    expect(row).toMatch(/^\d+s\s+\w+ {2}\S+ → \S+ {2}\d+ms .* trace=\S+ conversation=1$/)
+    expect(row).toMatch(/^\d+(\.\d)?m?s\s+\w+ {2}\S+ → \S+ {2}\d+ms .* trace=\S+ conversation=1$/)
   const first = server.extensions.trace.query().find((row) => row.name === 'alpha/go')!
   // Each later event's commit retries the first event, whose reactor runs join the first trace.
   await until(() => server.extensions.trace.query({ trace: first.trace }).length >= 5)
@@ -157,15 +159,4 @@ it('summarises an api.ts by the first sentence of its opening doc comment, as th
   expect(apiSummary('/** No sentence end */')).toBe('')
   expect(apiSummary('export {}\n/** Too late. */')).toBe('')
   expect(apiSummary('// Not a doc comment.\nexport {}')).toBe('')
-})
-
-it('says ages in the largest whole unit', () => {
-  const now = Date.parse('2026-01-02T00:00:00Z')
-  const ago = (seconds: number) => age(new Date(now - seconds * 1000).toISOString(), now)
-  expect([ago(5), ago(125), ago(3 * 3600 + 5), ago(2 * 86400 + 10)]).toEqual([
-    '5s',
-    '2m',
-    '3h',
-    '2d',
-  ])
 })

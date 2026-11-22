@@ -21,7 +21,7 @@ import {
   useTasks,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { lasted, unwrappedProviderError } from './lasted.ts'
+import { unwrappedProviderError } from './provider-error.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type { PauseState, RunningTask } from './refs.ts'
 
@@ -133,7 +133,10 @@ function Popup(props: { state: PauseState; error?: string; toggle: () => Promise
                 <span class="text-warning">{limit().provider}</span> rate limited{' '}
                 <span class="text-muted-foreground">{limit().model}</span>
                 <Show when={since() !== undefined}>
-                  <span class="text-muted-foreground"> · {lasted(now() - since()!)} ago</span>
+                  <span class="text-muted-foreground">
+                    {' '}
+                    · {formatDuration(now() - since()!)} ago
+                  </span>
                 </Show>
               </div>
               <div class="break-words text-muted-foreground" title={limit().error}>
@@ -141,7 +144,7 @@ function Popup(props: { state: PauseState; error?: string; toggle: () => Promise
               </div>
               <div class="text-muted-foreground">
                 {autoPlayAt() !== undefined
-                  ? `No reset time given: plays by itself in ${lasted(Math.max(0, autoPlayAt()! - now()))}, or press Play.`
+                  ? `No reset time given: plays by itself in ${formatDuration(Math.max(0, autoPlayAt()! - now()))}, or press Play.`
                   : 'No reset time given: nothing retries until Play.'}{' '}
                 A model you switch meanwhile applies on Play.
               </div>
@@ -172,7 +175,7 @@ function Popup(props: { state: PauseState; error?: string; toggle: () => Promise
             <div>
               <span class="text-warning">Paused · safe</span>: nothing runs.{' '}
               <Show when={since() !== undefined}>
-                <span class="text-muted-foreground">for {lasted(now() - since()!)}</span>
+                <span class="text-muted-foreground">for {formatDuration(now() - since()!)}</span>
               </Show>
             </div>
           </Match>

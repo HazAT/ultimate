@@ -11,7 +11,7 @@ import type { Cancel } from '../../lib/timers.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Standing } from '../subagents/api.ts'
 import { PauseApi } from './api.ts'
-import { lasted } from './lasted.ts'
+import { formatDuration } from '../../lib/format.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type {
   AutoPlayed,
@@ -34,10 +34,7 @@ const State = defineDoc<PauseDocState>({
 })
 export const docs = [State]
 
-type Host = Pick<
-  ExtensionHost,
-  'harness' | 'resource' | 'onOpen' | 'onClose' | 'onRelease' | 'implement' | 'conversations'
->
+type Host = Pick<ExtensionHost, 'harness' | 'resource' | 'onOpen' | 'implement' | 'conversations'>
 
 const sharedPauseFlag = (host: Pick<ExtensionHost, 'resource'>) =>
   host.resource('pause.flag', () => ({ paused: false }))
@@ -220,7 +217,7 @@ export async function autoPlay(host: Host, now = Date.now()) {
             model: [
               {
                 role: 'user',
-                content: `Ultimate played by itself ${lasted(now - data.since)} after the rate limit paused it (the user's setting: ${data.minutes} min).`,
+                content: `Ultimate played by itself ${formatDuration(now - data.since)} after the rate limit paused it (the user's setting: ${data.minutes} min).`,
                 timestamp: now,
               },
             ],
@@ -324,7 +321,7 @@ async function noteRunsThenRelease(host: Host, auto = false) {
   const doc = await read(host)
   if (doc.paused && doc.since !== undefined) {
     const until = Date.now()
-    const span = `${lasted(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
+    const span = `${formatDuration(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
     for (const [key, recorded] of Object.entries(doc.runs ?? {})) {
       const id = parseConversationId(Number(key))
       const how = await recordedRunOutcome(host, id, recorded)
@@ -371,16 +368,8 @@ async function noteRunsThenRelease(host: Host, auto = false) {
 
 export default function pauseExtension(host: Host) {
   host.implement(PauseApi, { paused: () => sharedPauseFlag(host).paused })
-  let unsubscribe: (() => void) | undefined
-  const close = async () => {
-    unsubscribe?.()
-    unsubscribe = undefined
-    outsideSchedulerTimer(host).cancel?.()
-  }
-  host.onClose(close)
-  host.onRelease(close)
-  host.onOpen(async () => {
-    unsubscribe?.()
+  host.onOpen(async (opened) => {
+    opened.defer(() => outsideSchedulerTimer(host).cancel?.())
     await serializePause(host, async () => {
       const doc = await read(host)
       sharedPauseFlag(host).paused = doc.paused
@@ -389,7 +378,7 @@ export default function pauseExtension(host: Host) {
       rearmAutoPlay(host, doc)
       await writePauseLimitOnce(host, doc)
     })
-    unsubscribe = onCommit(host.harness(), (publication) => {
+    const unsubscribe = onCommit(host.harness(), (publication) => {
       const generationsSleepingBeforeRetry = new Set(
         publication.changes.flatMap((change) =>
           change.type === 'task' &&
@@ -425,6 +414,7 @@ export default function pauseExtension(host: Host) {
         )
       }
     })
+    opened.defer(unsubscribe)
   })
   return { name: 'pause' }
 }

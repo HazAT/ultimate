@@ -46,9 +46,8 @@ async function lastPlacedInput(
 }
 
 export function overviewBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'scanSubmissions' | 'onOpen' | 'onClose' | 'notice'>,
+  host: Pick<ExtensionHost, 'harness' | 'scanSubmissions' | 'onOpen' | 'notice'>,
 ) {
-  let stop: (() => void) | undefined
   let closed = false
   let draining: Promise<void> | undefined
   const pending = new Set<ConversationId>()
@@ -114,9 +113,9 @@ export function overviewBehavior(
         if (pending.size && !closed) schedule()
       })
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     closed = false
-    stop = onCommit(host.harness(), (publication) => {
+    const stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'conversation') pending.add(change.value.id)
         if (change.type === 'submission') pending.add(change.value.conversationId)
@@ -138,6 +137,11 @@ export function overviewBehavior(
       }
       if (pending.size) schedule()
     })
+    opened.defer(async () => {
+      closed = true
+      stop()
+      await draining
+    })
     await host.harness().commit(async (tx) => {
       let cursor: Cursor | undefined
       do {
@@ -147,11 +151,6 @@ export function overviewBehavior(
       } while (cursor !== undefined)
     }, context)
     schedule()
-    await draining
-  })
-  host.onClose(async () => {
-    closed = true
-    stop?.()
     await draining
   })
 }

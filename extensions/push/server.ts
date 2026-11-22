@@ -185,7 +185,6 @@ export default function pushExtension(host: ExtensionHost) {
     },
   )
 
-  let stop: (() => void) | undefined
   const pushNewFailure = async (tx: Tx) => {
     const token = host.doc(OVERVIEW)
     if (!token) return
@@ -202,9 +201,9 @@ export default function pushExtension(host: ExtensionHost) {
     last.tag = push.tag
     await pushToHiddenBrowsers(tx, push)
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     await committed(pushNewFailure)
-    stop = onCommit(host.harness(), (publication) => {
+    const stop = onCommit(host.harness(), (publication) => {
       if (
         !publication.changes.some(
           (change) =>
@@ -219,13 +218,8 @@ export default function pushExtension(host: ExtensionHost) {
         committed(pushNewFailure),
       )
     })
+    opened.defer(stop)
   })
-  const close = async () => {
-    stop?.()
-    stop = undefined
-  }
-  host.onRelease(close)
-  host.onClose(close)
   return defineExtension({ name: 'push', tasks: [Deliver] })
 }
 

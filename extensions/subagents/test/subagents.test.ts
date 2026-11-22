@@ -1,6 +1,14 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // First: helpers mocks the faux provider's token pacing, which must apply before the server modules load.
-import { apis, eventHost, idleNeed, until, temp, removeTemp } from '../../../test/helpers.ts'
+import {
+  apis,
+  eventHost,
+  idleNeed,
+  openers,
+  until,
+  temp,
+  removeTemp,
+} from '../../../test/helpers.ts'
 import type { Api } from '../../../shared/extension-api.ts'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { projectSettings } from '../../../lib/project-setup.ts'
@@ -92,8 +100,7 @@ async function fixture(
   prepared.registry.install(CodingTools)
   if (extension) prepared.registry.install(extension)
   let opened: OpenHost | undefined
-  const onOpen: (() => Promise<void>)[] = []
-  const onClose: (() => Promise<void>)[] = []
+  const lifecycle = openers()
   const services = apis()
   const need = <S>(api: Api<string, S>) =>
     services.provided.has(api.name) ? services.need(api) : idleNeed(api)
@@ -108,12 +115,7 @@ async function fixture(
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},
-    onOpen: (callback) => {
-      onOpen.push(callback)
-    },
-    onClose: (callback) => {
-      onClose.push(callback)
-    },
+    onOpen: lifecycle.onOpen,
     emit,
   })
   prepared.registry.install(
@@ -163,13 +165,7 @@ async function fixture(
         implement: services.implement,
         need,
         notice: (message: string) => errors.push(message),
-        onOpen: (callback: () => Promise<void>) => {
-          onOpen.push(callback)
-        },
-        onClose: (callback: () => Promise<void>) => {
-          onClose.push(callback)
-        },
-        onRelease: () => {},
+        onOpen: lifecycle.onOpen,
       } as unknown as ExtensionHost),
     )
   prepared.registry.install(
@@ -191,7 +187,6 @@ async function fixture(
       },
       resource: (_key, create) => create(),
       onOpen: () => {},
-      onRelease: () => {},
       onClose: () => {},
       onLoadError: () => {},
       onBeforeLoad: () => {},
@@ -254,10 +249,10 @@ async function fixture(
     opened = await prepared.open()
     const close = opened.close.bind(opened)
     opened.close = async () => {
-      for (const callback of onClose) await callback()
+      await lifecycle.close()
       await close()
     }
-    for (const callback of onOpen) await callback()
+    await lifecycle.open()
     hosts.push(opened)
     return opened
   }
@@ -1242,7 +1237,7 @@ describe('subagents', () => {
           (message) => message.role === 'user' && message.content === 'change direction',
         ),
       )!
-      expect(JSON.stringify(request.messages)).toContain(`Still running subagents: ${id} (scout)`)
+      expect(JSON.stringify(request.messages)).toContain('A yielded wait is not its answer')
       expect(
         request.messages.filter(
           (message) => message.role === 'user' && message.content === 'change direction',
@@ -1253,18 +1248,35 @@ describe('subagents', () => {
       await f.opened.harness.waitForIdle(context)
       expect(await reports(f.opened)).toHaveLength(1)
       expect((await children(f.opened))[0].reported).toHaveLength(action === 'message' ? 2 : 1)
-      expect(
-        f.requests
-          .at(-1)
-          ?.messages.findLast(
-            (message) =>
-              message.role === 'system' && Object.hasOwn(message.sections ?? {}, 'subagent_state'),
-          ),
-      ).toMatchObject({ sections: { subagent_state: '' } })
       await call(f.opened, { action: 'wait', id })
       expect(await reports(f.opened)).toHaveLength(1)
     },
   )
+  it('notes running children before each run while they run, never in the system prompt', async () => {
+    const f = await gatedFixture()
+    const systemEntries = async () =>
+      (await f.opened.root.context(context)).entries.filter((entry) => entry.kind === 'pi.system')
+    await call(f.opened, { action: 'list' })
+    const before = (await systemEntries()).length
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    await until(async () => f.holding.has(child.conversationId))
+    await call(f.opened, { action: 'list' })
+    await call(f.opened, { action: 'list' })
+    f.childGate.release()
+    await until(async () => (await reports(f.opened)).length === 1)
+    await f.opened.harness.waitForIdle(context)
+    await call(f.opened, { action: 'list' })
+    const notes = (await f.opened.root.context(context)).entries.flatMap((entry) =>
+      entry.kind === 'subagents.note' ? [entry.model?.[0]?.content] : [],
+    )
+    expect(notes).toEqual(
+      Array(2).fill(
+        `As this run starts: still running subagents: ${child.conversationId} (scout). Use message, stop, or wait with these IDs; parent stop does not stop them.`,
+      ),
+    )
+    expect(await systemEntries()).toHaveLength(before)
+  })
   it('does not wake for followUp, but does wake for an already queued steer', async () => {
     const f = await gatedFixture()
     await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
@@ -1643,6 +1655,25 @@ describe('subagents', () => {
       label: 'scout',
       title: 'fork task',
     })
+    // A nested call's task has no assistant entry of its own; the fork point is its model-issued ancestor's.
+    await (
+      await opened.root.submit(
+        {
+          type: 'input',
+          content: `CODE text(await tools.subagent({action:'start',agent:'scout',task:'nested fork',fork:true}));`,
+        },
+        context,
+      )
+    ).wait(context)
+    expect(JSON.stringify((await opened.root.context(context)).entries)).toContain(
+      'Child: nested fork',
+    )
+    const nested = requests.find((candidate) =>
+      candidate.messages.some(
+        (message) => message.role === 'user' && message.content === 'nested fork',
+      ),
+    )!
+    expect(JSON.stringify(nested.messages)).toContain('Remember the parent secret: violet')
   })
   it('keeps nested parallel starts distinct and delivers a subsequent nested message', async () => {
     const { opened } = await fixture()

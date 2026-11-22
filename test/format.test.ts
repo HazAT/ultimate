@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { formatAgo } from '../lib/ago.ts'
+import { formatAgo, formatDuration } from '../lib/format.ts'
 
 const minute = 60_000
 const day = 24 * 60 * minute
@@ -33,4 +33,13 @@ it('reads in a sentence with ago, the date fallback unchanged', () => {
     '2d ago',
   ])
   expect(ago(8 * day)).toBe(formatAgo(now - 8 * day, now))
+})
+
+it('says durations in their two largest units, dropping a zero second unit', () => {
+  const second = 1000
+  expect(
+    [420, 3_250, 45 * second, 64 * second, 2 * 60 * minute, 90 * minute, day + 4 * 60 * minute].map(
+      formatDuration,
+    ),
+  ).toEqual(['420ms', '3.2s', '45s', '1m 4s', '2h', '1h 30m', '1d 4h'])
 })

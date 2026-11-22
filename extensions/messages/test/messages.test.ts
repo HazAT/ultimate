@@ -2065,7 +2065,6 @@ function pauser(f: Awaited<ReturnType<typeof fixture>>) {
     },
     onOpen: () => {},
     onClose: () => {},
-    onRelease: () => {},
     implement: () => {},
     conversations: () => [],
   } as unknown as ExtensionHost

@@ -58,16 +58,19 @@ const ask = (id: number, callId: string, args: Record<string, unknown> = {}, sen
   call(BRANCH, id, callId, 'message', { to: 'user', text: 'Preview?', ...args }),
 ]
 
-const script = (id: number, callId: string, asks: number, failed = false) => [
+const script = (id: number, callId: string, asks: number, failed = false, helper = false) => [
   result(BRANCH, id + 1, callId, 'codemode', [{ type: 'text', text: 'done' }], {
     isError: failed,
     details: {
-      calls: Array.from({ length: asks }, (_, n) => ({
-        name: 'message',
-        args: { to: 'user', text: `Q${n + 1}` },
-        status: 'ok',
-        ms: 1,
-      })),
+      calls: [
+        ...(helper ? [{ name: 'ultimate.entries', args: [1], status: 'ok', ms: 1 }] : []),
+        ...Array.from({ length: asks }, (_, n) => ({
+          name: 'message',
+          args: { to: 'user', text: `Q${n + 1}` },
+          status: 'ok',
+          ms: 1,
+        })),
+      ],
     },
   }),
   call(BRANCH, id, callId, 'codemode', { code: '…' }),
@@ -210,6 +213,16 @@ it('a question asked from a script starts after the one before it', async () => 
 
   const trimmed = fixture(branch, [question(4, 'run/2')]).ctx
   expect((await actions.frames({ conversation: BRANCH, message: 4 }, trimmed)).frames).toEqual([])
+})
+
+it('an ultimate.* helper takes no nested call id, so a trimmed log keeps questions apart', async () => {
+  const branch = [
+    ...script(60, 'run', 2, false, true),
+    ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
+    ...script(20, 'older', 1),
+  ]
+  const { ctx } = fixture(branch, [question(4, 'run/2')])
+  expect((await actions.frames({ conversation: BRANCH, message: 4 }, ctx)).frames).toEqual([])
 })
 
 it('a script that asked and then failed still ends its round', async () => {

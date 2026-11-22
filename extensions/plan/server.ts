@@ -87,7 +87,7 @@ const AtomicEditReceipt = defineDoc<{ results: Record<string, string> }>({
 const ORDERED_EMPTY_SECTION = ''
 const structuredReply = (text: string) => ({
   output: [{ type: 'text' as const, text }],
-  structuredContent: JSON.parse(text) as JsonObject,
+  structuredOutput: JSON.parse(text) as JsonObject,
 })
 const required = (value: string | undefined, field: string) => {
   if (value === undefined) throw new Error(`${field} is required`)
@@ -415,6 +415,6 @@ export default (host: ExtensionHost) => {
           return api.memo('result', structuredReply(text), context)
         },
       }),
-    ].map((tool) => ({ ...tool, outputSchema: { type: 'object' } })),
+    ].map((tool) => ({ ...tool, structuredOutputSchema: { type: 'object' } })),
   })
 }
