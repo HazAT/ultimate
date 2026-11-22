@@ -5,7 +5,7 @@ import type {
   Harness,
   JsonObject,
 } from '@earendil-works/pi-durable'
-import { readFile, realpath } from 'node:fs/promises'
+import { readFile, realpath, type FileHandle } from 'node:fs/promises'
 import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
 import { compareExtensions, discoverExtensions, webFacet } from '../lib/discovery.ts'
 import {
@@ -92,6 +92,13 @@ export type ExtensionHost = Pick<
   doc(kind: string): ConversationDocToken<JsonObject> | undefined
   metadata: typeof Metadata
 } & EventHost
+
+export type ExtensionFiles = (
+  id: string,
+  key: string,
+  ctx: { host: ExtensionHost },
+) => Promise<{ file: FileHandle; name: string; type: 'video/webm' } | undefined>
+
 const runOpener = (callback: () => Promise<void>) =>
   callback().catch((error: unknown) => console.error('Extension onOpen:', error))
 const runReleaser = (callback: () => Promise<void>) =>
@@ -257,6 +264,7 @@ export async function loadExtensions(
     return facetHost
   }
   const actions = new Map<string, Record<string, ExtensionAction>>()
+  const fileResolvers = new Map<string, { resolve: ExtensionFiles; host: ExtensionHost }>()
   const userActions = new Map<string, string[]>()
   const pollActions = new Map<string, string[]>()
   const settingsReloads = new Set<string>()
@@ -465,6 +473,7 @@ export async function loadExtensions(
       })
   }
   async function unload(name: string) {
+    fileResolvers.delete(name)
     await dispose(facetHosts.get(name))
     facetHosts.delete(name)
     if (installed.delete(name)) host.registry.uninstall({ name })
@@ -569,6 +578,9 @@ export async function loadExtensions(
           const exportedActions: Record<string, ExtensionAction> = module.actions ?? {}
           if (Object.values(exportedActions).some((action) => typeof action !== 'function'))
             throw new Error('actions must contain functions')
+          const exportedFiles: ExtensionFiles | undefined = module.files
+          if (exportedFiles !== undefined && typeof exportedFiles !== 'function')
+            throw new Error('files must be a function')
           const exportedUserActions: unknown = module.userActions ?? []
           if (
             !Array.isArray(exportedUserActions) ||
@@ -603,11 +615,13 @@ export async function loadExtensions(
           if (sameLayerToolConflicts.length) throw new Error(sameLayerToolConflicts.join('; '))
           host.registry.install(trace.tools(extension))
           const previousHost = facetHosts.get(name)
+          fileResolvers.delete(name)
           facetHosts.set(name, facetHost)
           for (const [key, value] of stagedServicesByFacet.get(facetHost)!)
             providers.set(key, { owner: facetHost, value })
           await dispose(previousHost)
           if (open) await Promise.all([...facetOpeners.get(facetHost)!].map(runOpener))
+          if (exportedFiles) fileResolvers.set(name, { resolve: exportedFiles, host: facetHost })
           actions.set(name, exportedActions)
           userActions.set(name, exportedUserActions)
           pollActions.set(name, exportedPollActions)
@@ -815,6 +829,10 @@ export async function loadExtensions(
     action(name: string, action: string) {
       const table = actions.get(name)
       return table && Object.hasOwn(table, action) ? table[action] : undefined
+    },
+    resolveFile: async (name: string, id: string, key: string) => {
+      const facet = closed ? undefined : fileResolvers.get(name)
+      return facet?.resolve(id, key, { host: facet.host })
     },
     invoke,
     doc: findDoc,

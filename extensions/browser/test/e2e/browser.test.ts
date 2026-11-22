@@ -21,6 +21,7 @@ it('kills a browser that drops its connection and keeps running, without a notic
   const host = {
     home: join(directory, 'home'),
     projectRoot: directory,
+    implement() {},
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     notice: (message: string) => notices.push(message),
@@ -60,6 +61,7 @@ it('times out a hung step, closes its page and keeps later calls working', async
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     notice: (message: string) => notices.push(message),
+    implement() {},
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
   } as unknown as ExtensionHost
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
@@ -102,6 +104,7 @@ it('marks the page as driven without a page error from a sandboxed frame', async
   const host = {
     home: join(directory, 'home'),
     projectRoot: directory,
+    implement() {},
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
@@ -137,6 +140,7 @@ it('names the failure before the console errors', async () => {
   const host = {
     home: join(directory, 'home'),
     projectRoot: directory,
+    implement() {},
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
@@ -169,6 +173,7 @@ it('saves screenshots at the given path, relative to the conversation cwd, creat
   const host = {
     home: join(directory, 'home'),
     projectRoot: join(directory, 'project'),
+    implement() {},
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),

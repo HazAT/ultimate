@@ -1,19 +1,58 @@
-import { access, mkdir, readdir } from 'node:fs/promises'
+import { access, mkdir, readdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { arr, bool, int, lit, map, obj, opt, str, union, unknown } from '@earendil-works/pi-schema'
+import {
+  arr,
+  bool,
+  int,
+  lit,
+  map,
+  obj,
+  opt,
+  str,
+  union,
+  unknown,
+  type Static,
+} from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
-import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
+import { BACKGROUND_CONTEXT, type Context } from '@earendil-works/chord/context'
+import {
+  defineExtension,
+  defineTool,
+  hook,
+  section,
+  ToolTask,
+  type ToolExecutionApi,
+} from '@earendil-works/pi-durable'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { groupTarget, identify } from '../../lib/process-group.ts'
-import type { ExtensionHost } from '../../server/extensions.ts'
+import type { ExtensionFiles, ExtensionHost } from '../../server/extensions.ts'
 import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
 import { watchSteer } from '../../lib/steer.ts'
 import { within as withinDeadline } from '../../lib/timers.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { errnoCode, inProcess, ignoring, meansNone } from '../../lib/errors.ts'
+import { browserVideoOf, type BrowserClip } from '../../lib/browser-video.ts'
+import { BrowserRecordings } from './api.ts'
+import {
+  discardRecording,
+  finalizeRecording,
+  openRecording,
+  prepareRecording,
+  stageRecording,
+  verifyPlayback,
+} from './recordings.ts'
+
+const recordingIdMemo = 'browser-video-id'
+
+export const files: ExtensionFiles = async (id, key, { host }) => {
+  if (key !== 'video') return undefined
+  const recording = await openRecording(host, id, BACKGROUND_CONTEXT)
+  if (recording) return { file: recording.file, name: 'browser-video.webm', type: 'video/webm' }
+  return undefined
+}
 
 export async function playwrightChromiums(
   home: string,
@@ -131,6 +170,14 @@ async function capture(page: Page, file: string, selector?: string, fullPage = f
 }
 
 export default function browserExtension(host: ExtensionHost) {
+  host.implement(BrowserRecordings, {
+    async find(id, ctx) {
+      const recording = await openRecording(host, id, ctx)
+      if (!recording) return undefined
+      await recording.file.close()
+      return { ...recording.clip, conversation: recording.conversation }
+    },
+  })
   const state = host.resource('browser', () => {
     const resource: { launched?: Promise<Browser>; browser?: Browser } = {}
     host.onClose(async () => {
@@ -150,8 +197,77 @@ export default function browserExtension(host: ExtensionHost) {
       int({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
     ),
   }
+  const steps = arr(
+    union([
+      obj({ click: str() }),
+      obj({
+        fill: arr(str(), {
+          minItems: 2,
+          maxItems: 2,
+          description: '[selector, value]',
+        }),
+      }),
+      obj({ press: str() }),
+      obj({ wait: str({ description: 'A selector to wait for.' }) }),
+      obj({
+        eval: str({
+          description:
+            "One expression, its value returned: 'document.title'. For statements or await, an async IIFE: '(async () => { const r = await fetch(\"/api/x\"); return r.status })()'. A bare 'const x = …; return x' fails.",
+        }),
+      }),
+      obj({
+        send: str(),
+        conversation: opt(int({ minimum: 1 })),
+      }),
+      obj({ ui: lit('snapshot') }),
+      obj({
+        ui: lit('query'),
+        text: opt(str()),
+        within: opt(str({ description: 'A list component whose items to return.' })),
+        kind: opt(str({ description: 'One component kind, like select.' })),
+      }),
+      obj({
+        ui: lit('act'),
+        steps: arr(
+          obj({
+            ref: str({ description: 'A ref from snapshot, or the label.' }),
+            action: str({ description: 'One of the component’s actions.' }),
+            args: opt(arr(unknown())),
+          }),
+          { minItems: 1 },
+        ),
+      }),
+      obj({
+        until: union([
+          lit('idle'),
+          lit('quiet'),
+          obj({ entry: str() }),
+          obj({
+            event: str(),
+            where: opt(map(unknown())),
+          }),
+          obj({
+            ui: str({ description: 'A control’s exact label or ref.' }),
+            is: opt(map(unknown(), { description: 'State it must have, like {open: true}.' })),
+          }),
+        ]),
+        conversation: opt(int({ minimum: 1 })),
+        timeoutMs: opt(int({ minimum: 1, maximum: maxUntilTimeoutMs })),
+      }),
+    ]),
+  )
   return defineExtension({
     name: 'browser',
+    hooks: [
+      hook(ToolTask, {
+        async afterTool(call, result, api, ctx) {
+          if (call.name !== 'browser_video') return
+          const id = await api.memo<string>(recordingIdMemo, ctx)
+          if (id && (result.isError || browserVideoOf(result.details)?.id !== id))
+            await discardRecording(host.home, id)
+        },
+      }),
+    ],
     sections: [
       section(
         'visual_verification',
@@ -188,220 +304,192 @@ export default function browserExtension(host: ExtensionHost) {
         name: 'browser',
         description:
           "Drive a fresh browser page and report each step's outcome, then an image unless screenshot: false. Each step times out after 30 s. On an Ultimate page (this UI or a preview) every control is a ui-sdk component: drive it with `ui` steps, not selectors. {ui: 'query', text} finds controls by label or row text, with their ref, state and actions; {ui: 'act', steps: [{ref, action, args?}]} runs actions as the agent (ref: the exact label or a ref) and returns what changed and what appeared, like [{ref: 'System', action: 'press'}] to switch surface or [{ref: 'Keep warm', action: 'setChecked', args: [false]}]; {ui: 'snapshot'} lists the page's controls (long pages stop at 100: prefer query). `send` submits a prompt and `until` waits on state, never a guessed time: 'idle' (that conversation's turn is done), 'quiet' (nothing is busy, branches and subagents included), {entry: kind}, {event: name, where} or {ui: label, is: {checked: false}} (that control has that state; is omitted: it is on the page); until fails after 10 s and says what it saw: a control, a state or an event that takes longer is a bug to report. Only waiting on a model turn ('idle', 'quiet' or {entry: 'assistant'} after a send) passes a longer timeoutMs, at most 120000. eval is not for waiting: no setTimeout sleeps in it; use until. click, fill, press and a selector wait are for testing the interaction itself or pages without ui-sdk; scope them to one card or panel ('[data-entry-id=\"42\"] button:has-text(\"Retry\")'). eval reads what no control holds: transcript text, layout, styles.",
+        parameters: obj({ ...base, steps, screenshot: opt(bool()) }),
+        execute: (args, api, context) => drive(args, api, context),
+      }),
+      defineTool({
+        name: 'browser_video',
+        callers: ['model'],
+        description:
+          'Drive a fresh, isolated browser page with the same steps as browser and save a private WebM. Use it when motion or interaction needs to be shown. Record only an isolated demo with synthetic data, never a personal session or real user data. Reports step outcomes and returns a playable clip ID on success.',
         parameters: obj({
-          ...base,
-          steps: arr(
-            union([
-              obj({ click: str() }),
-              obj({
-                fill: arr(str(), {
-                  minItems: 2,
-                  maxItems: 2,
-                  description: '[selector, value]',
-                }),
-              }),
-              obj({ press: str() }),
-              obj({ wait: str({ description: 'A selector to wait for.' }) }),
-              obj({
-                eval: str({
-                  description:
-                    "One expression, its value returned: 'document.title'. For statements or await, an async IIFE: '(async () => { const r = await fetch(\"/api/x\"); return r.status })()'. A bare 'const x = …; return x' fails.",
-                }),
-              }),
-              obj({
-                send: str(),
-                conversation: opt(int({ minimum: 1 })),
-              }),
-              obj({ ui: lit('snapshot') }),
-              obj({
-                ui: lit('query'),
-                text: opt(str()),
-                within: opt(str({ description: 'A list component whose items to return.' })),
-                kind: opt(str({ description: 'One component kind, like select.' })),
-              }),
-              obj({
-                ui: lit('act'),
-                steps: arr(
-                  obj({
-                    ref: str({ description: 'A ref from snapshot, or the label.' }),
-                    action: str({ description: 'One of the component’s actions.' }),
-                    args: opt(arr(unknown())),
-                  }),
-                  { minItems: 1 },
-                ),
-              }),
-              obj({
-                until: union([
-                  lit('idle'),
-                  lit('quiet'),
-                  obj({ entry: str() }),
-                  obj({
-                    event: str(),
-                    where: opt(map(unknown())),
-                  }),
-                  obj({
-                    ui: str({ description: 'A control’s exact label or ref.' }),
-                    is: opt(
-                      map(unknown(), { description: 'State it must have, like {open: true}.' }),
-                    ),
-                  }),
-                ]),
-                conversation: opt(int({ minimum: 1 })),
-                timeoutMs: opt(int({ minimum: 1, maximum: maxUntilTimeoutMs })),
-              }),
-            ]),
-          ),
-          screenshot: opt(bool()),
+          url: str({ description: 'Absolute URL of the isolated demo to record.' }),
+          synthetic: lit(true, {
+            description: 'Confirm this is an isolated demo with synthetic data only.',
+          }),
+          timeoutMs: base.timeoutMs,
+          steps,
         }),
-        async execute(args, api, context) {
-          const waits = args.steps.reduce(
-            (sum, step) => sum + ('until' in step ? (step.timeoutMs ?? untilTimeoutMs) : 0),
-            0,
-          )
-          return run(args, waits, api, context, async (page, outcomes, png, guard) => {
-            const ultimateControlsMounted = () =>
-              guard(
-                page
-                  .waitForFunction(
-                    () =>
-                      !document.querySelector('meta[name=ultimate-web]') || !!window.ultimate?.ui,
-                  )
-                  .then(() =>
-                    page.evaluate(() =>
-                      document.querySelector('meta[name=ultimate-web]')
-                        ? window.ultimate!.ui.ready()
-                        : undefined,
-                    ),
-                  ),
-              )
-            for (const [index, step] of args.steps.entries()) {
-              context.abortSignal?.throwIfAborted()
-              api.output(`Step ${index + 1}: ${JSON.stringify(step)}\n`)
-              try {
-                let value: unknown
-                if ('click' in step || 'fill' in step || 'press' in step)
-                  await ultimateControlsMounted()
-                if ('click' in step) await guard(page.locator(step.click).click())
-                else if ('fill' in step) await guard(page.locator(step.fill[0]).fill(step.fill[1]))
-                else if ('press' in step) await guard(page.keyboard.press(step.press))
-                else if ('wait' in step) await guard(page.locator(step.wait).waitFor())
-                else if ('send' in step || 'until' in step || 'ui' in step) {
-                  const waitForLoadedSdk = () =>
-                    guard(
-                      page
-                        .waitForFunction(() => 'ultimate' in window)
-                        .catch(() => {
-                          throw new Error(
-                            'This page has no window.ultimate: not an Ultimate UI, or one older than send/until steps',
-                          )
-                        }),
-                    )
-                  await waitForLoadedSdk()
-                  if ('ui' in step) {
-                    const outcome = await guard(
-                      page.evaluate((uiStep) => {
-                        const ui = window.ultimate!.ui
-                        if (!ui)
-                          return {
-                            error:
-                              'This page has no window.ultimate.ui: an Ultimate UI older than ui steps',
-                          }
-                        const work =
-                          uiStep.ui === 'snapshot'
-                            ? ui.snapshot()
-                            : uiStep.ui === 'query'
-                              ? ui.query({
-                                  text: uiStep.text,
-                                  within: uiStep.within,
-                                  kind: uiStep.kind,
-                                })
-                              : ui.act({ steps: uiStep.steps })
-                        return work.then(
-                          (result: unknown) => ({ result }),
-                          (error: unknown) => ({ error: String(error) }),
-                        )
-                      }, step),
-                    )
-                    if ('error' in outcome) throw new Error(outcome.error.replace(/^Error: /, ''))
-                    value = outcome.result
-                  } else if ('send' in step)
-                    value = await guard(
-                      page.evaluate(
-                        ([text, conversation]) =>
-                          window.ultimate!.send(text, { conversation: conversation ?? undefined }),
-                        [step.send, step.conversation ?? null] as const,
-                      ),
-                    )
-                  else {
-                    const ms = step.timeoutMs ?? untilTimeoutMs
-                    const end = Date.now() + ms
-                    const waitWithoutResending = () =>
-                      guard(
-                        page.evaluate(
-                          ([condition, conversation, timeoutMs]) =>
-                            window
-                              .ultimate!.until(condition, {
-                                conversation: conversation ?? undefined,
-                                timeoutMs,
-                              })
-                              .then(
-                                (result) => ({ result }),
-                                (error: unknown) => ({ error: String(error) }),
-                              ),
-                          [
-                            step.until,
-                            step.conversation ?? null,
-                            Math.max(1, end - Date.now()),
-                          ] as const,
-                        ),
-                        ms,
-                      )
-                    const { promise: steered, resolve: steer } = Promise.withResolvers<'steered'>()
-                    const stopSteer = await watchSteer(api, context, () => steer('steered'))
-                    const started = Date.now()
-                    let outcome: Awaited<ReturnType<typeof waitWithoutResending>> | 'steered'
-                    try {
-                      for (;;) {
-                        try {
-                          outcome = await Promise.race([waitWithoutResending(), steered])
-                          break
-                        } catch (error) {
-                          const pageReloadDestroyedWait = String(error).includes(
-                            'Execution context was destroyed',
-                          )
-                          if (!pageReloadDestroyedWait) throw error
-                          context.abortSignal?.throwIfAborted()
-                          api.output('The page reloaded; waiting again\n')
-                          await waitForLoadedSdk()
-                        }
-                      }
-                    } finally {
-                      await stopSteer()
-                    }
-                    if (outcome === 'steered') {
-                      outcomes.push(
-                        `Step ${index + 1}: interrupted by a steering message after ${Math.round((Date.now() - started) / 1000)}s; later steps did not run`,
-                      )
-                      return undefined
-                    }
-                    if ('error' in outcome) throw new Error(outcome.error.replace(/^Error: /, ''))
-                    value = outcome.result
-                  }
-                } else value = await guard(page.evaluate(step.eval))
-                outcomes.push(
-                  `Step ${index + 1}: OK${value === undefined ? '' : ` ${JSON.stringify(value)}`}`,
-                )
-              } catch (error) {
-                outcomes.push(`Step ${index + 1}: ${String(error)}`)
-                throw error
-              }
-            }
-            return args.screenshot === false ? undefined : guard(capture(page, png))
-          })
-        },
+        execute: (args, api, context) => drive(args, api, context, true),
       }),
     ].map((tool) => ({ ...tool, outputSchema: { type: 'object' } })),
   })
+
+  function drive(
+    args: {
+      url?: string
+      path?: string
+      timeoutMs?: number
+      screenshot?: boolean
+      steps: Static<typeof steps>
+    },
+    api: ToolExecutionApi,
+    context: Context,
+    record = false,
+  ) {
+    const waits = args.steps.reduce(
+      (sum, step) => sum + ('until' in step ? (step.timeoutMs ?? untilTimeoutMs) : 0),
+      0,
+    )
+    return run(
+      args,
+      waits,
+      api,
+      context,
+      async (page, outcomes, png, guard) => {
+        const ultimateControlsMounted = () =>
+          guard(
+            page
+              .waitForFunction(
+                () => !document.querySelector('meta[name=ultimate-web]') || !!window.ultimate?.ui,
+              )
+              .then(() =>
+                page.evaluate(() =>
+                  document.querySelector('meta[name=ultimate-web]')
+                    ? window.ultimate!.ui.ready()
+                    : undefined,
+                ),
+              ),
+          )
+        for (const [index, step] of args.steps.entries()) {
+          context.abortSignal?.throwIfAborted()
+          api.output(`Step ${index + 1}: ${JSON.stringify(step)}\n`)
+          try {
+            let value: unknown
+            if ('click' in step || 'fill' in step || 'press' in step)
+              await ultimateControlsMounted()
+            if ('click' in step) await guard(page.locator(step.click).click())
+            else if ('fill' in step) await guard(page.locator(step.fill[0]).fill(step.fill[1]))
+            else if ('press' in step) await guard(page.keyboard.press(step.press))
+            else if ('wait' in step) await guard(page.locator(step.wait).waitFor())
+            else if ('send' in step || 'until' in step || 'ui' in step) {
+              const waitForLoadedSdk = () =>
+                guard(
+                  page
+                    .waitForFunction(() => 'ultimate' in window)
+                    .catch(() => {
+                      throw new Error(
+                        'This page has no window.ultimate: not an Ultimate UI, or one older than send/until steps',
+                      )
+                    }),
+                )
+              await waitForLoadedSdk()
+              if ('ui' in step) {
+                const outcome = await guard(
+                  page.evaluate((uiStep) => {
+                    const ui = window.ultimate!.ui
+                    if (!ui)
+                      return {
+                        error:
+                          'This page has no window.ultimate.ui: an Ultimate UI older than ui steps',
+                      }
+                    const work =
+                      uiStep.ui === 'snapshot'
+                        ? ui.snapshot()
+                        : uiStep.ui === 'query'
+                          ? ui.query({
+                              text: uiStep.text,
+                              within: uiStep.within,
+                              kind: uiStep.kind,
+                            })
+                          : ui.act({ steps: uiStep.steps })
+                    return work.then(
+                      (result: unknown) => ({ result }),
+                      (error: unknown) => ({ error: String(error) }),
+                    )
+                  }, step),
+                )
+                if ('error' in outcome) throw new Error(outcome.error.replace(/^Error: /, ''))
+                value = outcome.result
+              } else if ('send' in step)
+                value = await guard(
+                  page.evaluate(
+                    ([text, conversation]) =>
+                      window.ultimate!.send(text, { conversation: conversation ?? undefined }),
+                    [step.send, step.conversation ?? null] as const,
+                  ),
+                )
+              else {
+                const ms = step.timeoutMs ?? untilTimeoutMs
+                const end = Date.now() + ms
+                const waitWithoutResending = () =>
+                  guard(
+                    page.evaluate(
+                      ([condition, conversation, timeoutMs]) =>
+                        window
+                          .ultimate!.until(condition, {
+                            conversation: conversation ?? undefined,
+                            timeoutMs,
+                          })
+                          .then(
+                            (result) => ({ result }),
+                            (error: unknown) => ({ error: String(error) }),
+                          ),
+                      [
+                        step.until,
+                        step.conversation ?? null,
+                        Math.max(1, end - Date.now()),
+                      ] as const,
+                    ),
+                    ms,
+                  )
+                const { promise: steered, resolve: steer } = Promise.withResolvers<'steered'>()
+                const stopSteer = await watchSteer(api, context, () => steer('steered'))
+                const started = Date.now()
+                let outcome: Awaited<ReturnType<typeof waitWithoutResending>> | 'steered'
+                try {
+                  for (;;) {
+                    try {
+                      outcome = await Promise.race([waitWithoutResending(), steered])
+                      break
+                    } catch (error) {
+                      const pageReloadDestroyedWait = String(error).includes(
+                        'Execution context was destroyed',
+                      )
+                      if (!pageReloadDestroyedWait) throw error
+                      context.abortSignal?.throwIfAborted()
+                      api.output('The page reloaded; waiting again\n')
+                      await waitForLoadedSdk()
+                    }
+                  }
+                } finally {
+                  await stopSteer()
+                }
+                if (outcome === 'steered') {
+                  outcomes.push(
+                    `Step ${index + 1}: interrupted by a steering message after ${Math.round((Date.now() - started) / 1000)}s; later steps did not run`,
+                  )
+                  if (record) throw new Error('Recording interrupted by a steering message')
+                  return undefined
+                }
+                if ('error' in outcome) throw new Error(outcome.error.replace(/^Error: /, ''))
+                value = outcome.result
+              }
+            } else value = await guard(page.evaluate(step.eval))
+            outcomes.push(
+              `Step ${index + 1}: OK${value === undefined ? '' : ` ${JSON.stringify(value)}`}`,
+            )
+          } catch (error) {
+            outcomes.push(`Step ${index + 1}: ${String(error)}`)
+            throw error
+          }
+        }
+        return record || args.screenshot === false ? undefined : guard(capture(page, png))
+      },
+      record,
+    )
+  }
+
   async function run(
     args: {
       url?: string
@@ -412,8 +500,8 @@ export default function browserExtension(host: ExtensionHost) {
       timeoutMs?: number
     },
     waits: number,
-    api: { output(text: string): void; env?: { cwd: string } },
-    context: { abortSignal?: AbortSignal },
+    api: ToolExecutionApi,
+    context: Context,
     action: (
       page: Page,
       outcomes: string[],
@@ -427,9 +515,12 @@ export default function browserExtension(host: ExtensionHost) {
         }
       | undefined
     >,
+    record = false,
   ) {
     const outcomes: string[] = []
+    let staging: string | undefined
     let isolated: BrowserContext | undefined
+    let closing: Promise<boolean> | undefined
     let page: Page | undefined
     const stepMs = args.timeoutMs ?? stepTimeoutMs
     const coldLaunchAndPageSetupMs = Math.max(stepMs, stepTimeoutMs)
@@ -452,10 +543,12 @@ export default function browserExtension(host: ExtensionHost) {
         () => [],
         (error: unknown) => [`The page's last UI-state writes were not sent: ${String(error)}`],
       )
-    const abort = () => void closeContextOrRelaunchBrowser(isolated)
+    const close = () => (closing ??= closeContextOrRelaunchBrowser(isolated))
+    const abort = () => void close()
     try {
       const png = screenshotFile(host.home, api.env?.cwd ?? host.projectRoot, args.path)
       context.abortSignal?.throwIfAborted()
+      const recordingUrl = record ? new URL(args.url ?? '').href : undefined
       if (!state.launched) {
         const launched: Promise<Browser> = browserBinary()
           .then(async (executablePath) => {
@@ -492,14 +585,18 @@ export default function browserExtension(host: ExtensionHost) {
       }
       const browser = await within(coldLaunchAndPageSetupMs, state.launched)
       context.abortSignal?.throwIfAborted()
+      if (record) staging = await stageRecording(host.home)
+      const viewport = { width: args.width ?? 1440, height: args.height ?? 900 }
       isolated = await within(
         coldLaunchAndPageSetupMs,
         browser.newContext({
-          viewport: { width: args.width ?? 1440, height: args.height ?? 900 },
+          viewport,
           colorScheme: args.theme,
+          ...(staging && { recordVideo: { dir: staging, size: viewport } }),
         }),
       )
       context.abortSignal?.addEventListener('abort', abort, { once: true })
+      context.abortSignal?.throwIfAborted()
       page = await within(coldLaunchAndPageSetupMs, isolated.newPage())
       deadline = Date.now() + totalMs
       page.setDefaultTimeout(stepMs)
@@ -509,7 +606,7 @@ export default function browserExtension(host: ExtensionHost) {
         if (message.type() === 'error') outcomes.push(`Console error: ${message.text()}`)
       })
       page.on('pageerror', (error) => outcomes.push(`Page error: ${error.message}`))
-      const url = new URL(args.url ?? '', host.system().process.url).href
+      const url = recordingUrl ?? new URL(args.url ?? '', host.system().process.url).href
       await guard(
         page.addInitScript(() => {
           if (origin !== 'null') sessionStorage.setItem('ultimate.driven', '1')
@@ -524,9 +621,15 @@ export default function browserExtension(host: ExtensionHost) {
         )
       }
       api.output(`Loading ${url}\n`)
-      await guard(page.goto(url, { waitUntil: 'domcontentloaded' }))
+      const response = await guard(page.goto(url, { waitUntil: 'domcontentloaded' }))
+      if (record) {
+        if (response && response.status() >= 400)
+          throw new Error(`Page load failed: HTTP ${response.status()}`)
+        await guard(waitForCompositorSurface(page))
+      }
       const result = await action(page, outcomes, png, guard)
       outcomes.push(...(await sendUnsavedUiState(page)))
+      if (record) await guard(waitForCompositorSurface(page))
       const title = await guard(page.title())
       const maps = new Map()
       const readFromRedirectedOrigin = fetchAssets(new URL(page.url()).origin)
@@ -540,7 +643,39 @@ export default function browserExtension(host: ExtensionHost) {
         )),
       )
       context.abortSignal?.throwIfAborted()
+      let video: BrowserClip | undefined
+      if (staging) {
+        const recording = page.video()
+        if (!recording || page.isClosed() || !(await close()) || !browser.isConnected())
+          throw new Error('The browser did not finish recording')
+        isolated = undefined
+        page = undefined
+        context.abortSignal?.throwIfAborted()
+        const file = await prepareRecording(staging, await recording.path())
+        context.abortSignal?.throwIfAborted()
+        let openingSettled = false
+        isolated = await guard(
+          browser.newContext({ acceptDownloads: false }).then(async (verifier) => {
+            if (openingSettled) await closeContextOrRelaunchBrowser(verifier)
+            return verifier
+          }),
+        ).finally(() => {
+          openingSettled = true
+        })
+        closing = undefined
+        context.abortSignal?.throwIfAborted()
+        const verifier = await guard(isolated.newPage())
+        await guard(verifyPlayback(verifier, file))
+        if (!(await close())) throw new Error('The browser did not finish verifying the recording')
+        isolated = undefined
+        context.abortSignal?.throwIfAborted()
+        const id = await api.memo(recordingIdMemo, randomUUID(), context)
+        await finalizeRecording(staging, id, api.taskId, context)
+        video = { id, title }
+        staging = undefined
+      }
       return {
+        ...(video && { details: { video } }),
         structuredContent: {
           title,
           ...(result
@@ -551,6 +686,7 @@ export default function browserExtension(host: ExtensionHost) {
                 file: result.file,
               }
             : {}),
+          ...(video && { video }),
           outcomes,
         },
         output: [
@@ -558,9 +694,12 @@ export default function browserExtension(host: ExtensionHost) {
           ...(result?.image ? [result.image] : []),
           {
             type: 'text' as const,
-            text: [`Title: ${title}`, ...(result ? [`PNG: ${result.file}`] : []), ...outcomes].join(
-              '\n',
-            ),
+            text: [
+              `Title: ${title}`,
+              ...(result ? [`PNG: ${result.file}`] : []),
+              ...(video ? [`Video ID: ${video.id}`] : []),
+              ...outcomes,
+            ].join('\n'),
           },
         ],
       }
@@ -574,17 +713,22 @@ export default function browserExtension(host: ExtensionHost) {
       }
     } finally {
       context.abortSignal?.removeEventListener('abort', abort)
-      await closeContextOrRelaunchBrowser(isolated)
+      try {
+        if (isolated) await close()
+      } finally {
+        if (staging) await rm(staging, { force: true, recursive: true })
+      }
     }
   }
 
   async function closeContextOrRelaunchBrowser(isolated: BrowserContext | undefined) {
-    if (!isolated) return
+    if (!isolated) return false
     try {
       await within(closeTimeoutMs, isolated.close())
+      return true
     } catch (error) {
       const browser = isolated.browser()
-      if (!browser?.isConnected()) return
+      if (!browser?.isConnected()) return false
       host.notice(`Closing a browser context failed (${String(error)}); relaunching the browser.`)
       if (state.browser === browser) {
         state.launched = undefined
@@ -593,6 +737,7 @@ export default function browserExtension(host: ExtensionHost) {
       await within(closeTimeoutMs, browser.close()).catch((reason: unknown) =>
         host.notice(`Closing the wedged browser failed: ${String(reason)}`),
       )
+      return false
     }
   }
 }

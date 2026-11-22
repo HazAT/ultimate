@@ -179,7 +179,10 @@ export function LandingCard(props: {
                 />
               )}
             </Show>
-            <Provided input={{ conversation: props.from }} point={LandingExtras} />
+            <Provided
+              input={{ conversation: props.from, card: props.card }}
+              point={LandingExtras}
+            />
           </Show>
         </div>
       </section>

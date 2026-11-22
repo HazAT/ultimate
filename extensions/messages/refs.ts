@@ -31,6 +31,9 @@ export type Question = {
   placeholder?: string
 }
 
+/** A finalized browser clip selected for a review question. */
+export type QuestionClip = { id: string; title: string }
+
 /** One message as the log stores it. */
 export type Message = {
   id: number
@@ -61,6 +64,8 @@ export type Message = {
   interim?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
+  /** The sender's explicitly selected review clip, admitted with the message. */
+  video?: QuestionClip
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
   via?: Via
 }

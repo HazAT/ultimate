@@ -133,6 +133,7 @@
     "extensions/review/link-state.ts",
     "extensions/review/sha256.ts",
     "lib/ago.ts",
+    "lib/browser-video.ts",
     "lib/cell.ts",
     "lib/plural.ts",
     "lib/compare.ts",

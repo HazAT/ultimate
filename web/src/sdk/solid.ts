@@ -19,6 +19,7 @@ export {
   writerNow,
   writingAs,
 } from './hooks.ts'
+export { extensionFileUrl } from './extension-files.ts'
 export {
   closePanel,
   covered,

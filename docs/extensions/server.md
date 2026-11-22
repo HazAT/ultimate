@@ -7,7 +7,7 @@ receiving the `ExtensionHost` below. See `prompt/` for prompt sections and `codi
 root `AGENTS.md` explains reloads and durability. Local imported modules reload with the facet; a failed load leaves
 the previous version installed. Besides the extension it may export `docs` ([documents](documents.md)), `actions`,
 `userActions` and `pollActions` ([actions](actions.md)), `secrets` ([secrets](places.md#secrets)),
-`reloadOnSettings` (below) and `order`.
+`files` (below), `reloadOnSettings` (below) and `order`.
 
 ## Order and prompt sections
 
@@ -18,6 +18,21 @@ Prompt sections stay stable between turns: the same conversation renders the sam
 stays cached. Anything that changes while a conversation runs (a count, a list, a time) goes in a per-input note
 from a `beforeInput` hook instead. For example, `todos/server.ts` does not list open to-dos in a section; its
 `beforeInput` returns a note only when the list changed since the conversation last saw it.
+
+## Private files
+
+An installed server facet may export `files: ExtensionFiles` (a type from `server/extensions.ts`) to serve private
+WebM recordings. The async resolver receives `(id, key, { host })`. Look up the opaque identifiers in your own records,
+never as filesystem paths. Return `undefined` for unknown files, otherwise `{ file, name, type: 'video/webm' }` with a
+fresh, validated `FileHandle` to a regular file. The server takes ownership of the returned handle and closes it,
+including on disconnect. The suggested filename `name` is sanitized before being sent.
+
+`GET` or `HEAD /api/extensions/<extension>/files/<id>/<key>` passes regular Ultimate admission and requires
+`Sec-Fetch-Site: same-origin`. Each variable segment is 1–128 ASCII letters, digits, underscores or hyphens. GET
+supports one byte range; invalid or unsatisfiable ranges return `416`. HEAD returns metadata only. Responses are
+not cached. Disabling the facet removes its resolver; the URL is for same-origin playback, not a share link.
+
+Use [`extensionFileUrl`](sdk.md#reading-and-acting) from `@/sdk/solid` as the source of a native `<video>` element.
 
 ## Extension host
 

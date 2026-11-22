@@ -13,6 +13,7 @@ it('refuses an until timeoutMs above 120 s', () => {
   const host = {
     resource: <T>(_name: string, create: () => T) => create(),
     onClose() {},
+    implement() {},
   } as unknown as ExtensionHost
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const call = (timeoutMs: number) => () =>

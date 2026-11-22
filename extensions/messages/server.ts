@@ -352,6 +352,14 @@ export default function messages(host: ExtensionHost) {
           steer: opt(bool()),
           images: opt(imagesParameter),
           questions: opt(questionsParameter),
+          video: opt(
+            str({
+              minLength: 36,
+              maxLength: 36,
+              description:
+                'The exact browser_video clip ID for a reply-expected message to the user.',
+            }),
+          ),
         }),
         ...safeToRerun(
           'The task-scoped receipt deduplicates admission; the memo returns the same id on replay.',

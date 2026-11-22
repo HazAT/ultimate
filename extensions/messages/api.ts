@@ -16,7 +16,7 @@ import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { MessagesDoc } from './refs.ts'
-import type { Question, Remote, Via } from './refs.ts'
+import type { Question, QuestionClip, Remote, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -50,6 +50,8 @@ export type Message = {
   ownerSettled?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
+  /** The sender's explicitly selected review clip, admitted with the message. */
+  video?: QuestionClip
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
   via?: Via
 }
@@ -62,6 +64,17 @@ export const Messages = defineDoc<{ messages: Message[]; next: number }>({
   history: 'latest',
   fork: 'initial',
   initial: () => ({ messages: [], next: 1 }),
+})
+
+/** Clip IDs the conversation attached to review questions, retained after closed messages are trimmed. */
+export const QuestionVideos = defineDoc<{ ids: string[] }>({
+  kind: 'board.question-videos',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ ids: [] }),
 })
 
 export type MessagesService = {
@@ -131,5 +144,11 @@ export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')
+
+/** Admission point for an explicitly selected browser clip on a review question. */
+export const QuestionVideo = defineApi<{
+  /** Resolve the exact clip from the sender's completed recordings, or reject the attachment. */
+  validate(sender: ConversationId, id: string, ctx: Context): Promise<QuestionClip>
+}>()('messages.question-video')
 
 export const tier = 'core'

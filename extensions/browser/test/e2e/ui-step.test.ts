@@ -79,6 +79,7 @@ async function boot() {
   const host = {
     home: join(home, 'shots'),
     projectRoot: home,
+    implement() {},
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => cleanup.push(close),
     notice() {},
