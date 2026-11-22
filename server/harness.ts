@@ -14,7 +14,7 @@ import { AgentDoc, createRegistry, Harness } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { UiState } from '../shared/ui-state.ts'
 import { listModels } from './models.ts'
-import { guardToolArguments, modelTrace } from './tool-arguments.ts'
+import { guardToolArguments, modelTrace, validationHints } from './tool-arguments.ts'
 import { readFamilies } from '../lib/families-settings.ts'
 import { callTrace } from './trace.ts'
 import { projectSkills } from './skills.ts'
@@ -140,9 +140,35 @@ export async function prepareHarness(options: HostOptions) {
     }
     return found
   }
+  const orderedExtensions = () =>
+    registry
+      .snapshot()
+      .installed()
+      .toSorted((a, b) =>
+        compareExtensions(
+          {
+            name: a.name,
+            source: extensionSources.get(a.name) ?? 'builtin',
+            order: extensionOrders.get(a.name),
+          },
+          {
+            name: b.name,
+            source: extensionSources.get(b.name) ?? 'builtin',
+            order: extensionOrders.get(b.name),
+          },
+        ),
+      )
   const trace = callTrace(() => chapter.trace)
   const modelCalls = modelTrace(trace)
   registry.install(modelCalls.extension)
+  registry.install(
+    validationHints(
+      (name) =>
+        orderedExtensions()
+          .flatMap((extension) => extension.tools ?? [])
+          .findLast((tool) => tool.name === name)?.parameters,
+    ),
+  )
   const guardedRuntime = guardToolArguments(runtime, modelCalls)
   const contextWindow = (provider: string, modelId: string) =>
     guardedRuntime.getModel(provider, modelId)?.contextWindow
@@ -235,25 +261,7 @@ export async function prepareHarness(options: HostOptions) {
           {
             models: guardedRuntime,
             registry,
-            settings: createHarnessSettings(settings, contextWindow, () =>
-              registry
-                .snapshot()
-                .installed()
-                .toSorted((a, b) =>
-                  compareExtensions(
-                    {
-                      name: a.name,
-                      source: extensionSources.get(a.name) ?? 'builtin',
-                      order: extensionOrders.get(a.name),
-                    },
-                    {
-                      name: b.name,
-                      source: extensionSources.get(b.name) ?? 'builtin',
-                      order: extensionOrders.get(b.name),
-                    },
-                  ),
-                ),
-            ),
+            settings: createHarnessSettings(settings, contextWindow, orderedExtensions),
             env: processHelperExecutionEnv,
             onReport: (report) =>
               options.report?.({ level: 'error', message: reportMessage(report) }),

@@ -315,6 +315,24 @@ export async function loadExtensions(
   let open = false
   const cleanups = new Set<() => Promise<void>>()
   const resources = new Map<string, unknown>()
+  function unknownAction(name: string, action: string, caller: string) {
+    const table = actions.get(name)
+    const blocked = caller === 'agent' ? new Set(userActions.get(name) ?? []) : undefined
+    const names = table ? Object.keys(table) : []
+    const available = names.filter((key) => !blocked?.has(key)).toSorted()
+    const detail = available.length
+      ? `available: ${available.join(', ')}`
+      : names.length
+        ? 'no agent actions'
+        : records.get(name)?.enabled === false
+          ? 'extension is disabled'
+          : !table && records.get(name)?.server?.error
+            ? 'extension failed to load'
+            : table || records.has(name)
+              ? 'extension exposes no actions'
+              : 'unknown extension'
+    return new Error(`Unknown extension action: ${name}/${action} (${detail})`)
+  }
   async function invoke(
     name: string,
     action: string,
@@ -327,7 +345,7 @@ export async function loadExtensions(
   ) {
     const table = actions.get(name)
     const fn = table && Object.hasOwn(table, action) ? table[action] : undefined
-    if (!fn) throw new Error(`Unknown extension action: ${name}/${action}`)
+    if (!fn) throw unknownAction(name, action, caller)
     if (
       conversationId !== undefined &&
       (!Number.isSafeInteger(conversationId) || conversationId < 1)
