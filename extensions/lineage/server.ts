@@ -51,7 +51,6 @@ import {
   ForgetAction,
   OpenEditorAction,
   RecentAction,
-  LineageResetEntry,
   AbstractEntry,
   FinishedEntry,
 } from './refs.ts'
@@ -71,7 +70,6 @@ import {
 } from './memory.ts'
 import { catchup, Seen, seedSeen, watchSeen } from './catchup.ts'
 import { rewindActions, rewindTask } from './rewind.ts'
-import type { Tree } from './catchup.ts'
 import type { RootEvent } from './types.ts'
 import { compareUrl } from '../../lib/compare.ts'
 import { hasLogin, hostDefault } from '../../lib/agents.ts'
@@ -289,24 +287,6 @@ export async function abstract(tx: Tx, id: ConversationId, input: AbstractInput)
         },
   )
   tally.abstracts[String(id)] = { anchor: anchor ?? entry.id, ...state }
-}
-
-async function inheritedTally(tx: Tx, from: ConversationId, at: EntryId, root: ConversationId) {
-  let cursor: Cursor | undefined
-  do {
-    const page = await tx.scanEntries({ conversationId: from, maxEntryId: at }, 100, cursor)
-    for (const entry of page.items) {
-      if (entry.conversationId === root) return entry.id
-      if (LineageResetEntry.is(entry) && entry.data?.lineage?.brief)
-        return entry.data.lineage.brief.tally ?? undefined
-      if (NoteEntry.is(entry)) {
-        const data: { source?: string; tally?: EntryId } | undefined = entry.data
-        if (data?.source === 'main' && data.tally !== undefined) return data.tally
-      }
-    }
-    cursor = page.next
-  } while (cursor)
-  return undefined
 }
 
 async function liveTask(tx: Tx, id: ConversationId, kind: string) {
@@ -753,11 +733,6 @@ async function forkBranch(
   const root = await climbOwnersThenForkSources(tx, await tx.conversation(from), roots)
   const rootMemoryBriefBeforeFork =
     root !== undefined && root === from ? await memoryBrief(tx, root) : undefined
-  const inheritedTallyTipBeforeFork = rootMemoryBriefBeforeFork
-    ? rootMemoryBriefBeforeFork.tip
-    : root === undefined
-      ? undefined
-      : await inheritedTally(tx, from, at, root)
   let caller: string | undefined
   if (input.by !== undefined) {
     const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
@@ -781,8 +756,6 @@ async function forkBranch(
   delete branchWithOrdinaryTools.modelTools
   if (input.isolated) await host.need(WorkspacesApi).create(tx, fork.id, host.projectRoot)
   if (main) await seedSeen(tx, fork.id, main, Date.now())
-  if (inheritedTallyTipBeforeFork !== undefined)
-    (await tx.doc(Seen, fork.id)).tally = inheritedTallyTipBeforeFork
   ;(await tx.doc(Branch, fork.id)).branch = {
     from,
     at,
@@ -793,7 +766,7 @@ async function forkBranch(
     await tx.appendEntry(fork.id, {
       kind: 'pi.reset',
       head: 'self',
-      data: { lineage: { brief: { tally: rootMemoryBriefBeforeFork.tip ?? null } } },
+      data: { lineage: { brief: true } },
       model: [{ role: 'user', content: rootMemoryBriefBeforeFork.text, timestamp: Date.now() }],
     })
   const titleUntilSummary = intentLine(prompt, input.title)
@@ -1183,15 +1156,9 @@ export const actions = {
   }),
 }
 
-async function treeOf(tx: Tx, id: ConversationId): Promise<Tree | undefined> {
-  const root = await unownedRootBeforeWrites(
-    tx,
-    id,
-    (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots,
-  )
-  if (root === undefined) return undefined
-  const { since, abstracts } = await tx.doc(Tally, root)
-  return since === undefined ? undefined : { root, since, abstracts }
+async function isBranch(tx: Tx, id: ConversationId) {
+  const roots = (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots
+  return (await unownedRootBeforeWrites(tx, id, roots)) !== undefined
 }
 
 async function refuseTally(tx: Tx, id: ConversationId) {
@@ -1330,7 +1297,7 @@ export default function lineageExtension(host: ExtensionHost) {
         beforeInput: async (input, api, ctx) => {
           await refuseTally(api.tx, api.conversationId)
           if (await isSideChat(host, api.tx, api.conversationId)) return undefined
-          return catchup(host, input, api, ctx, treeOf)
+          return catchup(host, input, api, ctx, isBranch)
         },
       }),
       hook(CompactionTask, {

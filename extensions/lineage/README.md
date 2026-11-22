@@ -35,12 +35,15 @@ documents, tools and model-facing text.
   <title>` with its last own answer (at most 1500 characters): as a follow-up (`lineage.finished`), or with
   `wake: false` as a note. Calling again for the same id replaces the pending request; an answer already delivered
   waits for the target's next one.
-- **Catch-up on resume.** When an idle conversation gets input, a "Meanwhile in #R's tree" note goes in before it: new
-  or updated abstracts, prompts without one, landings with divergence and breadcrumbs, notes, and any tally compaction,
-  excluding its own activity. Within about 6000 tokens the newest stay in full and older ones collapse to one line.
-  The note also lists up to 30 new target commits, overlaps first, with conversation trailers and an isolate's behind
-  count. Nothing new means no note; mid-run inputs and tallies get none. `lineage.seen` `{ main?, at?, tally? }` keeps
-  the baseline.
+- **Catch-up on resume.** When an idle top-level conversation gets input, a note about new target commits goes in
+  before it. A branch hears only of other conversations' commits that touch files it changed ("N new commits on main
+  overlap your checkout", with conversation trailers and paths) and an isolate's behind count; other commits bring it
+  no note. An isolate's changed files are its diff from the target plus untracked files; a branch in the shared
+  checkout counts the files its `edit` and `write` calls touched. Other
+  top-level conversations get up to 30 new target commits, overlaps first. @ultimate gets none: its landing cards
+  already name each landing. No conversation is told what its siblings did: abstracts, landings and notes stay in the
+  root's tally, which a branch reads with `ultimate.entries(root)` when it needs it. Nothing new means no note; mid-run
+  inputs and tallies get none. `lineage.seen` `{ main?, at? }` keeps the baseline.
 - **Prompt.** Branches are told their origin, intent, tree root and inherited tally (or, with a brief, the memory index
   and where the full tally is), and how to follow `#conversation/entry` breadcrumbs with `ultimate.entries(id)` and
   `ultimate.search()`. Other top-level conversations get their own id and lookup guidance; roots and subagents get

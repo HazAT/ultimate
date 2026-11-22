@@ -11,7 +11,6 @@ import {
 } from '@earendil-works/pi-durable'
 import { afterEach, beforeAll, expect, it } from 'vitest'
 import { applyMemoryOps, Memory, MEMORY_LIMIT } from '../memory.ts'
-import { Seen } from '../catchup.ts'
 import { abstract } from '../server.ts'
 import { Roots, Tally } from '../api.ts'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
@@ -178,10 +177,6 @@ it('starts a branch from the memory brief, and without memories from the tally',
   expect(JSON.stringify((await inherited.conversation.context(context)).messages)).toContain(marker)
 
   await apply(server, [add('pnpm', 'Use pnpm for everything')])
-  const tip = (await server.harness.commit(
-    async (tx) => (await tx.scanEntries({ conversationId: ROOT_CONVERSATION_ID }, 1)).items[0].id,
-    context,
-  )) as number
   const briefed = await branch(server, 'Briefed branch')
   const view = await briefed.conversation.context(context)
   const said = view.messages.filter((message) => message.role !== 'system')
@@ -194,11 +189,7 @@ it('starts a branch from the memory brief, and without memories from the tally',
   expect(textOf(said[2].content)).toBe('Briefed branch')
   expect(JSON.stringify(view.messages)).not.toContain(marker)
   expect(view.entries[0]).toMatchObject({ kind: 'pi.reset' })
-  // Catch-up starts after the root's tip at the fork, not from the tally's start.
-  const seen = await server.harness.snapshot(Seen, briefed.id, context)
-  expect(seen?.tally).toBeGreaterThanOrEqual(tip)
-  // The brief records the root tip it covers, for forks of this branch.
-  expect(view.entries[0]).toMatchObject({ data: { lineage: { brief: { tally: tip } } } })
+  expect(view.entries[0]).toMatchObject({ data: { lineage: { brief: true } } })
   // The root's footer counts the brief a branch receives, recounted when memory changes.
   const briefTokens = async () =>
     (await server.harness.snapshot(Tally, ROOT_CONVERSATION_ID, context))?.briefTokens
@@ -212,31 +203,6 @@ it('starts a branch from the memory brief, and without memories from the tally',
       context,
     ),
   ).toContain("starts with your project's memory index")
-})
-
-it('forks of a briefed branch inherit the tally tip its brief covers', async () => {
-  const { server } = await fixture()
-  const older = (await server.harness.commit(
-    async (tx) => (await tx.scanEntries({ conversationId: ROOT_CONVERSATION_ID }, 1)).items[0].id,
-    context,
-  )) as number
-  await branch(server, 'Moves the root on')
-  await apply(server, [add('pnpm')])
-  const b = await branch(server, 'Briefed from an older entry', 1, older)
-  const [reset] = (await b.conversation.context(context)).entries
-  const briefTip = (reset.data as { lineage: { brief: { tally: number } } }).lineage.brief.tally
-  expect(briefTip).toBeGreaterThan(older)
-  // C's tally position is B's brief tip, so its catch-up does not report the branch the brief already covered.
-  const c = await branch(server, 'Fork of the briefed branch', b.id)
-  const notes = (
-    await server.harness.commit(
-      async (tx) =>
-        (await tx.scanEntries({ conversationId: c.id, minEntryId: reset.id }, 50)).items,
-      context,
-    )
-  ).filter((entry) => entry.kind === 'lineage.note')
-  expect(JSON.stringify(notes)).not.toContain('Moves the root on')
-  expect((await server.harness.snapshot(Seen, c.id, context))?.tally).toBeGreaterThan(briefTip)
 })
 
 it('reads memories with memory; only @ultimate writes them with remember', async () => {
