@@ -217,6 +217,8 @@ export function Finished(props: SolidEntryProps) {
     const entry = props.entry
     return FinishedEntry.is(entry) || NoteEntry.is(entry) ? entry.data : undefined
   }
+  const verb = () =>
+    FinishedEntry.is(props.entry) && props.entry.data.landed ? 'landed' : 'finished'
   return (
     <Show when={data()?.from}>
       {(from) => (
@@ -227,7 +229,7 @@ export function Finished(props: SolidEntryProps) {
           <header class="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
             <CircleCheck class="size-3.5 shrink-0 text-success" />
             <Button
-              aria-label={`Open #${from()} (finished at entry ${props.entry.id})`}
+              aria-label={`Open #${from()} (${verb()} at entry ${props.entry.id})`}
               class="flex min-w-0 shrink items-center gap-1.5 text-left font-mono text-[11px] font-normal text-foreground hover:underline"
               onClick={() => switchConversation(from())}
               size={null}
@@ -236,7 +238,7 @@ export function Finished(props: SolidEntryProps) {
               variant={null}
             >
               <ConversationRef id={from()} title={data()?.title} />
-              <span class="shrink-0">finished</span>
+              <span class="shrink-0">{verb()}</span>
             </Button>
           </header>
           <div class="min-w-0 px-3 py-2.5 text-[13px] leading-relaxed">
