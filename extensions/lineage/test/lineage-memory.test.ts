@@ -380,6 +380,14 @@ it('wakes @ultimate once after its manual compaction, never after an automatic o
   const asked = state.condensed.length
   const stale = await ultimate.compact(undefined, context)
   await until(() => state.condensed.length > asked)
+  // It waits on the compaction without holding an invocation.
+  await until(async () =>
+    (await wakeTasks()).some(
+      (task) =>
+        (task.input as { compaction: number }).compaction === stale &&
+        task.state.status === 'waiting',
+    ),
+  )
   await ultimate.reset(undefined, context)
   release.resolve()
   await server.harness.waitForTask(stale, context)
