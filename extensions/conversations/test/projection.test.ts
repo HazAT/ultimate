@@ -36,6 +36,7 @@ it('projects everything after a crash, a failure or a reload, otherwise only ope
       context,
     )
   let fail = false
+  let hold: PromiseWithResolvers<void> | undefined
   const projected: ConversationId[] = []
   const notices: string[] = []
   let running: ReturnType<typeof openers> | undefined
@@ -63,6 +64,7 @@ it('projects everything after a crash, a failure or a reload, otherwise only ope
       async (ids) => {
         if (fail) throw new Error('broken')
         projected.push(...ids)
+        await hold?.promise
       },
     )
     projected.length = 0
@@ -90,6 +92,17 @@ it('projects everything after a crash, a failure or a reload, otherwise only ope
   await say(open)
   await until(() => notices.length > 0)
   fail = false
+  expect(await boot()).toEqual([root, concluded, open])
+
+  // Closing while a batch runs and another waits leaves no clean mark.
+  hold = Promise.withResolvers()
+  await say(open)
+  await until(() => projected.includes(open))
+  await say(root)
+  const closing = exit()
+  hold.resolve()
+  await closing
+  hold = undefined
   expect(await boot()).toEqual([root, concluded, open])
   await exit()
   await harness.close(context)

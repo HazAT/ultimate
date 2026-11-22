@@ -78,8 +78,10 @@ export function projection(
     return ids.length ? ids : backlog.splice(-batch)
   }
   const drain = async () => {
-    for (let ids = next(); ids.length; ids = next()) {
+    for (;;) {
       if (closed) return
+      const ids = next()
+      if (!ids.length) return
       await reconcile(ids).catch((error: unknown) => {
         failed = true
         if (!closed) host.notice(`Conversation ${name}: ${String(error)}`)
@@ -126,7 +128,7 @@ export function projection(
     }, context)
     const trusted = markCoversOnlyTheFirstOpenOfAProcess.opened ? undefined : mark
     markCoversOnlyTheFirstOpenOfAProcess.opened = true
-    backlog = await harness.commit(async (tx) => {
+    const selection = harness.commit(async (tx) => {
       const concluded = await concludedIn(tx)
       const { ids, topOf } = await everyConversation(tx)
       const changedSince: ConversationId[] = []
@@ -143,7 +145,12 @@ export function projection(
       }
       return changedSince
     }, context)
-    selected = true
+    try {
+      backlog = await selection
+      selected = true
+    } catch (error) {
+      host.notice(`Conversation ${name} kept only live changes: ${String(error)}`)
+    }
     schedule()
     if (!background) await draining
   })

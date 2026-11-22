@@ -67,7 +67,7 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
       for (const change of publication.changes)
         if (change.type === 'conversation' && !change.value.owner)
           inProcess(
-            'the first input seeds a conversation that missed its creation',
+            'the first input seeds a conversation whose creation went unseen',
             seed(change.value.id).catch((error: unknown) => {
               host.notice(`Could not record main for #${change.value.id}: ${String(error)}`)
             }),
@@ -77,6 +77,7 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
       unsubscribe()
       await pending
     })
+    await seed(ROOT_CONVERSATION_ID)
   })
 }
 

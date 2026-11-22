@@ -94,7 +94,8 @@ export function contextBehavior(
       background: true,
       stale: async (tx, id) => {
         const saved = await tx.doc(ContextUsageDoc, id)
-        return saved.at !== 0 && saved.window !== (await windowOf(tx, id))
+        const untouchedFork = !!(await tx.conversation(id))?.parent && saved.at === 0
+        return !untouchedFork && saved.window !== (await windowOf(tx, id))
       },
     },
     (change, add) => {
