@@ -252,6 +252,24 @@ it('names each file that replaces a built-in definition whole, but not an overla
   ])
 })
 
+it('warns when a modelFamilies setting is invalid, since its families then fall back to the defaults', async () => {
+  const host = await checkHost({ logins: ['openai-codex'] })
+  const issues = await check({
+    ...host,
+    projectSettings: async () => ({
+      modelFamilies: { families: { lead: { model: 'acme/lead', color: 'green' } } },
+    }),
+  })
+  expect(issues.filter((issue) => issue.area === 'Model families')).toEqual([
+    expect.objectContaining({
+      status: 'warn',
+      impact: expect.stringMatching(
+        /^project settings: modelFamilies: .*color.*None of its families apply until it is fixed\.$/,
+      ),
+    }),
+  ])
+})
+
 it('has no agent warning once the pinned provider has a login', async () => {
   const issues = await check(await checkHost({ logins: ['openrouter', 'openai-codex'] }))
   expect(issues.find((issue) => issue.area === 'Agent models')?.status).toBe('ok')
