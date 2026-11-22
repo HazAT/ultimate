@@ -3502,7 +3502,6 @@ snapshots:
       hast-util-to-html: 9.0.5
       lru_map: 0.4.1
       shiki: 4.4.3
-    optionalDependencies:
     transitivePeerDependencies:
       - '@shikijs/themes'
 
