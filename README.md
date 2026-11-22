@@ -125,6 +125,27 @@ setup…** shows the login status. The
 [Claude Code provider](extensions/claude-code/README.md) is experimental: it depends on Claude Code's protocol and
 account limits, and subscription coverage is not guaranteed.
 
+### Local model setup (omlx)
+
+A local Qwen model runs via [omlx](https://github.com/jundot/omlx) on `http://127.0.0.1:8001`. The hub (@ultimate, #45) runs on this model for free lookups and chat; branches still use Sonnet 5.5 for planning, and local Qwen workers implement. Branches run on the `lead` family (Sonnet 5.5, high thinking).
+
+**Model:** `Qwen3.6-35B-A3B-oQ4e-mtp` (22 GB, 4-bit quantized, mixture of experts ~3B active/param). 262K context window. Available via `omlx` provider.
+
+**Config in `~/.omlx/`:**
+
+- `model_settings.json`: `a8_prefill_enabled=true`, `mtp_enabled=true`, `turboquant_kv_enabled=true`. Custom kernels (`attention`, `lowbit`, `oqh`, etc.) are not installed — without them optimizations don't accelerate fully.
+- `settings.json`: `ssd_cache_max_size` = 60GB. Cache never wiped by cron.
+- `max_concurrent_requests` = 4 (kept low to avoid Metal OOM).
+- `memory_guard` = aggressive (prevents hard abort at ~52 GB).
+
+**Cron guard (`~/.ultimate/bin/omlx-restart-if-bloated.sh`):** Restarts omlx only at RSS ≥35 GB after 2 min idle; skips while `~/.omlx-bench/LOCK` exists; logs to `~/.omlx/restart.log`.
+
+**Performance:** avg ~34 tok/s generation (target 60 without custom kernels), ~918 tok/s prefill. Cache efficiency ~94%.
+
+**In `~/.pi/agent/models.json`:** omlx provider with base url `http://127.0.0.1:8001/v1`, api `openai-completions`, apiKey `omlx-local` (unused — omlx verifies keys by default but skips when `api_key` is empty in settings).
+
+**In `~/.ultimate/model-families.json`** (tracked in git via j-ai-mie repo): default/fast/tiny → `omlx/Qwen3.6-35B-A3B-oQ4e-mtp` thinking off; lead/review → `github-copilot/claude-sonnet-5.5`; design → `github-copilot/claude-opus-5.5` thinking high.
+
 ### Terminal status
 
 `pnpm start` / `ultimate` shows a compact live terminal dashboard: the public URL, supervisor/core lifecycle,
