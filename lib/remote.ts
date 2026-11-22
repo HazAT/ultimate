@@ -58,7 +58,7 @@ export function resolveProject(
   )
 }
 
-async function userConfiguredRemotes(host: Pick<ExtensionHost, 'userHome'>) {
+export async function userConfiguredRemotes(host: Pick<ExtensionHost, 'userHome'>) {
   const reportedInvalidSettingsMeanUnset = () => ({})
   const settings = await readSettings(userSettingsPath(host.userHome)).catch(
     reportedInvalidSettingsMeanUnset,

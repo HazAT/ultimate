@@ -30,10 +30,91 @@ it('lists running projects and this one, with their own counts, another instance
   try {
     // Without a Tailscale registry nothing is on the tailnet.
     expect(await list(host, new AbortController().signal)).toEqual([
-      { name: 'down', url: 'http://127.0.0.1:1', current: false },
+      { name: 'down', url: 'http://127.0.0.1:1', current: false, unavailable: true },
       { name: 'here', url: 'http://127.0.0.1:4747', current: true, busy: 1, questions: 3 },
       { name: 'other', url, current: false, busy: 2, questions: 1 },
     ])
+  } finally {
+    other.close()
+  }
+})
+
+function remoteHost(userHome: string) {
+  return {
+    userHome,
+    projects: async () => [{ name: 'here', current: true }],
+    system: () => ({ process: { url: 'http://127.0.0.1:4747' } }),
+    conversations: () => [],
+    need: () => ({ openQuestions: async () => [] }),
+  } as unknown as ExtensionHost
+}
+
+it('lists remote machine instances after locals in configured machine/project order', async () => {
+  const other = createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({ result: { busy: 2, questions: { count: 1 } } }))
+  })
+  await new Promise<void>((done) => other.listen(0, '127.0.0.1', done))
+  const url = `http://127.0.0.1:${(other.address() as AddressInfo).port}`
+  const userHome = await temp('ultimate-projects-')
+  await mkdir(join(userHome, '.ultimate'))
+  await writeFile(
+    join(userHome, '.ultimate/settings.json'),
+    JSON.stringify({ remotes: { second: { here: url, another: url }, first: { here: url } } }),
+  )
+  try {
+    expect(await list(remoteHost(userHome), new AbortController().signal)).toEqual([
+      { name: 'here', url: 'http://127.0.0.1:4747', current: true, busy: 0, questions: 0 },
+      { name: 'here', machine: 'second', url, current: false, busy: 2, questions: 1 },
+      { name: 'another', machine: 'second', url, current: false, busy: 2, questions: 1 },
+      { name: 'here', machine: 'first', url, current: false, busy: 2, questions: 1 },
+    ])
+  } finally {
+    other.close()
+  }
+})
+
+it('keeps an unreachable remote listed as unavailable, without misleading zero counts', async () => {
+  const userHome = await temp('ultimate-projects-')
+  await mkdir(join(userHome, '.ultimate'))
+  const url = 'http://127.0.0.1:1'
+  await writeFile(
+    join(userHome, '.ultimate/settings.json'),
+    JSON.stringify({ remotes: { away: { down: url } } }),
+  )
+  expect(await list(remoteHost(userHome), new AbortController().signal)).toEqual([
+    { name: 'here', url: 'http://127.0.0.1:4747', current: true, busy: 0, questions: 0 },
+    { name: 'down', machine: 'away', url, current: false, unavailable: true },
+  ])
+})
+
+it('polls counts for a configured URL with a trailing slash without changing the listed URL', async () => {
+  const paths: string[] = []
+  const other = createServer((request, response) => {
+    paths.push(request.url!)
+    response.setHeader('Content-Type', 'application/json')
+    response.statusCode = request.url === '/api/extensions/status/actions/status' ? 200 : 404
+    response.end(JSON.stringify({ result: { busy: 1, questions: { count: 2 } } }))
+  })
+  await new Promise<void>((done) => other.listen(0, '127.0.0.1', done))
+  const url = `http://127.0.0.1:${(other.address() as AddressInfo).port}/`
+  const userHome = await temp('ultimate-projects-')
+  await mkdir(join(userHome, '.ultimate'))
+  await writeFile(
+    join(userHome, '.ultimate/settings.json'),
+    JSON.stringify({ remotes: { away: { other: url } } }),
+  )
+  try {
+    const projects = await list(remoteHost(userHome), new AbortController().signal)
+    expect(projects[1]).toEqual({
+      name: 'other',
+      machine: 'away',
+      url,
+      current: false,
+      busy: 1,
+      questions: 2,
+    })
+    expect(paths).toEqual(['/api/extensions/status/actions/status'])
   } finally {
     other.close()
   }
