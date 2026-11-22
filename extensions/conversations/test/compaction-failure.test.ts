@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai/provid
 import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { compactionEvents } from '../compactions.ts'
-import { until } from '../../../test/helpers.ts'
+import { openers, until } from '../../../test/helpers.ts'
 
 async function watched() {
   const models = createModels()
@@ -22,19 +22,13 @@ async function watched() {
   const notices: string[] = []
   const emitted: unknown[] = []
   const resources = new Map<string, unknown>()
-  let open!: () => Promise<void>
-  let close!: () => Promise<void>
+  const { onOpen, open, close } = openers()
   compactionEvents({
     harness: () => harness,
     emit: async (_tx: unknown, _event: unknown, data: unknown) => {
       emitted.push(data)
     },
-    onOpen: (callback: () => Promise<void>) => {
-      open = callback
-    },
-    onClose: (callback: () => Promise<void>) => {
-      close = callback
-    },
+    onOpen,
     notice: (message: string) => notices.push(message),
     resource: (key: string, create: () => unknown) => {
       if (!resources.has(key)) resources.set(key, create())

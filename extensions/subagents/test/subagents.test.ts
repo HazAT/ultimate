@@ -1,6 +1,6 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // First: helpers mocks the faux provider's token pacing, which must apply before the server modules load.
-import { eventHost, idleNeed, until, temp, removeTemp } from '../../../test/helpers.ts'
+import { eventHost, idleNeed, openers, until, temp, removeTemp } from '../../../test/helpers.ts'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { projectSettings } from '../../../lib/project-setup.ts'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
@@ -91,8 +91,7 @@ async function fixture(
   prepared.registry.install(CodingTools)
   if (extension) prepared.registry.install(extension)
   let opened: OpenHost | undefined
-  const onOpen: (() => Promise<void>)[] = []
-  const onClose: (() => Promise<void>)[] = []
+  const lifecycle = openers()
   const backend = subagents({
     projectSettings: () => projectSettings(prepared.projectRoot, prepared.userHome),
     ...prepared,
@@ -103,12 +102,7 @@ async function fixture(
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},
-    onOpen: (callback) => {
-      onOpen.push(callback)
-    },
-    onClose: (callback) => {
-      onClose.push(callback)
-    },
+    onOpen: lifecycle.onOpen,
     emit,
   })
   prepared.registry.install(
@@ -152,13 +146,7 @@ async function fixture(
         implement: () => {},
         need: idleNeed,
         notice: (message: string) => errors.push(message),
-        onOpen: (callback: () => Promise<void>) => {
-          onOpen.push(callback)
-        },
-        onClose: (callback: () => Promise<void>) => {
-          onClose.push(callback)
-        },
-        onRelease: () => {},
+        onOpen: lifecycle.onOpen,
       } as unknown as ExtensionHost),
     )
   prepared.registry.install(
@@ -180,7 +168,6 @@ async function fixture(
       },
       resource: (_key, create) => create(),
       onOpen: () => {},
-      onRelease: () => {},
       onClose: () => {},
       onLoadError: () => {},
       onBeforeLoad: () => {},
@@ -243,10 +230,10 @@ async function fixture(
     opened = await prepared.open()
     const close = opened.close.bind(opened)
     opened.close = async () => {
-      for (const callback of onClose) await callback()
+      await lifecycle.close()
       await close()
     }
-    for (const callback of onOpen) await callback()
+    await lifecycle.open()
     hosts.push(opened)
     return opened
   }

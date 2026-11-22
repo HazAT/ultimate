@@ -51,7 +51,6 @@ export async function seedSeen(tx: Tx, id: ConversationId, main: string, at: num
 }
 
 export function watchSeen(host: ExtensionHost, ctx: Context) {
-  let unsubscribe: (() => void) | undefined
   let pending = Promise.resolve()
   const seed = (id: ConversationId) => {
     pending = pending.then(async () => {
@@ -62,9 +61,9 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
     })
     return pending
   }
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     const harness = host.harness()
-    unsubscribe = onCommit(harness, (publication) => {
+    const unsubscribe = onCommit(harness, (publication) => {
       for (const change of publication.changes)
         if (change.type === 'conversation' && !change.value.owner)
           rebuiltOnOpen(
@@ -73,6 +72,10 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
               host.notice(`Could not record main for #${change.value.id}: ${String(error)}`)
             }),
           )
+    })
+    opened.defer(async () => {
+      unsubscribe()
+      await pending
     })
     const records = await harness.commit(async (tx) => {
       const ids: ConversationId[] = []
@@ -85,10 +88,6 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
       return ids
     }, ctx)
     for (const id of records) await seed(id)
-  })
-  host.onClose(async () => {
-    unsubscribe?.()
-    await pending
   })
 }
 

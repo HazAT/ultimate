@@ -14,11 +14,10 @@ import { ContextUsageDoc } from './api.ts'
 import { rebuiltOnOpen } from '../../lib/errors.ts'
 
 export function contextBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'onClose' | 'notice'> & {
+  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice'> & {
     modelRuntime: Pick<ExtensionHost['modelRuntime'], 'getModel'>
   },
 ) {
-  let stop: (() => void) | undefined
   let closed = false
   let backgroundSerialBackfill: Promise<void> | undefined
   const pending = new Map<ConversationId, Promise<void>>()
@@ -106,10 +105,9 @@ export function contextBehavior(
     return job
   }
 
-  host.onOpen(async () => {
+  host.onOpen(async (opened) => {
     closed = false
-    stop?.()
-    stop = onCommit(host.harness(), (publication) => {
+    const stop = onCommit(host.harness(), (publication) => {
       const ids = new Set<ConversationId>()
       for (const change of publication.changes) {
         if (
@@ -128,6 +126,12 @@ export function contextBehavior(
         rebuiltOnOpen('open reconciles every conversation context', schedule(id))
       }
     })
+    opened.defer(async () => {
+      closed = true
+      stop()
+      await backgroundSerialBackfill
+      await Promise.all(pending.values())
+    })
     backgroundSerialBackfill = (async () => {
       let cursor: Cursor | undefined
       do {
@@ -144,12 +148,5 @@ export function contextBehavior(
     })().catch((error: unknown) => {
       if (!closed) host.notice(`Conversation context backfill: ${String(error)}`)
     })
-  })
-  host.onClose(async () => {
-    closed = true
-    stop?.()
-    stop = undefined
-    await backgroundSerialBackfill
-    await Promise.all(pending.values())
   })
 }

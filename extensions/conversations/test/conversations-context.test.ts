@@ -15,7 +15,7 @@ import {
   lastAssistant,
   promptTokens,
 } from '../../../lib/context-usage.ts'
-import { until } from '../../../test/helpers.ts'
+import { openers, until } from '../../../test/helpers.ts'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -49,8 +49,7 @@ async function fixture({ start = true } = {}) {
   const root = await harness.root(context, {
     agent: { model: { provider: 'faux', modelId: 'small' } },
   })
-  let open!: () => Promise<void>
-  let close!: () => Promise<void>
+  const { onOpen, open, close } = openers()
   const notices: string[] = []
   const modelReads: string[] = []
   let failModelLookup = false
@@ -63,12 +62,7 @@ async function fixture({ start = true } = {}) {
         return models.getModel(provider, id)
       },
     },
-    onOpen: (callback) => {
-      open = callback
-    },
-    onClose: (callback) => {
-      close = callback
-    },
+    onOpen,
     notice: (message) => {
       notices.push(message)
     },

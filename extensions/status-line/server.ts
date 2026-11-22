@@ -8,7 +8,6 @@ import { createRateSampler, keys, zero, type Rates, type RateSample } from './ra
 import { usageTotals } from './context.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { every } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
 import { RatesAction } from './refs.ts'
 
 type Totals = ReturnType<typeof usageTotals>
@@ -37,25 +36,15 @@ const partial = (live: LiveState | null | undefined): Rates => {
     : zero()
 }
 
-type Host = Pick<ExtensionHost, 'harness' | 'onOpen' | 'onClose' | 'notice'>
+type Host = Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice'>
 export default function statusLine(host: Host) {
   let latest: RateSample | null = null
   let spend: Totals = usageTotals({ models: {}, tools: {} })
-  let unsubscribe: (() => void) | undefined
-  let stopSampling: Cancel | undefined
-  let epoch = 0
   snapshots.set(host, () => latest && { ...latest, totals: { ...spend } })
-  const stop = () => {
-    epoch++
-    stopSampling?.()
-    unsubscribe?.()
-    unsubscribe = undefined
-    latest = null
-  }
-  host.onClose(async () => stop())
-  host.onOpen(async () => {
-    stop()
-    const opened = epoch
+  host.onOpen(async (opened) => {
+    opened.defer(() => {
+      latest = null
+    })
     const harness = host.harness()
     const documents = new Map<number, { settled: Rates; partial: Rates }>()
     const spending = new Map<number, Totals>()
@@ -90,9 +79,8 @@ export default function statusLine(host: Host) {
           }
           cursor = page.next
         } while (cursor !== undefined)
-        if (opened !== epoch) return
         sample(performance.now(), total)
-        unsubscribe = onCommit(harness, (publication) => {
+        const unsubscribe = onCommit(harness, (publication) => {
           for (const change of publication.changes) {
             if (change.type !== 'document' || change.conversationId === undefined) continue
             if (change.record.kind === UsageDoc.definition.kind) {
@@ -108,14 +96,15 @@ export default function statusLine(host: Host) {
               )
           }
         })
+        opened.defer(unsubscribe)
       }, context)
-      if (opened !== epoch) return
-      stopSampling = every(1000, () => {
-        latest = sample(performance.now(), total)
-      })
+      opened.defer(
+        every(1000, () => {
+          latest = sample(performance.now(), total)
+        }),
+      )
     } catch (error) {
-      if (opened !== epoch) return
-      stop()
+      await opened.disposeAsync()
       host.notice(`Instance token rates unavailable: ${String(error)}`)
     }
   })

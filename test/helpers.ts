@@ -25,6 +25,7 @@ import type { EventData, EventToken } from '../shared/events.ts'
 import { EventFeed, eventLog } from '../server/events.ts'
 import { copySource } from './source-copy.ts'
 import type { Reactor } from '../server/events.ts'
+import type { Opener } from '../server/extensions.ts'
 
 vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
   const original = await importOriginal<typeof import('@earendil-works/pi-ai/providers/faux')>()
@@ -45,6 +46,28 @@ vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
  */
 export const idleNeed = <S>(_api: Api<string, S>) =>
   new Proxy({}, { get: (_, key) => (key === 'then' ? undefined : async () => undefined) }) as S
+
+/**
+ * `onOpen` for a hand-built host: `open()` runs every registered opener as the server does, each with the stack its
+ * cleanups go on; `close()` disposes them, newest first.
+ */
+export function openers() {
+  const registered: Opener[] = []
+  const ends: AsyncDisposableStack[] = []
+  return {
+    onOpen: (callback: Opener) => void registered.push(callback),
+    open: async () => {
+      for (const callback of registered) {
+        const opened = new AsyncDisposableStack()
+        ends.push(opened)
+        await callback(opened)
+      }
+    },
+    close: async () => {
+      for (const opened of ends.splice(0).toReversed()) await opened.disposeAsync()
+    },
+  }
+}
 
 export function apis(provided = new Map<string, unknown>()) {
   return {

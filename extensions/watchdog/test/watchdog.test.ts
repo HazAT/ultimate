@@ -5,7 +5,7 @@ import type {
   Task,
   ToolExecutionApi,
 } from '@earendil-works/pi-durable'
-import { until } from '../../../test/helpers.ts'
+import { openers, until } from '../../../test/helpers.ts'
 import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
 import { createModels } from '@earendil-works/pi-ai/models'
 import { obj } from '@earendil-works/pi-schema'
@@ -87,8 +87,7 @@ async function fixture(
   const options = { models, registry, now: () => now, settings: { retry: { maxRetries: 0 } } }
   let harness = await Harness.open(storage, options, context)
   const root = await harness.root(context, { agent: { model } })
-  const onOpen: (() => Promise<void>)[] = []
-  const onClose: (() => Promise<void>)[] = []
+  const lifecycle = openers()
   const notices: string[] = []
   let service: WatchdogService | undefined
   const host = {
@@ -98,9 +97,7 @@ async function fixture(
     harness: () => harness,
     metadata: Metadata,
     notice: (text: string) => notices.push(text),
-    onOpen: (callback: () => Promise<void>) => onOpen.push(callback),
-    onClose: (callback: () => Promise<void>) => onClose.push(callback),
-    onRelease: () => {},
+    onOpen: lifecycle.onOpen,
     scanSubmissions: (...args: Parameters<MemoryStorage['scanSubmissions']>) =>
       storage.scanSubmissions(...args),
     need: (api: { name: string }) =>
@@ -209,11 +206,11 @@ async function fixture(
     ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ultimate
   }, context)
   async function open() {
-    for (const callback of onOpen) await callback()
+    await lifecycle.open()
     harness.resume()
   }
   async function close() {
-    for (const callback of onClose) await callback()
+    await lifecycle.close()
     await harness.close(context)
   }
   if (install) await open()
@@ -281,16 +278,14 @@ async function fixture(
       registry.install(backend)
       await open()
     },
-    detach: async () => {
-      for (const callback of onClose) await callback()
-    },
+    detach: lifecycle.close,
     reopen: async () => {
       await close()
       harness = await Harness.open(storage, options, context)
       await open()
     },
     crash: async () => {
-      for (const callback of onClose) await callback()
+      await lifecycle.close()
       harness = await Harness.open(storage, options, context)
       await open()
     },

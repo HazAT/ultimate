@@ -7,7 +7,7 @@ import { createRateSampler, type Rates } from '../rates.ts'
 import statusLine, { actions } from '../server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { prepareHarness } from '../../../server/harness.ts'
-import { temp } from '../../../test/helpers.ts'
+import { openers, temp } from '../../../test/helpers.ts'
 
 const counters = (output: number): Rates => ({
   input: output * 2,
@@ -53,17 +53,11 @@ async function fixture() {
   })
   prepared.registry.install(defineExtension({ name: 'status-line-fixture', tasks: [anchor] }))
   const opened = await prepared.open()
-  let open!: () => Promise<void>
-  let close!: () => Promise<void>
+  const { onOpen, open, close } = openers()
   const notices: string[] = []
   const host: Parameters<typeof statusLine>[0] = {
     harness: () => opened.harness,
-    onOpen: (callback) => {
-      open = callback
-    },
-    onClose: (callback) => {
-      close = callback
-    },
+    onOpen,
     notice: (value) => {
       notices.push(value)
     },

@@ -108,7 +108,6 @@ async function fixture() {
     },
     ...eventHost(() => opened.harness, 'automations'),
     onOpen: () => {},
-    onRelease: () => {},
     onClose: () => {},
     projectSetup: async () => ({ decision: false }),
     harness: () => opened.harness,
