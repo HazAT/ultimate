@@ -394,7 +394,7 @@ it('reads tool numbers from the trace, with unused tools and frequent errors', a
         name: 'edit',
         error: 'Could not find the exact text',
         count: 1,
-        examples: [{ at: '#7/42', args: '{"path":"a.ts"}' }],
+        examples: [{ at: '#7/42' }],
       },
     ],
   })
