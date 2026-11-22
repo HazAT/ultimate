@@ -123,7 +123,7 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
       )
       .all() as { name: string; error: string; count: number }[]
     const sample = db.prepare(
-      "SELECT conversation, entry, substr(args, 1, 120) AS args FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
+      "SELECT conversation, entry FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
     )
     const errors = groups.map((group) => ({
       ...group,
@@ -131,11 +131,9 @@ export function toolStats(database: string, enabled: readonly string[]): ToolSta
         sample.all(group.name, group.error) as {
           conversation: ConversationId | null
           entry: number | null
-          args: string | null
         }[]
       ).map((row) => ({
         at: `#${row.conversation ?? '?'}${row.entry === null ? '' : `/${row.entry}`}`,
-        args: row.args ?? '',
       })),
     }))
     const used = new Set(tools.map((tool) => tool.name))
