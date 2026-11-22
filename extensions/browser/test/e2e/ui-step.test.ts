@@ -92,8 +92,8 @@ async function boot() {
       context,
     )
     if (result.isError) throw new Error(JSON.stringify(result.output))
-    const { outcomes } = (result as unknown as { structuredContent: { outcomes: string[] } })
-      .structuredContent
+    const { outcomes } = (result as unknown as { structuredOutput: { outcomes: string[] } })
+      .structuredOutput
     return (n: number) => {
       const prefix = `Step ${n}: OK `
       const line = outcomes.find((outcome) => outcome.startsWith(prefix))
