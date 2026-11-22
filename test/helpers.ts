@@ -53,16 +53,18 @@ export const idleNeed = <S>(_api: Api<string, S>) =>
  */
 export function openers() {
   const registered: Opener[] = []
-  let current = new AsyncDisposableStack()
+  const ends: AsyncDisposableStack[] = []
   return {
     onOpen: (callback: Opener) => void registered.push(callback),
     open: async () => {
-      for (const callback of registered) await callback(current)
+      for (const callback of registered) {
+        const opened = new AsyncDisposableStack()
+        ends.push(opened)
+        await callback(opened)
+      }
     },
     close: async () => {
-      const ending = current
-      current = new AsyncDisposableStack()
-      await ending.disposeAsync()
+      for (const opened of ends.splice(0).toReversed()) await opened.disposeAsync()
     },
   }
 }

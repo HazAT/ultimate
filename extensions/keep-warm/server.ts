@@ -289,21 +289,19 @@ export default function keepWarm(host: ExtensionHost) {
     },
     { from: 'now' },
   )
-  const shared = host.resource('keep-warm.ping', () => ({
-    running: undefined as Promise<void> | undefined,
-  }))
   host.onOpen(async (opened) => {
     const released = new AbortController()
+    let running: Promise<void> | undefined
     opened.defer(async () => {
       released.abort()
-      await shared.running
+      await running
     })
     opened.defer(
       every(CACHE_CHECK_INTERVAL_MS, () => {
-        shared.running ??= tick(host, released.signal)
+        running ??= tick(host, released.signal)
           .catch((error: unknown) => host.notice(`Keep warm: ${String(error)}`))
           .finally(() => {
-            shared.running = undefined
+            running = undefined
           })
       }),
     )

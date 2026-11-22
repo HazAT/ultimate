@@ -98,12 +98,16 @@ async function fixture() {
   prepared.registry.install(dream(host))
   const open = async () => {
     opened = await prepared.open(false)
+    const closeHarness = opened.close.bind(opened)
+    opened.close = async () => {
+      await lifecycle.close()
+      await closeHarness()
+    }
     openedHosts.push(opened)
     await lifecycle.open()
   }
   const close = async () => {
     openedHosts.splice(openedHosts.indexOf(opened), 1)
-    await lifecycle.close()
     await opened.close()
   }
   await open()

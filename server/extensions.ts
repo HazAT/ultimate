@@ -156,6 +156,12 @@ export async function loadExtensions(
   const scope = (name: string): ExtensionHost => {
     const stops = new Set<() => void>()
     let sharedResource = false
+    const onFacetOpen = (callback: Opener) => {
+      facetOpeners.get(facetHost)!.add(callback)
+      openers.add(callback)
+      if (open && [...facetHosts.values()].includes(facetHost))
+        inProcess('the onOpen callback belongs to this loaded extension facet', runOpener(callback))
+    }
     const facetHost = {
       ...extensionHost,
       get chapter() {
@@ -208,15 +214,7 @@ export async function loadExtensions(
       },
       onOpen: (callback) => {
         if (sharedResource) extensionHost.onOpen(callback)
-        else {
-          facetOpeners.get(facetHost)!.add(callback)
-          openers.add(callback)
-          if (open && [...facetHosts.values()].includes(facetHost))
-            inProcess(
-              'the onOpen callback belongs to this loaded extension facet',
-              runOpener(callback),
-            )
-        }
+        else onFacetOpen(callback)
       },
       onClose: (cleanup) => {
         if (sharedResource) extensionHost.onClose(cleanup)
@@ -232,11 +230,10 @@ export async function loadExtensions(
       },
       react: (reactorName, tokens, handler, options) => {
         const reactor = log.reactor(`${name}/${reactorName}`, tokens, handler, options)
-        facetHost.onOpen(async (opened) => {
+        onFacetOpen(async (opened) => {
           opened.defer(reactor.stop)
           await reactor.start()
         })
-        stops.add(reactor.stop)
       },
     } satisfies ExtensionHost
     stagedServicesByFacet.set(facetHost, new Map())
