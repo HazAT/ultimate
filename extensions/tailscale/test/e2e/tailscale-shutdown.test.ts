@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { cleanEnv, removeTemp, sourceCopy, temp, until } from '../helpers.ts'
+import { cleanEnv, removeTemp, sourceCopy, temp, until } from '../../../../test/helpers.ts'
 
 // systemd stops a unit by sending SIGTERM to its whole control group: the server child gets it too, starts closing,
 // and the supervisor's `exit` reaches it while the Tailscale teardown still runs. The mapping must still go.
