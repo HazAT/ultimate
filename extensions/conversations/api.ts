@@ -6,9 +6,9 @@ import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
-import { ContextDoc, MarksDoc } from './refs.ts'
+import { ContextDoc, MarksDoc, OverviewDoc } from './refs.ts'
 import type { AgentMarkStyle, ContextUsage } from './refs.ts'
-import type { ConversationSubject, KeptWork } from './types.ts'
+import type { ConversationSubject, KeptWork, OverviewState } from './types.ts'
 import type {
   accountResponse,
   askSummaryModel,
@@ -66,6 +66,8 @@ export type ConversationsService = {
   generatedTitle(tx: Tx, id: ConversationId, title: string): Promise<void>
 }
 export type TreesService = {
+  /** Whether conversation `id` is one of the project's roots, read inside `tx`. */
+  isRoot(tx: Tx, id: ConversationId): Promise<boolean>
   /** The root of the tree conversation `id` belongs to, or undefined outside any tree. */
   rootOf(id: ConversationId, ctx: Context): Promise<number | undefined>
   /** The root whose tally lists top-level conversation `id`, with its branch intent; undefined for roots and others. */
@@ -114,6 +116,16 @@ export const ContextUsageDoc = defineDoc<ContextUsage>({
   initial: () => ({ at: 0 }),
 })
 export type { ContextUsage } from './refs.ts'
+/** Each conversation's run state, summary and feature, on conversation 1; the sidebar and notifications read it. */
+export const Overview = defineDoc<OverviewState>({
+  kind: OverviewDoc.kind,
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ conversations: {} }),
+})
 export { Concluded } from './refs.ts'
 /** How each standing agent's mark looks, on conversation 1; subagents writes it from the definitions. */
 export const Marks = defineDoc<Record<string, AgentMarkStyle>>({

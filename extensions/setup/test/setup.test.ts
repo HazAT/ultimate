@@ -113,7 +113,7 @@ async function checkHost(options: { logins: string[]; oauth?: string[] }) {
       }),
     }),
     want: () => undefined,
-    doc: () => undefined,
+    harness: () => ({ snapshot: async () => undefined }),
   } as unknown as Parameters<typeof check>[0]
 }
 
@@ -352,12 +352,9 @@ it('warns about a listed root without memories until it has one', async () => {
     'lineage.tally': { 1: { tokens: 0 } },
   }
   const row = async () =>
-    (
-      await check(
-        { ...host, doc: (kind: string) => (docs[kind] ? { kind } : undefined) } as never,
-        async (doc, id) => docs[(doc as unknown as { kind: string }).kind][id],
-      )
-    ).find((issue) => issue.area === 'Project memory')
+    (await check(host, async (doc, id) => docs[doc.definition.kind][id] as never)).find(
+      (issue) => issue.area === 'Project memory',
+    )
   // A root that never branched (a fresh project) has nothing to warn about yet.
   expect(await row()).toBeUndefined()
   docs['lineage.tally'][1] = { tokens: 0, since: 3 }

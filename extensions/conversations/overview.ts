@@ -1,22 +1,12 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
-import { defineDoc, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, SubmissionRecord } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { resetAfter, Summaries } from './summary.ts'
 import { isInput } from '../../lib/entries.ts'
-import { OverviewDoc } from './refs.ts'
-import type { OverviewRow, OverviewState } from './types.ts'
-
-export const Overview = defineDoc<OverviewState>({
-  kind: OverviewDoc.kind,
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({ conversations: {} }),
-})
+import { Overview } from './api.ts'
+import type { OverviewRow } from './types.ts'
 
 const nonFailureSettlements = new Set(['aborted', 'reset', 'stale'])
 const queuedFollowUpLookback = 32
