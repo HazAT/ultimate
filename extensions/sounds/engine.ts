@@ -16,10 +16,10 @@ export function setVolume(gain01: number) {
   limitedMaster.volume.rampTo(Tone.gainToDb(gain01) - 6, 0.05)
 }
 
-const reverbTailMs = 5000
+const reverbTailSeconds = 5
 let bandPlaying = false
 let cancelRest: Cancel | undefined
-let quietAt = 0
+let quietAtAudioSeconds = 0
 
 function tick() {
   cancelRest?.()
@@ -27,15 +27,19 @@ function tick() {
   if (Tone.getContext().clockSource !== 'worker') Tone.getContext().clockSource = 'worker'
 }
 
-function restAfter(ms: number) {
-  quietAt = Math.max(quietAt, Date.now() + ms)
+function restAfter(seconds: number) {
+  quietAtAudioSeconds = Math.max(quietAtAudioSeconds, Tone.now() + seconds)
   cancelRest?.()
-  cancelRest = bandPlaying ? undefined : deadline(quietAt - Date.now(), rest)
+  cancelRest = bandPlaying ? undefined : deadline(seconds * 1000, rest)
 }
 
 function rest() {
+  const audioStillDue = quietAtAudioSeconds - Tone.now()
+  if (audioStillDue > 0) {
+    cancelRest = deadline(audioStillDue * 1000, rest)
+    return
+  }
   cancelRest = undefined
-  quietAt = 0
   Tone.getContext().clockSource = 'offline'
   ;(Tone.getContext().rawContext as AudioContext)
     .suspend()
@@ -46,6 +50,7 @@ rest()
 export const unlock = async () => {
   tick()
   await Tone.start()
+  restAfter(reverbTailSeconds)
 }
 export const running = () => Tone.getContext().state === 'running'
 
@@ -112,7 +117,6 @@ function strike(tune: Sound, time: number) {
 export async function play(sound: Sound) {
   await unlock()
   strike(sound, Tone.now() + 0.03)
-  restAfter(reverbTailMs)
 }
 
 const voiceLeadInSeconds = 0.45
@@ -121,7 +125,6 @@ export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffe
   await unlock()
   const now = Tone.now() + 0.03
   strike(sound, now)
-  restAfter(reverbTailMs)
   if (!mono24kHzPcm16) {
     await pace(voiceLeadInSeconds * 1000)
     const utterance = new SpeechSynthesisUtterance(text)
@@ -139,7 +142,7 @@ export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffe
   const voice = new Tone.Player(buffer).connect(limitedMaster)
   voice.onstop = () => voice.dispose()
   voice.start(now + voiceLeadInSeconds)
-  restAfter((voiceLeadInSeconds + buffer.duration) * 1000 + reverbTailMs)
+  restAfter(voiceLeadInSeconds + buffer.duration + reverbTailSeconds)
   await pace((voiceLeadInSeconds + buffer.duration) * 1000)
 }
 
@@ -149,7 +152,7 @@ export async function playNotes(notes: readonly Note[], gain01 = 0.18) {
   for (const [start, frequency, length] of notes)
     bells.triggerAttackRelease(frequency, length, now + start, Math.min(1, gain01 * 3))
   const end = Math.max(0, ...notes.map(([start, , length]) => start + length))
-  restAfter(end * 1000 + reverbTailMs)
+  restAfter(end + reverbTailSeconds)
 }
 
 const dMajorIviIVV = [
@@ -236,7 +239,7 @@ export function band(variant: Variant): Band {
         for (const node of part.nodes) node.dispose()
       })
       bandPlaying = false
-      restAfter(releaseTailMs)
+      restAfter(releaseTailMs / 1000)
     },
   }
 }

@@ -621,15 +621,13 @@ export function useCompact() {
     return () => releases.forEach((release) => release())
   })
   const docs = createMemo(
-    (): CompactDocs => {
-      const root = state().docsOf[ROOT] ?? noDocs
-      return Object.fromEntries(
+    (): CompactDocs =>
+      Object.fromEntries(
         kinds()
           .split(',')
           .filter(Boolean)
-          .map((kind) => [kind, root[kind]]),
-      )
-    },
+          .map((kind) => [kind, immutableDoc(state(), ROOT, kind)]),
+      ) as CompactDocs,
     { equals: sameDocs },
   )
   const conversation = createMemo(() => {
@@ -650,7 +648,6 @@ export function useCompact() {
     }
   })
 }
-const noDocs: Readonly<Record<string, unknown>> = {}
 const sameDocs = (a: CompactDocs, b: CompactDocs) =>
   Object.keys(a).length === Object.keys(b).length &&
   Object.keys(a).every((kind) => Object.hasOwn(b, kind) && a[kind] === b[kind])
