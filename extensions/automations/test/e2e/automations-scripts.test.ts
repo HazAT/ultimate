@@ -129,12 +129,14 @@ it('starts a prompt run from script FIRE with its payload', async () => {
   expect(first.content).toContain('Summarize')
   expect(first.content).toContain('Fired: hello')
   expect((await app.harness.snapshot(Metadata, child.id, context))?.label).toBe('automation')
-  const fired = async () =>
+  const delivered = async () =>
     (await (await app.harness.conversation(caller.id, context))!.context(context)).entries.filter(
-      (e) => e.conversationId === caller.id && e.kind === 'automations.fired',
+      (e) => e.conversationId === caller.id && e.kind.startsWith('automations.'),
     )
-  await until(async () => (await fired()).length === 1)
-  expect((await fired())[0].data).toEqual({ id: a.id, name: 'Summary', text: 'hello' })
+  await until(async () => (await delivered()).length === 1)
+  expect((await delivered()).map((e) => [e.kind, e.data])).toEqual([
+    ['automations.finished', { id: a.id, name: 'Summary', text: 'Complete' }],
+  ])
   expect(await record()).toMatchObject({ fires: 1, enabled: false, script: { state: 'done' } })
 })
 

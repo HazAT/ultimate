@@ -52,6 +52,14 @@ async function fixture() {
     join(root, 'agents/watcher.md'),
     '---\nname: watcher\ndescription: Watches\ntools: []\n---\nShort.\n',
   )
+  await writeFile(
+    join(root, 'agents/delegator.md'),
+    '---\nname: delegator\ndescription: Delegates\ntools: [hold, subagent]\n---\nDelegate.\n',
+  )
+  await writeFile(
+    join(root, 'agents/inheritor.md'),
+    '---\nname: inheritor\ndescription: Inherits\n---\nInherit.\n',
+  )
   const prepared = await prepareHarness({
     ultimateRoot: root,
     userHome,
@@ -80,6 +88,13 @@ async function fixture() {
             )
             return { output: [{ type: 'text', text: 'Released' }] }
           },
+        }),
+        defineTool({
+          name: 'subagent',
+          description: 'Delegate',
+          parameters: obj({}),
+          replay: 'safe',
+          execute: async () => ({ output: [{ type: 'text', text: 'Delegated' }] }),
         }),
       ],
     }),
@@ -244,6 +259,33 @@ it('fires a subscriber-only schedule without creating a run conversation', async
   }
 })
 
+it("delivers a prompt run's answer to its subscribers when the run ends", async () => {
+  // A daily briefing's subscriber got only the empty fire notice; the answer stayed in the run conversation.
+  const f = await fixture()
+  const target = await f.opened.harness.commit(async (tx) => {
+    const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+    await configure(tx, child.id, {})
+    return child
+  }, context)
+  const a = (await f.action('create', {
+    name: 'Briefing',
+    prompt: 'Brief me',
+    schedule: 'every 1d',
+    subscribers: [target.id],
+  })) as Automation
+  await f.action('run', { id: a.id })
+  const delivered = async () => {
+    const conversation = (await f.opened.harness.conversation(target.id, context))!
+    return (await conversation.context(context)).entries.filter(
+      (e) => e.conversationId === target.id && e.kind.startsWith('automations.'),
+    )
+  }
+  await until(async () => (await delivered()).length > 0)
+  expect((await delivered()).map((e) => [e.kind, e.data])).toEqual([
+    ['automations.finished', { id: a.id, name: 'Briefing', text: 'Answer: Brief me\nSecond line' }],
+  ])
+})
+
 it('skips the recorded lander conversation whatever its label says', async () => {
   const f = await fixture()
   const [lander, other] = await f.opened.harness.commit(async (tx) => {
@@ -303,6 +345,29 @@ it('pause keeps a running profile run alive, skips overlap, and abort cancels a 
   await f.action('abort', { id: a.id, runId: manual.id })
   await until(async () => (await f.records())[0].runs.at(-1)?.status === 'aborted')
   await expect(f.action('update', { id: a.id, agent: 'missing' })).rejects.toThrow('Unknown agent')
+})
+
+it('keeps subagent for a definition that lists it, as subagent start does', async () => {
+  // A reviewer whose definition lists subagent to hand deep dives to a helper lost it when an automation ran it.
+  const f = await fixture()
+  const tools = async (agent: string) => {
+    const a = (await f.action('create', {
+      name: agent,
+      prompt: 'Report',
+      schedule: { kind: 'at', time: new Date(Date.now() + 3_600_000).toISOString() },
+      agent,
+    })) as Automation
+    await f.action('run', { id: a.id })
+    await until(async () => {
+      const record = (await f.records()).find((r) => r.id === a.id)!
+      return record.runs[0]?.status === 'done'
+    })
+    const run = (await f.records()).find((r) => r.id === a.id)!.runs[0]
+    const child = (await f.opened.harness.conversation(run.conversationId!, context))!
+    return (await child.agent(context)).tools.map((t) => t.name)
+  }
+  expect(await tools('delegator')).toEqual(['hold', 'subagent'])
+  expect(await tools('inheritor')).not.toContain('subagent')
 })
 
 it('fires nothing while the host is paused and catches up once after Play', async () => {
@@ -497,6 +562,41 @@ it('removes the prompt on an empty update only while subscribers remain', async 
   await expect(
     f.action('create', { name: 'Empty', prompt: '', schedule: 'every 1d' }),
   ).rejects.toThrow('At least one')
+})
+
+it('replaces subscribers on update instead of dropping them', async () => {
+  // A prompt automation updated with subscribers: ["@ultimate"] kept none, so its runs reached no one.
+  const f = await fixture()
+  const [first, second] = await f.opened.harness.commit(async (tx) => {
+    const made = []
+    for (let i = 0; i < 2; i++) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      made.push(child.id)
+    }
+    return made
+  }, context)
+  const a = (await f.action('create', {
+    name: 'Briefing',
+    prompt: 'Hello',
+    schedule: 'every 1d',
+  })) as Automation
+  const added = (await f.action('update', {
+    id: a.id,
+    prompt: 'Hello again',
+    subscribers: [`#${first}`, second],
+  })) as Automation
+  expect(added.subscribers).toEqual([first, second])
+  expect(
+    ((await f.action('update', { id: a.id, subscribers: [] })) as Automation).subscribers,
+  ).toEqual([])
+  await f.action('update', { id: a.id, prompt: '', subscribers: [first] })
+  await expect(f.action('update', { id: a.id, subscribers: [] })).rejects.toThrow('At least one')
+  await expect(f.action('update', { id: a.id, subscribers: [99999] })).rejects.toThrow(
+    'Unknown subscriber',
+  )
+  const [kept] = await f.records()
+  expect([kept.prompt, kept.subscribers]).toEqual([undefined, [first]])
 })
 
 it('migrates schedule records saved before scripts and subscribers', async () => {

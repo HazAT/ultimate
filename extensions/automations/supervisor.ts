@@ -97,7 +97,7 @@ const committedManifest = ({ to, ...rest }: Manifest) => ({
 type Delivery = {
   sub: Automation
   event: number | string
-  kind: 'writing' | 'fired' | 'failed' | 'escalated'
+  kind: 'writing' | 'fired' | 'finished' | 'failed' | 'escalated'
   text: string
   targets: Subscriber[]
 }
@@ -383,13 +383,13 @@ export function supervisor(
                 id: sub.id,
                 name: sub.name,
                 text,
-                ...(kind === 'fired' && sub.branches?.by === id
+                ...((kind === 'fired' || kind === 'finished') && sub.branches?.by === id
                   ? { branches: sub.branches.ids }
                   : {}),
               },
             },
           }
-          if (kind === 'fired')
+          if (kind === 'fired' || kind === 'finished')
             await host
               .harness()
               .commit((tx) => host.need(MessagesApi).submitFire(tx, conversation, input, sub), ctx)
