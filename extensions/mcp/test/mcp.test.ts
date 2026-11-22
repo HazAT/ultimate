@@ -61,6 +61,15 @@ async function serve(token: string) {
               description: 'Says it back',
               inputSchema: { type: 'object', properties: { text: { type: 'string' } } },
             },
+            {
+              name: 'shout',
+              description: 'Says it loud',
+              inputSchema: {
+                type: 'object',
+                properties: { text: { type: 'string' } },
+                required: ['text'],
+              },
+            },
           ],
         },
         'tools/call': {
@@ -113,7 +122,7 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
   const status = () => actions.status(null, { host } as never) as unknown as McpServerStatus[]
   await until(() => status().every((server) => server.state !== 'connecting'))
   expect(status()).toMatchObject([
-    { name: 'echo', state: 'connected', tools: 1 },
+    { name: 'echo', state: 'connected', tools: 2 },
     { name: 'locked', state: 'failed' },
     { name: 'broken', state: 'failed', error: 'Invalid entry: needs a command or a url' },
   ])
@@ -126,6 +135,13 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
     isError: false,
   })
   expect(await run({ server: 'echo', tool: 'echo', args: {} })).toMatchObject({ isError: true })
+  const shout = await run({ server: 'echo', tool: 'shout', args: { loud: true } })
+  expect(shout).toMatchObject({ isError: true })
+  expect(JSON.stringify(shout)).toContain('missing required text')
+  expect(JSON.stringify(shout)).toContain('\\"required\\":[\\"text\\"]')
+  expect(JSON.stringify(await run({ server: 'echo', tool: 'nope' }))).toContain(
+    'Tools: echo, shout',
+  )
   vi.useFakeTimers({ toFake: ['setTimeout'] })
   cleanup.push(async () => void vi.useRealTimers())
   const busy = run({ server: 'echo', tool: 'echo', args: { text: 'busy' } })
