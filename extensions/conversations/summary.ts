@@ -512,6 +512,7 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
       | { steer: EntryId; spawn?: undefined; generation?: undefined }
     ),
     | { phase: 'observe' }
+    | { phase: 'answered' }
     | { phase: 'prepare'; answer: EntryId; summary: boolean }
     | {
         phase: 'generate'
@@ -532,13 +533,23 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
           ? { phase: 'prepare', answer: input.spawn.answer, summary: true }
           : { phase: 'observe' },
     phases: {
-      observe: async (task, runtime, context) => {
-        const settled = await runtime.waitForTask(task.input.generation!, context)
-        if (settled.state.outcome.status !== 'completed') {
+      observe: (task, runtime, context) =>
+        runtime.commit(
+          () => ({
+            status: 'waiting',
+            checkpoint: { phase: 'answered' },
+            on: [task.input.generation!],
+            policy: 'allSettled',
+          }),
+          context,
+        ),
+      answered: async (task, runtime, context) => {
+        const [outcome] = await runtime.outcomes([task.input.generation!], context)
+        if (outcome.status !== 'completed') {
           await runtime.commit(() => terminal, context)
           return
         }
-        const answer = settled.state.outcome.result.entryId
+        const answer = outcome.result.entryId
         const submissions = await Promise.all(
           task.input.inputs.map(async (id) =>
             (await host.harness().submission(id, context))?.status(context),
