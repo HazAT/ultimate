@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush, useContext } from 'solid-js'
+import { createSignal, flush, useContext } from 'solid-js'
 import type { Component } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
@@ -49,7 +49,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
+import { PresentationProvider } from '../../../../web/src/sdk/presentation.solid.tsx'
+import { PresentationPoint, provide } from '../../../../web/src/sdk/types.ts'
 import { ComposerRedirect } from '../../../../web/src/sdk/solid.ts'
 import { ComposerFrame } from '../../frame.solid.tsx'
 import web from '../../web.solid.tsx'
@@ -142,6 +144,100 @@ it('makes main’s composer inert while a side chat is in front, with Back to ma
   flush()
   expect(covered().hasAttribute('inert')).toBe(false)
 })
+
+it('keeps the side target disclosed in reduced mode with a way back to main', async () => {
+  const [mode, setMode] = createSignal<'full' | 'bare'>('full')
+  await registry.setLoaders({
+    'extensions/presentation/web.solid.tsx': async () => ({
+      default: { provides: [provide(PresentationPoint, () => () => ({ composer: mode() }))] },
+    }),
+  })
+  const container = renderSolid(() => (
+    <PresentationProvider>
+      <ComposerFrame core={<Core />} />
+    </PresentationProvider>
+  ))
+  await settle()
+  harness
+    .server!.of(1)!
+    .send('doc', { kind: 'ultimate.standing-agents', value: { ultimate: main } })
+  flush()
+  const editor = container.querySelector<HTMLTextAreaElement>('#composer-input')!
+  editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+  flush()
+  setMode('bare')
+  flush()
+  expect(editor.placeholder).toBe('Ask on the side — @ultimate keeps running…')
+  expect(container.textContent).toContain('This draft will send to a new side chat')
+  const back = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Use main conversation',
+  )!
+  back.click()
+  flush()
+  expect(editor.placeholder).toBe('To main')
+  expect(container.textContent).not.toContain('This draft will send to a new side chat')
+  harness.server!.of(main)!.send('doc', {
+    kind: 'sidechat.index',
+    value: { sides: [{ id: 82, at: 40, openedAt: 0 }] },
+  })
+  uiState.set('ext.side-chat.front', 82)
+  flush()
+  expect(container.querySelector('[data-main-composer]')?.hasAttribute('inert')).toBe(true)
+  const returnToMain = [...container.querySelectorAll('button')].find((button) =>
+    button.textContent?.includes('Back to main'),
+  )!
+  returnToMain.click()
+  flush()
+  expect(container.querySelector('[data-main-composer]')?.hasAttribute('inert')).toBe(false)
+  await registry.setLoaders({})
+})
+
+it.each(['no-toolbar', 'bare'] as const)(
+  'keeps parked side chats directly reachable in %s',
+  async (mode) => {
+    await registry.setLoaders({
+      'extensions/presentation/web.solid.tsx': async () => ({
+        default: { provides: [provide(PresentationPoint, () => () => ({ composer: mode }))] },
+      }),
+    })
+    const container = renderSolid(() => (
+      <PresentationProvider>
+        <ComposerFrame core={<Core />} />
+      </PresentationProvider>
+    ))
+    await settle()
+    harness
+      .server!.of(1)!
+      .send('doc', { kind: 'ultimate.standing-agents', value: { ultimate: main } })
+    harness.server!.of(main)!.send('doc', {
+      kind: 'sidechat.index',
+      value: {
+        sides: [
+          { id: 82, at: 40, openedAt: 0 },
+          { id: 83, at: 41, openedAt: 0, question: 7 },
+        ],
+      },
+    })
+    flush()
+    for (const [label, id] of [
+      ['Show side chat #82', 82],
+      ['Show question side chat #83', 83],
+    ] as const) {
+      const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+      expect(button.closest('[hidden]')).toBeNull()
+      button.click()
+      flush()
+      expect(uiState.get('ext.side-chat.front')).toBe(id)
+      const back = [...container.querySelectorAll('button')].find((item) =>
+        item.textContent?.includes('Back to main'),
+      )!
+      back.click()
+      flush()
+      expect(uiState.get('ext.side-chat.front')).toBeNull()
+    }
+    await registry.setLoaders({})
+  },
+)
 
 it('opens the side chat in a scoped sheet and restores the main transcript when parked', async () => {
   vi.stubGlobal('matchMedia', () => ({

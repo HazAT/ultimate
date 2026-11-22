@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush, For } from 'solid-js'
+import { createSignal, flush, For } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../lib/ids.ts'
 import { expectDistinctAgentNames } from './agent-names.ts'
@@ -67,6 +67,8 @@ import { ConversationScope, TranscriptContext } from '../../web/src/compat/conve
 import { island } from '../../web/src/compat/island.tsx'
 import { Dock } from '../../web/src/compat/shell.tsx'
 import { createTranscriptFrame, useTranscript } from '../../web/src/sdk/solid.ts'
+import { PresentationProvider } from '../../web/src/sdk/presentation.solid.tsx'
+import { PresentationPoint, provide } from '../../web/src/sdk/types.ts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const effects: (() => void)[] = []
@@ -178,6 +180,73 @@ it('steers on Enter, queues a follow-up on Alt+Enter, cancels a queued input and
     { path: '/api/conversations/8/inbox/80/cancel', body: {}, source: 'person' },
     { path: '/api/conversations/8/abort', body: {}, source: 'person' },
   ])
+})
+
+it('preserves draft, attachments, queue, error and stop when presentation changes', async () => {
+  const [mode, setMode] = createSignal<'full' | 'no-toolbar' | 'bare'>('full')
+  await registry.setLoaders({
+    'extensions/presentation/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(PresentationPoint, () => () => ({ composer: mode() }))],
+        slots: {
+          'composer.toolbar': () => <span>toolbar</span>,
+          'composer.status': () => <span>status</span>,
+          'composer.actions': () => <span>actions</span>,
+        },
+      },
+    }),
+  })
+  await show(22, {
+    'pi.live': { run: { taskId: 2, inputs: [], turns: 0 } },
+    'pi.inbox': { items: [{ id: 220, mode: 'followUp', content: 'queued input' }] },
+  })
+  const container = renderSolid(() => (
+    <PresentationProvider>
+      <Composer />
+    </PresentationProvider>
+  ))
+  await settle()
+  await act([{ ref: 'Prompt for conversation #22', action: 'setValue', args: ['draft'] }])
+  getDraft(22).set({
+    files: [
+      {
+        id: 'file',
+        name: 'notes.txt',
+        size: '1 B',
+        mimeType: 'text/plain',
+        path: '/tmp/notes.txt',
+      },
+    ],
+    error: 'upload failed',
+  })
+  flush()
+  const editor = container.querySelector<HTMLTextAreaElement>('#composer-input')!
+  expect(container.textContent).toContain('toolbar')
+  setMode('no-toolbar')
+  flush()
+  expect(container.textContent).not.toContain('toolbar')
+  expect(container.textContent).not.toContain('status')
+  expect(container.textContent).toContain('actions')
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]')!
+  expect(input.closest('label')?.hidden).toBe(false)
+  setMode('bare')
+  flush()
+  expect(container.querySelector('#composer-input')).toBe(editor)
+  expect(editor.value).toBe('draft')
+  for (const text of ['notes.txt', 'queued input', 'upload failed'])
+    expect(container.textContent).toContain(text)
+  expect(container.querySelector('input[type="file"]')).toBe(input)
+  expect(input.closest('label')?.hidden).toBe(true)
+  expect(container.textContent).not.toContain('actions')
+  expect(container.querySelector('[aria-label="Stop the run in conversation #22"]')).not.toBeNull()
+  expect(container.querySelector('[aria-label="Send prompt to conversation #22"]')).not.toBeNull()
+  setMode('full')
+  flush()
+  expect(container.querySelector('#composer-input')).toBe(editor)
+  expect(container.textContent).toContain('toolbar')
+  expect(container.textContent).toContain('notes.txt')
+  expect(input.closest('label')?.hidden).toBe(false)
+  await registry.setLoaders({})
 })
 
 it('withdraws a queued steer into the next steer, and restores both when the submit fails', async () => {

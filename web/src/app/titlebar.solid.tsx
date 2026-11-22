@@ -16,6 +16,7 @@ import { showSurface, useExtensions, useStore, useSystem } from '../sdk/hooks.ts
 import { actions } from '../sdk/actions.ts'
 import { Contribution, ContributedIcon, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'
+import { usePresentation } from '../sdk/presentation.solid.tsx'
 import { inlineFailure } from './header.solid.tsx'
 import { Shortcut } from './palette.solid.tsx'
 import { isPreview, projectName } from './project.ts'
@@ -235,47 +236,55 @@ function SurfaceItems() {
 }
 
 export function TitleBar() {
+  const presentation = usePresentation()
   return (
     <div
       class="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground"
       data-ui="titlebar"
     >
       <div class="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
-        <div
-          class={cn(
-            'flex min-w-0 items-center gap-2 overflow-hidden pr-3 pl-3 md:shrink-0 md:pr-2',
-            alignSurfaceTabsWithSidebar,
-          )}
-        >
-          <Brand />
-          <Project />
-          <Slot fallback={inlineFailure} name="titlebar.left" variant="inline" />
-        </div>
-        <div class="flex shrink-0 items-center pl-2">
-          <SurfaceItems />
-        </div>
+        <Show when={presentation().titlebar !== 'essential'}>
+          <div
+            class={cn(
+              'flex min-w-0 items-center gap-2 overflow-hidden pr-3 pl-3 md:shrink-0 md:pr-2',
+              alignSurfaceTabsWithSidebar,
+            )}
+          >
+            <Brand />
+            <Project />
+            <Slot fallback={inlineFailure} name="titlebar.left" variant="inline" />
+          </div>
+        </Show>
+        <Show when={presentation().titlebar === 'full'}>
+          <div class="flex shrink-0 items-center pl-2">
+            <SurfaceItems />
+          </div>
+        </Show>
       </div>
       <div class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-        <Slot fallback={inlineFailure} name="titlebar.right" variant="inline" />
-        <Button
-          aria-label="Command palette"
-          class="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
-          onClick={actions.openPalette}
-          size="sm"
-          variant="ghost"
-        >
-          commands
-          <Shortcut keys="mod+k" />
-        </Button>
-        <Button
-          aria-label="Show commands"
-          class="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
-          onClick={actions.openPalette}
-          size="icon"
-          variant="ghost"
-        >
-          <CommandIcon aria-hidden="true" class="size-3.5" />
-        </Button>
+        <Slot fallback={inlineFailure} name="titlebar.persistent" variant="inline" />
+        <Show when={presentation().titlebar !== 'essential'}>
+          <Slot fallback={inlineFailure} name="titlebar.right" variant="inline" />
+          <Button
+            aria-label="Command palette"
+            class="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
+            onClick={actions.openPalette}
+            size="sm"
+            variant="ghost"
+          >
+            commands
+            <Shortcut keys="mod+k" />
+          </Button>
+          <Button
+            aria-label="Show commands"
+            class="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
+            onClick={actions.openPalette}
+            size="icon"
+            variant="ghost"
+          >
+            <CommandIcon aria-hidden="true" class="size-3.5" />
+          </Button>
+        </Show>
       </div>
     </div>
   )

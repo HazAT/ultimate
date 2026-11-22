@@ -49,6 +49,10 @@ export interface State {
   docsOf: Readonly<Record<number, Docs>>
   /** The root conversation's `ultimate.ui` document, once streamed; read it through `uiState`. */
   shared?: Readonly<Record<string, JsonValue>>
+  /** Number of full UI snapshots received on this page, excluding incremental operations. */
+  sharedSnapshots: number
+  /** Whether this stream has announced its server process. */
+  systemOnStream: boolean
   system?: SystemInfo
   conversations: readonly ConversationSummary[]
   tasks?: TaskGraph
@@ -123,6 +127,8 @@ export function createStore(options: StoreOptions = {}) {
     viewsOf: {},
     docs: {},
     docsOf: {},
+    sharedSnapshots: 0,
+    systemOnStream: false,
     conversations: [],
     notices: [],
     ui: {
@@ -194,7 +200,7 @@ export function createStore(options: StoreOptions = {}) {
           state.system &&
           (state.system.process.pid !== system.process.pid ||
             state.system.process.generation !== system.process.generation)
-        set({ system })
+        set({ system, systemOnStream: true })
         if (!state.models || restarted) void refreshModels()
         break
       }
@@ -231,7 +237,10 @@ export function createStore(options: StoreOptions = {}) {
         }
         break
       case 'ui':
-        set({ shared: (data as ServerEvents['ui']).value })
+        set({
+          shared: (data as ServerEvents['ui']).value,
+          sharedSnapshots: state.sharedSnapshots + 1,
+        })
         break
       case 'uiOps':
         if (state.shared)
@@ -503,6 +512,7 @@ export function createStore(options: StoreOptions = {}) {
       if (multiplexedEventSource !== current) return
       streamId = undefined
       setConnection(opened || state.view ? 'reconnecting' : 'connecting')
+      if (state.systemOnStream) set({ systemOnStream: false })
 
       if (current.readyState === EVENT_SOURCE_CLOSED_NO_RETRY)
         cancelRetry = retryAfter(options.retryMs ?? 1000, connect)
@@ -518,6 +528,7 @@ export function createStore(options: StoreOptions = {}) {
             raw.slice(cut + 1),
           )
         } else if (name === 'stream') {
+          if (state.systemOnStream) set({ systemOnStream: false })
           streamId = (JSON.parse(raw) as ServerEvents['stream']).id
           handlers.clear()
           opening.clear()
@@ -531,7 +542,10 @@ export function createStore(options: StoreOptions = {}) {
           if (lastSystemText !== raw) {
             lastSystemText = raw
             handle(name, JSON.parse(raw))
-          } else if (!state.models) void refreshModels()
+          } else {
+            if (!state.systemOnStream) set({ systemOnStream: true })
+            if (!state.models) void refreshModels()
+          }
         } else handle(name, JSON.parse(raw))
       })
   }

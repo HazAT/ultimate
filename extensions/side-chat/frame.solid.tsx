@@ -13,6 +13,7 @@ import {
   ROOT,
   useConversationId,
   useDocOf,
+  usePresentation,
   useUiState,
   writerNow,
   writingAs,
@@ -28,6 +29,8 @@ export const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 const [sideMode, setSideMode] = createRoot(() => createSignal(false))
 
 export function ComposerFrame(props: SolidComposerProps) {
+  const presentation = usePresentation()
+  const full = () => presentation().composer === 'full'
   const id = useConversationId()
   const index = useDocOf(id, SideChatsDoc)
   const ultimate = useDocOf(() => ROOT, StandingDoc)
@@ -57,7 +60,7 @@ export function ComposerFrame(props: SolidComposerProps) {
       : outer(),
   )
   const onKeyDown = (event: KeyboardEvent) => {
-    if (!active() || !(event.target instanceof HTMLTextAreaElement)) return
+    if (!full() || !active() || !(event.target instanceof HTMLTextAreaElement)) return
     const popup = event.target.getAttribute('aria-expanded') === 'true'
     if (!togglesSideMode(event, { conversation: id(), ultimate: mainId(), popup })) return
     event.preventDefault()
@@ -66,16 +69,21 @@ export function ComposerFrame(props: SolidComposerProps) {
   return (
     <div
       class="relative"
-      data-side-mode={active() ? (on() ? 'side' : 'normal') : undefined}
+      data-side-mode={active() && full() ? (on() ? 'side' : 'normal') : undefined}
       ref={(element) => element.addEventListener('keydown', onKeyDown, { capture: true })}
     >
       <div data-main-composer={active() || undefined} inert={!!covering()}>
         <div
           class={cn(column(), 'flex items-center justify-between gap-2 pb-1.5')}
-          hidden={!active() && !(sides().length && parked().length)}
+          hidden={
+            full() ? !active() && !(sides().length && parked().length) : parked().length === 0
+          }
         >
           <div
-            class="flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/70"
+            class={cn(
+              'flex min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground/70',
+              !full() && 'flex-wrap',
+            )}
             data-ui="side-chat-hint"
           >
             <For each={parked()} keyed={(item) => item.id}>
@@ -95,7 +103,7 @@ export function ComposerFrame(props: SolidComposerProps) {
                 </Button>
               )}
             </For>
-            <Show when={active() && parked().length === 0}>
+            <Show when={full() && active() && parked().length === 0}>
               <span class="truncate pointer-coarse:hidden">
                 <Show
                   when={on()}
@@ -110,16 +118,33 @@ export function ComposerFrame(props: SolidComposerProps) {
               </span>
             </Show>
           </div>
-          <Show when={active()}>
+          <Show when={full() && active()}>
             <ModeSwitch on={on()} onToggle={() => setSideMode(!on())} />
           </Show>
         </div>
+        <Show when={!full() && on()}>
+          <div class={cn(column(), 'pb-1.5')}>
+            <output class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-brand/30 bg-brand/5 px-3 py-2 text-[12px] text-foreground">
+              <GitFork aria-hidden="true" class="size-3.5 shrink-0 text-brand" />
+              <span>This draft will send to a new side chat</span>
+              <Button
+                class="h-auto p-0 text-brand underline underline-offset-2"
+                onClick={() => setSideMode(false)}
+                size={null}
+                variant={null}
+              >
+                Use main conversation
+              </Button>
+            </output>
+          </div>
+        </Show>
         <div
           class={cn(
             'relative transition-[padding] duration-300 motion-reduce:transition-none',
-            on() ? 'sm:pl-6' : 'pl-0',
+            on() && full() ? 'sm:pl-6' : 'pl-0',
             '[&_form]:transition-[border-color] [&_form]:duration-300',
             on() &&
+              full() &&
               '[&_form]:border-dashed [&_form]:border-brand/60 [&_form]:focus-within:border-brand/80',
           )}
           style={{ 'transition-timing-function': ease }}

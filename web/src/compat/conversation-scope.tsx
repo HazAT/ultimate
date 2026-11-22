@@ -1,8 +1,10 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import type { Accessor } from 'solid-js'
 import { createContext, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { store } from '../sdk/client.ts'
 import type { TranscriptFrame } from '../sdk/transcript-frame.ts'
+import type { Presentation } from '../sdk/types.ts'
 import { scopeAttribute } from '../sdk/scope.ts'
 export { scopeOf } from '../sdk/scope.ts'
 
@@ -11,6 +13,10 @@ export const ConversationIdContext = createContext<ConversationId | undefined>(u
 export const TranscriptContext = createContext<TranscriptFrame | undefined>(undefined)
 
 export const ExtensionNameContext = createContext<string | undefined>(undefined)
+
+export const PresentationAccessorContext = createContext<Accessor<Presentation> | undefined>(
+  undefined,
+)
 
 /**
  * Give descendants their own live conversation without switching the shell's shown conversation.

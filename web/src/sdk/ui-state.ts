@@ -77,6 +77,7 @@ export function createUiState(
   let serverProcessEpoch = 0
 
   let awaitingRestartSnapshot = false
+  let ready = false
   let cancelSend: Cancel | undefined
 
   function update() {
@@ -190,6 +191,7 @@ export function createUiState(
   return {
     get: (key: string): JsonValue | undefined => values[key],
     snapshot: (): UiValues => values,
+    ready: () => ready,
     subscribe: (listener: () => void) => {
       listeners.add(listener)
       return () => {
@@ -208,8 +210,21 @@ export function createUiState(
       streamSnapshot = next
       tabOnlyAtLoad ??= Object.fromEntries(Object.entries(next).filter(([key]) => tabOnly(key)))
       newestStreamRevision = rev
+      ready = true
       awaitingRestartSnapshot = false
       releaseStreamConfirmedWrites()
+      update()
+    },
+
+    observed() {
+      if (ready) return
+      ready = true
+      update()
+    },
+
+    disconnected() {
+      if (!ready) return
+      ready = false
       update()
     },
 
@@ -219,6 +234,8 @@ export function createUiState(
       newestStreamRevision = 0
       inFlight = undefined
       awaitingRestartSnapshot = true
+      ready = false
+      update()
       for (const entry of unconfirmedSentWrites.values()) entry.rev = 0
       if (pending.length > 0) schedule(0)
     },

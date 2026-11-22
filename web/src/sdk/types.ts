@@ -20,6 +20,7 @@ export type SlotName =
   | 'titlebar.project'
   | 'titlebar.left'
   | 'titlebar.right'
+  | 'titlebar.persistent'
   | 'header.right'
   | 'statusline.left'
   | 'statusline.right'
@@ -269,6 +270,17 @@ export interface Point<Input, Value> {
   readonly value?: Value
 }
 export const definePoint = <Input, Value>(point: string): Point<Input, Value> => ({ point })
+
+/** Presentation of the shell and conversation. Omitted fields retain their defaults. */
+export interface Presentation {
+  titlebar: 'full' | 'no-tabs' | 'essential'
+  composer: 'full' | 'no-toolbar' | 'bare'
+  backgroundUpdates: 'show' | 'hide'
+  contextHeader: 'show' | 'hide'
+}
+
+/** Shell-wide presentation; the last provider wins. */
+export const PresentationPoint = definePoint<null, Partial<Presentation>>('ultimate.presentation')
 /**
  * The conversations whose run a pause of the host parked (the optional `pause` extension provides it): their work is
  * held, none of it executes, so the transcript and every list of conversations show them paused, not working.

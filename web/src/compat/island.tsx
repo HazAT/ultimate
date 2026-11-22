@@ -15,14 +15,17 @@ import { createPortal } from 'react-dom'
 import {
   ConversationIdContext,
   ExtensionNameContext,
+  PresentationAccessorContext,
   TranscriptContext,
 } from './conversation-scope.tsx'
 import { markIsland, markReact } from '../sdk/framework.ts'
 import { ConversationScope, ExtensionName, Transcript } from '../sdk/hooks.ts'
+import { defaultPresentation, PresentationContext } from '../sdk/presentation.solid.tsx'
 
 type Props = Record<string, unknown>
 
 const islands = createRoot(() => getOwner())
+const defaultPresentationAccessor = () => defaultPresentation
 
 type IslandProps<P> = {
   [K in keyof P]: K extends 'core' | 'cancel' | 'children' ? ReactNode : P[K]
@@ -48,6 +51,7 @@ export function island<P extends object = Record<string, never>>(
     const extension = useContext(ExtensionNameContext) ?? null
     const conversation = useContext(ConversationIdContext) ?? null
     const transcript = useContext(TranscriptContext) ?? null
+    const presentation = useContext(PresentationAccessorContext) ?? defaultPresentationAccessor
     const [childHost] = useState(() =>
       Object.assign(document.createElement(inline ? 'span' : 'div'), { className: 'contents' }),
     )
@@ -88,13 +92,18 @@ export function island<P extends object = Record<string, never>>(
               createComponent(ExtensionName, {
                 value: extension,
                 get children() {
-                  return createComponent(ConversationScope, {
-                    value: conversation,
+                  return createComponent(PresentationContext, {
+                    value: presentation,
                     get children() {
-                      return createComponent(Transcript, {
-                        value: transcript,
+                      return createComponent(ConversationScope, {
+                        value: conversation,
                         get children() {
-                          return createComponent(component, store as P)
+                          return createComponent(Transcript, {
+                            value: transcript,
+                            get children() {
+                              return createComponent(component, store as P)
+                            },
+                          })
                         },
                       })
                     },
@@ -113,7 +122,7 @@ export function island<P extends object = Record<string, never>>(
         live.current = undefined
         release()
       }
-    }, [extension, conversation, transcript])
+    }, [extension, conversation, transcript, presentation])
     const Host = inline ? 'span' : 'div'
     return (
       <>

@@ -59,6 +59,7 @@ export {
   useSystem,
   useTasks,
   useUiState,
+  useUiStateReady,
   useViewport,
 } from './hooks.ts'
 export {
@@ -81,6 +82,7 @@ export {
   messageItems,
   MessageReference,
   ParkedRuns,
+  PresentationPoint,
   provisionsOf,
   RunStart,
   toolLine,
@@ -142,6 +144,8 @@ export type {
   WebExtension,
 } from './hooks.ts'
 export { useConversationWidth, useExternal, usePageVisible } from './page.ts'
+export { defaultPresentation, usePresentation } from './presentation.solid.tsx'
+export type { Presentation } from './types.ts'
 
 export { Card } from '../app/card.solid.tsx'
 /** A card that folds to one quiet line in compact mode; `label` names its button. The reader's choice survives reloads. */
