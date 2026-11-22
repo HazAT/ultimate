@@ -52,6 +52,13 @@ export type ChapterEntry = {
   carried?: Seed['counts']
 }
 
+/** A carried branch's first input: the old chapter and the conversation it continues there. */
+export type CarriedEntry = {
+  from: { name: string; number: number }
+  conversation: ConversationId
+  title: string
+}
+
 /** No arguments: ask @ultimate to dream now. User-only. */
 export const StartAction = actionRef<null, { requested: true }>('dream', 'start')
 /** No arguments: the user pressed Fall asleep after the dream; @ultimate is asked to prepare the chapter. User-only. */

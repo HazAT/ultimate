@@ -6,7 +6,7 @@ type Delivery = {
   to: ConversationId
   type: 'input' | 'write'
   requestId: string
-  kind: 'dream.requested' | 'dream.ready' | 'dream.prepared' | 'dream.chapter'
+  kind: 'dream.requested' | 'dream.ready' | 'dream.prepared' | 'dream.chapter' | 'dream.carried'
   data?: JsonObject
   content: string
 }

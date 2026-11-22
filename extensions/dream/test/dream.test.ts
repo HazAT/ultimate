@@ -17,6 +17,8 @@ import { Messages } from '../../messages/api.ts'
 import { Todos } from '../../todos/server.ts'
 import { Standing } from '../../subagents/api.ts'
 import { ContextUsageDoc } from '../../conversations/api.ts'
+import { concludedIn } from '../../conversations/server.ts'
+import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
 import dream, { actions, branched, Next, toolStats, userActions } from '../server.ts'
 import { buildSeed } from '../seed.ts'
@@ -59,6 +61,8 @@ async function fixture() {
     new Map<string, unknown>([
       ['messages', { send: async () => ({}), dropped: async () => {} }],
       ['lineage', { rootOf: async () => undefined }],
+      ['conversations', { concludedIn }],
+      ['workspaces', { doc: Workspaces }],
       [
         'subagents',
         {

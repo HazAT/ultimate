@@ -94,10 +94,15 @@ export type MessagesService = {
     device?: Device,
     call?: { taskId: TaskId; callId: string },
   ): Promise<number>
-  /** Send a one-way message from conversation `from` to `to` (`#id`, `@name` or `user`), once per `requestId`. */
+  /**
+   * Send a message from conversation `from` to `to` (`#id`, `@name` or `user`), once per `requestId`: one-way, or a
+   * reply-expected one to the user with the `questions` its card asks.
+   */
   send(
     from: ConversationId,
-    input: { to: string; text: string; reply: false },
+    input:
+      | { to: string; text: string; reply: false }
+      | { to: 'user'; text: string; reply: true; questions?: Question[] },
     requestId: string,
     ctx: Context,
   ): Promise<number>

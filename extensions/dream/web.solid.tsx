@@ -30,7 +30,7 @@ import {
   useChapters,
   useWakeUp,
 } from './chapters.solid.tsx'
-import { MorningCard } from './morning.solid.tsx'
+import { CarriedCard, MorningCard } from './morning.solid.tsx'
 import { DreamDialog, dreamDialog } from './modal.solid.tsx'
 import { AwakeSection, useAwake } from './awake.solid.tsx'
 import { AwakeDialog, DreamStatus, NextDialog } from './pinned.solid.tsx'
@@ -160,6 +160,7 @@ export default defineWebExtension({
     'dream.ready': ReadyCard,
     'dream.prepared': attention(PreparedCard),
     'dream.chapter': MorningCard,
+    'dream.carried': CarriedCard,
   },
   slots: {
     'sidebar.top': [

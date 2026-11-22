@@ -58,6 +58,7 @@ export type Automation = {
     exitCode?: number
     lastOutputAt?: number
     error?: string
+    adopt?: string
   }
   prompt?: string
   agent?: string
@@ -71,7 +72,7 @@ export type Automation = {
   fires: number
   lastFireAt?: number
 }
-export type AutomationListItem = Automation & { alive: boolean }
+export type AutomationListItem = Automation & { alive: boolean; folder?: string }
 export type CreateArgs = {
   name: string
   schedule?: string | Schedule
@@ -95,6 +96,7 @@ export type CreateArgs = {
   slug?: string
   to?: string
   key?: string
+  adopt?: string
 }
 export type Args = Partial<CreateArgs> & {
   action: string

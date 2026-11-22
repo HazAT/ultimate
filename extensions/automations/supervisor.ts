@@ -7,8 +7,18 @@ import type {
 } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { access, appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import {
+  access,
+  appendFile,
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  writeFile,
+} from 'node:fs/promises'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -547,6 +557,7 @@ export function supervisor(
     const recorded = await readPid(id)
     if (recorded) await cleanup(id, recorded)
     const dir = folder(id)
+    if (sub.script!.adopt) await adopt(id, sub.script!.adopt)
     await mkdir(join(dir, 'state'), { recursive: true })
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -676,6 +687,36 @@ export function supervisor(
   function resetFailuresOnSuccessfulFire(sub: Automation) {
     delete sub.script!.failures
   }
+  const automationsRoot = () => join(host.userHome, '.ultimate/automations')
+  async function adoptable(from: string) {
+    const root = await realpath(automationsRoot()).catch(() => resolve(automationsRoot()))
+    const source = await realpath(from).catch(() => resolve(from))
+    const inside = relative(root, source)
+    if (!inside || inside.startsWith('..') || isAbsolute(inside))
+      throw new Error(`adopt must name a script folder under ${automationsRoot()}`)
+    return source
+  }
+  const present = (path: string) =>
+    access(path).then(
+      () => true,
+      () => false,
+    )
+  async function adopt(id: string, from: string) {
+    const dir = folder(id)
+    const copiedRunMarksAFinishedAdoption = join(dir, 'run')
+    if (await present(copiedRunMarksAFinishedAdoption)) return
+    const source = await adoptable(from)
+    if (source === (await realpath(dir).catch(() => resolve(dir))))
+      throw new Error(`Automation ${id} cannot adopt its own folder`)
+    await mkdir(dir, { recursive: true })
+    await cp(join(source, 'state'), join(dir, 'state'), { recursive: true, force: true }).catch(
+      (error: unknown) => {
+        if (!isMissing(error)) throw error
+      },
+    )
+    await cp(join(source, 'run'), join(dir, 'run.adopting'), { force: true })
+    await rename(join(dir, 'run.adopting'), copiedRunMarksAFinishedAdoption)
+  }
   async function effect(value: Effect) {
     if (value.action === 'resume') {
       try {
@@ -785,6 +826,9 @@ export function supervisor(
     trusted,
     agentFor,
     projectDir,
+    folder,
+    adoptable,
+    adopt,
     manifest,
     committedManifest,
     snapshot,

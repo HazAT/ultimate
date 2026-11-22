@@ -64,23 +64,39 @@ made active again (`lib/chapters.ts`).
 `seed.ts` builds a JSON manifest with `buildSeed(host, prepared)` and atomically writes it with
 `writeSeed(chapterDir, seed)` to `seed.json`. It carries the prepared learned lines and handover (`continues`), every
 root's memories (slug collisions keep the newest `updated`; a lost `about-*` memory fails the seed), open to-dos and
-questions, and enabled automations and scripts, with counts. The built-in dream automations are not among them: the
+questions (with their asker and question cards), enabled automations and scripts (a user script with its runtime folder,
+`once`, secrets and `#id` subscribers), and the open branches, with counts. A carried branch is a lineage branch that is
+not concluded, not a root, standing agent, watcher, automation run or the dream: its id, title, label, instructions,
+model, thinking, worktree git branch and open abstract. The built-in dream automations are not among them: the
 seed says only whether each was enabled, and the new chapter makes its own. Conversation docs are read through the
 host's exported tokens; both trigger kinds are read through the single automations list action. Enabled schedule
 records keep name, optional prompt, schedule and run profile, but no subscribers: conversation ids do not survive a
 chapter. Schedules without a prompt become recreation to-dos.
 
 On open, dream applies a chapter's seed in one commit with `dream.seed.applied` on conversation 1: memories keep
-their sources, to-dos get fresh ids, questions become user-owned to-dos naming the old chapter and message id, and a
+their sources, to-dos get fresh ids, and a
 `dream.deliver` task wakes @ultimate with one `dream.chapter` input (the morning card). Its text names the old
 chapter's read APIs, the three learned lines, the carried counts and the handover, and tells @ultimate to continue
 that work. Reopening does not reapply those documents.
+
+After that commit, each carried branch is branched again from the root (isolated when it had a worktree) with its
+label, instructions and model, and gets a `dream.carried` first input: it continues `<chapter>#<old id>`, names how
+to read that history, carries the last abstract and the git branch to merge. `dream.seed.branches` maps old ids to
+new ones. Each running user script is then created again with `adopt`: automations copies its `run` and `state/`
+and runs it at once, with no watcher turn. Its subscribers follow: `@name` stays, the old @ultimate becomes
+`@ultimate`, a carried branch its new id. Each open question then comes back as a reply-expected card from its
+carried asker, or from @ultimate. A branch, script or question that cannot come back (a fork or create that throws,
+no subscriber left, a refused card) becomes an @ultimate-owned to-do instead. Questions come back first, then each
+carried branch gets its `dream.carried` input, then the watchers start (so a watcher that fires at once finds its
+branch handed off), and @ultimate's `dream.chapter` input goes out last. Branches, scripts and questions keep receipts
+in `dream.seed`, so a reopen repeats none. A seed from before branches were carried still turns its questions into to-dos.
 
 Automations are recreated through their create action after the commit, with per-name receipts in `dream.seed`.
 A seed carries at most one enabled automation per name: building rejects duplicates. The destination starts empty;
 before each create, dream checks existing names, so a create committed just before a crash is not repeated when its
 receipt is missing. Project scripts are rediscovered, stopped, from trusted `.ultimate/automations` manifests by
-automations' own open hook; each enabled user script becomes an @ultimate-owned "Recreate script" to-do.
+automations' own open hook; an enabled user script without a runtime folder becomes an @ultimate-owned "Recreate
+script" to-do.
 
 ### Fall asleep and switch
 

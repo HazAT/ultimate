@@ -54,7 +54,12 @@ override either. Enabled automations add a line each to the prompt, such as `whe
 `abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`.
 
 - `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
-  scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
+  scope?, slug?, to?, key?, adopt?}`. `key` makes it idempotent: a key an automation already has returns that automation.
+  `adopt` (actions only, user scripts) names an earlier chapter's script folder under `~/.ultimate/automations`: the
+  record keeps it as `script.adopt`, and the first start that finds no `run` in the new folder copies `state/`, then
+  `run` last (so a crash before the copy finished recovers, and later starts copy nothing). The script starts running
+  without a watcher turn. `list`
+  gives each user script its runtime `folder`.
   New ids are `A<n>`; project scripts use slugs.
 - `update {id, …}` may switch between schedule, event and condition; a script stays a script.
 - `pause` / `resume`; `run` fires now, or relaunches a script; `runs {id}`; `abort {id, runId}`; `log {id, lines?}`

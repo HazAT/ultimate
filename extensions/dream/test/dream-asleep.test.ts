@@ -20,6 +20,9 @@ import { Standing } from '../../subagents/api.ts'
 import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
 import { Todos } from '../../todos/server.ts'
+import { concludedIn } from '../../conversations/server.ts'
+import { Workspaces } from '../../workspaces/workspaces.ts'
+import { Metadata } from '../../../server/metadata.ts'
 import { actions, Next, userActions } from '../server.ts'
 import type { Sleep } from '../refs.ts'
 import type { Seed } from '../types.ts'
@@ -73,6 +76,9 @@ async function fixture() {
     home,
     chapter: { name: 'the-beginning', number: 1 },
     want: (api: unknown) => services.get(api),
+    need: (api: { name: string }) =>
+      ({ conversations: { concludedIn }, workspaces: { doc: Workspaces } })[api.name],
+    metadata: Metadata,
     conversations: () => [],
     resource: (key: string, create: () => unknown) => {
       if (!resources.has(key)) resources.set(key, create())

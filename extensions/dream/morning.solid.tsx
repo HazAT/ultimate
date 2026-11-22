@@ -33,7 +33,7 @@ import {
   useBusyElsewhere,
 } from './chapters.solid.tsx'
 import type { Seed } from './types.ts'
-import { ChapterStarted } from './entries.ts'
+import { BranchCarried, ChapterStarted } from './entries.ts'
 import type { ChapterEntry } from './refs.ts'
 
 export const AWAKE_PROMPT = [
@@ -53,6 +53,27 @@ const nouns: Record<keyof Seed['counts'], [string, string]> = {
   questions: ['question', 'questions'],
   automations: ['automation', 'automations'],
   scripts: ['script', 'scripts'],
+  branches: ['session', 'sessions'],
+}
+
+export function CarriedCard(props: { entry: EntryRecord }) {
+  const data = () => BranchCarried.is(props.entry) && props.entry.data
+  return (
+    <Show when={data()}>
+      {(carried) => (
+        <Card data-dream-carried-branch={carried().conversation}>
+          <header class="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+            <SunriseIcon class="size-3.5 text-brand" />
+            <span>continues</span>
+            <span class="text-foreground">
+              {carried().from.name}#{carried().conversation}
+            </span>
+            <span>from {chapterLabel(carried().from.number, carried().from.name)}</span>
+          </header>
+        </Card>
+      )}
+    </Show>
+  )
 }
 
 export function MorningCard(props: { entry: EntryRecord }) {
@@ -101,7 +122,7 @@ function Morning(props: { data: ChapterEntry; at?: number }) {
 function Carried(props: { counts: Seed['counts'] }) {
   const parts = () =>
     (Object.keys(nouns) as (keyof Seed['counts'])[])
-      .filter((kind) => props.counts[kind] > 0)
+      .filter((kind) => (props.counts[kind] ?? 0) > 0)
       .map((kind) => `${props.counts[kind]} ${nouns[kind][props.counts[kind] === 1 ? 0 : 1]}`)
       .join(' · ')
   return (
