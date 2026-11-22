@@ -49,8 +49,8 @@ const textOf = (content: unknown) =>
         .join('')
 
 /** A faux server that echoes; compaction summary requests are recorded and can be held. */
-async function fixture() {
-  const home = await temp('ultimate-memory-')
+async function fixture(reopen?: string) {
+  const home = reopen ?? (await temp('ultimate-memory-'))
   const server = await fauxServer({ ultimateRoot, home, userHome: home })
   servers.push(server)
   const state = {
@@ -72,7 +72,7 @@ async function fixture() {
   }
   server.host.faux!.setResponses([route])
   await seedTally(server.harness)
-  return { server, state }
+  return { server, state, home }
 }
 
 const memories = async (server: Server, root = ROOT_CONVERSATION_ID) =>
@@ -114,6 +114,27 @@ const run = async (server: Server, name: string, args: object, caller: number) =
   const result = await found.execute(args, api, context)
   return textOf(result.output)
 }
+
+it('keeps memory across a server restart', async () => {
+  const { server, home } = await fixture()
+  await apply(server, [add('pnpm'), add('node')])
+  await apply(server, [
+    { op: 'update', slug: 'pnpm', line: 'Use pnpm 11' },
+    { op: 'delete', slug: 'node' },
+  ])
+  await server.close()
+  servers.splice(servers.indexOf(server), 1)
+
+  const reopened = (await fixture(home)).server
+  expect(await memories(reopened)).toEqual({
+    pnpm: {
+      kind: 'fact',
+      line: 'Use pnpm 11',
+      body: 'About pnpm, in full.',
+      updated: Date.UTC(2026, 9, 21),
+    },
+  })
+})
 
 it('applies memory ops atomically and holds the cap', async () => {
   const { server } = await fixture()
