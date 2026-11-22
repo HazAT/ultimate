@@ -111,11 +111,29 @@ export function triggers(
     if (/^#[1-9]\d*$/.test(of)) return parseConversationId(Number(of.slice(1)))
     return undefined
   }
-  async function recorded(tx: Tx, of: string): Promise<ConversationId | undefined> {
-    if (STANDING.test(of)) return (await tx.doc(Standing, ROOT_CONVERSATION_ID))[of.slice(1)]
+  async function residents() {
+    return new Set(
+      (await host.need(SubagentsApi).residents(BACKGROUND_CONTEXT)).map(({ name }) => name),
+    )
+  }
+  async function recorded(
+    tx: Tx,
+    of: string,
+    standing: Set<string>,
+  ): Promise<ConversationId | undefined> {
+    if (STANDING.test(of))
+      return standing.has(of.slice(1))
+        ? (await tx.doc(Standing, ROOT_CONVERSATION_ID))[of.slice(1)]
+        : undefined
     return /^#[1-9]\d*$/.test(of) ? parseConversationId(Number(of.slice(1))) : undefined
   }
-  async function evaluate(tx: Tx, a: Automation, id?: ConversationId, measured?: ContextUsage) {
+  async function evaluate(
+    tx: Tx,
+    a: Automation,
+    id?: ConversationId,
+    measured?: ContextUsage,
+    onlySchedule = false,
+  ) {
     if (!a.enabled || !a.condition || !id) return
     const usage = measured ?? (await tx.doc(ContextUsageDoc, id))
     if (usage.percent === undefined) return
@@ -131,14 +149,15 @@ export function triggers(
       condition.idleFor ? idleSince + condition.idleFor : 0,
     )
     if (usage.percent < condition.above || !condition.armed) return
-    if (firesAt > now) {
+    if (firesAt > now || onlySchedule) {
       const sleeper = condition.waker === undefined ? undefined : await tx.task(condition.waker)
       const sleepsUntil =
         sleeper && sleeper.state.status !== 'terminal'
           ? (sleeper.input as { until: number }).until
           : undefined
-      if (condition.idleFor && !(sleepsUntil! <= firesAt))
-        condition.waker = await tx.createTask(IdleWaker, { id: a.id, until: firesAt }, onRoot)
+      const until = Math.max(firesAt, now)
+      if (condition.idleFor && !(sleepsUntil! <= until))
+        condition.waker = await tx.createTask(IdleWaker, { id: a.id, until }, onRoot)
       return
     }
     const count = (n: number) =>
@@ -164,16 +183,17 @@ export function triggers(
       sleep: (task, runtime, ctx) =>
         runtime.sleepUntil(task.input.until, { phase: 'evaluate' }, ctx),
       evaluate: async (task, runtime, ctx) => {
-        const inMeasurementOrder = measurementsInCommitOrder.then(() =>
-          runtime.commit(async (tx) => {
+        const inMeasurementOrder = measurementsInCommitOrder.then(async () => {
+          const standing = await residents()
+          await runtime.commit(async (tx) => {
             const a = (await tx.doc(Automations)).automations[task.input.id]
             if (a?.condition?.waker === task.id) {
               delete a.condition.waker
-              await evaluate(tx, a, await recorded(tx, a.condition.of))
+              await evaluate(tx, a, await recorded(tx, a.condition.of, standing))
             }
             return { status: 'terminal', outcome: { status: 'completed', result: null } }
-          }, ctx),
-        )
+          }, ctx)
+        })
         measurementsInCommitOrder = settled(inMeasurementOrder)
         await inMeasurementOrder
       },
@@ -190,12 +210,13 @@ export function triggers(
   let closed = false
   async function check(changed?: Map<ConversationId, ContextUsage>) {
     const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
+    const standing = await residents()
     for (const a of Object.values(state?.automations ?? {})) {
       if (closed || !a.enabled || !a.condition) continue
       await host.harness().commit(async (tx) => {
         const current = (await tx.doc(Automations)).automations[a.id]
         if (current?.condition?.of !== a.condition!.of) return
-        const target = await recorded(tx, current.condition.of)
+        const target = await recorded(tx, current.condition.of, standing)
         if (target === undefined || (changed && !changed.has(target))) return
         await evaluate(tx, current, target, changed?.get(target))
       }, BACKGROUND_CONTEXT)

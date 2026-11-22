@@ -194,6 +194,8 @@ async function send(
   }
 }
 
+const MODEL_RETRY_MS = 60_000
+
 type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' } | { phase: 'replan' }
 
 function pinger(host: ExtensionHost) {
@@ -246,6 +248,12 @@ function pinger(host: ExtensionHost) {
           const prepared = !!messages && id === found!.id && !!lastOn(next, found!.agent.model!)
           if (!prepared || host.want(PauseApi)?.paused())
             return { status: 'sleeping', until: now, checkpoint: { phase: 'plan' } }
+          if (!host.modelRuntime.getModel(next.provider, next.model))
+            return {
+              status: 'sleeping',
+              until: Math.min(now + MODEL_RETRY_MS, next.lastRequest + TTL),
+              checkpoint: { phase: 'plan' },
+            }
           const run = (await tx.doc(LiveDoc, found!.id)).run
           if (run)
             return {
@@ -319,7 +327,6 @@ async function arm(tx: Tx, host: ExtensionHost) {
 }
 
 async function lastCachedAnswerWithinTheHour(
-  host: ExtensionHost,
   found: NonNullable<Awaited<ReturnType<typeof ultimate>>>,
 ) {
   const model = found.agent.model
@@ -341,7 +348,7 @@ async function lastCachedAnswerWithinTheHour(
 async function catchUp(host: ExtensionHost, changed?: Set<ConversationId>) {
   const found = await ultimate(host, context)
   if (changed && !(found && changed.has(found.id))) return
-  const at = found && (await lastCachedAnswerWithinTheHour(host, found))
+  const at = found && (await lastCachedAnswerWithinTheHour(found))
   await host.harness().commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
     if (at && found.agent.model && (doc.answers?.[key(found.id, found.agent.model)] ?? 0) < at)

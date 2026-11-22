@@ -88,6 +88,7 @@ async function fixture() {
     },
   }
   host.provided.set('subagents', {
+    residents: async () => [{ name: 'ultimate', description: '' }],
     // As the real one: the standing agent's conversation of the moment, the fixture's target before one is recorded.
     standing: async (name: string) =>
       name === 'ultimate'
