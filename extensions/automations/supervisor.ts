@@ -7,7 +7,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { access, appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -100,6 +100,7 @@ type Delivery = {
   kind: 'writing' | 'fired' | 'finished' | 'failed' | 'escalated'
   text: string
   targets: Subscriber[]
+  reaim?: Effect
 }
 type AskBeforeConcurrentDiscovery = string
 type KeyedCreateRetry = boolean
@@ -112,11 +113,13 @@ export type Prepared = {
   subscribers?: Subscriber[]
   manifest?: Manifest
   previousAsk?: AskBeforeConcurrentDiscovery
+  previousOnce?: boolean
   keyed?: KeyedCreateRetry
 }
 type Run = {
   child: GroupProcess
   group: Group
+  revision: number
   active: boolean
   afterFire: boolean
   done?: string
@@ -136,9 +139,11 @@ export function supervisor(
     runs: new Map<string, Run>(),
     launches: new Set<Promise<void>>(),
     effects: new Map<string, Promise<void>>(),
+    reaimedRevisions: new Map<string, number>(),
     closing: false,
   }))
   const { runs, launches, effects } = reloadStableProcessState
+  const reaimedRevisions = (reloadStableProcessState.reaimedRevisions ??= new Map<string, number>())
   const chapterIsolatedRuntimeRoot = () =>
     join(
       host.userHome,
@@ -330,13 +335,26 @@ export function supervisor(
     initial: () => ({ phase: 'deliver' }),
     phases: {
       deliver: async (task, runtime, ctx) => {
-        const { sub, event, kind, text, targets } = task.input
+        const { sub, event, kind, text, targets, reaim } = task.input
+        const isStale = (current: Automation | undefined) => {
+          const revisionChanged =
+            !!sub.script &&
+            !!current &&
+            (current.script?.revision ?? 0) !== (sub.script.revision ?? 0)
+          if (kind === 'writing' || kind === 'failed')
+            return (
+              !current ||
+              revisionChanged ||
+              (!current.enabled && current.script?.state !== 'writing')
+            )
+          return kind === 'escalated' && revisionChanged
+        }
         const now = (await runtime.snapshot(Automations, ctx))?.automations[sub.id]
-        const toWatcherOfStoppedAutomation =
-          (kind === 'writing' || kind === 'failed') &&
-          (!now || (!now.enabled && now.script?.state !== 'writing'))
-        if (kind === 'writing' && !toWatcherOfStoppedAutomation)
+        const dropped = isStale(now)
+        if (kind === 'writing' && !dropped) {
+          if (reaim) await apply(reaim)
           await mkdir(join(folder(sub.id), 'state'), { recursive: true })
+        }
         const content =
           kind === 'writing'
             ? `${brief(sub)}\nWrite and briefly test run, then use automation resume {id:"${sub.id}"}. Ending your turn before resume or escalate escalates it.`
@@ -344,10 +362,10 @@ export function supervisor(
               ? `Automation ${sub.id} "${sub.name}" failed (${sub.script!.failures ?? 1} of ${FAILURE_LIMIT} in a row; the ${FAILURE_LIMIT}rd escalates by itself): ${text}\nInvestigate, fix run, and use automation resume, or automation escalate with a clear reason when it cannot work. Ending your turn without resuming escalates it.\n${sub.scope === 'project' ? `${brief(sub)}\n` : ''}Last 50 log lines:\n${await tail(sub.id)}`
               : `Automation ${sub.id} "${sub.name}" ${kind}: ${text}`
         const alreadyMessagedUltimate =
-          kind === 'escalated'
+          kind === 'escalated' && !dropped
             ? (await runtime.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
             : undefined
-        if (kind === 'escalated')
+        if (kind === 'escalated' && !dropped)
           await host
             .need(MessagesApi)
             .send(
@@ -356,7 +374,7 @@ export function supervisor(
               `automations:${sub.id}:${event}:ultimate`,
               ctx,
             )
-        for (const target of toWatcherOfStoppedAutomation ? [] : targets) {
+        for (const target of dropped ? [] : targets) {
           const id =
             typeof target === 'string'
               ? await host.need(SubagentsApi).standing(target.slice(1), ctx)
@@ -393,6 +411,13 @@ export function supervisor(
             await host
               .harness()
               .commit((tx) => host.need(MessagesApi).submitFire(tx, conversation, input, sub), ctx)
+          else if (reaim)
+            await host.harness().commit(async (tx) => {
+              const current = (await tx.doc(Automations)).automations[sub.id]
+              if (isStale(current)) return
+              delete current.script!.reaiming
+              await conversation.submit(tx, input)
+            }, ctx)
           else await conversation.submit(input, ctx)
         }
         await runtime.commit(() => terminal, ctx)
@@ -407,6 +432,7 @@ export function supervisor(
     event: number | string,
     kind: Delivery['kind'],
     text: string,
+    options?: { reaim?: Effect },
   ) {
     await tx.createTask(
       Deliver,
@@ -419,6 +445,7 @@ export function supervisor(
           kind === 'writing' || kind === 'failed'
             ? [sub.script!.conversationId]
             : [...sub.subscribers],
+        ...(options?.reaim ? { reaim: options.reaim } : {}),
       },
       owner,
     )
@@ -474,8 +501,12 @@ export function supervisor(
     if (reloadStableProcessState.closing && !run) return
     await host.harness().commit(async (tx) => {
       const sub = (await tx.doc(Automations)).automations[id]
-      if (!sub || (run && sub.script!.pid !== run.child.pid)) return
-      const done = sub.script!.once && sub.script!.state === 'done'
+      if (
+        !sub ||
+        (run && (sub.script!.pid !== run.child.pid || (sub.script!.revision ?? 0) !== run.revision))
+      )
+        return
+      const done = !!run?.afterFire || (sub.script!.once && sub.script!.state === 'done')
       const stopped = !!run?.stopped || reloadStableProcessState.closing
       if (!stopped && sub.script!.state !== 'running' && !done) return
       const said = run?.done
@@ -539,6 +570,7 @@ export function supervisor(
     if (reloadStableProcessState.closing) throw new Error('Automation supervisor is closing')
     const sub = await snapshot(id)
     if (!sub.enabled || sub.script!.state !== 'running') return
+    const revision = sub.script!.revision ?? 0
     const current = runs.get(id)
     const replayAlreadyLaunchedProcess =
       current?.active && current.child.pid === sub.script!.pid && current.child.pid !== previousPid
@@ -576,6 +608,7 @@ export function supervisor(
     const run: Run = {
       child,
       group,
+      revision,
       active: true,
       afterFire: false,
       queue: Promise.resolve(),
@@ -589,7 +622,12 @@ export function supervisor(
     })
     const committedPidAndStarted = host.harness().commit(async (tx) => {
       const saved = (await tx.doc(Automations)).automations[id]
-      if (!saved || !saved.enabled || saved.script!.state !== 'running') {
+      if (
+        !saved ||
+        !saved.enabled ||
+        saved.script!.state !== 'running' ||
+        (saved.script!.revision ?? 0) !== revision
+      ) {
         run.active = false
         return
       }
@@ -627,7 +665,13 @@ export function supervisor(
       if (done !== undefined) run.done = done
       await host.harness().commit(async (tx) => {
         const saved = (await tx.doc(Automations)).automations[id]
-        if (!saved || saved.script!.pid !== child.pid || saved.script!.state !== 'running') return
+        if (
+          !saved ||
+          saved.script!.pid !== child.pid ||
+          saved.script!.state !== 'running' ||
+          (saved.script!.revision ?? 0) !== revision
+        )
+          return
         saved.script!.lastOutputAt = saved.updatedAt = Date.now()
         if (fire === undefined || run.afterFire) return
         resetFailuresOnSuccessfulFire(saved)
@@ -684,6 +728,38 @@ export function supervisor(
         await finish(value.id, undefined, null, undefined, String(error))
         throw error
       }
+    } else if (value.action === 'reaim') {
+      await stopProcess(value.id, value.previousPid)
+      const activeRun = runs.get(value.id)
+      if (activeRun && value.revision !== undefined && activeRun.revision < value.revision)
+        await stopProcess(value.id, activeRun.child.pid)
+      const current = (await host.harness().snapshot(Automations, BACKGROUND_CONTEXT))?.automations[
+        value.id
+      ]
+      if (
+        !current?.script ||
+        !current.script.reaiming ||
+        value.revision === undefined ||
+        (current.script.revision ?? 0) !== value.revision ||
+        reaimedRevisions.get(value.id) === value.revision
+      )
+        return
+      if (value.stopWatcher)
+        await (
+          await host.harness().conversation(current.script.conversationId, BACKGROUND_CONTEXT)
+        )?.abort(BACKGROUND_CONTEXT, { background: true })
+      const afterAbort = (await host.harness().snapshot(Automations, BACKGROUND_CONTEXT))
+        ?.automations[value.id]
+      if (
+        !afterAbort?.script ||
+        !afterAbort.script.reaiming ||
+        (afterAbort.script.revision ?? 0) !== value.revision
+      )
+        return
+      const stateDir = join(folder(value.id), 'state')
+      await rm(stateDir, { recursive: true, force: true })
+      await mkdir(stateDir, { recursive: true })
+      reaimedRevisions.set(value.id, value.revision)
     } else await stopProcess(value.id, value.previousPid)
   }
   async function apply(value?: Effect) {
@@ -705,7 +781,12 @@ export function supervisor(
       const sub = Object.values((await tx.doc(Automations)).automations).find(
         (a) => a.script?.conversationId === conversationId,
       )
-      if (!sub?.enabled || !['writing', 'investigating'].includes(sub.script!.state)) return
+      if (
+        !sub?.enabled ||
+        !['writing', 'investigating'].includes(sub.script!.state) ||
+        sub.script!.reaiming
+      )
+        return
       if ((await tx.doc(InboxDoc, conversationId)).items.length) return
       for (const live of ['pending', 'running'] as const) {
         let cursor: Cursor | undefined

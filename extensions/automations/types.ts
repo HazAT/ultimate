@@ -20,6 +20,7 @@ export type Run = {
   status: 'running' | 'done' | 'failed' | 'aborted' | 'skipped'
   finishedAt?: number
   answer?: string
+  revision?: number
 }
 export type Subscriber = ConversationId | StandingAgentName
 export type Automation = {
@@ -52,6 +53,8 @@ export type Automation = {
     to?: string
     conversationId: ConversationId
     state: 'writing' | 'running' | 'investigating' | 'failed' | 'stopped' | 'done'
+    revision?: number
+    reaiming?: boolean
     failures?: ConsecutiveUnplannedExits
     pid?: number
     startedAt?: number
@@ -108,7 +111,13 @@ export type Args = Partial<CreateArgs> & {
 export type Manifest = { name: string; ask: string; once: boolean; secrets?: string[]; to: string }
 export const STANDING = /^@[a-zA-Z0-9_-]+$/
 export const FAILURE_LIMIT = 3
-export type Effect = { id: string; action: string; previousPid?: number }
+export type Effect = {
+  id: string
+  action: 'pause' | 'resume' | 'reaim'
+  previousPid?: number
+  revision?: number
+  stopWatcher?: boolean
+}
 export const isSlug = (id: string) => /^[a-z][a-z0-9-]{0,62}$/.test(id) && !(id in Object.prototype)
 export const isId = (id: string) => /^A[1-9]\d*$/.test(id) || isSlug(id)
 

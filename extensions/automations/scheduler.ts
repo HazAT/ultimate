@@ -92,7 +92,7 @@ export function scheduler(
         } catch (error) {
           if (runtime.signal.aborted) throw error
           await runtime.commit(async (tx) => {
-            await settle(tx, task.input.automation.id, String(task.id), 'failed', String(error))
+            await settle(tx, task.input.automation, String(task.id), 'failed', String(error))
             return terminal
           }, context)
         }
@@ -116,7 +116,7 @@ export function scheduler(
         } catch (error) {
           if (runtime.signal.aborted) throw error
           await runtime.commit(async (tx) => {
-            await settle(tx, task.input.automation.id, String(task.id), 'failed', String(error))
+            await settle(tx, task.input.automation, String(task.id), 'failed', String(error))
             return terminal
           }, context)
         }
@@ -138,7 +138,7 @@ export function scheduler(
                   : undefined
             await settle(
               tx,
-              task.input.automation.id,
+              task.input.automation,
               String(task.id),
               result.status === 'done'
                 ? 'done'
@@ -152,7 +152,7 @@ export function scheduler(
         } catch (error) {
           if (runtime.signal.aborted) throw error
           await runtime.commit(async (tx) => {
-            await settle(tx, task.input.automation.id, String(task.id), 'failed', String(error))
+            await settle(tx, task.input.automation, String(task.id), 'failed', String(error))
             return terminal
           }, context)
         }
@@ -164,19 +164,29 @@ export function scheduler(
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, context),
   })
-  async function settle(tx: Tx, id: string, runId: string, status: Run['status'], answer?: string) {
+  const runKey = (a: Pick<Automation, 'id' | 'script'>) => `${a.id}:${a.script?.revision ?? 0}`
+  async function settle(
+    tx: Tx,
+    fired: Automation,
+    runId: string,
+    status: Run['status'],
+    answer?: string,
+  ) {
     const state = await tx.doc(Automations)
-    finish(state, id, runId, status, answer)
-    const a = state.automations[id]
+    finish(state, fired.id, runId, status, answer)
+    const a = state.automations[fired.id]
     if (!a || status === 'aborted') return
+    if (fired.script && (a.script?.revision ?? 0) !== (fired.script.revision ?? 0)) return
     const text = status === 'done' ? answer?.trim() || '(no answer)' : `Run failed: ${answer}`
     if (a.subscribers.length) await deliver(tx, a, `run:${runId}`, 'finished', text)
     delete a.branches
   }
   async function fire(tx: Tx, a: Automation, firedAt: number, text = '') {
+    const currentRevision = a.script?.revision ?? 0
     const skip =
       !!a.prompt &&
-      (a.runs.some((r) => r.status === 'running') || (await scanRunsBeforeWrites(tx)).has(a.id))
+      (a.runs.some((r) => r.status === 'running' && (r.revision ?? 0) === currentRevision) ||
+        (await scanRunsBeforeWrites(tx)).has(runKey(a)))
     const countsTowardCap = (!!a.prompt && !skip) || a.subscribers.length > 0
     a.recentFires = (a.recentFires ?? []).filter((at) => at > firedAt - FIRE_WINDOW_MS)
     if (countsTowardCap && a.recentFires.length >= MAX_FIRES_PER_HOUR) {
@@ -219,7 +229,7 @@ export function scheduler(
           cursor,
         )
         for (const task of page.items)
-          ids.add((task.input as { automation: Automation }).automation.id)
+          ids.add(runKey((task.input as { automation: Automation }).automation))
         cursor = page.next
       } while (cursor)
     }
@@ -245,8 +255,14 @@ export function scheduler(
         },
         owner,
       )
-      activeRuns.get(tx)!.add(a.id)
-      a.runs.push({ id: String(id), firedAt, status: 'running' })
+      activeRuns.get(tx)!.add(runKey(a))
+      const revision = a.script?.revision
+      a.runs.push({
+        id: String(id),
+        firedAt,
+        status: 'running',
+        ...(revision !== undefined ? { revision } : {}),
+      })
     }
     a.runs = a.runs.slice(-RETAINED_RUNS)
     return a.runs.at(-1)!
