@@ -4,7 +4,7 @@ Durable messages between conversations, standing agents and the user. Built in a
 
 ## Messaging
 
-`message { to, text, reply?: true, steer?, images?, questions? }` returns the message id at once. Address a
+`message { to, text, reply?: true, steer?, images?, questions?, consumer? }` returns the message id at once. Address a
 conversation as `#123` or `123`, a standing agent as `@name`, or `user`.
 
 - **Who may message whom.** Any conversation except a subagent may message `user`; a message to the user ends the run
@@ -121,15 +121,17 @@ as `@ultimate@<project> on <machine>` with a globe mark and a violet accent.
 ## Document and typed inputs
 
 `Messages` (kind `board`, version 1) is exported on `ROOT_CONVERSATION_ID` as `{ messages: Message[]; next: number }`;
-the log keeps the newest 300 items, and transcripts retain delivered inputs. `Message` is in `api.ts`: `from` and `to`
-are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`, `failed` or
+the log retains the newest 300 ordinary or open items, except that open messages always survive even beyond 300.
+Pending messages that are not open are retained separately and do not consume that budget. Transcripts retain delivered
+inputs. `Message` is in `api.ts`: `from` and `to` are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`, `failed` or
 `stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`, `questions` and `call` are optional.
 
 - `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote? }`.
 - `board.reply` data: `{ id, re, from, text, failed, stopped?, images?, remote?, interim? }`; `stopped` also sets
   `failed`; an `interim` reply is placed as a note (`delivery: 'note'`).
-- Each post emits `board.sent` `{ message, from, to, reply, steer }` (`MessageSent`), never the text; replies emit
-  nothing.
+- Each post emits `board.sent` `{ message, from, to, reply, steer, re? }` (`MessageSent`), never the text; `re`
+  identifies the original for a user's answer or dismissal, or an explicitly admitted converted answer. Automatic
+  replies emit nothing.
 
 ## Actions and service
 
@@ -143,8 +145,36 @@ are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `
   the reply records `via`, so the card reads "@ultimate answered for you". Refused for other callers and closed
   messages. With `dismiss`, it also closes @ultimate's own open `tell` to another project, `text` as the reason.
 
-There is no user posting action: users type in a conversation or answer a card. `host.want(MessagesApi)` (`api.ts`)
+There is no user posting action: users type in a conversation or answer a card. `host.need(MessagesApi)` (`api.ts`)
 exposes `send`, a one-way message from a conversation, and `answer`, the user's reply to an open message.
+
+### Named consumer retention
+
+An agent may explicitly send a message with `consumer: 'name'` through `message` or a one-way message through the
+Messages service. A consumer is 1–64 lowercase ASCII letters, digits, `.`, `_`, `/` or `-`, starting with a letter
+or digit. Names must not contain sensitive data: this format check cannot guarantee that. Names are stored on the
+message and shown in the pending diagnostic. The message's `admission` records that name, its pending status, the
+actual sending conversation and, if it was a standing agent at admission, its standing name. A side chat can send as another conversation: `from`
+keeps that delivery identity while `admission.sender` identifies the side chat. Neither ordinary messages nor answers
+are implicitly admitted. If an opted-in `message` is converted into an answer to an agent, that answer emits `board.sent`
+for the consumer.
+
+A consumer registers one durable reactor for both `MessageSent` (`board.sent`) and `MessageRetargeted`
+(`messages.retargeted`), from the start, not `from: 'now'`. On either event it calls
+`MessagesApi.consume(tx, event.data.message, 'name')` inside the reactor transaction. It returns the pending message
+and acknowledges it, or returns nothing for an unadmitted, already consumed, missing or differently named message.
+Write the consumer's state in that same transaction: a failure rolls both the write and acknowledgement back, and
+replay retries it. The reactor's cursor and failure are visible in the event log.
+
+For a missed or mistyped consumer, `pending({after?, limit?})` lists pending message ids, names and times without text,
+in pages of at most 100. `retarget({message, expected, consumer})` changes a still-pending message only if its current
+name equals `expected`; the new `consumer` must follow the same identifier rule. `expected` is an exact comparison, so
+older messages with invalid names can still be recovered. The change commits `messages.retargeted` with only the message
+id; events recorded by older versions may still contain the consumer name. A consumed message cannot be retargeted. The
+target's reactor handles the new event even if it already passed the original post; no second post or delivery is made. If a consumer previously skipped events by starting from now, it can also reconcile explicitly by
+reading `Messages` in a transaction and calling `consume` with its name, committing its own writes in that transaction.
+Names route messages; they are not an authorization boundary. Pending messages have no expiry and can grow without
+bound if a consumer is missing, disabled or repeatedly failing. Once consumed, a message may be trimmed on a later append.
 
 ## Files
 

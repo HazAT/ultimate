@@ -4,6 +4,15 @@ import { isOpen } from '../../lib/message-state.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 
+export const consumerPattern = '^[a-z0-9][a-z0-9._/-]{0,63}(?![\\s\\S])'
+
+export function checkConsumer(value: unknown): asserts value is string {
+  if (typeof value !== 'string' || !new RegExp(consumerPattern).test(value))
+    throw new Error(
+      'consumer must be 1–64 lowercase ASCII letters, digits, ., _, / or -, starting with a letter or digit',
+    )
+}
+
 export async function append(tx: Tx, input: Omit<Message, 'id' | 'at'>) {
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
 
@@ -18,16 +27,26 @@ export async function append(tx: Tx, input: Omit<Message, 'id' | 'at'>) {
 }
 
 export function trim(messages: Message[], cap = 300) {
-  let extra = messages.length - cap
+  let extra =
+    messages.filter((message) => !message.admission?.pending || isOpen(message)).length - cap
   for (let i = 0; extra > 0 && i < messages.length;) {
-    const openMessageMustStayVisible = isOpen(messages[i])
-    if (openMessageMustStayVisible) i++
+    const mustStay = isOpen(messages[i]) || messages[i].admission?.pending
+    if (mustStay) i++
     else {
       messages.splice(i, 1)
       extra--
     }
   }
 }
+export async function consume(tx: Tx, messageId: number, consumer: string) {
+  const message = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+    (item) => item.id === messageId,
+  )
+  if (!message?.admission?.pending || message.admission.consumer !== consumer) return undefined
+  message.admission.pending = false
+  return message
+}
+
 export const terminal = {
   status: 'terminal',
   outcome: { status: 'completed', result: null },

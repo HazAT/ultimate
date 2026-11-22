@@ -21,6 +21,7 @@ import { obj } from '@earendil-works/pi-schema'
 import {
   configure,
   defineExtension,
+  defineDoc,
   defineTask,
   defineTool,
   InboxDoc,
@@ -40,7 +41,8 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { Messages, MessageSent } from '../api.ts'
+import { Messages, MessageRetargeted, MessageSent } from '../api.ts'
+import { append } from '../log.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -51,6 +53,16 @@ import { Standing, Subagents } from '../../subagents/api.ts'
 import { landingPending, pendingLandingCards, Workspaces } from '../../workspaces/workspaces.ts'
 import { actions as conversationActions, concludedIn } from '../../conversations/server.ts'
 import { UiState } from '../../../shared/ui-state.ts'
+
+const SideChat = defineDoc<{ of?: ConversationId }>({
+  kind: 'sidechat',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})
 
 const homes: string[] = []
 const hosts: OpenHost[] = []
@@ -113,6 +125,7 @@ async function fixture(
     /** Only this conversation's calls wait at the gate. */
     conversation?: () => number
   },
+  setup?: (host: ExtensionHost, service: () => MessagesService) => void,
 ) {
   /** Services other extensions implement here, by API name, such as pause's `messages.gate`. */
   const provided = new Map<string, unknown>()
@@ -177,9 +190,16 @@ async function fixture(
     },
     conversations: () => [],
     doc: (kind: string) =>
-      kind === 'lineage.roots' ? Roots : kind === 'lineage.tally' ? Tally : undefined,
+      kind === 'lineage.roots'
+        ? Roots
+        : kind === 'lineage.tally'
+          ? Tally
+          : kind === 'sidechat'
+            ? SideChat
+            : undefined,
   } as unknown as ExtensionHost
   let backend = messagesExtension(host)
+  setup?.(host, () => service)
   if (sendGate)
     backend = {
       ...backend,
@@ -380,6 +400,7 @@ async function fixture(
     },
     holding: () => holding,
     reactorsSettled: events.settled,
+    eventLog: events.eventLog,
     observed,
     transcripts,
   }
@@ -413,6 +434,438 @@ it('wakes an idle recipient and returns one typed reply; one-way messages return
   ])
   expect(JSON.stringify(sent)).not.toContain('One way')
 })
+const Consumed = defineDoc<{ ids: number[] }>({
+  kind: 'messages-test.consumed',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ ids: [] }),
+})
+
+it('retains an admitted message across trimming, reactor failure and reopen until consumption commits', async () => {
+  let failing = true
+  const f = await fixture(undefined, undefined, (host, service) => {
+    host.react('test-consumer', [MessageSent], async (tx, event) => {
+      const message = await service().consume(tx, event.data.message, 'reader')
+      if (!message) return
+      ;(await tx.doc(Consumed, ROOT_CONVERSATION_ID)).ids.push(message.id)
+      if (failing) throw new Error('consumer failed')
+    })
+  })
+  await f.opened.harness.commit(async (tx) => {
+    const board = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    for (let i = 0; i < 300; i++)
+      board.messages.push({
+        id: board.next++,
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: 'Open question',
+        at: 0,
+        reply: true,
+        state: 'delivered',
+      })
+  }, context)
+  await f.send('user', 'Retain me', { reply: false, consumer: 'reader' })
+  const retained = (await f.log())!.messages.find((m) => m.text === 'Retain me')!
+  expect(retained).toMatchObject({
+    admission: {
+      consumer: 'reader',
+      pending: true,
+      sender: { conversation: 1, standing: 'ultimate' },
+    },
+  })
+  await until(async () => (await f.eventLog.reactors()).some((r) => r.failure))
+  expect(
+    (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids ?? [],
+  ).toEqual([])
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = f.recipient.id
+  }, context)
+  await f.opened.close()
+  await f.open()
+  await until(async () => (await f.eventLog.reactors()).some((r) => r.failure))
+  expect((await f.log())!.messages.find((m) => m.id === retained.id)).toMatchObject({
+    admission: { pending: true, sender: { conversation: 1, standing: 'ultimate' } },
+  })
+  failing = false
+  await f.send('user', 'Trigger', { reply: false })
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids.includes(
+        retained.id,
+      ) ?? false,
+  )
+  expect((await f.log())!.messages.find((m) => m.id === retained.id)?.admission?.pending).toBe(
+    false,
+  )
+  await f.send('user', 'Trim', { reply: false })
+  expect((await f.log())!.messages.some((m) => m.id === retained.id)).toBe(false)
+  expect((await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))!.ids).toEqual([
+    retained.id,
+  ])
+})
+
+it('keeps the ordinary retention budget alongside pending messages', async () => {
+  const f = await fixture()
+  await f.opened.harness.commit(async (tx) => {
+    for (let i = 0; i < 300; i++)
+      await append(tx, {
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: `pending ${i}`,
+        reply: false,
+        state: 'delivered',
+        admission: {
+          consumer: 'reader',
+          pending: true,
+          sender: { conversation: ROOT_CONVERSATION_ID },
+        },
+      })
+    for (let i = 0; i < 301; i++)
+      await append(tx, {
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: `ordinary ${i}`,
+        reply: false,
+        state: 'delivered',
+      })
+  }, context)
+  const messages = (await f.log())!.messages
+  expect(messages.filter((m) => m.admission?.pending)).toHaveLength(300)
+  expect(messages.filter((m) => !m.admission)).toHaveLength(300)
+  expect(messages.some((m) => m.text === 'ordinary 0')).toBe(false)
+  expect(messages.some((m) => m.text === 'ordinary 300')).toBe(true)
+})
+
+it('captures the actual side-chat sender while retaining the borrowed delivery identity', async () => {
+  const f = await fixture()
+  const target = await f.opened.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const agent = await f.opened.root.agent(context)
+  await f.opened.harness.commit(async (tx) => {
+    await configure(tx, target.id, { model: agent.model, tools: agent.tools })
+    ;(await tx.doc(SideChat, f.recipient.id)).of = ROOT_CONVERSATION_ID
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).helper = f.recipient.id
+  }, context)
+  await (
+    await f.recipient.submit(
+      {
+        type: 'input',
+        content:
+          'SEND ' +
+          JSON.stringify({ to: `#${target.id}`, text: 'Side', reply: false, consumer: 'reader' }),
+      },
+      context,
+    )
+  ).wait(context)
+  await until(async () =>
+    (await f.log())!.messages.some((m) => m.text === 'Side' && m.state === 'delivered'),
+  )
+  expect((await f.log())!.messages.find((m) => m.text === 'Side')).toMatchObject({
+    from: ROOT_CONVERSATION_ID,
+    to: target.id,
+    admission: { sender: { conversation: f.recipient.id, standing: 'helper' }, pending: true },
+  })
+})
+
+it('recovers a mistyped consumer after its event was skipped and serializes retarget against consumption', async () => {
+  const f = await fixture(undefined, undefined, (host, service) => {
+    host.react('reader', [MessageSent, MessageRetargeted], async (tx, event) => {
+      const message = await service().consume(tx, event.data.message, 'reader')
+      if (message) (await tx.doc(Consumed, ROOT_CONVERSATION_ID)).ids.push(message.id)
+    })
+  })
+  await f.send('user', 'Private payload', { reply: false, consumer: 'typo' })
+  const id = (await f.log())!.messages.at(-1)!.id
+  await f.send('user', 'Another private payload', { reply: false, consumer: 'other-typo' })
+  const other = (await f.log())!.messages.at(-1)!.id
+  await until(f.reactorsSettled)
+  const diagnostic = await actions.pending({ limit: 1 }, f.action())
+  expect(diagnostic.messages).toEqual([{ id, consumer: 'typo', at: expect.any(Number) }])
+  expect(diagnostic.next).toBe(id)
+  expect(
+    (await actions.pending({ limit: 1, after: diagnostic.next! }, f.action())).messages,
+  ).toEqual([{ id: other, consumer: 'other-typo', at: expect.any(Number) }])
+  expect(JSON.stringify(diagnostic)).not.toContain('Private payload')
+  await expect(
+    actions.retarget({ message: id, expected: 'wrong', consumer: 'reader' }, f.action()),
+  ).rejects.toThrow('expected consumer')
+  const originalEmit = f.host.emit.bind(f.host)
+  f.host.emit = async (...args) => {
+    await originalEmit(...args)
+    throw new Error('retarget transaction failed')
+  }
+  try {
+    await expect(
+      actions.retarget({ message: id, expected: 'typo', consumer: 'reader' }, f.action()),
+    ).rejects.toThrow('retarget transaction failed')
+  } finally {
+    f.host.emit = originalEmit
+  }
+  expect((await f.log())!.messages.find((m) => m.id === id)?.admission?.consumer).toBe('typo')
+  expect(await f.eventLog.recent({ events: [MessageRetargeted] })).toEqual([])
+  await actions.retarget({ message: id, expected: 'typo', consumer: 'reader' }, f.action())
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids.includes(
+        id,
+      ) ?? false,
+  )
+  await expect(
+    actions.retarget({ message: id, expected: 'reader', consumer: 'other' }, f.action()),
+  ).rejects.toThrow('expected consumer')
+  const retargeted = await f.eventLog.recent({ events: [MessageRetargeted] })
+  expect(retargeted.map((event) => event.data)).toEqual([{ message: id }])
+  expect(retargeted[0].v).toBe(2)
+  expect(JSON.stringify(retargeted)).not.toContain('Private payload')
+  await f.send('user', 'Race', { reply: false, consumer: 'race' })
+  const race = (await f.log())!.messages.at(-1)!.id
+  await until(f.reactorsSettled)
+  const results = await Promise.allSettled([
+    actions.retarget({ message: race, expected: 'race', consumer: 'reader' }, f.action()),
+    f.opened.harness.commit(async (tx) => {
+      const message = await f.service().consume(tx, race, 'race')
+      if (message) (await tx.doc(Consumed, ROOT_CONVERSATION_ID)).ids.push(message.id)
+    }, context),
+  ])
+  expect(results[1].status).toBe('fulfilled')
+  expect(
+    (await f.eventLog.recent({ events: [MessageRetargeted] })).filter(
+      (event) => event.data.message === race,
+    ),
+  ).toHaveLength(results[0].status === 'fulfilled' ? 1 : 0)
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))?.ids.includes(
+        race,
+      ) ?? false,
+  )
+  expect(
+    (await f.opened.harness.snapshot(Consumed, ROOT_CONVERSATION_ID, context))!.ids.filter(
+      (item) => item === race,
+    ),
+  ).toHaveLength(1)
+  await expect(
+    actions.retarget({ message: race, expected: 'reader', consumer: 'other' }, f.action()),
+  ).rejects.toThrow('expected consumer')
+})
+
+it('rejects invalid consumer names at admission and retarget without writing state or events', async () => {
+  const f = await fixture()
+  const invalid = ['free form message', 'a'.repeat(65), 'reader\n', '_reader', 'Reader']
+  for (let i = 0; i < invalid.length; i++) {
+    await expect(
+      f.service().send(
+        ROOT_CONVERSATION_ID,
+        {
+          to: 'user',
+          text: 'Not admitted',
+          reply: false,
+          consumer: invalid[i],
+        },
+        `invalid:${i}`,
+        context,
+      ),
+    ).rejects.toThrow('consumer must')
+  }
+  await f.send('user', 'Tool rejected', { reply: false, consumer: invalid[0] })
+  expect((await f.log())?.messages ?? []).toEqual([])
+  expect(await f.eventLog.recent({ events: [MessageSent, MessageRetargeted] })).toEqual([])
+  const id = await f.service().send(
+    ROOT_CONVERSATION_ID,
+    {
+      to: 'user',
+      text: 'Valid',
+      reply: false,
+      consumer: 'reader/v1',
+    },
+    'invalid:0',
+    context,
+  )
+  const beforeRetarget = await f.log()
+  for (const consumer of invalid)
+    await expect(
+      actions.retarget({ message: id, expected: 'reader/v1', consumer }, f.action()),
+    ).rejects.toThrow('consumer must')
+  expect(await f.log()).toEqual(beforeRetarget)
+  expect((await f.log())!.messages.find((message) => message.id === id)?.admission).toMatchObject({
+    consumer: 'reader/v1',
+    pending: true,
+  })
+  expect(await f.eventLog.recent({ events: [MessageRetargeted] })).toEqual([])
+  await actions.retarget({ message: id, expected: 'reader/v1', consumer: 'reader-2' }, f.action())
+  expect(
+    (await f.eventLog.recent({ events: [MessageRetargeted] })).map((event) => event.data),
+  ).toEqual([{ message: id }])
+})
+
+it('retargets a pending legacy name that did not follow the new rule', async () => {
+  const f = await fixture()
+  const legacy = await f.opened.harness.commit(
+    (tx) =>
+      append(tx, {
+        from: ROOT_CONVERSATION_ID,
+        to: 'user',
+        text: 'Legacy',
+        reply: false,
+        state: 'delivered',
+        admission: {
+          consumer: 'old name with spaces',
+          pending: true,
+          sender: { conversation: ROOT_CONVERSATION_ID },
+        },
+      }),
+    context,
+  )
+  await actions.retarget(
+    { message: legacy.id, expected: 'old name with spaces', consumer: 'reader' },
+    f.action(),
+  )
+  expect(
+    (await f.log())!.messages.find((message) => message.id === legacy.id)?.admission,
+  ).toMatchObject({ consumer: 'reader', pending: true })
+  expect(
+    (await f.eventLog.recent({ events: [MessageRetargeted] })).map((event) => event.data),
+  ).toEqual([{ message: legacy.id }])
+})
+
+it('deduplicates concurrent admitted sends by task and conversation receipts across reopen', async () => {
+  const f = await fixture()
+  const taskId = await f.opened.harness.commit(
+    (tx) =>
+      tx.createTask(
+        reporter,
+        { delivered: false },
+        {
+          ownership: { kind: 'conversation' },
+          conversationId: ROOT_CONVERSATION_ID,
+          background: true,
+        },
+      ),
+    context,
+  )
+  const send = () =>
+    sendMessage(
+      f.host,
+      ROOT_CONVERSATION_ID,
+      {
+        to: `#${f.recipient.id}`,
+        text: 'Once',
+        reply: false,
+        consumer: 'reader',
+      },
+      context,
+      { taskId, callId: 'call', requestId: 'request' },
+    )
+  const ids = await Promise.all(Array.from({ length: 8 }, send))
+  expect(new Set(ids).size).toBe(1)
+  await until(
+    async () => (await f.log())!.messages.find((m) => m.id === ids[0])?.state === 'delivered',
+  )
+  const deliveries = await f.host.scanSubmissions(
+    { conversationId: f.recipient.id },
+    100,
+    undefined,
+    context,
+  )
+  expect(deliveries.items.filter((s) => s.requestId === `board:${ids[0]}`)).toHaveLength(1)
+  await f.opened.close()
+  await f.open()
+  expect(await send()).toBe(ids[0])
+  expect((await f.log())!.messages.filter((m) => m.text === 'Once')).toHaveLength(1)
+  expect(
+    (await f.eventLog.recent({ events: [MessageSent] })).filter((e) => e.data.message === ids[0]),
+  ).toHaveLength(1)
+  expect(
+    await sendMessage(
+      f.host,
+      ROOT_CONVERSATION_ID,
+      { to: 'user', text: 'Again', reply: false },
+      context,
+      { taskId, callId: 'call' },
+    ),
+  ).toBe(ids[0])
+  expect(
+    await f
+      .service()
+      .send(ROOT_CONVERSATION_ID, { to: 'user', text: 'Again', reply: false }, 'request', context),
+  ).toBe(ids[0])
+})
+
+it('includes the original message in user answer and dismissal events without admitting ordinary messages', async () => {
+  const f = await fixture()
+  await f.send('user', 'First?')
+  const first = (await f.log())!.messages.at(-1)!.id
+  await f.service().answer(first, 'Yes', context)
+  await f.send('user', 'Second?')
+  const second = (await f.log())!.messages.at(-1)!.id
+  await f.service().dismiss(second, context)
+  const events = await f.eventLog.recent({ events: [MessageSent] })
+  expect(events.filter((e) => e.data.from === 'user').map((e) => e.data.re)).toEqual([
+    second,
+    first,
+  ])
+  expect((await f.log())!.messages.every((m) => m.admission === undefined)).toBe(true)
+})
+
+it('admits reply-expected messages and explicitly opted-in converted answers', async () => {
+  const f = await fixture()
+  await f.send('user', 'Question?', { consumer: 'reader' })
+  const question = (await f.log())!.messages.at(-1)!
+  await f.service().answer(question.id, 'Yes', context)
+  expect((await f.log())!.messages.find((m) => m.id === question.id)).toMatchObject({
+    state: 'answered',
+    admission: { consumer: 'reader', pending: true },
+  })
+  await f.send(
+    `#${f.recipient.id}`,
+    'SEND ' + JSON.stringify({ to: '#1', text: 'Converted', consumer: 'reader' }),
+  )
+  await until(async () =>
+    (await replies(f)).some((entry) => JSON.stringify(entry.data).includes('Converted')),
+  )
+  const answer = (await f.log())!.messages.find((m) => m.text === 'Converted')!
+  expect(answer).toMatchObject({
+    reply: false,
+    admission: { consumer: 'reader', pending: true, sender: { conversation: f.recipient.id } },
+  })
+  const events = await f.eventLog.recent({ events: [MessageSent] })
+  expect(events.find((event) => event.data.message === answer.id)?.data).toMatchObject({
+    re: answer.re,
+    reply: false,
+  })
+})
+
+it('includes the original in an opted-in answer converted to the user', async () => {
+  const f = await fixture()
+  const original = await f.opened.harness.commit(async (tx) => {
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    const id = log.next++
+    log.messages.push({
+      id,
+      from: 'user',
+      to: ROOT_CONVERSATION_ID,
+      text: 'Question',
+      at: 0,
+      reply: true,
+      state: 'delivered',
+    })
+    return id
+  }, context)
+  await f.send('user', 'Answer', { consumer: 'reader' })
+  const answer = (await f.log())!.messages.find((m) => m.text === 'Answer')!
+  expect(answer.re).toBe(original)
+  expect(
+    (await f.eventLog.recent({ events: [MessageSent] })).find(
+      (event) => event.data.message === answer.id,
+    )?.data.re,
+  ).toBe(original)
+})
+
 it('records a one-way input answer without returning it to the sender', async () => {
   const f = await fixture()
   await f.send(String(f.recipient.id), 'One-way update', { reply: false })

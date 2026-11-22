@@ -12,12 +12,25 @@ import { UserInputEvent } from '../../shared/events.ts'
 import type { Device } from '../../shared/events.ts'
 import { resolveImages } from './images.ts'
 import type { ImagesRef } from './images.ts'
-import { append } from './log.ts'
+import { append, checkConsumer } from './log.ts'
 import { parentOf, resolveRecipient, senderName, serve, starterOf } from './addresses.ts'
 import { delivery } from './delivery.ts'
 import { notice } from './notice.ts'
 
-const AtomicallyCommittedCallReceipts = defineDoc<{ ids: Record<string, number> }>({
+type Receipts = { ids: Record<string, number>; proto?: number }
+
+function received(receipts: Receipts | undefined, key: string) {
+  if (!receipts) return undefined
+  if (Object.hasOwn(receipts.ids, key)) return receipts.ids[key]
+  return key === '__proto__' ? receipts.proto : undefined
+}
+
+function recordReceipt(receipts: Receipts, key: string, id: number) {
+  if (key === '__proto__') receipts.proto = id
+  else receipts.ids[key] = id
+}
+
+const AtomicallyCommittedCallReceipts = defineDoc<Receipts>({
   kind: 'board.sent-calls',
   checkpointWhen: () => false,
   version: 1,
@@ -25,7 +38,7 @@ const AtomicallyCommittedCallReceipts = defineDoc<{ ids: Record<string, number> 
   initial: () => ({ ids: {} }),
 })
 
-const ConversationRequestReceipts = defineDoc<{ ids: Record<string, number> }>({
+const ConversationRequestReceipts = defineDoc<Receipts>({
   kind: 'board.requests',
   checkpointWhen: () => false,
   version: 1,
@@ -40,9 +53,10 @@ export async function receiptOf(
   call: { taskId: TaskId; callId: string },
   ctx: Context,
 ) {
-  return (await host.harness().snapshot(AtomicallyCommittedCallReceipts, call.taskId, ctx))?.ids[
-    call.callId
-  ]
+  return received(
+    await host.harness().snapshot(AtomicallyCommittedCallReceipts, call.taskId, ctx),
+    call.callId,
+  )
 }
 
 const answerSummary = (text: string) => {
@@ -64,6 +78,7 @@ export async function send(
     imagesFrom?: ConversationId
     dismiss?: boolean
     questions?: Question[]
+    consumer?: string
   },
   ctx: Context,
   options: {
@@ -78,16 +93,19 @@ export async function send(
     routed?: EntryId
     echo?: boolean
     serveBranch?: true
+    sender?: ConversationId
   } = {},
 ) {
   const { taskId, callId, requestId, answerId, device, via } = options
   if (requestId !== undefined && from !== 'user') {
     const sent = await host.harness().snapshot(ConversationRequestReceipts, from, ctx)
-    if (sent?.ids[requestId] !== undefined) return sent.ids[requestId]
+    const id = received(sent, requestId)
+    if (id !== undefined) return id
   }
   if (taskId !== undefined) {
     const sent = await host.harness().snapshot(AtomicallyCommittedCallReceipts, taskId, ctx)
-    if (callId !== undefined && sent?.ids[callId] !== undefined) return sent.ids[callId]
+    const id = callId === undefined ? undefined : received(sent, callId)
+    if (id !== undefined) return id
   }
   const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
   const primaryId = standing?.ultimate
@@ -102,6 +120,10 @@ export async function send(
       `A subagent answers the conversation that started it: give your final answer, or message #${parent}.`,
     )
   if (!input.text.trim()) throw new Error('Message text must not be empty')
+  if (input.consumer !== undefined) {
+    if (from === 'user') throw new Error('consumer requires an agent sender')
+    checkConsumer(input.consumer)
+  }
   if (input.questions !== undefined && (input.to !== 'user' || input.reply === false))
     throw new Error('questions go only with a reply-expected message to the user')
   const questions = input.questions === undefined ? undefined : checkQuestions(input.questions)
@@ -121,9 +143,10 @@ export async function send(
       requestId === undefined || from === 'user'
         ? undefined
         : await tx.doc(ConversationRequestReceipts, from)
-    if (requestId !== undefined && requests?.ids[requestId] !== undefined)
-      return requests.ids[requestId]
-    if (callId !== undefined && receipt?.ids[callId] !== undefined) return receipt.ids[callId]
+    const requested = requestId === undefined ? undefined : received(requests, requestId)
+    if (requested !== undefined) return requested
+    const called = callId === undefined ? undefined : received(receipt, callId)
+    if (called !== undefined) return called
     if (answerId !== undefined) {
       const original = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
         (m) => m.id === answerId,
@@ -141,6 +164,24 @@ export async function send(
     if (from === 'user' && input.re !== undefined)
       for (const m of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages)
         if (openQuestion(m) && m.id === input.re) m.state = input.dismiss ? 'dismissed' : 'answered'
+    const actualSender = from === 'user' ? undefined : (options.sender ?? from)
+    const standingSender =
+      input.consumer === undefined || actualSender === undefined
+        ? undefined
+        : Object.entries(await tx.doc(Standing, ROOT_CONVERSATION_ID)).find(
+            ([, id]) => id === actualSender,
+          )?.[0]
+    const admission =
+      input.consumer !== undefined && actualSender !== undefined
+        ? {
+            consumer: input.consumer,
+            pending: true,
+            sender: {
+              conversation: actualSender,
+              ...(standingSender ? { standing: standingSender } : {}),
+            },
+          }
+        : undefined
     let re = input.re
     if (from !== 'user' && input.reply !== false) {
       const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
@@ -163,7 +204,17 @@ export async function send(
           state: 'sent',
           ...(callId === undefined ? {} : { call: callId }),
           ...(images ? { images } : {}),
+          ...(admission ? { admission } : {}),
         })
+        if (admission)
+          await host.emit(tx, MessageSent, {
+            message: response.id,
+            from,
+            to,
+            reply: false,
+            steer: true,
+            re: readMessageOwedToRecipient.id,
+          })
         await tx.createTask(
           delivery(host),
           {
@@ -180,8 +231,8 @@ export async function send(
             background: true,
           },
         )
-        if (receipt && callId !== undefined) receipt.ids[callId] = response.id
-        if (requests && requestId !== undefined) requests.ids[requestId] = response.id
+        if (receipt && callId !== undefined) recordReceipt(receipt, callId, response.id)
+        if (requests && requestId !== undefined) recordReceipt(requests, requestId, response.id)
         return response.id
       }
     }
@@ -201,6 +252,7 @@ export async function send(
       ...(options.routed !== undefined ? { routed: options.routed } : {}),
       ...(options.echo ? { echo: true as const } : {}),
       ...(via ? { via } : {}),
+      ...(admission ? { admission } : {}),
     })
     await host.emit(tx, MessageSent, {
       message: message.id,
@@ -208,6 +260,7 @@ export async function send(
       to,
       reply: message.reply,
       steer,
+      ...((from === 'user' || admission !== undefined) && re !== undefined ? { re } : {}),
     })
     if (primaryId !== undefined) {
       const asked = to === 'user' && message.reply && from !== primaryId && typeof from === 'number'
@@ -284,8 +337,8 @@ export async function send(
           background: true,
         },
       )
-    if (receipt && callId !== undefined) receipt.ids[callId] = message.id
-    if (requests && requestId !== undefined) requests.ids[requestId] = message.id
+    if (receipt && callId !== undefined) recordReceipt(receipt, callId, message.id)
+    if (requests && requestId !== undefined) recordReceipt(requests, requestId, message.id)
     return message.id
   }, ctx)
 }

@@ -25,7 +25,13 @@ import { LineageApi } from '../lineage/api.ts'
 import { Messages, MessagesApi } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
-import { CallerAction, SettleAction } from './refs.ts'
+import {
+  CallerAction,
+  MessageRetargeted,
+  PendingAction,
+  RetargetAction,
+  SettleAction,
+} from './refs.ts'
 import type { Via } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
@@ -37,6 +43,7 @@ import { dropped } from './outcomes.ts'
 import { delivery, reconcileOutputs, retireOutput, settle, submitOutput } from './delivery.ts'
 import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
+import { checkConsumer, consumerPattern, consume } from './log.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { branchesConcluded, reported, route, working } from './route.ts'
@@ -148,6 +155,42 @@ async function userRunInput(host: ExtensionHost, id: ConversationId, ctx: Contex
 }
 
 export const actions = {
+  pending: implementAction(PendingAction, async (args, { host }) => {
+    const { after = 0, limit = 100 } = (args ?? {}) as Record<string, unknown>
+    if (!Number.isSafeInteger(after) || (after as number) < 0)
+      throw new Error('after must be a non-negative message id')
+    if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > 100)
+      throw new Error('limit must be between 1 and 100')
+    const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)
+    const page = (log?.messages ?? [])
+      .filter((message) => message.id > (after as number) && message.admission?.pending)
+      .slice(0, (limit as number) + 1)
+    const rows = page.slice(0, limit as number).map((message) => ({
+      id: message.id,
+      consumer: message.admission!.consumer,
+      at: message.at,
+    }))
+    return { messages: rows, ...(page.length > (limit as number) ? { next: rows.at(-1)!.id } : {}) }
+  }),
+  retarget: implementAction(RetargetAction, async (args, { host }) => {
+    const { message, expected, consumer } = (args ?? {}) as Record<string, unknown>
+    if (!Number.isSafeInteger(message) || (message as number) < 1)
+      throw new Error('message must be a message id')
+    if (typeof expected !== 'string' || !expected.trim())
+      throw new Error('expected must be the current consumer name')
+    checkConsumer(consumer)
+    if (expected === consumer) throw new Error('consumer must differ from expected')
+    return host.harness().commit(async (tx) => {
+      const item = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
+        (m) => m.id === message,
+      )
+      if (!item?.admission?.pending || item.admission.consumer !== expected)
+        throw new Error('Message is not pending for the expected consumer')
+      item.admission.consumer = consumer
+      await host.emit(tx, MessageRetargeted, { message: item.id })
+      return { id: item.id }
+    }, BACKGROUND_CONTEXT)
+  }),
   [CallerAction.name]: implementAction(CallerAction, async (args, { host }) => {
     const { conversation, call } = (args ?? {}) as Record<string, unknown>
     if (!Number.isSafeInteger(conversation) || (conversation as number) < 1)
@@ -269,6 +312,7 @@ export default function messages(host: ExtensionHost) {
       ),
     dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
+    consume,
     tell: (from, input, ctx) => tell(host, from, input, ctx),
     owed: (tx, to, automation) => owed(host, tx, to, automation),
     submitFire: (tx, to, input, { id, name }) =>
@@ -350,6 +394,15 @@ export default function messages(host: ExtensionHost) {
           text: str({ minLength: 1 }),
           reply: opt(bool()),
           steer: opt(bool()),
+          consumer: opt(
+            str({
+              minLength: 1,
+              maxLength: 64,
+              pattern: consumerPattern,
+              description:
+                'Retain for this routing identifier until acknowledged. Use lowercase ASCII letters, digits, ., _, / or -, starting with a letter or digit; do not include sensitive data.',
+            }),
+          ),
           images: opt(imagesParameter),
           questions: opt(questionsParameter),
         }),
@@ -378,6 +431,7 @@ export default function messages(host: ExtensionHost) {
                 {
                   taskId: api.taskId,
                   callId: api.callId,
+                  sender: api.conversationId,
                 },
               ),
               ctx,

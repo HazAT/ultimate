@@ -31,6 +31,13 @@ export type Question = {
   placeholder?: string
 }
 
+/** An explicitly admitted message and its sender. Consumer names are routing identifiers and must not contain sensitive data. */
+export type Admission = {
+  consumer: string
+  pending: boolean
+  sender: { conversation: ConversationId; standing?: string }
+}
+
 /** One message as the log stores it. */
 export type Message = {
   id: number
@@ -63,7 +70,21 @@ export type Message = {
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
   via?: Via
+  /** Explicit retention until the named consumer acknowledges it. */
+  admission?: Admission
 }
+/** `{after?, limit?}` → a page of pending message ids, consumer names and admission times; no text. */
+export const PendingAction = actionRef<
+  { after?: number; limit?: number },
+  { messages: { id: number; consumer: string; at: number }[]; next?: number }
+>('messages', 'pending')
+
+/** `{message, expected, consumer}` → `{id}`: retarget a pending message if its current consumer matches. */
+export const RetargetAction = actionRef<
+  { message: number; expected: string; consumer: string },
+  { id: number }
+>('messages', 'retarget')
+
 /** Where @ultimate settled a question for the user: its conversation, and the user's input it read the answer from. */
 export type Via = { conversation: ConversationId; entry?: EntryId }
 export type MessagesData = { messages: Message[]; next: number }
@@ -119,7 +140,8 @@ export const SettleAction = actionRef<
 
 /**
  * Message `message` was posted from `from` to `to`; `reply` whether it waits for an answer, `steer` whether it
- * steers a busy recipient. Never its text. Emitted in the posting commit; answers are no posts.
+ * steers a busy recipient. `re` identifies the original for a user answer, dismissal or opted-in converted answer.
+ * Never its text. Emitted in the posting commit; automatic replies are no posts.
  */
 export const MessageSent = defineEvent<{
   message: number
@@ -127,4 +149,10 @@ export const MessageSent = defineEvent<{
   to: ConversationId | 'user' | 'remote'
   reply: boolean
   steer: boolean
+  re?: number
 }>('board.sent')
+
+/** A pending message was retargeted; consumers use its id to try consumption in the event transaction. */
+export const MessageRetargeted = defineEvent<{ message: number }>('messages.retargeted', {
+  version: 2,
+})
