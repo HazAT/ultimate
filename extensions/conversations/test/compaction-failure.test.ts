@@ -96,11 +96,19 @@ it('announces a compaction committed while it was not watching once, after reope
       entry.kind === 'test.compacted' ? [(entry.data as { entry: number }).entry] : [],
     )
   const first = await watched(storage)
+  const other = await first.harness.commit(
+    (tx) => tx.createConversation({ ownership: { kind: 'ownerless' } }),
+    context,
+  )
   const watchedCompaction = await compact(first.harness, first.root.id)
   await until(() => first.emitted.length === 1)
   await first.release()
   await first.close()
   const missedCompaction = await compact(first.harness, first.root.id)
+  await first.harness.commit(
+    (tx) => tx.appendEntry(other.id, { kind: 'pi.user', model: [] }),
+    context,
+  )
   await first.harness.close(context)
   for (let open = 0; open < 2; open++) {
     const again = await watched(storage)

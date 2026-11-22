@@ -44,6 +44,7 @@ export function compactionEvents(
     const announced = await tx.doc(Announced, ROOT_CONVERSATION_ID)
     const through = announced.through
     let newest = through ?? parseEntryId(0)
+    const missed: TypedEntry<{ reason?: string }>[] = []
     let page: Cursor | undefined
     do {
       const conversations = await tx.scanConversations({}, 256, page)
@@ -65,13 +66,18 @@ export function compactionEvents(
             cursor,
           )
           for (const entry of entries.items)
-            if (entry.conversationId === id && CompactionEntry.is(entry)) await announce(tx, entry)
+            if (entry.conversationId === id && CompactionEntry.is(entry)) missed.push(entry)
           cursor = entries.next
         } while (cursor !== undefined)
       }
       page = conversations.next
     } while (page !== undefined)
-    announced.through = newest
+    for (const entry of missed.toSorted((a, b) => a.id - b.id)) await announce(tx, entry)
+    const firstOpenLeavesObservedToTheObserver =
+      through === undefined && firstObserved !== undefined && newest >= firstObserved
+    announced.through = firstOpenLeavesObservedToTheObserver
+      ? offsetEntryId(firstObserved!, -1)
+      : newest
   }
   const advanceTo =
     (newest: EntryId, entry?: TypedEntry<{ reason?: string }>) => async (tx: Tx) => {
@@ -80,6 +86,7 @@ export function compactionEvents(
       if (entry) await announce(tx, entry)
       announced.through = newest
     }
+  let firstObserved: EntryId | undefined
   let observed: EntryId | undefined
   let failed = false
   let inCommitOrder: Promise<void> = Promise.resolve()
@@ -96,6 +103,7 @@ export function compactionEvents(
   host.onOpen(async () => {
     stop?.()
     failed = false
+    firstObserved = undefined
     stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'task') {
@@ -113,6 +121,7 @@ export function compactionEvents(
         }
         if (change.type !== 'entry') continue
         const entry = change.value
+        firstObserved ??= entry.id
         if (observed === undefined || entry.id > observed) observed = entry.id
         if (!CompactionEntry.is(entry)) continue
         rebuiltOnOpen(
