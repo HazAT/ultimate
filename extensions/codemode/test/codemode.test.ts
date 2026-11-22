@@ -151,7 +151,7 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   )
   expect(text).toContain('Use edit/write outside codemode')
   expect(text).toContain('filter to concise findings')
-  expect(text).toContain('a tool with structured output (bash, read, plan, browser) resolves to it')
+  expect(text).toContain('a tool that declares structured output resolves to it')
   expect(text).toContain(
     'Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action.',
   )

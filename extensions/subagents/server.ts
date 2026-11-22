@@ -7,6 +7,7 @@ import type {
   EntryRecord,
   TaskId,
   ToolExecutionApi,
+  ToolTaskInput,
   SubmissionRecord,
 } from '@earendil-works/pi-durable'
 import { existsSync } from 'node:fs'
@@ -1054,9 +1055,11 @@ export default function subagents(
               (await workspaces.git(parent.cwd ?? host.projectRoot, 'status', '--porcelain'))
                 ? '\nWarning: parent has uncommitted changes; they are not in the worktree.'
                 : ''
-            const task = await api.getTask(api.taskId, context)
-            // Pi upstream: @earendil-works/pi-durable@1.6.0 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant. Drop when ToolExecutionApi exposes the calling assistant entry ID.
-            const assistant = (task?.input as { assistant: EntryId } | undefined)?.assistant
+            // Pi upstream: @earendil-works/pi-durable@1.6.0 src/harness/tool.ts — internal ToolTaskInput.assistant locates the calling assistant; a nested call (codemode) has it on its model-issued ancestor. Drop when ToolExecutionApi exposes the calling assistant entry ID.
+            let input = (await api.getTask(api.taskId, context))?.input as ToolTaskInput | undefined
+            while (input?.kind === 'nested')
+              input = (await api.getTask(input.parent, context))?.input as ToolTaskInput | undefined
+            const assistant = input?.assistant
             let historyBeforeAssistant: EntryId | undefined
             if (definition && args.fork) {
               const conversation = (await host.harness().conversation(api.conversationId, context))!

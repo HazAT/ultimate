@@ -90,7 +90,7 @@ function scriptValue(name: string, structured: boolean, result: NestedToolExecut
     .filter((diagnostic) => diagnostic.severity === 'error')
     .map((diagnostic) => diagnostic.message)
     .join('\n')
-  throw new Error(text || diagnostics || `Tool ${name} failed`)
+  throw new Error([text, diagnostics].filter(Boolean).join('\n') || `Tool ${name} failed`)
 }
 
 function textOf(value: unknown) {
@@ -764,7 +764,7 @@ export default function codemode(host: ExtensionHost) {
               : '') +
             ' Only text(), image() and return values enter context; filter to concise findings. The sandbox has no setTimeout or setInterval: wait with a bash sleep.' +
             ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action. ' +
-            'tools.<name>(args) takes the top-level tool arguments and rules; a tool with structured output (bash, read, plan, browser) resolves to it, others to their text. Available: ' +
+            'tools.<name>(args) takes the top-level tool arguments and rules; a tool that declares structured output resolves to it (bash: {output, exitCode}), others to their text. Available: ' +
             declarations(agent.tools)
               .map((tool) => tool.name)
               .join(', ')

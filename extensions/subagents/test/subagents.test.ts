@@ -1596,6 +1596,25 @@ describe('subagents', () => {
       label: 'scout',
       title: 'fork task',
     })
+    // A nested call's task has no assistant entry of its own; the fork point is its model-issued ancestor's.
+    await (
+      await opened.root.submit(
+        {
+          type: 'input',
+          content: `CODE text(await tools.subagent({action:'start',agent:'scout',task:'nested fork',fork:true}));`,
+        },
+        context,
+      )
+    ).wait(context)
+    expect(JSON.stringify((await opened.root.context(context)).entries)).toContain(
+      'Child: nested fork',
+    )
+    const nested = requests.find((candidate) =>
+      candidate.messages.some(
+        (message) => message.role === 'user' && message.content === 'nested fork',
+      ),
+    )!
+    expect(JSON.stringify(nested.messages)).toContain('Remember the parent secret: violet')
   })
   it('keeps nested parallel starts distinct and delivers a subsequent nested message', async () => {
     const { opened } = await fixture()
