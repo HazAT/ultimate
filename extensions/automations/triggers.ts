@@ -81,7 +81,7 @@ export function describeTrigger(a: Automation): string {
 }
 
 export const IDLE_WAKER = 'ultimate.automation-idle'
-const DISCOVERY_RETRY_MS = 60_000
+const RETRY_MS = 60_000
 const onRoot = {
   ownership: { kind: 'conversation' as const },
   conversationId: ROOT_CONVERSATION_ID,
@@ -112,21 +112,29 @@ export function triggers(
     if (/^#[1-9]\d*$/.test(of)) return parseConversationId(Number(of.slice(1)))
     return undefined
   }
-  async function residents() {
-    return new Set(
-      (await host.need(SubagentsApi).residents(BACKGROUND_CONTEXT)).map(({ name }) => name),
-    )
+  async function residents(): Promise<Set<string> | undefined> {
+    try {
+      return new Set(
+        (await host.need(SubagentsApi).residents(BACKGROUND_CONTEXT)).map(({ name }) => name),
+      )
+    } catch (error) {
+      host.notice(`Automation context trigger: ${String(error)}`)
+      return undefined
+    }
   }
   async function recorded(
     tx: Tx,
     of: string,
-    standing: Set<string>,
+    standing: Set<string> | undefined,
   ): Promise<ConversationId | undefined> {
     if (STANDING.test(of))
-      return standing.has(of.slice(1))
+      return standing?.has(of.slice(1))
         ? (await tx.doc(Standing, ROOT_CONVERSATION_ID))[of.slice(1)]
         : undefined
     return /^#[1-9]\d*$/.test(of) ? parseConversationId(Number(of.slice(1))) : undefined
+  }
+  async function retryUnconfirmed(tx: Tx, a: Automation) {
+    if (a.enabled && a.condition?.idleFor) await sleepUntil(tx, a, Date.now() + RETRY_MS)
   }
   function firesAt(a: Automation) {
     const condition = a.condition!
@@ -192,21 +200,20 @@ export function triggers(
         const inMeasurementOrder = measurementsInCommitOrder.then(async () => {
           const of = (await runtime.snapshot(Automations, ctx))?.automations[task.input.id]
             ?.condition?.of
-          let standing: Set<string>
-          try {
-            standing = of && STANDING.test(of) ? await residents() : new Set<string>()
-          } catch (error) {
-            if (runtime.signal.aborted) throw error
-            runtime.report(error)
-            await runtime.sleepUntil(runtime.now() + DISCOVERY_RETRY_MS, { phase: 'retry' }, ctx)
-            return
-          }
+          const standing = of && STANDING.test(of) ? await residents() : undefined
           await runtime.commit(async (tx) => {
             const a = (await tx.doc(Automations)).automations[task.input.id]
-            if (a?.condition?.waker === task.id) {
-              delete a.condition.waker
-              await evaluate(tx, a, await recorded(tx, a.condition.of, standing))
-            }
+            if (a?.condition?.waker !== task.id)
+              return { status: 'terminal', outcome: { status: 'completed', result: null } }
+            const target = await recorded(tx, a.condition.of, standing)
+            if (target === undefined && a.enabled)
+              return {
+                status: 'sleeping',
+                until: runtime.now() + RETRY_MS,
+                checkpoint: { phase: 'retry' },
+              }
+            delete a.condition.waker
+            await evaluate(tx, a, target)
             return { status: 'terminal', outcome: { status: 'completed', result: null } }
           }, ctx)
         })
@@ -231,14 +238,15 @@ export function triggers(
     )
     const standing = conditions.some((a) => STANDING.test(a.condition!.of))
       ? await residents()
-      : new Set<string>()
+      : undefined
     for (const a of conditions) {
       if (closed) continue
       await host.harness().commit(async (tx) => {
         const current = (await tx.doc(Automations)).automations[a.id]
         if (current?.condition?.of !== a.condition!.of) return
         const target = await recorded(tx, current.condition.of, standing)
-        if (target === undefined || (changed && !changed.has(target))) return
+        if (target === undefined) return retryUnconfirmed(tx, current)
+        if (changed && !changed.has(target)) return
         await evaluate(tx, current, target, changed?.get(target))
       }, BACKGROUND_CONTEXT)
     }

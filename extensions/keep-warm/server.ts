@@ -239,16 +239,7 @@ function pinger(host: ExtensionHost) {
           const now = runtime.now()
           const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
           const model = id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model
-          if (id !== undefined && model) {
-            const newest = await newestCachedAnswer(
-              tx,
-              id,
-              model,
-              Math.max(doc.answers?.[key(id, model)] ?? 0, Date.now() - TTL),
-            )
-            if (newest !== undefined && newest > (doc.answers?.[key(id, model)] ?? 0))
-              doc.answers = { ...doc.answers, [key(id, model)]: newest }
-          }
+          if (id !== undefined && model) await recordRenewal(tx, doc, id, model)
           const next = plan(doc, id, model, now)
           if (!next?.due || next.at > now) return sleepOrStop(doc, next, now)
           const prepared = !!messages && id === found!.id && !!lastOn(next, found!.agent.model!)
@@ -345,33 +336,21 @@ async function arm(tx: Tx, host: ExtensionHost) {
     doc.waker = await tx.createTask(Pinger, null, owner)
 }
 
-async function lastCachedAnswerWithinTheHour(
-  found: NonNullable<Awaited<ReturnType<typeof ultimate>>>,
-) {
-  const model = found.agent.model
-  if (!model || !hourLong(model.provider)) return undefined
-  let cursor: Cursor | undefined
-  do {
-    const page = await found.conversation.entries({}, 100, cursor, context)
-    for (const entry of page.items) {
-      const message = entry.model?.[0]
-      if (message?.role !== 'assistant') continue
-      if (Date.now() - message.timestamp >= TTL) return undefined
-      if (cached(message) && lastOn(message, model)) return message.timestamp
-    }
-    cursor = page.next
-  } while (cursor)
-  return undefined
+async function recordRenewal(tx: Tx, doc: WarmDocState, id: ConversationId, model: ModelRef) {
+  if (!hourLong(model.provider)) return
+  const known = doc.answers?.[key(id, model)] ?? 0
+  const newest = await newestCachedAnswer(tx, id, model, Math.max(known, Date.now() - TTL))
+  if (newest !== undefined) doc.answers = { ...doc.answers, [key(id, model)]: newest }
 }
 
 async function catchUp(host: ExtensionHost, changed?: Set<ConversationId>) {
   const found = await ultimate(host, context)
   if (changed && !(found && changed.has(found.id))) return
-  const at = found && (await lastCachedAnswerWithinTheHour(found))
   await host.harness().commit(async (tx) => {
-    const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-    if (at && found.agent.model && (doc.answers?.[key(found.id, found.agent.model)] ?? 0) < at)
-      doc.answers = { ...doc.answers, [key(found.id, found.agent.model)]: at }
+    const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+    const model = id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model
+    if (id !== undefined && model)
+      await recordRenewal(tx, await tx.doc(State, ROOT_CONVERSATION_ID), id, model)
     await arm(tx, host)
   }, context)
 }
