@@ -35,13 +35,11 @@ The libraries ship skills that match the pinned versions: read them, not your me
 
 ## Where Solid lives
 
-The UI is Solid. A facet's framework is its file name: `web.solid.tsx`. A `web.tsx` is React and exists only for
-extensions outside this repository, which run on the frozen, lazily loaded compat layer in `web/src/compat/`
-([React facets on a Solid core](../../docs/extensions/react-compat.md)). Never change the compat layer for new work.
+The UI is Solid, and so is every facet: `web.solid.tsx`. A leftover React `web.tsx` loads as an error card
+([Moving a React facet to Solid](../../extensions/README.md#moving-a-react-facet-to-solid)).
 
 - **One renderer per file.** Solid JSX belongs in `*.solid.tsx`, opened with `/** @jsxImportSource @solidjs/web */`.
-  `ultimate/ui-framework-boundaries` rejects React imports and other `.tsx` names in the repository outside compat
-  (except the sidebar's points-only contract for outside React facets); `ultimate/solid-jsx-pragma` checks the pragma.
+  `ultimate/solid-jsx-pragma` checks the pragma.
 - **One SDK entry: `@/sdk/solid`.** Readers, actions, contexts, formatters and the shared parts (`Header`, `Card`,
   `Fold`, `Slot`, `Provided`, …) all come from it. Inside `web/src`, modules import `web/src/sdk/hooks.ts` instead,
   since the parts the entry re-exports import the readers (`import/no-cycle`). Readers return accessors: call them
@@ -90,8 +88,8 @@ extensions outside this repository, which run on the frozen, lazily loaded compa
   A surface builds on `Header`, `StatusLine`, `Conversation`, `Dock`, `Sidebar`, `Panels`, `Slot` and `ErrorCard`
   (`extensions/agent/surface.solid.tsx`).
 - **Render registered contributions** through `Contribution`, `Slot` or `Provided`, never by calling the component.
-  This gives each contribution its own extension scope and error handling, and mounts an outside React one through
-  the compat layer; only the core hosts in `web/src` import the bridge (`ultimate/ui-framework-boundaries`).
+  This gives each contribution its own extension scope and error handling; only the core hosts in `web/src` import
+  the bridge (`ultimate/ui-framework-boundaries`).
 
 ## The UI kit
 
@@ -295,8 +293,7 @@ Tooling:
 - A browser helper extracted to `.ts` goes in `tsconfig.web.json`'s `include`. Keep shared pure helpers independent
   of the SDK: pass SDK functions in or use `lib/`. Another extension reaches an extension-local browser helper
   through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
-- A test fixture that registers a Solid facet names it `web.solid.tsx`; `web.tsx` loads the React compat layer and is
-  only for testing that layer.
+- A test fixture that registers a facet names it `web.solid.tsx`.
 - Check the entry bundle after a change that may grow it: sum the gzipped scripts and styles the page links, on a
   preview of the change and of its parent:
 

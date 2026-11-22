@@ -33,8 +33,8 @@ An extension is a folder `<name>/` in `extensions/` (built-in), `~/.ultimate/ext
   stylesheet, and its imports are free of the import rules and stay out of the dependency graph. See [Tests](#tests).
 
 Split a large `web.solid.tsx` into more `*.solid.tsx` files in the same folder (see `coding-tools/diff.solid.tsx`).
-The folder name is the extension name; a `server.ts` extension must use it as its `name`. Outside the repository,
-a React facet named `web.tsx` runs on the [compat layer](../docs/extensions/react-compat.md).
+The folder name is the extension name; a `server.ts` extension must use it as its `name`. A facet is Solid only: a
+`web.tsx` loads as an error card that asks to move it (see [Moving a React facet to Solid](#moving-a-react-facet-to-solid)).
 
 Each web facet loads on its own. If it fails to compile, throws, or exports a contribution of the wrong shape (such as
 `surfaces: {}` instead of an array, or a command without `run`), an error card names it and the rest of the UI keeps
@@ -73,6 +73,25 @@ No restart or manual reload.
   (`isInput`) and `agents.ts` (agent definitions and their discovery). Import them freely; they reload with the
   extensions that import them. `lib/` holds no state and imports no extension or `web/` code; only `agents.ts` reads
   the core project trust decision at runtime.
+
+## Moving a React facet to Solid
+
+Ultimate ran React facets (`web.tsx`) on a compat layer until 0.1; it is gone, and a `web.tsx` now shows an error card
+naming this section. To move one:
+
+1. Rename `web.tsx` to `web.solid.tsx`, and every other `.tsx` in the folder to `.solid.tsx`. Start each with
+   `/** @jsxImportSource @solidjs/web */`.
+2. Import from `@/sdk/solid` instead of `@/sdk`, `@lucide/solid` instead of `lucide-react`, and
+   `@/components/ui/<name>.solid.tsx` instead of `@/components/ui/<name>`. Drop `island(…)`: contribute the component
+   itself.
+3. Rewrite the components in Solid 2: props are read, never destructured; `createEffect(compute, apply)`; readers
+   return accessors (`doc()?.title`). The `solid-ui` skill and `node_modules/solid-js/skills/solid-2.0/SKILL.md` have
+   the rules.
+4. A data provider becomes `provide(Point, (input) => createMemo(() => …))`: it gets the input as an accessor and
+   returns one. A provider of UI is a component taking the input as props.
+
+Your own Ultimate can do it ("move my-extension to Solid, following extensions/README.md"): it checks the result with
+`node scripts/check-extension.ts <folder>` from its clone and looks at it in a preview.
 
 ## Tests
 
@@ -117,6 +136,5 @@ One file each in `docs/extensions/`:
 - [surfaces](../docs/extensions/surfaces.md): full-screen apps, switching, layout, primitives.
 - [example-app](../docs/extensions/example-app.md): a complete Commits app; building an app step by step.
 - [sdk](../docs/extensions/sdk.md): `@/sdk/solid` readers, `api`, helpers, UI state, `ScopedConversation`.
-- [react-compat](../docs/extensions/react-compat.md): existing React facets outside this repository.
 - [styling](../docs/extensions/styling.md): components, theme tokens, `data-ui` theming hooks.
 - [introspection](../docs/extensions/introspection.md): the call trace; inspecting yourself with codemode.

@@ -102,8 +102,6 @@ doc ref names a kind no server facet's `docs` exports.
 
 Components, readers and points other extensions' Solid code uses are exported from the owner's `ui.solid.tsx`.
 It opens with the Solid JSX pragma, then a doc comment on what it offers (`extensions/conversations/ui.solid.tsx`).
-The only exception is `extensions/sidebar/ui.tsx`, which re-exports points for
-[React facets outside this repository](react-compat.md).
 
 ## Web points
 
