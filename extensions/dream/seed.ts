@@ -8,7 +8,7 @@ import { openQuestion } from '../../lib/message-state.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
 import type { Todo } from '../todos/refs.ts'
-import { Roots } from '../lineage/api.ts'
+import { Memory, Roots } from '../lineage/api.ts'
 import { Messages } from '../messages/api.ts'
 import type { Automation } from '../automations/types.ts'
 import { BuiltInDoc, PauseDoc } from './built-ins.ts'
@@ -72,9 +72,7 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
     const memories = prototypeFreeMemoryIndex()
     const about = new Set<string>()
     for (const root of roots) {
-      const source = await exportedDocument<{
-        memories: Record<string, MemoryItem>
-      }>(host, tx, 'lineage.memory', root)
+      const source = await tx.doc(Memory, root)
       for (const [slug, memory] of Object.entries(source.memories)) {
         if (slug.startsWith('about-')) about.add(slug)
         if (!memories[slug] || memory.updated > memories[slug].updated) memories[slug] = memory
@@ -207,9 +205,7 @@ export async function applySeed(host: ExtensionHost) {
     await harness.commit(async function seedDocumentsAndEntry(tx) {
       const receipt = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
       if (receipt.applied !== undefined) return
-      const memory = await exportedDocument<{
-        memories: Record<string, MemoryItem>
-      }>(host, tx, 'lineage.memory')
+      const memory = await tx.doc(Memory, ROOT_CONVERSATION_ID)
       Object.assign(memory.memories, seed.memories)
       const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
       const carried: Seed['todos'] = [

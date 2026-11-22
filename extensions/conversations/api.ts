@@ -126,7 +126,6 @@ export const Overview = defineDoc<OverviewState>({
   fork: 'initial',
   initial: () => ({ conversations: {} }),
 })
-export type { OverviewState } from './types.ts'
 export { Concluded } from './refs.ts'
 /** How each standing agent's mark looks, on conversation 1; subagents writes it from the definitions. */
 export const Marks = defineDoc<Record<string, AgentMarkStyle>>({
