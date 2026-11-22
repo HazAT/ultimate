@@ -10,9 +10,9 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { afterEach, beforeAll, expect, it } from 'vitest'
-import { applyMemoryOps, Memory, MEMORY_LIMIT } from '../memory.ts'
+import { applyMemoryOps, MEMORY_LIMIT } from '../memory.ts'
 import { abstract } from '../server.ts'
-import { Roots, Tally } from '../api.ts'
+import { Memory, Roots, Tally } from '../api.ts'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { Standing } from '../../subagents/api.ts'
 import { context } from '../../../server/harness.ts'

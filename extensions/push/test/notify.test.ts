@@ -57,7 +57,6 @@ async function fixture() {
     implement: (_api: unknown, value: PushService) => (service = value),
     react: () => {},
     onOpen: lifecycle.onOpen,
-    doc: () => undefined,
     notice: (message: string) => {
       throw new Error(message)
     },

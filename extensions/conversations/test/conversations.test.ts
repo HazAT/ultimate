@@ -23,7 +23,7 @@ import { UiState } from '../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { actionExec } from '../../../server/actions.ts'
 import { currentAnswer, exchangeUser } from '../summary.ts'
-import { Overview } from '../overview.ts'
+import { Overview } from '../api.ts'
 import { Concluded } from '../refs.ts'
 import { EventLog } from '../../../server/events.ts'
 import { Branch } from '../../lineage/api.ts'
@@ -632,10 +632,10 @@ it('conclude merges concurrent additions, deduplicates ids and returns kept chec
   const released: number[][] = []
   const host = {
     harness: () => server.harness,
-    doc: () => undefined,
     emit: async () => {},
     metadata: Metadata,
     want: () => ({
+      isRoot: async () => false,
       release: async (ids: number[]) => {
         released.push(ids)
         return kept

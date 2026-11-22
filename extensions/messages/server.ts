@@ -21,7 +21,7 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branches, WorkspacesApi } from '../workspaces/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
-import { LineageApi } from '../lineage/api.ts'
+import { LineageApi, Replies } from '../lineage/api.ts'
 import { Messages, MessagesApi } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
@@ -255,6 +255,14 @@ export default function messages(host: ExtensionHost) {
     submitLanding: async (tx, to, input, id, result) => {
       await submitOutput(host, tx, to, input, { kind: 'branch', id }, `#${id}`, `landing:${result}`)
     },
+  })
+  host.implement(Replies, {
+    replied: async (from, to, entry, ctx) =>
+      Boolean(
+        (await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages.some(
+          (m) => m.from === from && m.to === to && m.answer === entry,
+        ),
+      ),
   })
   host.implement(MessagesApi, {
     answer: (messageId, text, ctx, device, call) =>

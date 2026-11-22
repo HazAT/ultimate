@@ -42,7 +42,17 @@ import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import type { LandedData } from '../workspaces/api.ts'
-import { Branch, Branched, LineageApi, MemorySearch, Rooted, Roots, Tally } from './api.ts'
+import {
+  Branch,
+  Branched,
+  LineageApi,
+  Memory,
+  MemorySearch,
+  Replies,
+  Rooted,
+  Roots,
+  Tally,
+} from './api.ts'
 import { ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing, Started } from '../subagents/api.ts'
 import { spawn } from 'node:child_process'
@@ -61,7 +71,6 @@ import {
   applyMemoryOps,
   BODY_CHARS,
   LINE_CHARS,
-  Memory,
   memoryBrief,
   MEMORY_RULES,
   MEMORY_SLUG,
@@ -424,12 +433,8 @@ function lineage(host: ExtensionHost) {
             const caller = runtime.conversationId
             const lastNotifiedAnswer = (await host.harness().snapshot(Notified, caller, ctx))
               ?.answers[target]
-            const boardByKind = host.doc('board')
-            const log =
-              boardByKind && (await host.harness().snapshot(boardByKind, ROOT_CONVERSATION_ID, ctx))
-            const answerAlreadyReplied = (
-              log?.messages as { from: unknown; to: unknown; answer?: EntryId }[] | undefined
-            )?.some((m) => m.from === target && m.to === caller && m.answer === answerId)
+            const answerAlreadyReplied =
+              answerId !== 0 && (await host.want(Replies)?.replied(target, caller, answerId, ctx))
             const callerHasNotReceivedAnswer =
               !answerAlreadyReplied &&
               (lastNotifiedAnswer === undefined || answerId > lastNotifiedAnswer)
@@ -1243,6 +1248,7 @@ export default function lineageExtension(host: ExtensionHost) {
     },
   })
   host.implement(Trees, {
+    isRoot: async (tx, id) => (await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id),
     rootOf: (id, ctx) => rootOf(host, id, ctx),
     branchOf: (id, ctx) => branchOf(host, id, ctx),
     abstract,
