@@ -140,6 +140,32 @@ it('opens the delivered message in the recipient conversation from the agent con
   expect(received).toHaveBeenCalledExactlyOnceWith({ conversation: recipient, entry }, 'agent')
 })
 
+it('finds the sent message from result details when the output names its images', async () => {
+  const call: ToolCallView = {
+    id: 'post-2',
+    name: 'message',
+    args: { to: 'user', text: message.text, images: 'latest' },
+    status: 'done',
+    output: 'Message 1 sent with 1 image from entry 9.',
+    details: { message: 1 },
+    diagnostics: [],
+    images: [],
+  }
+  uiState.set(shellKeys.conversation, sender)
+  const view = renderSolid(() => <MessageCall call={call} core={null} />)
+  await settle()
+  server.of(1)!.send('doc', {
+    kind: MessagesDoc.kind,
+    value: {
+      next: 2,
+      messages: [{ ...message, images: { entry: imageEntry, count: 1 } }],
+    },
+  })
+  flush()
+  await settle()
+  expect(view.querySelector('[data-message-outgoing="1"]')?.textContent).toContain('1 image')
+})
+
 it('names each bubble of one codemode script by its board message, so an agent can copy either', async () => {
   const script = {
     id: parseEntryId(54),

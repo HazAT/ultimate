@@ -49,8 +49,11 @@ export function MessageCall(props: CallProps) {
   const sender = useConversationId()
   const transcript = useTranscript()
   const caller = createMemo(() => callerOf(transcript(), props.call.id))
-  const sent = createMemo(() => /^Message (\d+) sent\.$/.exec(props.call.output))
-  const message = createMemo(() => log()?.messages.find((m) => m.id === Number(sent()?.[1])))
+  const message = createMemo(() => {
+    const details = props.call.details as { message?: number } | undefined
+    const id = details?.message ?? Number(/^Message (\d+) sent\.$/.exec(props.call.output)?.[1])
+    return log()?.messages.find((m) => m.id === id)
+  })
   const args = () =>
     props.call.args as { to?: string; text?: string; reply?: boolean; steer?: boolean }
   const recipient = () => message()?.to ?? (args().to === 'user' ? 'user' : undefined)

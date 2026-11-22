@@ -411,7 +411,10 @@ export default function messages(host: ExtensionHost) {
               )
           }
           if (input.to !== 'user')
-            return { output: [{ type: 'text', text: `Message ${id} sent.` }] }
+            return {
+              output: [{ type: 'text', text: `Message ${id} sent.` }],
+              details: { message: id },
+            }
 
           const inputs =
             (await host.harness().snapshot(LiveDoc, api.conversationId, ctx))?.run?.inputs ?? []
@@ -438,6 +441,7 @@ export default function messages(host: ExtensionHost) {
             )
           return {
             output: [{ type: 'text', text: `Message ${id} sent.` }],
+            details: { message: id },
             ...(hasPendingReplies ? {} : { control: { terminate: true as const } }),
           }
         },
