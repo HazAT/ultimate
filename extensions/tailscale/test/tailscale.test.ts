@@ -1,7 +1,8 @@
 import { chmod, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { createServer as createHttpServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import tailscale, { actions } from '../server.ts'
+import tailscale, { actions, meshAllows, meshPeerOf } from '../server.ts'
 import type { Status } from '../api.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { admit, createAccess } from '../../../server/request-security.ts'
@@ -547,6 +548,154 @@ it('drops the entry of a preview that died without closing', async () => {
     Object.keys(JSON.parse(await readFile(join(f.home, '.ultimate/tailscale.json'), 'utf8')).ports),
   ).toEqual(['/project/a'])
 })
+const meshNode = {
+  BackendState: 'Running',
+  Self: {
+    DNSName: 'rog.tail.example.com.',
+    HostName: 'rog',
+    UserID: 1,
+    TailscaleIPs: ['100.64.0.1', 'fd7a:115c:a1e0::1'],
+  },
+  Peer: {
+    a: { HostName: 'janus', DNSName: 'janus.tail.example.com.', TailscaleIPs: ['100.64.0.2'] },
+    b: {
+      HostName: 'stranger',
+      DNSName: 'stranger.tail.example.com.',
+      TailscaleIPs: ['100.99.0.9'],
+    },
+  },
+  CertDomains: null,
+}
+const meshPort = 47547
+const meshSettings = (allow?: string[]) =>
+  JSON.stringify({
+    extensions: { enable: ['tailscale'] },
+    tailscale: { mode: 'mesh', bind: '127.0.0.1', ...(allow ? { allow } : {}) },
+  })
+
+it('serves plain HTTP on the mesh, admits the node itself by default, and denies others', async () => {
+  const f = await fixture({ node: meshNode })
+  await writeFile(join(f.home, '.ultimate/settings.json'), meshSettings())
+  const app = await f.instance('/project/a', meshPort)
+  expect(await app.status()).toMatchObject({
+    state: 'ready',
+    url: `http://rog.tail.example.com:${meshPort}`,
+    allow: ['rog.tail.example.com'],
+    mode: 'mesh',
+    hint: expect.stringContaining('Only this node'),
+  })
+  expect(app.access.origins()).toEqual([`http://rog.tail.example.com:${meshPort}`])
+  const rule = [...app.access.rules][0]
+  expect(
+    await rule.verify({ headers: { 'tailscale-user-login': 'rog.tail.example.com' } }),
+  ).toEqual({
+    login: 'rog.tail.example.com',
+  })
+  for (const login of ['janus.tail.example.com', 'stranger', ''])
+    expect(await rule.verify({ headers: { 'tailscale-user-login': login } })).toBeUndefined()
+  expect(await rule.verify({ headers: {} })).toBeUndefined()
+  await app.close()
+  expect(app.access.origins()).toEqual([])
+  expect(
+    JSON.parse(await readFile(join(f.home, '.ultimate/tailscale.json'), 'utf8')).ports,
+  ).toEqual({})
+  expect(
+    (await f.invocations()).filter((args) => args.some((arg) => arg.startsWith('serve'))),
+  ).toEqual([])
+})
+
+// Seen in review: an open event stream kept server.close() waiting, so a settings reload that revokes a node never finished.
+it('closes the mesh listener promptly while a proxied stream is open', async () => {
+  const f = await fixture({ node: meshNode })
+  await writeFile(join(f.home, '.ultimate/settings.json'), meshSettings())
+  const streamPort = meshPort + 1
+  const stream = createHttpServer((_request, response) => {
+    response.writeHead(200)
+    response.write('open')
+  })
+  await new Promise<void>((done) => stream.listen(streamPort, '127.0.0.1', done))
+  closes.push(
+    () =>
+      new Promise<void>((done) => {
+        stream.closeAllConnections()
+        stream.close(() => done())
+      }),
+  )
+  const app = await f.instance('/project/a', streamPort)
+  const meshUrl = `http://127.0.0.1:${streamPort + 1}/`
+  const meshHost = { host: `rog.tail.example.com:${streamPort + 1}` }
+  const page = await fetch(meshUrl, { headers: meshHost })
+  expect(page.status).toBe(200)
+  await app.close()
+  expect(app.access.origins()).toEqual([])
+  await expect(fetch(meshUrl, { headers: meshHost })).rejects.toMatchObject({
+    cause: { code: 'ECONNREFUSED' },
+  })
+})
+
+it('refuses a bind address that is not one address of this node', async () => {
+  const f = await fixture({ node: meshNode })
+  await writeFile(
+    join(f.home, '.ultimate/settings.json'),
+    JSON.stringify({
+      extensions: { enable: ['tailscale'] },
+      tailscale: { mode: 'mesh', bind: '0.0.0.0' },
+    }),
+  )
+  const app = await f.instance('/project/a', meshPort)
+  expect(await app.status()).toMatchObject({
+    state: 'error',
+    hint: expect.stringContaining('0.0.0.0'),
+  })
+  expect(app.access.origins()).toEqual([])
+  await app.close()
+})
+
+it('maps a mesh peer by address and matches the allowlist by name, DNS name, or mesh IP', async () => {
+  expect(meshPeerOf(meshNode, '::ffff:100.64.0.2')?.DNSName).toBe('janus.tail.example.com.')
+  expect(meshPeerOf(meshNode, '127.0.0.1')?.HostName).toBe('rog')
+  expect(meshPeerOf(meshNode, '100.64.0.42')).toBeUndefined()
+  expect(meshPeerOf(meshNode, undefined)).toBeUndefined()
+  expect(meshPeerOf(meshNode, 'not-an-address')).toBeUndefined()
+  const janus = meshPeerOf(meshNode, '100.64.0.2')!
+  for (const allowed of [
+    'janus',
+    'janus.tail.example.com',
+    '100.64.0.2',
+    'JANUS.TAIL.EXAMPLE.COM.',
+  ])
+    expect(meshAllows([allowed], janus)).toBe(true)
+  expect(meshAllows(['other.tail.example.com', 'stranger'], janus)).toBe(false)
+  expect(meshAllows([''], janus)).toBe(false)
+})
+
+it('admits an explicitly allowed peer named by IP and nobody else, with no Serve call and a stable port', async () => {
+  const f = await fixture({ node: meshNode })
+  await writeFile(join(f.home, '.ultimate/settings.json'), meshSettings(['100.64.0.2']))
+  const app = await f.instance('/project/a', meshPort)
+  expect(await app.status()).toMatchObject({
+    state: 'ready',
+    url: `http://rog.tail.example.com:${meshPort}`,
+    allow: ['100.64.0.2'],
+    mode: 'mesh',
+  })
+  // Seen live: the listener admitted the node by IP, then the access rule denied it for lacking its DNS name.
+  const rule = [...app.access.rules][0]
+  expect(
+    await rule.verify({ headers: { 'tailscale-user-login': 'janus.tail.example.com' } }),
+  ).toEqual({
+    login: 'janus.tail.example.com',
+  })
+  expect(
+    await rule.verify({ headers: { 'tailscale-user-login': 'rog.tail.example.com' } }),
+  ).toBeUndefined()
+  await app.close()
+  await app.close()
+  const reopened = await f.instance('/project/a', meshPort)
+  expect((await reopened.status()).url).toBe(`http://rog.tail.example.com:${meshPort}`)
+  await reopened.close()
+})
+
 it('reports failed teardown without throwing and classifies filesystem failures as errors', async () => {
   const f = await fixture()
   const app = await f.instance()

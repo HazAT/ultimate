@@ -17,7 +17,9 @@ export type Status = {
     | 'port-conflict'
     | 'error'
   url?: string
-  /** The tailnet logins allowed in (`tailscale.allow` in settings, by default the tailnet's owner). */
+  /** How it is published: Serve over HTTPS by default, or a mesh listener over WireGuard-encrypted HTTP. */
+  mode?: 'serve' | 'mesh'
+  /** Who may open it: logins in serve mode, node DNS names, host names, or mesh addresses in mesh mode. */
   allow: string[]
   hint?: string
 }

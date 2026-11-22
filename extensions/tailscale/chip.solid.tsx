@@ -128,6 +128,11 @@ function Ready(props: { url: string; allow: string[]; hint?: string }) {
       <p class="mt-1 pl-5 text-[12px] leading-snug text-muted-foreground/80">
         Tailnet only, never on the public internet.
       </p>
+      <Show when={props.url.startsWith('http://')}>
+        <p class="mt-1 pl-5 text-[12px] leading-snug text-muted-foreground/80">
+          Plain HTTP over WireGuard: voice input and Add to Home Screen need HTTPS.
+        </p>
+      </Show>
     </>
   )
 }

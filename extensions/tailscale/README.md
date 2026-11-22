@@ -1,5 +1,7 @@
 Reach Ultimate from your phone and other devices over Tailscale (needs Tailscale on this machine). It serves Ultimate over Tailscale HTTPS, admitting only explicitly allowed Tailscale logins. This built-in is off by default, manages its own Serve mappings, and never enables Funnel.
 
+With `tailscale.mode: "mesh"` it skips Serve and binds its own listener on the node's mesh address instead, for self-hosted control servers (Headscale and other setups where Serve cannot hand out HTTPS certificates). Identity comes from the WireGuard source address of each connection, and admission runs by node, not by login.
+
 ## Settings
 
 Turn it on with `extensions.enable` like any extension, in user or project settings; only `~/.ultimate/settings.json` can set the allowlist:
@@ -11,7 +13,20 @@ Turn it on with `extensions.enable` like any extension, in user or project setti
 }
 ```
 
-Omit `tailscale.allow` to allow only the machine owner's login (`Self.UserID` → `User.LoginName` in `tailscale status --json`); when status lacks it at start, as right after a boot, it is ready with no one allowed and a hint saying so, and a request from the tailnet reads status again until it lists the owner. Project settings never change the allowlist. While it is off, previews have no tailnet address, setup reports no Tailscale area, and the status line shows nothing. A preview started by another Ultimate's `instance` tool, or a scratch server on its own `ULTIMATE_HOME`, publishes on a port of its own (below), so the user can open it from their phone, and frees that port when it stops. `TAILSCALE_COMMAND` names another CLI; tests point it at a missing one, so test servers stay off the tailnet. Without Tailscale installed the panel shows how to install it, without a notice. Install Tailscale, log in, enable HTTPS certificates in the admin console, and grant operator rights if needed with `sudo tailscale set --operator=$USER`.
+`tailscale.mode` picks how it publishes: `"serve"` (the default) drives `tailscale serve`, or `"mesh"` binds a plain HTTP listener on the node's mesh address (`tailscale.bind` overrides the address; the port comes from the registry below). Only `~/.ultimate/settings.json` can set the allowlist:
+
+- **Serve mode:** entries are Tailscale logins. Omit `tailscale.allow` to allow only the machine owner's login (`Self.UserID` → `User.LoginName` in `tailscale status --json`); when status lacks it at start, as right after a boot, it is ready with no one allowed and a hint saying so, and a request from the tailnet reads status again until it lists the owner.
+- **Mesh mode:** entries match a node's DNS name (`node.tail.example.com`), its host name, or its mesh address (`100.64.0.2`); a host name matches every node that carries it, so prefer DNS names or addresses on a tailnet with repeated names. Omit `tailscale.allow` to allow only this node itself. On a self-hosted control server every node may share one tailnet user, so there is no owner login to fall back on: on a tailnet shared with other people, list the nodes you trust explicitly — the default keeps the machine to itself.
+
+Project settings never change the allowlist. While it is off, previews have no tailnet address, setup reports no Tailscale area, and the status line shows nothing. A preview started by another Ultimate's `instance` tool, or a scratch server on its own `ULTIMATE_HOME`, publishes on a port of its own (below), so the user can open it from their phone, and frees that port when it stops. `TAILSCALE_COMMAND` names another CLI; tests point it at a missing one, so test servers stay off the tailnet. Without Tailscale installed the panel shows how to install it, without a notice. Install Tailscale, log in, enable HTTPS certificates in the admin console, and grant operator rights if needed with `sudo tailscale set --operator=$USER`.
+
+## Mesh mode
+
+The listener binds the node's mesh address (for example `100.64.0.1`; `tailscale.bind` must be one address of this node, never `0.0.0.0`) and proxies admitted requests to the loopback-only supervisor, so the Ultimate server itself never leaves loopback. Each connection's source address is mapped to a node through `tailscale status --json` (`Self` and `Peer.TailscaleIPs`, re-read on an address the last reading does not know); a connection from loopback counts as this node. The peer's DNS name, host name, or mesh address must match `tailscale.allow`.
+
+Admitted requests reach the supervisor with identity headers the listener builds itself (`tailscale-user-login`, `x-forwarded-for`); any forwarding headers a client sent are discarded first, so a peer cannot vouch for another address, and the supervisor's full admission rules (registered origin, Origin checks, fetch-metadata rules, admission recheck) apply to every request exactly as over Serve. Changing `tailscale.allow` closes the listener and its open streams, so a revoked node is cut off at once; clients reconnect.
+
+Plain HTTP over WireGuard is encrypted but not a secure context outside localhost: the browser withholds service workers, camera and microphone (voice input), and the installable home-screen app. For those, terminate HTTPS in front of Ultimate instead: a reverse proxy on this machine with a certificate for a name that resolves to the node, proxying to the loopback supervisor, and Ultimate's listener left in its default loopback-only mode (leave `tailscale` off). Admission is then the proxy's job (its own auth, or the mesh address its upstream connections come from), not Ultimate's.
 
 ## UI
 

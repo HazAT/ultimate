@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import { createServer as createHttpServer, request as httpRequest } from 'node:http'
+import type { IncomingHttpHeaders, Server, ServerResponse } from 'node:http'
+import { isIP } from 'node:net'
 import { acquireLock, alive } from '../../lib/lock.ts'
 import { projectHome } from '../../lib/project-paths.ts'
 import { access, mkdir } from 'node:fs/promises'
@@ -6,7 +9,7 @@ import { constants, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
-import { isMissing } from '../../lib/errors.ts'
+import { errnoCode, inProcess, isMissing, meansNone } from '../../lib/errors.ts'
 import { readJson, writeJson, writeTarget } from '../../lib/json-file.ts'
 import { userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -35,6 +38,43 @@ function target(serve: Serve, dns: string, port: number) {
   return proxy && /^http:\/\/127\.0\.0\.1:\d+$/.test(proxy) ? proxy : undefined
 }
 type RetainedProjectOrTemporaryPortClaim = { port: number; owner: string; temporary?: true }
+type MeshSettings = { allow?: string[]; bind?: string }
+type NodeEntry = { HostName?: string; DNSName?: string; TailscaleIPs?: string[] }
+type MeshNode = { BackendState?: string; Self?: NodeEntry } & { Peer?: Record<string, NodeEntry> }
+const stripDot = (name: string) => name.replace(/\.$/, '')
+const forwardedHeaders = ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded']
+export function meshPeerOf(node: MeshNode, remote: string | undefined): NodeEntry | undefined {
+  const ip = remote?.replace(/^::ffff:/, '') ?? ''
+  if (!isIP(ip)) return undefined
+  if (['127.0.0.1', '::1'].includes(ip)) return node.Self
+  return [node.Self, ...Object.values(node.Peer ?? {})].find((entry) =>
+    entry?.TailscaleIPs?.includes(ip),
+  )
+}
+export function meshAllows(allow: string[], entry: NodeEntry) {
+  const names = [
+    entry.DNSName ? stripDot(entry.DNSName) : undefined,
+    entry.HostName,
+    ...(entry.TailscaleIPs ?? []),
+  ]
+    .filter((name): name is string => typeof name === 'string' && name !== '')
+    .map((name) => name.toLowerCase())
+  return allow.some((value) => value !== '' && names.includes(stripDot(value).toLowerCase()))
+}
+const meshIdentity = (entry: NodeEntry) =>
+  entry.DNSName ? stripDot(entry.DNSName) : (entry.HostName ?? '')
+const meshHeaders = (
+  received: IncomingHttpHeaders,
+  peer: NodeEntry,
+  remote: string | undefined,
+) => {
+  const headers = { ...received }
+  for (const name of forwardedHeaders) delete headers[name]
+  headers['tailscale-user-login'] = meshIdentity(peer)
+  headers['x-forwarded-for'] = remote
+  headers['x-forwarded-proto'] = 'http'
+  return headers
+}
 export const reloadOnSettings = true
 const statuses = new WeakMap<ExtensionHost, Status>()
 const retries = new WeakMap<ExtensionHost, () => Promise<void>>()
@@ -150,10 +190,13 @@ export default function tailscale(host: ExtensionHost) {
         remove?.()
         ownedPort = undefined
       }
-      const settings = await readJson<{ tailscale?: { allow?: string[] } }>(
-        userSettingsPath(host.userHome),
-        {},
-      )
+      const settings = await readJson<{
+        tailscale?: ({ mode?: 'serve' | 'mesh'; bind?: string } & MeshSettings) | undefined
+      }>(userSettingsPath(host.userHome), {})
+      if (settings.tailscale?.mode === 'mesh') {
+        await startMesh(settings.tailscale)
+        return
+      }
       set({ state: 'starting', allow: [] })
       let output: string
       try {
@@ -307,6 +350,174 @@ export default function tailscale(host: ExtensionHost) {
       else fail('error', message.slice(0, 500))
     }
   }
+  let mesh: { server: Server; port: number; localPort: number; dns: string } | undefined
+  let meshCache: { at: number; node: MeshNode } | undefined
+  let meshRead: Promise<MeshNode> | undefined
+  const meshNode = async (fresh = false) => {
+    if (!fresh && meshCache && Date.now() - meshCache.at < 30000) return meshCache.node
+    meshRead ??= command(['status', '--json'])
+      .then((output) => {
+        const node = parsePreserving64BitUserIds(output.stdout) as MeshNode
+        meshCache = { at: Date.now(), node }
+        return node
+      })
+      .finally(() => (meshRead = undefined))
+    return meshRead
+  }
+  const freeMeshPort = (bind: string, first: number) =>
+    new Promise<number>((resolve, reject) => {
+      const probe = (port: number) => {
+        if (port > 65535) return reject(new Error('No free mesh port'))
+        const server = createHttpServer()
+        server.once('error', (error) =>
+          errnoCode(error) === 'EADDRINUSE' ? probe(port + 1) : reject(error),
+        )
+        server.listen(port, bind, () => server.close(() => resolve(port)))
+      }
+      probe(first)
+    })
+  const meshForbidden = (response: ServerResponse) => {
+    response.writeHead(403)
+    response.end('Forbidden')
+  }
+  const meshAdmitted = async (
+    received: IncomingHttpHeaders,
+    remote: string | undefined,
+    allow: string[],
+  ) => {
+    const peer = meshPeerOf((await meshNode(true).catch(meansNone)) ?? {}, remote)
+    return peer && meshAllows(allow, peer) ? meshHeaders(received, peer, remote) : undefined
+  }
+  async function startMesh(meshSettings: MeshSettings) {
+    if (closed) return
+    try {
+      if (mesh?.server.listening) {
+        set(ready!)
+        return
+      }
+      set({ state: 'starting', allow: [] })
+      const node = await meshNode(true)
+      if (node.BackendState !== 'Running') {
+        fail('not-running', 'Start Tailscale and log in (tailscale up).')
+        return
+      }
+      const dns = node.Self?.DNSName && stripDot(node.Self.DNSName)
+      if (!dns) {
+        fail(
+          'error',
+          'Tailscale is running but its DNS name is missing from status; check MagicDNS in the Tailscale admin console.',
+        )
+        return
+      }
+      let allow = meshSettings.allow ?? [dns]
+      if (!Array.isArray(allow) || allow.some((name) => typeof name !== 'string' || !name))
+        throw new Error('tailscale.allow must be an array of login or node names')
+      const localPort = Number(new URL(host.system().process.url).port || '80')
+      const bind = meshSettings.bind ?? node.Self?.TailscaleIPs?.find((ip) => isIP(ip) === 4)
+      if (!bind) {
+        fail('error', 'Status lists no Tailscale IP to bind the mesh listener on.')
+        return
+      }
+      if (!isIP(bind) || bind === '0.0.0.0' || bind === '::') {
+        fail('error', `tailscale.bind must be one address of this node, not ${bind}.`)
+        return
+      }
+      const assigned = await withRegistry(async (registry) => {
+        const entry = registry.ports[key]
+        const owner = Number(entry?.owner.split(':')[0])
+        if (entry && owner !== process.pid && alive(owner))
+          throw new Error(`Mesh port ${entry.port} is owned by another running instance`)
+        return entry?.port
+      })
+      const server = createHttpServer((clientReq, clientRes) => {
+        inProcess(
+          'a mesh proxy request: the response dies with the process',
+          (async () => {
+            const headers = await meshAdmitted(
+              clientReq.headers,
+              clientReq.socket.remoteAddress,
+              allow,
+            ).catch(meansNone)
+            if (!headers) return meshForbidden(clientRes)
+            const upstream = httpRequest({
+              host: '127.0.0.1',
+              port: localPort,
+              path: clientReq.url,
+              method: clientReq.method,
+              headers,
+            })
+            upstream.on('response', (upstreamRes) => {
+              clientRes.writeHead(upstreamRes.statusCode!, upstreamRes.headers)
+              upstreamRes.pipe(clientRes)
+            })
+            upstream.on('error', () => {
+              if (!clientRes.headersSent) {
+                clientRes.writeHead(502)
+                clientRes.end()
+              } else clientRes.destroy()
+            })
+            clientReq.pipe(upstream)
+          })(),
+        )
+      })
+      const listen = (candidate: number) =>
+        new Promise<number>((resolve, reject) =>
+          server.once('error', reject).listen(candidate, bind, () => resolve(candidate)),
+        )
+      const port = await (
+        assigned !== undefined ? listen(assigned) : Promise.reject('unassigned')
+      ).catch(async (error: unknown) => {
+        if (assigned !== undefined && errnoCode(error) !== 'EADDRINUSE') throw error
+        return listen(await freeMeshPort(bind, localPort === 443 ? 4747 : localPort))
+      })
+      mesh = { server, port, localPort, dns }
+      await withRegistry(async (registry) => {
+        registry.ports[key] = {
+          port,
+          owner: ownerToken,
+          ...(temporaryHomeNeedsSeparatePort && { temporary: true as const }),
+        }
+      })
+      const url = `http://${dns}:${port}`
+      remove = host.access.allow({
+        origin: url,
+        verify: async ({ headers }) => {
+          const login = headers['tailscale-user-login']
+          if (typeof login !== 'string' || !login) return undefined
+          const current = (await meshNode().catch(meansNone)) ?? {}
+          const peer = [current.Self, ...Object.values(current.Peer ?? {})].find(
+            (entry) => entry && meshIdentity(entry) === login,
+          )
+          return peer && meshAllows(allow, peer) ? { login } : undefined
+        },
+      })
+      ready = { state: 'ready', url, allow, mode: 'mesh' }
+      if (!meshSettings.allow)
+        ready = {
+          ...ready,
+          hint: `Only this node can open it yet: add the names or mesh addresses of other nodes to tailscale.allow (mesh mode has no owner login; this node is ${dns}).`,
+        }
+      set(ready)
+    } catch (error) {
+      meshCache = undefined
+      if (mesh) {
+        mesh.server.closeAllConnections()
+        await new Promise<void>((resolve) => mesh!.server.close(() => resolve()))
+        mesh = undefined
+      }
+      const message = String((error as { stderr?: string }).stderr || error)
+      if (/EACCES|EPERM/i.test(message))
+        fail(
+          'error',
+          'Binding the mesh address needs rights this process lacks; run as root or pick another bind address.',
+        )
+      else if (/owned by another running instance|No free mesh port/.test(message))
+        fail('port-conflict', message.slice(0, 500))
+      else if (/not running|logged out|failed to connect|needslogin/i.test(message))
+        fail('not-running', 'Start Tailscale and log in (tailscale up).')
+      else fail('error', message.slice(0, 500))
+    }
+  }
   function startOrJoinCurrentRepair() {
     running ??= start().finally(() => (running = undefined))
     return (opening = running)
@@ -317,6 +528,15 @@ export default function tailscale(host: ExtensionHost) {
   host.onClose(async () => {
     closed = true
     await opening
+    if (mesh) {
+      const listening = mesh.server.listening
+      mesh.server.closeAllConnections()
+      await new Promise<void>((resolve) => mesh!.server.close(() => resolve()))
+      await withRegistry(async (value) => {
+        if (listening && value.ports[key]?.owner === ownerToken) delete value.ports[key]
+      }).catch((error) => fail('error', `Could not free the mesh port: ${String(error)}`))
+      mesh = undefined
+    }
     remove?.()
     if (ownedPort !== undefined) {
       try {
