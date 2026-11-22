@@ -253,7 +253,7 @@ it('saves screenshots at the given path, relative to the conversation cwd, creat
     const result = await tools.get(name)!.execute({ url, waitMs: 0, ...args }, api(env), context)
     expect(result.isError).toBeFalsy()
     // Codemode reads this structured result; the model reads the PNG line of the output.
-    const saved = (result as { structuredContent?: { file: string } }).structuredContent!.file
+    const saved = (result as { structuredOutput?: { file: string } }).structuredOutput!.file
     await access(saved)
     expect(JSON.stringify(result.output)).toContain(`PNG: ${saved}`)
     return saved
