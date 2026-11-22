@@ -531,7 +531,8 @@ export const actions = {
       }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
     })
-    if (!response.ok) throw new Error(liveFailureWithProviderReason(await openaiError(response)))
+    if (!response.ok)
+      throw new Error(liveFailureWithProviderReason(await openaiError(response, key)))
     const answer = (await response.json()) as {
       session?: { id?: string }
       transport?: { type?: string; sdp?: string }

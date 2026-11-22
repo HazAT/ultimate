@@ -480,7 +480,8 @@ it('shows OpenAI’s own reason when it refuses a session, never a bare HTTP sta
   const original = globalThis.fetch
   const sessions = 'https://api.openai.com/v1/live/sessions'
   // OpenAI's real 429 for an account with no credits, whose reason a bare status threw away. The second answer is a
-  // proxy page instead of OpenAI's JSON, which leaves only the status to report.
+  // proxy page instead of OpenAI's JSON, which leaves only the status to report. A 401 can echo the supplied key, and
+  // no other error field may carry it either.
   const answers = [
     () =>
       Response.json(
@@ -495,6 +496,21 @@ it('shows OpenAI’s own reason when it refuses a session, never a bare HTTP sta
         { status: 429 },
       ),
     () => new Response('<html>bad gateway</html>', { status: 502 }),
+    () =>
+      Response.json(
+        {
+          error: {
+            message: 'Incorrect API key provided: sk-test-not-real',
+            code: 'invalid_api_key',
+          },
+        },
+        { status: 401 },
+      ),
+    () =>
+      Response.json(
+        { error: { message: 'Rejected sk-test-not-real', code: 'echo-sk-test-not-real' } },
+        { status: 429 },
+      ),
   ]
   const fetch = vi
     .spyOn(globalThis, 'fetch')
@@ -511,6 +527,13 @@ it('shows OpenAI’s own reason when it refuses a session, never a bare HTTP sta
     )
     expect(refused.data.error).not.toContain('sk-test-not-real')
     expect((await start()).data.error).toContain('OpenAI live session failed (HTTP 502)')
+    const authentication = (await start()).data.error
+    expect(authentication).toContain('OpenAI authentication failed')
+    expect(authentication).not.toContain('sk-test-not-real')
+    const echoed = (await start()).data.error
+    expect(echoed).toContain('echo-[redacted]')
+    expect(echoed).toContain('Rejected [redacted]')
+    expect(echoed).not.toContain('sk-test-not-real')
   } finally {
     fetch.mockRestore()
   }

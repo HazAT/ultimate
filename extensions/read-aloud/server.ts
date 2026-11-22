@@ -69,7 +69,7 @@ export async function openaiSpeech(key: string, text: string, signal: AbortSigna
     signal,
   })
   if (!response.ok) {
-    const { status, message } = await openaiError(response)
+    const { status, message } = await openaiError(response, key)
     throw new Error(`OpenAI speech failed (HTTP ${status})${message ? `: ${message}` : ''}`)
   }
   return Buffer.from(await response.arrayBuffer()).toString('base64')

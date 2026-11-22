@@ -39,7 +39,7 @@ export async function openaiTranscribe(
     signal,
   })
   if (!response.ok) {
-    const { status, message } = await openaiError(response)
+    const { status, message } = await openaiError(response, key)
     return { status, detail: message }
   }
   let answer: { text?: unknown } | undefined

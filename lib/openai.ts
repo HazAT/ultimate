@@ -17,7 +17,10 @@ export async function openaiSecretOrNonOAuthKey(
   return (await runtime.getAuth('openai', { signal }))?.auth.apiKey
 }
 
-export async function openaiError(failedResponse: Response): Promise<OpenAiError> {
+export async function openaiError(failedResponse: Response, key: string): Promise<OpenAiError> {
+  if (failedResponse.status === 401)
+    return { status: failedResponse.status, message: 'OpenAI authentication failed' }
+  const redact = (value: string) => (key ? value.replaceAll(key, '[redacted]') : value)
   let body: unknown
   try {
     body = await failedResponse.json()
@@ -29,7 +32,7 @@ export async function openaiError(failedResponse: Response): Promise<OpenAiError
   const code = typeof error?.code === 'string' ? error.code : error?.type
   return {
     status: failedResponse.status,
-    ...(typeof error?.message === 'string' ? { message: error.message } : {}),
-    ...(typeof code === 'string' ? { code } : {}),
+    ...(typeof error?.message === 'string' ? { message: redact(error.message) } : {}),
+    ...(typeof code === 'string' ? { code: redact(code) } : {}),
   }
 }
