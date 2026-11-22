@@ -9,7 +9,8 @@ import type { KeptWork, OverviewState, SummaryRecord } from './types.ts'
 
 /**
  * Pi compacted conversation `conversation`: its summary is entry `entry`; `reason` is Pi's (`threshold`, `overflow`,
- * `manual`). Emitted in a commit of its own right after Pi's, which has no hook (`compactions.ts`).
+ * `manual`). Emitted in a commit of its own right after Pi's, which has no hook; opening announces any a stop missed
+ * (`compactions.ts`).
  */
 export const Compacted = defineEvent<{
   conversation: ConversationId
