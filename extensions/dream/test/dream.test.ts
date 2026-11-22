@@ -20,7 +20,7 @@ import { ContextUsageDoc } from '../../conversations/api.ts'
 import { SubmitAfter, submitAfter } from '../../conversations/submit.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
 import { Hold } from '../../automations/api.ts'
-import dream, { actions, branched, Next, toolStats, userActions } from '../server.ts'
+import dream, { actions, branched, Next, statsWindow, toolStats, userActions } from '../server.ts'
 import { buildSeed } from '../seed.ts'
 import {
   AUTOMATION_NAME,
@@ -386,9 +386,11 @@ it('reads tool numbers from the trace, with unused tools and frequent errors', a
   const file = join(await temp(), 'trace.sqlite')
   const db = new DatabaseSync(file)
   db.exec(
-    'CREATE TABLE calls (id TEXT, at REAL, ms REAL, kind TEXT, name TEXT, ok INTEGER, error TEXT, args TEXT, conversation INTEGER, entry INTEGER)',
+    'CREATE TABLE calls (id TEXT, at REAL, ms REAL, kind TEXT, name TEXT, ok INTEGER, error TEXT, args TEXT, conversation INTEGER, entry INTEGER, caller TEXT, callee TEXT)',
   )
-  const insert = db.prepare('INSERT INTO calls VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  const insert = db.prepare(
+    'INSERT INTO calls (id, at, ms, kind, name, ok, error, args, conversation, entry) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  )
   insert.run('1', 100, 10, 'tool', 'edit', 1, null, null, null, null)
   insert.run(
     '2',
@@ -407,6 +409,7 @@ it('reads tool numbers from the trace, with unused tools and frequent errors', a
   db.close()
   expect(toolStats(file, ['edit', 'read', 'notify'])).toEqual({
     since: 100,
+    until: 300,
     calls: 3,
     tools: [
       { name: 'edit', calls: 2, failed: 1, avgMs: 20 },
@@ -421,6 +424,67 @@ it('reads tool numbers from the trace, with unused tools and frequent errors', a
         examples: [{ at: '#7/42' }],
       },
     ],
+    services: { byCaller: [], byCallee: [] },
+    actions: {
+      byCaller: [{ name: null, calls: 1, failed: 0 }],
+      byCallee: [{ name: null, calls: 1, failed: 0 }],
+    },
   })
   expect(toolStats(join(await temp(), 'none.sqlite'), ['read']).unused).toEqual(['read'])
+})
+
+it('counts service and action calls per caller and callee inside the asked window, never args', async () => {
+  const file = join(await temp(), 'trace.sqlite')
+  const db = new DatabaseSync(file)
+  db.exec(
+    'CREATE TABLE calls (id TEXT, at REAL, ms REAL, caller TEXT, callee TEXT, kind TEXT, name TEXT, ok INTEGER, error TEXT, args TEXT, conversation INTEGER, entry INTEGER)',
+  )
+  const insert = db.prepare(
+    'INSERT INTO calls (id, at, ms, caller, callee, kind, name, ok, error, args) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)',
+  )
+  insert.run('1', 100, 'model', 'bash', 'tool', 'bash', 1, null, '{"command":"secret-arg"}')
+  insert.run('2', 200, 'phase', 'classify', 'service', 'classify.ask', 0, 'credit', 'secret-arg')
+  insert.run('3', 210, 'phase', 'classify', 'service', 'classify.ask', 1, null, 'secret-arg')
+  insert.run('4', 220, 'phase', 'plan', 'service', 'plan.openCriteria', 1, null, null)
+  insert.run('5', 230, 'keep-warm', 'pause', 'service', 'pause.paused', 1, null, null)
+  insert.run('6', 240, 'ui', 'codemode', 'action', 'codemode/read', 0, 'nope', 'secret-arg')
+  insert.run('7', 241, 'phase', 'classify', 'service', 'classify.ask', 0, 'late', null)
+  db.close()
+  const bothEndsInclusive = { since: Date.parse('1970-01-01T00:00:00.200Z'), until: 240 }
+  const stats = toolStats(file, ['bash'], bothEndsInclusive)
+  expect(stats).toMatchObject({
+    calls: 0,
+    services: {
+      byCaller: [
+        { name: 'phase', calls: 3, failed: 1 },
+        { name: 'keep-warm', calls: 1, failed: 0 },
+      ],
+      byCallee: [
+        { name: 'classify', calls: 2, failed: 1 },
+        { name: 'pause', calls: 1, failed: 0 },
+        { name: 'plan', calls: 1, failed: 0 },
+      ],
+    },
+    actions: {
+      byCaller: [{ name: 'ui', calls: 1, failed: 1 }],
+      byCallee: [{ name: 'codemode', calls: 1, failed: 1 }],
+    },
+  })
+  expect(toolStats(file, ['bash']).services.byCallee[0]).toEqual({
+    name: 'classify',
+    calls: 3,
+    failed: 2,
+  })
+  expect(JSON.stringify(toolStats(file, ['bash']))).not.toMatch(/args|secret-arg/)
+})
+
+it('takes only real ISO times as the stats window', () => {
+  expect(statsWindow(null)).toEqual({})
+  expect(statsWindow({ since: '2026-11-19', until: '2026-11-19T06:30:00-07:00' })).toEqual({
+    since: Date.parse('2026-11-19'),
+    until: Date.parse('2026-11-19T13:30:00Z'),
+  })
+  const hostZoneDependent = '2026-11-19T03:00:00'
+  for (const since of ['10/11/2026', '2026-02-30T00:00:00Z', hostZoneDependent, '', 5])
+    expect(() => statsWindow({ since })).toThrow('since must be an ISO date or an ISO time with')
 })

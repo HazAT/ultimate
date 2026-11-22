@@ -118,5 +118,5 @@ restart never returns: the new host opens the requested chapter.
 
 `refs.ts` holds the document and actions: `start`, `ready`, `dismiss`, `asleep`, `switch` (user-only), `prepare`,
 `chapters`, and `stats`,
-which reads tool calls from `<home>/trace.sqlite` read-only: calls, failures and mean duration per tool, the 20 most
-frequent errors (each with its two newest calls as `#<conversation>/<entry>`), and enabled tools never called in the trace's window (7 days or 200k rows).
+which reads calls from `<home>/trace.sqlite` read-only: calls, failures and mean duration per tool, the 20 most
+frequent tool errors (each with its two newest calls as `#<conversation>/<entry>`), enabled tools never called, and `services` and `actions`: calls and failures `byCaller` and `byCallee`, counts only. Optional `{ since, until }` bound the window, both inclusive: ISO times with `Z` or an offset, or a date alone for its UTC midnight; by default it is the trace's whole span (7 days or 200k rows).
