@@ -2,6 +2,7 @@ import { access, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import type { ToolExecutionApi } from '@earendil-works/pi-durable'
+import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { expect, it, vi } from 'vitest'
 import { context } from '../../../../server/harness.ts'
 import browserExtension, { browserBinary } from '../../server.ts'
@@ -238,6 +239,7 @@ it('saves screenshots at the given path, relative to the conversation cwd, creat
   const directory = await temp('ultimate-browser-path-')
   const closers: (() => Promise<void>)[] = []
   const host = {
+    images: await createNodePhotonImages(),
     home: join(directory, 'home'),
     projectRoot: join(directory, 'project'),
     resource: <T>(_name: string, create: () => T) => create(),
@@ -259,6 +261,21 @@ it('saves screenshots at the given path, relative to the conversation cwd, creat
     return saved
   }
   try {
+    const tall = await tools.get('screenshot')!.execute(
+      {
+        url: 'data:text/html,<body style="height:4000px">',
+        width: 800,
+        fullPage: true,
+        waitMs: 0,
+      },
+      api(),
+      context,
+    )
+    expect(tall.output).toEqual([
+      { type: 'text', text: expect.stringMatching(/^Resized from 800x4\d+ to \d+x1600\./) },
+      expect.objectContaining({ type: 'image', mimeType: 'image/png' }),
+      { type: 'text', text: expect.stringContaining('PNG: ') },
+    ])
     expect(await file('screenshot', { path: join(directory, 'a/b/absolute.png') })).toBe(
       join(directory, 'a/b/absolute.png'),
     )
