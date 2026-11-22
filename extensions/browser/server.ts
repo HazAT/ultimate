@@ -146,6 +146,13 @@ export default function browserExtension(host: ExtensionHost) {
           'Where to save the PNG, relative to your cwd; default: a new file in the home.',
       }),
     ),
+    width: opt(
+      int({
+        minimum: 1,
+        description: 'Viewport width in CSS pixels; default 1440, 375 for a phone.',
+      }),
+    ),
+    height: opt(int({ minimum: 1, description: 'Viewport height in CSS pixels; default 900.' })),
     timeoutMs: opt(
       int({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
     ),
@@ -169,8 +176,6 @@ export default function browserExtension(host: ExtensionHost) {
         ),
         parameters: obj({
           ...base,
-          width: opt(int({ minimum: 1 })),
-          height: opt(int({ minimum: 1 })),
           fullPage: opt(bool()),
           selector: opt(str()),
           waitMs: opt(int({ minimum: 0 })),
