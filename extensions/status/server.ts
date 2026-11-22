@@ -75,12 +75,13 @@ export async function status(
       : {}),
     ...(failures
       ? {
-          failures: failures.map(({ conversation, title, at, error, retried }) => ({
+          failures: failures.map(({ conversation, title, at, error, retried, retries }) => ({
             conversation,
             title,
             at,
             error,
             retried,
+            ...(retries ? { retries } : {}),
           })),
         }
       : {}),
