@@ -94,6 +94,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
           return
         }
         response.setHeader('Content-Security-Policy', loopbackPreviewFrameAncestors)
+        if (request.method === 'GET' && request.url === '/api/events') web!.pageConnected()
         if (await api.handle(request, response)) return
         if (request.method !== 'GET' && request.method !== 'HEAD') {
           response.writeHead(405)
