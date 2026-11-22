@@ -177,10 +177,6 @@ it('starts a branch from the memory brief, and without memories from the tally',
   expect(JSON.stringify((await inherited.conversation.context(context)).messages)).toContain(marker)
 
   await apply(server, [add('pnpm', 'Use pnpm for everything')])
-  const tip = (await server.harness.commit(
-    async (tx) => (await tx.scanEntries({ conversationId: ROOT_CONVERSATION_ID }, 1)).items[0].id,
-    context,
-  )) as number
   const briefed = await branch(server, 'Briefed branch')
   const view = await briefed.conversation.context(context)
   const said = view.messages.filter((message) => message.role !== 'system')
@@ -193,8 +189,7 @@ it('starts a branch from the memory brief, and without memories from the tally',
   expect(textOf(said[2].content)).toBe('Briefed branch')
   expect(JSON.stringify(view.messages)).not.toContain(marker)
   expect(view.entries[0]).toMatchObject({ kind: 'pi.reset' })
-  // The brief records the root tip it covers.
-  expect(view.entries[0]).toMatchObject({ data: { lineage: { brief: { tally: tip } } } })
+  expect(view.entries[0]).toMatchObject({ data: { lineage: { brief: true } } })
   // The root's footer counts the brief a branch receives, recounted when memory changes.
   const briefTokens = async () =>
     (await server.harness.snapshot(Tally, ROOT_CONVERSATION_ID, context))?.briefTokens

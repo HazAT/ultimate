@@ -172,7 +172,6 @@ async function recentLandingsBeforeTableWrites(tx: Tx, root: ConversationId, lim
 export async function memoryBrief(tx: Tx, root: ConversationId) {
   const { memories } = await tx.doc(Memory, root)
   if (!Object.keys(memories).length) return undefined
-  const tip = (await tx.scanEntries({ conversationId: root }, 1)).items[0]?.id
   const landings = await recentLandingsBeforeTableWrites(tx, root, 10)
   const text = [
     `<project_memory root="#${root}">`,
@@ -181,5 +180,5 @@ export async function memoryBrief(tx: Tx, root: ConversationId) {
     ...(landings.length ? ['Recent landings (newest first):', ...landings] : []),
     `The full project context (every branch, abstract and landing) is root #${root}: read it with codemode \`ultimate.entries(${root})\` or \`ultimate.search(text)\`; read a memory with \`memory {read: slug}\`; \`git log\` has the commits.`,
   ].join('\n')
-  return { text, tip }
+  return { text }
 }

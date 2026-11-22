@@ -766,7 +766,7 @@ async function forkBranch(
     await tx.appendEntry(fork.id, {
       kind: 'pi.reset',
       head: 'self',
-      data: { lineage: { brief: { tally: rootMemoryBriefBeforeFork.tip ?? null } } },
+      data: { lineage: { brief: true } },
       model: [{ role: 'user', content: rootMemoryBriefBeforeFork.text, timestamp: Date.now() }],
     })
   const titleUntilSummary = intentLine(prompt, input.title)
