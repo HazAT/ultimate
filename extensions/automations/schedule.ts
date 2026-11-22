@@ -1,3 +1,4 @@
+import { since } from './looks.ts'
 import type { Schedule } from './types.ts'
 export type { Schedule } from './types.ts'
 
@@ -157,18 +158,5 @@ export function describeSchedule(schedule: Schedule): string {
   return `Every ${schedule.ms / 1000} seconds`
 }
 
-export function describeNext(at: number, now: number): string {
-  const seconds = Math.max(0, Math.floor((at - now) / 1000))
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-  const relative =
-    seconds < 60
-      ? `${seconds}s`
-      : hours < 1
-        ? `${minutes}m`
-        : days < 1
-          ? `${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ''}`
-          : `${days}d${hours % 24 ? ` ${hours % 24}h` : ''}`
-  return `next: ${new Date(at).toISOString().slice(0, 19)}Z, in ${relative}`
-}
+export const describeNext = (at: number, now: number) =>
+  `next: ${new Date(at).toISOString().slice(0, 19)}Z, in ${since(now, at)}`
