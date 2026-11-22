@@ -109,6 +109,11 @@ export async function cloneState(
 
 export const SUMMARY_INPUT_CAP = 12_000
 
+export const SUMMARY_COMMITS = 200
+
+export const updateMessages = (git: Git, range: string) =>
+  git('log', `--max-count=${SUMMARY_COMMITS}`, '--format=%s%n%n%b', range)
+
 export const SUMMARY_SYSTEM = `You summarize an update to Ultimate, a coding agent app, for its user.
 You get the commit messages of the update, newest first. Answer with 2 to 4 lines, one per notable change, most
 useful first, each under 90 characters, in plain language about what the user gets ("Review surface: comment on diff
