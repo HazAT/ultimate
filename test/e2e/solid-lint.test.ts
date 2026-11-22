@@ -55,10 +55,8 @@ interface Diagnostic {
 it('lints Solid files with Solid 2 strict rules as errors', async () => {
   const source = await sourceCopy(await temp())
   const folder = join(source, 'extensions/solid-lint')
-  const testFolder = join(source, 'test/web/solid-lint')
   const projectFolder = join(source, '.ultimate/extensions/solid-lint')
-  for (const created of [folder, testFolder, projectFolder])
-    await mkdir(created, { recursive: true })
+  for (const created of [folder, projectFolder]) await mkdir(created, { recursive: true })
   await writeFile(join(folder, 'mistakes.solid.tsx'), solidMistakes)
   await writeFile(join(folder, 'field.solid.tsx'), validRef)
   await writeFile(join(projectFolder, 'node.solid.tsx'), nodeImport)
@@ -72,7 +70,6 @@ it('lints Solid files with Solid 2 strict rules as errors', async () => {
       '--format',
       'json',
       relative(source, folder),
-      relative(source, testFolder),
       relative(source, projectFolder),
     ],
     {
@@ -82,7 +79,7 @@ it('lints Solid files with Solid 2 strict rules as errors', async () => {
   ).catch((error: { stdout: string }) => error)
   const diagnostics = (JSON.parse(lint.stdout) as { diagnostics: Diagnostic[] }).diagnostics
   const name = (file: string) =>
-    [folder, testFolder, projectFolder]
+    [folder, projectFolder]
       .map((root) => relative(root, resolve(source, file)))
       .find((path) => !path.startsWith('..'))
   const found = diagnostics.map((diagnostic) => `${name(diagnostic.filename)} ${diagnostic.code}`)
