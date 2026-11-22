@@ -100,6 +100,27 @@ function killDisconnectedBrowserGroup(owner: { pid: number; start: string } | un
   }
 }
 
+async function namingMatches(page: Page, selector: string, error: unknown): Promise<never> {
+  if (!String(error).includes('strict mode violation')) throw error
+  const matches = page.locator(selector)
+  const count = await matches.count()
+  const shown = await Promise.all(
+    Array.from({ length: Math.min(count, 5) }, (_, index) =>
+      matches
+        .nth(index)
+        .ariaSnapshot()
+        .then((snapshot) => snapshot.split('\n')[0].replace(/^- /, '').slice(0, 120)),
+    ),
+  )
+  throw new Error(
+    [
+      `${JSON.stringify(selector)} matches ${count} elements; a step needs exactly one. Scope it to one card or panel ('[data-entry-id="42"] button:has-text("Retry")'), or find the control with a ui query step. The matches:`,
+      ...shown.map((match, index) => `  ${index + 1}) ${match}`),
+      ...(count > shown.length ? [`  … and ${count - shown.length} more`] : []),
+    ].join('\n'),
+  )
+}
+
 function waitForCompositorSurface(page: Page) {
   return page.evaluate(
     () =>
@@ -286,10 +307,13 @@ export default function browserExtension(host: ExtensionHost) {
                 let value: unknown
                 if ('click' in step || 'fill' in step || 'press' in step)
                   await ultimateControlsMounted()
-                if ('click' in step) await guard(page.locator(step.click).click())
-                else if ('fill' in step) await guard(page.locator(step.fill[0]).fill(step.fill[1]))
+                const one = (selector: string, work: Promise<void>) =>
+                  guard(work.catch((error: unknown) => namingMatches(page, selector, error)))
+                if ('click' in step) await one(step.click, page.locator(step.click).click())
+                else if ('fill' in step)
+                  await one(step.fill[0], page.locator(step.fill[0]).fill(step.fill[1]))
                 else if ('press' in step) await guard(page.keyboard.press(step.press))
-                else if ('wait' in step) await guard(page.locator(step.wait).waitFor())
+                else if ('wait' in step) await one(step.wait, page.locator(step.wait).waitFor())
                 else if ('send' in step || 'until' in step || 'ui' in step) {
                   const waitForLoadedSdk = () =>
                     guard(
