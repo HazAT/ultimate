@@ -3,6 +3,7 @@ import type {
   ConversationId,
   ConversationRecord,
   Cursor,
+  Tx,
   EntryId,
   EntryRecord,
   TaskId,
@@ -24,6 +25,7 @@ import {
   AssistantEntry,
   configure,
   ToolResultEntry,
+  defineDoc,
   defineExtension,
   defineTask,
   defineTool,
@@ -299,6 +301,64 @@ function createReporter() {
       }, context),
   })
 }
+
+const LastStateCommittedWithInput = defineDoc<{ key?: string; head?: number }>({
+  kind: 'subagents.seen',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})
+
+async function stateNote(tx: Tx, conversationId: ConversationId, now: number) {
+  const state = await tx.doc(Subagents, conversationId)
+  const pending = new Set<ConversationId>()
+  for (const action of Object.values(state.actions))
+    if (
+      action.status === undefined &&
+      (await tx.task(action.reporter))?.state.status !== 'terminal'
+    )
+      pending.add(action.conversationId)
+  const running: string[] = []
+  const queued: string[] = []
+  for (const agent of Object.values(state.agents)) {
+    const label = `${agent.conversationId} (${agent.agent})`
+    if ((await tx.doc(LiveDoc, agent.conversationId)).run !== undefined) running.push(label)
+    else if (pending.has(agent.conversationId)) queued.push(label)
+  }
+  const key = [
+    ...(running.length ? [`Still running subagents: ${running.join(', ')}.`] : []),
+    ...(queued.length ? [`Pending subagent inputs: ${queued.join(', ')}.`] : []),
+  ].join(' ')
+  const head = (await tx.latestHeadMarker(conversationId))?.id ?? 0
+  const seen = await tx.doc(LastStateCommittedWithInput, conversationId)
+  const compactedSinceLastNote = seen.head !== head
+  if ((seen.key ?? '') === key && !compactedSinceLastNote) return undefined
+  seen.key = key
+  seen.head = head
+  if (!key && compactedSinceLastNote) return undefined
+  return {
+    entries: [
+      {
+        kind: 'subagents.note',
+        model: [
+          {
+            role: 'user' as const,
+            content: key
+              ? `${key} Use message, stop, or wait with these IDs; parent stop does not stop them.`
+              : 'No subagents are running.',
+            timestamp: now,
+          },
+        ],
+      },
+    ],
+  }
+}
+
+const YIELDED =
+  'A yielded wait is not its answer: message, stop or wait with its id. Queued inputs arrive at the normal boundary; do not act on them early.'
 
 const details = (
   conversationId: ConversationId,
@@ -888,41 +948,11 @@ export default function subagents(
             }
           }, context)
         },
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
+        beforeInput: (_input, { tx, conversationId }) => stateNote(tx, conversationId, Date.now()),
       }),
     ],
     sections: [
-      section(
-        'subagent_state',
-        async (input, context) => {
-          const state = await input.read.snapshot(Subagents, input.conversationId, context)
-          const running: string[] = []
-          const pending = new Set<ConversationId>()
-          for (const action of Object.values(state?.actions ?? {}))
-            if (
-              action.status === undefined &&
-              (await host.harness().getTask(action.reporter, context))?.state.status !== 'terminal'
-            )
-              pending.add(action.conversationId)
-          const queued: string[] = []
-          for (const agent of Object.values(state?.agents ?? {})) {
-            const label = `${agent.conversationId} (${agent.agent})`
-            if (
-              (await input.read.snapshot(LiveDoc, agent.conversationId, context))?.run !== undefined
-            )
-              running.push(label)
-            else if (pending.has(agent.conversationId)) queued.push(label)
-          }
-          const idlePromptSlot = ''
-          if (!running.length && !queued.length) return idlePromptSlot
-          const text = [
-            ...(running.length ? [`Still running subagents: ${running.join(', ')}.`] : []),
-            ...(queued.length ? [`Pending subagent inputs: ${queued.join(', ')}.`] : []),
-            'A yielded wait is not a child answer. Use message, stop, or wait with these IDs; parent stop does not stop them. Queued inputs are delivered only at the normal boundary; do not act on them early.',
-          ].join(' ')
-          return `<subagent_state>\n${text}\n</subagent_state>`
-        },
-        { tag: false },
-      ),
       section('subagents', async (input) => {
         const usesDefinitions = input.agent.tools.some((tool) =>
           ['subagent', 'branch', 'automation'].includes(tool.name),
@@ -1165,7 +1195,7 @@ export default function subagents(
               ))
             )
               return finish(
-                `Wait yielded for subagent ${action.conversationId}; work continues.${isolateInfo}`,
+                `Wait yielded for subagent ${action.conversationId}; work continues. ${YIELDED}${isolateInfo}`,
                 details(action.conversationId, background, { yielded: true }),
               )
             const settled = (await api.snapshot(Subagents, api.conversationId, context))!.actions[
@@ -1290,7 +1320,7 @@ export default function subagents(
           )
           if (!(await waitForChildLocally(api, id, reporters, true, context)))
             return finish(
-              `Wait yielded for subagent ${id}; work continues.`,
+              `Wait yielded for subagent ${id}; work continues. ${YIELDED}`,
               details(id, index.agents[String(id)].background, { yielded: true }),
             )
           const answer = await api.commit(async (tx) => {
