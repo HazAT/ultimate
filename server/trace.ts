@@ -56,6 +56,7 @@ export interface TraceQuery {
   trace?: string
   conversation?: ConversationId
   since?: IsoTimestamp
+  until?: IsoTimestamp
   limit?: number
 }
 
@@ -386,8 +387,14 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`
     },
     reader: {
       query(query: TraceQuery = {}): CallRow[] {
-        const since = query.since === undefined ? undefined : Date.parse(query.since)
-        if (Number.isNaN(since)) throw new Error(`Invalid since: ${query.since}`)
+        const parseTimestamp = (value: IsoTimestamp | undefined, name: string) => {
+          if (value === undefined) return undefined
+          const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN
+          if (Number.isNaN(parsed)) throw new Error(`Invalid ${name}: ${value}`)
+          return parsed
+        }
+        const since = parseTimestamp(query.since, 'since')
+        const until = parseTimestamp(query.until, 'until')
         const filters = [
           ['trace', query.trace],
           ['conversation', query.conversation],
@@ -396,12 +403,15 @@ CREATE INDEX IF NOT EXISTS calls_at ON calls (at);`
           ([column, value]) => (value === undefined ? [] : [{ sql: `${column} = ?`, value }]),
         )
         if (since !== undefined) where.push({ sql: 'at > ?', value: since })
+        if (until !== undefined) where.push({ sql: 'at < ?', value: until })
         const limit = Math.min(Math.max(1, Math.trunc(Number(query.limit) || 100)), 1000)
-        return select(
-          where.length ? 'WHERE ' + where.map((filter) => filter.sql).join(' AND ') : '',
-          `at DESC, rowid DESC LIMIT ${limit}`,
-          ...where.map((filter) => filter.value),
-        ).toReversed()
+        const clause = where.length
+          ? 'WHERE ' + where.map((filter) => filter.sql).join(' AND ')
+          : ''
+        const values = where.map((filter) => filter.value)
+        if (since !== undefined)
+          return select(clause, `at ASC, rowid ASC LIMIT ${limit}`, ...values)
+        return select(clause, `at DESC, rowid DESC LIMIT ${limit}`, ...values).toReversed()
       },
       page(query: {
         before?: ExclusiveCallWriteSequence

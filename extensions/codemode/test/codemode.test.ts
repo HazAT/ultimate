@@ -353,6 +353,12 @@ it('calls extension actions with caller context and rejects missing or disabled 
     action: { kind: 'action', caller: 'agent', ok: true, args: '{"value":42}' },
     tool: ['tool', 'codemode', ['action-test/echo']],
   })
+  const windowed = await run(
+    server,
+    `const all = await ultimate.trace({ conversation: ${server.root.id} });
+    return await ultimate.trace({ conversation: ${server.root.id}, until: all[0].at });`,
+  )
+  expect(windowed.data.details.value).toEqual([])
   const defaults = await run(server, `return await ultimate.action('action-test', 'echo');`)
   expect(defaults.data.details.value).toMatchObject({ args: null })
   for (const [extension, action, error] of [
