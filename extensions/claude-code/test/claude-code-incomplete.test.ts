@@ -106,7 +106,7 @@ it("reports Claude Code's own refusal of a turn, not its stderr warning", async 
   )
   const message = await stream.result()
   expect(message.errorMessage).toBe(
-    'context_length_exceeded: Claude Code request failed: Prompt is too long',
+    'context_length_exceeded: Claude Code API error: Prompt is too long',
   )
   // Pi compacts on an overflow instead of retrying it.
   expect(isContextOverflow(message)).toBe(true)

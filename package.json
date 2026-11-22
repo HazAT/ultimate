@@ -23,7 +23,7 @@
   "dependencies": {
     "@earendil-works/chord": "1.6.0",
     "@earendil-works/pi-ai": "1.6.0",
-    "@earendil-works/pi-claude-code": "github:earendil-works/pi-claude-code#70abb65186592ca788b29b3db22c3160d629c41f",
+    "@earendil-works/pi-claude-code": "github:earendil-works/pi-claude-code#d5b5e04c314d3452d357174d16d10dda34daa2d2",
     "@earendil-works/pi-codemode": "1.6.0",
     "@earendil-works/pi-coding-agent": "1.6.0",
     "@earendil-works/pi-durable": "1.6.0",

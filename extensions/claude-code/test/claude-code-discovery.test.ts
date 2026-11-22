@@ -44,11 +44,7 @@ const env = {
 // account's catalog (Fable 5.2), so the picker never offered the new model.
 it('asks Claude Code for the account catalog, not its built-in list', async () => {
   const { stdin, stdout, child, spawned } = fakeClaude()
-  const discovery = discoverClaudeModels({
-    ...env,
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-    DISABLE_TELEMETRY: '1',
-  })
+  const discovery = discoverClaudeModels(env)
   await until(() => stdin.readableLength > 0)
   expect(spawned[0].env).not.toHaveProperty('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
   expect(spawned[0].env).not.toHaveProperty('DISABLE_TELEMETRY')
