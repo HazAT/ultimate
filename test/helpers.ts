@@ -148,24 +148,18 @@ export async function sourceCopy(parent: string) {
   })
   await linkDependencies(root)
   const config = join(root, 'vite.config.ts')
-  // Optimize on page requests, not fixture boot; React's plugin otherwise eagerly includes deps.
+  // Optimize on page requests, not fixture boot.
   // This config is immutable after boot: ignore stale native events replayed from the initial copy.
   const replace = (text: string, from: string, to: string) => {
     if (!text.includes(from)) throw new Error(`vite.config.ts no longer contains ${from}`)
     return text.replace(from, to)
   }
-  const plugins =
-    'plugins: [react({ exclude: [solidFiles, /\\/node_modules\\//] }), solidPlugin(), tailwindcss()],'
   await writeFile(
     config,
     replace(
-      replace(
-        await readFile(config, 'utf8'),
-        'export default defineConfig({',
-        "export default defineConfig({ cacheDir: '.vite-cache', optimizeDeps: { entries: [] }, server: { watch: { ignored: [(file) => file === fileURLToPath(import.meta.url)] } },",
-      ),
-      plugins,
-      `${plugins.slice(0, -2)}, { name: 'test:lazy-deps', configResolved(config) { config.optimizeDeps.include = [] } }],`,
+      await readFile(config, 'utf8'),
+      'export default defineConfig({',
+      "export default defineConfig({ cacheDir: '.vite-cache', optimizeDeps: { entries: [] }, server: { watch: { ignored: [(file) => file === fileURLToPath(import.meta.url)] } },",
     ),
   )
   new ProjectTrustStore(join(parent, '.ultimate')).set(root, true)
