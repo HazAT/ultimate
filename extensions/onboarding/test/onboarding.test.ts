@@ -141,7 +141,9 @@ it('gates project resources until the local setup is chosen, and remembers the c
     expect((await web()).some((path) => path.endsWith('/x/web.solid.tsx'))).toBe(true)
     expect(server.system.current().skills.some((skill) => skill.name === 'local-skill')).toBe(true)
     expect(projectDecision(project, home)).toBe(true)
-    await server.close()
+    const first = server
+    server = undefined
+    await first.close()
     server = await fauxServer(options)
     expect(server.system.current().project.decision).toBe(true)
     expect(drive(server).enabled('x')).toBe(true)
@@ -249,7 +251,9 @@ it('withdraws the local setup, adopts it into user settings, and remembers the f
     expect(await action('status')).toMatchObject({ firstRun: true, off: false })
     await action('firstRunDone')
     expect((await action('status')).firstRun).toBe(false)
-    await server.close()
+    const first = server
+    server = undefined
+    await first.close()
     server = await fauxServer(options)
     expect(server.system.current().project.decision).toBe(false)
     expect(drive(server).enabled('x')).toBe(false)

@@ -2,11 +2,11 @@
 // after the composer first renders, so the wrap must not remount the editor or the paperclip's file input: a remount
 // discards a file picked in between. The page holds back the real delivery of that document (its `doc` and `docOps`
 // stream events) until the test releases it, after the conversation's paperclip is enabled and both nodes are marked.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
-import { fauxServer, post, removeTemp, temp } from '../../../../test/helpers.ts'
+import { prebuiltServer, post, removeTemp, temp } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -16,9 +16,7 @@ afterEach(async () => {
 it('keeps the composer editor and file input when the standing agents document arrives', async () => {
   const home = await temp('ultimate-side-composer-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,

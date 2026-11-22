@@ -6,7 +6,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 // render late: the scroll clamped at the bottom, and under load the stick-to-bottom lock took it before the hold moved
 // again, leaving the newest question below the strip. A link to a question,
 // `?conversation=<c>&message=<m>`, once opened the conversation at its end, leaving the question to look for.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -17,7 +17,7 @@ import { browserBinary } from '../../../browser/server.ts'
 import { Started } from '../../../messages/addresses.ts'
 import { Messages } from '../../../messages/api.ts'
 import { context } from '../../../../server/harness.ts'
-import { fauxServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { prebuiltServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -31,9 +31,7 @@ const step = (n: number) =>
 async function setup() {
   const home = await temp('ultimate-question-reveal-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,

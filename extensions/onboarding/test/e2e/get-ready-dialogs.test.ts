@@ -1,10 +1,10 @@
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { chromium } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import type { ModelsResponse } from '../../../../shared/protocol.ts'
-import { fauxServer, post, removeTemp, temp } from '../../../../test/helpers.ts'
+import { prebuiltServer, post, removeTemp, temp } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -14,9 +14,7 @@ afterEach(async () => {
 it('lets Get ready hand focus and pointer input to login and the model picker and get focus back', async () => {
   const home = await temp('ultimate-get-ready-dialogs-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,

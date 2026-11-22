@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { setImmediate as yieldIO } from 'node:timers/promises'
 import { join, resolve, sep } from 'node:path'
@@ -11,7 +11,7 @@ import type {
   Harness,
   TaskGraph,
 } from '@earendil-works/pi-durable'
-import { afterAll, vi } from 'vitest'
+import { afterAll, inject, vi } from 'vitest'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
@@ -23,6 +23,7 @@ import type { ConversationSummary, ServerEvents, SystemInfo } from '../shared/pr
 import type { Api } from '../shared/extension-api.ts'
 import type { EventData, EventToken } from '../shared/events.ts'
 import { EventFeed, eventLog } from '../server/events.ts'
+import { copySource } from './source-copy.ts'
 import type { Reactor } from '../server/events.ts'
 
 vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
@@ -115,14 +116,7 @@ export async function temp(prefix = 'ultimate-test-', parent = tmpdir()) {
   temps.add(path)
   return path
 }
-export async function linkDependencies(root: string) {
-  const target = join(root, 'node_modules')
-  await mkdir(target)
-  for (const name of await readdir(resolve('node_modules'))) {
-    if (name.startsWith('.vite')) continue
-    await symlink(resolve('node_modules', name), join(target, name))
-  }
-}
+export { linkDependencies } from './source-copy.ts'
 /**
  * Copy `shared/`, `lib/` and every extension's `api.ts` and `refs.ts` into `root`, so partially copied extensions find
  * their contracts and helpers.
@@ -141,27 +135,7 @@ export async function copyApis(root: string) {
 export async function sourceCopy(parent: string) {
   await mkdir(parent, { recursive: true })
   const root = await temp('source-', parent)
-  await cp(resolve('.'), root, {
-    recursive: true,
-    filter: (path) =>
-      !['.git', 'node_modules'].includes(path.slice(resolve('.').length + 1).split('/')[0]),
-  })
-  await linkDependencies(root)
-  const config = join(root, 'vite.config.ts')
-  // Optimize on page requests, not fixture boot; React's plugin otherwise eagerly includes deps.
-  // This config is immutable after boot: ignore stale native events replayed from the initial copy.
-  await writeFile(
-    config,
-    (await readFile(config, 'utf8'))
-      .replace(
-        'export default defineConfig({',
-        "export default defineConfig({ cacheDir: '.vite-cache', optimizeDeps: { entries: [] }, server: { watch: { ignored: [(file) => file === fileURLToPath(import.meta.url)] } },",
-      )
-      .replace(
-        'plugins: [react(), tailwindcss()],',
-        "plugins: [react(), tailwindcss(), { name: 'test:lazy-deps', configResolved(config) { config.optimizeDeps.include = [] } }],",
-      ),
-  )
+  await copySource(root)
   new ProjectTrustStore(join(parent, '.ultimate')).set(root, true)
   return root
 }
@@ -224,6 +198,20 @@ export async function fauxServer(options: FixtureOptions) {
     await close()
   }
   return server
+}
+/**
+ * A faux server on the e2e run's shared source copy, its web UI already built (test/e2e/prebuilt-web.ts), for a test
+ * that browses the built-ins without changing their files. Facets or settings of its own rebuild in its home.
+ */
+export async function prebuiltServer(
+  options: Omit<FixtureOptions, 'ultimateRoot' | 'projectRoot'>,
+) {
+  const { root, web, bundle } = inject('prebuiltWeb')
+  const folder = join(options.home, 'web')
+  await mkdir(folder, { recursive: true })
+  await cp(join(web, 'manifest.json'), join(folder, 'manifest.json'))
+  await symlink(join(web, bundle), join(folder, bundle))
+  return fauxServer({ ...options, ultimateRoot: root, projectRoot: root })
 }
 export async function prepareFauxServer(options: FixtureOptions) {
   return prepareServer(await isolated(options))
