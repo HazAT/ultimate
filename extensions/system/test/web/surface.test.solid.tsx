@@ -1,7 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { createElement as h } from 'react'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
@@ -94,7 +93,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
-import { ExtensionName } from '../../../../web/src/sdk/solid.ts'
+import { ExtensionName, provide } from '../../../../web/src/sdk/solid.ts'
 
 const agent = createAgent()
 
@@ -113,17 +112,14 @@ it('switches to a contributed System tab and picks an Agents window, attributing
     },
   )
   await registry.setLoaders({
-    'extensions/example/web.tsx': async () => ({
+    'extensions/example/web.solid.tsx': async () => ({
       default: {
         provides: [
-          {
-            point: SystemTab.point,
-            use: () => ({
-              id: 'example',
-              title: 'Example',
-              component: () => h('main', { 'data-example': '' }, 'React tab'),
-            }),
-          },
+          provide(SystemTab, () => () => ({
+            id: 'example',
+            title: 'Example',
+            component: () => <main data-example>Example tab</main>,
+          })),
         ],
       },
     }),
@@ -161,7 +157,7 @@ it('switches to a contributed System tab and picks an Agents window, attributing
     component: 'tabs',
     value: 'example',
   })
-  expect(page.querySelector('[data-example]')?.textContent).toBe('React tab')
+  expect(page.querySelector('[data-example]')?.textContent).toBe('Example tab')
   expect(page.querySelector('[data-lane]')).toBeNull()
   await choose('System view', 'agents')
   await choose('Agent timeline window', '2h')

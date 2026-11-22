@@ -13,13 +13,14 @@ it("type-checks a project's extensions against the clone, outside the clone", as
   const extension = join(project, '.ultimate', 'extensions', 'hello')
   await mkdir(extension, { recursive: true })
   await writeFile(
-    join(extension, 'web.tsx'),
+    join(extension, 'web.solid.tsx'),
     [
-      "import { useState } from 'react'",
-      "import { Button } from '@/components/ui/button'",
+      '/** @jsxImportSource @solidjs/web */',
+      "import { createSignal } from 'solid-js'",
+      "import { Button } from '@/components/ui/button.solid.tsx'",
       'export function Hello() {',
-      '  const [count, setCount] = useState(0)',
-      '  return <Button onClick={() => setCount(count + 1)}>{count}</Button>',
+      '  const [count, setCount] = createSignal(0)',
+      '  return <Button onClick={() => setCount(count() + 1)}>{count()}</Button>',
       '}',
     ].join('\n'),
   )

@@ -10,15 +10,12 @@ const run = promisify(execFile)
 const solidMistakes = `/** @jsxImportSource @solidjs/web */
 import { createSignal, createEffect, onMount } from 'solid-js'
 import { createStore } from 'solid-js/store'
-import { useState } from 'react'
 import { readFileSync } from 'node:fs'
 import { Switch } from '@ui-sdk/solid/switch'
 import { Button } from '@/components/ui/button'
-import { Twin } from './twin'
 
 export function Bad({ name }: { name: string }) {
   const [count, setCount] = createSignal(0)
-  const [x] = useState(0)
   createEffect(() => {
     document.title = String(count())
   })
@@ -29,27 +26,14 @@ export function Bad({ name }: { name: string }) {
   return (
     <div className="x" role="listbox" on:click={() => setCount(count() + 1)}>
       {name}
-      {x}
       {[1, 2].map((i) => <span>{i}</span>)}
       <Switch />
       <Button />
-      <Twin />
       <span role={'switch'} />
       <button />
       {String(readFileSync)}
     </div>
   )
-}
-`
-
-const reactMistakes = `import { useEffect, useState } from 'react'
-import { render } from '@solidjs/web'
-import { Bad } from './mistakes.solid'
-
-export function Twin() {
-  const [n, setN] = useState(0)
-  useEffect(() => setN(n + 1), [])
-  return <>{[1, 2].map((i) => <span>{i}</span>)}{String(render)}{String(Bad)}</>
 }
 `
 
@@ -75,7 +59,7 @@ interface Diagnostic {
   filename: string
 }
 
-it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules on React files', async () => {
+it('lints Solid files with Solid 2 strict rules as errors', async () => {
   const source = await sourceCopy(await temp())
   const folder = join(source, 'extensions/solid-lint')
   const testFolder = join(source, 'test/web/solid-lint')
@@ -83,7 +67,6 @@ it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules
   for (const created of [folder, testFolder, projectFolder])
     await mkdir(created, { recursive: true })
   await writeFile(join(folder, 'mistakes.solid.tsx'), solidMistakes)
-  await writeFile(join(folder, 'twin.tsx'), reactMistakes)
   await writeFile(join(folder, 'line-pragma.solid.tsx'), lineCommentPragma)
   await writeFile(join(folder, 'field.solid.tsx'), validRef)
   await writeFile(join(testFolder, 'untyped.solid.tsx'), 'export const a = 1\n')
@@ -128,9 +111,6 @@ it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules
       'mistakes.solid.tsx ultimate(ui-kit-roles)',
       'mistakes.solid.tsx jsx-a11y(control-has-associated-label)',
       'mistakes.solid.tsx eslint(no-restricted-imports)',
-      'twin.tsx ultimate(ui-framework-boundaries)',
-      'twin.tsx react-hooks(exhaustive-deps)',
-      'twin.tsx react(jsx-key)',
       'line-pragma.solid.tsx ultimate(solid-jsx-pragma)',
       'line-pragma.solid.tsx ultimate(no-comments)',
       'untyped.solid.tsx ultimate(solid-jsx-pragma)',
@@ -138,15 +118,9 @@ it('lints Solid files with Solid 2 strict rules as errors, and keeps React rules
     ]),
   )
   expect(found.filter((line) => line.startsWith('field.solid.tsx'))).toEqual([])
-  expect(found.filter((line) => line.startsWith('mistakes.solid.tsx react('))).toEqual([])
-  expect(found.filter((line) => line.startsWith('twin.tsx solid('))).toEqual([])
-  expect(found.filter((line) => line.startsWith('mistakes.solid.tsx react-hooks('))).toEqual([])
   expect(new Set(diagnostics.map((diagnostic) => diagnostic.severity))).toEqual(new Set(['error']))
   expect(
     found.filter((line) => line === 'mistakes.solid.tsx ultimate(ui-framework-boundaries)'),
-  ).toHaveLength(4)
-  expect(
-    found.filter((line) => line === 'twin.tsx ultimate(ui-framework-boundaries)'),
-  ).toHaveLength(2)
+  ).toHaveLength(1)
   expect(found.filter((line) => line.endsWith('ultimate(ui-kit-roles)'))).toHaveLength(3)
 })

@@ -56,23 +56,8 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 import { getDraft } from '../../web/src/app/drafts.ts'
 import { Composer } from '../../web/src/app/composer.solid.tsx'
 import { StatusLine } from '../../web/src/app/shell.solid.tsx'
-import { registry, store, uiState } from '../../web/src/sdk/client.ts'
-import type { ConversationId } from '@earendil-works/pi-durable'
-import { act as act_, Activity, createElement as h, StrictMode, useState } from 'react'
-import type { ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { createRoot } from 'react-dom/client'
-import type { EntryRecord } from '@earendil-works/pi-durable'
-import { ConversationScope, TranscriptContext } from '../../web/src/compat/conversation-scope.tsx'
-import { island } from '../../web/src/compat/island.tsx'
-import { Dock } from '../../web/src/compat/shell.tsx'
-import { createTranscriptFrame, useTranscript } from '../../web/src/sdk/solid.ts'
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-const effects: (() => void)[] = []
-afterEach(() => {
-  for (const release of effects.splice(0)) release()
-})
+import { registry, store } from '../../web/src/sdk/client.ts'
+import type { SolidInboxProps } from '../../web/src/sdk/solid.ts'
 
 const faux = { provider: 'faux', id: 'faux-1', available: true }
 const agent = createAgent()
@@ -225,10 +210,10 @@ it('shows a draft another tab changed while the composer was away, and sends tha
   expect(submits().map((post) => post.body)).toEqual([{ text: 'from the other tab', images: [] }])
 })
 
-it('leaves no live editor when a React composer wrapper replaces the composer', async () => {
+it('leaves no live editor when a composer wrapper replaces the composer', async () => {
   await registry.setLoaders({
-    '/extensions/dock/web.tsx': async () => ({
-      default: { composer: () => h('div', { 'data-dock': '' }, 'docked') },
+    '/extensions/dock/web.solid.tsx': async () => ({
+      default: { composer: () => <div data-dock>docked</div> },
     }),
   })
   await show(15)
@@ -236,6 +221,7 @@ it('leaves no live editor when a React composer wrapper replaces the composer', 
   await settle()
   flush()
   expect(container.querySelector('[data-dock]')).not.toBeNull()
+  expect(container.querySelector('#composer-input')).toBeNull()
   const drop = new Event('drop', { bubbles: true }) as DragEvent
   const image = new File(['x'], 'shot.png', { type: 'image/png' })
   Object.defineProperty(drop, 'dataTransfer', {
@@ -248,137 +234,10 @@ it('leaves no live editor when a React composer wrapper replaces the composer', 
   await registry.setLoaders({})
 })
 
-it('attaches no dropped file to the composer of a collapsed React Dock', async () => {
-  await show(16)
-  uiState.set('shell.dock.agent.right', { open: true })
-  const DockedComposer = island(Composer)
-  const container = renderSolid(() => <div />)
-  const root = createRoot(container)
-  act_(() => root.render(h(StrictMode, null, h(Dock, { children: h(DockedComposer) }))))
-  await settle()
-  flush()
-  expect(container.querySelectorAll('[data-ui="composer"]')).toHaveLength(1)
-  act_(() => uiState.set('shell.dock.agent.right', { open: false }))
-  await settle()
-  flush()
-  expect(container.querySelector('[data-ui="composer"]')).toBeNull()
-  const drop = new Event('drop', { bubbles: true }) as DragEvent
-  Object.defineProperty(drop, 'dataTransfer', {
-    value: { types: ['Files'], files: [new File(['x'], 'shot.png', { type: 'image/png' })] },
-  })
-  document.body.dispatchEvent(drop)
-  await settle()
-  expect(getDraft(16).get().images).toEqual([])
-  act_(() => uiState.set('shell.dock.agent.right', { open: true }))
-  await settle()
-  flush()
-  expect(container.querySelectorAll('[data-ui="composer"]')).toHaveLength(1)
-  act_(() => root.unmount())
-})
-
-const entry = (conversation: number, text: string) =>
-  ({
-    id: conversation * 100,
-    conversationId: conversation,
-    kind: 'pi.user',
-    model: [{ role: 'user', content: text, timestamp: 0 }],
-  }) as unknown as EntryRecord
-
-function TranscriptProbe() {
-  const entries = useTranscript()
-  return (
-    <span data-probe>
-      {(entries().at(-1)?.model?.[0] as { content?: string } | undefined)?.content}
-    </span>
-  )
-}
-
-it('runs a composer a React wrapper portals, scopes or hides as one live editor', async () => {
-  const [scope, hidden] = [{ id: undefined as number | undefined }, { on: false }]
-  const rerender: { now?: () => void } = {}
-  const reactWarnings = vi.spyOn(console, 'error')
-  const [outer, inner] = [[entry(17, 'from seventeen')], [entry(18, 'from eighteen')]]
-  const outerFrame = createTranscriptFrame(() => outer)
-  const innerFrame = createTranscriptFrame(() => inner)
-  await registry.setLoaders({
-    '/extensions/wrap/web.tsx': async () => ({
-      default: {
-        slots: {
-          'composer.actions': () => h('span', { 'data-react-action': '' }),
-          'composer.toolbar': island(TranscriptProbe),
-        },
-        composer: function Wrap({ core }: { core: ReactNode }) {
-          const [, tick] = useState(0)
-          rerender.now = () => tick((n) => n + 1)
-          const placed = h(Activity, { mode: hidden.on ? 'hidden' : 'visible', children: core })
-          return createPortal(
-            scope.id === undefined
-              ? h(TranscriptContext, { value: outerFrame.frame }, placed)
-              : h(ConversationScope, {
-                  id: scope.id as ConversationId,
-                  children: h(TranscriptContext, { value: innerFrame.frame }, placed),
-                }),
-            document.body,
-          )
-        },
-      },
-    }),
-  })
-  await show(17)
-  effects.push(store.watchConversation(18 as ConversationId))
-  await settle()
-  harness.server!.of(18)!.send('view', {
-    conversation: { id: parseConversationId(18) },
-    entries: [],
-    docs: { 'pi.agent': { model: { provider: 'faux', modelId: 'faux-1' } } },
-  })
-  renderSolid(() => <Composer />)
-  await settle()
-  flush()
-  const editors = () =>
-    document.querySelectorAll<HTMLTextAreaElement>('[data-ui="composer"] textarea')
-  const enter = async (text: string) => {
-    await act([{ ref: editors()[0].getAttribute('aria-label')!, action: 'setValue', args: [text] }])
-    editors()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    await settle()
-    flush()
-  }
-  expect(document.querySelector('[data-probe]')?.textContent).toBe('from seventeen')
-  await enter('portaled')
-  act_(() => {
-    scope.id = 18
-    rerender.now!()
-  })
-  await settle()
-  flush()
-  expect(document.querySelector('[data-probe]')?.textContent).toBe('from eighteen')
-  await enter('scoped')
-  act_(() => {
-    hidden.on = true
-    rerender.now!()
-  })
-  act_(() => {
-    hidden.on = false
-    rerender.now!()
-  })
-  await settle()
-  flush()
-  expect(editors()).toHaveLength(1)
-  expect(document.querySelectorAll('[data-react-action]')).toHaveLength(1)
-  expect(submits().map((post) => [post.path, post.body])).toEqual([
-    ['/api/conversations/17/submit', { text: 'portaled', images: [] }],
-    ['/api/conversations/18/submit', { text: 'scoped', images: [] }],
-  ])
-  expect(
-    reactWarnings.mock.calls.filter(([message]) => String(message).includes('unmount')),
-  ).toEqual([])
-  await registry.setLoaders({})
-})
-
-it('keeps the queued row and its cancel when a React inbox renderer throws', async () => {
+it('keeps the queued row and its cancel when an inbox renderer throws', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   await registry.setLoaders({
-    '/extensions/broken/web.tsx': async () => ({
+    '/extensions/broken/web.solid.tsx': async () => ({
       default: {
         inbox: () => {
           throw new Error('broken renderer')
@@ -393,6 +252,9 @@ it('keeps the queued row and its cancel when a React inbox renderer throws', asy
   const container = renderSolid(() => <Composer />)
   await settle()
   flush()
+  expect(container.querySelector('[data-extension-error="broken"]')?.textContent).toContain(
+    'broken renderer',
+  )
   expect(container.textContent).toContain('still here')
   container
     .querySelector<HTMLButtonElement>('[aria-label="Cancel queued input 160: still here"]')!
@@ -401,12 +263,13 @@ it('keeps the queued row and its cancel when a React inbox renderer throws', asy
   await registry.setLoaders({})
 })
 
-it('mounts a React inbox renderer through the bridge, with the core row as its core', async () => {
+it('passes the core row to an inbox renderer', async () => {
   await registry.setLoaders({
-    '/extensions/outside/web.tsx': async () => ({
+    '/extensions/outside/web.solid.tsx': async () => ({
       default: {
-        inbox: ({ item, core }: { item: { id: number }; core: ReactNode }) =>
-          h('div', { 'data-react-inbox': item.id }, core),
+        inbox: (props: SolidInboxProps) => (
+          <div data-custom-inbox={props.item.id}>{props.core}</div>
+        ),
       },
     }),
   })
@@ -417,9 +280,9 @@ it('mounts a React inbox renderer through the bridge, with the core row as its c
   const container = renderSolid(() => <Composer />)
   await settle()
   flush()
-  const react = container.querySelector('[data-react-inbox="110"]')
-  expect(react?.textContent).toContain('queued steer')
-  expect(react?.querySelector('[aria-label^="Cancel queued input 110"]')).not.toBeNull()
+  const row = container.querySelector('[data-custom-inbox="110"]')
+  expect(row?.textContent).toContain('queued steer')
+  expect(row?.querySelector('[aria-label^="Cancel queued input 110"]')).not.toBeNull()
   await registry.setLoaders({})
 })
 
@@ -440,8 +303,8 @@ it('keeps a typed draft per conversation across a switch', async () => {
 
 it('moves the phone status into the status line when both mount together', async () => {
   await registry.setLoaders({
-    '/extensions/state/web.tsx': async () => ({
-      default: { slots: { 'composer.status': () => h('span', { 'data-status': '' }, 'ready') } },
+    '/extensions/state/web.solid.tsx': async () => ({
+      default: { slots: { 'composer.status': () => <span data-status>ready</span> } },
     }),
   })
   await show(19)

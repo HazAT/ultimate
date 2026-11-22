@@ -64,7 +64,7 @@ it('follows, escapes, returns and keeps the read row in place while history page
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(`${server.url}/?conversation=${id}`)
   await page.locator('[data-ui="transcript"] [data-ui="tool"]').last().waitFor()
-  // A row a renderer leaves empty (conversations' React renderer of its identity note returns null) is hidden, and no
+  // A row a renderer leaves empty (conversations' renderer of its identity note returns null) is hidden, and no
   // row is shown with nothing in it.
   const blank = await page.evaluate(
     () =>

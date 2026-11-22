@@ -1,7 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { act } from 'react'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
@@ -41,7 +40,6 @@ vi.stubGlobal('matchMedia', () => ({
   addEventListener() {},
   removeEventListener() {},
 }))
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { ReportedErrorCard } from '../../../../web/src/app/error-stack.solid.tsx'
@@ -57,10 +55,8 @@ it('opens @ultimate with the report as the agent that pressed Debug with @ultima
       default: { provides: [provide(ErrorReport, () => () => errorReport)] },
     }),
   })
-  act(() => {
-    renderSolid(() => <ReportedErrorCard error="it broke" extension="broken" />)
-    flush()
-  })
+  renderSolid(() => <ReportedErrorCard error="it broke" extension="broken" />)
+  flush()
   await settle()
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))
   const result = await agent.act({
