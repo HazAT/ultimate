@@ -65,7 +65,7 @@ import type {
   Manifest,
   Subscriber,
 } from './types.ts'
-import { isSlug, STANDING, WatcherLabel } from './types.ts'
+import { isSlug, STANDING } from './types.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 export type { Automation, Run } from './types.ts'
 export { launchHandshake } from './supervisor.ts'
@@ -406,11 +406,7 @@ function backend(host: ExtensionHost) {
       sub.subscribers = sub.subscribers.filter((s) => s !== prepared.subscriber)
       reachesSomeone(sub)
     } else if (args.action === 'resume' || args.action === 'run') {
-      if (
-        sub.script!.state === 'stopped' &&
-        caller !== undefined &&
-        (await tx.doc(host.metadata, caller)).label === WatcherLabel
-      )
+      if (sub.script!.state === 'stopped' && caller === sub.script!.conversationId)
         throw new Error(`Automation ${id} is stopped; only its owner resumes it`)
       sub.enabled = true
       sub.script!.state = 'running'
@@ -541,13 +537,6 @@ function backend(host: ExtensionHost) {
         (await host.harness().snapshot(Automations, BACKGROUND_CONTEXT))?.automations ?? {},
       ).some((a) => a.key === args.key)
     if (existingKeyedCreate) return { keyed: true }
-    const createdByWatcher =
-      args.action === 'create' &&
-      caller !== undefined &&
-      (await host.harness().snapshot(host.metadata, caller, BACKGROUND_CONTEXT))?.label ===
-        WatcherLabel
-    if (createdByWatcher)
-      throw new Error('A watcher repairs only its own automation; it cannot create one')
     await validate(args, caller)
     if (args.action === 'create') {
       const subscribers = args.subscribers?.length

@@ -26,7 +26,7 @@ Exactly one per automation:
   of running resets the count), or a watcher whose turn ends mid-repair, escalates instead: the script stops as
   `failed`, subscribers get `automations.escalated`, and @ultimate a message. Pausing stops the watcher's turn and
   its queued inputs, deleting also concludes it, and briefs or failures still on their way to a stopped automation's
-  watcher are dropped. A watcher cannot create automations, nor resume one its owner paused.
+  watcher are dropped. A watcher cannot resume an automation its owner stopped.
 
 ## Actions
 

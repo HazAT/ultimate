@@ -52,7 +52,7 @@ it('retains the newest output within both line and byte limits', () => {
   expect(trimLog('progress\n')).toBe('progress\n')
 })
 
-it('stops a paused or deleted automation’s watcher, which can neither resume nor recreate it', async () => {
+it('stops a paused or deleted automation’s watcher, which cannot resume it', async () => {
   // Regression: an owner deleted a script automation while its watcher was mid-turn; the watcher read "Unknown
   // automation", created it again with a new watcher, and that chain repeated five times. Watchers also resumed
   // automations their owner had just paused.
@@ -107,12 +107,7 @@ it('stops a paused or deleted automation’s watcher, which can neither resume n
   expect(await busy(watcher)).toBe(false)
   const ui = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
   expect(ui?.['ext.conversations.concluded']).toContain(watcher)
-  await expect(invoke('create', { name: 'Again', ask: 'Watch deploys' }, watcher)).rejects.toThrow(
-    'A watcher repairs only its own automation; it cannot create one',
-  )
-  const names = Object.values((await ledger()).automations).map((a) => a.name)
-  expect(names).not.toContain('Deleted')
-  expect(names).not.toContain('Again')
+  expect(Object.values((await ledger()).automations).map((a) => a.name)).not.toContain('Deleted')
 
   const paused = await create('Paused')
   const pausedWatcher = paused.script!.conversationId
