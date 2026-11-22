@@ -49,7 +49,8 @@ import type { BranchInput } from '../../lineage/server.ts'
 import { Branch, Roots, Tally } from '../../lineage/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
 import { landingPending, pendingLandingCards, Workspaces } from '../../workspaces/workspaces.ts'
-import { actions as conversationActions, concludedIn } from '../../conversations/server.ts'
+import { actions as conversationActions } from '../../conversations/server.ts'
+import { concludedIn } from '../../conversations/projection.ts'
 import { UiState } from '../../../shared/ui-state.ts'
 
 const homes: string[] = []

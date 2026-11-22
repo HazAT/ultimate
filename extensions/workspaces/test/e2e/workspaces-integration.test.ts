@@ -31,9 +31,9 @@ import { LineageApi, Roots } from '../../../lineage/api.ts'
 import {
   actions as conversationActions,
   concludeIn,
-  concludedIn,
   subject,
 } from '../../../conversations/server.ts'
+import { concludedIn } from '../../../conversations/projection.ts'
 import { ConversationsApi } from '../../../conversations/api.ts'
 import type { ConversationsService } from '../../../conversations/api.ts'
 import { setAutomaticSummaries, Summaries } from '../../../conversations/summary.ts'

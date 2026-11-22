@@ -53,7 +53,7 @@ export function overviewBehavior(
     {
       name: 'overview',
       batch: 256,
-      stale: async (tx, id) => {
+      stale: async (tx, { id }) => {
         const row = (await tx.doc(Overview, ROOT_CONVERSATION_ID)).conversations[id]
         return (
           !row ||

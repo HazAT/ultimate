@@ -34,7 +34,7 @@ import { Standing, Subagents } from '../../subagents/api.ts'
 import { Roots, Tally } from '../../lineage/api.ts'
 import subagents from '../../subagents/server.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
-import { concludedIn } from '../../conversations/server.ts'
+import { concludedIn } from '../../conversations/projection.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 

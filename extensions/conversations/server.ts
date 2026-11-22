@@ -312,8 +312,6 @@ export async function subject(
   }
 }
 
-export { concludedIn }
-
 export default (host: ExtensionHost) => {
   host.want(Trees)
   host.want(Release)

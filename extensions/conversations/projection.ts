@@ -1,6 +1,13 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { CommitChange, ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
+import type {
+  CommitChange,
+  ConversationId,
+  ConversationRecord,
+  Cursor,
+  EntryId,
+  Tx,
+} from '@earendil-works/pi-durable'
 import { onCommit } from '../../lib/commits.ts'
 import { parseEntryId } from '../../lib/ids.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -32,7 +39,7 @@ export function projection(
     name: string
     batch?: number
     background?: boolean
-    stale?: (tx: Tx, id: ConversationId) => Promise<boolean>
+    stale?: (tx: Tx, conversation: ConversationRecord) => Promise<boolean>
   },
   changed: (change: CommitChange, add: (id: ConversationId) => void) => void,
   reconcile: (ids: ConversationId[]) => Promise<void>,
@@ -43,7 +50,7 @@ export function projection(
   )
   host.onOpen(async (opened) => {
     let closed = false
-    let selected = false
+    let complete = false
     let failed = false
     let through = parseEntryId(0)
     let draining: Promise<void> | undefined
@@ -99,13 +106,15 @@ export function projection(
         while (owners.has(top)) top = owners.get(top)!
         return top
       }
+      const selected: ConversationId[] = []
       let cursor: Cursor | undefined
       do {
         if (closed) return
         cursor = await harness.commit(async (tx) => {
           const concluded = await concludedIn(tx)
           const page = await tx.scanConversations({}, 256, cursor)
-          for (const { id, owner } of page.items) {
+          for (const record of page.items) {
+            const { id, owner } = record
             if (owner) owners.set(id, owner.conversationId)
             const newest = await tx.latestEntryId(id)
             if (newest !== undefined && newest > through) through = newest
@@ -113,18 +122,21 @@ export function projection(
               trusted === undefined ||
               !concluded.has(topOf(id)) ||
               (newest !== undefined && newest > trusted) ||
-              (await stale?.(tx, id))
+              (await stale?.(tx, record))
             )
-              backlog.push(id)
+              selected.push(id)
           }
           return page.next
         }, context)
       } while (cursor !== undefined)
-      selected = true
+      backlog.push(...selected)
+      complete = true
     }
     const opening = select()
       .catch((error: unknown) => {
-        host.notice(`Conversation ${name} kept only live changes: ${String(error)}`)
+        host.notice(
+          `Conversation ${name}: selection incomplete; live updates continue: ${String(error)}`,
+        )
       })
       .then(() => {
         schedule()
@@ -135,7 +147,7 @@ export function projection(
       stop()
       await opening
       await draining
-      if (!selected || failed || live.size || backlog.length) return
+      if (!complete || failed || live.size || backlog.length) return
       const clean = through
       await harness.commit(async (tx) => {
         ;(await tx.doc(ProjectedThroughAtCleanClose, ROOT_CONVERSATION_ID))[name] = clean
