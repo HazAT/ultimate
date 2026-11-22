@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import type { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'

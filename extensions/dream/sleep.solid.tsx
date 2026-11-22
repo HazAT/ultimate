@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ChevronRightIcon, LoaderCircleIcon, MoonIcon, MoonStarIcon } from '@lucide/solid'
 import { For, Show, createMemo, createSignal } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'

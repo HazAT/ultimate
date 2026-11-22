@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Bot, Copy, Trash2, TriangleAlert, X } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { createMemo, createSignal, createStore, Show, untrack } from 'solid-js'

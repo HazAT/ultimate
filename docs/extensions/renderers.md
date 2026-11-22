@@ -9,7 +9,6 @@ behind an error boundary that falls back to `core`.
 How a tool call looks in the transcript, by tool name. Without one, a generic card shows name, arguments, and output.
 
 ```tsx
-/** @jsxImportSource @solidjs/web */
 import { Tool, ToolContent, ToolHeader, ToolOutput } from '@/components/ai/tool.solid.tsx'
 import { defineWebExtension } from '@/sdk/solid'
 import type { SolidToolProps } from '@/sdk/solid'

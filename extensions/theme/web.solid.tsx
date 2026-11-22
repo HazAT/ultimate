@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension, getState } from '@/sdk/solid'
 
 export default defineWebExtension({

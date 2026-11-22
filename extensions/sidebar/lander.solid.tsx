@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo, Show } from 'solid-js'
 import { cn, formatAgo } from '@/sdk/solid'

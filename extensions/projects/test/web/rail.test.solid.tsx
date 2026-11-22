@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'

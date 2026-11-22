@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import {
   errorMessage,

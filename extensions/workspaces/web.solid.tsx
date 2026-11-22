@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { WorkspaceCall } from './call.solid.tsx'
 import { LanderComposer } from './lander-composer.solid.tsx'

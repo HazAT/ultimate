@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { For, Show, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { CopyValue } from '@/components/ui/copy-value.solid.tsx'

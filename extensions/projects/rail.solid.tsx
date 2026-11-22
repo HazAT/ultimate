@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Pin, PinOff } from '@lucide/solid'
 import {
   action,

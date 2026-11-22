@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, Show } from 'solid-js'
 import { parseMention } from '@/components/ai/mentions'
 import type { LinkRenderer } from '@/sdk/solid'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { JoinDialog, joinDialog } from './join.solid.tsx'
 import { CloudStatus } from './status.solid.tsx'

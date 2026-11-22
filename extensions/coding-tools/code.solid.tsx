@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { highlight, plainLines } from '@/components/markdown/highlight.ts'
 import type { Line } from '@/components/markdown/highlight.ts'

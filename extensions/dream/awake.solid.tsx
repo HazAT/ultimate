@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ROOT } from '@/sdk/solid'
 import { LoaderCircleIcon, MoonIcon, MoonStarIcon } from '@lucide/solid'
 import { Show, createMemo, createSignal } from 'solid-js'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import {
   AudioLinesIcon,

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { cn } from 'cn'
 import { For } from 'solid-js'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'

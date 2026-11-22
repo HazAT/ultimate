@@ -262,7 +262,6 @@ export default defineConfig({
         rules: {
           'no-unassigned-vars': 'off',
           ...solidRules,
-          'ultimate/solid-jsx-pragma': 'error',
           'ultimate/ui-kit-roles': 'error',
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [

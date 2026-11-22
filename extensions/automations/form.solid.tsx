@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { CalendarClock, Check, Coins, LoaderCircle, Radar, X, Zap } from '@lucide/solid'
 import { Dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'

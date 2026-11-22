@@ -16,8 +16,7 @@ afterAll(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-const panel = `/** @jsxImportSource @solidjs/web */
-import { createSignal } from 'solid-js'
+const panel = `import { createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'

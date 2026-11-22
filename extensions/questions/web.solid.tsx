@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension, provide } from '@/sdk/solid'
 import { MessageAnswers } from '../messages/ui.solid.tsx'
 import { HiddenQuestionEntry, MessageQuestions } from './card.solid.tsx'

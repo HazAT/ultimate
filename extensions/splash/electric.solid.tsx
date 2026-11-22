@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Mesh, Program, Renderer, Texture, Triangle } from 'ogl'
 import { createEffect } from 'solid-js'
 

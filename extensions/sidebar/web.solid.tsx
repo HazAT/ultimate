@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { Conversations, Seen } from './sidebar.solid.tsx'
 import { UltimateButton, UltimateWordmark } from './ultimate.solid.tsx'

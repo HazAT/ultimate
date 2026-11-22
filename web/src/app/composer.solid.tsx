@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { AgentState, ConversationId, InboxItem } from '@earendil-works/pi-durable'
 import {
   CornerDownRight,

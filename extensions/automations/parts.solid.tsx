@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   CalendarClock,
   Check,

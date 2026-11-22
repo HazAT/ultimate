@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ArrowLeft, GitFork } from '@lucide/solid'
 import { cn } from 'cn'
 import { createMemo, createRoot, createSignal, For, Show, useContext } from 'solid-js'

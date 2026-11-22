@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /** Sounds for other extensions' browser code: playing a short melody and speaking open questions. */
 export { playNotes } from './tones.ts'
 export type { Note } from './tones.ts'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ListTodo } from '@lucide/solid'
 import { Show } from 'solid-js'
 import {

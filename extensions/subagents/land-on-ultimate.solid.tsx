@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect, createMemo } from 'solid-js'
 import {
   ROOT,

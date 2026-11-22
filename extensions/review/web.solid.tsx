@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { FileDiffIcon } from '@lucide/solid'
 import { Loading as LoadingBoundary, lazy } from 'solid-js'
 import { defineWebExtension, events, provide } from '@/sdk/solid'

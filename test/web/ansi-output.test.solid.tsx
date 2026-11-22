@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { describe, expect, it } from 'vitest'
 import { AnsiOutput } from '../../web/src/components/ai/ansi-output.solid.tsx'
 import { ToolOutput } from '../../web/src/components/ai/tool.solid.tsx'

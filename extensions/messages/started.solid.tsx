@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo } from 'solid-js'
 import { ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { OverviewDoc } from '../conversations/refs.ts'

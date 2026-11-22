@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'

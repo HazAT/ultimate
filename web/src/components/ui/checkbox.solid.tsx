@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check } from '@lucide/solid'
 import { Checkbox as CheckboxRoot, CheckboxIndicator } from '@ui-sdk/solid/checkbox'
 import { cn } from 'cn'

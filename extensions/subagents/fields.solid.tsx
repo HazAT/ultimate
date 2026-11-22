@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { JSX } from '@solidjs/web'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'

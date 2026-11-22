@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { RefreshCw } from '@lucide/solid'
 import { createEffect, createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

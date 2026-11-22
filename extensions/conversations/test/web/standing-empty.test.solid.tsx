@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'

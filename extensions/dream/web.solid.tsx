@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { LibraryIcon, MoonIcon } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Brain, Check } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { CommandItem } from '@/components/ui/command.solid.tsx'

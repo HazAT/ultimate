@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, mapArray } from 'solid-js'
 import { useAction } from '@/sdk/solid'
 import { RemoteProgressAction } from './refs.ts'

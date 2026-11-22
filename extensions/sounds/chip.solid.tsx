@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { AudioLines, Play, Square, Volume2, VolumeOff } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

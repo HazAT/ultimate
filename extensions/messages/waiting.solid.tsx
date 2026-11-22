@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ArrowDown, ArrowUp } from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'

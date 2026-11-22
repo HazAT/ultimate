@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { expect, it, vi } from 'vitest'
 import { MentionLink } from '../../extensions/conversations/mention.solid.tsx'
 import {

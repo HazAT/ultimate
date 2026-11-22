@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { WandSparkles } from '@lucide/solid'
 import { Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'

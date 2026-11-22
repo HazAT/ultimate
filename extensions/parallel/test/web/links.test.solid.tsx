@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import type { ToolCallView } from '@/sdk/solid'

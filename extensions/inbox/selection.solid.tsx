@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect, createMemo } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { useUiState, writingAs } from '@/sdk/solid'

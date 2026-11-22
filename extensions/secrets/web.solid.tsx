@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { KeyRoundIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { Opener, SecretsPanel } from './panel.solid.tsx'

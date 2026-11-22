@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import type { CompactRow } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'

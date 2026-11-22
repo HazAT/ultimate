@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ArrowLeft, Code, ExternalLink, ScrollText } from '@lucide/solid'
 import { For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

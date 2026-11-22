@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { expect, it, vi } from 'vitest'

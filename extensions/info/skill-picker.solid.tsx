@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect, For } from 'solid-js'
 import {
   Command,

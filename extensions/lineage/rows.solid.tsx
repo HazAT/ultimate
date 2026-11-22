@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId, Entry, EntryRecord, TypedEntry } from '@earendil-works/pi-durable'
 import {
   ChevronRight,

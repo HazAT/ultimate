@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { NetworkIcon } from '@lucide/solid'
 import { defineWebExtension, ErrorReport, provide } from '@/sdk/solid'
 import { agentsPanel } from '../models/ui.solid.tsx'

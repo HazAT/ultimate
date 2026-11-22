@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { JSX } from '@solidjs/web'
 import { omit } from 'solid-js'
 

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, Show } from 'solid-js'
 import { api, cn, useExternal } from '@/sdk/solid'
 import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'

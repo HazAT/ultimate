@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ImageContent, TextContent } from '@earendil-works/pi-ai'
 import { ChevronRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'

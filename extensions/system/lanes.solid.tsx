@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ListFilter } from '@lucide/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import {

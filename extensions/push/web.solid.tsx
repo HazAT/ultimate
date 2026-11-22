@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { Bell, Pusher } from './notifications.solid.tsx'
 

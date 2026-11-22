@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Switch as SwitchRoot, SwitchThumb } from '@ui-sdk/solid/switch'
 import { cn } from 'cn'
 import { omit } from 'solid-js'

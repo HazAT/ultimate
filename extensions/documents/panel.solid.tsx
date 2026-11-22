@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { Braces, ChevronRight } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { X } from '@lucide/solid'
 import { createSignal, For, onCleanup, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { TaskId } from '@earendil-works/pi-durable'
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'

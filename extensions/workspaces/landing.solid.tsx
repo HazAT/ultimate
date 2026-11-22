@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Check, SquareArrowOutUpRight, TriangleAlert, X } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'

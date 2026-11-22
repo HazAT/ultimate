@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { LoaderCircle, Pause, Play, Square, Volume2 } from '@lucide/solid'
 import { createEffect, createSignal, Match, Show, Switch } from 'solid-js'

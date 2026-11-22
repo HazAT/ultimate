@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /**
  * Questions for other extensions' browser code: which messages wait on the user, the card that answers one, and the
  * point where an optional extension adds a control beside the card's Dismiss (side-chat's "Talk it through").

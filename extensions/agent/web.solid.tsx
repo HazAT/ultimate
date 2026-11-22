@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ROOT } from '@/sdk/solid'
 import { MessagesSquareIcon } from '@lucide/solid'
 import { api, defineWebExtension, getConversation } from '@/sdk/solid'

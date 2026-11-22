@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { CornerLeftUp, Mail } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'

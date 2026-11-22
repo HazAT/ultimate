@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'

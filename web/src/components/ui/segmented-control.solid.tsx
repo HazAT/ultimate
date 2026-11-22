@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   SegmentedControl as SegmentedControlRoot,
   SegmentedControlItem as SegmentedControlItemRoot,

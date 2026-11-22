@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Eye, EyeOff } from '@lucide/solid'
 import { Input as InputRoot } from '@ui-sdk/solid/input'
 import { Textarea as TextareaRoot } from '@ui-sdk/solid/textarea'

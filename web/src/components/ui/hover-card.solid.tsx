@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   HoverCardContent as HoverCardContentRoot,
   HoverCard as HoverCardRoot,

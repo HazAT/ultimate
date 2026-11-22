@@ -15,7 +15,6 @@ it("type-checks a project's extensions against the clone, outside the clone", as
   await writeFile(
     join(extension, 'web.solid.tsx'),
     [
-      '/** @jsxImportSource @solidjs/web */',
       "import { createSignal } from 'solid-js'",
       "import { Button } from '@/components/ui/button.solid.tsx'",
       'export function Hello() {',

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect } from 'solid-js'
 import { shortenPath, useAgent, useStore } from '@/sdk/solid'
 

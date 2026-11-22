@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo } from 'solid-js'
 import { ROOT, useDocOf } from '@/sdk/solid'

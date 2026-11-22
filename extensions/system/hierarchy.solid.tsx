@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

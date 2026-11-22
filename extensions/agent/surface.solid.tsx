@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Conversation, Header, Panels, Sidebar, StatusLine } from '@/sdk/solid'
 
 export function Agent() {

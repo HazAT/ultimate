@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Pencil } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'
 import {

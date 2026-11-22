@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { MessageSquareShare, TriangleAlert } from '@lucide/solid'
 import { cn } from 'cn'
 import { Show } from 'solid-js'

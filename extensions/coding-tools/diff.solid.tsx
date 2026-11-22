@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, For, Show } from 'solid-js'
 import { cn } from '@/sdk/solid'
 import type { DiffRow } from './diff.ts'

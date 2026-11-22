@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { CalendarClock, ChevronRight, Radar, Zap } from '@lucide/solid'
 import { Dynamic } from '@solidjs/web'
 import { createMemo, createSignal, For, Show } from 'solid-js'

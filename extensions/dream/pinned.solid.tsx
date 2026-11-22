@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { MoonIcon } from '@lucide/solid'
 import { Show, createMemo } from 'solid-js'
 import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'

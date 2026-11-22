@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /**
  * Messages for other extensions' browser code: its document and sent event, what waits on the user's answer, the pieces
  * a message card is drawn from, and the points where an optional extension adds to a message (its answer card).

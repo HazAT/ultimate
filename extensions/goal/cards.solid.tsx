@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryId } from '@earendil-works/pi-durable'
 import { Bell, BellOff, Check, CircleDashed, CircleSlash, Flag, LoaderCircle } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'

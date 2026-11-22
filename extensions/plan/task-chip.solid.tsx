@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Show } from 'solid-js'
 import { TaskChip, useTaskOf } from './ui.solid.tsx'

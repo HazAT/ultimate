@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect, createMemo, onSettled } from 'solid-js'
 import {
   api,

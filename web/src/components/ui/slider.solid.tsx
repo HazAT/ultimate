@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   Slider as SliderRoot,
   SliderControl,

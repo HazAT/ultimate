@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Bot, Check, Pin, Plus, Sparkles } from '@lucide/solid'
 import { Dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'

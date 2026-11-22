@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'

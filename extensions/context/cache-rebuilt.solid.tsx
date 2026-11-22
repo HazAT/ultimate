@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { DatabaseZap } from '@lucide/solid'
 import { Show } from 'solid-js'
 import { formatDuration, formatTokens, useTranscript } from '@/sdk/solid'

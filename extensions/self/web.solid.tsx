@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { RestartCall } from './restart.solid.tsx'
 import { Build, CoreStale, Rebuild } from './status.solid.tsx'

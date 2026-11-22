@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Bell, BookOpen, Brain } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'
 import {

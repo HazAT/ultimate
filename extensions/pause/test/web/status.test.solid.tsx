@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { expect, it } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import type { ConversationSummary } from '../../../../shared/protocol.ts'

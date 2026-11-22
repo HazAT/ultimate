@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /**
  * Conversations for other extensions' browser code: references to conversations with their features, agent marks, which
  * conversations a conclusion hides, the overview document and the conversation actions, and the points where optional

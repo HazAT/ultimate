@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {

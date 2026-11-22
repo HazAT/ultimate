@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { JsonValue } from '@earendil-works/chord/json'
 import { For, Show } from 'solid-js'
 import { cn, defineWebExtension, formatTime, provide, useEvents } from '@/sdk/solid'

@@ -9,7 +9,6 @@ An extension's `web.solid.tsx` contributes plain Solid components. Import SDK fe
 `Card` and `Fold`. See [Surfaces](surfaces.md#primitives) for layout and [Contracts](contracts.md#web-points) for points.
 
 ```tsx
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { Status } from './status.solid.tsx'
 

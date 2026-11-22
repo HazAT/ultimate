@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension, provide, setUiState } from '@/sdk/solid'
 import { SystemTab, SYSTEM_TAB_KEY } from '../system/ui.solid.tsx'
 import { showWire, WireLink } from './link.solid.tsx'

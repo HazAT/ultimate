@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Button as ButtonRoot } from '@ui-sdk/solid/button'
 import { cn } from 'cn'
 import { merge, omit } from 'solid-js'

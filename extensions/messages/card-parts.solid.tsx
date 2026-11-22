@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { SquareArrowOutUpRight } from '@lucide/solid'
 import type { ComponentProps } from 'solid-js'

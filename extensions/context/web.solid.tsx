@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { CacheRebuilt } from './cache-rebuilt.solid.tsx'
 import { ContextStart, Start, SystemEntry } from './entries.solid.tsx'

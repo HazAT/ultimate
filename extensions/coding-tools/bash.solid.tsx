@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 // Pi upstream: @earendil-works/pi-durable@1.6.0 src/tools/bash.ts — internal bash exit_code diagnostic message drives exitOf. Drop when Pi exports structured bash outcomes.
 import { X } from '@lucide/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'

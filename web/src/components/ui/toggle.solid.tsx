@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ToggleGroup as ToggleGroupRoot, Toggle as ToggleRoot } from '@ui-sdk/solid/toggle'
 import { cn } from 'cn'
 import { merge, omit } from 'solid-js'

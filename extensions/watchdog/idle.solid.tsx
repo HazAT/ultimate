@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { renderEntry } from '@/sdk/solid'
 import { IdleEntry } from './entries.ts'
 

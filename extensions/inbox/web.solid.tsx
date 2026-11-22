@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { InboxIcon } from '@lucide/solid'
 import { defineWebExtension, provide } from '@/sdk/solid'
 import { UnderUltimate } from '../sidebar/ui.solid.tsx'

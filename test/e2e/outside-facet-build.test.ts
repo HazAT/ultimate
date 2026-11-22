@@ -32,7 +32,7 @@ it('builds the classes of a project extension folder created while the host runs
     await mkdir(dir, { recursive: true })
     await writeFile(
       join(dir, 'web.solid.tsx'),
-      '/** @jsxImportSource @solidjs/web */\nexport const Chevron = () => <span class="rotate-[37deg]" />\n',
+      'export const Chevron = () => <span class="rotate-[37deg]" />\n',
     )
     // No page is open: a page load after the change builds the new bundle.
     await until(async () => (await css()).includes('37deg'))

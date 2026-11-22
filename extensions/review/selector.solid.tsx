@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ChevronDownIcon, CornerDownLeftIcon } from '@lucide/solid'
 import { For, Show, createMemo, createSignal } from 'solid-js'

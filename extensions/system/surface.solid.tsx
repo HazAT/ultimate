@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ChevronRight, GanttChart } from '@lucide/solid'
 import { children, createMemo, For, Show } from 'solid-js'
 import {

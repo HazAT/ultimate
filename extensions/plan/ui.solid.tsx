@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /** The plan for other extensions' Solid code: the task chip of a conversation that works on a plan task. */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'

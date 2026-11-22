@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { RotateCw } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

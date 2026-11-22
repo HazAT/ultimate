@@ -116,9 +116,6 @@ const sdkEntries = ['web/src/sdk/solid.ts']
 const uiKitFile = (filename: string) =>
   repositoryPath(filename).startsWith('web/src/components/ui/')
 const uiSdkComponents = /^@ui-sdk\/solid(\/|$)/
-const solidJsxPragma = '@jsxImportSource @solidjs/web'
-const isSolidJsxPragma = (comment: Comment | undefined) =>
-  comment?.type === 'Block' && comment.value.trim().replace(/^\*\s*/, '') === solidJsxPragma
 const moduleSuffixes = ['', '.ts', '.tsx', '/index.ts', '/index.tsx']
 const localModule = (filename: string, source: string) => {
   const base = source.startsWith('@/')
@@ -305,8 +302,7 @@ export default {
             for (const comment of context.sourceCode.getAllComments()) {
               if (
                 comment.type === 'Shebang' ||
-                /^\s*Pi upstream:|License — Copyright/.test(comment.value) ||
-                (solidFile(context.filename) && isSolidJsxPragma(comment))
+                /^\s*Pi upstream:|License — Copyright/.test(comment.value)
               )
                 continue
               if (isJsDoc(comment) && contractDocs.has(comment.start)) continue
@@ -355,26 +351,6 @@ export default {
           ExportNamedDeclaration: check,
           ExportAllDeclaration: check,
           TSImportType: check,
-        }
-      },
-    },
-    'solid-jsx-pragma': {
-      meta: { schema: [] },
-      create(context: Context) {
-        if (!solidFile(context.filename)) return {}
-        return {
-          Program(program: Node) {
-            const first = context.sourceCode.getAllComments()[0] as Comment | undefined
-            const statements = (program.body as Node[] | undefined) ?? []
-            if (
-              !isSolidJsxPragma(first) ||
-              (statements.length > 0 && first!.end > statements[0].start!)
-            )
-              context.report({
-                node: program,
-                message: `The type-check project sets no JSX source, and TypeScript reads one only from a leading block comment, so without it the JSX is not checked against Solid's types. Open the file with /** ${solidJsxPragma} */.`,
-              })
-          },
         }
       },
     },

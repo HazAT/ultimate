@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { CircleAlert, Info, TriangleAlert, X } from '@lucide/solid'
 import { createEffect, onSettled } from 'solid-js'
 import { Dynamic } from '@solidjs/web'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ClipboardList, X } from '@lucide/solid'
 import { Show, createEffect, createMemo, createSignal, onSettled } from 'solid-js'

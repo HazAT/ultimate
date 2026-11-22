@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /** Subagents for other extensions' browser code: a child's name, its source, and opening the primary standing agent. */
 import { api, writerNow, writingAs } from '@/sdk/solid'
 import type { UltimateActions } from '@/sdk/solid'

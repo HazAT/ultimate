@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { RecallBubble } from './bubble.solid.tsx'
 import { ModelOnlyRecalledMemories } from './note.solid.tsx'

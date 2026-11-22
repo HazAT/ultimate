@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { FileDiff } from '@lucide/solid'
 import { For, Show } from 'solid-js'

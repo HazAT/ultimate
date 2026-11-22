@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createRoot, createSignal } from 'solid-js'
 import { deadline, every } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'

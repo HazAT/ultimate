@@ -443,8 +443,7 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'`
 })
 
 it('keeps ui-sdk components behind the UI kit', () => {
-  const source = `/** @jsxImportSource @solidjs/web */
-import { Switch } from '@ui-sdk/solid/switch'
+  const source = `import { Switch } from '@ui-sdk/solid/switch'
 import { createSignal } from 'solid-js'
 import { useDoc } from '@/sdk/solid'
 import { Button } from '@/components/ui/button.solid.tsx'`
@@ -472,28 +471,6 @@ const later = import(\`@/sdk/contribution.solid\`)`
     onePath,
     onePath,
   ])
-})
-
-it('asks every Solid file for a leading block Solid JSX pragma, and only Solid files', () => {
-  const missing = ['Open the file with /** @jsxImportSource @solidjs/web */.']
-  const pragma = (source: string, file = 'extensions/echo/a.solid.tsx') =>
-    lint('solid-jsx-pragma', file, source)
-  expect(pragma('export const a = 1')).toEqual(missing)
-  expect(pragma('const a = 1\n/** @jsxImportSource @solidjs/web */')).toEqual(missing)
-  expect(pragma('// @jsxImportSource @solidjs/web\nexport const a = 1')).toEqual(missing)
-  expect(pragma('/** @jsxImportSource @solidjs/web */\nexport const a = 1')).toEqual([])
-  expect(pragma('/* @jsxImportSource @solidjs/web */\nexport const a = 1')).toEqual([])
-  expect(pragma('export const a = 1', 'extensions/echo/data.ts')).toEqual([])
-  const header = '/** @jsxImportSource @solidjs/web */\nexport const a = 1'
-  expect(lint('no-comments', 'extensions/echo/a.solid.tsx', header)).toEqual([])
-  expect(lint('no-comments', 'extensions/echo/data.ts', header)).toHaveLength(1)
-  expect(
-    lint(
-      'no-comments',
-      'extensions/echo/a.solid.tsx',
-      '// @jsxImportSource @solidjs/web\nexport const a = 1',
-    ),
-  ).toHaveLength(1)
 })
 
 it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { CircleAlert, Plus, Timer } from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from 'solid-js'

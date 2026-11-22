@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Brain, Check, ChevronDown, Cpu, LoaderCircle } from '@lucide/solid'
 import { createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'

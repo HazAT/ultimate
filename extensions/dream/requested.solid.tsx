@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { MoonIcon } from '@lucide/solid'
 import { Card, type EntryRecord } from '@/sdk/solid'
 import type { RequestedEntry } from './refs.ts'

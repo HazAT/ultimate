@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createSignal, flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { CornerDownRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'

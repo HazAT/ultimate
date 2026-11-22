@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'
 import { ROOT, formatTokens, plural, useDocOf, useTranscript } from '@/sdk/solid'

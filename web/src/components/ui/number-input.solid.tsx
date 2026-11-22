@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { NumberInput as NumberInputRoot, NumberInputControl } from '@ui-sdk/solid/number-input'
 import { cn } from 'cn'
 import { omit } from 'solid-js'

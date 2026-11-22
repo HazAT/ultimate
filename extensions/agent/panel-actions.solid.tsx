@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Ellipsis } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'
 import {

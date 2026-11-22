@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { parsePatchFiles, preloadHighlighter, Virtualizer } from '@pierre/diffs'
 import { flush, createSignal, onSettled } from 'solid-js'
 import { expect, it, vi } from 'vitest'

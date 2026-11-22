@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension, provide } from '@/sdk/solid'
 import { PreviewUp } from '../sidebar/ui.solid.tsx'
 import { InstanceCall } from './call.solid.tsx'

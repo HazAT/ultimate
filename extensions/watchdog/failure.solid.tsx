@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { CircleAlert } from '@lucide/solid'
 import { Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect } from 'solid-js'
 import { api, useConversationId, usePageVisible, useSurface } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'

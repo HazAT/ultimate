@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon, XIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For, Loading, Show, createEffect, createMemo, createSignal } from 'solid-js'

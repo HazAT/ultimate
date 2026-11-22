@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { afterEach, expect, it, vi } from 'vitest'
 import { follow } from '../../web/src/app/follow.ts'
 

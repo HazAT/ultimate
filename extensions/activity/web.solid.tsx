@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ActivityIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { ActivityPanel } from './panel.solid.tsx'

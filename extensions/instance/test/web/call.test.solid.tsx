@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { expect, it, vi } from 'vitest'

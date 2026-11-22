@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { parseEntryId } from '../../../lib/ids.ts'
 import { CompactionEntry } from '@earendil-works/pi-durable'
 import type {

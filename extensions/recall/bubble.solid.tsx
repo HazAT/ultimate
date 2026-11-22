@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { cn, useDoc, useTranscript } from '@/sdk/solid'

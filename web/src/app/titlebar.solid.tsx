@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Command as CommandIcon } from '@lucide/solid'
 import { cn } from 'cn'
 import { createMemo, For, Show } from 'solid-js'

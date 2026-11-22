@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ListTreeIcon } from '@lucide/solid'
 import type { TaskId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'

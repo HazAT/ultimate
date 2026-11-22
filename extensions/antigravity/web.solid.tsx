@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { OrbitIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { AntigravityPanel } from './panel.solid.tsx'

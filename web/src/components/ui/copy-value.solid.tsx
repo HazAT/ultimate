@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check, Copy } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { Show } from 'solid-js'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { children, createMemo, Match, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import type { LinkRenderer } from '@/sdk/solid'

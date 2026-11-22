@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { File, GitCommit, GitFork, History } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ArrowLeft, RotateCw } from '@lucide/solid'
 import { createEffect, For, Show } from 'solid-js'
 import { HighlightedCode } from '@/components/markdown/markdown.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { Accessor } from 'solid-js'
 import { useUiState } from '@/sdk/solid'
 import type { JsonValue } from '@/sdk/solid'

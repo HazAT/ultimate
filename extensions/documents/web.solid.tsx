@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { FileStackIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { DocumentsPanel } from './panel.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   Tabs as TabsRoot,
   TabsList as TabsListRoot,

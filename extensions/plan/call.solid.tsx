@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { For, Show, createMemo } from 'solid-js'
 import {
   Tool,

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Globe } from '@lucide/solid'
 import { Match, Show, Switch } from 'solid-js'

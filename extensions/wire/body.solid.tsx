@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { For, Show, createMemo } from 'solid-js'
 import { formatTokens, plural } from '@/sdk/solid'
 import { isBranch, isObject, parse, requestShape } from './json.ts'

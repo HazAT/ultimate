@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect } from 'solid-js'
 import { ROOT, useDocOf, useUiState, writingAs } from '@/sdk/solid'
 import { MessagesDoc } from '../messages/refs.ts'

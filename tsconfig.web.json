@@ -9,6 +9,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["vite-plus/client"],
     "jsx": "react-jsx",
+    "jsxImportSource": "@solidjs/web",
     "strict": true,
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,

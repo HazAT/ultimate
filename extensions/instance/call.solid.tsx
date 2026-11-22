@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ChevronRight, ExternalLink } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'

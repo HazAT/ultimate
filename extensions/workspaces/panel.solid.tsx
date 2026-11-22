@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { RefreshCw } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'

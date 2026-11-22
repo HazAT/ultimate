@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import {
   BotIcon,
   CheckIcon,

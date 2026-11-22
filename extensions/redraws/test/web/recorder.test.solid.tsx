@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { metrics, record, reset, topHot } from '../../recorder.ts'
 

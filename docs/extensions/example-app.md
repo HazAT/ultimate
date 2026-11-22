@@ -41,7 +41,6 @@ export const actions = {
 `web.solid.tsx`, the surface:
 
 ```tsx
-/** @jsxImportSource @solidjs/web */
 import { GitCommitHorizontalIcon, MessageSquarePlusIcon } from '@lucide/solid'
 import { For, Show, untrack } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ChevronDown } from '@lucide/solid'
 import { For, Show } from 'solid-js'
 import {

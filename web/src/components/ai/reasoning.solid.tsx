@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ChevronRight } from '@lucide/solid'
 import { cn } from 'cn'
 import { omit, Show } from 'solid-js'

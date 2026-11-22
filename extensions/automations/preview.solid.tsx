@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { LoaderCircle, X } from '@lucide/solid'
 import { createEffect, createSignal, For, Show } from 'solid-js'
 import { formatTime, keepLast, useAction, useNow } from '@/sdk/solid'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { GitBranch, GitMerge, SquareArrowOutUpRight, Trash2 } from '@lucide/solid'
 import { createMemo, For, Match, Show, Switch } from 'solid-js'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { GanttChartIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { NavigationReporter } from './navigation.solid.tsx'

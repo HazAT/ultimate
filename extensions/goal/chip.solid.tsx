@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Flag } from '@lucide/solid'
 import { For, Show, createSignal, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

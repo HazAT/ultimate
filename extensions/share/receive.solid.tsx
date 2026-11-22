@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect, onSettled } from 'solid-js'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import {

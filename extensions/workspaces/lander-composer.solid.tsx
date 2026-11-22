@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { GitMerge } from '@lucide/solid'
 import { Show } from 'solid-js'
 import { cn, column, ROOT, useConversationId, useDocOf } from '@/sdk/solid'

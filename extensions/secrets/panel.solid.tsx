@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ExternalLink, LoaderCircle, Plus } from '@lucide/solid'
 import {
   createEffect,

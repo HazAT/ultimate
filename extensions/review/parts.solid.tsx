@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { FileDiffIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For } from 'solid-js'

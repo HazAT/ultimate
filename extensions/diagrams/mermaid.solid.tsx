@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { render } from 'lovely-mermaid'
 import { createMemo, Show } from 'solid-js'
 import type { CodeBlockRenderer } from '@/sdk/solid'

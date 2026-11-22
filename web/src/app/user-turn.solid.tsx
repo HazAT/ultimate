@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ImageContent, UserMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { cn } from 'cn'

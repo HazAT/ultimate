@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Hourglass } from '@lucide/solid'
 import { createMemo, createSignal, For, mapArray, Show } from 'solid-js'

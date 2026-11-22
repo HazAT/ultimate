@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { cn } from '@/sdk/solid'
 import type { PassName } from './types.ts'
 

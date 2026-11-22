@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /** The sidebar's parts for other extensions' Solid code: a project's colour swatch and its GitHub label. */
 import { Lock } from '@lucide/solid'
 import { Show } from 'solid-js'

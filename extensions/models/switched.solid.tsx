@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Brain, Cpu } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { useTranscript } from '@/sdk/solid'

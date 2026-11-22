@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ArrowLeft, Bot, SquareArrowOutUpRight } from '@lucide/solid'
 import { createEffect, createSignal, Show } from 'solid-js'
 import { nextTurn } from '../../lib/timers.ts'

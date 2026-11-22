@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ComposerPlaceholder, defineWebExtension, EmptyTranscript, provide } from '@/sdk/solid'
 import { SummaryModelDialog, summaryModelDialog } from './summary-model.solid.tsx'
 import { StandingEmpty } from './standing.solid.tsx'

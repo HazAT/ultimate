@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ArrowLeft, ExternalLink, GitBranch } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

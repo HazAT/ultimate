@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId, EntryId, EntryRecord } from '@earendil-works/pi-durable'
 import { createMemo, Errored, For, Loading, onCleanup, Show } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'

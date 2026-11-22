@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Bot, ChevronDown, SlidersHorizontal } from '@lucide/solid'
 import { For, Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ArrowRightIcon, CircleAlertIcon, MessageSquareIcon } from '@lucide/solid'
 import { createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

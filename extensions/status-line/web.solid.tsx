@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { MessageUsage } from './message-usage.solid.tsx'
 import { Connection, Context, Cwd, GlobalUsage, Tokens } from './status.solid.tsx'

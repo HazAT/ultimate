@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createRoot, createSignal, flush, untrack } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'

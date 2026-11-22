@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Puzzle } from '@lucide/solid'
 import { Portal } from '@solidjs/web'
 import { For } from 'solid-js'

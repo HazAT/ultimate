@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check, ChevronRight, CircleDashed, LoaderCircle, MinusCircle, X } from '@lucide/solid'
 import type { LucideIcon } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'

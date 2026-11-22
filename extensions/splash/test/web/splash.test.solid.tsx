@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { dynamic } from '@solidjs/web'
 import { createSignal, flush } from 'solid-js'
 import { afterEach, expect, it, vi } from 'vitest'

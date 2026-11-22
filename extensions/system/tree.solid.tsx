@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { CircleX, MousePointerClick, Plug, Sparkles, Workflow, Wrench, Zap } from '@lucide/solid'
 import { Dynamic } from '@solidjs/web'
 import { createMemo, For, Show } from 'solid-js'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /** Onboarding for other extensions' Solid code. */
 
 /**

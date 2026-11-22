@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension, events } from '@/sdk/solid'
 import { Chip } from './chip.solid.tsx'
 

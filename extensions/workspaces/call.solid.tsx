@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { LoaderCircle } from '@lucide/solid'
 import { createMemo, createSignal, Match, Show, Switch } from 'solid-js'
 import {

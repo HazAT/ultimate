@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { LoaderCircleIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For, Show } from 'solid-js'

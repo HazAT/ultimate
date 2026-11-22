@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check, Copy, ExternalLink } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'

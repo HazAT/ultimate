@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /**
  * Lineage for other extensions' browser code: the project's roots, a root's tally, landing links and compaction, the
  * branch and root events, and the Memory surface with its header point.

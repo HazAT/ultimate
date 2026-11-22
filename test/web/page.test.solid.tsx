@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createRoot, flush } from 'solid-js'
 import { expect, onTestFinished, test, vi } from 'vitest'
 

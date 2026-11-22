@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { attention, ConversationKind, defineWebExtension, provide } from '@/sdk/solid'
 import { CompactAnswer, MessageAnswerLabel, HiddenEntry } from './compact-answer.solid.tsx'
 import { scriptMessaged, threadRow, ultimateCompact } from './data.ts'

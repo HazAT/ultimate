@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { actionRef } from '../../shared/extension-api.ts'

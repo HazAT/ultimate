@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'

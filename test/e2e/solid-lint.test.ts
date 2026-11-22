@@ -7,8 +7,7 @@ import { cleanEnv, sourceCopy, temp } from '../helpers.ts'
 
 const run = promisify(execFile)
 
-const solidMistakes = `/** @jsxImportSource @solidjs/web */
-import { createSignal, createEffect, onMount } from 'solid-js'
+const solidMistakes = `import { createSignal, createEffect, onMount } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import { readFileSync } from 'node:fs'
 import { Switch } from '@ui-sdk/solid/switch'
@@ -37,19 +36,13 @@ export function Bad({ name }: { name: string }) {
 }
 `
 
-const lineCommentPragma = `// @jsxImportSource @solidjs/web
-export const LinePragma = () => <div class="x" />
-`
-
-const validRef = `/** @jsxImportSource @solidjs/web */
-export function Field() {
+const validRef = `export function Field() {
   let input: HTMLInputElement | undefined
   return <input aria-label="Name" ref={input} />
 }
 `
 
-const nodeImport = `/** @jsxImportSource @solidjs/web */
-import { readFileSync } from 'node:fs'
+const nodeImport = `import { readFileSync } from 'node:fs'
 export const size = readFileSync.length
 `
 
@@ -67,9 +60,7 @@ it('lints Solid files with Solid 2 strict rules as errors', async () => {
   for (const created of [folder, testFolder, projectFolder])
     await mkdir(created, { recursive: true })
   await writeFile(join(folder, 'mistakes.solid.tsx'), solidMistakes)
-  await writeFile(join(folder, 'line-pragma.solid.tsx'), lineCommentPragma)
   await writeFile(join(folder, 'field.solid.tsx'), validRef)
-  await writeFile(join(testFolder, 'untyped.solid.tsx'), 'export const a = 1\n')
   await writeFile(join(projectFolder, 'node.solid.tsx'), nodeImport)
 
   const lint = await run(
@@ -111,9 +102,6 @@ it('lints Solid files with Solid 2 strict rules as errors', async () => {
       'mistakes.solid.tsx ultimate(ui-kit-roles)',
       'mistakes.solid.tsx jsx-a11y(control-has-associated-label)',
       'mistakes.solid.tsx eslint(no-restricted-imports)',
-      'line-pragma.solid.tsx ultimate(solid-jsx-pragma)',
-      'line-pragma.solid.tsx ultimate(no-comments)',
-      'untyped.solid.tsx ultimate(solid-jsx-pragma)',
       'node.solid.tsx eslint(no-restricted-imports)',
     ]),
   )

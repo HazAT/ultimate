@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { TriangleAlertIcon, XIcon } from '@lucide/solid'
 import { createEffect, createSignal, For, onSettled, Show, untrack } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { ListTodoIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { TodoCall } from './call.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { GitMerge } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { SystemInfo } from '../../shared/protocol.ts'

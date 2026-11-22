@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Blob as NodeBlob } from 'node:buffer'
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'

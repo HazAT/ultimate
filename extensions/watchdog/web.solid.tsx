@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { attention, defineWebExtension } from '@/sdk/solid'
 import { Failure, StandingFailure } from './failure.solid.tsx'
 import { Idle } from './idle.solid.tsx'

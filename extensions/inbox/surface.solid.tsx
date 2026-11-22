@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Inbox as InboxIcon } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'
 import { Header, Sidebar, useProvided, useNow, useSurface, useViewport } from '@/sdk/solid'

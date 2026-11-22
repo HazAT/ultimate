@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { Entry, TypedEntry } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { createMemo, For, onCleanup, Show } from 'solid-js'

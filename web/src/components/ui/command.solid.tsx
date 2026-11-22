@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Search } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import {

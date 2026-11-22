@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { InfoIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { InfoPanel } from './panel.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Virtualizer, parsePatchFiles } from '@pierre/diffs'
 import type { FileDiffMetadata, FileDiffOptions } from '@pierre/diffs'

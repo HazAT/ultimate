@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Conversation, Dock, useConversation, useViewport } from '@/sdk/solid'
 import { WireTab } from './tab.solid.tsx'
 

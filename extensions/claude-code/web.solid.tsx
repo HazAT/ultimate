@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { TerminalIcon } from '@lucide/solid'
 import { defineWebExtension } from '@/sdk/solid'
 import { ClaudeCodePanel } from './panel.solid.tsx'

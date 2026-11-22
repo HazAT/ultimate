@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo, createRoot, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'

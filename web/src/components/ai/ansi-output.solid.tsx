@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createEffect } from 'solid-js'
 import { ansiHtml } from '@/components/ai/ansi.ts'
 

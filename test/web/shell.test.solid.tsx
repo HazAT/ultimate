@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
 import type { JSX } from '@solidjs/web'

@@ -38,8 +38,7 @@ The libraries ship skills that match the pinned versions: read them, not your me
 The UI is Solid, and so is every facet: `web.solid.tsx`. A leftover React `web.tsx` loads as an error card
 ([Moving a React facet to Solid](../../extensions/README.md#moving-a-react-facet-to-solid)).
 
-- **One renderer per file.** Solid JSX belongs in `*.solid.tsx`, opened with `/** @jsxImportSource @solidjs/web */`.
-  `ultimate/solid-jsx-pragma` checks the pragma.
+- **One renderer per file.** Solid JSX belongs in `*.solid.tsx`.
 - **One SDK entry: `@/sdk/solid`.** Readers, actions, contexts, formatters and the shared parts (`Header`, `Card`,
   `Fold`, `Slot`, `Provided`, …) all come from it. Inside `web/src`, modules import `web/src/sdk/hooks.ts` instead,
   since the parts the entry re-exports import the readers (`import/no-cycle`). Readers return accessors: call them
@@ -308,7 +307,7 @@ Tooling:
   confirm gate, its state transition) and one per bug that happened. The kit's tests prove the kit (open, bind,
   attribution); an extension's test does not repeat them. Keep one test file per component group (a chip and its
   popover), not one per case.
-- **Files:** `*.test.solid.tsx` with the JSX pragma, in the `solid-dom` Vitest project (jsdom). Mount with `renderSolid`
+- **Files:** `*.test.solid.tsx`, in the `solid-dom` Vitest project (jsdom). Mount with `renderSolid`
   from `test/web/solid-dom-setup.ts`, which disposes after each test. Import only browser-safe helpers from `test/web`;
   `test/helpers.ts` imports the server and fails the web type check (lint:
   `ultimate/no-server-helpers-in-web-tests`).

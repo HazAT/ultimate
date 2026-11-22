@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { api } from '@/sdk/solid'
 import { imagesOf } from '../../lib/entries.ts'
 import { offsetEntryId } from '../../lib/ids.ts'

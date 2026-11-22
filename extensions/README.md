@@ -44,7 +44,6 @@ boundary, so a crashing component shows a compact card where it was.
 ## A first extension
 
 ```tsx
-/** @jsxImportSource @solidjs/web */
 // extensions/hello/web.solid.tsx
 import { defineWebExtension, useConversation } from '@/sdk/solid'
 
@@ -79,8 +78,7 @@ No restart or manual reload.
 Ultimate ran React facets (`web.tsx`) on a compat layer until 0.1; it is gone, and a `web.tsx` now shows an error card
 naming this section. To move one:
 
-1. Rename `web.tsx` to `web.solid.tsx`, and every other `.tsx` in the folder to `.solid.tsx`. Start each with
-   `/** @jsxImportSource @solidjs/web */`.
+1. Rename `web.tsx` to `web.solid.tsx`, and every other `.tsx` in the folder to `.solid.tsx`.
 2. Import from `@/sdk/solid` instead of `@/sdk`, `@lucide/solid` instead of `lucide-react`, and
    `@/components/ui/<name>.solid.tsx` instead of `@/components/ui/<name>`. Drop `island(…)`: contribute the component
    itself.

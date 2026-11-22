@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Check, KeyRound, Layers, LogIn, Terminal } from '@lucide/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import {

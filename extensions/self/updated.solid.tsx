@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Zap } from '@lucide/solid'
 import { Match, Show, Switch, createMemo, createSignal, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

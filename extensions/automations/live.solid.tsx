@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, createSignal, onSettled } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import {

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { defineWebExtension } from '@/sdk/solid'
 import { readAloudAction } from './action.solid.tsx'
 import * as player from './player.solid.tsx'

@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
 import { createSignal, For, Match, Show, Switch } from 'solid-js'

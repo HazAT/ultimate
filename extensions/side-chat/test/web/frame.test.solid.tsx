@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush, useContext } from 'solid-js'

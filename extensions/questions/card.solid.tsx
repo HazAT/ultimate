@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { JSX } from '@solidjs/web'
 import { MessageCircleQuestion } from '@lucide/solid'
 import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'

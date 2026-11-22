@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 /** Workspaces for other extensions' browser code: each conversation's checkout, Info's summary and a landing's links. */
 import { ArrowUpRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'

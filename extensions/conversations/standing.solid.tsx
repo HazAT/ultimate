@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
 import { Show } from 'solid-js'

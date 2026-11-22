@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createEffect, createMemo, mapArray, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'

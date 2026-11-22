@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Hourglass, Pause, Play as PlayIcon } from '@lucide/solid'
 import { For, Match, Show, Switch, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

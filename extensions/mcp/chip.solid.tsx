@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { LoaderCircle, Plug, RefreshCw } from '@lucide/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'

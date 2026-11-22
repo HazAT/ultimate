@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createSignal, flush } from 'solid-js'
 import { expect, it } from 'vitest'
 import { JsonTree } from '../../web/src/components/json-tree.solid.tsx'

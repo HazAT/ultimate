@@ -23,7 +23,6 @@ export const actions = {
 ```
 
 ```tsx
-/** @jsxImportSource @solidjs/web */
 // web.solid.tsx
 import { actionRef, useAction } from '@/sdk/solid'
 

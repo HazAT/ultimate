@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { expect, it, vi } from 'vitest'
 import type { Component } from 'solid-js'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'

@@ -12,7 +12,6 @@ the renderer a web facet registers for it, or as a JSON tree without one. To giv
    your document's shape.
 
 ```tsx
-/** @jsxImportSource @solidjs/web */
 import { ClipboardListIcon } from '@lucide/solid'
 import { For } from 'solid-js'
 import { defineWebExtension } from '@/sdk/solid'

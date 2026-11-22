@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { writerNow } from '../../../../web/src/sdk/writer.ts'

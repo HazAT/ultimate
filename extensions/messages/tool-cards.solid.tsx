@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { GitBranch, Inbox, Send } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'

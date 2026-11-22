@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { createMemo, Show } from 'solid-js'
 import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import { cn, openPanel, showSurface, switchConversation, useNow } from '@/sdk/solid'

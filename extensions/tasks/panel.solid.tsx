@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId, TaskGraphNode } from '@earendil-works/pi-durable'
 import {
   Check,

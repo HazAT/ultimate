@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Show } from 'solid-js'
 import { ROOT, useConversationId, useDocOf } from '@/sdk/solid'
 import type { SolidEntryProps } from '@/sdk/solid'

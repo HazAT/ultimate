@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { TypedEntry } from '@earendil-works/pi-durable'
 import { Timer } from '@lucide/solid'
 import { Show } from 'solid-js'

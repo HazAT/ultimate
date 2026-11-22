@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { TimerIcon } from '@lucide/solid'
 import { createMemo } from 'solid-js'
 import { defineWebExtension, provide, ROOT, useDocOf } from '@/sdk/solid'

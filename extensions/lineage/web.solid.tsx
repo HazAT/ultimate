@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Brain, Search, Trash2 } from '@lucide/solid'
 import { For, Show, createEffect, createMemo, createSignal } from 'solid-js'

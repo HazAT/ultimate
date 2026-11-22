@@ -1,4 +1,3 @@
-/** @jsxImportSource @solidjs/web */
 import { Match, Show, Switch } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import {
