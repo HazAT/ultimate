@@ -75,7 +75,8 @@ target, including transitively owned subagents, for the warning before concludin
 `pending(ids, ctx)` and `release(ids, ctx)`; release removes every checkout that holds nothing only its folder
 holds: no uncommitted changes and no commits on HEAD that neither its branch nor the target has (detached work).
 Commits on its branch stay with the branch in the source, and the next input recreates the checkout on it. Release
-deletes merged branches and returns checkouts kept for that work or `busy` reasons (running or queued input). Descendants release before ancestors; a kept descendant also keeps its
+deletes merged branches and returns checkouts kept for that work or `busy` reasons (running or queued input). A checkout whose work Git cannot count (an unreadable object) is kept with
+the error as its `reason`, so one damaged checkout never stops the rest of the batch. Descendants release before ancestors; a kept descendant also keeps its
 ancestors, reported with `descendant: <id>`. The removal transaction also checks current records sourced transitively
 from the checkout, so a descendant resumed during the batch keeps its source ancestors. Nested recreation checks
 its source parent's `ready` state and folder in the transaction that starts preparation; otherwise it readies the

@@ -2105,6 +2105,30 @@ it.concurrent('release handles failed checkouts but never removes detached unlan
   expect(await git(workspace.path, 'rev-parse', 'HEAD')).toBe(tip)
 })
 
+it.concurrent('release keeps a checkout whose commits git cannot read, naming the object', async () => {
+  const f = await fixture()
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  await git(workspace.path, 'checkout', '--detach')
+  const lost = await commit(workspace.path, 'lost.txt')
+  await commit(workspace.path, 'tip.txt')
+  const objects = await git(
+    workspace.path,
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-path',
+    'objects',
+  )
+  await unlink(join(objects, lost.slice(0, 2), lost.slice(2)))
+  await expect(f.service.pending([id], context)).rejects.toThrow(`Could not read ${lost}`)
+  expect(await f.service.release([id], context)).toEqual([
+    { id, uncommitted: 0, unlanded: 0, reason: expect.stringContaining(`Could not read ${lost}`) },
+  ])
+  expect((await f.service.get(id, context))!.state).toBe('ready')
+  expect(await readFile(join(workspace.path, 'tip.txt'), 'utf8')).toBe('tip.txt')
+})
+
 it.concurrent('aborting release finishes the current checkout and leaves the remaining batch untouched', async () => {
   const f = await fixture()
   const ids = [await f.create(), await f.create(), await f.create()]
@@ -2507,9 +2531,16 @@ it.concurrent('release never removes a registered checkout whose .git file is br
   const workspace = (await f.service.get(id, context))!
   await writeFile(join(workspace.path, 'precious.txt'), 'keep me')
   await writeFile(join(workspace.path, '.git'), 'gitdir: /nowhere\n')
-  await expect(f.service.release([id], context)).rejects.toThrow(
-    /not a git repository|gitfile does not point to a valid repository/,
-  )
+  expect(await f.service.release([id], context)).toEqual([
+    {
+      id,
+      uncommitted: 0,
+      unlanded: 0,
+      reason: expect.stringMatching(
+        /not a git repository|gitfile does not point to a valid repository/,
+      ),
+    },
+  ])
   expect((await f.service.get(id, context))!).toMatchObject({
     state: 'ready',
     path: workspace.path,
