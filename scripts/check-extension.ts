@@ -29,17 +29,17 @@ if (!folders.length) {
   )
   process.exit(0)
 }
-for (const folder of folders)
-  if (!['web.solid.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))) {
-    console.error(`${folder} is not an extension folder (no web.solid.tsx or server.ts).`)
-    process.exit(2)
-  }
 const reactFacets = folders.filter((folder) => existsSync(join(folder, 'web.tsx')))
 if (reactFacets.length) {
   for (const folder of reactFacets)
     console.error(`${join(folder, 'web.tsx')}: ${reactFacetRemoved}`)
   process.exit(1)
 }
+for (const folder of folders)
+  if (!['web.solid.tsx', 'server.ts'].some((file) => existsSync(join(folder, file)))) {
+    console.error(`${folder} is not an extension folder (no web.solid.tsx or server.ts).`)
+    process.exit(2)
+  }
 
 const letTscExitBeforeRemovingTemp = () => {}
 process.on('SIGINT', letTscExitBeforeRemovingTemp)

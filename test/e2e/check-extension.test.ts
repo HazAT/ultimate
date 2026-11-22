@@ -42,3 +42,17 @@ it("type-checks a project's extensions against the clone, outside the clone", as
   expect(failed?.code).toBe(1)
   expect(failed?.stdout).toContain(`${join(extension, 'server.ts')}(1,7): error TS2322`)
 })
+
+it('refuses a leftover React web.tsx with the rename instruction', async () => {
+  const project = await temp('ultimate-check-extension-react-')
+  const extension = join(project, '.ultimate', 'extensions', 'legacy')
+  await mkdir(extension, { recursive: true })
+  await writeFile(join(extension, 'web.tsx'), 'export default {}\n')
+  const failed = await run(process.execPath, [script], { cwd: project, env: cleanEnv() }).then(
+    () => undefined,
+    (error: { code: number; stderr: string }) => error,
+  )
+  expect(failed?.code).toBe(1)
+  expect(failed?.stderr).toContain(`${join(extension, 'web.tsx')}: React facets were removed`)
+  expect(failed?.stderr).toContain('rename web.tsx to web.solid.tsx')
+})
