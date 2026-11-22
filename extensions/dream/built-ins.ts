@@ -7,7 +7,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
 import type { Automation } from '../automations/refs.ts'
 import { Standing } from '../subagents/api.ts'
-import { deliver } from './delivery.ts'
+import { ConversationsApi } from '../conversations/api.ts'
 import type { RequestedEntry } from './refs.ts'
 import type { Seed } from './types.ts'
 
@@ -130,11 +130,19 @@ export async function fired(host: ExtensionHost, tx: Tx, id: string, fire: numbe
       ...(pause !== undefined ? { pause } : {}),
     },
   }
-  await deliver(host, tx, ultimate, {
+  await host.need(ConversationsApi).submitAfter(tx, ultimate, {
     type: 'write',
     requestId: `dream.requested:${id}:${fire}`,
-    kind: 'dream.requested',
-    data,
-    content: `Your context passed the threshold of automation ${id} "${data.automation!.name}"${pause !== undefined ? ` while the user has been away ${hoursOf(pause)}` : ''}. ${DREAM_ASK}`,
+    entry: {
+      kind: 'dream.requested',
+      data,
+      model: [
+        {
+          role: 'user',
+          content: `Your context passed the threshold of automation ${id} "${data.automation!.name}"${pause !== undefined ? ` while the user has been away ${hoursOf(pause)}` : ''}. ${DREAM_ASK}`,
+          timestamp: Date.now(),
+        },
+      ],
+    },
   })
 }

@@ -12,7 +12,6 @@ import { Roots } from '../lineage/api.ts'
 import { Messages } from '../messages/api.ts'
 import type { Automation } from '../automations/types.ts'
 import { BuiltInDoc, PauseDoc } from './built-ins.ts'
-import { deliver } from './delivery.ts'
 import type { Prepared } from './refs.ts'
 import type { Seed } from './types.ts'
 
@@ -203,7 +202,10 @@ export async function applySeed(host: ExtensionHost) {
     return undefined
   }
   if (state?.applied === undefined) {
-    const ultimate = await host.need(SubagentsApi).standing('ultimate', context)
+    const ultimate = (await harness.conversation(
+      await host.need(SubagentsApi).standing('ultimate', context),
+      context,
+    ))!
     await harness.commit(async function seedDocumentsAndEntry(tx) {
       const receipt = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
       if (receipt.applied !== undefined) return
@@ -232,18 +234,21 @@ export async function applySeed(host: ExtensionHost) {
           })),
       ]
       for (const item of carried) todos.items.push({ ...item, id: todos.next++, at: Date.now() })
-      await deliver(host, tx, ultimate, {
+      await ultimate.submit(tx, {
         type: 'input',
         requestId: `dream.chapter:${host.chapter.name}`,
-        kind: 'dream.chapter',
-        data: {
-          from: seed.from,
-          number: host.chapter.number,
-          name: host.chapter.name,
-          learned: seed.learned,
-          carried: seed.counts,
-        },
         content: chapterText(host, seed),
+        entry: {
+          kind: 'dream.chapter',
+          data: {
+            from: seed.from,
+            number: host.chapter.number,
+            name: host.chapter.name,
+            learned: seed.learned,
+            carried: seed.counts,
+          },
+        },
+        whenBusy: 'followUp',
       })
       receipt.applied = Date.now()
     }, context)

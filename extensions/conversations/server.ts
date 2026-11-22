@@ -34,6 +34,7 @@ import { activityBehavior } from './activity.ts'
 import { activityStats } from './activity-stats.ts'
 import { compactionEvents } from './compactions.ts'
 import { contextBehavior } from './context.ts'
+import { SubmitAfter, submitAfter } from './submit.ts'
 import { ContextUsageDoc, ConversationsApi, Marks, Previews, Release, Trees } from './api.ts'
 import {
   ActivityAction,
@@ -329,6 +330,7 @@ export default (host: ExtensionHost) => {
     requestSummary: (tx, id, request, model) => requestSummary(tx, host, id, request, model),
     setAutomaticSummaries,
     setStanding,
+    submitAfter,
     askSummaryModel,
     accountResponse,
     concluded: async (caller) => {
@@ -351,6 +353,7 @@ export default (host: ExtensionHost) => {
   return defineExtension({
     name: 'conversations',
     ...summaries,
+    tasks: [...summaries.tasks, SubmitAfter],
     hooks: [
       ...summaries.hooks,
       // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.

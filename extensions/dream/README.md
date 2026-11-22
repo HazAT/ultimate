@@ -71,8 +71,8 @@ records keep name, optional prompt, schedule and run profile, but no subscribers
 chapter. Schedules without a prompt become recreation to-dos.
 
 On open, dream applies a chapter's seed in one commit with `dream.seed.applied` on conversation 1: memories keep
-their sources, to-dos get fresh ids, questions become user-owned to-dos naming the old chapter and message id, and a
-`dream.deliver` task wakes @ultimate with one `dream.chapter` input (the morning card). Its text names the old
+their sources, to-dos get fresh ids, questions become user-owned to-dos naming the old chapter and message id, and the
+same commit wakes @ultimate with one `dream.chapter` input (the morning card). Its text names the old
 chapter's read APIs, the three learned lines, the carried counts and the handover, and tells @ultimate to continue
 that work. Reopening does not reapply those documents.
 

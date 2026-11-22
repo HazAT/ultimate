@@ -2,7 +2,7 @@
  * Conversations: titles, summaries, the summary model and concluding conversations. Other extensions read what a
  * conversation is about and ask the summary model through this service.
  */
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, SubmissionDraft, Tx } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
@@ -64,6 +64,12 @@ export type ConversationsService = {
    * summary may replace it; a no-op once a rename or summary chose another title.
    */
   generatedTitle(tx: Tx, id: ConversationId, title: string): Promise<void>
+  /**
+   * Inside `tx`, have `draft` submitted to conversation `to` right after the commit: for a commit that cannot admit it
+   * with `submit(tx, draft)` itself, as it created `to`, wrote a table first or holds no handle of `to`. An input keeps
+   * `to` busy until it is admitted.
+   */
+  submitAfter(tx: Tx, to: ConversationId, draft: SubmissionDraft): Promise<void>
 }
 export type TreesService = {
   /** The root of the tree conversation `id` belongs to, or undefined outside any tree. */

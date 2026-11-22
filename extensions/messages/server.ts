@@ -35,7 +35,6 @@ import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
 import { Concluded } from '../conversations/api.ts'
 import { dropped } from './outcomes.ts'
 import { delivery, reconcileOutputs, retireOutput, settle, submitOutput } from './delivery.ts'
-import { notice } from './notice.ts'
 import { receiptOf, send } from './send.ts'
 import type { Device } from '../../shared/events.ts'
 import type { Context } from '@earendil-works/chord/context'
@@ -277,7 +276,7 @@ export default function messages(host: ExtensionHost) {
   })
   return defineExtension({
     name: 'messages',
-    tasks: [delivery(host), route(host), settle(host), notice(host), tellTask(host)],
+    tasks: [delivery(host), route(host), settle(host), tellTask(host)],
     hooks: [
       hook(GenerationTask, {
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
