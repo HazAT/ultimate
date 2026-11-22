@@ -162,6 +162,34 @@ export type { ActionOptions, Api } from './api.ts'
 export type { UiAgent } from './agent.ts'
 export type { Connection, State } from './store.ts'
 export type { Viewport } from './viewport.ts'
+export type { PanelItem } from './registry.ts'
+export type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
+export { defineEvent } from '../../../shared/events.ts'
+export type { EventContext, EventData, EventRecord, EventToken } from '../../../shared/events.ts'
+export type {
+  ExtensionActionRequest,
+  ExtensionActionResponse,
+  ExtensionInfo,
+} from '../../../shared/protocol.ts'
+export type {
+  AgentState,
+  ConversationView,
+  InboxItem,
+  JsonObject,
+  TaskGraph,
+  TaskGraphNode,
+  ToolDiagnostic,
+  ToolSlot,
+  UsageState,
+} from '@earendil-works/pi-durable'
+export type {
+  AssistantMessage,
+  TextContent,
+  ThinkingContent,
+  ToolCall,
+  ToolResultMessage,
+  UserMessage,
+} from '@earendil-works/pi-ai'
 export { resumed } from './resume.ts'
 export { scopeOf } from './scope.ts'
 

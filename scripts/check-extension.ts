@@ -11,6 +11,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
+import { reactFacetRemoved } from '../lib/discovery.ts'
 
 const clone = resolve(import.meta.dirname, '..')
 const own = resolve('.ultimate/extensions')
@@ -33,6 +34,12 @@ for (const folder of folders)
     console.error(`${folder} is not an extension folder (no web.solid.tsx or server.ts).`)
     process.exit(2)
   }
+const reactFacets = folders.filter((folder) => existsSync(join(folder, 'web.tsx')))
+if (reactFacets.length) {
+  for (const folder of reactFacets)
+    console.error(`${join(folder, 'web.tsx')}: ${reactFacetRemoved}`)
+  process.exit(1)
+}
 
 const letTscExitBeforeRemovingTemp = () => {}
 process.on('SIGINT', letTscExitBeforeRemovingTemp)

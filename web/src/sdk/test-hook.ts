@@ -460,3 +460,9 @@ export function createTestHook(
   }
 }
 export type TestHook = ReturnType<typeof createTestHook>
+
+declare global {
+  interface Window {
+    ultimate?: TestHook
+  }
+}

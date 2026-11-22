@@ -3,7 +3,6 @@ import { join, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
 import { afterAll, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
-import { reactFacetRemoved } from '../../lib/discovery.ts'
 import { fauxServer, removeTemp, temp, until } from '../helpers.ts'
 
 const homes: string[] = []
@@ -68,7 +67,8 @@ it('rejects an outside web.tsx facet in the built app with migration instruction
       const page = await browser.newPage()
       await page.goto(server.url)
       const error = await page.locator('[data-extension-error="legacy"]').textContent()
-      expect(error).toContain(reactFacetRemoved)
+      expect(error).toContain('rename web.tsx to web.solid.tsx')
+      expect(error).toContain('Moving a React facet to Solid')
     } finally {
       await browser.close()
     }

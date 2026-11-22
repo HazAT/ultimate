@@ -437,7 +437,7 @@ function Row(props: {
     if (!extension().enabled) return ''
     const server = extension().server?.error
     const web = records().find((record) => record.name === extension().name)
-    return [server && `server.ts: ${server}`, web?.error && `web.solid.tsx: ${web.error}`]
+    return [server && `server.ts: ${server}`, web?.error && `web: ${web.error}`]
       .filter(Boolean)
       .join('\n')
   })

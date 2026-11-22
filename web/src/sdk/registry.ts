@@ -77,7 +77,7 @@ const isNumber: Check = (value) => typeof value === 'number'
 const isBoolean: Check = (value) => typeof value === 'boolean'
 const isFunction: Check = (value) => typeof value === 'function'
 
-const isComponent: Check = (value) => isFunction(value) || (isObject(value) && '$$typeof' in value)
+const isComponent: Check = isFunction
 const optional =
   (check: Check): Check =>
   (value) =>

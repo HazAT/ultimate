@@ -24,7 +24,7 @@ type Fallback = (extension: string, error: unknown, inner: () => JSX.Element) =>
 
 const sameRenderers = (a: readonly Rendered[], b: readonly Rendered[]) =>
   a.length === b.length &&
-  a.every((item, at) => item.component === b[at].component && item.version === b[at].version)
+  a.every((item, at) => item.component === b[at].component && item.extension === b[at].extension)
 
 export function Contributed(props: {
   renderers: readonly Rendered[]

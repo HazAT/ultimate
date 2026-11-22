@@ -55,8 +55,8 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
 
 import { getDraft } from '../../web/src/app/drafts.ts'
 import { Composer } from '../../web/src/app/composer.solid.tsx'
-import { StatusLine } from '../../web/src/app/shell.solid.tsx'
-import { registry, store } from '../../web/src/sdk/client.ts'
+import { Dock, StatusLine } from '../../web/src/app/shell.solid.tsx'
+import { registry, store, uiState } from '../../web/src/sdk/client.ts'
 import type { SolidInboxProps } from '../../web/src/sdk/solid.ts'
 
 const faux = { provider: 'faux', id: 'faux-1', available: true }
@@ -232,6 +232,41 @@ it('leaves no live editor when a composer wrapper replaces the composer', async 
   expect(getDraft(15).get().error).toBeUndefined()
   expect(getDraft(15).get().images).toEqual([])
   await registry.setLoaders({})
+})
+
+it('attaches no dropped file to the composer of a collapsed Dock, and reopens one live editor', async () => {
+  await show(16)
+  uiState.set('shell.dock.agent.right', { open: true })
+  const container = renderSolid(() => (
+    <Dock>
+      <Composer />
+    </Dock>
+  ))
+  await settle()
+  flush()
+  expect(container.querySelectorAll('[data-ui="composer"]')).toHaveLength(1)
+  uiState.set('shell.dock.agent.right', { open: false })
+  await settle()
+  flush()
+  expect(container.querySelector('[data-ui="composer"]')).toBeNull()
+  const drop = new Event('drop', { bubbles: true }) as DragEvent
+  Object.defineProperty(drop, 'dataTransfer', {
+    value: { types: ['Files'], files: [new File(['x'], 'shot.png', { type: 'image/png' })] },
+  })
+  document.body.dispatchEvent(drop)
+  await settle()
+  expect(getDraft(16).get().images).toEqual([])
+  uiState.set('shell.dock.agent.right', { open: true })
+  await settle()
+  flush()
+  expect(container.querySelectorAll('[data-ui="composer"]')).toHaveLength(1)
+  await act([
+    { ref: 'Prompt for conversation #16', action: 'setValue', args: ['docked'] },
+    { ref: 'Send prompt to conversation #16', action: 'press' },
+  ])
+  expect(submits().map((post) => [post.path, post.body])).toEqual([
+    ['/api/conversations/16/submit', { text: 'docked', images: [] }],
+  ])
 })
 
 it('keeps the queued row and its cancel when an inbox renderer throws', async () => {
