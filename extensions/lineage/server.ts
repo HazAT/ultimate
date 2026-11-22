@@ -530,18 +530,27 @@ function lineage(host: ExtensionHost) {
   const done = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
   const WakeAfterPlacedManualCompaction = defineTask<
     { id: ConversationId; compaction: TaskId },
-    { phase: 'deliver' },
+    { phase: 'deliver' } | { phase: 'compacted' },
     null
   >({
     name: 'lineage.woken',
     version: 1,
     initial: () => ({ phase: 'deliver' }),
     phases: {
-      deliver: async (task, runtime, ctx) => {
+      deliver: (task, runtime, ctx) =>
+        runtime.commit(
+          () => ({
+            status: 'waiting',
+            checkpoint: { phase: 'compacted' },
+            on: [task.input.compaction],
+            policy: 'allSettled',
+          }),
+          ctx,
+        ),
+      compacted: async (task, runtime, ctx) => {
         const { id, compaction } = task.input
-        const settled = await runtime.waitForTask(compaction as TaskId<CompactionResult>, ctx)
-        const result =
-          settled.state.outcome.status === 'completed' ? settled.state.outcome.result : {}
+        const [outcome] = await runtime.outcomes([compaction as TaskId<CompactionResult>], ctx)
+        const result = outcome.status === 'completed' ? outcome.result : {}
         const summaryPlacement =
           result.submissionId &&
           (await (await host.harness().submission(result.submissionId, ctx))?.wait(ctx))
