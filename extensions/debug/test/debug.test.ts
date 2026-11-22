@@ -95,7 +95,7 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
   expect(events).toHaveLength(3)
   expect(events.map((line) => line.match(/\{"n":(\d)\}/)?.[1])).toEqual(['3', '2', '1'])
   expect(events[0]).toMatch(
-    /^\d+(ms|\.\ds)\s+#\d+ {2}beta\.pinged {2}\{"n":3\} {2}trace=\S+ conversation=1/,
+    /^\d+(\.\d)?m?s\s+#\d+ {2}beta\.pinged {2}\{"n":3\} {2}trace=\S+ conversation=1/,
   )
   const limited = (await debug({ call: 'events', events: ['beta.pinged'], limit: 2 })).split('\n')
   const withoutAge = (lines: string[]) => lines.map((line) => line.replace(/^\S+\s+/, ''))
@@ -110,7 +110,7 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
   await until(async () => (await debug({ call: 'reactors' })).includes('gamma is broken'))
   const reactors = await debug({ call: 'reactors' })
   expect(reactors).toMatch(
-    /^gamma\/on-pinged {2}on beta\.pinged {2}cursor=\d+ {2}lag=3 {2}running {2}failed \d+(ms|\.\ds) ago at #\d+: Error: gamma is broken$/m,
+    /^gamma\/on-pinged {2}on beta\.pinged {2}cursor=\d+ {2}lag=3 {2}running {2}failed \d+(\.\d)?m?s ago at #\d+: Error: gamma is broken$/m,
   )
 
   const catalogue = (await debug({ call: 'catalogue' })).split('\n')
@@ -122,7 +122,7 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
   const rows = (await debug({ call: 'trace', conversation: 1, limit: 2 })).split('\n')
   expect(rows).toHaveLength(2)
   for (const row of rows)
-    expect(row).toMatch(/^\d+(ms|\.\ds)\s+\w+ {2}\S+ → \S+ {2}\d+ms .* trace=\S+ conversation=1$/)
+    expect(row).toMatch(/^\d+(\.\d)?m?s\s+\w+ {2}\S+ → \S+ {2}\d+ms .* trace=\S+ conversation=1$/)
   const first = server.extensions.trace.query().find((row) => row.name === 'alpha/go')!
   // Each later event's commit retries the first event, whose reactor runs join the first trace.
   await until(() => server.extensions.trace.query({ trace: first.trace }).length >= 5)

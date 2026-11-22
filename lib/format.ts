@@ -6,7 +6,7 @@ const units = [
 ] as const
 
 export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.floor(ms))}ms`
+  if (!(ms >= 1000)) return `${Math.max(0, Math.floor(ms))}ms`
   if (ms < 10_000) return `${(Math.floor(ms / 100) / 10).toFixed(1)}s`
   const seconds = Math.floor(ms / 1000)
   const index = units.findIndex(([size]) => seconds >= size)

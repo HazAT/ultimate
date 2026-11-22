@@ -76,7 +76,7 @@ export function describeTrigger(a: Automation): string {
         : ''
     }`
   if (a.condition)
-    return `when ${a.condition.of} context ≥ ${a.condition.above}%${a.condition.idleFor ? ` after ${formatDuration(a.condition.idleFor)} without the user's input` : ''}`
+    return `when ${a.condition.of} context ≥ ${a.condition.above}%${a.condition.idleFor ? ` after ${+(a.condition.idleFor / 3_600_000).toFixed(2)}h without the user's input` : ''}`
   return a.script!.state
 }
 

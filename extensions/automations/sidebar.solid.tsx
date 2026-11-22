@@ -21,6 +21,7 @@ import {
 import {
   active,
   attention,
+  countdown,
   automationKind,
   dotStatus,
   lookOf,
@@ -42,7 +43,7 @@ function short(automation: Automation, now: number) {
   if (look === 'working' && last) return `working ${formatDuration(now - last.firedAt)}`
   if (look === 'watching') return automation.fires > 0 ? `fired ${automation.fires}` : 'watching'
   if (look === 'scheduled' && automation.nextAt !== undefined)
-    return `in ${formatDuration(automation.nextAt - now)}`
+    return countdown(automation.nextAt, now)
   return looks[look].word
 }
 

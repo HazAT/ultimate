@@ -4,6 +4,9 @@ import type { Automation, Run } from './refs.ts'
 export const spent = (automation: Automation, now: number) =>
   automation.schedule?.kind === 'at' && Date.parse(automation.schedule.time) <= now
 
+export const countdown = (at: number, now: number) =>
+  at - now < 1000 ? 'now' : `in ${formatDuration(at - now)}`
+
 type FormatTime = (at: Date, seconds: boolean) => string
 
 export function clock(at: number, now: number, formatTime: FormatTime) {
@@ -143,9 +146,7 @@ export function stateLine(automation: Automation, now: number, formatTime: Forma
     parts.push(fired(automation, now) ?? 'not fired yet')
   } else if (look === 'scheduled') {
     parts.push(
-      automation.nextAt !== undefined
-        ? `next in ${formatDuration(automation.nextAt - now)}`
-        : 'scheduling…',
+      automation.nextAt !== undefined ? `next ${countdown(automation.nextAt, now)}` : 'scheduling…',
     )
     if (last)
       parts.push(
