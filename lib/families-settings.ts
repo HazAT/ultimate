@@ -28,8 +28,6 @@ async function readStored(path: string): Promise<Stored> {
   return value
 }
 
-const lastValidLayers = new Map<string, Layer>()
-
 export type FamilyLayers = {
   user: Layer
   base: Layer
@@ -44,21 +42,14 @@ export async function readFamilyLayers(
   settings?: JsonObject,
 ): Promise<FamilyLayers> {
   const errors: string[] = []
-  const parseLayerOrKeepLastValid = (value: unknown, where: string, file: string) => {
+  const parseLayerOrReportEmpty = (value: unknown, where: string) => {
     try {
-      const layer = parseFamilies(value)
-      lastValidLayers.set(file, layer)
-      return layer
+      return parseFamilies(value)
     } catch (error) {
-      const kept = lastValidLayers.get(file)
       errors.push(
-        `${where}: ${error instanceof Error ? error.message : String(error)}. ${
-          kept
-            ? 'Keeping its last valid families until it is fixed.'
-            : 'None of its families apply until it is fixed.'
-        }`,
+        `${where}: ${error instanceof Error ? error.message : String(error)}. None of its families apply until it is fixed.`,
       )
-      return kept ?? parseFamilies(undefined)
+      return parseFamilies(undefined)
     }
   }
   const stored = await readStored(familiesPath(userHome)).catch((error: unknown): Stored => {
@@ -73,23 +64,13 @@ export async function readFamilyLayers(
   )
   const own = isObject(stored.projects) ? stored.projects[projectKey(projectRoot)] : undefined
   const from = own !== undefined ? 'project' : stored.recent !== undefined ? 'recent' : 'builtin'
-  const key = projectKey(projectRoot)
   return {
-    user: parseLayerOrKeepLastValid(
-      user.modelFamilies,
-      'user settings: modelFamilies',
-      userSettingsPath(userHome),
-    ),
-    base: parseLayerOrKeepLastValid(
-      own ?? stored.recent,
-      `${familiesPath(userHome)} (${from})`,
-      `${familiesPath(userHome)}#${from === 'project' ? key : from}`,
-    ),
+    user: parseLayerOrReportEmpty(user.modelFamilies, 'user settings: modelFamilies'),
+    base: parseLayerOrReportEmpty(own ?? stored.recent, `${familiesPath(userHome)} (${from})`),
     from,
-    project: parseLayerOrKeepLastValid(
+    project: parseLayerOrReportEmpty(
       (settings ?? (await projectSettings(projectRoot, userHome))).modelFamilies,
       'project settings: modelFamilies',
-      join(resolve(projectRoot), '.ultimate/settings.json'),
     ),
     errors,
   }
