@@ -21,6 +21,7 @@ import { SubmissionLanded, WorkspacesApi } from '../workspaces/api.ts'
 import { PauseApi } from '../pause/api.ts'
 import {
   cloneState,
+  updateMessages,
   fetchIfDue,
   gitPath,
   layersOf,
@@ -296,7 +297,7 @@ async function refresh(host: ExtensionHost, fetchAndSummarizeUnderLock: boolean,
     return summaryFor(
       summaryFile,
       `${head}..${remoteHead}`,
-      () => git('log', '--format=%s%n%n%b', `${head}..${remoteHead}`),
+      () => updateMessages(git, `${head}..${remoteHead}`),
       allowModelRequest ? (input) => ask(host, input) : undefined,
     )
   }
