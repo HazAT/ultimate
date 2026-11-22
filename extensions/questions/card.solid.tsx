@@ -43,6 +43,7 @@ import {
 import type { CardState, Draft } from './state.ts'
 
 const CHECK_LANDING_BEFORE_ADVANCE_MS = 320
+const KEEPALIVE_BYTES = 60 * 1024
 
 export const CardActions: Point<{ message: Message }, JSX.Element> = {
   point: 'questions.card-actions',
@@ -150,7 +151,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   let root!: HTMLDivElement
   let noteField!: HTMLTextAreaElement
   let advance: Cancel | undefined
-  let waiting: { cancel: Cancel; fire: (keepalive?: boolean) => void } | undefined
+  let waiting: { cancel: Cancel; fire: () => void } | undefined
   let committed = false
   const [phase, setPhase] = createSignal<Phase>('answering')
   const [heldDraft, setHeldDraft] = createSignal<Pick<CardState, 'drafts' | 'note'>>()
@@ -225,9 +226,9 @@ function AnswerCard(props: CardProps & { id: number }) {
     waiting = undefined
     unlock()
   }
-  const flushAnswer = (keepalive = false) => {
+  const flushAnswer = () => {
     waiting?.cancel()
-    waiting?.fire(keepalive)
+    waiting?.fire()
   }
   const send = (immediately = false, source?: string) => {
     const extra = note().trim()
@@ -237,13 +238,14 @@ function AnswerCard(props: CardProps & { id: number }) {
     committed = true
     advance?.()
     setHeldDraft({ drafts: drafts(), note: note() })
-    const fire = (keepalive = false) => {
+    const answer = { answers, ...(extra ? { note: extra } : {}) }
+    const outlivesPage =
+      new TextEncoder().encode(JSON.stringify(answer)).byteLength <= KEEPALIVE_BYTES
+    const fire = () => {
       waiting = undefined
       setPhase('sending')
       setError(undefined)
-      writingAs(source, () =>
-        reply({ answers, ...(extra ? { note: extra } : {}) }, keepalive),
-      ).then(
+      writingAs(source, () => reply(answer, outlivesPage)).then(
         () => setPhase('sent'),
         (failure: unknown) => {
           unlock()
@@ -327,7 +329,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   onSettled(() => {
     const listeners = new AbortController()
     window.addEventListener('keydown', onKey, { signal: listeners.signal })
-    window.addEventListener('pagehide', () => flushAnswer(true), { signal: listeners.signal })
+    window.addEventListener('pagehide', flushAnswer, { signal: listeners.signal })
     return () => {
       listeners.abort()
       advance?.()
