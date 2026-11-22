@@ -1,5 +1,5 @@
 import { offsetEntryId } from '../../lib/ids.ts'
-import type { ConversationId } from '@earendil-works/pi-durable'
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AgentDoc } from '@earendil-works/pi-durable'
 import {
@@ -13,10 +13,16 @@ import { ContextUsageDoc } from './api.ts'
 import { projection } from './projection.ts'
 
 export function contextBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice'> & {
+  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice' | 'resource'> & {
     modelRuntime: Pick<ExtensionHost['modelRuntime'], 'getModel'>
   },
 ) {
+  const windowOf = async (tx: Tx, id: ConversationId) => {
+    const { model } = await tx.doc(AgentDoc, id)
+    return model
+      ? host.modelRuntime.getModel(model.provider, model.modelId)?.contextWindow
+      : undefined
+  }
   const reconcile = async (id: ConversationId) => {
     const harness = host.harness()
     const conversation = await harness.conversation(id, context)
@@ -52,10 +58,7 @@ export function contextBehavior(
       const record = await tx.conversation(id)
       const previous = await tx.doc(ContextUsageDoc, id)
       if (record?.parent && latest === 0 && previous.at === 0) return
-      const { model } = await tx.doc(AgentDoc, id)
-      const window = model
-        ? host.modelRuntime.getModel(model.provider, model.modelId)?.contextWindow
-        : undefined
+      const window = await windowOf(tx, id)
       const at = current
         ? saved.at
         : source.message
@@ -86,7 +89,14 @@ export function contextBehavior(
 
   projection(
     host,
-    { name: 'context', background: true },
+    {
+      name: 'context',
+      background: true,
+      stale: async (tx, id) => {
+        const saved = await tx.doc(ContextUsageDoc, id)
+        return saved.at !== 0 && saved.window !== (await windowOf(tx, id))
+      },
+    },
     (change, add) => {
       if (
         change.type === 'entry' &&

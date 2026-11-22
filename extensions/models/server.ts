@@ -127,7 +127,7 @@ export const actions = {
       }, context)
     return null
   }),
-  login: implementAction(LoginAction, async (args, { host }) => {
+  login: implementAction(LoginAction, async (args, { host, conversationId }) => {
     const provider = text(args, 'provider')
     const type = field(args, 'type')
     if (type !== 'api_key' && type !== 'oauth') throw new Error('Invalid auth type')
@@ -139,6 +139,8 @@ export const actions = {
     const harness = host.harness()
     const flowId = randomUUID()
     await harness.commit(async (tx) => {
+      if (conversationId !== undefined && !(await tx.conversation(conversationId)))
+        throw new Error('Unknown conversation')
       const { flows } = await tx.doc(Logins, ROOT_CONVERSATION_ID)
       const finished = Object.keys(flows).filter((key) => flows[key].status !== 'running')
       for (const key of finished.slice(0, -FINISHED_LOGIN_FLOW_LIMIT)) delete flows[key]

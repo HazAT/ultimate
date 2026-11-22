@@ -5,7 +5,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { projection } from './projection.ts'
 
 export function activityBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'metadata' | 'onOpen' | 'notice'>,
+  host: Pick<ExtensionHost, 'harness' | 'metadata' | 'onOpen' | 'notice' | 'resource'>,
 ) {
   const reconcile = async (id: ConversationId) => {
     const conversation = await host.harness().conversation(id, context)

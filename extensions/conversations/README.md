@@ -250,6 +250,8 @@ built live equals the row a fresh open builds. Open derives rows anew without re
 
 Overview, activity and context are projections (`projection.ts`): a commit watcher names the conversations a change
 touches and reconciles them in batches. A clean close stores the newest entry each one had seen in
-`conversations.projected` on the root. The next open reconciles only what can have changed since: every conversation
-outside a concluded tree, and every one with entries past the mark. Without a mark (a crash, a failed reconcile, or
-a store that predates it) open reconciles every conversation, so a missing row is rebuilt.
+`conversations.projected` on the root. The first open of a process reconciles only what can have changed since: every
+conversation outside a concluded tree, every one with entries past the mark, and what each projection finds stale
+without a new entry (a missing, working, queued or pending overview row; a context window the model catalog no
+longer gives). Without a mark (a crash, a failed reconcile, or a store that predates it) and on a reload in the same
+process, whose watchers paused for a moment, open reconciles every conversation.

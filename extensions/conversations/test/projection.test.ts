@@ -12,7 +12,7 @@ import { UiState } from '../../../shared/ui-state.ts'
 import { openers, until } from '../../../test/helpers.ts'
 import { projection } from '../projection.ts'
 
-it('reprojects everything without a clean close, otherwise only open trees and conversations with new entries', async () => {
+it('projects everything after a crash, a failure or a reload, otherwise only open trees and conversations with new entries', async () => {
   const harness = await Harness.open(
     new MemoryStorage(),
     { models: createModels(), registry: createRegistry() },
@@ -37,44 +37,60 @@ it('reprojects everything without a clean close, otherwise only open trees and c
     )
   let fail = false
   const projected: ConversationId[] = []
-  const { onOpen, open: start, close } = openers()
   const notices: string[] = []
-  projection(
-    { harness: () => harness, onOpen, notice: (message) => void notices.push(message) },
-    { name: 'test' },
-    (change, add) => {
-      if (change.type === 'entry') add(change.value.conversationId)
-    },
-    async (ids) => {
-      if (fail) throw new Error('broken')
-      projected.push(...ids)
-    },
-  )
-  const reopen = async () => {
-    await close()
+  let running: ReturnType<typeof openers> | undefined
+  const exit = async () => {
+    await running?.close()
+    running = undefined
+  }
+  const boot = async ({ processes = new Map<string, unknown>() } = {}) => {
+    await exit()
+    running = openers()
+    projection(
+      {
+        harness: () => harness,
+        onOpen: running.onOpen,
+        notice: (message) => void notices.push(message),
+        resource: <T>(key: string, make: () => T) => {
+          if (!processes.has(key)) processes.set(key, make())
+          return processes.get(key) as T
+        },
+      },
+      { name: 'test' },
+      (change, add) => {
+        if (change.type === 'entry') add(change.value.conversationId)
+      },
+      async (ids) => {
+        if (fail) throw new Error('broken')
+        projected.push(...ids)
+      },
+    )
     projected.length = 0
-    await start()
+    await running.open()
     return projected.toSorted((a, b) => a - b)
   }
 
-  expect(await reopen()).toEqual([root, concluded, open])
-  expect(await reopen()).toEqual([root, open])
+  expect(await boot()).toEqual([root, concluded, open])
+  expect(await boot()).toEqual([root, open])
 
   await say(concluded)
   await until(() => projected.includes(concluded))
-  expect(await reopen()).toEqual([root, open])
+  expect(await boot()).toEqual([root, open])
 
-  await close()
+  await exit()
   await say(concluded)
-  projected.length = 0
-  await start()
-  expect(projected.toSorted((a, b) => a - b)).toEqual([root, concluded, open])
+  expect(await boot()).toEqual([root, concluded, open])
+
+  // A reload in the same process had no watcher for a moment: it projects everything.
+  const sameProcess = new Map<string, unknown>()
+  expect(await boot({ processes: sameProcess })).toEqual([root, open])
+  expect(await boot({ processes: sameProcess })).toEqual([root, concluded, open])
 
   fail = true
   await say(open)
   await until(() => notices.length > 0)
   fail = false
-  expect(await reopen()).toEqual([root, concluded, open])
-  await close()
+  expect(await boot()).toEqual([root, concluded, open])
+  await exit()
   await harness.close(context)
 })

@@ -21,22 +21,65 @@ const ProjectedThroughAtCleanClose = defineDoc<Record<string, EntryId>>({
   initial: () => ({}),
 })
 
+async function everyConversation(tx: Tx) {
+  const ids: ConversationId[] = []
+  const owners = new Map<ConversationId, ConversationId>()
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanConversations({}, 256, cursor)
+    for (const record of page.items) {
+      ids.push(record.id)
+      if (record.owner) owners.set(record.id, record.owner.conversationId)
+    }
+    cursor = page.next
+  } while (cursor !== undefined)
+  const topOf = (id: ConversationId) => {
+    let top = id
+    while (owners.has(top)) top = owners.get(top)!
+    return top
+  }
+  return { ids, topOf }
+}
+
 export function projection(
-  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice'>,
-  { name, batch = 1, background = false }: { name: string; batch?: number; background?: boolean },
+  host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice' | 'resource'>,
+  {
+    name,
+    batch = 1,
+    background = false,
+    stale,
+  }: {
+    name: string
+    batch?: number
+    background?: boolean
+    stale?: (tx: Tx, id: ConversationId) => Promise<boolean>
+  },
   changed: (change: CommitChange, add: (id: ConversationId) => void) => void,
   reconcile: (ids: ConversationId[]) => Promise<void>,
 ) {
+  const markCoversOnlyTheFirstOpenOfAProcess = host.resource(
+    `conversations.projection.${name}`,
+    () => ({ opened: false }),
+  )
   let closed = false
+  let selected = false
   let failed = false
   let through = parseEntryId(0)
   let draining: Promise<void> | undefined
-  const pending = new Set<ConversationId>()
+  const live = new Set<ConversationId>()
+  let backlog: ConversationId[] = []
+  const next = () => {
+    const ids: ConversationId[] = []
+    for (const id of live) {
+      if (ids.length === batch) break
+      ids.push(id)
+    }
+    for (const id of ids) live.delete(id)
+    return ids.length ? ids : backlog.splice(-batch)
+  }
   const drain = async () => {
-    while (pending.size) {
-      if (closed) break
-      const ids = [...pending].slice(0, batch)
-      for (const id of ids) pending.delete(id)
+    for (let ids = next(); ids.length; ids = next()) {
+      if (closed) return
       await reconcile(ids).catch((error: unknown) => {
         failed = true
         if (!closed) host.notice(`Conversation ${name}: ${String(error)}`)
@@ -47,60 +90,60 @@ export function projection(
     if (draining || closed) return
     draining = drain().finally(() => {
       draining = undefined
-      if (pending.size && !closed) schedule()
+      if ((live.size || backlog.length) && !closed) schedule()
     })
   }
-  const add = (id: ConversationId) => void pending.add(id)
   host.onOpen(async (opened) => {
     closed = false
+    selected = false
     failed = false
     through = parseEntryId(0)
+    live.clear()
+    backlog = []
     const harness = host.harness()
     const stop = onCommit(harness, (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'entry' && change.value.id > through) through = change.value.id
-        changed(change, add)
+        changed(change, (id) => void live.add(id))
       }
-      if (pending.size) schedule()
+      if (live.size) schedule()
     })
     opened.defer(async () => {
       closed = true
       stop()
       await draining
-      if (failed || pending.size) return
+      if (!selected || failed || live.size || backlog.length) return
       const clean = through
       await harness.commit(async (tx) => {
         ;(await tx.doc(ProjectedThroughAtCleanClose, ROOT_CONVERSATION_ID))[name] = clean
       }, context)
     })
-    await harness.commit(async (tx) => {
+    const mark = await harness.commit(async (tx) => {
       const marks = await tx.doc(ProjectedThroughAtCleanClose, ROOT_CONVERSATION_ID)
-      const mark = marks[name]
+      const consumed = marks[name]
       delete marks[name]
+      return consumed
+    }, context)
+    const trusted = markCoversOnlyTheFirstOpenOfAProcess.opened ? undefined : mark
+    markCoversOnlyTheFirstOpenOfAProcess.opened = true
+    backlog = await harness.commit(async (tx) => {
       const concluded = await concludedIn(tx)
-      const owners = new Map<ConversationId, ConversationId>()
-      const ids: ConversationId[] = []
-      let cursor: Cursor | undefined
-      do {
-        const page = await tx.scanConversations({}, 256, cursor)
-        for (const record of page.items) {
-          ids.push(record.id)
-          if (record.owner) owners.set(record.id, record.owner.conversationId)
-        }
-        cursor = page.next
-      } while (cursor !== undefined)
-      const inConcludedTree = (id: ConversationId) => {
-        let top = id
-        while (owners.has(top)) top = owners.get(top)!
-        return concluded.has(top)
-      }
+      const { ids, topOf } = await everyConversation(tx)
+      const changedSince: ConversationId[] = []
       for (const id of ids) {
         const newest = await tx.latestEntryId(id)
         if (newest !== undefined && newest > through) through = newest
-        if (mark === undefined || !inConcludedTree(id) || (newest !== undefined && newest > mark))
-          pending.add(id)
+        if (
+          trusted === undefined ||
+          !concluded.has(topOf(id)) ||
+          (newest !== undefined && newest > trusted) ||
+          (await stale?.(tx, id))
+        )
+          changedSince.push(id)
       }
+      return changedSince
     }, context)
+    selected = true
     schedule()
     if (!background) await draining
   })

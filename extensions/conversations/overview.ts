@@ -46,11 +46,24 @@ async function lastPlacedInput(
 }
 
 export function overviewBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'scanSubmissions' | 'onOpen' | 'notice'>,
+  host: Pick<ExtensionHost, 'harness' | 'scanSubmissions' | 'onOpen' | 'notice' | 'resource'>,
 ) {
   projection(
     host,
-    { name: 'overview', batch: 256 },
+    {
+      name: 'overview',
+      batch: 256,
+      stale: async (tx, id) => {
+        const row = (await tx.doc(Overview, ROOT_CONVERSATION_ID)).conversations[id]
+        return (
+          !row ||
+          row.runState === 'working' ||
+          row.runState === 'queued' ||
+          row.summaryStatus === 'pending' ||
+          row.assessmentStatus === 'pending'
+        )
+      },
+    },
     (change, add) => {
       if (change.type === 'conversation') add(change.value.id)
       if (change.type === 'submission') add(change.value.conversationId)

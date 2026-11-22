@@ -63,6 +63,7 @@ async function fixture({ start = true } = {}) {
       },
     },
     onOpen,
+    resource: (_key, create) => create(),
     notice: (message) => {
       notices.push(message)
     },
