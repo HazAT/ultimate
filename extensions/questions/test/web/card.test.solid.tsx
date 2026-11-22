@@ -173,6 +173,49 @@ it('announces the current choice and rating, and clears picks without advancing'
   await uiState.flush()
 })
 
+it('opens the next question on Enter when recommended picks answer every question', async () => {
+  const recommended: Message = {
+    ...message,
+    id: 9,
+    questions: [
+      {
+        text: 'Where should it sit?',
+        kind: 'choice',
+        options: [{ label: 'Sidebar', recommended: true }, { label: 'Status line' }],
+      },
+      {
+        text: 'Which label?',
+        kind: 'choice',
+        options: [{ label: 'Resume' }, { label: 'Résumé', recommended: true }],
+      },
+    ],
+  }
+  const card = renderSolid(() => (
+    <MessageQuestions message={recommended} keys={true} withActions={false} />
+  ))
+  const current = () => card.querySelector('[data-question] fieldset[data-current]')
+  expect(current()?.closest('[data-question]')?.getAttribute('data-question')).toBe('0')
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  flush()
+  expect(current()?.closest('[data-question]')?.getAttribute('data-question')).toBe('1')
+  expect(card.querySelector('[aria-label="Undo: answer to message 9"]')).toBeNull()
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(harness.actions).toEqual([
+    {
+      name: 'answer',
+      args: {
+        messageId: 9,
+        answers: [
+          { question: 'Where should it sit?', answer: 'Sidebar' },
+          { question: 'Which label?', answer: 'Résumé' },
+        ],
+      },
+      source: 'person',
+    },
+  ])
+})
+
 it('keeps typed drafts without recording them, and records a person picking and sending', async () => {
   const typed: Message = { ...message, id: 8 }
   const card = renderSolid(() => (

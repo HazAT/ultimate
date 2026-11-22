@@ -262,7 +262,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   const enter = () => {
     if (phase() === 'undo') return flushAnswer()
     if (locked()) return
-    if (beforeLast() && left()) go(current() + 1)
+    if (beforeLast()) go(current() + 1)
     else send()
   }
   const fieldKey = (event: KeyboardEvent & { currentTarget: HTMLInputElement }) => {
@@ -480,7 +480,7 @@ function AnswerCard(props: CardProps & { id: number }) {
               </Show>
               <span class="flex items-center gap-1">
                 <Key>↵</Key>
-                {beforeLast() && left() ? 'next' : 'send'}
+                {beforeLast() ? 'next' : 'send'}
               </span>
               <Show when={questions()[current()] && word(current())}>
                 <span class="flex items-center gap-1">
