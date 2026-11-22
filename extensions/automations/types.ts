@@ -42,6 +42,8 @@ export type Automation = {
     idleFor?: Milliseconds
     inputAt?: Milliseconds
     firedAt?: number
+    waker?: TaskId
+    wakeAt?: Milliseconds
   }
   recentFires?: number[]
   script?: {

@@ -859,7 +859,7 @@ export default function automations(host: ExtensionHost) {
   })
   return defineExtension({
     name: 'automations',
-    tasks: [api.Scheduler, api.RunTask, api.Deliver],
+    tasks: [api.Scheduler, api.RunTask, api.Deliver, api.trigger.IdleWaker],
     hooks: [
       hook(GenerationTask, {
         onYield: async (answer, hookApi, ctx) => {

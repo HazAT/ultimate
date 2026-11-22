@@ -3,8 +3,7 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
-import { every, type Cancel } from '../../lib/timers.ts'
-import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { defineEvent, UserInputEvent } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
@@ -80,10 +79,11 @@ export function describeTrigger(a: Automation): string {
   return a.script!.state
 }
 
-export const IDLE_TICK = 60_000
-
-function crossingCooldownElapsed(condition: NonNullable<Automation['condition']>, now: number) {
-  return condition.firedAt === undefined || now - condition.firedAt >= condition.cooldownMs
+export const IDLE_WAKER = 'ultimate.automation-idle'
+const onRoot = {
+  ownership: { kind: 'conversation' as const },
+  conversationId: ROOT_CONVERSATION_ID,
+  background: true,
 }
 function summary(event: EventRecord): string {
   const data = event.data as Record<string, unknown>
@@ -119,32 +119,74 @@ export function triggers(
     const rearmBelowPercent = condition.above - 10
     if (usage.percent < rearmBelowPercent) condition.armed = true
     const now = Date.now()
-    const paused = condition.idleFor ? now - (condition.inputAt ?? a.createdAt) : undefined
-    if (
-      usage.percent >= condition.above &&
-      condition.armed &&
-      (paused === undefined || paused >= condition.idleFor!) &&
-      crossingCooldownElapsed(condition, now)
-    ) {
-      const count = (n: number) =>
-        Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
-      await fire(
-        tx,
-        a,
-        now,
-        `${condition.of} context ${Math.round(usage.percent)}%${usage.tokens !== undefined && usage.window !== undefined ? ` (${count(usage.tokens)}/${count(usage.window)})` : ''}${paused === undefined ? '' : ` after ${formatDuration(paused)} without the user's input`}`,
-      )
-      condition.armed = false
-      condition.firedAt = now
+    const idleSince = condition.inputAt ?? a.createdAt
+    const paused = condition.idleFor ? now - idleSince : undefined
+    const firesAt = Math.max(
+      condition.firedAt === undefined ? 0 : condition.firedAt + condition.cooldownMs,
+      condition.idleFor ? idleSince + condition.idleFor : 0,
+    )
+    if (usage.percent < condition.above || !condition.armed) return
+    if (firesAt > now) {
+      if (condition.idleFor && !(condition.wakeAt! <= firesAt)) {
+        condition.waker = await tx.createTask(IdleWaker, { id: a.id, until: firesAt }, onRoot)
+        condition.wakeAt = firesAt
+      }
+      return
     }
+    const count = (n: number) =>
+      Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+    await fire(
+      tx,
+      a,
+      now,
+      `${condition.of} context ${Math.round(usage.percent)}%${usage.tokens !== undefined && usage.window !== undefined ? ` (${count(usage.tokens)}/${count(usage.window)})` : ''}${paused === undefined ? '' : ` after ${formatDuration(paused)} without the user's input`}`,
+    )
+    condition.armed = false
+    condition.firedAt = now
   }
+  const IdleWaker = defineTask<
+    { id: string; until: number },
+    { phase: 'sleep' } | { phase: 'evaluate' },
+    null
+  >({
+    name: IDLE_WAKER,
+    version: 1,
+    initial: () => ({ phase: 'sleep' }),
+    phases: {
+      sleep: (task, runtime, ctx) =>
+        runtime.sleepUntil(task.input.until, { phase: 'evaluate' }, ctx),
+      evaluate: async (task, runtime, ctx) => {
+        const of = (await host.harness().snapshot(Automations, ctx))?.automations[task.input.id]
+          ?.condition?.of
+        const target = of === undefined ? undefined : await resolve(of)
+        await runtime.commit(async (tx) => {
+          const a = (await tx.doc(Automations)).automations[task.input.id]
+          if (a?.condition?.waker === task.id) {
+            delete a.condition.waker
+            delete a.condition.wakeAt
+            if (a.condition.of === of) await evaluate(tx, a, target)
+          }
+          return { status: 'terminal', outcome: { status: 'completed', result: null } }
+        }, ctx)
+      },
+    },
+    abort: (task, runtime, ctx) =>
+      runtime.commit(async (tx) => {
+        const condition = (await tx.doc(Automations)).automations[task.input.id]?.condition
+        if (condition?.waker === task.id) {
+          delete condition.waker
+          delete condition.wakeAt
+        }
+        return { status: 'terminal', outcome: { status: 'aborted' } }
+      }, ctx),
+  })
   let stop: (() => void) | undefined
   let measurementsInCommitOrder = Promise.resolve()
   let closed = false
-  async function check(changed?: Map<ConversationId, ContextUsage>, idle = false) {
+  async function check(changed?: Map<ConversationId, ContextUsage>) {
     const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
     for (const a of Object.values(state?.automations ?? {})) {
-      if (closed || !a.enabled || !a.condition || (idle && !a.condition.idleFor)) continue
+      if (closed || !a.enabled || !a.condition) continue
       const target = await resolve(a.condition.of)
       if (!target || (changed && !changed.has(target))) continue
       await host.harness().commit(async (tx) => {
@@ -173,14 +215,6 @@ export function triggers(
         return true
     }
     return false
-  }
-  const idleTick = () => {
-    measurementsInCommitOrder = measurementsInCommitOrder
-      .then(() => check(undefined, true))
-      .catch((error: unknown) => {
-        host.notice(`Automation idle trigger: ${String(error)}`)
-      })
-    return measurementsInCommitOrder
   }
   function install() {
     host.react(
@@ -250,19 +284,12 @@ export function triggers(
           })
     })
     await check()
-    const closedDuringInitialCheck = closed
-    if (closedDuringInitialCheck) return
-    stopPolling?.()
-    stopPolling = every(IDLE_TICK, idleTick)
   }
-  let stopPolling: Cancel | undefined
   async function close() {
     closed = true
     stop?.()
     stop = undefined
-    stopPolling?.()
-    stopPolling = undefined
     await measurementsInCommitOrder
   }
-  return { resolve, evaluate, install, open, close, idleTick }
+  return { resolve, evaluate, install, open, close, IdleWaker }
 }

@@ -1,4 +1,5 @@
 /** Keep warm in the browser: whether @ultimate's prompt cache is kept warm, and the last ping. Browser-safe. */
+import type { TaskId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /**
@@ -16,9 +17,17 @@ export type Ping = {
 
 /**
  * On conversation 1. `off` when the user turned it off (it is on by default); the user's latest input to @ultimate
- * (ms, from `user.input` events); the last ping and how many ran.
+ * (ms, from `user.input` events); @ultimate's latest answer that read or wrote its cache (ms, provider and model); the
+ * last ping and how many ran; the task that sleeps until the next ping, while one is planned.
  */
-export type WarmDocState = { off?: true; inputAt?: number; last?: Ping; pings?: number }
+export type WarmDocState = {
+  off?: true
+  inputAt?: number
+  answer?: { at: number; provider: string; model: string }
+  last?: Ping
+  pings?: number
+  waker?: TaskId
+}
 
 export type WarmState = {
   on: boolean
