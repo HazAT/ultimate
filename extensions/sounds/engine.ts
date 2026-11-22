@@ -1,5 +1,6 @@
 import * as Tone from 'tone'
 import { deadline, pace } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 import type { Sound } from './cues.ts'
 import type { Happening, Role, Tool } from './agents.ts'
 import type { Variant } from './variants.ts'
@@ -15,7 +16,37 @@ export function setVolume(gain01: number) {
   limitedMaster.volume.rampTo(Tone.gainToDb(gain01) - 6, 0.05)
 }
 
-export const unlock = () => Tone.start()
+const reverbTailMs = 5000
+let bandPlaying = false
+let cancelRest: Cancel | undefined
+let quietAt = 0
+
+function tick() {
+  cancelRest?.()
+  cancelRest = undefined
+  if (Tone.getContext().clockSource !== 'worker') Tone.getContext().clockSource = 'worker'
+}
+
+function restAfter(ms: number) {
+  quietAt = Math.max(quietAt, Date.now() + ms)
+  cancelRest?.()
+  cancelRest = bandPlaying ? undefined : deadline(quietAt - Date.now(), rest)
+}
+
+function rest() {
+  cancelRest = undefined
+  quietAt = 0
+  Tone.getContext().clockSource = 'offline'
+  ;(Tone.getContext().rawContext as AudioContext)
+    .suspend()
+    .catch((error: unknown) => console.warn('Audio suspend failed', error))
+}
+rest()
+
+export const unlock = async () => {
+  tick()
+  await Tone.start()
+}
 export const running = () => Tone.getContext().state === 'running'
 
 const bells = new Tone.PolySynth(Tone.FMSynth, {
@@ -79,16 +110,18 @@ function strike(tune: Sound, time: number) {
 }
 
 export async function play(sound: Sound) {
-  await Tone.start()
+  await unlock()
   strike(sound, Tone.now() + 0.03)
+  restAfter(reverbTailMs)
 }
 
 const voiceLeadInSeconds = 0.45
 
 export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffer | undefined) {
-  await Tone.start()
+  await unlock()
   const now = Tone.now() + 0.03
   strike(sound, now)
+  restAfter(reverbTailMs)
   if (!mono24kHzPcm16) {
     await pace(voiceLeadInSeconds * 1000)
     const utterance = new SpeechSynthesisUtterance(text)
@@ -106,14 +139,17 @@ export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffe
   const voice = new Tone.Player(buffer).connect(limitedMaster)
   voice.onstop = () => voice.dispose()
   voice.start(now + voiceLeadInSeconds)
+  restAfter((voiceLeadInSeconds + buffer.duration) * 1000 + reverbTailMs)
   await pace((voiceLeadInSeconds + buffer.duration) * 1000)
 }
 
 export async function playNotes(notes: readonly Note[], gain01 = 0.18) {
-  await Tone.start()
+  await unlock()
   const now = Tone.now() + 0.03
   for (const [start, frequency, length] of notes)
     bells.triggerAttackRelease(frequency, length, now + start, Math.min(1, gain01 * 3))
+  const end = Math.max(0, ...notes.map(([start, , length]) => start + length))
+  restAfter(end * 1000 + reverbTailMs)
 }
 
 const dMajorIviIVV = [
@@ -171,6 +207,8 @@ export function band(variant: Variant): Band {
   const queue: Happening[] = []
   let step = 0
   const transport = Tone.getTransport()
+  bandPlaying = true
+  tick()
 
   transport.bpm.value = part.fixedBpm
   const loop = new Tone.Loop((time) => {
@@ -197,6 +235,8 @@ export function band(variant: Variant): Band {
       deadline(releaseTailMs, () => {
         for (const node of part.nodes) node.dispose()
       })
+      bandPlaying = false
+      restAfter(releaseTailMs)
     },
   }
 }
