@@ -1,9 +1,7 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { parseSync } from 'vite-plus'
 import { expect, it } from 'vitest'
 import ultimate from '../lint/ultimate.ts'
-import { temp } from './helpers.ts'
 
 type Rule = keyof typeof ultimate.rules
 type Located = { type: string; start: number; end: number; parent?: Located }
@@ -365,7 +363,7 @@ const browserMessage = (file: string) =>
 it('lets browser code reach another extension through its refs.ts or ui.solid.tsx, and its api.ts only for types', () => {
   const source = `import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { OverviewDoc } from '../conversations/refs.ts'
-import { UnderUltimate } from '../sidebar/ui.tsx'
+import { UnderUltimate } from '../sidebar/ui.solid.tsx'
 import type { WorkspaceService } from '../workspaces/api.ts'
 import type { Plan } from '../plan/web.solid.tsx'
 import { LogDoc } from './refs.ts'
@@ -403,7 +401,7 @@ it('sends a Solid bare button to the kit Button, which the agent bridge can see 
   </button>
 )`
   expect(lint('ui-kit-roles', 'extensions/instance/link.solid.tsx', source)).toHaveLength(1)
-  expect(lint('ui-kit-roles', 'extensions/instance/web.tsx', source)).toEqual([])
+  expect(lint('ui-kit-roles', 'extensions/instance/test/link.test.solid.tsx', source)).toEqual([])
   expect(lint('ui-kit-roles', 'web/src/components/ui/button.solid.tsx', source)).toEqual([])
 })
 
@@ -444,76 +442,35 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'`
   ).toHaveLength(1)
 })
 
-const solidOnly = (source: string) =>
-  `Replace ${source} with its Solid counterpart: @/sdk/solid, our UI kit (@/components/ui/*.solid.tsx), @lucide/solid for icons; see docs/extensions/react-compat.md.`
-
-it('keeps React out of the core and the built-in extensions, and ui-sdk components behind the UI kit', () => {
+it('keeps ui-sdk components behind the UI kit', () => {
   const source = `/** @jsxImportSource @solidjs/web */
-import { useState } from 'react'
-import { Bell } from 'lucide-react'
-import { useDoc } from '@/sdk'
-import { Tooltip } from '@/components/ui/tooltip'
-import { island } from '../../web/src/compat/island.tsx'
-import { Row } from './row.tsx'
 import { Switch } from '@ui-sdk/solid/switch'
 import { createSignal } from 'solid-js'
-import { useDoc as useSolidDoc } from '@/sdk/solid'
-import { Button } from '@/components/ui/button.solid.tsx'
-import { format } from './format.ts'
-import type { Props } from './card.tsx'
-import type { SystemInfo } from '@/sdk'
-type Child = import('react').ReactNode`
-  expect(lint('ui-framework-boundaries', 'extensions/echo/panel.solid.tsx', source)).toEqual([
-    solidOnly('react'),
-    solidOnly('lucide-react'),
-    solidOnly('@/sdk'),
-    solidOnly('@/components/ui/tooltip'),
-    solidOnly('../../web/src/compat/island.tsx'),
-    solidOnly('./row.tsx'),
-    'Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.',
-    solidOnly('./card.tsx'),
-    solidOnly('@/sdk'),
-    solidOnly('react'),
-  ])
-  expect(lint('ui-framework-boundaries', 'web/src/app/panel.solid.tsx', source)).toHaveLength(10)
-  expect(lint('ui-framework-boundaries', 'web/src/compat/island.tsx', source)).toEqual([])
-  expect(
-    lint('ui-framework-boundaries', '../my-app/.ultimate/extensions/echo/web.tsx', source),
-  ).toEqual([
-    'Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.',
-  ])
-})
-
-it('names every built-in browser file by its framework: React lives only in the compat layer', () => {
-  const rename = () =>
-    'React stays only in web/src/compat/ for React facets outside this repository; see docs/extensions/react-compat.md.'
-  expect(lint('ui-framework-boundaries', 'extensions/echo/web.tsx', 'export default {}')).toEqual([
-    rename(),
-  ])
-  expect(lint('ui-framework-boundaries', 'web/src/app/card.tsx', 'export {}')).toEqual([rename()])
+import { useDoc } from '@/sdk/solid'
+import { Button } from '@/components/ui/button.solid.tsx'`
+  const message =
+    'Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.'
   for (const file of [
-    'extensions/echo/web.solid.tsx',
-    'extensions/sidebar/ui.tsx',
-    'web/src/compat/card.tsx',
-    '../my-app/.ultimate/extensions/echo/web.tsx',
+    'extensions/echo/panel.solid.tsx',
+    'web/src/app/panel.solid.tsx',
+    '../my-app/.ultimate/extensions/echo/web.solid.tsx',
   ])
-    expect(lint('ui-framework-boundaries', file, 'export {}')).toEqual([])
+    expect(lint('ui-framework-boundaries', file, source)).toEqual([message])
+  expect(lint('ui-framework-boundaries', 'web/src/components/ui/switch.solid.tsx', source)).toEqual(
+    [],
+  )
 })
 
-it('lets only the core hosts in web/src import the contribution bridge, and only framework.ts load compat lazily', () => {
+it('lets only the core hosts in web/src import the contribution bridge', () => {
   const source = `import { Contribution } from '@/sdk/contribution.solid.tsx'
-const later = import(\`@/sdk/contribution.solid.tsx\`)`
+const later = import(\`@/sdk/contribution.solid\`)`
   const onePath =
-    "Only the core hosts in web/src import the bridge (web/src/sdk/contribution.solid.tsx); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/solid."
-  expect(lint('ui-framework-boundaries', 'web/src/app/transcript.solid.tsx', source)).toEqual([])
-  expect(lint('ui-framework-boundaries', 'extensions/echo/panel.solid.tsx', source)).toEqual([
+    "Hosts render every contribution through one path, with its extension scope and error isolation. Only the core hosts in web/src import the bridge (web/src/sdk/contribution.solid.tsx); an extension renders another's contribution with Contribution, Provided or Slot from @/sdk/solid."
+  for (const file of ['web/src/app/transcript.solid.tsx', 'web/src/sdk/parts.solid.tsx'])
+    expect(diagnose('ui-framework-boundaries', file, source)).toEqual([])
+  expect(diagnose('ui-framework-boundaries', 'extensions/echo/panel.solid.tsx', source)).toEqual([
     onePath,
     onePath,
-  ])
-  const lazy = `const bridge = () => import('../compat/bridge.tsx')`
-  expect(lint('ui-framework-boundaries', 'web/src/sdk/framework.ts', lazy)).toEqual([])
-  expect(lint('ui-framework-boundaries', 'web/src/sdk/registry.ts', lazy)).toEqual([
-    solidOnly('../compat/bridge.tsx'),
   ])
 })
 
@@ -526,10 +483,10 @@ it('asks every Solid file for a leading block Solid JSX pragma, and only Solid f
   expect(pragma('// @jsxImportSource @solidjs/web\nexport const a = 1')).toEqual(missing)
   expect(pragma('/** @jsxImportSource @solidjs/web */\nexport const a = 1')).toEqual([])
   expect(pragma('/* @jsxImportSource @solidjs/web */\nexport const a = 1')).toEqual([])
-  expect(pragma('export const a = 1', 'extensions/echo/web.tsx')).toEqual([])
+  expect(pragma('export const a = 1', 'extensions/echo/data.ts')).toEqual([])
   const header = '/** @jsxImportSource @solidjs/web */\nexport const a = 1'
   expect(lint('no-comments', 'extensions/echo/a.solid.tsx', header)).toEqual([])
-  expect(lint('no-comments', 'extensions/echo/web.tsx', header)).toHaveLength(1)
+  expect(lint('no-comments', 'extensions/echo/data.ts', header)).toHaveLength(1)
   expect(
     lint(
       'no-comments',
@@ -537,31 +494,6 @@ it('asks every Solid file for a leading block Solid JSX pragma, and only Solid f
       '// @jsxImportSource @solidjs/web\nexport const a = 1',
     ),
   ).toHaveLength(1)
-})
-
-it('classifies local imports by the file they resolve to, not how they are spelled', () => {
-  const source = `/** @jsxImportSource @solidjs/web */
-import { Card } from '@/compat/card'
-import { resize } from '@/components/image-resize'
-import { Button } from '@/components/ui/button.solid'`
-  expect(lint('ui-framework-boundaries', 'web/src/app/panel.solid.tsx', source)).toEqual([
-    solidOnly('@/compat/card'),
-  ])
-})
-
-it('resolves a directory import to its index file, and .ts before .tsx as Vite does', async () => {
-  const folder = await temp('lint-resolve-')
-  await mkdir(join(folder, 'card'))
-  await writeFile(join(folder, 'card/index.tsx'), '')
-  await writeFile(join(folder, 'format.ts'), '')
-  await writeFile(join(folder, 'format.tsx'), '')
-  const file = join(process.cwd(), 'extensions/echo/panel.solid.tsx')
-  const source = `/** @jsxImportSource @solidjs/web */
-import { Card } from '${join(folder, 'card')}'
-import { format } from '${join(folder, 'format')}'`
-  expect(
-    lint('ui-framework-boundaries', file, source.replaceAll("'/", "'./" + '../'.repeat(20))),
-  ).toEqual([solidOnly('./' + '../'.repeat(20) + join(folder, 'card').slice(1))])
 })
 
 it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {
@@ -595,14 +527,14 @@ import { usePhase } from '../phase/ui.tsx'
 import type { TaskLink } from '../plan/refs.ts'
 export { TaskChip } from '../plan/ui.tsx'
 import { git } from '../../lib/git.ts'
-const later = () => import('../questions/web.tsx')`
+const later = () => import('../questions/web.solid.tsx')`
   expect(lint('core-tier-deps', 'extensions/conversations/rows.tsx', source)).toEqual([
     coreMessage('phase'),
     coreMessage('plan'),
     coreMessage('plan'),
     coreMessage('questions'),
   ])
-  expect(lint('core-tier-deps', 'extensions/phase/web.tsx', source)).toEqual([])
+  expect(lint('core-tier-deps', 'extensions/phase/web.solid.tsx', source)).toEqual([])
   expect(lint('core-tier-deps', 'test/example.test.ts', source)).toEqual([])
 })
 

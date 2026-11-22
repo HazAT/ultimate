@@ -55,18 +55,18 @@ export function StatusLine() {
         fallback={
           <>
             <div class="flex min-w-0 flex-1 items-center gap-3 overflow-hidden whitespace-nowrap">
-              <Slot fallback={inlineFailure} name="statusline.left" variant="inline" />
+              <Slot fallback={inlineFailure} name="statusline.left" />
             </div>
             <div class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-              <Slot fallback={inlineFailure} name="statusline.right" variant="inline" />
+              <Slot fallback={inlineFailure} name="statusline.right" />
             </div>
           </>
         }
       >
         <div class="flex min-w-0 flex-1 items-center gap-3 overflow-hidden whitespace-nowrap">
           <ComposerStatusTarget />
-          <Slot fallback={inlineFailure} name="statusline.left" phone variant="inline" />
-          <Slot fallback={inlineFailure} name="statusline.right" phone variant="inline" />
+          <Slot fallback={inlineFailure} name="statusline.left" phone />
+          <Slot fallback={inlineFailure} name="statusline.right" phone />
         </div>
         <StatusMore />
       </Show>
@@ -99,8 +99,8 @@ function StatusMore() {
         class="flex w-auto max-w-[calc(100vw-2rem)] flex-col items-start gap-2.5 px-3 py-2.5 font-mono text-[11.5px] whitespace-nowrap text-muted-foreground"
         side="top"
       >
-        <Slot fallback={inlineFailure} name="statusline.left" phone={false} variant="inline" />
-        <Slot fallback={inlineFailure} name="statusline.right" phone={false} variant="inline" />
+        <Slot fallback={inlineFailure} name="statusline.left" phone={false} />
+        <Slot fallback={inlineFailure} name="statusline.right" phone={false} />
       </PopoverContent>
     </Popover>
   )
@@ -226,9 +226,7 @@ function TabBadges(props: { id: string }) {
       each={panelBadges(extensions(), props.id)}
       keyed={(badge) => `${badge.extension}:${badge.version}`}
     >
-      {(badge) => (
-        <Contribution fallback={inlineFailure} inline item={badge()} props={{}} variant="inline" />
-      )}
+      {(badge) => <Contribution fallback={inlineFailure} item={badge()} props={{}} />}
     </For>
   )
 }

@@ -3,7 +3,6 @@ import { deadline } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { events } from './events.ts'
-import { loadReact, markReact } from './framework.ts'
 import { errorMessage } from './format.ts'
 import { needsAttention } from './types.ts'
 import type {
@@ -33,8 +32,6 @@ type BuiltinUserProjectByName = Readonly<Record<string, ExtensionLoader>>
 
 export interface ExtensionRecord {
   name: string
-  framework: 'solid' | 'react'
-
   extension?: WebExtension
 
   error?: string
@@ -72,34 +69,6 @@ export function extensionName(path: string): string | undefined {
   return facetPath.exec(path)?.[1]
 }
 
-const frameworkOf = (path: string): ExtensionRecord['framework'] =>
-  facetPath.exec(path)?.[2] ? 'solid' : 'react'
-
-const reactParts = (extension: WebExtension): unknown[] => [
-  ...Object.values(extension.slots ?? {}).flatMap((value) =>
-    normalize(value).map((item) => item.component),
-  ),
-  ...(extension.panels ?? []).flatMap((panel) => [panel.component, panel.icon]),
-  ...Object.values(extension.panelBadges ?? {}),
-  ...(extension.surfaces ?? []).flatMap((surface) => [
-    surface.component,
-    surface.icon,
-    surface.badge,
-  ]),
-  ...Object.values(extension.tools ?? {}),
-  ...Object.values(extension.toolLines ?? {}),
-  ...Object.values(extension.entries ?? {}),
-  extension.inbox,
-  extension.composer,
-  ...(extension.messageActions ?? []),
-  ...(extension.messageDetails ?? []),
-  ...(extension.answerLabels ?? []),
-  ...(extension.userBubble ?? []),
-  extension.compact?.summary,
-  ...(extension.documents ?? []).flatMap((document) => [document.component, document.icon]),
-  ...(extension.provides ?? []).map((provision) => provision.use),
-]
-
 type Check = (value: unknown) => boolean
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -108,7 +77,7 @@ const isNumber: Check = (value) => typeof value === 'number'
 const isBoolean: Check = (value) => typeof value === 'boolean'
 const isFunction: Check = (value) => typeof value === 'function'
 
-const isComponent: Check = (value) => isFunction(value) || (isObject(value) && '$$typeof' in value)
+const isComponent: Check = isFunction
 const optional =
   (check: Check): Check =>
   (value) =>
@@ -266,8 +235,6 @@ export function createRegistry() {
     try {
       const extension = validate(module)
       update(name, (record) => {
-        if (record.framework === 'react')
-          for (const part of reactParts(extension)) if (part) markReact(part)
         return record.extension === extension && !record.error && !record.loading
           ? record
           : { ...record, extension, loading: false, error: undefined, version: record.version + 1 }
@@ -306,27 +273,19 @@ export function createRegistry() {
       tokens.clear()
       const entries = Object.entries(lastWinsDiscoveryOrder).flatMap(([path, loader]) => {
         const name = extensionName(path)
-        return name ? [{ name, loader, framework: frameworkOf(path) }] : []
+        return name ? [{ name, loader }] : []
       })
       pending = new Set(entries.map(({ name }) => name))
       const previous = new Map(records.map((record) => [record.name, record]))
-      records = entries.map(({ name, framework }) => {
-        const kept = previous.get(name)
-        return kept?.framework === framework
-          ? kept
-          : { name, framework, loading: true, version: (kept?.version ?? -1) + 1 }
-      })
+      records = entries.map(({ name }) => previous.get(name) ?? { name, loading: true, version: 0 })
       refreshReady()
       emit()
       await Promise.allSettled(
-        entries.map(async ({ name, loader, framework }) => {
+        entries.map(async ({ name, loader }) => {
           const token = {}
           tokens.set(name, token)
           try {
-            const [module] = await Promise.all([
-              loader(),
-              framework === 'react' ? loadReact() : undefined,
-            ])
+            const module = await loader()
             if (tokens.get(name) === token) {
               pending.delete(name)
               install(name, module)

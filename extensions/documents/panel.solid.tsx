@@ -76,7 +76,6 @@ function Document(props: {
                       <Json kind={props.kind} value={value()!} />
                     </>
                   )}
-                  fallbackOnly
                   item={renderer()}
                   props={{ conversationId: conversation(), value: value()! }}
                 />

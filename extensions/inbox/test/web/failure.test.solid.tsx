@@ -1,6 +1,5 @@
 /** @jsxImportSource @solidjs/web */
 import { settle } from '@ui-sdk/core/testing'
-import { act } from 'react'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
@@ -16,7 +15,6 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     api: {},
   }
 })
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { registry } from '../../../../web/src/sdk/client.ts'
 import { ExtensionName } from '../../../../web/src/sdk/solid.ts'
@@ -38,22 +36,19 @@ it('shows a failing item provider as an inline error card on the badge and the T
       },
     }),
   })
-  let container!: HTMLElement
-  act(() => {
-    container = renderSolid(() => (
-      <>
-        <div data-part="badge">
-          <WaitingBadge />
-        </div>
-        <div data-part="todos">
-          <ExtensionName value="todos">
-            <TodoList />
-          </ExtensionName>
-        </div>
-      </>
-    ))
-    flush()
-  })
+  const container = renderSolid(() => (
+    <>
+      <div data-part="badge">
+        <WaitingBadge />
+      </div>
+      <div data-part="todos">
+        <ExtensionName value="todos">
+          <TodoList />
+        </ExtensionName>
+      </div>
+    </>
+  ))
+  flush()
   await settle()
   for (const part of ['badge', 'todos'])
     expect(

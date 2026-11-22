@@ -18,7 +18,7 @@ commands: [
 to have a failure reported as a notice. `when(context)` hides the command when it returns false, such as
 `when: (context) => context.surface === 'commits'` for a command of one surface; a `when` that throws hides it too and
 reports a notice naming your extension. Contextual commands can receive an `entryId` alongside `conversationId`
-through `useCommands()`; a message-action component can pass its entry's id to a command. Commands run outside React: read the current state with
+through `useCommands()`; a message-action component can pass its entry's id to a command. Commands run outside components: read the current state with
 `getConversation(context.conversationId)` and `getState()`, not hooks, and act on `context.conversationId`.
 
 Plain keys and Shift+letter never fire while the user types; chords with `mod`, `alt`, or `ctrl` do. A plain key that

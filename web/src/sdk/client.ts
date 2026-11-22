@@ -11,13 +11,6 @@ import { createTestHook } from './test-hook.ts'
 import { createUiAgent } from './agent.ts'
 import { agentsPage } from './writer.ts'
 import { firstRender } from './resume.ts'
-import type { TestHook } from './test-hook.ts'
-
-declare global {
-  interface Window {
-    ultimate?: TestHook
-  }
-}
 import { createUiState, tabWrites } from './ui-state.ts'
 
 const initialUrl = new URL(location.href)

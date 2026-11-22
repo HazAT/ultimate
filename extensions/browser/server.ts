@@ -14,6 +14,13 @@ import { watchSteer } from '../../lib/steer.ts'
 import { within as withinDeadline } from '../../lib/timers.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { errnoCode, inProcess, ignoring, meansNone } from '../../lib/errors.ts'
+import type { TestHook } from '../../web/src/sdk/test-hook.ts'
+
+declare global {
+  interface Window {
+    ultimate?: TestHook
+  }
+}
 
 export async function playwrightChromiums(
   home: string,

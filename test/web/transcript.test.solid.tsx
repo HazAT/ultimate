@@ -1,6 +1,5 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { createElement as h, act } from 'react'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import type { StreamedView } from '../../shared/protocol.ts'
@@ -23,14 +22,11 @@ vi.stubGlobal('matchMedia', () => ({
   addEventListener() {},
   removeEventListener() {},
 }))
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 import { Transcript } from '../../web/src/app/transcript.solid.tsx'
 import { registry, store } from '../../web/src/sdk/client.ts'
-import { useTranscript } from '../../web/src/compat/hooks.ts'
-import { ConversationScope } from '../../web/src/sdk/solid.ts'
-import type { EntryRecord } from '@earendil-works/pi-durable'
-import type { ReactNode } from 'react'
+import { ConversationScope, useTranscript } from '../../web/src/sdk/solid.ts'
+import type { SolidEntryProps } from '../../web/src/sdk/solid.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 const view = (id: number, text: string): StreamedView =>
@@ -48,26 +44,21 @@ const view = (id: number, text: string): StreamedView =>
     docs: {},
   }) as unknown as StreamedView
 
-const ReactNote = ({ entry, core }: { entry: EntryRecord; core: ReactNode }) =>
-  h(
-    'aside',
-    { 'data-react-note': '' },
-    `react sees ${useTranscript().length} rows of ${entry.kind}`,
-    core,
+function ProbeNote(props: SolidEntryProps) {
+  const transcript = useTranscript()
+  return (
+    <aside data-probe-note>
+      sees {transcript().length} rows of {props.entry.kind}
+      {props.core}
+    </aside>
   )
-
-function SolidNote(props: { entry: { data?: { text?: string } }; core: unknown }) {
-  return <em data-solid-note>{props.entry.data?.text}</em>
 }
 
-it('renders its scoped conversation, mounting a web.tsx renderer through the compat layer and web.solid.tsx entries and slots as Solid', async () => {
+it('renders its scoped conversation with contributed entry renderers and a top slot', async () => {
   await registry.setLoaders({
-    'extensions/react-note/web.tsx': async () => ({
-      default: { entries: { 'probe.note': ReactNote } },
-    }),
-    'extensions/solid-note/web.solid.tsx': async () => ({
+    'extensions/notes/web.solid.tsx': async () => ({
       default: {
-        entries: { 'pi.user': SolidNote },
+        entries: { 'probe.note': ProbeNote, 'pi.user': () => <em data-user-note /> },
         slots: { 'transcript.top': [() => <b data-top-overlay>top</b>] },
       },
     }),
@@ -77,20 +68,17 @@ it('renders its scoped conversation, mounting a web.tsx renderer through the com
     view: view(1, 'shown'),
     viewsOf: { 7: view(7, 'scoped') },
   })
-  let container!: HTMLElement
-  await act(async () => {
-    container = renderSolid(() => (
-      <ConversationScope value={7 as ConversationId}>
-        <Transcript />
-      </ConversationScope>
-    ))
-    flush()
-  })
+  const container = renderSolid(() => (
+    <ConversationScope value={7 as ConversationId}>
+      <Transcript />
+    </ConversationScope>
+  ))
+  flush()
   const transcript = container.querySelector('[data-ui="transcript"]')!
-  const react = transcript.querySelector('[data-react-note]')
-  expect(react?.textContent).toContain('react sees 2 rows of probe.note')
-  expect(react?.querySelector('[data-slot="collapsible"]')?.textContent).toContain('#71')
-  expect(transcript.querySelector('[data-solid-note]')).not.toBeNull()
+  const note = transcript.querySelector('[data-probe-note]')
+  expect(note?.textContent).toContain('sees 2 rows of probe.note')
+  expect(note?.querySelector('[data-slot="collapsible"]')?.textContent).toContain('#71')
+  expect(transcript.querySelector('[data-user-note]')).not.toBeNull()
   expect(transcript.textContent).not.toContain('shown')
   expect(transcript.querySelectorAll('[data-entry-id]')).toHaveLength(2)
   const top = transcript.querySelector('[data-top-overlay]')!

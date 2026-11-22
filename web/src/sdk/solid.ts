@@ -142,6 +142,56 @@ export type {
   WebExtension,
 } from './hooks.ts'
 export { useConversationWidth, useExternal, usePageVisible } from './page.ts'
+export type {
+  CompactCallTest,
+  CompactContribution,
+  CompactDocs,
+  ComposerRenderer,
+  DocumentContribution,
+  EntryRenderer,
+  InboxRenderer,
+  PanelContribution,
+  Provision,
+  SlotName,
+  SurfaceContribution,
+  ToolLineRenderer,
+  ToolRenderer,
+} from './types.ts'
+export { ActionError } from './api.ts'
+export type { ActionOptions, Api } from './api.ts'
+export type { UiAgent } from './agent.ts'
+export type { Connection, State } from './store.ts'
+export type { Viewport } from './viewport.ts'
+export type { PanelItem } from './registry.ts'
+export type { ActionRef, DocRef } from '../../../shared/extension-api.ts'
+export { defineEvent } from '../../../shared/events.ts'
+export type { EventContext, EventData, EventRecord, EventToken } from '../../../shared/events.ts'
+export type {
+  ExtensionActionRequest,
+  ExtensionActionResponse,
+  ExtensionInfo,
+} from '../../../shared/protocol.ts'
+export type {
+  AgentState,
+  ConversationView,
+  InboxItem,
+  JsonObject,
+  TaskGraph,
+  TaskGraphNode,
+  ToolDiagnostic,
+  ToolSlot,
+  UsageState,
+} from '@earendil-works/pi-durable'
+export type {
+  AssistantMessage,
+  TextContent,
+  ThinkingContent,
+  ToolCall,
+  ToolResultMessage,
+  UserMessage,
+} from '@earendil-works/pi-ai'
+export { resumed } from './resume.ts'
+export { scopeOf } from './scope.ts'
 
 export { Card } from '../app/card.solid.tsx'
 /** A card that folds to one quiet line in compact mode; `label` names its button. The reader's choice survives reloads. */
@@ -164,11 +214,8 @@ export { ErrorCard } from '../app/error-card.solid.tsx'
 /** A contribution's `icon` (a panel's, a surface's) with `class`. */
 export { ContributedIcon } from './contribution.solid.tsx'
 /**
- * As a component, renders a registered contribution in its extension's scope, a React one through the compat layer. As a
- * type, a slot component, optionally with an `order` (default 0; ties keep folder-name order); in the status line,
+ * As a component, renders a registered contribution in its extension's scope. As a type, a slot component, optionally with an `order` (default 0; ties keep folder-name order); in the status line,
  * `phone` keeps the item on the line on a phone, the others move behind its ⋯ popover there.
  */
 export { Contribution } from './contribution.solid.tsx'
-/** A value a point's provider returned: as it is, or mounted when a React provider returned a React element. */
-export { ProvidedValue } from './contribution.solid.tsx'
 export { Provided, renderEntry, ScopedConversation, Slot } from './parts.solid.tsx'
