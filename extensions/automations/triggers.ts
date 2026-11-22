@@ -184,7 +184,9 @@ export function triggers(
         runtime.sleepUntil(task.input.until, { phase: 'evaluate' }, ctx),
       evaluate: async (task, runtime, ctx) => {
         const inMeasurementOrder = measurementsInCommitOrder.then(async () => {
-          const standing = await residents()
+          const of = (await runtime.snapshot(Automations, ctx))?.automations[task.input.id]
+            ?.condition?.of
+          const standing = of && STANDING.test(of) ? await residents() : new Set<string>()
           await runtime.commit(async (tx) => {
             const a = (await tx.doc(Automations)).automations[task.input.id]
             if (a?.condition?.waker === task.id) {
@@ -210,9 +212,14 @@ export function triggers(
   let closed = false
   async function check(changed?: Map<ConversationId, ContextUsage>) {
     const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
-    const standing = await residents()
-    for (const a of Object.values(state?.automations ?? {})) {
-      if (closed || !a.enabled || !a.condition) continue
+    const conditions = Object.values(state?.automations ?? {}).filter(
+      (a) => a.enabled && a.condition,
+    )
+    const standing = conditions.some((a) => STANDING.test(a.condition!.of))
+      ? await residents()
+      : new Set<string>()
+    for (const a of conditions) {
+      if (closed) continue
       await host.harness().commit(async (tx) => {
         const current = (await tx.doc(Automations)).automations[a.id]
         if (current?.condition?.of !== a.condition!.of) return

@@ -81,6 +81,7 @@ async function fixture() {
     notice: () => {},
     want: (api: { name: string }) => (api.name === CloudApi.name ? cloud : undefined),
     need: () => ({
+      residents: async () => [{ name: 'ultimate', description: '' }],
       standing: async () =>
         opened.harness.commit(async (tx) => {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
