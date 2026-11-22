@@ -35,6 +35,7 @@ import { Concluded, ConversationsApi } from '../conversations/api.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import {
   BackgroundGroups,
+  dropHostNodeEnv,
   recordStarted,
   startBackground,
   type Started,
@@ -358,6 +359,7 @@ export default function codingTools(
         )
       const invocationLog = join(tmpdir(), `ultimate-commits-${randomUUID()}.log`)
       const call = createBashTool({
+        commandPrefix: dropHostNodeEnv,
         prepare: (execution) => prepareBash(execution, api, invocationLog),
       })
       const run = (command: Context) => call.execute(args, api, command)
