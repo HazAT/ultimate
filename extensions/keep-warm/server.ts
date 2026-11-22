@@ -63,10 +63,10 @@ export const cached = (message: AssistantMessage) =>
 const key = (model: ModelRef) => `${model.provider}/${model.modelId}`
 
 export function plan(doc: WarmDocState, model: ModelRef | undefined, now: number) {
-  const answered = model && hourLong(model.provider) ? doc.answers?.[key(model)] : undefined
-  if (answered === undefined) return undefined
-  const last = lastOn(doc.last, model!)
-  const lastRequest = Math.max(answered, last && !last.error ? last.at : 0)
+  if (!model || !hourLong(model.provider)) return undefined
+  const last = lastOn(doc.last, model)
+  const lastRequest = Math.max(doc.answers?.[key(model)] ?? 0, last && !last.error ? last.at : 0)
+  if (!lastRequest) return undefined
   const at = lastRequest + LEAD
   const found = {
     lastRequest,
@@ -74,8 +74,8 @@ export function plan(doc: WarmDocState, model: ModelRef | undefined, now: number
     inputAt: doc.inputAt,
   }
   return {
-    provider: model!.provider,
-    model: model!.modelId,
+    provider: model.provider,
+    model: model.modelId,
     lastRequest,
     at,
     due: !doc.off && due({ ...found, now: Math.max(now, at) }),
@@ -271,11 +271,7 @@ function pinger(host: ExtensionHost) {
         }, ctx)
       },
       interrupted: (_task, runtime, ctx) =>
-        runtime.commit(async (tx) => {
-          const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-          delete doc.waker
-          return stop
-        }, ctx),
+        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
     },
     abort: (task, runtime, ctx) =>
       runtime.commit(async (tx) => {
@@ -288,8 +284,14 @@ function pinger(host: ExtensionHost) {
 
 async function arm(tx: Tx, host: ExtensionHost) {
   const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-  const live = doc.waker !== undefined && (await tx.task(doc.waker))?.state.status !== 'terminal'
-  if (!doc.off && doc.answers && !live) doc.waker = await tx.createTask(pinger(host), null, owner)
+  const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+  const next =
+    id === undefined ? undefined : plan(doc, (await tx.doc(AgentDoc, id)).model, Date.now())
+  if (!next?.due) return
+  const waker = doc.waker === undefined ? undefined : (await tx.task(doc.waker))?.state
+  const sleepsPast = waker?.status === 'sleeping' && (waker.until ?? Infinity) > next.at
+  if (!waker || waker.status === 'terminal' || sleepsPast)
+    doc.waker = await tx.createTask(pinger(host), null, owner)
 }
 
 async function lastCachedAnswerWithinTheHour(
@@ -312,8 +314,9 @@ async function lastCachedAnswerWithinTheHour(
   return undefined
 }
 
-async function catchUp(host: ExtensionHost) {
+async function catchUp(host: ExtensionHost, changed?: Set<ConversationId>) {
   const found = await ultimate(host, context)
+  if (changed && !(found && changed.has(found.id))) return
   const at = found && (await lastCachedAnswerWithinTheHour(host, found))
   await host.harness().commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
@@ -351,15 +354,15 @@ export default function keepWarm(host: ExtensionHost) {
   )
   host.onOpen(async (opened) => {
     const stopWatching = onCommit(host.harness(), (publication) => {
-      if (
-        publication.changes.some(
-          (change) =>
-            change.type === 'document' &&
-            change.record.kind === AgentDoc.definition.kind &&
-            change.conversationId !== ROOT_CONVERSATION_ID,
+      const changed = new Set<ConversationId>()
+      for (const change of publication.changes)
+        if (
+          change.type === 'document' &&
+          change.record.kind === AgentDoc.definition.kind &&
+          change.conversationId !== undefined
         )
-      )
-        rebuiltOnOpen('open catches up again', catchUp(host))
+          changed.add(change.conversationId)
+      if (changed.size) rebuiltOnOpen('open catches up again', catchUp(host, changed))
     })
     opened.defer(stopWatching)
     await catchUp(host)

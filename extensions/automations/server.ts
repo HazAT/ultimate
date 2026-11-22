@@ -671,6 +671,8 @@ function backend(host: ExtensionHost) {
           cooldownMs: args.condition.cooldownMs ?? a.condition?.cooldownMs ?? 3600000,
           armed: a.condition?.armed ?? true,
         }
+        delete a.condition.waker
+        delete a.condition.wakeAt
         if (!a.condition.idleFor) {
           delete a.condition.idleFor
           delete a.condition.inputAt

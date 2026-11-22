@@ -7,9 +7,9 @@ Claude Code caches @ultimate's prompt for an hour after each request (`ttl: "1h"
 ## How
 
 - A `keep-warm.ping` task on conversation 1 sleeps until the ping is due; each @ultimate response that read or wrote its cache records itself and starts the task when none is live (the doc's `waker`). A ping is due 55 minutes after @ultimate's last cache request, when it runs on `claude-code` (or `anthropic` with long retention) and your latest input to it is under 8 hours old. Woken early (a newer request moved the time), it sleeps again; while @ultimate runs, it waits for the run; with nothing due, it ends. A cache already past its hour is cold, so no ping is sent to rebuild it.
-- The last cache request is @ultimate's newest response that came back with cache tokens, recorded by an `afterResponse` hook, or the last successful ping on the same provider and model. A failed answer or one of another provider or model renewed nothing, so it does not count.
+- The last cache request is @ultimate's newest response that came back with cache tokens on its current provider and model, recorded per model by an `afterResponse` hook (and, on open and when @ultimate's agent changes, found in its transcript), or the last successful ping on both. Your input, a cached answer, `set {on}` and a model change start a waker when none sleeps until the time that is now due. A failed answer or one of another provider or model renewed nothing, so it does not count.
 - Your latest input comes from `user.input` events (typed, or an answer to its questions), kept in the state document; until your first input after install, no ping runs.
-- It records the attempt as `interrupted` in the commit that checks it is still on and @ultimate's `LiveDoc` has no run, then prepares the context and checks once more that Ultimate is not paused and the cache is within its hour, and sends; the outcome and its usage are committed together. A crash mid-request therefore counts as a failure and ends the task.
+- It prepares the context first, then records the attempt as `interrupted` in the commit that checks it is still on, still due, not paused and @ultimate's `LiveDoc` has no run; right before sending it checks the pause and the hour once more. The outcome and its usage are committed together. A crash mid-request counts as a failure: the task plans again and sends nothing more until a newer request.
 - The ping replays @ultimate's committed context as its next request would send it (the `You are conversation #N.` identity right after the leading system message, as `conversations` adds it), plus one user line asking for `ok`. The provider reads the prefix up to @ultimate's last input from the cache; that renews it, and @ultimate's next real request reads it again.
 - It sends no `sessionId`, so pi-claude-code runs it in a one-shot Claude Code process and @ultimate's own warm process is untouched. Nothing is written to any transcript; the response's usage is added to @ultimate's usage (`accountResponse`), so the status line's spend includes the pings.
 - Sends nothing while Ultimate is paused (`PauseApi`, which a rate limit also sets): the pause holds the task scheduler, so the sleeping task does not wake. A failed ping is recorded and blocks further pings until @ultimate's next request, so an outage or a limit is never retried in a loop.
@@ -17,7 +17,7 @@ Claude Code caches @ultimate's prompt for an hour after each request (`ttl: "1h"
 
 ## State and actions
 
-- `keep-warm.state` on conversation 1: `{ off?, inputAt?, answer?, last?, pings?, waker? }`; `last` is `{ at, provider, model, read?, write?, error? }`.
+- `keep-warm.state` on conversation 1: `{ off?, inputAt?, answers?, last?, pings?, waker? }` (`answers` maps `provider/model` to ms); `last` is `{ at, provider, model, read?, write?, error? }`.
 - `state` → `{ on, lastRequest?, inputAt?, nextAt?, last?, pings }`.
 - `set { on }` turns it on or off. User-only: pings spend the user's plan.
 
