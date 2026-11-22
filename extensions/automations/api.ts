@@ -20,6 +20,8 @@ export type AutomationsService = {
    * in the same transaction as the effect it allows.
    */
   read(tx: Tx, id: string): Promise<Automation | undefined>
+  /** Like `read`, the record `create` made with this `key`. */
+  readByKey(tx: Tx, key: string): Promise<Automation | undefined>
 }
 /** The automations service. */
 export const AutomationsApi = defineApi<AutomationsService>()('automations')

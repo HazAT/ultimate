@@ -219,19 +219,26 @@ export function route(host: ExtensionHost) {
       by: ConversationId
       down?: boolean
     },
-    { phase: 'observe' } | { phase: 'forward'; routes: Route[] },
+    { phase: 'observe' } | { phase: 'answered' } | { phase: 'forward'; routes: Route[] },
     null
   >({
     name: 'board.route',
     version: 1,
     initial: () => ({ phase: 'observe' }),
     phases: {
-      observe: async (task, runtime, ctx) => {
-        const settled = await runtime.waitForTask(task.input.generation, ctx)
-        const answer =
-          settled.state.outcome.status === 'completed'
-            ? settled.state.outcome.result.entryId
-            : undefined
+      observe: (task, runtime, ctx) =>
+        runtime.commit(
+          () => ({
+            status: 'waiting',
+            checkpoint: { phase: 'answered' },
+            on: [task.input.generation],
+            policy: 'allSettled',
+          }),
+          ctx,
+        ),
+      answered: async (task, runtime, ctx) => {
+        const [outcome] = await runtime.outcomes([task.input.generation], ctx)
+        const answer = outcome.status === 'completed' ? outcome.result.entryId : undefined
         const { by, down } = task.input
         const id = runtime.conversationId
         await runtime.commit(async (tx) => {

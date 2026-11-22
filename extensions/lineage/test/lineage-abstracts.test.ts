@@ -227,6 +227,7 @@ it('summarizes a branch into its title and its abstract in the tree root', async
       want: ((api: { name: string }) =>
         api.name === 'conversations.trees'
           ? ({
+              isRoot: async () => false,
               rootOf: (id: number, ctx: typeof context) =>
                 rootOf({ harness: () => server.harness }, id as ConversationId, ctx),
               branchOf: (id: number, ctx: typeof context) =>

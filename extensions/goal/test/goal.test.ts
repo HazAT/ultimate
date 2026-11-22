@@ -96,6 +96,9 @@ function fakeHost(tx: ReturnType<typeof fakeTx>) {
     delete: async (id: string) => void ledger.delete(id),
     pause: async (id: string) => void (ledger.get(id)!.enabled = false),
     resume: async (id: string) => void (ledger.get(id)!.enabled = true),
+    read: async (_tx: Tx, id: string) => structuredClone(ledger.get(id)),
+    readByKey: async (_tx: Tx, key: string) =>
+      structuredClone([...ledger.values()].find((item) => item.key === key)),
   }
   const host = {
     harness: () => ({
@@ -106,10 +109,9 @@ function fakeHost(tx: ReturnType<typeof fakeTx>) {
     need: () => service,
     want: () => service,
     doc: () => undefined,
-    invoke: async () => structuredClone([...ledger.values()]),
   } as unknown as ExtensionHost
   const sync = async () => {
-    const runtime = { commit: (fn: () => unknown) => fn() }
+    const runtime = { commit: (fn: (tx: Tx) => unknown) => fn(tx) }
     for (const task of tx.tasks.splice(0).filter((item) => item.name === 'goal.reminder'))
       await reminderTask(host, Goals).definition.phases.sync(
         { input: task.input } as never,

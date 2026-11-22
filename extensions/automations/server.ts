@@ -849,6 +849,12 @@ export default function automations(host: ExtensionHost) {
       const a = (await tx.doc(Automations)).automations[id]
       return a && json(a)
     },
+    readByKey: async (tx, key) => {
+      const keyed = Object.values((await tx.doc(Automations)).automations).find(
+        (a) => a.key === key,
+      )
+      return keyed && json(keyed)
+    },
   })
   api.trigger.install()
   host.onOpen(async (opened) => {

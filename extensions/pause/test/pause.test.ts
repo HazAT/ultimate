@@ -642,11 +642,10 @@ it('keeps Pause, Play and the play-by-itself setting from agents, and checks the
 /** A task record as `running()` reads it: it decides by task kind and checkpoint phase only. */
 const at = (kind: string, phase: string) => ({ kind, state: { checkpoint: { phase } } })
 
-it('treats message deliveries and routes as passive waiters', () => {
+it('treats message deliveries as passive waiters', () => {
   expect(passive(at('board.delivery', 'deliver'))).toBe(true)
   expect(passive(at('board.delivery', 'reply'))).toBe(true)
   expect(passive(at('ultimate.subagent-reporter', 'deliver'))).toBe(true)
-  expect(passive(at('board.route', 'observe'))).toBe(true)
   expect(passive(at('conversations.summary', 'generate'))).toBe(false)
 })
 
