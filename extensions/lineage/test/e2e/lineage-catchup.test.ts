@@ -168,10 +168,10 @@ const ctxOf = async (server: Server, id: ConversationId) =>
 
 it('catches up once on an idle resume, puts overlap first, and reads it before the input', async () => {
   const f = await catchupFixture()
-  const seen = await f.server.harness.snapshot(Seen, ROOT_CONVERSATION_ID, context)
-  expect(seen?.main).toBe(repoGit(f.projectRoot, 'rev-parse', 'main'))
   const editing = ask(f.server, ROOT_CONVERSATION_ID, 'edit schema')
   await until(f.held)
+  const seen = await f.server.harness.snapshot(Seen, ROOT_CONVERSATION_ID, context)
+  expect(seen?.main).toBe(repoGit(f.projectRoot, 'rev-parse', 'main'))
   f.release()
   await editing
   repoGit(f.projectRoot, 'add', '.')

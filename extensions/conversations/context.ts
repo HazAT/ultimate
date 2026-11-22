@@ -1,7 +1,6 @@
 import { offsetEntryId } from '../../lib/ids.ts'
-import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { onCommit } from '../../lib/commits.ts'
 import { AgentDoc } from '@earendil-works/pi-durable'
 import {
   contextUsage,
@@ -11,19 +10,14 @@ import {
 } from '../../lib/context-usage.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ContextUsageDoc } from './api.ts'
-import { rebuiltOnOpen } from '../../lib/errors.ts'
+import { projection } from './projection.ts'
 
 export function contextBehavior(
   host: Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice'> & {
     modelRuntime: Pick<ExtensionHost['modelRuntime'], 'getModel'>
   },
 ) {
-  let closed = false
-  let backgroundSerialBackfill: Promise<void> | undefined
-  const pending = new Map<ConversationId, Promise<void>>()
-
   const reconcile = async (id: ConversationId) => {
-    if (closed) return
     const harness = host.harness()
     const conversation = await harness.conversation(id, context)
     if (!conversation) return
@@ -54,9 +48,7 @@ export function contextBehavior(
         : []
       tokens = estimateAfterHead(promptBaselineBeforeHead, view.messages)
     }
-    if (closed) return
     await harness.commit(async (tx) => {
-      if (closed) return
       const record = await tx.conversation(id)
       const previous = await tx.doc(ContextUsageDoc, id)
       if (record?.parent && latest === 0 && previous.at === 0) return
@@ -92,61 +84,22 @@ export function contextBehavior(
     }, context)
   }
 
-  const schedule = (id: ConversationId) => {
-    const job = (pending.get(id) ?? Promise.resolve())
-      .then(() => reconcile(id))
-      .catch((error: unknown) => {
-        if (!closed) host.notice(`Conversation context: ${String(error)}`)
-      })
-      .finally(() => {
-        if (pending.get(id) === job) pending.delete(id)
-      })
-    pending.set(id, job)
-    return job
-  }
-
-  host.onOpen(async (opened) => {
-    closed = false
-    const stop = onCommit(host.harness(), (publication) => {
-      const ids = new Set<ConversationId>()
-      for (const change of publication.changes) {
-        if (
-          change.type === 'entry' &&
-          ['pi.assistant', 'pi.compaction', 'pi.reset'].includes(change.value.kind)
-        )
-          ids.add(change.value.conversationId)
-        if (
-          change.type === 'document' &&
-          change.conversationId !== undefined &&
-          change.record.kind === AgentDoc.definition.kind
-        )
-          ids.add(change.conversationId)
-      }
-      for (const id of ids) {
-        rebuiltOnOpen('open reconciles every conversation context', schedule(id))
-      }
-    })
-    opened.defer(async () => {
-      closed = true
-      stop()
-      await backgroundSerialBackfill
-      await Promise.all(pending.values())
-    })
-    backgroundSerialBackfill = (async () => {
-      let cursor: Cursor | undefined
-      do {
-        if (closed) return
-        const page = await host
-          .harness()
-          .commit((tx) => tx.scanConversations({}, 64, cursor), context)
-        for (const conversation of page.items) {
-          if (closed) return
-          await schedule(conversation.id)
-        }
-        cursor = page.next
-      } while (cursor !== undefined)
-    })().catch((error: unknown) => {
-      if (!closed) host.notice(`Conversation context backfill: ${String(error)}`)
-    })
-  })
+  projection(
+    host,
+    { name: 'context', background: true },
+    (change, add) => {
+      if (
+        change.type === 'entry' &&
+        ['pi.assistant', 'pi.compaction', 'pi.reset'].includes(change.value.kind)
+      )
+        add(change.value.conversationId)
+      if (
+        change.type === 'document' &&
+        change.conversationId !== undefined &&
+        change.record.kind === AgentDoc.definition.kind
+      )
+        add(change.conversationId)
+    },
+    ([id]) => reconcile(id),
+  )
 }

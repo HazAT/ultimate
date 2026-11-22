@@ -34,6 +34,7 @@ import { activityBehavior } from './activity.ts'
 import { activityStats } from './activity-stats.ts'
 import { compactionEvents } from './compactions.ts'
 import { contextBehavior } from './context.ts'
+import { concludedIn } from './projection.ts'
 import { ContextUsageDoc, ConversationsApi, Marks, Previews, Release, Trees } from './api.ts'
 import {
   ActivityAction,
@@ -311,10 +312,7 @@ export async function subject(
   }
 }
 
-export async function concludedIn(tx: Tx): Promise<Set<ConversationId>> {
-  const ids = (await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded']
-  return new Set(Array.isArray(ids) ? (ids as ConversationId[]) : [])
-}
+export { concludedIn }
 
 export default (host: ExtensionHost) => {
   host.want(Trees)

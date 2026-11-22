@@ -28,8 +28,7 @@ tools and new context until another answer. Model changes update the window. Unk
 milliseconds (the answer/head message timestamp, or when the estimate was made if absent); `entry` identifies the
 source assistant or head entry. A fork starts at `{ at: 0 }`, without inheriting its parent's measurement.
 A watcher follows Pi's commits and writes the document in its own commit, serially per conversation, only when it
-changes. On open, background reconciliation scans bounded pages and recovers missing or stale source entries without
-blocking startup. The status line reads this same document, independent of which browser is open.
+changes. On open it reconciles in the background, without blocking startup (see [Open](#open)). The status line reads this same document, independent of which browser is open.
 
 `compactions.ts` emits `conversations.compacted` `{ conversation, entry, reason? }` (`Compacted` in `refs.ts`) for
 each compaction summary Pi places. Pi appends it in its compaction task with no hook in that commit, so a commit
@@ -41,9 +40,8 @@ ends the run waiting on it, which reports itself.
 
 `activity.ts` maintains `ultimate.metadata`'s `inputTitle`, `inputAt`, and `answerAt` from committed
 history; core only serves those fields, preferring an explicit `title` over the input title. Reset and
-compaction cut the active title source but preserve activity times from earlier history. On open, the
-projection reconciles every conversation, including inherited fork history, and only commits metadata
-when the derived fields change.
+compaction cut the active title source but preserve activity times from earlier history. It reads inherited fork
+history, and only commits metadata when the derived fields change.
 
 All input detection uses `isInput` in `lib/entries.ts`: Pi Durable marks entries placed from input
 submissions with `input: true` (a small upstream patch). Pi's own `pi.user` input kind also counts,
@@ -246,5 +244,12 @@ One root-document stream serves all rows. Titles, timestamps, child links and ag
 conversation list.
 A commit only selects which rows to derive again: any committed submission, `pi.user`, `pi.reset` or `pi.compaction`
 entry, `pi.live.run` or `pi.inbox` change, or `Summaries` change. Derivation reads the records themselves, so a row
-built live equals the row a fresh open builds. On open, every conversation is derived anew without requesting old
-summaries.
+built live equals the row a fresh open builds. Open derives rows anew without requesting old summaries.
+
+### Open
+
+Overview, activity and context are projections (`projection.ts`): a commit watcher names the conversations a change
+touches and reconciles them in batches. A clean close stores the newest entry each one had seen in
+`conversations.projected` on the root. The next open reconciles only what can have changed since: every conversation
+outside a concluded tree, and every one with entries past the mark. Without a mark (a crash, a failed reconcile, or
+a store that predates it) open reconciles every conversation, so a missing row is rebuilt.

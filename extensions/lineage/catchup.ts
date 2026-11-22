@@ -4,7 +4,7 @@ import { onCommit } from '../../lib/commits.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { git } from '../../lib/git.ts'
-import { rebuiltOnOpen, meansNone } from '../../lib/errors.ts'
+import { inProcess, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
@@ -66,8 +66,8 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
     const unsubscribe = onCommit(harness, (publication) => {
       for (const change of publication.changes)
         if (change.type === 'conversation' && !change.value.owner)
-          rebuiltOnOpen(
-            'open seeds every root conversation with its main commit',
+          inProcess(
+            'the first input seeds a conversation that missed its creation',
             seed(change.value.id).catch((error: unknown) => {
               host.notice(`Could not record main for #${change.value.id}: ${String(error)}`)
             }),
@@ -77,17 +77,6 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
       unsubscribe()
       await pending
     })
-    const records = await harness.commit(async (tx) => {
-      const ids: ConversationId[] = []
-      let cursor
-      do {
-        const page = await tx.scanConversations({}, 100, cursor)
-        ids.push(...page.items.filter((record) => !record.owner).map((record) => record.id))
-        cursor = page.next
-      } while (cursor)
-      return ids
-    }, ctx)
-    for (const id of records) await seed(id)
   })
 }
 

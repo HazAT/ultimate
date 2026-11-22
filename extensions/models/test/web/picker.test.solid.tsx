@@ -246,7 +246,7 @@ it('targets the side chat from thinking controls and the picker, including after
     expect(await act('Open the model picker', 'press')).toMatchObject({ ok: true })
     expect(await act('Search model catalog', 'run', 'accounts/login')).toMatchObject({ ok: true })
     expect(await act('Faux credentials (API key, faux)', 'press')).toMatchObject({ ok: true })
-    server.of(side, false)!.send('doc', {
+    server.of(1)!.send('doc', {
       kind: 'models.login',
       value: {
         flows: { 'flow-1': { provider: 'faux', type: 'api_key', status: 'complete', events: [] } },

@@ -43,7 +43,8 @@ documents, tools and model-facing text.
   top-level conversations get up to 30 new target commits, overlaps first. @ultimate gets none: its landing cards
   already name each landing. No conversation is told what its siblings did: abstracts, landings and notes stay in the
   root's tally, which a branch reads with `ultimate.entries(root)` when it needs it. Nothing new means no note; mid-run
-  inputs and tallies get none. `lineage.seen` `{ main?, at? }` keeps the baseline.
+  inputs and tallies get none. `lineage.seen` `{ main?, at? }` keeps the baseline: set when the conversation is
+  created (a branch in its fork commit) and advanced at each first input.
 - **Prompt.** Branches are told their origin, intent, tree root and inherited tally (or, with a brief, the memory index
   and where the full tally is), and how to follow `#conversation/entry` breadcrumbs with `ultimate.entries(id)` and
   `ultimate.search()`. Other top-level conversations get their own id and lookup guidance; roots and subagents get
