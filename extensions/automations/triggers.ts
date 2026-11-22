@@ -128,7 +128,9 @@ export function triggers(
     )
     if (usage.percent < condition.above || !condition.armed) return
     if (firesAt > now) {
-      if (condition.idleFor && !(condition.wakeAt! <= firesAt)) {
+      const sleeper = condition.waker === undefined ? undefined : await tx.task(condition.waker)
+      const sleeping = sleeper !== undefined && sleeper.state.status !== 'terminal'
+      if (condition.idleFor && !(sleeping && condition.wakeAt! <= firesAt)) {
         condition.waker = await tx.createTask(IdleWaker, { id: a.id, until: firesAt }, onRoot)
         condition.wakeAt = firesAt
       }

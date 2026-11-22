@@ -211,10 +211,16 @@ function pinger(host: ExtensionHost) {
     phases: {
       plan: async (task, runtime, ctx) => {
         const found = await ultimate(host, ctx)
-        const ready = await runtime.snapshot(State, ROOT_CONVERSATION_ID, ctx)
+        const ready =
+          found &&
+          plan(
+            (await runtime.snapshot(State, ROOT_CONVERSATION_ID, ctx)) ?? {},
+            found.agent.model,
+            runtime.now(),
+          )
         const messages =
-          found && plan(ready ?? {}, found.agent.model, runtime.now())?.due
-            ? await pingRequest(found.conversation, found.id, ctx)
+          ready?.due && ready.at <= runtime.now()
+            ? await pingRequest(found!.conversation, found!.id, ctx)
             : undefined
         let sending: { next: Planned; at: number } | undefined
         await runtime.commit(async (tx) => {
@@ -287,6 +293,7 @@ function pinger(host: ExtensionHost) {
 }
 
 async function arm(tx: Tx, host: ExtensionHost) {
+  const Pinger = pingers.get(host)!
   const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
   const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   const next =
@@ -295,7 +302,7 @@ async function arm(tx: Tx, host: ExtensionHost) {
   const waker = doc.waker === undefined ? undefined : (await tx.task(doc.waker))?.state
   const sleepsPast = waker?.status === 'sleeping' && (waker.until ?? Infinity) > next.at
   if (!waker || waker.status === 'terminal' || sleepsPast)
-    doc.waker = await tx.createTask(pinger(host), null, owner)
+    doc.waker = await tx.createTask(Pinger, null, owner)
 }
 
 async function lastCachedAnswerWithinTheHour(
@@ -343,7 +350,11 @@ async function state(host: ExtensionHost): Promise<WarmState> {
   }
 }
 
+const pingers = new WeakMap<ExtensionHost, ReturnType<typeof pinger>>()
+
 export default function keepWarm(host: ExtensionHost) {
+  const Pinger = pinger(host)
+  pingers.set(host, Pinger)
   host.need(ConversationsApi)
   host.want(PauseApi)
   host.react(
@@ -373,7 +384,7 @@ export default function keepWarm(host: ExtensionHost) {
   })
   return defineExtension({
     name: 'keep-warm',
-    tasks: [pinger(host)],
+    tasks: [Pinger],
     hooks: [
       hook(GenerationTask, {
         afterResponse: async (message, api, ctx) => {

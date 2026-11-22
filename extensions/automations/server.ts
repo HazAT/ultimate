@@ -665,10 +665,14 @@ function backend(host: ExtensionHost) {
         delete a.schedule
         delete a.event
         const previousTarget = a.condition?.of
+        const { metric, of, above, cooldownMs, idleFor } = args.condition
         a.condition = {
           ...a.condition,
-          ...args.condition,
-          cooldownMs: args.condition.cooldownMs ?? a.condition?.cooldownMs ?? 3600000,
+          metric,
+          of,
+          above,
+          ...(idleFor === undefined ? {} : { idleFor }),
+          cooldownMs: cooldownMs ?? a.condition?.cooldownMs ?? 3600000,
           armed: a.condition?.armed ?? true,
         }
         const retargeted = previousTarget !== undefined && previousTarget !== a.condition.of
