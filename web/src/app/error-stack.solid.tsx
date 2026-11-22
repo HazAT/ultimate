@@ -46,7 +46,7 @@ function StackedErrorCard(props: {
       />
       <div class="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground/80">
         <Puzzle aria-hidden="true" class="size-3" />
-        {extensionPath(system(), props.extension, '/web.solid.tsx')} · {props.footer}
+        {extensionPath(system(), props.extension)} · {props.footer}
       </div>
     </div>
   )
@@ -62,8 +62,8 @@ export function ExtensionErrors(props: { stack: HTMLElement }) {
           <StackedErrorCard
             context={
               record().extension
-                ? 'web.solid.tsx did not reload; the previous version is still running'
-                : 'web.solid.tsx did not load'
+                ? 'the web facet did not reload; the previous version is still running'
+                : 'the web facet did not load'
             }
             error={record().error ?? ''}
             extension={record().name}
