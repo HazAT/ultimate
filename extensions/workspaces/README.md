@@ -173,8 +173,10 @@ lander's sidebar row shows the feature it lands or landed last.
    output line (ANSI stripped, at most 200 characters) as `summary`, shown muted after the command on its step row.
    A failed run's log entry keeps its output tail as `output` (not in `steps`), under a collapsed "Output" in the
    lander's log, so a check that then passed as flaky can still be diagnosed.
-4. Fast-forwards the target branch in the source checkout (`merge --ff-only` when it is checked out). If the target
-   moved meanwhile it starts again, at most three attempts.
+4. Fast-forwards the target branch in the source checkout (`merge --ff-only` when it is checked out). When an
+   uncommitted edit to `.ultimate/settings.json` is the only overlapping change blocking the fast-forward, it narrowly
+   stashes and re-applies that file, rolling back cleanly if the edits conflict. If the target moved meanwhile it starts
+   again, at most three attempts.
 5. With `lander.push`, pushes the target branch (never forced); a rejection integrates again once, then is reported.
 6. Records `landed`, emitting `workspaces.landed` in the same commit, then reports (request id `lander:<submission>`
    for each write): the landed commit and commits, flaky checks, whether it pushed, "Needs restart." for `server/`,

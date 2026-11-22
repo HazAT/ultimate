@@ -16,7 +16,7 @@ import { withAbortSignal } from '@earendil-works/chord/context'
 import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { debounce, deadline } from '../../lib/timers.ts'
 import { git } from '../../lib/git.ts'
-import { overshadowed, retriedLater, settled } from '../../lib/errors.ts'
+import { meansNone, overshadowed, retriedLater, settled } from '../../lib/errors.ts'
 import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import { formatDuration } from '../../lib/format.ts'
 import { runGroup, sweepPidFiles } from '../../lib/process-group.ts'
@@ -284,6 +284,93 @@ const failure = (error: unknown) => {
     .trim()
     .slice(-3000)
 }
+const hostSettingsPath = '.ultimate/settings.json'
+
+async function onlyHostSettingsBlocksFastForward(
+  checkout: string,
+  base: string,
+  integrated: string,
+) {
+  const landingPaths = new Set(
+    lines(
+      await git(
+        checkout,
+        '-c',
+        'core.quotePath=false',
+        'diff',
+        '--name-only',
+        '--no-renames',
+        base,
+        integrated,
+      ),
+    ),
+  )
+  if (!landingPaths.has(hostSettingsPath)) return false
+  const [unmerged, staged, unstaged, untracked, settingsStatus] = await Promise.all([
+    git(checkout, 'ls-files', '--unmerged'),
+    git(checkout, '-c', 'core.quotePath=false', 'diff', '--cached', '--name-only'),
+    git(checkout, '-c', 'core.quotePath=false', 'diff', '--name-only'),
+    git(checkout, '-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard'),
+    git(checkout, 'diff', '--name-status', '--', hostSettingsPath),
+  ])
+  if (unmerged || staged) return false
+  if (settingsStatus !== `M\t${hostSettingsPath}`) return false
+  const dirty = [...lines(unstaged), ...lines(untracked)]
+  const overlapping = dirty.filter((file) => landingPaths.has(file))
+  return overlapping.length === 1 && overlapping[0] === hostSettingsPath
+}
+
+async function fastForwardCheckout(checkout: string, base: string, integrated: string) {
+  try {
+    await git(checkout, 'merge', '-q', '--ff-only', integrated)
+    return
+  } catch (mergeError) {
+    if (!(await onlyHostSettingsBlocksFastForward(checkout, base, integrated))) throw mergeError
+    const stashBefore = await git(checkout, 'rev-parse', '--verify', '--quiet', 'refs/stash').catch(
+      meansNone,
+    )
+    await git(
+      checkout,
+      '-c',
+      'user.name=Ultimate',
+      '-c',
+      'user.email=ultimate@local',
+      'stash',
+      'push',
+      '-q',
+      '-m',
+      'ultimate-lander-settings',
+      '--',
+      hostSettingsPath,
+    )
+    const stashAfter = await git(checkout, 'rev-parse', '--verify', '--quiet', 'refs/stash').catch(
+      meansNone,
+    )
+    if (!stashAfter || stashAfter === stashBefore) throw mergeError
+    try {
+      await git(checkout, 'merge', '-q', '--ff-only', integrated)
+    } catch (retryError) {
+      await git(checkout, 'stash', 'pop', '-q').catch(overshadowed)
+      throw retryError
+    }
+    try {
+      await git(checkout, 'stash', 'pop', '-q')
+    } catch (popError) {
+      await git(checkout, 'reset', '-q', '--merge', base)
+      await git(checkout, 'stash', 'pop', '-q')
+      throw new Error(
+        [
+          `Uncommitted changes in ${hostSettingsPath} conflict with this landing. Commit, stash, or revert ${hostSettingsPath} in the target checkout and submit again.`,
+          failure(popError),
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        { cause: popError },
+      )
+    }
+  }
+}
+
 const remote = (cwd: string, signal: AbortSignal, ...args: string[]) =>
   git({ cwd, signal, timeout: 300000 }, ...args)
 
@@ -790,7 +877,7 @@ export function createLander(
                 .find((record) => record.includes(`branch refs/heads/${target}`))?.[0]
                 .slice('worktree '.length)
               if (checkoutHoldingTargetBranch)
-                await git(checkoutHoldingTargetBranch, 'merge', '-q', '--ff-only', integrated)
+                await fastForwardCheckout(checkoutHoldingTargetBranch, base, integrated)
               else await git(source, 'update-ref', `refs/heads/${target}`, integrated, base)
             } catch (error) {
               refused = failure(error)
