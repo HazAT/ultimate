@@ -458,7 +458,7 @@ it('applies each automation call in one script to its own arguments', async () =
      return { line: lines.find((line) => line.startsWith(id + ' ')).slice(id.length + 1), subscribers: stored.subscribers };`,
   )
   expect(result.data.details.value).toEqual({
-    line: 'Probe — Every 1 day — enabled → @ultimate',
+    line: expect.stringMatching(/^Probe — Every 1 day — next: .+ — enabled → @ultimate$/),
     subscribers: ['@ultimate'],
   })
 })
