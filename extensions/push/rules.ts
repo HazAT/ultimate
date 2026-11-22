@@ -64,6 +64,12 @@ export function questionPush(
   }
 }
 
+export const generic = (push: Push): Push => ({
+  ...push,
+  title: 'Ultimate',
+  body: push.message === undefined ? 'Something new is waiting' : 'A question is waiting',
+})
+
 export const landingPush = (
   landing: Pick<LandedData, 'title' | 'conversationId' | 'sha'>,
 ): Push => ({

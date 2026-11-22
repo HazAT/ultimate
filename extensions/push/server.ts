@@ -1,11 +1,12 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import type { Tx } from '@earendil-works/pi-durable'
+import type { JsonObject, Tx } from '@earendil-works/pi-durable'
 import { defineEffect } from '../../lib/effect.ts'
 import { rebuiltOnOpen } from '../../lib/errors.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { onCommit } from '../../lib/commits.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { OverviewState } from '../conversations/types.ts'
 import { Messages, MessageSent } from '../messages/api.ts'
@@ -23,7 +24,7 @@ import {
   UnsubscribeAction,
 } from './refs.ts'
 import type { Subscription } from './refs.ts'
-import { failedPush, landingPush, questionPush } from './rules.ts'
+import { failedPush, generic, landingPush, questionPush } from './rules.ts'
 import type { Push } from './rules.ts'
 
 const KEY = 'WEB_PUSH_VAPID_KEY'
@@ -115,6 +116,16 @@ async function send(
   return result.status
 }
 
+async function genericText(host: ExtensionHost) {
+  const config: JsonObject = {}
+  for (const { push } of [
+    await readSettings(userSettingsPath(host.userHome)),
+    await host.projectSettings(),
+  ])
+    if (push && typeof push === 'object' && !Array.isArray(push)) Object.assign(config, push)
+  return config.generic === true
+}
+
 const closed = async (host: ExtensionHost, tag: string) =>
   (await host.harness().snapshot(Closed, ROOT_CONVERSATION_ID, context))?.tags.includes(tag) ??
   false
@@ -127,7 +138,8 @@ const deliver = (host: ExtensionHost) =>
       (each) =>
         Date.now() - (visibleEndpointsAt.get(each.endpoint) ?? 0) >= VISIBLE_BROWSER_GRACE_MS,
     )
-    await Promise.all(hidden.map((each) => send(host, each, push, signal))).catch(
+    const outgoing = (await genericText(host)) ? generic(push) : push
+    await Promise.all(hidden.map((each) => send(host, each, outgoing, signal))).catch(
       (error: unknown) => {
         if (!signal.aborted) host.notice(`Push: ${String(error)}`)
         throw error

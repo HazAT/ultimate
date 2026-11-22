@@ -7,6 +7,7 @@ import type { OpenHost } from '../../../server/harness.ts'
 import type { PushService } from '../api.ts'
 import type { Push } from '../rules.ts'
 import { temp, until } from '../../../test/helpers.ts'
+import { updateSettings, userSettingsPath } from '../../../lib/settings.ts'
 
 const sending = vi.hoisted(() => ({
   sent: [] as { endpoint: string; payload: object }[],
@@ -43,7 +44,7 @@ const subscription = (endpoint: string) => ({
   origin: 'https://app.example.com',
 })
 
-async function fixture() {
+async function fixture(project: object = {}) {
   const home = await temp('ultimate-push-')
   const prepared = await prepareHarness({ home, ultimateRoot: home, userHome: home })
   let service: PushService | undefined
@@ -60,6 +61,7 @@ async function fixture() {
     onRelease: () => {},
     onClose: () => {},
     doc: () => undefined,
+    projectSettings: async () => project,
     notice: (message: string) => {
       throw new Error(message)
     },
@@ -143,4 +145,27 @@ it('delivers a push a crash cut off once the host opens again', async () => {
   expect(await f.delivered()).toBe(1)
   expect(sending.sent).toHaveLength(2)
   expect(sending.sent[1].payload).toMatchObject({ tag: 'shell:3' })
+})
+
+it('sends fixed text instead of the title and question with push.generic on', async () => {
+  const f = await fixture({ push: { generic: true } })
+  await updateSettings(userSettingsPath(f.host.userHome), (settings) => {
+    settings.push = { generic: false }
+  })
+  const ctx = { host: f.host } as Parameters<typeof actions.subscribe>[1]
+  await actions.subscribe({ subscription: subscription('https://push.example.com/away') }, ctx)
+  await f.service().notify({ ...push, title: 'Review for a teammate', message: 3 })
+  await until(() => sending.sent.length === 1)
+  await f.service().notify({ ...push, tag: 'landed:abc' })
+  await until(() => sending.sent.length === 2)
+  expect(sending.sent.map((each) => each.payload)).toEqual([
+    {
+      title: 'Ultimate',
+      body: 'A question is waiting',
+      tag: 'shell:3',
+      path: push.path,
+      message: 3,
+    },
+    { title: 'Ultimate', body: 'Something new is waiting', tag: 'landed:abc', path: push.path },
+  ])
 })
