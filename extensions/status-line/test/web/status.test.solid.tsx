@@ -100,6 +100,46 @@ it('shows the conversation’s spend, its context fill, the project’s rate and
   expect(container.textContent).toContain('live')
 })
 
+it('updates the closed usage tooltip in place while usage streams', async ({ onTestFinished }) => {
+  store.start()
+  onTestFinished(() => store.stop())
+  const stream = harness.sources.at(-1)!
+  stream.open()
+  stream.send('system', system(1))
+  const container = renderSolid(() => <Tokens />)
+  const usageOf = (output: number) => ({
+    models: { 'claude-x': usage(1200, output, 0.5), 'claude-y': usage(10, 20, 0.1) },
+    tools: { search: usage(0, 0, 0.01) },
+  })
+  const tick = (output: number) =>
+    harness.server!.of()!.send('view', {
+      conversation: { id: 7 },
+      entries: [],
+      docs: { 'pi.usage': usageOf(output) },
+    } as unknown as StreamedView)
+  tick(300)
+  await settle()
+  flush()
+  const tip = container.querySelector('[role="tooltip"]')!
+  expect(tip.textContent).toContain('claude-x↑1.2k ↓300')
+  const rows = [...tip.querySelectorAll('span')]
+  const replaced: Node[] = []
+  const observer = new MutationObserver((records) =>
+    records.forEach((record) => replaced.push(...record.removedNodes)),
+  )
+  observer.observe(tip, { childList: true, subtree: true })
+  onTestFinished(() => observer.disconnect())
+
+  for (const output of [400, 500, 600]) {
+    tick(output)
+    await settle()
+    flush()
+  }
+
+  expect(tip.textContent).toContain('claude-x↑1.2k ↓600')
+  expect(replaced.filter((node) => rows.includes(node as HTMLSpanElement))).toEqual([])
+})
+
 const sample = (output: number): RateSample => ({
   rates: { input: 0, output, cacheRead: 0, cacheWrite: 0 },
   elapsed: 30,

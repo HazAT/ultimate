@@ -386,7 +386,7 @@ export default defineConfig({
   test: {
     root: '.',
     environment: 'node',
-    globalSetup: ['test/sweep-temp.ts'],
+    globalSetup: ['test/sweep-temp.ts', 'test/whole-suite-lock.ts'],
     setupFiles: ['test/setup.ts', 'test/no-group-signals.ts'],
     // Core and integration tests in test/, each extension's own in extensions/<name>/test/: `pnpm test extensions/<name>/`
     // runs one extension's.
