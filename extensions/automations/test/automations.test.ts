@@ -52,6 +52,14 @@ async function fixture() {
     join(root, 'agents/watcher.md'),
     '---\nname: watcher\ndescription: Watches\ntools: []\n---\nShort.\n',
   )
+  await writeFile(
+    join(root, 'agents/delegator.md'),
+    '---\nname: delegator\ndescription: Delegates\ntools: [hold, subagent]\n---\nDelegate.\n',
+  )
+  await writeFile(
+    join(root, 'agents/inheritor.md'),
+    '---\nname: inheritor\ndescription: Inherits\n---\nInherit.\n',
+  )
   const prepared = await prepareHarness({
     ultimateRoot: root,
     userHome,
@@ -80,6 +88,13 @@ async function fixture() {
             )
             return { output: [{ type: 'text', text: 'Released' }] }
           },
+        }),
+        defineTool({
+          name: 'subagent',
+          description: 'Delegate',
+          parameters: obj({}),
+          replay: 'safe',
+          execute: async () => ({ output: [{ type: 'text', text: 'Delegated' }] }),
         }),
       ],
     }),
@@ -299,6 +314,29 @@ it('pause keeps a running profile run alive, skips overlap, and abort cancels a 
   await f.action('abort', { id: a.id, runId: manual.id })
   await until(async () => (await f.records())[0].runs.at(-1)?.status === 'aborted')
   await expect(f.action('update', { id: a.id, agent: 'missing' })).rejects.toThrow('Unknown agent')
+})
+
+it('keeps subagent for a definition that lists it, as subagent start does', async () => {
+  // A reviewer whose definition lists subagent to hand deep dives to a helper lost it when an automation ran it.
+  const f = await fixture()
+  const tools = async (agent: string) => {
+    const a = (await f.action('create', {
+      name: agent,
+      prompt: 'Report',
+      schedule: { kind: 'at', time: new Date(Date.now() + 3_600_000).toISOString() },
+      agent,
+    })) as Automation
+    await f.action('run', { id: a.id })
+    await until(async () => {
+      const record = (await f.records()).find((r) => r.id === a.id)!
+      return record.runs[0]?.status === 'done'
+    })
+    const run = (await f.records()).find((r) => r.id === a.id)!.runs[0]
+    const child = (await f.opened.harness.conversation(run.conversationId!, context))!
+    return (await child.agent(context)).tools.map((t) => t.name)
+  }
+  expect(await tools('delegator')).toEqual(['hold', 'subagent'])
+  expect(await tools('inheritor')).not.toContain('subagent')
 })
 
 it('fires nothing while the host is paused and catches up once after Play', async () => {

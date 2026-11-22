@@ -73,7 +73,10 @@ export function scheduler(
               metadata: host.metadata,
               label: RunLabel,
               title: `${a.name} · ${new Date(task.input.firedAt).toLocaleString()}`,
-              excludeTools: a.agent ? ['automation', 'subagent'] : ['automation'],
+              excludeTools:
+                profile && !profile.tools?.includes('subagent')
+                  ? ['automation', 'subagent']
+                  : ['automation'],
               excludeExtensions: ['automations'],
               cwd: (await tx.doc(AgentDoc, runtime.conversationId)).cwd ?? host.projectRoot,
               model: a.model,
