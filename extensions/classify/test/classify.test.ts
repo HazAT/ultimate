@@ -1,23 +1,34 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+} from '@earendil-works/pi-ai/providers/faux'
+import { InlineCodemodeSandbox, loadQuickJSWasm } from '@earendil-works/pi-codemode'
+import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durable'
+import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
 import { afterEach, expect, it, vi } from 'vitest'
 import classify, { cooldownMs } from '../server.ts'
 import { ClassifyApi } from '../api.ts'
 import type { ClassifyService } from '../api.ts'
 import { writeSecret } from '../../secrets/store.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
+import { context } from '../../../server/harness.ts'
 import { removeTemp, temp } from '../../../test/helpers.ts'
 
 const cleanup: string[] = []
+const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
+  for (const close of cleanups.splice(0).toReversed()) await close()
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
   for (const root of cleanup.splice(0)) await removeTemp(root)
 })
 
-async function fixture(key = true, models?: unknown) {
+async function fixture(key = true, models?: unknown, harness?: () => Harness) {
   const root = await temp()
   cleanup.push(root)
   if (key) await writeSecret(root, 'TYPESAFE_API_KEY', 'test-sentinel')
@@ -35,10 +46,12 @@ async function fixture(key = true, models?: unknown) {
     implement,
     modelRuntime,
     notice,
+    harness,
+    onClose: (callback: () => Promise<void>) => cleanups.push(callback),
   } as unknown as ExtensionHost)
   expect(extension.name).toBe('classify')
   expect(implement.mock.calls[0][0]).toBe(ClassifyApi)
-  return { root, notice, service: implement.mock.calls[0][1] }
+  return { root, notice, service: implement.mock.calls[0][1], extension, modelRuntime }
 }
 
 const request = {
@@ -69,6 +82,86 @@ const answers = {
   },
 }
 const body = { model: 'jev-1.14.0', answers, usage: { input_tokens: 123, output_tokens: 18 } }
+const scriptCall = `models.classify({provider: 'typesafe', id: 'jev-1.14.0'}, {
+  state: {message: 'Tests passed'},
+  questions: {phase: {type: 'choice', instructions: 'Which phase?', criteria: {verifying: 'Running tests', editing: 'Making changes'}}}
+})`
+
+async function codemodeFixture() {
+  const registry = createRegistry()
+  let harness: Harness
+  const f = await fixture(true, undefined, () => harness)
+  const faux = fauxProvider()
+  f.modelRuntime.registerNativeProvider(faux.provider)
+  const sandbox = new InlineCodemodeSandbox({ wasm: loadQuickJSWasm() })
+  registry.install(createCodemodeExtension({ sandbox, models: true }))
+  registry.install(f.extension)
+  harness = await Harness.open(new MemoryStorage(), { models: f.modelRuntime, registry }, context)
+  cleanups.push(async () => {
+    await harness.close(context)
+    await sandbox.close()
+  })
+  const root = await harness.root(context, {
+    agent: { model: { provider: 'faux', modelId: 'faux-1' } },
+  })
+  harness.resume()
+  return {
+    ...f,
+    run: async (code: string) => {
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('codemode', { code }), { stopReason: 'toolUse' }),
+        fauxAssistantMessage('Done'),
+      ])
+      const submission = await root.submit({ type: 'input', content: 'Run the script' }, context)
+      await submission.wait(context)
+      const found = (await root.entries({ order: 'descending' }, 10, undefined, context)).items
+        .flatMap((entry) => entry.model ?? [])
+        .find((message) => message.role === 'toolResult' && message.toolName === 'codemode')
+      if (found?.role !== 'toolResult') throw new Error('Missing codemode result')
+      return found.content.map((block) => (block.type === 'text' ? block.text : '')).join('\n')
+    },
+  }
+}
+
+it('shares a codemode 402 with the service and bills only the completed requests', async () => {
+  const { run, service, notice, root, modelRuntime } = await codemodeFixture()
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(new Response('billing_error', { status: 402 }))
+    .mockImplementation(async () => Response.json(body))
+  vi.stubGlobal('fetch', fetch)
+  expect(
+    (await modelRuntime.getAvailableOfType('classifier', 'typesafe')).map((m) => m.id),
+  ).toEqual(['jev-latest', 'jev-1.14.0'])
+  const paused = await run(`text((await ${scriptCall}).errorMessage); await ${scriptCall};`)
+  expect(paused).toContain('System One API error (402): billing_error')
+  expect(paused).toContain('Tool call blocked: TypeSafe 402: out of credits')
+  expect(paused).toContain('classify: 1 call, 0 input tokens, ≈$0')
+  await expect(service.ask(request, new AbortController().signal)).rejects.toThrow(
+    'TypeSafe 402: out of credits',
+  )
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(notice).toHaveBeenCalledExactlyOnceWith(
+    'TypeSafe: out of credits; classification paused for 15 minutes',
+  )
+  await writeSecret(root, 'TYPESAFE_API_KEY', 'updated-sentinel')
+  const resumed = await run(`text((await ${scriptCall}).answers.phase.choice);`)
+  expect(resumed).toContain('verifying')
+  expect(resumed).toContain('classify: 1 call, 123 input tokens, ≈$0.00000517')
+  expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Authorization')).toBe(
+    'Bearer updated-sentinel',
+  )
+})
+
+it('blocks call 1001 of a codemode script', async () => {
+  const { run } = await codemodeFixture()
+  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => Response.json(body))
+  vi.stubGlobal('fetch', fetch)
+  const result = await run(`for (let i = 0; i < 1001; i++) await ${scriptCall};`)
+  expect(result).toContain('classify: at most 1000 calls per script')
+  expect(result).toContain('classify: 1000 calls, 123k input tokens, ≈$0.00517')
+  expect(fetch).toHaveBeenCalledTimes(1000)
+})
 
 it('sends the pinned model, JSON questions, stored key and abort signal; parses all answer types', async () => {
   const { service, root } = await fixture()
@@ -96,7 +189,7 @@ it('sends the pinned model, JSON questions, stored key and abort signal; parses 
 
 it("sends to the endpoint and key of Pi's configured typesafe provider over the stored secret", async () => {
   vi.stubEnv('EXAMPLE_PROXY_KEY', 'proxy-sentinel')
-  const { service } = await fixture(true, {
+  const { service, modelRuntime } = await fixture(true, {
     providers: {
       typesafe: { baseUrl: 'https://proxy.example.com/typesafe/v1', apiKey: '$EXAMPLE_PROXY_KEY' },
     },
@@ -109,6 +202,22 @@ it("sends to the endpoint and key of Pi's configured typesafe provider over the 
     Authorization: 'Bearer proxy-sentinel',
     'Content-Type': 'application/json',
   })
+  const model = modelRuntime.getModelOfType('classifier', 'typesafe', 'jev-1.14.0')!
+  const result = await modelRuntime.classify(model, {
+    state: request.state,
+    questions: {
+      phase: {
+        type: 'choice',
+        instructions: 'What phase?',
+        criteria: { verifying: 'Running tests' },
+      },
+    },
+  })
+  expect(result.answers.phase).toEqual(answers.phase)
+  expect(fetch.mock.calls[1][0]).toEqual(new URL('https://proxy.example.com/typesafe/v1/systemone'))
+  expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Authorization')).toBe(
+    'Bearer proxy-sentinel',
+  )
 })
 
 it('names the missing key and Secrets panel without sending a request', async () => {
