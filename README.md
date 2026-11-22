@@ -133,14 +133,14 @@ A local Qwen model runs via [omlx](https://github.com/jundot/omlx) on `http://12
 
 **Config in `~/.omlx/`:**
 
-- `model_settings.json`: `a8_prefill_enabled=true`, `mtp_enabled=true`, `turboquant_kv_enabled=true`. Custom kernels (`attention`, `lowbit`, `oqh`, etc.) are not installed — without them optimizations don't accelerate fully.
+- `model_settings.json`: `a8_prefill_enabled=true`, `mtp_enabled=true`, `turboquant_kv_enabled=true`. Custom kernels (`attention`, `lowbit`, `oqh`, `quant_matmul`, `sparse_index`) are compiled from source via `brew install --build-from-source --with-custom-kernel jundot/omlx/omlx` (requires full Xcode IDE + MetalToolchain).
 - `settings.json`: `ssd_cache_max_size` = 60GB. Cache never wiped by cron.
 - `max_concurrent_requests` = 4 (kept low to avoid Metal OOM).
 - `memory_guard` = aggressive (prevents hard abort at ~52 GB).
 
 **Cron guard (`~/.ultimate/bin/omlx-restart-if-bloated.sh`):** Restarts omlx only at RSS ≥35 GB after 2 min idle; skips while `~/.omlx-bench/LOCK` exists; logs to `~/.omlx/restart.log`.
 
-**Performance:** avg ~34 tok/s generation (target 60 without custom kernels), ~918 tok/s prefill. Cache efficiency ~94%.
+**Performance:** avg ~75 tok/s generation (with custom kernels), ~156 tok/s prefill. Cache efficiency ~94%.
 
 **In `~/.pi/agent/models.json`:** omlx provider with base url `http://127.0.0.1:8001/v1`, api `openai-completions`, apiKey `omlx-local` (unused — omlx verifies keys by default but skips when `api_key` is empty in settings).
 
