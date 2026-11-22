@@ -51,6 +51,7 @@ export function fetchAssets(origin: string) {
       )
       const response = await fetch(assetFromTrustedOrigin, {
         signal: AbortSignal.timeout(5000),
+        redirect: 'error',
       })
       return response.ok ? await response.text() : undefined
     } catch {
