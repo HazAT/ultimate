@@ -1,7 +1,4 @@
 {
-  "extensions": {
-    "enable": ["voice-live"]
-  },
   "modelFamilies": {
     "families": {
       "lead": { "model": "claude-code/claude-opus-5-5", "thinking": "high", "color": "orange" },
