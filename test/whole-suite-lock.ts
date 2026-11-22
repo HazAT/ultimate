@@ -1,13 +1,11 @@
 import { mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { sqliteCode } from '../lib/errors.ts'
 import { acquireLock, readOwner } from '../lib/lock.ts'
 
 const folder = join(homedir(), '.ultimate')
 const path = join(folder, 'test-suites.lock')
 const waitBeforeEachReportMs = 30_000
-const busy = 5
 
 /**
  * Two whole suites at once went over the machine's memory budget and the kernel killed them, so a whole-suite run
@@ -19,7 +17,7 @@ export default async function oneWholeSuiteAtATime() {
   const value = { pid: process.pid }
   for (;;) {
     const lock = await acquireLock(path, value, waitBeforeEachReportMs).catch((error: Error) => {
-      if (sqliteCode(error.cause) !== busy) throw error
+      if (!error.message.startsWith('Ultimate core already owns')) throw error
       return undefined
     })
     if (lock) return () => lock.close()

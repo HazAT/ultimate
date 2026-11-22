@@ -62,7 +62,7 @@ export function extensionFolders(paths: string[], cwd: string) {
 const lines = (text: string) => text.split('\0').filter(Boolean)
 
 const gitList = async (cwd: string, ...args: string[]) =>
-  lines((await exec('git', args, { cwd, maxBuffer: 16 * 1024 * 1024 })).stdout)
+  lines((await exec('git', args, { cwd, timeout: 30000, maxBuffer: 16 * 1024 * 1024 })).stdout)
 
 async function changedPaths(cwd: string, base: string) {
   const changed = await gitList(cwd, 'diff', '--name-only', '--no-renames', '-z', base)
@@ -111,15 +111,14 @@ export async function selectByPath(cwd: string, paths: string[]) {
   return [...files].filter((file) => existsSync(join(cwd, file)))
 }
 
-async function importedBy(cwd: string, suite: Suite, base: string) {
+async function vitestList(cwd: string, suite: Suite, args: string[]) {
   const folder = await mkdtemp(join(tmpdir(), 'ultimate-test-affected-'))
   try {
     const out = join(folder, 'list.json')
-    await exec(
-      'vitest',
-      ['list', ...configs[suite], '--changed', base, '--filesOnly', `--json=${out}`],
-      { cwd, maxBuffer: 16 * 1024 * 1024 },
-    )
+    await exec('vitest', ['list', ...configs[suite], ...args, '--filesOnly', `--json=${out}`], {
+      cwd,
+      maxBuffer: 16 * 1024 * 1024,
+    })
     const listed: { file: string }[] = JSON.parse(await readFile(out, 'utf8'))
     return listed.map(({ file }) => relative(cwd, file))
   } finally {
@@ -133,7 +132,7 @@ async function select(cwd: string, base: string) {
   const files: Record<Suite, Set<string>> = { fast: new Set(), e2e: new Set() }
   for (const suite of suites)
     if (!whole.includes(suite))
-      for (const file of await importedBy(cwd, suite, base)) files[suite].add(file)
+      for (const file of await vitestList(cwd, suite, ['--changed', base])) files[suite].add(file)
   for (const file of await selectByPath(cwd, paths)) files[suiteOf(file)].add(file)
   return { paths, whole, files }
 }
@@ -148,9 +147,21 @@ function run([command, ...args]: string[], env = process.env) {
   })
 }
 
-function runSuite(suite: Suite, args: string[]) {
-  const scoped = parseCLI(['vitest', ...args]).filter.length > 0
-  return run([...commands[suite], ...args], scoped ? process.env : wholeSuiteEnv)
+export async function narrows(suite: Suite, args: string[]) {
+  if (args.includes('--help') || args.includes('-h')) return true
+  const { filter } = parseCLI(['vitest', ...args])
+  if (!filter.length) return false
+  const cwd = process.cwd()
+  const [selected, every] = await Promise.all([
+    vitestList(cwd, suite, filter),
+    vitestList(cwd, suite, []),
+  ])
+  return selected.length < every.length
+}
+
+async function runSuite(suite: Suite, args: string[]) {
+  const whole = !(await narrows(suite, args))
+  return run([...commands[suite], ...args], whole ? wholeSuiteEnv : process.env)
 }
 
 async function affected(base: string | undefined) {
