@@ -13,7 +13,7 @@ import {
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { actingAs } from '../../lib/acting-as.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
+import { imagesHint, imagesOf, latestImagesEntry } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { AutomationsApi } from '../automations/api.ts'
 import { Standing } from '../subagents/api.ts'
@@ -107,7 +107,9 @@ async function imagesEntry(tx: Tx, id: ConversationId, ref: 'latest' | EntryId) 
   if (ref !== 'latest') {
     const entry = await tx.entry(ref)
     if (entry?.conversationId !== id || !imagesOf(entry).length)
-      throw new Error(`images: entry ${ref} in your conversation has no images`)
+      throw new Error(
+        `images: entry ${ref} in your conversation has no images; ${await imagesHint(tx, id)}`,
+      )
     return ref
   }
   return (await latestImagesEntry(tx, id)).id

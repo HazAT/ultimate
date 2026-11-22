@@ -566,7 +566,9 @@ it('turns a message to a sender it owes an answer into that answer, once, with i
   expect(reply.data).toMatchObject({ id: answer.id, re: asked.id, text: 'Ready', images: 2 })
   expect(imagesIn(reply)).toEqual([png(0), png(1)])
   // The tool result ends the run: no final answer restates it, and delivery sends nothing more.
-  expect((await toolResults(f)).at(-1)).toContain(`Sent as your answer to message ${asked.id}.`)
+  expect((await toolResults(f)).at(-1)).toContain(
+    `Sent as your answer to message ${asked.id} with 2 images from entry ${answer.images!.entry}.`,
+  )
   const view = await f.recipient.context(context)
   expect(view.entries.at(-1)?.kind).toBe('pi.tool-result')
   expect(f.observed.filter((t) => t.startsWith('Reply from'))).toHaveLength(1)
@@ -1358,7 +1360,9 @@ it('refuses image references that do not resolve or exceed the limits', async ()
   expect(f.observed.join('\n')).toContain('entry 99999 is not in this conversation')
   const plain = await submitWithImages(f, 'plain', 0)
   await f.send(to, 'Plain', { images: plain })
-  expect(f.observed.join('\n')).toContain(`entry ${plain} has no images`)
+  expect(f.observed.join('\n')).toContain(
+    `entry ${plain} has no images; no recent entry here has images`,
+  )
   await submitWithImages(f, `SEND ${JSON.stringify({ to, text: 'Too many', images: 'latest' })}`, 5)
   expect(f.observed.join('\n')).toContain('has 5 images; at most 4 go along')
   expect((await f.log())?.messages ?? []).toHaveLength(0)
@@ -1403,6 +1407,7 @@ it("forwards tool-result images by id, not an earlier turn's as latest, and chec
   const message = (await f.log())!.messages[0]
   expect(message.images).toEqual({ entry: shot, count: 1 })
   expect(imagesIn(await placed(f, f.recipient.id, message.id))).toEqual([png(7)])
+  expect(f.observed.join('\n')).toContain(`with 1 image from entry ${shot}`)
   const big = 'A'.repeat(Math.ceil(((2 * 1024 * 1024 + 3) / 3) * 4))
   const oversized = await write(result([{ type: 'image', mimeType: 'image/png', data: big }]))
   await f.send(to, 'Big', { images: oversized })
@@ -1425,6 +1430,10 @@ it("forwards tool-result images by id, not an earlier turn's as latest, and chec
   )
   await f.send(to, 'Elsewhere', { images: elsewhere })
   expect(f.observed.join('\n')).toContain(`entry ${elsewhere} is not in this conversation`)
+  // A failed reference names usable entry ids, so a wrong guess corrects in one step.
+  expect(f.observed.join('\n')).toContain(
+    `entry ${elsewhere} is not in this conversation; entries with images here, newest first: ${svg} (1), ${oversized} (1), ${shot} (1)`,
+  )
   expect((await f.log())!.messages.filter((m) => m.from === 1)).toHaveLength(1)
 })
 async function enableBranch(f: Awaited<ReturnType<typeof fixture>>) {

@@ -23,6 +23,7 @@ import { Branches, WorkspacesApi } from '../workspaces/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { Messages, MessagesApi } from './api.ts'
+import type { Message } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
 import { CallerAction, SettleAction } from './refs.ts'
@@ -30,7 +31,8 @@ import type { Via } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { actingAs } from '../../lib/acting-as.ts'
-import { imagesParameter, SCAN_PAGE } from './images.ts'
+import { imagesParameter } from './images.ts'
+import { SCAN_PAGE } from '../../lib/entries.ts'
 import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
 import { Concluded } from '../conversations/api.ts'
 import { dropped } from './outcomes.ts'
@@ -53,6 +55,11 @@ import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages, Started, Serving]
+
+const withImages = (sent: Message | undefined) =>
+  sent?.images
+    ? ` with ${sent.images.count} image${sent.images.count === 1 ? '' : 's'} from entry ${sent.images.entry}`
+    : ''
 
 async function openMessage(host: ExtensionHost, messageId: number, ctx: Context) {
   const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
@@ -393,7 +400,7 @@ export default function messages(host: ExtensionHost) {
               output: [
                 {
                   type: 'text',
-                  text: `Sent as your answer to message ${sent.re}.`,
+                  text: `Sent as your answer to message ${sent.re}${withImages(sent)}.`,
                 },
               ],
               control: { terminate: true as const },
@@ -412,7 +419,7 @@ export default function messages(host: ExtensionHost) {
           }
           if (input.to !== 'user')
             return {
-              output: [{ type: 'text', text: `Message ${id} sent.` }],
+              output: [{ type: 'text', text: `Message ${id} sent${withImages(sent)}.` }],
               details: { message: id },
             }
 
@@ -440,7 +447,7 @@ export default function messages(host: ExtensionHost) {
               ctx,
             )
           return {
-            output: [{ type: 'text', text: `Message ${id} sent.` }],
+            output: [{ type: 'text', text: `Message ${id} sent${withImages(sent)}.` }],
             details: { message: id },
             ...(hasPendingReplies ? {} : { control: { terminate: true as const } }),
           }

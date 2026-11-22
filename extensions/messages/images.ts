@@ -1,10 +1,9 @@
 import type { ConversationId, EntryId, EntryRecord, Tx } from '@earendil-works/pi-durable'
 import { int, lit, union } from '@earendil-works/pi-schema'
-import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
+import { imagesHint, imagesOf, latestImagesEntry } from '../../lib/entries.ts'
 import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
 
 export type ImagesRef = 'latest' | EntryId
-export const SCAN_PAGE = 200
 
 export async function resolveImages(tx: Tx, from: ConversationId, ref: ImagesRef) {
   let entry: EntryRecord | undefined
@@ -22,10 +21,14 @@ export async function resolveImages(tx: Tx, from: ConversationId, ref: ImagesRef
         1,
       )
     ).items[0]
-    if (!entry) throw new Error(`images: entry ${ref} is not in this conversation`)
+    if (!entry)
+      throw new Error(
+        `images: entry ${ref} is not in this conversation; ${await imagesHint(tx, from)}`,
+      )
   }
   const images = imagesOf(entry)
-  if (!images.length) throw new Error(`images: entry ${entry.id} has no images`)
+  if (!images.length)
+    throw new Error(`images: entry ${entry.id} has no images; ${await imagesHint(tx, from)}`)
   if (images.length > maxImages)
     throw new Error(
       `images: entry ${entry.id} has ${images.length} images; at most ${maxImages} go along`,
@@ -40,5 +43,5 @@ export async function resolveImages(tx: Tx, from: ConversationId, ref: ImagesRef
 }
 export const imagesParameter = union([lit('latest'), int({ minimum: 1 })], {
   description:
-    'Forward images from your conversation: "latest" for those of this turn (your current input, or a tool result such as a screenshot since; it fails when there are none), or an entry id for older ones.',
+    'Forward images from your conversation: "latest" for those of this turn (your current input, or a tool result such as a screenshot since; it fails when there are none), or an entry id for older ones. The confirmation names the entry id it used, and a failed reference names usable ones.',
 })
