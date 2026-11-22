@@ -129,11 +129,12 @@ export function triggers(
     if (usage.percent < condition.above || !condition.armed) return
     if (firesAt > now) {
       const sleeper = condition.waker === undefined ? undefined : await tx.task(condition.waker)
-      const sleeping = sleeper !== undefined && sleeper.state.status !== 'terminal'
-      if (condition.idleFor && !(sleeping && condition.wakeAt! <= firesAt)) {
+      const sleepsUntil =
+        sleeper && sleeper.state.status !== 'terminal'
+          ? (sleeper.input as { until: number }).until
+          : undefined
+      if (condition.idleFor && !(sleepsUntil! <= firesAt))
         condition.waker = await tx.createTask(IdleWaker, { id: a.id, until: firesAt }, onRoot)
-        condition.wakeAt = firesAt
-      }
       return
     }
     const count = (n: number) =>
@@ -159,20 +160,20 @@ export function triggers(
       sleep: (task, runtime, ctx) =>
         runtime.sleepUntil(task.input.until, { phase: 'evaluate' }, ctx),
       evaluate: async (task, runtime, ctx) => {
-        const inMeasurementOrder = measurementsInCommitOrder.then(async () => {
-          const of = (await host.harness().snapshot(Automations, ctx))?.automations[task.input.id]
-            ?.condition?.of
-          const target = of === undefined ? undefined : await resolve(of)
-          await runtime.commit(async (tx) => {
+        const inMeasurementOrder = measurementsInCommitOrder.then(() =>
+          runtime.commit(async (tx) => {
             const a = (await tx.doc(Automations)).automations[task.input.id]
             if (a?.condition?.waker === task.id) {
+              const of = a.condition.of
+              const target = STANDING.test(of)
+                ? (await tx.doc(Standing, ROOT_CONVERSATION_ID))[of.slice(1)]
+                : parseConversationId(Number(of.slice(1)))
               delete a.condition.waker
-              delete a.condition.wakeAt
-              if (a.condition.of === of) await evaluate(tx, a, target)
+              await evaluate(tx, a, target)
             }
             return { status: 'terminal', outcome: { status: 'completed', result: null } }
-          }, ctx)
-        })
+          }, ctx),
+        )
         measurementsInCommitOrder = settled(inMeasurementOrder)
         await inMeasurementOrder
       },
@@ -180,10 +181,7 @@ export function triggers(
     abort: (task, runtime, ctx) =>
       runtime.commit(async (tx) => {
         const condition = (await tx.doc(Automations)).automations[task.input.id]?.condition
-        if (condition?.waker === task.id) {
-          delete condition.waker
-          delete condition.wakeAt
-        }
+        if (condition?.waker === task.id) delete condition.waker
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, ctx),
   })

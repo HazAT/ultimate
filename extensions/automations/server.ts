@@ -678,7 +678,6 @@ function backend(host: ExtensionHost) {
         const retargeted = previousTarget !== undefined && previousTarget !== a.condition.of
         if (!a.condition.idleFor || retargeted) {
           delete a.condition.waker
-          delete a.condition.wakeAt
         }
         if (!a.condition.idleFor) {
           delete a.condition.idleFor

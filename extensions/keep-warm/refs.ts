@@ -8,6 +8,8 @@ import { actionRef, docRef } from '../../shared/extension-api.ts'
  */
 export type Ping = {
   at: number
+  /** @ultimate's conversation whose cache it renewed. */
+  conversation?: number
   provider: string
   model: string
   read?: number
@@ -17,8 +19,8 @@ export type Ping = {
 
 /**
  * On conversation 1. `off` when the user turned it off (it is on by default); the user's latest input to @ultimate
- * (ms, from `user.input` events); when @ultimate last got an answer that read or wrote its cache, per `provider/model`
- * (ms); the last ping and how many ran; the task that sleeps until the next ping, while one is planned.
+ * (ms, from `user.input` events); when @ultimate last got an answer that read or wrote its cache, per
+ * `conversation:provider/model` (ms); the last ping and how many ran; the task that sleeps until the next ping, while one is planned.
  */
 export type WarmDocState = {
   off?: true

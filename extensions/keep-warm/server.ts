@@ -6,8 +6,6 @@ import {
   defineDoc,
   defineExtension,
   defineTask,
-  GenerationTask,
-  hook,
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
@@ -60,12 +58,21 @@ export const cached = (message: AssistantMessage) =>
   message.stopReason !== 'aborted' &&
   message.usage.cacheRead + message.usage.cacheWrite > 0
 
-const key = (model: ModelRef) => `${model.provider}/${model.modelId}`
+const key = (id: ConversationId, model: ModelRef) => `${id}:${model.provider}/${model.modelId}`
 
-export function plan(doc: WarmDocState, model: ModelRef | undefined, now: number) {
-  if (!model || !hourLong(model.provider)) return undefined
-  const last = lastOn(doc.last, model)
-  const lastRequest = Math.max(doc.answers?.[key(model)] ?? 0, last && !last.error ? last.at : 0)
+export function plan(
+  doc: WarmDocState,
+  id: ConversationId | undefined,
+  model: ModelRef | undefined,
+  now: number,
+) {
+  if (id === undefined || !model || !hourLong(model.provider)) return undefined
+  const ping = lastOn(doc.last, model)
+  const last = ping?.conversation === id ? ping : undefined
+  const lastRequest = Math.max(
+    doc.answers?.[key(id, model)] ?? 0,
+    last && !last.error ? last.at : 0,
+  )
   if (!lastRequest) return undefined
   const at = lastRequest + LEAD
   const found = {
@@ -187,7 +194,7 @@ async function send(
   }
 }
 
-type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' } | { phase: 'sent' }
+type Checkpoint = { phase: 'plan' } | { phase: 'interrupted' } | { phase: 'replan'; sent?: number }
 
 function pinger(host: ExtensionHost) {
   const sleepOrStop = (
@@ -215,6 +222,7 @@ function pinger(host: ExtensionHost) {
           found &&
           plan(
             (await runtime.snapshot(State, ROOT_CONVERSATION_ID, ctx)) ?? {},
+            found.id,
             found.agent.model,
             runtime.now(),
           )
@@ -227,12 +235,16 @@ function pinger(host: ExtensionHost) {
           const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
           if (doc.waker !== task.id) return stop
           const now = runtime.now()
-          const model = found && (await tx.doc(AgentDoc, found.id)).model
-          const next = plan(doc, model, now)
+          const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+          const next = plan(
+            doc,
+            id,
+            id === undefined ? undefined : (await tx.doc(AgentDoc, id)).model,
+            now,
+          )
           if (!next?.due || next.at > now) return sleepOrStop(doc, next, now)
-          if (!lastOn(next, found!.agent.model!))
-            return { status: 'sleeping', until: now, checkpoint: { phase: 'plan' } }
-          if (!messages || host.want(PauseApi)?.paused())
+          const prepared = !!messages && id === found!.id && !!lastOn(next, found!.agent.model!)
+          if (!prepared || host.want(PauseApi)?.paused())
             return { status: 'sleeping', until: now, checkpoint: { phase: 'plan' } }
           const run = (await tx.doc(LiveDoc, found!.id)).run
           if (run)
@@ -244,6 +256,7 @@ function pinger(host: ExtensionHost) {
             }
           doc.last = {
             at: now,
+            conversation: id,
             provider: next.provider,
             model: next.model,
             error: 'interrupted',
@@ -264,7 +277,7 @@ function pinger(host: ExtensionHost) {
         )
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-          doc.last = last
+          doc.last = { ...last, conversation: found!.id }
           if (answer)
             await host.need(ConversationsApi).accountResponse(tx, found!.id, {
               provider: answer.provider,
@@ -275,12 +288,12 @@ function pinger(host: ExtensionHost) {
               text: '',
               stopReason: answer.stopReason,
             })
-          return { status: 'running', checkpoint: { phase: 'sent' } }
+          return { status: 'running', checkpoint: { phase: 'replan', sent: sending!.at } }
         }, ctx)
       },
       interrupted: (_task, runtime, ctx) =>
-        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
-      sent: (_task, runtime, ctx) =>
+        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'replan' } }), ctx),
+      replan: (_task, runtime, ctx) =>
         runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'plan' } }), ctx),
     },
     abort: (task, runtime, ctx) =>
@@ -297,7 +310,7 @@ async function arm(tx: Tx, host: ExtensionHost) {
   const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
   const id = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   const next =
-    id === undefined ? undefined : plan(doc, (await tx.doc(AgentDoc, id)).model, Date.now())
+    id === undefined ? undefined : plan(doc, id, (await tx.doc(AgentDoc, id)).model, Date.now())
   if (!next?.due) return
   const waker = doc.waker === undefined ? undefined : (await tx.task(doc.waker))?.state
   const sleepsPast = waker?.status === 'sleeping' && (waker.until ?? Infinity) > next.at
@@ -331,15 +344,16 @@ async function catchUp(host: ExtensionHost, changed?: Set<ConversationId>) {
   const at = found && (await lastCachedAnswerWithinTheHour(host, found))
   await host.harness().commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-    if (at && found.agent.model && (doc.answers?.[key(found.agent.model)] ?? 0) < at)
-      doc.answers = { ...doc.answers, [key(found.agent.model)]: at }
+    if (at && found.agent.model && (doc.answers?.[key(found.id, found.agent.model)] ?? 0) < at)
+      doc.answers = { ...doc.answers, [key(found.id, found.agent.model)]: at }
     await arm(tx, host)
   }, context)
 }
 
 async function state(host: ExtensionHost): Promise<WarmState> {
   const doc = (await host.harness().snapshot(State, ROOT_CONVERSATION_ID, context)) ?? {}
-  const next = plan(doc, (await ultimate(host, context))?.agent.model, Date.now())
+  const found = await ultimate(host, context)
+  const next = plan(doc, found?.id, found?.agent.model, Date.now())
   return {
     on: !doc.off,
     pings: doc.pings ?? 0,
@@ -370,13 +384,17 @@ export default function keepWarm(host: ExtensionHost) {
   host.onOpen(async (opened) => {
     const stopWatching = onCommit(host.harness(), (publication) => {
       const changed = new Set<ConversationId>()
-      for (const change of publication.changes)
+      for (const change of publication.changes) {
         if (
           change.type === 'document' &&
           change.record.kind === AgentDoc.definition.kind &&
           change.conversationId !== undefined
         )
           changed.add(change.conversationId)
+        const message = change.type === 'entry' ? change.value.model?.[0] : undefined
+        if (change.type === 'entry' && message?.role === 'assistant' && cached(message))
+          changed.add(change.value.conversationId)
+      }
       if (changed.size) rebuiltOnOpen('open catches up again', catchUp(host, changed))
     })
     opened.defer(stopWatching)
@@ -385,23 +403,6 @@ export default function keepWarm(host: ExtensionHost) {
   return defineExtension({
     name: 'keep-warm',
     tasks: [Pinger],
-    hooks: [
-      hook(GenerationTask, {
-        afterResponse: async (message, api, ctx) => {
-          if (!cached(message)) return
-          const standing = await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
-          if (standing?.ultimate !== api.conversationId) return
-          await host.harness().commit(async (tx) => {
-            const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-            doc.answers = {
-              ...doc.answers,
-              [key({ provider: message.provider, modelId: message.model })]: message.timestamp,
-            }
-            await arm(tx, host)
-          }, ctx)
-        },
-      }),
-    ],
   })
 }
 

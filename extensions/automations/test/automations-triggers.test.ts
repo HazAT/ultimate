@@ -451,7 +451,9 @@ it('fires an idle condition only after the pause, at the threshold, and re-arms 
   const inputAt = Date.now()
   expect((await f.record(a.id)).condition?.inputAt).toBe(inputAt)
   await later(HOUR)
-  await until(async () => (await f.record(a.id)).condition?.wakeAt === inputAt + 8 * HOUR)
+  await until(async () =>
+    (await live()).some((task) => (task.input as { until: number }).until === inputAt + 8 * HOUR),
+  )
   expect((await f.record(a.id)).fires).toBe(0)
   expect((await wakers()).map((task) => task.state)).toMatchObject([
     { status: 'sleeping', until: inputAt + 8 * HOUR },
