@@ -576,6 +576,7 @@ export function createStore(options: StoreOptions = {}) {
       live.clear()
       multiplexedEventSource?.close()
       multiplexedEventSource = undefined
+      if (state.connection.status === 'open') setConnection('reconnecting')
     },
 
     show(id: ConversationId | undefined) {
