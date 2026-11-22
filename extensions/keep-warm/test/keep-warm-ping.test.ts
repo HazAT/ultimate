@@ -13,7 +13,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import { Standing } from '../../subagents/api.ts'
-import { apis, eventHost, until } from '../../../test/helpers.ts'
+import { apis, eventHost, openers, until } from '../../../test/helpers.ts'
 import { LEAD } from '../due.ts'
 import keepWarm, { docs } from '../server.ts'
 
@@ -41,6 +41,7 @@ async function fixture() {
   await harness.root(context)
   const events = eventHost(() => harness, 'keep-warm')
   let paused = false
+  const lifecycle = openers()
   const services = apis()
   services.provided.set('conversations', { accountResponse: async () => {} })
   services.provided.set('pause', { paused: () => paused })
@@ -49,6 +50,7 @@ async function fixture() {
     ...events,
     harness: () => harness,
     modelRuntime: models,
+    onOpen: lifecycle.onOpen,
   } as unknown as ExtensionHost
   registry.install(keepWarm(host))
   const ultimate = await harness.commit(async (tx) => {
@@ -57,10 +59,12 @@ async function fixture() {
     ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = id
     return id
   }, context)
+  await lifecycle.open()
   await events.start()
   harness.resume()
   cleanups.push(async () => {
     await events.stop()
+    await lifecycle.close()
     await harness.close(context)
   })
   const tasks = async () =>
@@ -76,6 +80,12 @@ async function fixture() {
     calls: () => faux.state.callCount,
     doc: async () => (await harness.snapshot(docs[0], ROOT_CONVERSATION_ID, context))!,
     now: () => Date.now(),
+    forget: async () => {
+      for (const task of await tasks()) await harness.abortTask(task.id, context)
+      await harness.commit(async (tx) => {
+        delete (await tx.doc(docs[0], ROOT_CONVERSATION_ID)).answers
+      }, context)
+    },
     pause: (on: boolean) => {
       paused = on
       if (on) harness.hold()
@@ -98,8 +108,10 @@ async function fixture() {
     },
     reopen: async () => {
       await events.stop()
+      await lifecycle.close()
       await harness.close(context)
       harness = await Harness.open(storage, options, context)
+      await lifecycle.open()
       await events.start()
       harness.resume()
     },
@@ -121,7 +133,7 @@ it('sleeps until the cache nears its hour, survives a reopen, pings once and pla
   await f.advance(LEAD - 1)
   expect(f.calls()).toBe(calls)
   await f.advance(1)
-  await until(async () => (await f.doc()).pings === 1)
+  await until(async () => (await f.doc()).last?.error === undefined && (await f.doc()).pings === 1)
   expect(f.calls()).toBe(calls + 1)
   expect((await f.doc()).last).toMatchObject({ at: answeredAt + LEAD, provider: 'claude-code' })
   const [next] = await f.sleeping()
@@ -140,7 +152,19 @@ it('sends nothing while paused and pings once the pause ends within the hour', a
   expect(f.calls()).toBe(calls)
   expect((await f.doc()).pings).toBeUndefined()
   f.pause(false)
-  await until(async () => (await f.doc()).pings === 1)
+  await until(async () => (await f.doc()).last?.error === undefined && (await f.doc()).pings === 1)
   expect((await f.doc()).last).toMatchObject({ at: answeredAt + LEAD + 60_000 })
   expect(f.calls()).toBe(calls + 1)
+})
+
+it('picks up a cache still warm from before the upgrade when it opens', async () => {
+  const f = await fixture()
+  await f.input(f.ultimate)
+  const answeredAt = f.now()
+  await f.sleeping()
+  await f.forget()
+  await f.advance(10 * 60_000)
+  await f.reopen()
+  const [waker] = await f.sleeping()
+  expect(waker.state).toMatchObject({ until: answeredAt + LEAD })
 })

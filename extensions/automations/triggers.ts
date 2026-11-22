@@ -3,6 +3,7 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
+import { settled } from '../../lib/errors.ts'
 import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { defineEvent, UserInputEvent } from '../../shared/events.ts'
@@ -156,18 +157,22 @@ export function triggers(
       sleep: (task, runtime, ctx) =>
         runtime.sleepUntil(task.input.until, { phase: 'evaluate' }, ctx),
       evaluate: async (task, runtime, ctx) => {
-        const of = (await host.harness().snapshot(Automations, ctx))?.automations[task.input.id]
-          ?.condition?.of
-        const target = of === undefined ? undefined : await resolve(of)
-        await runtime.commit(async (tx) => {
-          const a = (await tx.doc(Automations)).automations[task.input.id]
-          if (a?.condition?.waker === task.id) {
-            delete a.condition.waker
-            delete a.condition.wakeAt
-            if (a.condition.of === of) await evaluate(tx, a, target)
-          }
-          return { status: 'terminal', outcome: { status: 'completed', result: null } }
-        }, ctx)
+        const inMeasurementOrder = measurementsInCommitOrder.then(async () => {
+          const of = (await host.harness().snapshot(Automations, ctx))?.automations[task.input.id]
+            ?.condition?.of
+          const target = of === undefined ? undefined : await resolve(of)
+          await runtime.commit(async (tx) => {
+            const a = (await tx.doc(Automations)).automations[task.input.id]
+            if (a?.condition?.waker === task.id) {
+              delete a.condition.waker
+              delete a.condition.wakeAt
+              if (a.condition.of === of) await evaluate(tx, a, target)
+            }
+            return { status: 'terminal', outcome: { status: 'completed', result: null } }
+          }, ctx)
+        })
+        measurementsInCommitOrder = settled(inMeasurementOrder)
+        await inMeasurementOrder
       },
     },
     abort: (task, runtime, ctx) =>

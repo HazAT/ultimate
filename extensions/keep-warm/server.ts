@@ -2,6 +2,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord/context'
 import { copyJson } from '@earendil-works/chord/json'
 import {
+  AgentDoc,
   defineDoc,
   defineExtension,
   defineTask,
@@ -10,12 +11,20 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, ModelRef, NextTaskState, Tx } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  Cursor,
+  ModelRef,
+  NextTaskState,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { conversationIdentity } from '../../lib/ids.ts'
+import { onCommit } from '../../lib/commits.ts'
+import { rebuiltOnOpen } from '../../lib/errors.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { PauseApi } from '../pause/api.ts'
@@ -51,11 +60,13 @@ export const cached = (message: AssistantMessage) =>
   message.stopReason !== 'aborted' &&
   message.usage.cacheRead + message.usage.cacheWrite > 0
 
+const key = (model: ModelRef) => `${model.provider}/${model.modelId}`
+
 export function plan(doc: WarmDocState, model: ModelRef | undefined, now: number) {
-  const answer = model && hourLong(model.provider) ? lastOn(doc.answer, model) : undefined
-  if (!answer) return undefined
+  const answered = model && hourLong(model.provider) ? doc.answers?.[key(model)] : undefined
+  if (answered === undefined) return undefined
   const last = lastOn(doc.last, model!)
-  const lastRequest = Math.max(answer.at, last && !last.error ? last.at : 0)
+  const lastRequest = Math.max(answered, last && !last.error ? last.at : 0)
   const at = lastRequest + LEAD
   const found = {
     lastRequest,
@@ -63,8 +74,8 @@ export function plan(doc: WarmDocState, model: ModelRef | undefined, now: number
     inputAt: doc.inputAt,
   }
   return {
-    provider: answer.provider,
-    model: answer.model,
+    provider: model!.provider,
+    model: model!.modelId,
     lastRequest,
     at,
     due: !doc.off && due({ ...found, now: Math.max(now, at) }),
@@ -125,10 +136,10 @@ type Planned = NonNullable<ReturnType<typeof plan>>
 async function send(
   host: ExtensionHost,
   found: NonNullable<Awaited<ReturnType<typeof ultimate>>>,
+  messages: Message[],
   next: Planned,
   at: number,
   runtime: { now(): number; signal: AbortSignal },
-  caller: Context,
 ): Promise<{ last: Ping; answer?: AssistantMessage }> {
   const attempt = { at, provider: next.provider, model: next.model }
   const model = host.modelRuntime.getModel(next.provider, next.model)
@@ -140,8 +151,6 @@ async function send(
       },
     }
   try {
-    const messages = await pingRequest(found.conversation, found.id, caller)
-    messages.push({ role: 'user', content: QUESTION, timestamp: at })
     if (!open(host.want(PauseApi)?.paused(), next.lastRequest, runtime.now()))
       return { last: { ...attempt, error: 'skipped: paused or expired' } }
     const thinking = found.agent.thinkingLevel
@@ -202,6 +211,11 @@ function pinger(host: ExtensionHost) {
     phases: {
       plan: async (task, runtime, ctx) => {
         const found = await ultimate(host, ctx)
+        const ready = await runtime.snapshot(State, ROOT_CONVERSATION_ID, ctx)
+        const messages =
+          found && plan(ready ?? {}, found.agent.model, runtime.now())?.due
+            ? await pingRequest(found.conversation, found.id, ctx)
+            : undefined
         let sending: { next: Planned; at: number } | undefined
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
@@ -209,6 +223,8 @@ function pinger(host: ExtensionHost) {
           const now = runtime.now()
           const next = plan(doc, found?.agent.model, now)
           if (!next?.due || next.at > now) return sleepOrStop(doc, next, now)
+          if (!messages || host.want(PauseApi)?.paused())
+            return { status: 'sleeping', until: now, checkpoint: { phase: 'plan' } }
           const run = (await tx.doc(LiveDoc, found!.id)).run
           if (run)
             return {
@@ -228,7 +244,15 @@ function pinger(host: ExtensionHost) {
           return { status: 'running', checkpoint: { phase: 'interrupted' } }
         }, ctx)
         if (!sending) return
-        const { last, answer } = await send(host, found!, sending.next, sending.at, runtime, ctx)
+        messages!.push({ role: 'user', content: QUESTION, timestamp: sending.at })
+        const { last, answer } = await send(
+          host,
+          found!,
+          messages!,
+          sending.next,
+          sending.at,
+          runtime,
+        )
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
           doc.last = last
@@ -265,7 +289,38 @@ function pinger(host: ExtensionHost) {
 async function arm(tx: Tx, host: ExtensionHost) {
   const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
   const live = doc.waker !== undefined && (await tx.task(doc.waker))?.state.status !== 'terminal'
-  if (!doc.off && doc.answer && !live) doc.waker = await tx.createTask(pinger(host), null, owner)
+  if (!doc.off && doc.answers && !live) doc.waker = await tx.createTask(pinger(host), null, owner)
+}
+
+async function lastCachedAnswerWithinTheHour(
+  host: ExtensionHost,
+  found: NonNullable<Awaited<ReturnType<typeof ultimate>>>,
+) {
+  const model = found.agent.model
+  if (!model || !hourLong(model.provider)) return undefined
+  let cursor: Cursor | undefined
+  do {
+    const page = await found.conversation.entries({}, 100, cursor, context)
+    for (const entry of page.items) {
+      const message = entry.model?.[0]
+      if (message?.role !== 'assistant') continue
+      if (Date.now() - message.timestamp >= TTL) return undefined
+      if (cached(message) && lastOn(message, model)) return message.timestamp
+    }
+    cursor = page.next
+  } while (cursor)
+  return undefined
+}
+
+async function catchUp(host: ExtensionHost) {
+  const found = await ultimate(host, context)
+  const at = found && (await lastCachedAnswerWithinTheHour(host, found))
+  await host.harness().commit(async (tx) => {
+    const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
+    if (at && found.agent.model && (doc.answers?.[key(found.agent.model)] ?? 0) < at)
+      doc.answers = { ...doc.answers, [key(found.agent.model)]: at }
+    await arm(tx, host)
+  }, context)
 }
 
 async function state(host: ExtensionHost): Promise<WarmState> {
@@ -290,9 +345,25 @@ export default function keepWarm(host: ExtensionHost) {
     async (tx, { data, at }) => {
       if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== data.conversation) return
       ;(await tx.doc(State, ROOT_CONVERSATION_ID)).inputAt = Date.parse(at)
+      await arm(tx, host)
     },
     { from: 'now' },
   )
+  host.onOpen(async (opened) => {
+    const stopWatching = onCommit(host.harness(), (publication) => {
+      if (
+        publication.changes.some(
+          (change) =>
+            change.type === 'document' &&
+            change.record.kind === AgentDoc.definition.kind &&
+            change.conversationId !== ROOT_CONVERSATION_ID,
+        )
+      )
+        rebuiltOnOpen('open catches up again', catchUp(host))
+    })
+    opened.defer(stopWatching)
+    await catchUp(host)
+  })
   return defineExtension({
     name: 'keep-warm',
     tasks: [pinger(host)],
@@ -304,10 +375,9 @@ export default function keepWarm(host: ExtensionHost) {
           if (standing?.ultimate !== api.conversationId) return
           await host.harness().commit(async (tx) => {
             const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-            doc.answer = {
-              at: message.timestamp,
-              provider: message.provider,
-              model: message.model,
+            doc.answers = {
+              ...doc.answers,
+              [key({ provider: message.provider, modelId: message.model })]: message.timestamp,
             }
             await arm(tx, host)
           }, ctx)

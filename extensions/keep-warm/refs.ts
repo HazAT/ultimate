@@ -17,13 +17,13 @@ export type Ping = {
 
 /**
  * On conversation 1. `off` when the user turned it off (it is on by default); the user's latest input to @ultimate
- * (ms, from `user.input` events); @ultimate's latest answer that read or wrote its cache (ms, provider and model); the
- * last ping and how many ran; the task that sleeps until the next ping, while one is planned.
+ * (ms, from `user.input` events); when @ultimate last got an answer that read or wrote its cache, per `provider/model`
+ * (ms); the last ping and how many ran; the task that sleeps until the next ping, while one is planned.
  */
 export type WarmDocState = {
   off?: true
   inputAt?: number
-  answer?: { at: number; provider: string; model: string }
+  answers?: Record<string, number>
   last?: Ping
   pings?: number
   waker?: TaskId

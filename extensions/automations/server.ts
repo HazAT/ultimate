@@ -703,7 +703,11 @@ function backend(host: ExtensionHost) {
     } else if (args.action === 'resume') a.enabled = true
     else throw new Error(`Unknown action: ${args.action}`)
     if (args.action === 'resume' && a.event) a.event.sinceEvent = await eventActivationCursor(tx)
-    if (args.action === 'create' || args.action === 'resume')
+    if (
+      args.action === 'create' ||
+      args.action === 'resume' ||
+      (args.action === 'update' && args.condition !== undefined)
+    )
       await trigger.evaluate(tx, a, prepared.target)
     a.updatedAt = Date.now()
     if (effect) await deliver(tx, a, `update:${a.updatedAt}`, 'writing', a.script!.ask)
