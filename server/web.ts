@@ -361,6 +361,9 @@ export async function createWeb(options: {
       ...(failed ? { error: failed } : {}),
     }),
     facets: () => webFacets(ultimateRoot, projectRoot, userHome),
+    pageConnected() {
+      if (manifest && stale) scheduleUpdate()
+    },
     async rebuild() {
       stale = true
       if (options.pages() > 0 || building) await buildUntilFreshSerially()
