@@ -1,7 +1,7 @@
 // On a 375 px phone (an iPhone 13 mini) the transcript once scrolled sideways: an error notice's long JSON sat in a flex
 // row that never shrank below its longest token, inline code with a commit range ran past the message card, and a
 // long agent label in the header widened the whole page. Every transcript row then slid left with the swipe.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
@@ -10,7 +10,7 @@ import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { context } from '../../server/harness.ts'
 import { Metadata } from '../../server/metadata.ts'
-import { fauxServer, post, removeTemp, temp } from '../helpers.ts'
+import { prebuiltServer, post, removeTemp, temp } from '../helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -23,9 +23,7 @@ const failure = `400: {"message":"invalid_request_body_for_this_model_see_https:
 it('keeps the page and the transcript within a 375 px phone', async () => {
   const home = await temp('ultimate-phone-width-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,

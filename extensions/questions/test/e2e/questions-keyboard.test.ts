@@ -2,7 +2,7 @@
 // questions, Enter sends; the reply reaches @ultimate in the message's own numbering, with the note field's text after it.
 // The card opens with the picks chosen; Send turns into Undo over the undo window, holding Send for a second sends at
 // once, and leaving the page inside the undo window still sends the answer.
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -13,7 +13,7 @@ import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import { Messages } from '../../../messages/api.ts'
 import { context } from '../../../../server/harness.ts'
-import { fauxServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { prebuiltServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
 
 const questions: JsonValue[] = [
   {
@@ -54,9 +54,7 @@ afterEach(async () => {
 async function openCard() {
   const home = await temp('ultimate-questions-keys-')
   cleanup.push(() => removeTemp(home))
-  const server = await fauxServer({
-    ultimateRoot: resolve('.'),
-    projectRoot: resolve('.'),
+  const server = await prebuiltServer({
     userHome: home,
     home: join(home, 'state'),
     port: 0,
