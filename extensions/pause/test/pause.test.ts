@@ -22,7 +22,6 @@ import type { OpenHost } from '../../../server/harness.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import pauseExtension, { actions, autoPlay, passive, userActions } from '../server.ts'
-import { lasted } from '../lasted.ts'
 import { PauseApi } from '../api.ts'
 import { apis, removeTemp, temp, until } from '../../../test/helpers.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -204,7 +203,9 @@ it('lets a running tool finish, starts no generation after it while paused, and 
   expect(responses).toBeGreaterThanOrEqual(2)
   const notes = (await root.context(context)).entries.filter((entry) => entry.kind === 'pause.note')
   expect(notes).toHaveLength(1)
-  expect(notes[0].model?.[0]?.content).toMatch(/^Paused for \d+s; the run continued after Play\.$/)
+  expect(notes[0].model?.[0]?.content).toMatch(
+    /^Paused for \d+(ms|\.\ds); the run continued after Play\.$/,
+  )
 })
 
 it('reopens paused: nothing starts until play', async () => {
@@ -325,7 +326,9 @@ it('notes a run whose last answer arrived while the pause drained', async () => 
   const notes = (await root.context(context)).entries.filter((entry) => entry.kind === 'pause.note')
   expect(notes).toHaveLength(1)
   expect(notes[0].data).toMatchObject({ finished: true })
-  expect(notes[0].model?.[0]?.content).toMatch(/^Paused for \d+s after this run's last answer\.$/)
+  expect(notes[0].model?.[0]?.content).toMatch(
+    /^Paused for \d+(ms|\.\ds) after this run's last answer\.$/,
+  )
 })
 
 it('leaves no note when the run handed over during the drain and its successor was stopped', async () => {
@@ -423,7 +426,7 @@ it('pauses on the first rate-limited answer: the run waits in its retry, fails n
   expect(notes).toHaveLength(1)
   // The held run's model learns why it was paused.
   expect(notes[0].model?.[0]?.content).toMatch(
-    /^Paused for \d+s \(faux rate limited [\w-]+\); the run continued after Play\.$/,
+    /^Paused for \d+(ms|\.\ds) \(faux rate limited [\w-]+\); the run continued after Play\.$/,
   )
   expect(await cards()).toHaveLength(1)
 })
@@ -669,10 +672,4 @@ it('stays Pausing… while a background task executes, not for passive waiters',
   expect(pausing.running.map((task) => task.what)).toEqual(['pause-test.stream'])
   f.background.resolve()
   await until(async () => (await f.action('state')).running.length === 0)
-})
-
-it('words how long a pause lasted', () => {
-  expect(lasted(40_000)).toBe('40s')
-  expect(lasted(5 * 60_000)).toBe('5m')
-  expect(lasted((2 * 60 + 14) * 60_000)).toBe('2h 14m')
 })

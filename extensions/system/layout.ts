@@ -1,4 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { formatDuration } from '../../lib/format.ts'
 
 import type { Lane, LaneCall, LaneLink, LaneRun } from './refs.ts'
 
@@ -12,20 +13,13 @@ export const windows = {
 } as const
 export type WindowName = keyof typeof windows
 
-export function ago(ms: number) {
-  const minutes = Math.round(ms / MINUTE)
-  if (minutes < 60) return `-${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  return minutes % 60 ? `-${hours}h${minutes % 60}m` : `-${hours}h`
-}
-
 type WindowWidthFraction = number
 
 export function ticks(window: WindowName) {
   const { ms, step } = windows[window]
   const found: { at: WindowWidthFraction; label: string }[] = []
   for (let before = ms - step; before > 0; before -= step)
-    found.push({ at: 1 - before / ms, label: ago(before) })
+    found.push({ at: 1 - before / ms, label: `-${formatDuration(before)}` })
   found.push({ at: 1, label: 'now' })
   return found
 }

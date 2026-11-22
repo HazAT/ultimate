@@ -20,6 +20,7 @@ import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
 import { exec as run } from '../lib/exec.ts'
 import { deadline } from '../lib/timers.ts'
+import { corePath } from '../lib/layers.ts'
 import { rebuiltOnOpen } from '../lib/errors.ts'
 import type { Cancel } from '../lib/timers.ts'
 
@@ -167,7 +168,7 @@ export async function createSystem(
       rebuiltOnOpen('open reads secrets again', changed())
       return
     }
-    if (path && /^(server|shared)\//.test(relative(host.ultimateRoot, path))) {
+    if (path && corePath(relative(host.ultimateRoot, path))) {
       coreStale = true
       code.coreStale = true
     }

@@ -3,7 +3,7 @@ import type { ConversationId, Cursor, EntryRecord } from '@earendil-works/pi-dur
 import type { Context } from '@earendil-works/chord/context'
 import type { Message } from '@earendil-works/pi-ai'
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate'
-import { formatAgo } from '../../lib/ago.ts'
+import { formatAgo } from '../../lib/format.ts'
 import { isInput } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'

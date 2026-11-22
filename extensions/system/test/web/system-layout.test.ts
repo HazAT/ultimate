@@ -1,7 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import {
-  ago,
   block,
   chain,
   duration,
@@ -39,8 +38,8 @@ it('ticks a window every step, oldest first, ending at now', () => {
   thirty.forEach((tick, index) => expect(tick.at).toBeCloseTo((index + 1) / 6))
   expect(thirty.at(-1)!.at).toBe(1)
   expect(ticks('2h').map((tick) => tick.label)).toEqual([
-    '-1h40m',
-    '-1h20m',
+    '-1h 40m',
+    '-1h 20m',
     '-1h',
     '-40m',
     '-20m',
@@ -54,7 +53,6 @@ it('ticks a window every step, oldest first, ending at now', () => {
     '-4h',
     'now',
   ])
-  expect(ago(90 * 60_000)).toBe('-1h30m')
 })
 
 it('places a finished run by its start and end, and an open one up to now', () => {

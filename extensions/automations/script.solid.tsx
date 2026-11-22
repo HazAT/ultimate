@@ -7,6 +7,7 @@ import {
   api,
   cn,
   errorMessage,
+  formatDuration,
   keepLast,
   shortenPath,
   useAction,
@@ -14,7 +15,7 @@ import {
   useSystem,
 } from '@/sdk/solid'
 import { AnsiOutput } from '@/components/ai/ansi-output.solid.tsx'
-import { looks, since } from './looks.ts'
+import { looks } from './looks.ts'
 import { Dot, Tag } from './parts.solid.tsx'
 import { ErrorLine, Toggle, useAct } from './row.solid.tsx'
 import { LogAction, RunAction, ScriptAction } from './refs.ts'
@@ -103,10 +104,12 @@ function Script(props: Detail & { act: ReturnType<typeof useAct>['act'] }) {
     const state = script()
     return [
       state.pid !== undefined && `pid ${state.pid}`,
-      running() && state.startedAt && `up ${since(state.startedAt, props.now)}`,
+      running() && state.startedAt && `up ${formatDuration(props.now - state.startedAt)}`,
       !running() && state.exitCode !== undefined && `exit ${state.exitCode}`,
       `fired ${props.automation.fires}`,
-      running() && state.lastOutputAt && `output ${since(state.lastOutputAt, props.now)} ago`,
+      running() &&
+        state.lastOutputAt &&
+        `output ${formatDuration(props.now - state.lastOutputAt)} ago`,
     ]
       .filter(Boolean)
       .join(' · ')
