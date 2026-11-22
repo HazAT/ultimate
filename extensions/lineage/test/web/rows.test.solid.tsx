@@ -11,12 +11,19 @@ import { BranchedEntry } from '../../entries.ts'
 import { AbstractEntry } from '../../refs.ts'
 import { Abstract, Branched, Note } from '../../rows.solid.tsx'
 
-const { switchConversation } = vi.hoisted(() => ({
+const { switchConversation, overviewState } = vi.hoisted(() => ({
   switchConversation: vi.fn<typeof import('@/sdk/solid').switchConversation>(),
+  overviewState: {
+    conversations: {},
+  },
 }))
 vi.mock('@/sdk/solid', async (original) => ({
   ...(await original<typeof import('@/sdk/solid')>()),
   switchConversation,
+}))
+vi.mock('../../../conversations/ui.solid.tsx', async (original) => ({
+  ...(await original<typeof import('../../../conversations/ui.solid.tsx')>()),
+  useOverview: () => () => overviewState.conversations,
 }))
 
 const agent = createAgent()
@@ -53,6 +60,7 @@ it('renders repeated branch and abstract rows by entry, and lets an agent open a
   await settle()
   expect(view.querySelectorAll(`[data-lineage-branched="${branch}"]`)).toHaveLength(2)
   expect(view.querySelectorAll(`[data-lineage-abstract="${branch}"]`)).toHaveLength(2)
+  expect(view.querySelector('[data-abstract-stale="true"]')).toBeNull()
   expect(view.querySelector('[data-lineage-note="received"]')?.textContent).toContain(
     'The notes are ready.',
   )
@@ -92,4 +100,34 @@ it('summarizes the changes in a remember call', () => {
   expect(view.querySelector('[data-ui="tool"]')?.textContent).toContain(
     'Memory · added 1 · updated 1 · deleted 1',
   )
+})
+
+it('marks an open abstract out of date when the branch summary failed', async () => {
+  const branch = parseConversationId(43)
+  const at = parseEntryId(12)
+  const entry: EntryRecord = {
+    id: parseEntryId(31),
+    conversationId: ROOT,
+    kind: AbstractEntry.kind,
+    data: {
+      conversation: branch,
+      at,
+      text: 'Earlier state',
+      title: 'Branch work',
+    },
+  }
+  overviewState.conversations = { [branch]: { summaryStatus: 'error', assessmentStatus: 'error' } }
+  try {
+    const { frame } = createTranscriptFrame()
+    const view = renderSolid(() => (
+      <Transcript value={frame}>
+        <Abstract core={null} entry={entry} />
+      </Transcript>
+    ))
+    await settle()
+    expect(view.querySelector('[data-abstract-stale="true"]')?.textContent).toContain('out of date')
+    await expectDistinctAgentNames(agent)
+  } finally {
+    overviewState.conversations = {}
+  }
 })

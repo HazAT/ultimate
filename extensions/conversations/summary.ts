@@ -185,6 +185,12 @@ export type SummaryReceipt = {
 
 type OutputTokensIncludingReasoning = number
 const summaryOutputBudget = 2048
+export const SUMMARY_RETRY_DELAYS_MS = [2_000, 10_000] as const
+
+class SummaryModelUnavailableError extends Error {}
+
+const responseMemoKey = (attempt: number) => (attempt === 0 ? 'response' : `response:${attempt}`)
+const replyMemoKey = (attempt: number) => (attempt === 0 ? 'reply' : `reply:${attempt}`)
 
 export async function askSummaryModel(
   models: Models,
@@ -196,7 +202,8 @@ export async function askSummaryModel(
   if (receipt.response) return receipt.response
   const { provider, id, thinking } = receipt.model
   const model = models.getModel(provider, id)
-  if (!model) throw new Error(`Summary model ${provider}/${id} is unavailable`)
+  if (!model)
+    throw new SummaryModelUnavailableError(`Summary model ${provider}/${id} is unavailable`)
   const events = models.streamSimple(
     model,
     { systemPrompt, messages: [{ role: 'user', content: input, timestamp: Date.now() }] },
@@ -521,6 +528,8 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
         summary: boolean
         root?: boolean
         abstract?: boolean
+        attempt?: number
+        maxTokens?: OutputTokensIncludingReasoning
       },
     null
   >({
@@ -639,7 +648,11 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
         }, context)
       },
       generate: async (task, runtime, context) => {
-        let response = await runtime.memo<ResponseReceipt>('response', context)
+        const checkpoint = task.state.checkpoint
+        const attempt = checkpoint.attempt ?? 0
+        const responseKey = responseMemoKey(attempt)
+        const replyKey = replyMemoKey(attempt)
+        let response = await runtime.memo<ResponseReceipt>(responseKey, context)
         let model = await runtime.memo<SummaryModel>('model', context)
         const current = await runtime.snapshot(Summaries, runtime.conversationId, context)
         if (current?.pending !== task.id || current.revision !== task.input.revision) {
@@ -656,10 +669,23 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
           }, context)
           return
         }
-        const checkpoint = task.state.checkpoint
+        if (current.automatic === false) {
+          await runtime.commit(async (tx) => {
+            await accountResponse(tx, runtime.conversationId, response)
+            const state = await tx.doc(Summaries, runtime.conversationId)
+            if (state.pending === task.id && state.revision === task.input.revision) {
+              delete state.pending
+              if (state.assessmentStatus === 'pending') delete state.assessmentStatus
+              if (state.status === 'pending') delete state.status
+            }
+            return terminal
+          }, context)
+          return
+        }
         let result: Awaited<ReturnType<typeof generate>> | undefined
         let summaryFailure: string | undefined
-        result = await runtime.memo('reply', context)
+        let permanentFailure = false
+        result = await runtime.memo(replyKey, context)
         if (!result && !model) {
           const chosen = await summaryModel(host)
           if (!chosen) {
@@ -686,8 +712,9 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
               {
                 model,
                 response,
+                ...(checkpoint.maxTokens !== undefined ? { maxTokens: checkpoint.maxTokens } : {}),
                 save: async (received) => {
-                  response = await runtime.memo('response', received, context)
+                  response = await runtime.memo(responseKey, received, context)
                   return response
                 },
               },
@@ -701,10 +728,11 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
               checkpoint.root,
               checkpoint.abstract,
             )
-            result = await runtime.memo('reply', result, context)
+            result = await runtime.memo(replyKey, result, context)
           }
         } catch (error) {
           if (runtime.signal.aborted) throw error
+          permanentFailure = error instanceof SummaryModelUnavailableError
           summaryFailure = error instanceof Error ? error.message : String(error)
         }
         const completed = submissionsForAnswer(
@@ -726,20 +754,40 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
               ...modelOf(response, model),
               at: now,
             })
-          delete state.pending
           if (!(await automaticTriggersEnabled(tx, runtime.conversationId))) {
+            delete state.pending
             if (state.assessmentStatus === 'pending') delete state.assessmentStatus
             if (state.status === 'pending') delete state.status
             return terminal
           }
           const refreshCanPublishWhileBusy = !task.input.generation
-          const usable =
-            result &&
-            (refreshCanPublishWhileBusy
-              ? await currentContext(tx, runtime.conversationId, checkpoint.answer)
-              : completed !== undefined &&
-                state.lastAnswer === checkpoint.answer &&
-                (await currentAnswer(tx, runtime.conversationId, checkpoint.answer)))
+          const stillCurrent = refreshCanPublishWhileBusy
+            ? await currentContext(tx, runtime.conversationId, checkpoint.answer)
+            : completed !== undefined &&
+              state.lastAnswer === checkpoint.answer &&
+              (await currentAnswer(tx, runtime.conversationId, checkpoint.answer))
+          const retryDelay = SUMMARY_RETRY_DELAYS_MS[attempt]
+          if (!result && !permanentFailure && stillCurrent && retryDelay !== undefined) {
+            const nextMaxTokens =
+              response?.stopReason === 'length'
+                ? Math.min(
+                    (checkpoint.maxTokens ?? summaryOutputBudget) * 2,
+                    (model && runtime.models.getModel(model.provider, model.id)?.maxTokens) ||
+                      Infinity,
+                  )
+                : checkpoint.maxTokens
+            return {
+              status: 'sleeping' as const,
+              until: now + retryDelay,
+              checkpoint: {
+                ...checkpoint,
+                attempt: attempt + 1,
+                ...(nextMaxTokens !== undefined ? { maxTokens: nextMaxTokens } : {}),
+              },
+            }
+          }
+          delete state.pending
+          const usable = Boolean(result && stillCurrent)
           const outcome = !result ? 'error' : usable ? 'ready' : 'stale'
           if (!refreshCanPublishWhileBusy) state.assessmentStatus = outcome
           if (checkpoint.summary) state.status = outcome
@@ -813,7 +861,9 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
       },
     },
     abort: async (task, runtime, context) => {
-      const response = await runtime.memo<ResponseReceipt>('response', context)
+      const attempt =
+        task.state.checkpoint.phase === 'generate' ? (task.state.checkpoint.attempt ?? 0) : 0
+      const response = await runtime.memo<ResponseReceipt>(responseMemoKey(attempt), context)
       const model = await runtime.memo<SummaryModel>('model', context)
       await runtime.commit(async (tx) => {
         await accountResponse(tx, runtime.conversationId, response)
