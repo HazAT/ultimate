@@ -1,8 +1,8 @@
 import { LoaderCircle, X } from '@lucide/solid'
 import { createEffect, createSignal, For, Show } from 'solid-js'
-import { formatTime, keepLast, useAction, useNow } from '@/sdk/solid'
+import { formatDuration, formatTime, keepLast, useAction, useNow } from '@/sdk/solid'
 import { retryAfter } from '../../lib/timers.ts'
-import { clock, until } from './looks.ts'
+import { clock } from './looks.ts'
 import { DescribeAction } from './refs.ts'
 import { full, words } from './words.ts'
 
@@ -90,7 +90,7 @@ function Description(props: { schedule: string }) {
                     </span>
                     <Show when={index() === 0}>
                       <span class={at <= now() ? 'text-warning' : 'text-muted-foreground'}>
-                        {at <= now() ? 'passed: fires at once' : until(at, now())}
+                        {at <= now() ? 'passed: fires at once' : `in ${formatDuration(at - now())}`}
                       </span>
                     </Show>
                   </li>

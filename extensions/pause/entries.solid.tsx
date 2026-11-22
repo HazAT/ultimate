@@ -3,9 +3,18 @@ import { Pause, Play } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card, ROOT, cn, switchConversation, useDocOf, useNow, type EntryRecord } from '@/sdk/solid'
+import {
+  Card,
+  ROOT,
+  cn,
+  formatDuration,
+  switchConversation,
+  useDocOf,
+  useNow,
+  type EntryRecord,
+} from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { lasted, unwrappedProviderError } from './lasted.ts'
+import { unwrappedProviderError } from './provider-error.ts'
 import { PauseDoc } from './refs.ts'
 import type { AutoPlayed, HeldNote, PauseNote, RateLimit } from './refs.ts'
 import { playConfirmation, playPausedWork } from './status.solid.tsx'
@@ -52,7 +61,7 @@ export function Note(props: { entry: EntryRecord }) {
   return (
     <Show when={note().since !== undefined && note().until !== undefined}>
       <Divider kind="note">
-        <span class="text-warning">Paused for {lasted(note().until! - note().since!)}</span>
+        <span class="text-warning">Paused for {formatDuration(note().until! - note().since!)}</span>
         <span class="truncate">
           ·{' '}
           {note().finished
@@ -129,7 +138,7 @@ export function Limit(props: { entry: EntryRecord }) {
               </span>
             }
           >
-            <span>paused for {lasted(Math.max(0, now() - (doc()?.since ?? now())))}</span>
+            <span>paused for {formatDuration(Math.max(0, now() - (doc()?.since ?? now())))}</span>
             <Button
               aria-label="Play after rate limit"
               class="h-7 font-sans text-[12px]"
@@ -155,7 +164,7 @@ export function AutoPlayedNote(props: { entry: EntryRecord }) {
       <Divider kind="autoplayed">
         <span class="text-warning">Played by itself</span>
         <span class="truncate">
-          · {lasted(data().at! - data().since!)} after the rate limit ·{' '}
+          · {formatDuration(data().at! - data().since!)} after the rate limit ·{' '}
           {new Date(data().at!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </Divider>

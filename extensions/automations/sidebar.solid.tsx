@@ -25,9 +25,7 @@ import {
   dotStatus,
   lookOf,
   looks,
-  since,
   stateLine,
-  until,
   worstFirst,
 } from './looks.ts'
 import type { Look } from './looks.ts'
@@ -41,9 +39,10 @@ const shell = { openPanel, showSurface, switchConversation }
 function short(automation: Automation, now: number) {
   const look = lookOf(automation, now)
   const last = automation.runs.at(-1)
-  if (look === 'working' && last) return `working ${since(last.firedAt, now)}`
+  if (look === 'working' && last) return `working ${formatDuration(now - last.firedAt)}`
   if (look === 'watching') return automation.fires > 0 ? `fired ${automation.fires}` : 'watching'
-  if (look === 'scheduled' && automation.nextAt !== undefined) return until(automation.nextAt, now)
+  if (look === 'scheduled' && automation.nextAt !== undefined)
+    return `in ${formatDuration(automation.nextAt - now)}`
   return looks[look].word
 }
 
@@ -132,7 +131,7 @@ function Row(props: { automation: Automation; now: number }) {
         switchConversation(run)
       }}
       size={null}
-      title={`${props.automation.id} · ${props.automation.name}\n${looks[look()].word} · ${stateLine(props.automation, props.now, formatTime, formatDuration)}`}
+      title={`${props.automation.id} · ${props.automation.name}\n${looks[look()].word} · ${stateLine(props.automation, props.now, formatTime)}`}
       variant={null}
     >
       <Dot look={look()} />

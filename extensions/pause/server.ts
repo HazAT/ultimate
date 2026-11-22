@@ -11,7 +11,7 @@ import type { Cancel } from '../../lib/timers.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Standing } from '../subagents/api.ts'
 import { PauseApi } from './api.ts'
-import { lasted } from './lasted.ts'
+import { formatDuration } from '../../lib/format.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type {
   AutoPlayed,
@@ -220,7 +220,7 @@ export async function autoPlay(host: Host, now = Date.now()) {
             model: [
               {
                 role: 'user',
-                content: `Ultimate played by itself ${lasted(now - data.since)} after the rate limit paused it (the user's setting: ${data.minutes} min).`,
+                content: `Ultimate played by itself ${formatDuration(now - data.since)} after the rate limit paused it (the user's setting: ${data.minutes} min).`,
                 timestamp: now,
               },
             ],
@@ -324,7 +324,7 @@ async function noteRunsThenRelease(host: Host, auto = false) {
   const doc = await read(host)
   if (doc.paused && doc.since !== undefined) {
     const until = Date.now()
-    const span = `${lasted(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
+    const span = `${formatDuration(until - doc.since)}${doc.limit ? ` (${doc.limit.provider} rate limited ${doc.limit.model})` : ''}`
     for (const [key, recorded] of Object.entries(doc.runs ?? {})) {
       const id = parseConversationId(Number(key))
       const how = await recordedRunOutcome(host, id, recorded)

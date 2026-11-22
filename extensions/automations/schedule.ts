@@ -1,4 +1,4 @@
-import { since } from './looks.ts'
+import { formatDuration } from '../../lib/format.ts'
 import type { Schedule } from './types.ts'
 export type { Schedule } from './types.ts'
 
@@ -159,4 +159,4 @@ export function describeSchedule(schedule: Schedule): string {
 }
 
 export const describeNext = (at: number, now: number) =>
-  `next: ${new Date(at).toISOString().slice(0, 19)}Z, in ${since(now, at)}`
+  `next: ${new Date(at).toISOString().slice(0, 19)}Z, in ${formatDuration(at - now)}`

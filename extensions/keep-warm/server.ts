@@ -11,6 +11,7 @@ import type { AssistantMessage, Message } from '@earendil-works/pi-ai'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { conversationIdentity } from '../../lib/ids.ts'
 import { every } from '../../lib/timers.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import { ConversationsApi } from '../conversations/api.ts'
@@ -151,7 +152,7 @@ async function sendOneShotPingWithoutSession(
   const model = host.modelRuntime.getModel(provider, found.model)
   if (!model) return
   let messages: Message[] = [...(await conversation.context(context)).messages]
-  const leadingConversationIdentity = `You are conversation #${id}.`
+  const leadingConversationIdentity = conversationIdentity(id)
   if (
     !messages.some(
       (message) => message.role === 'user' && message.content === leadingConversationIdentity,

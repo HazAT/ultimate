@@ -1,3 +1,4 @@
+import { formatDuration } from '../../lib/format.ts'
 import { parseEntryId } from '../../lib/ids.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { parseConversationId } from '../../lib/ids.ts'
@@ -11,14 +12,8 @@ import type { CallRow, CallTree } from '../../server/trace.ts'
 import { readOnly } from '../../lib/replay.ts'
 
 const MAX_RETURNED_TEXT_CHARS = 16_000
+const age = (at: string) => formatDuration(Date.now() - Date.parse(at))
 
-export function age(at: string, now = Date.now()) {
-  const seconds = Math.max(0, Math.round((now - Date.parse(at)) / 1000))
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  return `${Math.floor(seconds / 86400)}d`
-}
 const cut = (text: string, length: number) =>
   text.length > length ? `${text.slice(0, length - 1)}…` : text
 const json = (value: unknown, length: number) => cut(JSON.stringify(value) ?? '', length)
@@ -79,7 +74,7 @@ export default function debug(host: ExtensionHost) {
         })
         const lines = events.map((event) =>
           [
-            age(event.at).padEnd(4),
+            age(event.at).padEnd(6),
             `#${event.id}`,
             event.name,
             json(event.data, 160),
@@ -143,7 +138,7 @@ export default function debug(host: ExtensionHost) {
           .toReversed()
         const lines = rows.map((row) =>
           [
-            age(row.at).padEnd(4),
+            age(row.at).padEnd(6),
             call(row),
             ids({ trace: row.trace, conversation: row.conversation, entry: row.entry }),
           ].join('  '),

@@ -28,7 +28,7 @@ import {
   openaiError,
 } from '../../lib/openai.ts'
 import type { OpenAiError } from '../../lib/openai.ts'
-import { formatAgo } from '../../lib/ago.ts'
+import { formatAgo } from '../../lib/format.ts'
 import { openQuestion } from '../../lib/message-state.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
 import type { Message, Question } from '../messages/api.ts'
