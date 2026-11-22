@@ -1,16 +1,23 @@
 /** @jsxImportSource @solidjs/web */
 import { Ellipsis } from '@lucide/solid'
 import { createMemo, For, Show } from 'solid-js'
-import { Button } from '@/components/ui/button.solid.tsx'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { closePanel, cn, openPanel, usePanels, useStore, useViewport } from '@/sdk/solid'
-import { ContributedIcon } from '@/sdk/parts.solid.tsx'
+import {
+  closePanel,
+  cn,
+  openPanel,
+  usePanels,
+  useStore,
+  useViewport,
+  ContributedIcon,
+} from '@/sdk/solid'
 
 const quickPanels = ['todos', 'tasks', 'activity', 'info']
 
@@ -32,13 +39,15 @@ export function PanelActions() {
             return (
               <Tooltip delay={400}>
                 <TooltipTrigger
-                  aria-label={panel().title}
-                  onClick={() => (shown() ? closePanel() : openPanel(panel().id))}
+                  aria-label={`Show ${panel().title} panel`}
                   render={(trigger) => (
-                    <Button
+                    <Toggle
                       {...trigger}
-                      aria-pressed={shown() ? 'true' : 'false'}
-                      class={cn(action, shown() && 'bg-accent text-foreground')}
+                      pressed={shown()}
+                      onPressedChange={(pressed) =>
+                        pressed ? openPanel(panel().id) : closePanel()
+                      }
+                      class={action}
                       size={null}
                       variant={null}
                     />
@@ -48,7 +57,9 @@ export function PanelActions() {
                     {(icon) => <ContributedIcon class="size-4" icon={icon()} />}
                   </Show>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{panel().title}</TooltipContent>
+                <TooltipContent data-agent-hidden side="bottom">
+                  {panel().title}
+                </TooltipContent>
               </Tooltip>
             )
           }}

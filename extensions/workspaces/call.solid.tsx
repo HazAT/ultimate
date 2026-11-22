@@ -8,9 +8,7 @@ import {
   ToolOutput,
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
-import type { ToolCallView } from '@/sdk'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { cn, ROOT, useDocOf } from '@/sdk/solid'
+import { type ToolCallView, useToolDuration, cn, ROOT, useDocOf } from '@/sdk/solid'
 import { Subject } from './landing.solid.tsx'
 import { Elapsed, OutcomeBody, short, Steps } from './log-parts.solid.tsx'
 import { WorkspacesDoc } from './refs.ts'

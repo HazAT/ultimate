@@ -17,7 +17,7 @@ vi.mock('../../web/src/sdk/actions.ts', () => ({
   currentContext: (scoped?: number) => ({ conversationId: scoped ?? 1 }),
   applies: (command: { when?: () => boolean }) => command.when?.() !== false,
 }))
-vi.mock('../../web/src/sdk/conversation-scope.tsx', () => ({
+vi.mock('../../web/src/sdk/scope.ts', () => ({
   scopeOf: (target: { scope?: number }) => target.scope,
 }))
 vi.mock('../../web/src/sdk/client.ts', () => ({

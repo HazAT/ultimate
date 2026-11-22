@@ -1,23 +1,8 @@
 /** @jsxImportSource @solidjs/web */
-import { createMemo, mapArray } from 'solid-js'
+import { createMemo } from 'solid-js'
 import { ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { OverviewDoc } from '../conversations/refs.ts'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
-import { StartedDoc } from './refs.ts'
-
-export function useStarters() {
-  const conversations = useConversations()
-  const branches = createMemo(() =>
-    conversations()
-      .filter((c) => c.branchOf)
-      .map((c) => c.id),
-  )
-  const readers = mapArray(branches, (id) => ({ id, doc: useDocOf(() => id, StartedDoc) }))
-  const starters = createMemo(
-    () => new Map<number, number | undefined>(readers().map(({ id, doc }) => [id, doc()?.by])),
-  )
-  return (id: number) => starters().get(id)
-}
 
 export function useUnderway() {
   const conversations = useConversations()

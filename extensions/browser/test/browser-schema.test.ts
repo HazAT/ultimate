@@ -1,4 +1,5 @@
 import { createModels, toToolDeclaration } from '@earendil-works/pi-ai'
+import { validateToolArguments } from '@earendil-works/pi-ai/utils/validation'
 import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic'
 import { opencodeGoProvider } from '@earendil-works/pi-ai/providers/opencode-go'
 import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter'
@@ -6,6 +7,24 @@ import { expect, it, vi } from 'vitest'
 import browserExtension from '../server.ts'
 import subagents from '../../subagents/server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
+
+// A browser call held its run for minutes on an until that never came; a model turn gets at most 120 s.
+it('refuses an until timeoutMs above 120 s', () => {
+  const host = {
+    resource: <T>(_name: string, create: () => T) => create(),
+    onClose() {},
+  } as unknown as ExtensionHost
+  const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
+  const call = (timeoutMs: number) => () =>
+    validateToolArguments(browser, {
+      type: 'toolCall',
+      id: 'call',
+      name: 'browser',
+      arguments: { steps: [{ until: 'idle', timeoutMs }] },
+    })
+  expect(call(120_000)).not.toThrow()
+  expect(call(120_001)).toThrow('steps.0.timeoutMs: expected <= 120000')
+})
 
 it('preserves browser fill and typed tool enum schemas in provider payloads', async () => {
   const host = {

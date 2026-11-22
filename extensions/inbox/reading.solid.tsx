@@ -2,8 +2,16 @@
 import { ArrowLeft, ExternalLink, GitBranch } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Provided, ReactValue } from '@/sdk/parts.solid.tsx'
-import { cn, column, events, formatAgo, showSurface, switchConversation } from '@/sdk/solid'
+import {
+  Provided,
+  ProvidedValue,
+  cn,
+  column,
+  events,
+  formatAgo,
+  showSurface,
+  switchConversation,
+} from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { Body, MessageExtras, MessageImages } from '../messages/ui.solid.tsx'
 import { MessageQuestions } from '../questions/ui.solid.tsx'
@@ -129,7 +137,7 @@ export function Reading(props: { entry: Entry; now: number; phone: boolean; onBa
             </Show>
           </div>
           <div class={props.phone ? 'mt-5' : 'mt-6'}>
-            <Show when={message()} fallback={<ReactValue value={props.entry.item?.pane} />}>
+            <Show when={message()} fallback={<ProvidedValue value={props.entry.item?.pane} />}>
               {(question) => (
                 <div class="overflow-hidden rounded-lg border border-border/70 bg-card/60">
                   <Provided input={{ message: question() }} point={MessageExtras} />

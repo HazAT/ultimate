@@ -3,7 +3,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
-import type { EntryRecord, ToolCallView } from '@/sdk'
+import type { EntryRecord, ToolCallView } from '@/sdk/solid'
 import { ConversationScope, events, ROOT } from '@/sdk/solid'
 import { provide } from '@/sdk/types.ts'
 import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
@@ -35,15 +35,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: 'sample/project' })
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const clientStore = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,
@@ -64,7 +66,9 @@ it("folds a standing agent's landing to its @name, not the feature it carried at
 }) => {
   const other = parseConversationId(60)
   await registry.setLoaders({
-    'extensions/compact/web.tsx': async () => ({ default: { compact: { when: () => true } } }),
+    'extensions/compact/web.solid.tsx': async () => ({
+      default: { compact: { when: () => true } },
+    }),
   })
   store.start()
   const stream = harness.sources.at(-1)!
@@ -190,8 +194,11 @@ it('lets an agent open the review range, expand the landing state, and switch to
   }))
   onTestFinished(() => {
     vi.unstubAllGlobals()
+    store.stop()
   })
-  await registry.setLoaders({ 'extensions/review/web.tsx': async () => ({ default: {} }) })
+  store.start()
+  harness.sources.at(-1)!.open()
+  await registry.setLoaders({ 'extensions/review/web.solid.tsx': async () => ({ default: {} }) })
   const entry = {
     id: 89,
     kind: 'lineage.note',
@@ -220,8 +227,10 @@ it('lets an agent open the review range, expand the landing state, and switch to
 
   const open = vi.fn<(spec: string, source: string) => void>()
   await registry.setLoaders({
-    'extensions/local-review/web.tsx': async () => ({
-      default: { provides: [provide(Review, (spec) => () => open(spec, writerNow()))] },
+    'extensions/local-review/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(Review, (spec) => () => () => open(spec(), writerNow()))],
+      },
     }),
   })
   await settle()

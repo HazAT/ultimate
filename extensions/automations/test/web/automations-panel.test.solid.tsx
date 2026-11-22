@@ -10,12 +10,12 @@ import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { ROOT } from '../../../../web/src/sdk/api.ts'
+import { reads, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { Chip } from '../../chip.solid.tsx'
 import { contextCondition } from '../../form-draft.ts'
 import { AutomationsPanel } from '../../panel.solid.tsx'
 import type { AutomationListItem } from '../../refs.ts'
-import { refreshList } from '../../live.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -115,15 +115,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
         return harness.server?.handle(path, init) ?? Response.json({ ok: true })
     }
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const clientStore = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,
@@ -174,7 +176,6 @@ beforeEach(async ({ onTestFinished }) => {
     store.stop()
     vi.unstubAllGlobals()
   })
-  await refreshList()
 })
 
 it('pauses, runs, and requires a person’s confirmation before deleting', async () => {
@@ -216,7 +217,6 @@ it('pauses, runs, and requires a person’s confirmation before deleting', async
 
 it('distinguishes the controls of two same-named automations, including delete confirmation', async () => {
   harness.list = [reports, { ...checks, name: reports.name }]
-  await refreshList()
   panel()
   await settle()
   for (const id of ['A1', 'A2']) {
@@ -235,7 +235,7 @@ it('creates an automation through the form as the agent', async () => {
   await expectDistinctAgentNames(agent)
   expect((await act('Name', 'setValue', 'Lunch summary')).ok).toBe(true)
   expect((await act('Prompt', 'setValue', 'Summarise open questions.')).ok).toBe(true)
-  expect((await act('Hourly', 'press')).ok).toBe(true)
+  expect((await act('Hourly', 'setPressed', true)).ok).toBe(true)
   expect((await act('Interval length', 'setValue', '2h')).ok).toBe(true)
   expect((await act('Create', 'press')).ok).toBe(true)
   expect(harness.actions).toEqual([
@@ -255,7 +255,6 @@ it('suspends the editor for a definition and restores the draft and Configure fo
   onTestFinished,
 }) => {
   harness.list = [{ ...reports, agent: 'reviewer' }]
-  await refreshList()
   const view = panel()
   await settle()
   expect((await act('Actions for Morning reports (A1)', 'press', 'Edit')).ok).toBe(true)
@@ -284,12 +283,14 @@ it('refreshes an overdue automation while the panel is hidden', async ({ onTestF
     vi.useRealTimers()
   })
   harness.list = [{ ...reports, nextAt: Date.now() - 5000 }]
-  await refreshList()
   panel()
   await vi.advanceTimersByTimeAsync(0)
-  const reads = harness.listReads
-  await vi.advanceTimersByTimeAsync(2000)
-  expect(harness.listReads).toBe(reads + 1)
+  const before = harness.listReads
+  await vi.advanceTimersByTimeAsync(2500)
+  expect(harness.listReads).toBe(before + 1)
+  expect(harness.server!.reads.filter((read) => !read.closed)).toContainEqual(
+    expect.objectContaining({ read: expect.objectContaining({ action: 'list' }), every: 2000 }),
+  )
 })
 
 it('persists which run history is expanded', async () => {
@@ -343,7 +344,7 @@ it('shows the active count and opens Automations from the chip', async () => {
     source: 'agent',
   })
   harness.list = []
-  await refreshList()
+  await reads.get('automations', 'list', null, ROOT).refetch()
   flush()
   expect(view.querySelector('[data-automations-chip]')).toBeNull()
 })

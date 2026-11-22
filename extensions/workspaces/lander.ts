@@ -154,6 +154,7 @@ export async function runLanderCheck(
   pids: string,
   temp: string,
   limits: CheckLimits = defaultCheckLimitsSeconds,
+  base?: string,
 ): Promise<CheckRun> {
   const tmp = createTempBeforeWatchdog(temp)
   let output = ''
@@ -201,7 +202,7 @@ export async function runLanderCheck(
     try {
       exit = await runGroup('/bin/bash', ['-c', command], {
         cwd: path,
-        env: { ...process.env, TMPDIR: tmp },
+        env: { ...process.env, TMPDIR: tmp, ...(base && { ULTIMATE_LANDER_BASE: base }) },
         pidFile: join(pids, `${process.pid}-${randomUUID()}.pid`),
         signal,
         grace: 2000,
@@ -674,6 +675,7 @@ export function createLander(
                   checkPids(host.home),
                   checkTemp(host.home),
                   limitsFor(members[member], limits),
+                  base,
                 )
               const runCheckWithOneDurableRerun = async (command: string, member: number) => {
                 const attemptMemoKey = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`

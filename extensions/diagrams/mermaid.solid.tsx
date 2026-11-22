@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { render } from 'lovely-mermaid'
 import { createMemo, Show } from 'solid-js'
-import type { CodeBlockRenderer } from '@/sdk'
+import type { CodeBlockRenderer } from '@/sdk/solid'
 
 export const Mermaid: CodeBlockRenderer = (props) => {
   const art = createMemo(() => render(props.code))

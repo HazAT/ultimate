@@ -26,22 +26,23 @@ vi.mock('react', async (original) => ({
 vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../web/src/sdk/store.ts')
   const { createApi } = await import('../../web/src/sdk/api.ts')
-  const { FakeSource } = await import('./fake-source.ts')
+  const { FakeSource, answerReadsWith } = await import('./fake-source.ts')
+  const pageFetch = answerReadsWith(harness.fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch: harness.fetch,
+    fetch: pageFetch,
     retryMs: 5,
   })
   const { createReads } = await import('../../web/src/sdk/reads.ts')
-  const api = createApi(store, { fetch: harness.fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return { store, api, reads: createReads(api, store) }
 })
 import { store } from '../../web/src/sdk/client.ts'
-import { ConversationScope } from '../../web/src/sdk/conversation-scope.tsx'
+import { ConversationScope } from '../../web/src/compat/conversation-scope.tsx'
 import { createTranscriptFrame } from '../../web/src/sdk/transcript-frame.ts'
 import {
   getConversation,
@@ -51,7 +52,7 @@ import {
   useDoc,
   useTranscript,
   useUltimate,
-} from '../../web/src/sdk/hooks.ts'
+} from '../../web/src/compat/hooks.ts'
 
 harness.server = fakeSubscriptions(harness.sources)
 const counter = docRef<{ n: number }>('test.counter')
@@ -94,6 +95,7 @@ function commitEffects() {
 const tick = () => vi.advanceTimersByTimeAsync(10)
 /** The open subscription of a conversation (undefined: the root) on the tab's stream. */
 const source = (id?: number) => harness.server!.of(id)!
+const live = (id: number, withView: boolean) => harness.server!.of(id, withView)!
 function view(id: number, text: string, busy = false): StreamedView {
   return {
     conversation: { id },
@@ -136,15 +138,16 @@ it('keeps two scoped snapshots, ops, transcripts and documents independent of th
   commitEffects()
   await tick()
   expect(harness.sources).toHaveLength(1)
-  expect(source(7)).toMatchObject({ docs: [counter.kind], view: true })
-  expect(source(9)).toMatchObject({ docs: [counter.kind], view: true })
-  source(7).send('view', view(7, 'seven'))
-  source(9).send('view', view(9, 'nine'))
-  source(7).send('ops', [['a', ['entries', 0, 'model', 0, 'content'], ' updated']])
-  source(9).send('ops', [['a', ['entries', 0, 'model', 0, 'content'], ' live']])
-  source(7).send('doc', { kind: counter.kind, value: { n: 7 } })
-  source(9).send('doc', { kind: counter.kind, value: { n: 9 } })
-  source(7).send('docOps', { kind: counter.kind, ops: [['s', ['n'], 8]] })
+  expect(live(7, true)).toMatchObject({ docs: [], view: true })
+  expect(live(7, false)).toMatchObject({ docs: [counter.kind], view: false })
+  expect(live(9, false)).toMatchObject({ docs: [counter.kind], view: false })
+  live(7, true).send('view', view(7, 'seven'))
+  live(9, true).send('view', view(9, 'nine'))
+  live(7, true).send('ops', [['a', ['entries', 0, 'model', 0, 'content'], ' updated']])
+  live(9, true).send('ops', [['a', ['entries', 0, 'model', 0, 'content'], ' live']])
+  live(7, false).send('doc', { kind: counter.kind, value: { n: 7 } })
+  live(9, false).send('doc', { kind: counter.kind, value: { n: 9 } })
+  live(7, false).send('docOps', { kind: counter.kind, ops: [['s', ['n'], 8]] })
   const outputs = renderScopes().split('</output>')
   expect(outputs[0]).toContain('seven updated')
   expect(outputs[0]).not.toContain('nine')
@@ -156,19 +159,20 @@ it('keeps two scoped snapshots, ops, transcripts and documents independent of th
   expect(getConversation().id).toBe(1)
 
   // A nested scope must not inherit its parent's paged transcript.
+  const parentHistory = view(7, 'parent history').entries
   const nested = renderToStaticMarkup(
     h(
       TranscriptContext,
-      { value: createTranscriptFrame(view(7, 'parent history').entries).frame },
+      { value: createTranscriptFrame(() => parentHistory).frame },
       scoped(9, h(Probe)),
     ),
   )
   expect(nested).toContain('nine live')
   expect(nested).not.toContain('parent history')
+  const scopes = [live(7, true), live(7, false), live(9, true), live(9, false)]
   store.show(11 as ConversationId)
   await tick()
-  expect(source(7).closed).toBe(false)
-  expect(source(9).closed).toBe(false)
+  expect(scopes.map((item) => item.closed)).toEqual([false, false, false, false])
   expect(renderScopes()).toContain('seven updated')
 })
 
@@ -200,37 +204,32 @@ it('shares scopes, reconnects from a snapshot, ignores stale streams, and releas
   expect(store.getState().viewsOf[7]).toBeUndefined()
 })
 
-it('adds a view to a document-only subscription, keeps documents after the scope releases, and watches the view again from a snapshot', async () => {
+it('keeps documents and the view of a conversation on separate subscriptions, so one never resends the other', async () => {
   const releaseDoc = store.watchDocOf(23 as ConversationId, counter.kind)
   effects.push(releaseDoc)
   await tick()
   const docs = source(23)
-  docs.send('view', view(23, 'ignored'))
   docs.send('doc', { kind: counter.kind, value: { n: 1 } })
   expect(store.getState().viewsOf[23]).toBeUndefined()
   const releaseView = store.watchConversation(23 as ConversationId)
   await tick()
-  expect(docs.closed).toBe(true)
-  const both = source(23)
-  both.send('view', view(23, 'now retained'))
-  both.send('doc', { kind: counter.kind, value: { n: 2 } })
+  expect(docs.closed).toBe(false)
+  const viewOnly = live(23, true)
+  expect(viewOnly.docs).toEqual([])
+  viewOnly.send('view', view(23, 'now retained'))
+  docs.send('docOps', { kind: counter.kind, ops: [['s', ['n'], 2]] })
   releaseView()
   await tick()
-  // Documents only again: the value stays until the new subscription's snapshot.
-  expect(both.closed).toBe(true)
+  expect(viewOnly.closed).toBe(true)
+  expect(docs.closed).toBe(false)
   expect(store.getState().viewsOf[23]).toBeUndefined()
   expect(store.getState().docsOf[23]?.[counter.kind]).toEqual({ n: 2 })
-  const only = source(23)
-  expect(only.view).toBe(false)
-  only.send('doc', { kind: counter.kind, value: { n: 2 } })
-  only.send('docOps', { kind: counter.kind, ops: [['s', ['n'], 3]] })
-  expect(store.getState().docsOf[23]?.[counter.kind]).toEqual({ n: 3 })
 
   // Watched again, the view comes from a new subscription's snapshot, and its ops apply to it.
   effects.push(store.watchConversation(23 as ConversationId))
   await tick()
-  expect(only.closed).toBe(true)
-  const again = source(23)
+  const again = live(23, true)
+  expect(again).not.toBe(viewOnly)
   again.send('view', view(23, 'back'))
   again.send('ops', [['a', ['entries', 0, 'model', 0, 'content'], ' again']])
   expect(store.getState().viewsOf[23]?.entries[0].model?.[0]).toMatchObject({

@@ -1,4 +1,4 @@
-# Contracts: `api.ts`, `refs.ts`, `ui.tsx` and points
+# Contracts: `api.ts`, `refs.ts`, `ui.solid.tsx` and points
 
 Part of the [extension guide](../../extensions/README.md). An extension reaches another only through these files;
 lint enforces it. Pick the channel by what crosses it: services for calls between extensions, documents for durable
@@ -53,12 +53,10 @@ An extension's `api.ts` is its whole server-side surface for others, so lint (`l
   and every member of a service type passed to `defineApi` has a doc comment saying what it does and when to use it.
 - `api-naming`: `defineApi<…>()('<folder>')` or an extension point `('<folder>.<point>')`,
   `defineEvent('<folder>.<event>')` and `actionRef('<folder>', name)`.
-- `api-only-imports`: another extension's runtime code comes only from its `api.ts` in a server-side `.ts` file, its
-  `ui.tsx` in a React `.tsx` file (its `api.ts` and `refs.ts` only as types there), and its `refs.ts` or
-  `ui.solid.tsx` in a Solid `.solid.tsx` file. Types come with `import type` from any contract; pure helpers from
-  `lib/`.
+- `api-only-imports`: another extension's runtime code comes only from its `api.ts` in server code, or its `refs.ts`
+  or `ui.solid.tsx` in Solid code. Import types with `import type`; shared pure helpers live in `lib/`.
 
-## The browser side: `refs.ts` and `ui.tsx`
+## The browser side: `refs.ts` and `ui.solid.tsx`
 
 `api.ts` describes server code and may reach it through type imports, so the browser never imports it. An extension
 whose documents or actions the browser uses describes them in `refs.ts`: `docRef<T>(kind)` for each document and
@@ -83,8 +81,8 @@ export const EchoAction = actionRef<{ text: string }, { at: number }>('echo', 'e
 export const Echoed = defineEvent<{ text: string }>('echo.echoed')
 ```
 
-The web reads and calls through the refs, typed: `useDoc(LogDoc)`, `useDocOf(1, LogDoc)`, `useAction(EchoAction,
-args)`, `api.action(EchoAction, args)`; `useDocKind(kind)` is the untyped escape for views of every kind (the
+The web reads and calls through the refs, typed: `useDoc(LogDoc)`, `useDocOf(() => ROOT, LogDoc)`, `useAction(EchoAction,
+args)`, `api.action(EchoAction, args)`; `useDocKind(() => kind)` is the untyped escape for views of every kind (the
 Documents tab). The server ties itself to the same refs: its `defineDoc` uses `kind: LogDoc.kind`, and each handler
 is `implementAction(Ref, handler)` from `lib/actions.ts`, which fails the type check when the handler's result is not
 the ref's or it reads an argument the ref does not name (`ActionInput`):
@@ -102,47 +100,33 @@ export const actions = {
 `test/refs.test.ts` fails when an action ref has no `implementAction` of that ref in its extension's `actions`, or a
 doc ref names a kind no server facet's `docs` exports.
 
-What other extensions' browser code uses (shared components, hooks and the refs they need) is exported from the
-owner's `ui.tsx`, which starts with a doc comment on what it offers. Its Solid components go in `ui.solid.tsx`, which
-opens with the Solid JSX pragma and then that doc comment (`extensions/conversations/ui.solid.tsx`); data both share
-lives in `lib/` (`lib/conversation-ref.ts`).
+Components, readers and points other extensions' Solid code uses are exported from the owner's `ui.solid.tsx`.
+It opens with the Solid JSX pragma, then a doc comment on what it offers (`extensions/conversations/ui.solid.tsx`).
+The only exception is `extensions/sidebar/ui.tsx`, which re-exports points for
+[React facets outside this repository](react-compat.md).
 
 ## Web points
 
-A lower extension whose browser code shows something a higher one knows (a phase label on a sidebar row) declares a
-**point** in its `ui.tsx` and renders it with a render prop; the higher extension provides the value from its
-`web.tsx`, so the lower one imports nothing of it:
+A lower extension can ask for something a higher one knows without importing it. It declares a **point** with
+`definePoint<Input, Value>('<owner>.<point>')` and exports it from `ui.solid.tsx`. The higher extension imports the
+point and lists `provide(Point, value)` under `provides` in `web.solid.tsx`. Both helpers come from `@/sdk/solid`.
 
-```tsx
-// conversations/ui.tsx
-export const Phase = definePoint<number, { word: string } | undefined>('conversations.phase')
-// a row: <Provided point={Phase} input={id}>{(phase) => phase && <span>{phase.word}</span>}</Provided>
-// phase/web.tsx
-export default defineWebExtension({ provides: [provide(Phase, (id) => usePhaseWord(id))] })
-```
+- **Data:** `value` is `(input: Accessor<Input>) => Accessor<Value>`, called once per reader. For example, `instance`
+  fills the sidebar's `PreviewUp` point with `provide(PreviewUp, previewUp)`, where `previewUp` receives an id
+  accessor and returns an accessor of whether that conversation has a running preview. `useProvided(PreviewUp, id)`
+  returns an accessor of the last value in discovery order, or `undefined` without a provider. Use `useAllProvided`
+  for every value in order, with throwing providers left out.
+- **UI:** `value` is a Solid component taking the point's input object as props. The Inbox fills the sidebar's
+  `UnderUltimate` point with `provide(UnderUltimate, InboxSidebar)`. The sidebar renders
+  `<Provided point={UnderUltimate} input={{ conversation: data.ultimateId() }} />` to show every provider in order
+  (`last` keeps only the last). A throwing provider shows an inline error card without hiding the others.
 
-The provider's function is a hook, run once per `<Provided>`; the last facet in discovery order providing a point wins,
-and while none does the render prop gets `undefined`. A point that combines its providers (the sidebar's rows under
-@ultimate) renders `<AllProvided point input>{(values) => …}</AllProvided>` instead: every provider's value in discovery
-order, a throwing one left out behind its inline error card.
-
-A piece of UI other extensions may redraw (a line, a header, a row) renders through `<Rendered point input>` with its
-own rendering as children. Its point's input carries `core`, the rendering so far, and each provider in discovery order
-returns it, wraps it or replaces it, as entry renderers do; one that throws falls back to the rendering it got:
-
-```tsx
-// web/src/sdk/types.ts
-export const EmptyTranscript = definePoint<
-  { conversation: ConversationId; core: ReactNode },
-  ReactNode
->('ultimate.emptyTranscript')
-// the transcript: <Rendered point={EmptyTranscript} input={{ conversation }}>{empty}</Rendered>
-// conversations/web.tsx: provide(EmptyTranscript, ({ conversation, core }) => (standing(conversation) ? <Mark /> : core))
-```
+`useProvided`, `useAllProvided` and `Provided` come from `@/sdk/solid`.
 
 The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
 branches `branch · coordinator`), `ComposerPlaceholder` (what an empty composer says, the last provider that answers
-winning; conversations addresses a standing agent by its definition's `title`), `EmptyTranscript` (the `Rendered` point
-above: what a transcript shows before its first message; conversations shows a standing agent's mark and title) and
+winning; conversations addresses a standing agent by its definition's `title`), `EmptyTranscript` (what a transcript
+shows before its first message; each provider receives `core`, the rendering so far, to keep, wrap or replace;
+conversations shows a standing agent's mark and title) and
 `MessageReference` (the copyable reference to a stored message; codemode). The server's counterpart is the extension point above.

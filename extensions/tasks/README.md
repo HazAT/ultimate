@@ -7,7 +7,7 @@ The live durable task graph in the right panel's Tasks tab, grouped by what the 
 
 No row is named after the root conversation: work it owns (deliveries, automations) is the project's. Each row's hover shows the raw kind, id, phase and owner. Durations come from the task record's durable `startedAt` (warning colour after ten minutes, so a stuck task stands out). Names come from the `describe {ids}` action, which reads each task's input once (a message's ids and text, an automation's name, a tool's name, a lander's submission); an unknown kind shows its raw name in Background.
 
-The composer's status line shows the shown conversation's open messages (`messages/open.tsx`): how many answers it waits for, owes and is still delivering; a click lists them, and each row opens its conversation.
+The composer's status line shows the shown conversation's open messages (`messages/open.solid.tsx`): how many answers it waits for, owes and is still delivering; a click lists them, and each row opens its conversation.
 
 A task Pi Durable cannot run shows why (missing or too-old definition, failed migration); these clear when the registry changes. A task cut off by crashes `restartLimit` times in a row is not shown here: Pi ends it, and its run, tool call or compaction shows the failure.
 

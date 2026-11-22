@@ -4,8 +4,8 @@ import { Hourglass } from '@lucide/solid'
 import { createMemo, createSignal, For, mapArray, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
-import { useProvided } from '@/sdk/parts.solid.tsx'
 import {
+  useProvided,
   ROOT,
   formatAgo,
   switchConversation,

@@ -15,6 +15,7 @@ import { DropdownMenuRadioItem } from '@/components/ui/dropdown-menu.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Input, Textarea } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import {
   api,
   cn,
@@ -375,25 +376,23 @@ function ScheduleFields(props: FieldsProps) {
       <div class="flex flex-wrap gap-1.5">
         <For each={presets}>
           {(preset) => (
-            <Button
-              aria-pressed={
-                String(
-                  Object.entries(preset.patch).every(
-                    ([key, value]) => draft()[key as keyof Draft] === value,
-                  ),
-                ) as 'true' | 'false'
+            <Toggle
+              pressed={Object.entries(preset.patch).every(
+                ([key, value]) => draft()[key as keyof Draft] === value,
+              )}
+              class="group/preset h-6 gap-1 rounded-full border-border/80 px-2.5 text-[11.5px] font-normal text-muted-foreground data-pressed:border-brand/60 data-pressed:bg-brand/10 data-pressed:text-foreground"
+              onPressedChange={(pressed, details) =>
+                pressed ? props.set(preset.patch) : details.cancel()
               }
-              class="group/preset h-6 gap-1 rounded-full border-border/80 px-2.5 text-[11.5px] font-normal text-muted-foreground aria-pressed:border-brand/60 aria-pressed:bg-brand/10 aria-pressed:text-foreground"
-              onClick={() => props.set(preset.patch)}
               size="xs"
               variant="outline"
             >
               <Check
                 aria-hidden="true"
-                class="hidden size-3 text-brand group-aria-pressed/preset:block"
+                class="hidden size-3 text-brand group-data-pressed/preset:block"
               />
               {preset.label}
-            </Button>
+            </Toggle>
           )}
         </For>
       </div>

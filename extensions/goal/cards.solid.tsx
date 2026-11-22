@@ -5,10 +5,12 @@ import type { JSX } from '@solidjs/web'
 import { For, Show, createSignal } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card } from '@/sdk/parts.solid.tsx'
+import type { ButtonVariants } from '@/components/ui/button-variants.ts'
 import {
+  Card,
   ROOT,
   api,
+  cn,
   errorMessage,
   formatDuration,
   formatTime,
@@ -16,12 +18,12 @@ import {
   switchConversation,
   useAction,
   useDocOf,
+  type EntryRecord,
 } from '@/sdk/solid'
-import type { EntryRecord } from '@/sdk'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { GoalStartedEntry, GoalReportEntry } from './entries.ts'
 import { EndAction, GoalDoc, ImagesAction } from './refs.ts'
-import type { Decision, Goal } from './refs.ts'
+import type { Criterion, Decision, Goal } from './refs.ts'
 
 export function ModelOnlyNote(_props: { entry: EntryRecord }) {
   return null
@@ -52,6 +54,80 @@ function GoalCard(props: {
 
 const loading = () => <p class="px-3 py-3 text-[12px] text-muted-foreground">Loading…</p>
 
+export function CriterionRow(props: { item: Criterion; compact?: boolean }) {
+  const icon = () => (props.compact ? 'size-3' : 'size-3.5')
+  return (
+    <li
+      class={cn(
+        'flex items-start',
+        props.compact
+          ? 'gap-1.5 font-sans text-[12px] leading-snug'
+          : 'gap-2 text-[13px] leading-5',
+      )}
+      data-goal-criterion={props.item.status}
+    >
+      <span class="mt-0.5 shrink-0">
+        {props.item.status === 'met' ? (
+          <Check class={cn(icon(), 'text-success')} />
+        ) : props.item.status === 'blocked' ? (
+          <CircleSlash class={cn(icon(), 'text-warning')} />
+        ) : (
+          <CircleDashed class={cn(icon(), 'text-muted-foreground')} />
+        )}
+      </span>
+      <span class={['min-w-0', { 'text-muted-foreground': props.item.status === 'met' }]}>
+        <span class="sr-only">{props.item.status}: </span>
+        {props.item.text}
+        <Show when={props.item.status !== 'met' && props.item.tries}>
+          {' '}
+          <span class="ml-1 font-mono text-[11px] text-muted-foreground">
+            {props.item.status === 'blocked' ? 'blocked after ' : ''}
+            {plural(props.item.tries!, 'failed attempt')}
+          </span>
+        </Show>
+      </span>
+    </li>
+  )
+}
+
+export function EndGoalButton(props: {
+  class?: string
+  label?: string
+  size?: ButtonVariants['size']
+  variant?: ButtonVariants['variant']
+}) {
+  const [failure, setFailure] = createSignal<string>()
+  const end = () => {
+    setFailure(undefined)
+    return api.action(EndAction, null).catch((error: unknown) => setFailure(errorMessage(error)))
+  }
+  return (
+    <>
+      <Show when={failure()}>
+        <p class="order-first w-full text-[12px] text-error" role="alert">
+          {failure()}
+        </p>
+      </Show>
+      <Button
+        aria-label={props.label}
+        class={cn('group/goal-end', props.class)}
+        data-agent-confirm="Ends the hands-off goal and returns decisions to you."
+        data-goal-end
+        onClick={end}
+        pendingAnnouncement="Ending hands-off goal"
+        size={props.size ?? null}
+        variant={props.variant ?? null}
+      >
+        <LoaderCircle
+          aria-hidden="true"
+          class="hidden size-3.5 group-data-pending/goal-end:block motion-safe:animate-spin"
+        />
+        End hands-off
+      </Button>
+    </>
+  )
+}
+
 function Criteria(props: { items: Goal['criteria'] }) {
   return (
     <Show
@@ -62,31 +138,7 @@ function Criteria(props: { items: Goal['criteria'] }) {
     >
       <ol class="space-y-1 px-4 py-2.5" data-goal-criteria>
         <For each={props.items} keyed={false}>
-          {(item) => (
-            <li
-              class="flex items-start gap-2 text-[13px] leading-5"
-              data-goal-criterion={item().status}
-            >
-              <span class="mt-0.5 shrink-0">
-                {item().status === 'met' ? (
-                  <Check class="size-3.5 text-success" />
-                ) : item().status === 'blocked' ? (
-                  <CircleSlash class="size-3.5 text-warning" />
-                ) : (
-                  <CircleDashed class="size-3.5 text-muted-foreground" />
-                )}
-              </span>
-              <span class={['min-w-0', { 'text-muted-foreground': item().status === 'met' }]}>
-                {item().text}
-                <Show when={item().status !== 'met' && item().tries}>
-                  <span class="ml-2 font-mono text-[11px] text-muted-foreground">
-                    {item().status === 'blocked' ? 'blocked after ' : ''}
-                    {plural(item().tries!, 'failed try')}
-                  </span>
-                </Show>
-              </span>
-            </li>
-          )}
+          {(item) => <CriterionRow item={item()} />}
         </For>
       </ol>
     </Show>
@@ -265,36 +317,12 @@ function Reminder(props: { goal: Goal }) {
 }
 
 function EndGoal() {
-  const [failure, setFailure] = createSignal<string>()
-  const end = () => {
-    setFailure(undefined)
-    return api.action(EndAction, null).catch((error: unknown) => setFailure(errorMessage(error)))
-  }
   return (
     <footer class="flex flex-wrap items-center gap-3 border-t border-border/60 px-4 py-2.5">
       <span class="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">
         I decide what I would ask you and note each decision here. Pause stops everything at once.
       </span>
-      <Show when={failure()}>
-        <p class="w-full text-[12px] text-error" role="alert">
-          {failure()}
-        </p>
-      </Show>
-      <Button
-        class="group/goal-end"
-        data-agent-confirm="Ends the hands-off goal and returns decisions to you."
-        data-goal-end
-        onClick={end}
-        pendingAnnouncement="Ending hands-off goal"
-        size="sm"
-        variant="outline"
-      >
-        <LoaderCircle
-          aria-hidden="true"
-          class="hidden group-data-pending/goal-end:block motion-safe:animate-spin"
-        />
-        End hands-off
-      </Button>
+      <EndGoalButton size="sm" variant="outline" />
     </footer>
   )
 }

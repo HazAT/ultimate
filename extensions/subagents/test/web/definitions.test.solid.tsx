@@ -7,26 +7,36 @@ import { ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { ModelsResponse } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
-import { FakeSource } from '../../../../test/web/fake-source.ts'
+import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
 import type { FamiliesView } from '../../../models/refs.ts'
 import { DefinitionDialog } from '../../definitions.solid.tsx'
+import { InstructionsEditor } from '../../fields.solid.tsx'
 import { AgentsPanel } from '../../overview.solid.tsx'
 import type { Discovery, Shown } from '../../refs.ts'
 
-const harness = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>() }))
+const harness = vi.hoisted(() => ({
+  fetch: vi.fn<typeof fetch>(),
+  sources: [] as FakeSource[],
+}))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
   const { createReads } = await import('../../../../web/src/sdk/reads.ts')
   const { createRegistry } = await import('../../../../web/src/sdk/registry.ts')
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(harness.fetch)
   const clientStore = createStore({
-    eventSource: (url) => new FakeSource(url),
-    fetch: harness.fetch,
+    eventSource: (url) => {
+      const stream = new FakeSource(url)
+      harness.sources.push(stream)
+      return stream
+    },
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch: harness.fetch })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,
@@ -88,20 +98,36 @@ const created: Shown = {
 
 beforeEach(async () => {
   harness.fetch.mockReset()
-  harness.fetch.mockImplementation(async (url) => {
+  const server = fakeSubscriptions(harness.sources)
+  harness.fetch.mockImplementation(async (url, init) => {
     const path = url as string
+    const subscription = server.handle(path, init)
+    if (subscription) return subscription
     if (path === '/api/models') return Response.json(catalog)
     if (path.endsWith('/families')) return Response.json({ result: families })
     if (path.endsWith('/definitions')) return Response.json({ result: discovery })
     if (path.endsWith('/definition')) return Response.json({ result: created })
     return Response.json({ result: null })
   })
+  store.stop()
+  store.start()
+  harness.sources.at(-1)!.open()
   store.setUi({ dialogs: {} })
   uiState.receive({})
   await store.refreshModels()
 })
 
 const agent = createAgent()
+
+it('lets the agent select a visible instructions panel by name', async () => {
+  const page = renderSolid(() => <InstructionsEditor value="**A prompt**" onChange={() => {}} />)
+  const tabs = agent.snapshot().find((entry) => !entry.offPage && entry.label === 'Prompt view')
+  expect(tabs).toMatchObject({ component: 'tabs', value: 'write' })
+  expect(
+    await agent.act({ steps: [{ ref: tabs!.ref, action: 'setValue', args: ['Preview'] }] }),
+  ).toMatchObject({ ok: true })
+  expect(page.querySelector('[role="tabpanel"] strong')?.textContent).toBe('A prompt')
+})
 async function act(label: string, action: string, ...args: unknown[]) {
   const entry = agent.snapshot().find((item) => !item.offPage && item.label === label)
   expect(entry).toBeDefined()

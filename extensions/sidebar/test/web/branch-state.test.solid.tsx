@@ -12,8 +12,8 @@ import type { ExtensionActionRequest, UiUpdateRequest } from '../../../../shared
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { reads, registry, store, uiState } from '../../../../web/src/sdk/client.ts'
-import { ActivityAction, OverviewDoc } from '../../../conversations/refs.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
+import { OverviewDoc } from '../../../conversations/refs.ts'
 import { ConversationPhase } from '../../../conversations/ui.solid.tsx'
 import { RootsDoc } from '../../../lineage/refs.ts'
 import { MessagesDoc } from '../../../messages/refs.ts'
@@ -54,15 +54,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: harness.activity })
     return harness.server?.handle(path, init) ?? Response.json({ result: [] })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const clientStore = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,
@@ -130,13 +132,12 @@ it('shows working, a phase word or reviewing for a busy direct reviewer by defin
   const row = container.querySelector(`[data-in-flight="${branch}"]`)!
   expect(row.querySelector('[title="working"]')).not.toBeNull()
   await registry.setLoaders({
-    'extensions/sample/web.tsx': async () => ({
+    'extensions/sample/web.solid.tsx': async () => ({
       default: {
         provides: [
-          provide(ConversationPhase, (id) =>
-            id === branch
-              ? { label: 'Implementing', word: 'implementing', waiting: false }
-              : undefined,
+          provide(
+            ConversationPhase,
+            (id) => () => (id() === branch ? { word: 'implementing', waiting: false } : undefined),
           ),
         ],
       },
@@ -195,16 +196,15 @@ it("shows the coordinator's own turns and calls, the tree's cost, its workers an
       conversations: { [branch]: { runState: 'working' }, [child]: { runState: 'working' } },
     },
   })
-  const activity = (ids: number[]) =>
-    reads.get(ActivityAction.extension, ActivityAction.name, { ids }, ROOT).refetch()
-  await activity([branch, child])
-  flush()
   const line = () =>
     container
       .querySelector(`[data-in-flight="${branch}"]`)
       ?.closest('li')
       ?.querySelector(`[data-flight-activity="${branch}"]`)
-  expect(line()?.textContent).toContain('3 turns · 41 calls · $2.25 · with 1 worker')
+  await vi.waitFor(() => {
+    flush()
+    expect(line()?.textContent).toContain('3 turns · 41 calls · $2.25 · with 1 worker')
+  })
   expect(line()?.textContent).toContain('with 1 worker·idle 20m')
   expect(line()?.querySelector('[data-silent]')).not.toBeNull()
   root().send('doc', {
@@ -216,9 +216,10 @@ it("shows the coordinator's own turns and calls, the tree's cost, its workers an
   expect(line()?.querySelector('[data-silent]')).toBeNull()
   stream.send('conversations', conversations)
   root().send('doc', { kind: OverviewDoc.kind, value: { conversations: {} } })
-  await activity([branch])
-  flush()
-  expect(line()?.textContent).toContain('· alone')
+  await vi.waitFor(() => {
+    flush()
+    expect(line()?.textContent).toContain('· alone')
+  })
   expect(line()?.querySelector('[data-silent]')).toBeNull()
   harness.activity = {}
 })
@@ -229,8 +230,8 @@ it('uses the running preview for user waits and idle branches', async ({ onTestF
   const row = container.querySelector(`[data-in-flight="${branch}"]`)!
   expect(row.querySelector('[title="idle"]')).not.toBeNull()
   await registry.setLoaders({
-    'extensions/sample/web.tsx': async () => ({
-      default: { provides: [provide(PreviewUp, (id) => id === branch)] },
+    'extensions/sample/web.solid.tsx': async () => ({
+      default: { provides: [provide(PreviewUp, (id) => () => id() === branch)] },
     }),
   })
   await settle()

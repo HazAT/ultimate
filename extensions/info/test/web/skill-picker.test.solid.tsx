@@ -18,7 +18,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       sources.push(stream)
       return stream
     },
-    fetch: async () => Response.json({ ok: true }),
+    fetch: async () => Response.json({ ok: true, refused: {} }),
   })
   return { store, uiState: createUiState(undefined), api: {} }
 })

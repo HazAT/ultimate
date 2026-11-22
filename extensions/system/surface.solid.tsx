@@ -1,12 +1,13 @@
 /** @jsxImportSource @solidjs/web */
 import { ChevronRight, GanttChart } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { children, createMemo, For, Show } from 'solid-js'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs.solid.tsx'
 import {
   Contribution,
   ErrorCard,
@@ -14,30 +15,28 @@ import {
   StatusLine,
   useAllProvided,
   useProvided,
-} from '@/sdk/parts.solid.tsx'
-import {
   ParkedRuns,
   ROOT,
-  api,
   cn,
   errorMessage,
+  keepLast,
+  useAction,
   useConversations,
   useDocOf,
   useExtensionUiState,
   useNow,
+  usePageVisible,
   useSurface,
   useUiState,
 } from '@/sdk/solid'
-import { every } from '../../lib/timers.ts'
 import { useAutomations, timerWaits } from '../automations/ui.solid.tsx'
-import { useConcludedSince, useOverview } from '../conversations/ui.solid.tsx'
+import { useOverview } from '../conversations/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
 import {
   conversationState,
   conversationWait,
   emptyMessages,
   useRemoteProgress,
-  useStarters,
   useUnderway,
   waitLabel,
 } from '../messages/ui.solid.tsx'
@@ -46,7 +45,6 @@ import { LaneTree } from './hierarchy.solid.tsx'
 import { Axis, laneState } from './lanes.solid.tsx'
 import { windows } from './layout.ts'
 import type { WindowName } from './layout.ts'
-import { useVisible } from './navigation.solid.tsx'
 import { LanesAction } from './refs.ts'
 import type { Lane, LaneLink } from './refs.ts'
 import { Stream } from './stream.solid.tsx'
@@ -71,9 +69,7 @@ function useStates() {
   const primary = () => standing()?.ultimate
   const automations = useAutomations(() => 5000)
   const timers = createMemo(() => timerWaits(automations().data, standing()))
-  const starterOf = useStarters()
   const underway = useUnderway()
-  const concludedSince = useConcludedSince()
   const primaryWait = createMemo(() => {
     const id = primary()
     if (id !== undefined)
@@ -102,8 +98,6 @@ function useStates() {
       runState: overview()[id]?.runState,
       busy: own?.ownerTaskId !== undefined ? own.busy : underway(id),
       parked: parked()?.has(id) ?? false,
-      starter: starterOf(id),
-      concludedSince: concludedSince(id),
     }
     return {
       state: laneState(
@@ -124,36 +118,45 @@ function useStates() {
 type LanesResult = { now: string; lanes: Lane[]; links: LaneLink[]; more?: number }
 
 function useLanes(currentRange: () => number, isLive: () => boolean) {
-  const [state, setState] = createSignal<{ range: number; data?: LanesResult; error?: unknown }>()
-  createEffect(
-    () => ({ range: currentRange(), live: isLive() }),
-    ({ range, live }) => {
-      const controller = new AbortController()
-      const load = () => {
-        const since = new Date(Math.floor((Date.now() - range) / 60_000) * 60_000).toISOString()
-        void api.action(LanesAction, { since }, { signal: controller.signal }).then(
-          (data) => {
-            if (!controller.signal.aborted) setState({ range, data })
-          },
-          (error: unknown) => {
-            if (!controller.signal.aborted)
-              setState((previous) => ({
-                data: previous?.range === range ? previous.data : undefined,
-                range,
-                error,
-              }))
-          },
-        )
-      }
-      load()
-      const stop = live ? every(2000, load) : undefined
-      return () => {
-        stop?.()
-        controller.abort()
-      }
+  const read = useAction(
+    LanesAction,
+    {
+      get windowMs() {
+        return currentRange()
+      },
     },
+    { onError: keepLast, every: () => (isLive() ? 2000 : undefined) },
   )
-  return createMemo(() => (state()?.range === currentRange() ? state() : undefined))
+  return createMemo<{ range: number; data?: LanesResult; error?: unknown }>((previous) => {
+    const range = currentRange()
+    const data = read.data() ?? (previous?.range === range ? previous.data : undefined)
+    return { range, data, error: read.error() }
+  })
+}
+
+function SystemHeading(props: { tabs: { id: string; title: string }[] }) {
+  const controls = children(() => (
+    <>
+      <span class="flex shrink-0 items-center gap-2 text-[13px] font-medium">
+        <GanttChart class="size-4 text-muted-foreground" /> System
+      </span>
+      <Show when={props.tabs.length}>
+        <TabsList aria-label="System view" class={cn('inline-flex', control)}>
+          <TabsTab class={choice} value="agents">
+            Agents
+          </TabsTab>
+          <For each={props.tabs} keyed={(item) => item.id}>
+            {(item) => (
+              <TabsTab class={choice} value={item().id}>
+                {item().title}
+              </TabsTab>
+            )}
+          </For>
+        </TabsList>
+      </Show>
+    </>
+  ))
+  return <Header>{controls()}</Header>
 }
 
 export function System() {
@@ -161,50 +164,38 @@ export function System() {
   const provided = useAllProvided(SystemTab, () => null)
   const tabs = createMemo(() => provided().filter((item) => item !== undefined))
   const open = createMemo(() => tabs().find((item) => item.id === tab()))
+  const panelClass = 'flex min-h-0 flex-1 flex-col overflow-hidden'
   return (
-    <>
-      <Header>
-        <span class="flex shrink-0 items-center gap-2 text-[13px] font-medium">
-          <GanttChart class="size-4 text-muted-foreground" /> System
-        </span>
-        <Show when={tabs().length}>
-          <SegmentedControl
-            aria-label="System view"
-            bind={[() => open()?.id ?? 'agents', setTab]}
-            class={control}
-          >
-            <SegmentedControlItem class={choice} value="agents">
-              Agents
-            </SegmentedControlItem>
-            <For each={tabs()} keyed={(item) => item.id}>
-              {(item) => (
-                <SegmentedControlItem class={choice} value={item().id}>
-                  {item().title}
-                </SegmentedControlItem>
-              )}
-            </For>
-          </SegmentedControl>
-        </Show>
-      </Header>
-      <Show when={open()} fallback={<Lanes />}>
+    <Tabs
+      aria-label="System view"
+      bind={[() => open()?.id ?? 'agents', setTab]}
+      class="flex min-h-0 min-w-0 flex-1 flex-col"
+    >
+      <SystemHeading tabs={tabs()} />
+      <TabsPanel class={panelClass} value="agents">
+        <Lanes />
+      </TabsPanel>
+      <For each={tabs()} keyed={(item) => item.id}>
         {(item) => (
-          <Contribution
-            item={{ extension: 'system', version: 0, component: item().component }}
-            props={{}}
-            fallback={(extension, error) => (
-              <ErrorCard error={errorMessage(error)} extension={extension} />
-            )}
-          />
+          <TabsPanel class={panelClass} value={item().id}>
+            <Contribution
+              item={{ extension: 'system', version: 0, component: item().component }}
+              props={{}}
+              fallback={(extension, error) => (
+                <ErrorCard error={errorMessage(error)} extension={extension} />
+              )}
+            />
+          </TabsPanel>
         )}
-      </Show>
+      </For>
       <StatusLine />
-    </>
+    </Tabs>
   )
 }
 
 function Lanes() {
   const surface = useSurface()
-  const visible = useVisible()
+  const visible = usePageVisible()
   const live = () => surface() === 'system' && visible()
   const [stored, setWindow] = useExtensionUiState<WindowName>('window', '30m')
   const window = (): WindowName => windowNames.find((name) => name === stored()) ?? '30m'

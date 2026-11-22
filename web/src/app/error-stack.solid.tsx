@@ -2,15 +2,21 @@
 import { Puzzle } from '@lucide/solid'
 import { Portal } from '@solidjs/web'
 import { For } from 'solid-js'
-import { errorMessage, ErrorReport, useExtensions, useSystem } from '@/sdk/solid'
-import { useProvided } from '../sdk/react-island.solid.tsx'
+import { errorMessage, ErrorReport, useExtensions, useSystem } from '../sdk/hooks.ts'
+import { useProvided } from '../sdk/contribution.solid.tsx'
 import { ErrorCard } from './error-card.solid.tsx'
 import type { ErrorCardProps } from './error-card.solid.tsx'
 import { extensionPath, stackFrames } from './error-report.ts'
 
 export function ReportedErrorCard(props: Omit<ErrorCardProps, 'report'>) {
-  const report = useProvided(ErrorReport, () => null)
-  return <ErrorCard {...props} report={report()} />
+  const failures = (<span class="contents" />) as HTMLElement
+  const report = useProvided(ErrorReport, () => null, failures)
+  return (
+    <>
+      <ErrorCard {...props} report={report()} />
+      {failures}
+    </>
+  )
 }
 
 export const reportedFailure = (extension: string, error: unknown, trace?: string) => (
@@ -21,6 +27,9 @@ export const reportedFailure = (extension: string, error: unknown, trace?: strin
   />
 )
 
+const facetOf = (record: { framework: 'solid' | 'react' }) =>
+  record.framework === 'react' ? 'web.tsx' : 'web.solid.tsx'
+
 function StackedErrorCard(props: {
   extension: string
   footer: string
@@ -29,6 +38,11 @@ function StackedErrorCard(props: {
   stack?: string
 }) {
   const system = useSystem()
+  const extensions = useExtensions()
+  const facetFile = (name: string) => {
+    const record = extensions().find((each) => each.name === name)
+    return record ? facetOf(record) : 'web.solid.tsx'
+  }
   return (
     <div class="pointer-events-auto rounded-md border border-error/30 bg-popover/95 shadow-lg backdrop-blur">
       <ReportedErrorCard
@@ -40,7 +54,8 @@ function StackedErrorCard(props: {
       />
       <div class="flex items-center gap-1.5 px-2.5 pb-2 font-mono text-[10.5px] text-muted-foreground/80">
         <Puzzle aria-hidden="true" class="size-3" />
-        {extensionPath(system(), props.extension, '/web.tsx')} · {props.footer}
+        {extensionPath(system(), props.extension, `/${facetFile(props.extension)}`)} ·{' '}
+        {props.footer}
       </div>
     </div>
   )
@@ -56,8 +71,8 @@ export function ExtensionErrors(props: { stack: HTMLElement }) {
           <StackedErrorCard
             context={
               record().extension
-                ? 'web.tsx did not reload; the previous version is still running'
-                : 'web.tsx did not load'
+                ? `${facetOf(record())} did not reload; the previous version is still running`
+                : `${facetOf(record())} did not load`
             }
             error={record().error ?? ''}
             extension={record().name}

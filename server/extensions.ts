@@ -7,7 +7,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import { readFile, realpath } from 'node:fs/promises'
 import { existsSync, lstatSync, watch as watchDirectory } from 'node:fs'
-import { compareExtensions, discoverExtensions } from '../lib/discovery.ts'
+import { compareExtensions, discoverExtensions, webFacet } from '../lib/discovery.ts'
 import {
   decisionRoot,
   projectSetup,
@@ -420,7 +420,7 @@ export async function loadExtensions(
           events: [],
           facets: {
             server: entry.files.includes('server.ts'),
-            web: entry.files.includes('web.tsx'),
+            web: webFacet(entry.files) !== undefined,
           },
           ...(existsSync(join(host.ultimateRoot, 'extensions', entry.name))
             ? { replaces: 'builtin' as const }
@@ -552,7 +552,7 @@ export async function loadExtensions(
         actions: Object.keys(actions.get(name) ?? {}),
         events: (await contractOutline({ name, path, enabled })).events,
         readme,
-        facets: { server: files.includes('server.ts'), web: files.includes('web.tsx') },
+        facets: { server: files.includes('server.ts'), web: webFacet(files) !== undefined },
         ...(previous?.server ? { server: previous.server } : {}),
       }
       if (enabled && record.facets.server && (!servers || servers.has(name))) {

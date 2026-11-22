@@ -62,15 +62,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     }
     return Response.json({ result: { pinned: harness.pinned } })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const source = new FakeSource(url)
       harness.sources.push(source)
       return source
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   const registry = createRegistry()
   return {
     store,
@@ -99,6 +101,11 @@ const resize = (wide: boolean) => {
 
 let visibility: DocumentVisibilityState = 'visible'
 Object.defineProperty(document, 'visibilityState', { get: () => visibility })
+function setVisibility(state: DocumentVisibilityState) {
+  visibility = state
+  document.dispatchEvent(new Event('visibilitychange'))
+  flush()
+}
 
 import { registry, store } from '../../../../web/src/sdk/client.ts'
 import { OpeningBar, Rail } from '../../rail.solid.tsx'
@@ -107,7 +114,7 @@ const agent = createAgent()
 beforeAll(() => vi.useFakeTimers())
 afterAll(() => vi.useRealTimers())
 beforeEach(async () => {
-  visibility = 'visible'
+  setVisibility('visible')
   harness.sources.length = 0
   harness.pins.length = 0
   harness.calls.length = 0
@@ -155,17 +162,24 @@ async function mount() {
 const rail = (container: HTMLElement) => container.querySelector('nav')?.parentElement
 const calls = (name: string) => harness.calls.filter((call) => call === name).length
 
-it('lists each running project as a link with its state, opens on hover, and an agent pins it for every instance', async () => {
+it('lists projects by name, leaves the current project unfocusable, and an agent pins the rail', async () => {
   const container = await mount()
-  const rows = [...container.querySelectorAll<HTMLAnchorElement>('a[data-project]')]
-  expect(rows.map((row) => [row.dataset.project, row.getAttribute('href'), row.title])).toEqual([
-    ['ultimate', null, 'Ultimate · :4747 · working · this tab'],
-    ['ultimate-eval', 'http://127.0.0.1:4748/', 'Ultimate Eval · :4748 · 2 for you'],
-    ['my-app', 'http://127.0.0.1:4750/', 'My App · owner/my-app · :4750'],
-  ])
-  expect(container.querySelector<HTMLElement>('a[aria-current="page"]')?.dataset.project).toBe(
-    'ultimate',
+  const rows = [...container.querySelectorAll<HTMLElement>('[data-project]')]
+  expect(rows.map((row) => [row.dataset.project, row.getAttribute('href'), row.ariaLabel])).toEqual(
+    [
+      ['ultimate', null, 'Ultimate · :4747 · working · this tab'],
+      ['ultimate-eval', 'http://127.0.0.1:4748/', 'Ultimate Eval · :4748 · 2 for you'],
+      ['my-app', 'http://127.0.0.1:4750/', 'My App · owner/my-app · :4750'],
+    ],
   )
+  const currentRow = container.querySelector<HTMLButtonElement>('button[aria-current="page"]')!
+  expect(currentRow.dataset.project).toBe('ultimate')
+  expect(currentRow.disabled).toBe(true)
+  rows[1].focus()
+  currentRow.focus()
+  expect(document.activeElement).toBe(rows[1])
+  rows[1].blur()
+  flush()
 
   rail(container)!.dispatchEvent(new MouseEvent('mouseenter'))
   await advance(149)
@@ -174,8 +188,22 @@ it('lists each running project as a link with its state, opens on hover, and an 
   expect(container.textContent).toContain('2 for you · 1 working')
   await expectDistinctAgentNames(agent)
 
+  const current = agent
+    .snapshot()
+    .find((entry) => !entry.offPage && entry.label === currentRow.ariaLabel)
+  expect(current).toMatchObject({ disabled: true })
+  expect(await agent.query({ text: 'Ultimate' })).toEqual(
+    expect.arrayContaining([expect.objectContaining({ ref: current!.ref })]),
+  )
+  const blocked = agent.act({ steps: [{ ref: current!.ref, action: 'press' }] })
+  await advance(100)
+  expect((await blocked).ok).toBe(false)
+  expect(await agent.query({ text: 'My App' })).toEqual(
+    expect.arrayContaining([expect.objectContaining({ label: rows[2].ariaLabel })]),
+  )
   const pin = agent.snapshot().find((entry) => entry.label === 'Pin the projects rail open')
-  const pressed = agent.act({ steps: [{ ref: pin!.ref, action: 'press' }] })
+  expect(pin?.pressed).toBe(false)
+  const pressed = agent.act({ steps: [{ ref: pin!.ref, action: 'setPressed', args: [true] }] })
   await advance(100)
   expect(await pressed).toMatchObject({ ok: true })
   expect(harness.pins).toEqual([{ pinned: true, source: 'agent' }])
@@ -297,7 +325,7 @@ it('reads the machine-wide pin once, whichever conversation is shown', async () 
 })
 
 it('polls the list every 4 s and the shared pin every 30 s, only while the tab is shown', async () => {
-  visibility = 'hidden'
+  setVisibility('hidden')
   harness.projects = harness.projects.slice(0, 1)
   const container = await mount()
   expect(container.querySelector('nav')).toBeNull()
@@ -309,10 +337,9 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
     ...harness.projects,
     { name: 'my-app', url: 'http://127.0.0.1:4750', current: false },
   ]
-  visibility = 'visible'
-  document.dispatchEvent(new Event('visibilitychange'))
+  setVisibility('visible')
   await advance(10)
-  expect(container.querySelectorAll('a[data-project]')).toHaveLength(2)
+  expect(container.querySelectorAll('[data-project]')).toHaveLength(2)
   expect([calls('list'), calls('pin')]).toEqual([hidden[0] + 1, hidden[1] + 1])
   await advance(3_989)
   expect(calls('list')).toBe(hidden[0] + 1)
@@ -325,8 +352,7 @@ it('polls the list every 4 s and the shared pin every 30 s, only while the tab i
   await advance(1)
   expect(calls('pin')).toBe(hidden[1] + 2)
 
-  visibility = 'hidden'
-  document.dispatchEvent(new Event('visibilitychange'))
+  setVisibility('hidden')
   const stopped = [calls('list'), calls('pin')]
   await advance(60_000)
   expect([calls('list'), calls('pin')]).toEqual(stopped)
@@ -346,8 +372,10 @@ it('gives way to another extension’s rail and to a phone', async () => {
   expect(container.querySelector('nav')).not.toBeNull()
 
   await registry.setLoaders({
-    '/extensions/projects/web.tsx': async () => ({ default: {} }),
-    '/extensions/fleet/web.tsx': async () => ({ default: { slots: { 'shell.rail': () => null } } }),
+    '/extensions/projects/web.solid.tsx': async () => ({ default: {} }),
+    '/extensions/fleet/web.solid.tsx': async () => ({
+      default: { slots: { 'shell.rail': () => null } },
+    }),
   })
   flush()
   expect(container.querySelector('nav')).toBeNull()
@@ -357,15 +385,20 @@ it('gives way to another extension’s rail and to a phone', async () => {
   await registry.setLoaders({})
 })
 
-it('shows the opening bar after a click until the page is left, shown again, or 15 s pass', async () => {
+it('shows the opening bar after a click until the page is left, shown again, or 15 s pass', async ({
+  onTestFinished,
+}) => {
   const container = await mount()
   const bar = () => container.querySelector('.animate-sweep')
   const evalRow = container.querySelector<HTMLAnchorElement>('a[data-project="ultimate-eval"]')!
-  evalRow.addEventListener('click', (event) => event.preventDefault())
+  const preventNavigation = (event: MouseEvent) => event.preventDefault()
+  window.addEventListener('click', preventNavigation)
+  onTestFinished(() => window.removeEventListener('click', preventNavigation))
   evalRow.click()
   flush()
   expect(bar()).not.toBeNull()
-  expect(evalRow.title).toContain('opening')
+  expect(evalRow.ariaLabel).toContain('opening')
+  expect(evalRow.parentElement?.title).toContain('opening')
   window.dispatchEvent(new Event('pageshow'))
   flush()
   expect(bar()).toBeNull()

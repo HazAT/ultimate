@@ -44,11 +44,12 @@ function setup() {
     docs: {},
   } as unknown as ConversationView)
   main.send('tasks', { tasks: {} })
+  main.send('conversations', [{ id: 1, busy: false } as ConversationSummary])
   const list = (busy: boolean, answerAt?: number) =>
-    main.send('conversations', [
-      { id: 1, busy, ...(answerAt === undefined ? {} : { answerAt }) } as ConversationSummary,
+    main.send('conversationsOps', [
+      ['s', [0, 'busy'], busy],
+      ...(answerAt === undefined ? [] : [['s', [0, 'answerAt'], answerAt] as const]),
     ])
-  list(false)
   return { hook, list, fetch, main, server }
 }
 

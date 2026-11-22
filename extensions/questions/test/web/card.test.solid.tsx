@@ -71,7 +71,10 @@ const message: Message = {
     {
       text: 'Where should it sit?',
       kind: 'choice',
-      options: [{ label: 'Sidebar' }, { label: 'Status line' }],
+      options: [
+        { label: 'Sidebar', key: 'a' },
+        { label: 'Status line', key: 'b' },
+      ],
     },
     { text: 'Land it?', kind: 'confirm' },
   ],
@@ -125,9 +128,85 @@ it('shows the saved picks, note and open question on a fresh mount', () => {
   expect(card.querySelector<HTMLTextAreaElement>('textarea[data-note]')?.value).toBe(
     'Peak colour on the phone too',
   )
-  expect(
-    card.querySelector('fieldset[data-current] button[aria-pressed=true]')?.textContent,
-  ).toContain('Yes')
+  expect(card.querySelector('fieldset[data-current] button[data-selected]')?.textContent).toContain(
+    'Yes',
+  )
+})
+
+it('announces the current choice and rating, and clears picks without advancing', async () => {
+  const withRating: Message = {
+    ...message,
+    id: 7,
+    questions: [...message.questions!, { text: 'How sure are you?', kind: 'scale' }],
+  }
+  const card = renderSolid(() => (
+    <MessageQuestions message={withRating} keys={true} withActions={false} />
+  ))
+  const field = (index: number) => card.querySelector(`[data-question="${index}"] fieldset`)
+  const choice = (label: string) => card.querySelector(`[aria-label="${label}"]`)
+  const sidebar = 'Option 1 · Sidebar · question 1 · message 7'
+  const status = 'Option 2 · Status line · question 1 · message 7'
+  await press(sidebar)
+  expect(choice(sidebar)?.getAttribute('aria-current')).toBe('true')
+  expect(choice(status)?.getAttribute('aria-current')).toBeNull()
+  const key = (value: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key: value }))
+  key('Escape')
+  await vi.advanceTimersByTimeAsync(350)
+  flush()
+  expect(choice(sidebar)?.getAttribute('aria-current')).toBeNull()
+  expect(field(0)?.hasAttribute('data-current')).toBe(true)
+  key('b')
+  flush()
+  expect(choice(status)?.hasAttribute('data-selected')).toBe(true)
+  key('a')
+  flush()
+  expect(choice(sidebar)?.hasAttribute('data-selected')).toBe(true)
+  expect(choice(status)?.hasAttribute('data-selected')).toBe(false)
+  key('ArrowDown')
+  flush()
+  key('ArrowDown')
+  flush()
+  const rating = 'Rating 3 · question 3 · message 7'
+  await press(rating)
+  expect(choice(rating)?.getAttribute('aria-current')).toBe('true')
+  expect(choice('Rating 2 · question 3 · message 7')?.getAttribute('aria-current')).toBeNull()
+  await uiState.flush()
+})
+
+it('keeps typed drafts without recording them, and records a person picking and sending', async () => {
+  const typed: Message = { ...message, id: 8 }
+  const card = renderSolid(() => (
+    <MessageQuestions message={typed} keys={false} withActions={false} />
+  ))
+  const note = card.querySelector<HTMLTextAreaElement>('textarea[data-note]')!
+  for (const text of ['O', 'Ok', 'Ok!']) {
+    note.value = text
+    note.dispatchEvent(new InputEvent('input', { bubbles: true }))
+    flush()
+    await uiState.flush()
+  }
+  expect(uiState.get(CARDS_KEY)).toMatchObject({ 'message:8': { note: 'Ok!' } })
+  expect(new Set(harness.writers)).toEqual(new Set(['app']))
+  harness.writers.length = 0
+  card
+    .querySelector<HTMLButtonElement>('[aria-label="Option 1 · Sidebar · question 1 · message 8"]')!
+    .click()
+  flush()
+  await uiState.flush()
+  expect(harness.writers).toEqual(['person'])
+  card.querySelector<HTMLButtonElement>('[aria-label="Send 1 of 2: answer to message 8"]')!.click()
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(harness.actions).toEqual([
+    {
+      name: 'answer',
+      args: {
+        messageId: 8,
+        answers: [{ question: 'Where should it sit?', answer: 'Sidebar' }],
+        note: 'Ok!',
+      },
+      source: 'person',
+    },
+  ])
 })
 
 it('lets an agent choose, undo a send, send again, and dismiss another card', async () => {
@@ -162,7 +241,8 @@ it('lets an agent choose, undo a send, send again, and dismiss another card', as
   )
   const option = 'Option 2 · Status line · question 1 · message 5'
   await press(option)
-  expect(card.querySelector(`[aria-label="${option}"]`)?.getAttribute('aria-pressed')).toBe('true')
+  expect(card.querySelector(`[aria-label="${option}"]`)?.hasAttribute('data-selected')).toBe(true)
+  await uiState.flush()
   expect(harness.writers).toEqual(['agent'])
   await vi.advanceTimersByTimeAsync(320)
   expect(

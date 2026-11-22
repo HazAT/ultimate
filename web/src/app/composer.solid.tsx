@@ -49,7 +49,7 @@ import {
   useViewport,
   writerNow,
   writingAs,
-} from '@/sdk/solid'
+} from '../sdk/hooks.ts'
 import type { ModelsResponse } from '../../../shared/protocol.ts'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
 import {
@@ -58,7 +58,8 @@ import {
   Slot,
   useAllProvided,
   useProvided,
-} from '../sdk/react-island.solid.tsx'
+} from '../sdk/contribution.solid.tsx'
+import { useExternal } from '../sdk/page.ts'
 import { Attached, createAttach } from './attach.solid.tsx'
 import { splitAttachments, withAttachments } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
@@ -112,11 +113,7 @@ export function Composer(props: { dock?: boolean }) {
   const requested = useStore((state) => state.requested)
   const mountKey = createMemo(() => conversation().id ?? scoped ?? requested())
   const extensions = useExtensions()
-  const frame = createTranscriptFrame()
-  createEffect(
-    () => conversation().entries,
-    (entries) => frame.setEntries(entries),
-  )
+  const frame = createTranscriptFrame(() => conversation().entries)
   return (
     <Transcript value={frame.frame}>
       <Contributed
@@ -155,6 +152,7 @@ function Inbox(props: { items: readonly InboxItem[] }) {
               const cancellation = () => (
                 <Button
                   aria-label={`Cancel queued input ${item().id}: ${inboxText(item())}`}
+                  data-agent-confirm="Removes this message from the queue before the agent reads it."
                   class="size-6 rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
                   onClick={() => cancel(item().id)}
                   size={null}
@@ -277,12 +275,7 @@ function ComposerEditor(props: { dock?: boolean }) {
   const [placeholder, setPlaceholder] = createSignal<string>()
   const models = useModels()
   const viewport = useViewport()
-  const [foldTarget, setFoldTarget] = createSignal<HTMLElement | null>(null)
-  onSettled(() => {
-    const unsubscribe = subscribeStatusTarget(() => setFoldTarget(statusTarget()))
-    setFoldTarget(statusTarget())
-    return unsubscribe
-  })
+  const foldTarget = useExternal(statusTarget, subscribeStatusTarget)
   const foldStatus = createMemo(() =>
     viewport() === 'phone' && scoped === null && !props.dock ? foldTarget() : null,
   )
@@ -564,6 +557,7 @@ function ComposerEditor(props: { dock?: boolean }) {
             <Show when={busy()}>
               <Button
                 aria-label={`Stop the run in ${label()}`}
+                data-agent-confirm="Stops the current run in this conversation."
                 class={submitClass}
                 onClick={() =>
                   api.abort(id()).catch((failure: unknown) => setError(errorMessage(failure)))

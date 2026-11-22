@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId, EntryId, EntryRecord } from '@earendil-works/pi-durable'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { createMemo, Errored, For, Loading, onCleanup, Show } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { api, useTranscript } from '@/sdk/solid'
 import { imagesOf } from '../../lib/entries.ts'
@@ -17,31 +17,22 @@ export function MessageImages(props: { conversation: ConversationId; entry: Entr
       (item) => item.conversationId === props.conversation && item.id === props.entry,
     ),
   )
-  const [fetched, setFetched] = createSignal<EntryRecord>()
-  createEffect(
-    () => ({ conversation: props.conversation, entry: props.entry, inTranscript: !!loaded() }),
-    ({ conversation, entry, inTranscript }) => {
-      if (inTranscript) return undefined
-      const controller = new AbortController()
-      api.history(conversation, offsetEntryId(entry, 1), controller.signal, entry).then(
-        (page) => {
-          if (!controller.signal.aborted) setFetched(page.entries.find((item) => item.id === entry))
-        },
-        () => undefined,
-      )
-      return () => controller.abort()
-    },
+  const entry = createMemo(() => {
+    const { conversation, entry: id } = props
+    if (loaded()) return loaded()
+    const controller = new AbortController()
+    onCleanup(() => controller.abort())
+    return api
+      .history(conversation, offsetEntryId(id, 1), controller.signal, id)
+      .then((page) => page.entries.find((item) => item.id === id))
+  })
+  return (
+    <Errored fallback={null}>
+      <Loading fallback={null} on={[props.conversation, props.entry]}>
+        <Thumbnails images={imagesOf(entry())} />
+      </Loading>
+    </Errored>
   )
-  const display = () => {
-    const previous = fetched()
-    return (
-      loaded() ??
-      (previous?.conversationId === props.conversation && previous.id === props.entry
-        ? previous
-        : undefined)
-    )
-  }
-  return <Thumbnails images={imagesOf(display())} />
 }
 
 function Thumbnails(props: { images: readonly { data: string; mimeType: string }[] }) {

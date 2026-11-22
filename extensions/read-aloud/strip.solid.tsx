@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { LoaderCircle, Pause, Play, Square, Volume2 } from '@lucide/solid'
-import { createEffect, createSignal, Match, onSettled, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   cn,
@@ -10,9 +10,10 @@ import {
   switchConversation,
   useConversation,
   useExtensionUiState,
+  useExternal,
 } from '@/sdk/solid'
 import type { SolidComposerProps } from '@/sdk/solid'
-import type { Reading } from './player.tsx'
+import type { Reading } from './player.solid.tsx'
 
 type Player = {
   current: () => Reading | undefined
@@ -30,13 +31,7 @@ const rowButton =
 
 export function readingStrip(player: Player) {
   return function ReadingStrip(props: SolidComposerProps) {
-    const [reading, setReading] = createSignal(player.current())
-    onSettled(() => {
-      const sync = () => setReading(player.current())
-      const unsubscribe = player.subscribe(sync)
-      sync()
-      return unsubscribe
-    })
+    const reading = useExternal(player.current, player.subscribe)
     const conversation = useConversation()
     const [rate, setRate] = useExtensionUiState('rate', 1)
     createEffect(rate, (next) => player.setRate(next))

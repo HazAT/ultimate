@@ -24,17 +24,17 @@ An extension is a folder `<name>/` in `extensions/` (built-in), `~/.ultimate/ext
 
 - `server.ts`: agent and server, a Pi Durable extension (tools, prompt sections, hooks, documents) and its `actions`.
   Reinstalled on save; running tool calls finish on old code.
-- `web.tsx`: UI, `export default defineWebExtension({ … })`. Rebuilt on save; open pages switch to the new bundle.
-- `api.ts`, `refs.ts`, `ui.tsx`, `ui.solid.tsx`: its [contracts](../docs/extensions/contracts.md) for other extensions; live with the
+- `web.solid.tsx`: Solid UI, `export default defineWebExtension({ … })`. Rebuilt on save; open pages switch to the new bundle.
+- `api.ts`, `refs.ts`, `ui.solid.tsx`: its [contracts](../docs/extensions/contracts.md) for other extensions; live with the
   facets that import them.
 - `README.md`: what it does; the first paragraph is shown in the UI, so open with a sentence, not a heading.
   Required; read on change.
 - `test/`: its tests, which are not part of the extension: saving one reloads nothing, its classes stay out of the
   stylesheet, and its imports are free of the import rules and stay out of the dependency graph. See [Tests](#tests).
 
-Files ending in `.ts` belong to the server facet, files ending in `.tsx` to the web facet: split a large `web.tsx` into
-more `.tsx` files in the same folder (see `coding-tools/diff.solid.tsx`). The folder name is the extension name; a
-`server.ts` extension must use it as its `name`.
+Split a large `web.solid.tsx` into more `*.solid.tsx` files in the same folder (see `coding-tools/diff.solid.tsx`).
+The folder name is the extension name; a `server.ts` extension must use it as its `name`. Outside the repository,
+a React facet named `web.tsx` runs on the [compat layer](../docs/extensions/react-compat.md).
 
 Each web facet loads on its own. If it fails to compile, throws, or exports a contribution of the wrong shape (such as
 `surfaces: {}` instead of an array, or a command without `run`), an error card names it and the rest of the UI keeps
@@ -44,12 +44,13 @@ boundary, so a crashing component shows a compact card where it was.
 ## A first extension
 
 ```tsx
-// extensions/hello/web.tsx
-import { defineWebExtension, useConversation } from '@/sdk'
+/** @jsxImportSource @solidjs/web */
+// extensions/hello/web.solid.tsx
+import { defineWebExtension, useConversation } from '@/sdk/solid'
 
 function Entries() {
-  const { entries } = useConversation()
-  return <span>{entries.length} entries</span>
+  const conversation = useConversation()
+  return <span>{conversation().entries.length} entries</span>
 }
 
 export default defineWebExtension({
@@ -59,14 +60,13 @@ export default defineWebExtension({
 
 Add a `README.md`, and the item appears in the status line.
 For a project extension, use `<project>/.ultimate/extensions/hello/` instead; it is enabled automatically too.
-No restart, no reload.
+No restart or manual reload.
 
 ## Conventions
 
 - One feature per folder; the folder name is the extension name; a README is required. Keep it small.
 - Prefer documents, commands, events, or the SDK. Another extension's runtime code is reached only through its
-  `api.ts` on the server, its `ui.tsx` from React and its `refs.ts` or `ui.solid.tsx` from Solid; type imports are
-  free. Lint enforces both.
+  `api.ts` on the server or its `refs.ts` or `ui.solid.tsx` in the browser. Lint enforces these boundaries.
 - Shared pure helpers live in the top-level `lib/`, not in another extension: `exec.ts` (run a program), `git.ts`
   (git and isolation checks), `json-file.ts` (read, atomic write, serialised update), `settings.ts`, `secrets.ts`
   (read-only), `cloud.ts` (the user's cloud settings), `project-identity.ts` (a project's GitHub key), `entries.ts`
@@ -99,7 +99,7 @@ One file each in `docs/extensions/`:
   layering; declaring secrets; agents and skills.
 - [server](../docs/extensions/server.md): server facets, the `ExtensionHost` fields, lifecycle and resources,
   `reloadOnSettings`, `order`, prompt sections.
-- [contracts](../docs/extensions/contracts.md): `api.ts` services and extension points, `refs.ts`, `ui.tsx`, web
+- [contracts](../docs/extensions/contracts.md): `api.ts` services and extension points, `refs.ts`, `ui.solid.tsx`, web
   points, the `api-*` lint rules.
 - [core-tier](../docs/extensions/core-tier.md): the always-on core tier, its layers, one-way dependencies,
   `pnpm deps`.
@@ -116,6 +116,7 @@ One file each in `docs/extensions/`:
 - [commands](../docs/extensions/commands.md): palette commands, shortcuts, `when`, dialogs.
 - [surfaces](../docs/extensions/surfaces.md): full-screen apps, switching, layout, primitives.
 - [example-app](../docs/extensions/example-app.md): a complete Commits app; building an app step by step.
-- [sdk](../docs/extensions/sdk.md): `@/sdk` hooks, `api`, helpers, UI state, `ConversationScope`.
+- [sdk](../docs/extensions/sdk.md): `@/sdk/solid` readers, `api`, helpers, UI state, `ScopedConversation`.
+- [react-compat](../docs/extensions/react-compat.md): existing React facets outside this repository.
 - [styling](../docs/extensions/styling.md): components, theme tokens, `data-ui` theming hooks.
 - [introspection](../docs/extensions/introspection.md): the call trace; inspecting yourself with codemode.

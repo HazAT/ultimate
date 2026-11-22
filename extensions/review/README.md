@@ -17,7 +17,7 @@ diff is unified. The diff stack is virtualized; the viewer loads with the surfac
 
 **Comments.** Click a line number (shift-click or drag for a range, on either side) or the gutter `+` to open an
 inline composer; the range highlights as it grows, with a bar down its line numbers. **Add to review** keeps it as a
-draft under its lines, which can be edited or deleted. Drafts are durable UI state (`drafts.ts`) keyed by spec and by
+draft under its lines, which can be edited or deleted. Drafts are durable UI state (`drafts.solid.tsx`) keyed by spec and by
 the conversation whose checkout the diff came from (`draftsKey`; a spec too long for a key is named by its SHA-256), so
 a reload and other tabs keep them. A draft holds only its lines and text; its excerpt (at most 40 lines and 8 KB) is
 read from the diff on screen when the review is sent. One spec's drafts may take 96 KB of the 256 KiB UI state: past
@@ -25,7 +25,7 @@ that the composer stays open and says it is too long to keep, and a write the se
 `N comments pending · + note · Discard · Send review (N)` and the header has a **to** picker (standing agents and
 recent conversations). Its default comes from `recipient`. Sending posts one `review.comments` input into that
 conversation; the drafts it sent clear (ones added meanwhile stay), and the footer links to it (`Sent to #id`), or
-says why it was not sent. The recipient's transcript shows a review card on the user's side (`card.tsx`), each
+says why it was not sent. The recipient's transcript shows a review card on the user's side (`card.solid.tsx`), each
 comment's `file:line` chip opening Review there. The model reads `reviewText` (`comments.ts`):
 `Review of \`<spec>\` (N comments)`, the note, then per comment `` `path:start-end`(old|new) ``, a fenced excerpt
 (language from the extension) and the text. Paths and specs are inline code delimited by a backtick run longer than any

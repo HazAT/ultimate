@@ -10,9 +10,13 @@ import {
   ToolStatusIcon,
 } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { cn, switchConversation } from '@/sdk/solid'
-import type { SolidToolProps, ToolCallView } from '@/sdk/solid'
+import {
+  useToolDuration,
+  cn,
+  switchConversation,
+  type SolidToolProps,
+  type ToolCallView,
+} from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { MemoryChip } from './ui.solid.tsx'

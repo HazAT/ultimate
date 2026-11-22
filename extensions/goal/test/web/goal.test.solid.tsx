@@ -12,7 +12,7 @@ import { HandsOff } from '../../chip.solid.tsx'
 import { GoalDialog, goalDialog } from '../../dialog.solid.tsx'
 import { GoalDoc } from '../../refs.ts'
 import type { Goal } from '../../refs.ts'
-import type { EntryRecord, ToolCallView } from '@/sdk'
+import type { EntryRecord, ToolCallView } from '@/sdk/solid'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -225,14 +225,51 @@ it('refuses an agent pressing Start on a proposed goal without the person', asyn
   expect(harness.action).not.toHaveBeenCalled()
 })
 
-it('shows the status chip only for an open goal', async () => {
-  renderSolid(() => <HandsOff />)
+it('shows the open goal in the status chip popover and ends it from there', async () => {
+  const view = renderSolid(() => <HandsOff />)
   await settle()
   const chip = `Hands-off goal: ${goal.text}`
   expect(control(chip)).toBeUndefined()
-  await publish(goal)
-  expect(control(chip)).toMatchObject({ component: 'button', actions: ['press'] })
+  const decision = (picked: string) => ({
+    at: 0,
+    question: 'Which?',
+    picked,
+    reason: `${picked} fits`,
+  })
+  await publish({
+    ...goal,
+    criteria: [
+      { text: 'Loads in 100 ms', status: 'met' },
+      { text: 'No layout shift', status: 'blocked', tries: 3 },
+    ],
+    decisions: [decision('first'), decision('second'), decision('third')],
+  })
+  expect(
+    (await agent.act({ steps: [{ ref: control(chip)!.ref, action: 'setOpen', args: [true] }] })).ok,
+  ).toBe(true)
+  await settle()
   await expectDistinctAgentNames(agent)
+  const popover = view.ownerDocument.querySelector('[data-goal-popover]')!
+  expect(
+    [...popover.querySelectorAll('[data-goal-criterion]')].map((item) =>
+      item.getAttribute('data-goal-criterion'),
+    ),
+  ).toEqual(['met', 'blocked'])
+  const blocked = popover.querySelector('[data-goal-criterion="blocked"]')!
+  expect(blocked.querySelector('.sr-only')?.textContent).toBe('blocked: ')
+  expect(blocked.textContent).toContain('No layout shift blocked after 3 failed attempts')
+  expect(
+    [...popover.querySelectorAll('[data-goal-decision]')].map((item) => item.textContent),
+  ).toEqual([
+    expect.stringContaining('third · third fits'),
+    expect.stringContaining('second · second fits'),
+  ])
+  expect(popover.textContent).toContain('3 decisions taken')
+
+  const end = control('End the hands-off goal')!
+  expect(end.confirm).toBe('Ends the hands-off goal and returns decisions to you.')
+  expect((await agent.act({ steps: [{ ref: end.ref, action: 'press' }] })).ok).toBe(true)
+  expect(harness.action.mock.calls).toEqual([['/api/extensions/goal/actions/end', null, 'agent']])
   await publish({ ...goal, ended: { at: 1, by: 'user', outcome: 'ended' } })
   expect(control(chip)).toBeUndefined()
 })

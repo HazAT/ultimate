@@ -9,9 +9,9 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai/tool.solid.tsx'
-import { formatDuration, toolRenderers, useExtensions, useNow } from '@/sdk/solid'
-import { Contributed } from '../sdk/react-island.solid.tsx'
-import type { ToolCallView } from '@/sdk'
+import { formatDuration, toolRenderers, useExtensions, useNow } from '../sdk/hooks.ts'
+import { Contributed } from '../sdk/contribution.solid.tsx'
+import type { ToolCallView } from '../sdk/hooks.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
 
 export function ToolCallBlock(props: { call: ToolCallView }) {

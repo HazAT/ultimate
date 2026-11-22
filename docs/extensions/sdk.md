@@ -1,98 +1,70 @@
-# SDK (`@/sdk`)
+# Solid SDK (`@/sdk/solid`)
 
 Part of the [extension guide](../../extensions/README.md).
 
-`@/sdk/*` deep imports are core internals, not extension API, except `@/sdk/solid`, the SDK for Solid files ([Solid facets](#solid-facets)). Import only from `@/sdk`, `@/components/ui/*`, `@/components/ai/*`, `@/components/json-tree.solid.tsx` (a Solid tree; React mounts it with `island`), `react`, and `lucide-react`. Never call `fetch` or
-open an `EventSource` yourself (`ultimate/no-raw-stream` fails lint on it in `extensions/**/*.tsx`): the SDK keeps one
-live stream per tab, carrying a subscription for the shown conversation plus one for each conversation whose documents
-are watched with `useDocOf` (the shown one included), replays their changes, and your server code is reached through
-[actions](actions.md). Browsers allow about six connections per host, so every further stream would hold back requests. The surface primitives are in [Surfaces](surfaces.md#primitives).
-
-| Hook                                                                      | Returns                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `useConversation(select?)`                                                | The shown conversation: `id`, `entries`, `agent` (`pi.agent`), `usage`, `live` (`pi.live`), `inbox`, `busy`, `loading`; with `select`, only that part, re-rendering when it changes (use it in tool and entry renderers) |
-| `useSystem()`                                                             | Build identity, machine, process (pid, generation, url), persistence, code (branch, sha, dirty, coreStale), extensions, skills, context files                                                                            |
-| `useConversations()`                                                      | Summaries of every conversation: id, parent, owner task, label (what its creator calls it, such as a subagent's definition), title, cwd, busy, latest user and assistant message times (`inputAt`, `answerAt`)           |
-| `useTasks()`                                                              | The live task graph                                                                                                                                                                                                      |
-| `useModels()`                                                             | `GET /api/models`: providers with auth status, models with context window, reasoning, cost; `refreshModels()` fetches it again after credentials change                                                                  |
-| `useDoc(ref)`                                                             | The document a `docRef` in a `refs.ts` names, typed, on the shown conversation (`export const docs` in `server.ts`); `undefined` until the stream delivers it (subscribing creates it with its initial value)            |
-| `useDocOf(conversation, ref)`                                             | `useDoc` of a given conversation, shown or not, such as the root (`1`) or a coordinator; `undefined` while `conversation` is undefined. Hooks on one conversation share one stream                                       |
-| `useDocKind(kind)`                                                        | An untyped document by kind, only for views of every kind such as the Documents tab                                                                                                                                      |
-| `useUiState(key, initial)`                                                | Durable UI state, stored with the main conversation: survives reloads and restarts, shared by every tab. `[value, set]`, JSON values only                                                                                |
-| `useExtensionUiState(key, initial)`                                       | `useUiState` under `ext.<your extension>.<key>`; use it for your own UI state                                                                                                                                            |
-| `useUltimate()`                                                           | `conversationId`, `surface`, actions (`switchConversation`, `showSurface`, `openPanel`, `closePanel`, `togglePanel`, `toggleSidebar`, `runCommand`, `open`/`close(dialog)`, `openPalette`, `focusComposer`, `setTheme`)  |
-| `actionRef<Args, Result>(extension, name)`, `docRef<T>(kind)`             | Typed refs of a project extension's own actions and documents; built-ins keep theirs in `refs.ts`                                                                                                                        |
-| `useAction(ref, args?, options?)`                                         | A server action's result, called on mount and when its args change: `{ data, error, loading, refetch }` (see [actions](actions.md))                                                                                      |
-| `useDialog(id)`                                                           | `[open, setOpen]` for a dialog an `overlay` component renders; `useUltimate().open(id)` opens it anywhere                                                                                                                |
-| `useConnection()`                                                         | Stream status: `connecting`, `open`, `reconnecting`                                                                                                                                                                      |
-| `useRestart()`                                                            | `api.restart()` with its outcome: `run`, `busy`, `pending` generation, and `error` when a check or boot failed or an activation was rolled back                                                                          |
-| `getConversation()`, `getState()`                                         | The same data now, outside React: in commands and callbacks. Components use the hooks.                                                                                                                                   |
-| `useNotices()`, `useCommands()`, `useExtensions()`, `useNow(ms, active?)` | Server and client notices, all commands, installed web facets, a clock ticking every `ms` while `active`                                                                                                                 |
-| `useDocumentRenderers()`                                                  | Registered document renderers by kind (see [documents](documents.md))                                                                                                                                                    |
-| `useStore(select)`                                                        | Any slice of the client state (`State`), re-rendering when it changes                                                                                                                                                    |
-| `useTranscriptScroll()`                                                   | In `transcript.*` slots: `{ scrollRef, contentRef, atBottom }`, the transcript's scroller, the element whose children are its rows (`data-entry-id`), and whether it follows its newest row                              |
-
-`api` sends commands: `submit(text, whenBusy?)`, `abort()`, `configure({ model, thinkingLevel })`, `compact()`,
-`createConversation()`, `restart()`, and `action(extension, name, args?)`. Conversation commands default to the shown
-conversation.
-
-`api.cancelSubmission(submissionId, conversationId?)` withdraws one queued input without stopping the run.
-
-`uiAgent` is the page's one ui-sdk agent bridge: `bridge()` snapshots, queries, acts on and `subscribe`s to the
-page's ui-sdk components.
-
-Helpers: `cn()` for class names, `formatTokens`, `formatBytes`, `formatDuration`, `formatTime`, `formatAgo(at, now)`
-(`now`, `5m`, `3h`, `2d`, then a date; `{ ago: true }` reads `just now`, `5m ago`), `shortenPath(path, { cwd, home })`
-(`home` is `useSystem().machine.home`), `elidePath`, `formatKeys`, and `errorMessage(error)` for a caught value. Types
-for everything above are exported too (`EntryRecord`, `AssistantMessage`, `SystemInfo`, …).
-
-Keep UI state that should survive a reload in `useExtensionUiState`; keep throwaway state (hover, an open menu) in
-`useState`. The shell keeps its own layout there too (`shell.conversation`, `shell.surface`, `shell.shownSurface`,
-`shell.panel`, `shell.panelOpen`, `shell.sidebarOpen`, `shell.dock.<surface>.<side>`).
-
 ## Solid facets
 
-A contribution can render with Solid 2 instead of React. Write the component in a `*.solid.tsx` file (read the
-`solid-ui` skill first) and mount it from your `web.tsx` with `island`, the only place a React file may import it:
+An extension's `web.solid.tsx` contributes plain Solid components. Import SDK features from `@/sdk/solid`, including
+`defineWebExtension`, readers, point providers, and surface and transcript parts such as `Header`, `Conversation`,
+`Card` and `Fold`. See [Surfaces](surfaces.md#primitives) for layout and [Contracts](contracts.md#web-points) for points.
 
 ```tsx
-import { defineWebExtension, island } from '@/sdk'
+/** @jsxImportSource @solidjs/web */
+import { defineWebExtension } from '@/sdk/solid'
 import { Status } from './status.solid.tsx'
 
-export default defineWebExtension({ slots: { 'statusline.left': island(Status) } })
+export default defineWebExtension({ slots: { 'statusline.left': Status } })
 ```
 
-The island renders inside a `display: contents` element and remounts when its extension or conversation scope
-changes. Its React props reach the Solid component as live props, so a React wrapper can pass in what only React reads
-(another extension's React point) without remounting it. Solid code imports `@/sdk/solid`, never `@/sdk` (types
-excepted), and gets accessors:
+Use `@/components/ui/<name>.solid.tsx` for controls, `@/components/markdown/markdown.solid.tsx` for Markdown,
+`@/components/json-tree.solid.tsx` for JSON and `@lucide/solid` for icons. Other SDK paths are internal. For React
+facets outside the repository, see [React compatibility](react-compat.md).
 
-| `@/sdk/solid`                                                                                   | Returns                                                                                                                                                                                                     |
-| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useDoc(ref)`, `useDocOf(() => conversation, ref)`                                              | An accessor of the document; a memo or JSX reading `doc()?.columns[0].title` reruns only when that path changes. `useDoc` follows the scope                                                                 |
-| `useUiState(key, initial)`, `useExtensionUiState(…)`                                            | `[value, set]`: `value` is an accessor, `set` takes a value or an updater, as in React                                                                                                                      |
-| `useConnection()`, `useSystem()`, `useConversations()`, `useModels()`                           | Accessors of the same client state the React hooks read                                                                                                                                                     |
-| `useConversation()`                                                                             | An accessor of the scoped or shown conversation: `id`, `loading`, `entries`, `agent` (`pi.agent`), `usage` (`pi.usage`)                                                                                     |
-| `useAgent()`                                                                                    | An accessor of `pi.agent` (model, thinking level, cwd) of the scoped or shown conversation, as `useConversation().agent`                                                                                    |
-| `useNotices()`                                                                                  | An accessor of the page's notice stack                                                                                                                                                                      |
-| `fillComposer`, `insertIntoComposer`, `refreshModels`                                           | As in `@/sdk`: replace or insert into a composer draft, fetch the model list again                                                                                                                          |
-| `useAction(ref, args?, options?)`                                                               | `{ data, error, loading, refetch }`, the first three accessors, sharing React's call and result; `on` takes an accessor, such as a document's; `conversation: ROOT` calls it on the root, not the shown one |
-| `useNow(ms, () => active)`                                                                      | An accessor of the current time, ticking every `ms` while `active`                                                                                                                                          |
-| `useEvents(options?)`, `useCommands()`, `useExtensions()`, `useViewport()`                      | Accessors of the durable event feed, the command list, the installed facets and the viewport, as the React hooks read them                                                                                  |
-| `useEvent(channel, handler)`, `events`                                                          | The page's event bus: subscribe for the component's life, or `events.emit`                                                                                                                                  |
-| `useRestart()`, `useCopy()`                                                                     | As in React, with accessors: `busy()`, `pending()`, `error()`; `copied()`                                                                                                                                   |
-| `switchConversation`, `showSurface`, `runCommand`, `notify`                                     | Shell navigation, a command by id, a notice                                                                                                                                                                 |
-| `bundle`, `switched`                                                                            | The web bundle this page runs, and whether this load switched to it                                                                                                                                         |
-| `ExtensionName`, `ConversationScope`                                                            | The contexts `island` provides                                                                                                                                                                              |
-| `api`, `ROOT`, `docRef`, `actionRef`, `cn`, `format*`, `prettyName`, `errorMessage`, `keepLast` | The same helpers `@/sdk` exports                                                                                                                                                                            |
+Never call `fetch` or open an `EventSource` to reach Ultimate (`ultimate/no-raw-stream`). The SDK keeps one live stream
+per tab, carrying subscriptions for the shown conversation and any others watched with `useDocOf`. Call server code
+through [actions](actions.md).
+
+## Reading and acting
+
+Readers return accessors. Call them where you use them, in JSX or a memo, not once at the top of the component. For
+example, `const doc = useDoc(MyDoc)` and `<span>{doc()?.title}</span>` update that span when the title changes.
+
+| `@/sdk/solid`                                                                                           | Returns                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useConversation()`, `useConversationId()`                                                              | The scoped or shown conversation (`id`, `loading`, `entries`, `agent`, `usage`, `live`, `inbox`, `busy`) or just its id.                                                                      |
+| `useAgent()`, `useConversationSummary(id)`                                                              | The scoped or shown conversation's `pi.agent`, or the summary for the id accessor (title, label, busy, parent).                                                                               |
+| `useDoc(ref)`, `useDocOf(() => id, ref)`                                                                | A typed document. `useDoc` follows the scope; `useDocOf` follows the given id accessor. `undefined` until the stream delivers it, `null` until the document is created.                       |
+| `useDocKind(() => kind)`                                                                                | The untyped document by kind, for views such as the Documents tab.                                                                                                                            |
+| `useUiState(key, initial)`, `useExtensionUiState(key, initial)`                                         | `[value, set]`: `value` is an accessor and `set` takes a JSON value or updater. `useExtensionUiState` uses `ext.<extension>.<key>`. Both survive reloads and restarts and are shared by tabs. |
+| `useAction(ref, args?, options?)`                                                                       | `{ data, error, loading, refetch }`: the first three are accessors. `on` takes an accessor to refetch on; `conversation: ROOT` reads on the root. See [actions](actions.md).                  |
+| `useConnection()`, `useSystem()`, `useConversations()`, `useTasks()`, `useModels()`                     | Stream status, system info, conversation summaries, the live task graph and the model list. `refreshModels()` asks for the list again.                                                        |
+| `useStore(select)`, `getState()`, `getConversation(id?)`                                                | A reactive slice of the client state, or current data for commands and callbacks.                                                                                                             |
+| `useTranscript()`, `useTranscriptElements()`                                                            | The loaded entries, oldest first; `{ scroll, content }` accessors for the scroller and the container whose children are rows.                                                                 |
+| `useNotices()`, `useCommands()`, `useExtensions()`, `useViewport()`                                     | Notices, command list, installed web facets and viewport.                                                                                                                                     |
+| `useEvents(options?)`, `useEvent(channel, handler)`, `events`                                           | The durable event feed and the page event bus. `useEvent` subscribes for the component's life; `events.emit` sends on the bus.                                                                |
+| `useNow(ms, () => active)`                                                                              | The current time, ticking every `ms` while active.                                                                                                                                            |
+| `useDialog(id)`                                                                                         | `[open, setOpen]` for a dialog an `overlay` component renders; `open` is an accessor.                                                                                                         |
+| `useRestart()`, `useCopy()`                                                                             | Restart or copy helpers with state accessors (`busy()`, `pending()`, `error()`; `copied()`).                                                                                                  |
+| `switchConversation`, `showSurface`, `runCommand`, `openPanel`, `closePanel`, `focusComposer`, `notify` | Shell navigation, commands and notices.                                                                                                                                                       |
+| `fillComposer`, `insertIntoComposer`                                                                    | Replace or insert into a conversation's composer draft.                                                                                                                                       |
+| `bundle`, `switched`                                                                                    | The web bundle this page runs and whether this load switched to it.                                                                                                                           |
+
+`api` sends commands: `submit(text, whenBusy?)`, `abort()`, `configure({ model, thinkingLevel })`, `compact()`,
+`createConversation()`, `restart()`, and `action(ref, args?)`. Conversation commands default to the shown conversation.
+`api.cancelSubmission(submissionId, conversationId?)` withdraws one queued input without stopping the run.
+
+Use `docRef<T>(kind)` and `actionRef<Args, Result>(extension, name)` for typed refs (built-ins keep theirs in `refs.ts`).
+Helpers include `cn()`, `formatTokens`, `formatBytes`, `formatDuration`, `formatTime`, `formatAgo(at, now)`,
+`shortenPath(path, { cwd, home })` (`system()?.machine.home` where `system = useSystem()`), `elidePath`, `formatKeys`, `prettyName`,
+`errorMessage` and `keepLast`.
+
+Keep UI state that should survive a reload in `useExtensionUiState`; use a local signal for throwaway state.
 
 ## Rendering another conversation
 
-Wrap `<Conversation/>` in `<ConversationScope id={id}>` (both from `@/sdk`) to render another live conversation without
-switching the shell. `useConversation(select?)`, `useTranscript`, `useDoc`/`useDocKind`, `useUltimate().conversationId`,
-`useCompact`/`useCompactThread`, and `useAction` follow the nearest scope, as do transcript/composer
-contributions. Scopes of the same id share a stream; the last unmount releases it. Outside a scope these hooks keep
-their existing behaviour. A shortcut pressed inside a scope runs its command with the scope's id as
-`context.conversationId` (Escape stops the scoped run). Explicit `useDocOf` ids, root UI state, shell navigation, the
-palette, `getConversation()` without an id and the imperative `api` stay global: callbacks using `api` must pass the
-scoped id explicitly when acting on it, as toolbar contributions do with `useConversation().id`.
+Wrap `<Conversation />` in `<ScopedConversation id={id}>` (both from `@/sdk/solid`) to render another live
+conversation without switching the shell. Conversation and transcript readers, `useDoc`/`useDocKind`, `useCompact`,
+`useAction` and shortcuts pressed inside the scope follow its id (Escape stops the scoped run). Scopes of the same id
+share a stream; the last unmount releases it. Explicit `useDocOf` ids, UI state, shell navigation, the palette,
+`getConversation()` without an id and imperative `api` commands stay global. Pass the scoped id explicitly when a callback
+uses `api` to act on it, as toolbar contributions do with `useConversationId()`.

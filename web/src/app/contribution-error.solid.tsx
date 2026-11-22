@@ -2,7 +2,9 @@
 import { TriangleAlert } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { errorMessage } from '@/sdk/solid'
+import { Show } from 'solid-js'
+import { errorMessage } from '../sdk/hooks.ts'
+import { ReactCompatLink, ReactCompatNote } from './error-card.solid.tsx'
 
 export function ContributionError(props: {
   extension: string
@@ -27,7 +29,13 @@ export function ContributionError(props: {
           extension <span class="font-semibold">{props.extension}</span> failed:{' '}
           {errorMessage(props.error)}
         </span>
+        <Show when={props.inline}>
+          <ReactCompatLink extension={props.extension} />
+        </Show>
       </div>
+      <Show when={!props.inline}>
+        <ReactCompatNote extension={props.extension} />
+      </Show>
       {props.children}
     </>
   )

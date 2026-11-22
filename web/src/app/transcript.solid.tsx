@@ -63,14 +63,14 @@ import {
   useNow,
   useStore,
   useSystem,
-} from '@/sdk/solid'
+} from '../sdk/hooks.ts'
 import {
   Contributed,
   Contribution,
   RenderedPoint,
   Slot,
   useProvided,
-} from '../sdk/react-island.solid.tsx'
+} from '../sdk/contribution.solid.tsx'
 import {
   anchorSelector,
   compactRows,
@@ -184,8 +184,7 @@ function TranscriptView(props: {
     createMemo(() => conversation().entries),
     createMemo(() => conversation().older),
   )
-  const transcript = createTranscriptFrame()
-  createEffect(history.entries, (entries) => transcript.setEntries(entries))
+  const transcript = createTranscriptFrame(history.entries)
 
   let scroll!: HTMLDivElement
   let content!: HTMLDivElement

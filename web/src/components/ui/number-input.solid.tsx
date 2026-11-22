@@ -3,7 +3,7 @@ import { NumberInput as NumberInputRoot, NumberInputControl } from '@ui-sdk/soli
 import { cn } from 'cn'
 import { omit } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
-import { writingAs } from '@/sdk/solid'
+import { writingAs } from '../../sdk/hooks.ts'
 
 type NumberInputProps = ComponentProps<typeof NumberInputRoot> & {
   class?: string

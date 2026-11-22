@@ -133,4 +133,4 @@ Everything is synthesized with Tone.js in `engine.ts`, loaded on first sound (To
 loads): a kalimba for the notifications and landings, in a short room so nothing lingers, a limiter, and the three
 bands. The notifications share one motif in G: Needs input rises a fourth (D–G), Finished falls home from the fifth
 (D–B–G), Landed is Finished with the octave under its last note and a faint sparkle above, Failed falls to B♭; each lasts at most about 0.6 s. Other extensions' `playNotes` play soft FM bells. A page plays only after a click or key press; with the sound of agents on after a reload, the popover says
-"Click anywhere to start audio" and the first click starts it. `ui.tsx` exports `playNotes` for other extensions.
+"Click anywhere to start audio" and the first click starts it. `ui.solid.tsx` exports `playNotes` for other extensions.

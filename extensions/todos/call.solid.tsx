@@ -8,9 +8,7 @@ import {
   ToolOutput,
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { ROOT, useDocOf } from '@/sdk/solid'
-import type { SolidToolProps } from '@/sdk/solid'
+import { useToolDuration, ROOT, useDocOf, type SolidToolProps } from '@/sdk/solid'
 import { TodosDoc } from './refs.ts'
 
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')

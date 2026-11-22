@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
 import { Kbd, KbdGroup } from '@/components/ui/kbd.solid.tsx'
-import { formatKeys, runCommand, useCommands, useStore } from '@/sdk/solid'
+import { formatKeys, runCommand, useCommands, useStore } from '../sdk/hooks.ts'
 import { applies, currentContext } from '../sdk/actions.ts'
 import { store } from '../sdk/client.ts'
 import { HOME } from '../sdk/registry.ts'

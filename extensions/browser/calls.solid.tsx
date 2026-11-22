@@ -10,9 +10,7 @@ import {
   ToolOutput,
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { cn, plural } from '@/sdk/solid'
-import type { SolidToolProps, ToolCallView } from '@/sdk/solid'
+import { useToolDuration, cn, plural, type SolidToolProps, type ToolCallView } from '@/sdk/solid'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 const target = (call: ToolCallView) => text(call.args.url) || 'this UI'

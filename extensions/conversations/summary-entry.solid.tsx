@@ -1,9 +1,14 @@
 /** @jsxImportSource @solidjs/web */
 import { Pencil } from '@lucide/solid'
 import { For, Show, createMemo } from 'solid-js'
-import { Fold, useProvided } from '@/sdk/parts.solid.tsx'
-import { formatTime, useCompact, useTranscript } from '@/sdk/solid'
-import type { EntryRecord } from '@/sdk'
+import {
+  Fold,
+  useProvided,
+  formatTime,
+  useCompact,
+  useTranscript,
+  type EntryRecord,
+} from '@/sdk/solid'
 import {
   TitleChanged,
   FeatureChanged,

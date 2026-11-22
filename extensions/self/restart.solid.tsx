@@ -8,8 +8,7 @@ import {
   ToolOutput,
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import type { ToolCallView } from '@/sdk'
+import { useToolDuration, type ToolCallView } from '@/sdk/solid'
 
 interface RestartDetails {
   fromGeneration?: number

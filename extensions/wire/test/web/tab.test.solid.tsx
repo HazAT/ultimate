@@ -51,15 +51,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     }
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return {
     store,
     api,
@@ -72,7 +74,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { CommandPalette } from '../../../../web/src/app/palette.solid.tsx'
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { WireTab } from '../../tab.solid.tsx'
-import wire from '../../web.tsx'
+import wire from '../../web.solid.tsx'
 
 const agent = createAgent()
 harness.server = fakeSubscriptions(harness.sources)
@@ -178,7 +180,7 @@ it('opens Wire as the agent that runs Open Wire from the palette', async () => {
   }))
   uiState.receive({ 'ext.system.tab': 'agents' })
   harness.writes.length = 0
-  await registry.setLoaders({ 'extensions/wire/web.tsx': async () => ({ default: wire }) })
+  await registry.setLoaders({ 'extensions/wire/web.solid.tsx': async () => ({ default: wire }) })
   renderSolid(() => <CommandPalette />)
   store.setUi({ paletteOpen: true })
   flush()

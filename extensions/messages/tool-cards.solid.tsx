@@ -2,9 +2,17 @@
 import { GitBranch, Inbox, Send } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
-import { Card, Fold } from '@/sdk/parts.solid.tsx'
-import { ROOT, cn, plural, useConversationId, useDocOf, useTranscript } from '@/sdk/solid'
-import type { ToolCallView } from '@/sdk'
+import {
+  Card,
+  Fold,
+  ROOT,
+  cn,
+  plural,
+  useConversationId,
+  useDocOf,
+  useTranscript,
+  type ToolCallView,
+} from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { Bubble } from './bubble.solid.tsx'

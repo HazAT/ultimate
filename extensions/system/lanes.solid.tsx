@@ -1,9 +1,16 @@
 /** @jsxImportSource @solidjs/web */
 import { ListFilter } from '@lucide/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
+import {
+  Accordion,
+  AccordionHeader,
+  AccordionItem,
+  AccordionPanel,
+  AccordionTrigger,
+} from '@/components/ui/accordion.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import type { ConversationSummary } from '@/sdk'
+import type { ConversationSummary } from '@/sdk/solid'
 import {
   cn,
   formatDuration,
@@ -138,44 +145,45 @@ function Block(props: {
 }
 
 function Calls(props: { run: LaneRun; conversation: number }) {
-  const [open, setOpen] = createSignal<number>()
   return (
-    <ul class="my-1 max-h-72 overflow-y-auto rounded-md border border-border/70 bg-muted/20 py-1 font-mono text-[10.5px] leading-[18px] text-muted-foreground">
+    <Accordion
+      aria-label={`Calls in #${props.conversation} · run ${props.run.start}`}
+      class="my-1 max-h-72 overflow-y-auto rounded-md border border-border/70 bg-muted/20 py-1 font-mono text-[10.5px] leading-[18px] text-muted-foreground"
+      render={(list) => <ul {...list} />}
+    >
       <For each={props.run.calls} keyed={false}>
         {(call, index) => (
-          <li>
-            <Button
-              aria-label={`Inspect call ${index + 1} in #${props.conversation}: ${call().name}`}
-              aria-expanded={open() === index ? 'true' : 'false'}
-              class="flex w-full min-w-0 items-start justify-start gap-1.5 px-2 py-px text-left text-[length:inherit] leading-[inherit] font-normal hover:bg-muted/50"
-              onClick={() => setOpen((previous) => (previous === index ? undefined : index))}
-              size={null}
-              variant={null}
-            >
-              <span class="w-14 shrink-0 tabular-nums text-muted-foreground/60">
-                {clock(call().at)}
-              </span>
-              <KindIcon kind={call().kind} ok={call().ok} />
-              <span
-                class={cn(
-                  'min-w-0 flex-1 truncate',
-                  call().ok ? 'text-foreground/85' : 'text-error',
-                )}
+          <AccordionItem value={String(index)} render={(item) => <li {...item} />}>
+            <AccordionHeader>
+              <AccordionTrigger
+                aria-label={`Inspect call ${index + 1} in #${props.conversation}: ${call().name}`}
+                class="flex min-h-0 w-full min-w-0 items-start justify-start gap-1.5 rounded-none px-2 py-px text-left text-[length:inherit] leading-[inherit] font-normal hover:bg-muted/50 hover:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-open:text-muted-foreground"
               >
-                {call().name}
-              </span>
-              <span class="shrink-0 tabular-nums">{formatDuration(call().ms)}</span>
-            </Button>
-            <Show when={open() === index && call().trace} keyed>
-              {(trace) => <TraceTree trace={trace} />}
-            </Show>
-          </li>
+                <span class="w-14 shrink-0 tabular-nums text-muted-foreground/60">
+                  {clock(call().at)}
+                </span>
+                <KindIcon kind={call().kind} ok={call().ok} />
+                <span
+                  class={cn(
+                    'min-w-0 flex-1 truncate',
+                    call().ok ? 'text-foreground/85' : 'text-error',
+                  )}
+                >
+                  {call().name}
+                </span>
+                <span class="shrink-0 tabular-nums">{formatDuration(call().ms)}</span>
+              </AccordionTrigger>
+            </AccordionHeader>
+            <AccordionPanel>
+              <TraceTree trace={call().trace} />
+            </AccordionPanel>
+          </AccordionItem>
         )}
       </For>
       <Show when={props.run.more !== undefined}>
         <li class="px-2 text-muted-foreground/60">+{props.run.more} newer calls not shown</li>
       </Show>
-    </ul>
+    </Accordion>
   )
 }
 

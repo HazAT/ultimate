@@ -12,9 +12,13 @@ import {
 } from '@/components/ai/tool.solid.tsx'
 import { languageFromPath } from '@/components/markdown/highlight.ts'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { api, useConversationId } from '@/sdk/solid'
-import type { SolidToolProps, ToolCallView } from '@/sdk/solid'
+import {
+  useToolDuration,
+  api,
+  useConversationId,
+  type SolidToolProps,
+  type ToolCallView,
+} from '@/sdk/solid'
 import { formatBashCommand } from './bash-command.ts'
 import type { BashStep } from './bash-command.ts'
 import { CodeBlock } from './code.solid.tsx'

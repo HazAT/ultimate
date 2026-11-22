@@ -4,6 +4,21 @@ Run `git worktree add ../ultimate-preview -b preview`, then `cd ../ultimate-prev
 
 Start a subagent with `isolate: "worktree"` (the worker default) to give its tools a separate checkout; verify its commits, then `land` them or `discard` the checkout while keeping its branch. For Ultimate itself, `instance start` with `subagent: <child id>` previews that child's code on a free port with a separate temporary home; stop the preview afterwards.
 
+### Comparing before and after
+
+To compare a change against its base (a measurement, a test that should fail before), check the base out in a
+throwaway detached worktree and run the same thing in both:
+
+```bash
+git worktree add --detach /tmp/before <base-sha>
+(cd /tmp/before && pnpm install --offline --frozen-lockfile)
+# run the same command in /tmp/before and in your checkout
+git worktree remove --force /tmp/before
+```
+
+Never `git stash`: stashes are shared by every worktree of the clone, and a `stash pop` once applied another branch's
+stash.
+
 ### Main-agent final integration
 
 Coordinator branches started by @ultimate are isolated in their own worktrees by default: under `<home>/worktrees`, or
@@ -13,7 +28,7 @@ where the project's `isolates.worktree.path` says, made by its `add` and `remove
 Read worker reports and diffs; rerun checks only for missing or thin evidence, reported failures, changes crossing
 workers, `server/` or `shared/` changes, or surprises in the diff, then land and call `workspace submit`.
 The lander is the final gate and the only way to main: code, no model. It runs every configured check (here
-`pnpm check`, then `pnpm test` and `pnpm test:e2e` in parallel) on the merged result, a failing check once more, then
+`pnpm check`, then `pnpm test:affected`) on the merged result, a failing check once more, then
 fast-forwards the branch and pushes to `lander.push` (here `origin`), so keep working while it runs.
 A conflict or a check that failed twice comes back to the submitter as a waking report: fix it in the workspace (a
 flaky test at its cause, or delete it) and submit again. A landing is the end of the branch's work: its report is a

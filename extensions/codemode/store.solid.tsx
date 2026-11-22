@@ -1,7 +1,7 @@
 /** @jsxImportSource @solidjs/web */
 import { Show } from 'solid-js'
 import { JsonTree } from '@/components/json-tree.solid.tsx'
-import type { DocumentProps } from '@/sdk'
+import type { DocumentProps } from '@/sdk/solid'
 
 export function StoreDocument(props: DocumentProps) {
   return (

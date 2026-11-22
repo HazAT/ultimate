@@ -4,7 +4,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
-import { FakeSource } from '../../../../test/web/fake-source.ts'
+import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { reads, store } from '../../../../web/src/sdk/client.ts'
@@ -29,13 +29,21 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       harness.secrets.push({ name: args.name, declaredBy: [], set: true })
       return Response.json({ result: { name: args.name, set: true } })
     }
-    return Response.json({ ok: true })
+    return server.handle(path as string, init) ?? Response.json({ ok: true })
   })
+  const sources: FakeSource[] = []
+  const server = fakeSubscriptions(sources)
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(harness.request)
   const clientStore = createStore({
-    eventSource: (url) => (harness.stream = new FakeSource(url)),
-    fetch: harness.request,
+    eventSource: (url) => {
+      harness.stream = new FakeSource(url)
+      sources.push(harness.stream)
+      return harness.stream
+    },
+    fetch: pageFetch,
   })
-  const api = createApi(clientStore, { fetch: harness.request })
+  const api = createApi(clientStore, { fetch: pageFetch })
   return {
     store: clientStore,
     api,
@@ -63,7 +71,10 @@ it('lets an agent add a named secret without reading it back, but not replace on
   const changes = vi.fn<Parameters<typeof agent.subscribe>[0]>()
   onTestFinished(agent.subscribe(changes))
 
-  const open = await agent.act({ steps: [{ ref: refFor('Add a secret'), action: 'press' }] })
+  expect(agent.snapshot().find((entry) => entry.label === 'Add a secret')?.pressed).toBe(false)
+  const open = await agent.act({
+    steps: [{ ref: refFor('Add a secret'), action: 'setPressed', args: [true] }],
+  })
   expect(open.ok).toBe(true)
   flush()
   await settle()

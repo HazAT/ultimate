@@ -47,14 +47,14 @@ import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { ReportedErrorCard } from '../../../../web/src/app/error-stack.solid.tsx'
 import { registry, uiState } from '../../../../web/src/sdk/client.ts'
 import { ErrorReport, provide } from '../../../../web/src/sdk/types.ts'
-import { useErrorReport } from '../../error-report.tsx'
+import { errorReport } from '../../error-report.solid.tsx'
 
 const agent = createAgent()
 
 it('opens @ultimate with the report as the agent that pressed Debug with @ultimate', async () => {
   await registry.setLoaders({
-    'extensions/subagents/web.tsx': async () => ({
-      default: { provides: [provide(ErrorReport, useErrorReport)] },
+    'extensions/subagents/web.solid.tsx': async () => ({
+      default: { provides: [provide(ErrorReport, () => () => errorReport)] },
     }),
   })
   act(() => {

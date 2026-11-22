@@ -2,19 +2,7 @@ import { access, mkdir, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import {
-  arr,
-  bool,
-  int,
-  lit,
-  map,
-  num,
-  obj,
-  opt,
-  str,
-  union,
-  unknown,
-} from '@earendil-works/pi-schema'
+import { arr, bool, int, lit, map, obj, opt, str, union, unknown } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import { formatDimensionNote, resizeImage } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
@@ -77,7 +65,8 @@ export function screenshotFile(home: string, cwd: string, path?: string) {
 }
 
 const stepTimeoutMs = 30_000
-const untilTimeoutMs = 300_000
+const untilTimeoutMs = 10_000
+const maxUntilTimeoutMs = 120_000
 const closeTimeoutMs = 5_000
 
 function timeout(ms: number) {
@@ -198,7 +187,7 @@ export default function browserExtension(host: ExtensionHost) {
       defineTool({
         name: 'browser',
         description:
-          "Drive a fresh browser page with clicks, fills, keys, waits and JavaScript; report outcomes and optionally an image. Each step times out after 30 s. On an Ultimate page (this UI or a preview), `send` submits a prompt without the composer and `until` waits on Ultimate's state, never a guessed time: 'idle' (that conversation's turn is done), 'quiet' (nothing is busy, branches and subagents included), {entry: kind} or {event: name, where}; until defaults to 5 min (timeoutMs) and on timeout says what was still busy. Use `ui` steps for ui-sdk controls (switches, selects, dialogs): {ui: 'snapshot'} lists them with their label, state and actions, {ui: 'query', text?, within?, kind?} finds some or a list's items, {ui: 'act', steps: [{ref, action, args?}]} runs their actions as the agent (ref: a snapshot ref or the label), like [{ref: 'Keep warm', action: 'setChecked', args: [false]}]. Click and fill only to test the interaction itself. Scope selectors to one card or panel ('[data-entry-id=\"42\"] button:has-text(\"Retry\")', not 'button:has-text(\"Retry\")', which fails when it matches several).",
+          "Drive a fresh browser page and report each step's outcome, then an image unless screenshot: false. Each step times out after 30 s. On an Ultimate page (this UI or a preview) every control is a ui-sdk component: drive it with `ui` steps, not selectors. {ui: 'query', text} finds controls by label or row text, with their ref, state and actions; {ui: 'act', steps: [{ref, action, args?}]} runs actions as the agent (ref: the exact label or a ref) and returns what changed and what appeared, like [{ref: 'System', action: 'press'}] to switch surface or [{ref: 'Keep warm', action: 'setChecked', args: [false]}]; {ui: 'snapshot'} lists the page's controls (long pages stop at 100: prefer query). `send` submits a prompt and `until` waits on state, never a guessed time: 'idle' (that conversation's turn is done), 'quiet' (nothing is busy, branches and subagents included), {entry: kind}, {event: name, where} or {ui: label, is: {checked: false}} (that control has that state; is omitted: it is on the page); until fails after 10 s and says what it saw: a control, a state or an event that takes longer is a bug to report. Only waiting on a model turn ('idle', 'quiet' or {entry: 'assistant'} after a send) passes a longer timeoutMs, at most 120000. eval is not for waiting: no setTimeout sleeps in it; use until. click, fill, press and a selector wait are for testing the interaction itself or pages without ui-sdk; scope them to one card or panel ('[data-entry-id=\"42\"] button:has-text(\"Retry\")'). eval reads what no control holds: transcript text, layout, styles.",
         parameters: obj({
           ...base,
           steps: arr(
@@ -212,7 +201,7 @@ export default function browserExtension(host: ExtensionHost) {
                 }),
               }),
               obj({ press: str() }),
-              obj({ wait: union([num({ minimum: 0 }), str()]) }),
+              obj({ wait: str({ description: 'A selector to wait for.' }) }),
               obj({
                 eval: str({
                   description:
@@ -250,9 +239,15 @@ export default function browserExtension(host: ExtensionHost) {
                     event: str(),
                     where: opt(map(unknown())),
                   }),
+                  obj({
+                    ui: str({ description: 'A control’s exact label or ref.' }),
+                    is: opt(
+                      map(unknown(), { description: 'State it must have, like {open: true}.' }),
+                    ),
+                  }),
                 ]),
                 conversation: opt(int({ minimum: 1 })),
-                timeoutMs: opt(int({ minimum: 1 })),
+                timeoutMs: opt(int({ minimum: 1, maximum: maxUntilTimeoutMs })),
               }),
             ]),
           ),
@@ -260,29 +255,37 @@ export default function browserExtension(host: ExtensionHost) {
         }),
         async execute(args, api, context) {
           const waits = args.steps.reduce(
-            (sum, step) =>
-              sum +
-              ('wait' in step && typeof step.wait === 'number'
-                ? step.wait
-                : 'until' in step
-                  ? (step.timeoutMs ?? untilTimeoutMs)
-                  : 0),
+            (sum, step) => sum + ('until' in step ? (step.timeoutMs ?? untilTimeoutMs) : 0),
             0,
           )
           return run(args, waits, api, context, async (page, outcomes, png, guard) => {
+            const ultimateControlsMounted = () =>
+              guard(
+                page
+                  .waitForFunction(
+                    () =>
+                      !document.querySelector('meta[name=ultimate-web]') || !!window.ultimate?.ui,
+                  )
+                  .then(() =>
+                    page.evaluate(() =>
+                      document.querySelector('meta[name=ultimate-web]')
+                        ? window.ultimate!.ui.ready()
+                        : undefined,
+                    ),
+                  ),
+              )
             for (const [index, step] of args.steps.entries()) {
               context.abortSignal?.throwIfAborted()
               api.output(`Step ${index + 1}: ${JSON.stringify(step)}\n`)
               try {
                 let value: unknown
+                if ('click' in step || 'fill' in step || 'press' in step)
+                  await ultimateControlsMounted()
                 if ('click' in step) await guard(page.locator(step.click).click())
                 else if ('fill' in step) await guard(page.locator(step.fill[0]).fill(step.fill[1]))
                 else if ('press' in step) await guard(page.keyboard.press(step.press))
-                else if ('wait' in step) {
-                  if (typeof step.wait === 'number')
-                    await guard(page.waitForTimeout(step.wait), step.wait)
-                  else await guard(page.locator(step.wait).waitFor())
-                } else if ('send' in step || 'until' in step || 'ui' in step) {
+                else if ('wait' in step) await guard(page.locator(step.wait).waitFor())
+                else if ('send' in step || 'until' in step || 'ui' in step) {
                   const waitForLoadedSdk = () =>
                     guard(
                       page
@@ -439,7 +442,13 @@ export default function browserExtension(host: ExtensionHost) {
         : within(stepMs + extraMs, work)
     }
     const sendUnsavedUiState = (shown: Page) =>
-      guard(shown.evaluate(() => window.ultimate?.ui.flush())).then(
+      guard(
+        shown.evaluate(() =>
+          document.querySelector('meta[name=ultimate-web]')
+            ? window.ultimate?.ui.flush()
+            : undefined,
+        ),
+      ).then(
         () => [],
         (error: unknown) => [`The page's last UI-state writes were not sent: ${String(error)}`],
       )

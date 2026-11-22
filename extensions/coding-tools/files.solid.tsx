@@ -11,9 +11,7 @@ import {
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
 import { languageFromPath } from '@/components/markdown/highlight.ts'
-import { useToolDuration } from '@/sdk/parts.solid.tsx'
-import { formatBytes } from '@/sdk/solid'
-import type { SolidToolProps } from '@/sdk/solid'
+import { useToolDuration, formatBytes, type SolidToolProps } from '@/sdk/solid'
 import { CodeBlock } from './code.solid.tsx'
 import { Diff } from './diff.solid.tsx'
 import { countChanges, editRows, rowsFromDetails } from './diff.ts'

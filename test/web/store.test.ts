@@ -102,14 +102,14 @@ describe('web replica store', () => {
   it('streams extension documents of the shown conversation', async () => {
     const { store, sources, server, latest } = setup()
     latest().open()
-    const first = server.of()!
+    const first = server.of(undefined, true)!
     const release = store.watchDoc('test.counter')
     await tick()
-    // The shown conversation's subscription is replaced on the same stream.
+    // Documents get their own subscription on the same stream; the view's stays, so it is not sent again.
     expect(sources).toHaveLength(1)
-    expect(first.closed).toBe(true)
-    const main = server.of()!
-    expect(main.docs).toEqual(['test.counter'])
+    expect(first.closed).toBe(false)
+    const main = server.of(undefined, false)!
+    expect(main).toMatchObject({ docs: ['test.counter'], view: false })
 
     main.send('doc', { kind: 'test.counter', value: { count: 0 } })
     main.send('docOps', {
@@ -121,57 +121,67 @@ describe('web replica store', () => {
     main.send('doc', { kind: 'other', value: { x: 1 } })
     expect(store.getState().docs.other).toBeUndefined()
 
+    // Released and watched again in the same tick: the subscription and its replica carry on, and its ops apply.
     release()
-    expect(store.getState().docs['test.counter']).toBeUndefined()
-    main.send('docOps', {
-      kind: 'test.counter',
-      ops: [['s', ['count'], 2]],
-    })
-    expect(store.getState().docs['test.counter']).toBeUndefined()
-    // Watched again: the old subscription's ops wait for the new subscription's snapshot.
-    store.watchDoc('test.counter')
-    main.send('docOps', {
-      kind: 'test.counter',
-      ops: [['s', ['count'], 3]],
-    })
-    expect(store.getState().docs['test.counter']).toBeUndefined()
+    const again = store.watchDoc('test.counter')
     await tick()
-    server.of()!.send('doc', { kind: 'test.counter', value: { count: 3 } })
+    expect(main.closed).toBe(false)
+    main.send('docOps', { kind: 'test.counter', ops: [['s', ['count'], 2]] })
+    expect(store.getState().docs['test.counter']).toEqual({ count: 2 })
+
+    // Released for good: the subscription closes, the replica goes, and late ops are ignored.
+    again()
+    await tick()
+    expect(main.closed).toBe(true)
+    expect(store.getState().docs['test.counter']).toBeUndefined()
+    main.send('docOps', { kind: 'test.counter', ops: [['s', ['count'], 3]] })
+    expect(store.getState().docs['test.counter']).toBeUndefined()
+
+    // Watched again later: a new subscription's snapshot.
+    store.watchDoc('test.counter')
+    await tick()
+    const reopened = server.of(undefined, false)!
+    expect(reopened).not.toBe(main)
+    reopened.send('doc', { kind: 'test.counter', value: { count: 3 } })
     expect(store.getState().docs['test.counter']).toEqual({ count: 3 })
     store.stop()
   })
 
-  it('streams documents of given conversations on one subscription per conversation', async () => {
-    const { store, sources, server, latest } = setup()
+  it('streams documents of given conversations, one subscription per kind, opened together in one request', async () => {
+    const { store, sources, server, latest, fetch } = setup()
     latest().open()
+    await tick()
+    const posts = () =>
+      fetch.mock.calls.filter(([path]) => (path as string).startsWith('/api/events/')).length
+    const before = posts()
     const tasks = store.watchDocOf(1 as ConversationId, 'test.tasks')
     const tasksAgain = store.watchDocOf(1 as ConversationId, 'test.tasks')
     const overview = store.watchDocOf(1 as ConversationId, 'test.overview')
     const plan = store.watchDocOf(7 as ConversationId, 'test.plan')
+    const counter = store.watchDoc('test.counter')
+    const branches = Array.from({ length: 20 }, (_, index) =>
+      store.watchDocOf((100 + index) as ConversationId, 'board.started'),
+    )
     await tick()
-    // All on the tab's one stream: the shown conversation, then one subscription of all kinds per conversation.
+    // Everything watched in one tick goes to the server in one request, all on the tab's one stream.
+    expect(posts() - before).toBe(1)
     expect(sources).toHaveLength(1)
-    expect(
-      server.subscriptions.map((item) => ({
-        conversation: item.conversation,
-        docs: item.docs,
-        view: item.view,
-        closed: item.closed,
-      })),
-    ).toEqual([
-      { docs: [], view: true, closed: false },
-      { conversation: 1, docs: ['test.overview', 'test.tasks'], view: false, closed: false },
-      { conversation: 7, docs: ['test.plan'], view: false, closed: false },
-    ])
-    const root = server.of(1)!
-    const coordinator = server.of(7)!
+    const doc = (conversation: number | undefined, kind: string) =>
+      server.subscriptions.findLast(
+        (item) => !item.closed && item.conversation === conversation && item.docs.includes(kind),
+      )!
+    expect(doc(1, 'test.tasks').docs).toEqual(['test.tasks'])
+    expect(doc(1, 'test.overview').docs).toEqual(['test.overview'])
+    expect(doc(undefined, 'test.counter').docs).toEqual(['test.counter'])
+    const root = doc(1, 'test.tasks')
+    const coordinator = doc(7, 'test.plan')
 
     root.send('docOps', { kind: 'test.tasks', ops: [['s', ['n'], 0]] })
     expect(store.getState().docsOf[1]).toEqual({})
     root.send('doc', { kind: 'test.tasks', value: { n: 1 } })
     root.send('docOps', { kind: 'test.tasks', ops: [['s', ['n'], 2]] })
     coordinator.send('doc', { kind: 'test.plan', value: { epics: {} } })
-    expect(store.getState().docsOf).toEqual({
+    expect(store.getState().docsOf).toMatchObject({
       1: { 'test.tasks': { n: 2 } },
       7: { 'test.plan': { epics: {} } },
     })
@@ -183,51 +193,52 @@ describe('web replica store', () => {
     await tick()
     expect([root.closed, coordinator.closed]).toEqual([false, false])
 
-    // A refused subscription is tried again.
-    server.refuse(1, 500)
+    // Releasing one kind closes only its subscription on the server.
+    const overviewSub = doc(1, 'test.overview')
     overview()
     await tick()
-    expect(server.of(1)).toBeUndefined()
+    expect([overviewSub.closed, root.closed]).toEqual([true, false])
+
+    // A refused subscription is tried again, alone.
+    server.refuse(1, 500)
+    const retried = store.watchDocOf(1 as ConversationId, 'test.overview')
+    await tick()
+    expect(
+      server.subscriptions.some((item) => !item.closed && item.docs.includes('test.overview')),
+    ).toBe(false)
     server.refuse(1, undefined)
     await tick()
-    expect(server.of(1)!.docs).toEqual(['test.tasks'])
+    expect(doc(1, 'test.overview').docs).toEqual(['test.overview'])
+    expect(root.closed).toBe(false)
 
     // A new stream (a restart) gets every subscription again; the value stays until its snapshot.
     latest().drop()
     latest().open()
-    const reopened = server.of(1)!
+    const reopened = doc(1, 'test.tasks')
     expect(reopened.stream).toBe(latest().id)
     expect(store.getState().docsOf[1]['test.tasks']).toEqual({ n: 2 })
     reopened.send('doc', { kind: 'test.tasks', value: { n: 3 } })
     root.send('doc', { kind: 'test.tasks', value: { n: 0 } })
     expect(store.getState().docsOf[1]['test.tasks']).toEqual({ n: 3 })
-    expect(server.of(7)!.stream).toBe(latest().id)
+    expect(doc(7, 'test.plan').stream).toBe(latest().id)
 
-    // Released and watched again before the next tick: the subscription carries on.
-    overview()
-    const watched = store.watchDocOf(1 as ConversationId, 'test.overview')
-    await tick()
-    const both = server.of(1)!
-    expect(both.docs).toEqual(['test.overview', 'test.tasks'])
-    watched()
-    store.watchDocOf(1 as ConversationId, 'test.overview')
-    await tick()
-    expect(both.closed).toBe(false)
-
-    // A kind nobody watches leaves its conversation's subscription; the last one closes it.
+    // The last reader of a kind closes its subscription.
     tasks()
     await tick()
-    expect(both.closed).toBe(false)
+    expect(reopened.closed).toBe(false)
     tasksAgain()
+    retried()
     await tick()
-    expect(both.closed).toBe(true)
-    expect(server.of(1)!.docs).toEqual(['test.overview'])
-    expect(store.getState().docsOf[1]).toEqual({})
+    expect(reopened.closed).toBe(true)
+    expect(store.getState().docsOf[1]).toBeUndefined()
     plan()
+    counter()
+    for (const release of branches) release()
     await tick()
-    // Only the shown conversation's own subscription of 7 is left.
-    const seven = server.subscriptions.filter((item) => !item.closed && item.conversation === 7)
-    expect(seven.map((item) => item.docs)).toEqual([[]])
+    // Only the shown conversation's view is left.
+    expect(
+      server.subscriptions.filter((item) => !item.closed).map((item) => item.conversation),
+    ).toEqual([7])
     expect(store.getState().docsOf[7]).toBeUndefined()
 
     store.stop()
@@ -248,6 +259,210 @@ describe('web replica store', () => {
     expect(server.of()!.closed).toBe(false)
     expect(server.subscriptions.filter((item) => !item.closed)).toHaveLength(1)
     expect(sources).toHaveLength(1)
+    store.stop()
+  })
+
+  it('retires an open whose answer was lost, and keeps its close until the server confirms it', async () => {
+    const { store, server, latest, fetch } = setup(1000)
+    latest().open()
+    await tick()
+    const batches: { subscribe: { sub: number }[]; unsubscribe: number[] }[] = []
+    const answer = (
+      kind: 'lost after the server handled it' | 'lost before the server saw it' | 'not json',
+    ) =>
+      fetch.mockImplementationOnce(async (path, init) => {
+        batches.push(JSON.parse(init?.body as string))
+        if (kind === 'lost before the server saw it') throw new Error('offline')
+        server.handle(path as string, init)
+        if (kind === 'not json') return new Response('not json')
+        throw new Error('connection reset')
+      })
+    fetch.mockImplementation(async (path, init) => {
+      if ((path as string).startsWith('/api/events/'))
+        batches.push(JSON.parse(init?.body as string))
+      return server.handle(path as string, init) ?? Response.json({ providers: [], models: [] })
+    })
+    const live = () => server.subscriptions.filter((item) => !item.closed && item.docs.length)
+
+    // The open reaches the server but its answer is lost; the close sent at once never reaches it.
+    answer('lost after the server handled it')
+    answer('lost before the server saw it')
+    store.watchDoc('test.counter')
+    await tick()
+    const [first] = batches[0].subscribe
+    expect(batches[1]).toEqual({ subscribe: [], unsubscribe: [first.sub] })
+    expect(live().map((item) => item.sub)).toEqual([first.sub])
+
+    // The retry carries that close again; the server handles it, but its answer cannot be read, so the retried open
+    // is closed in turn and opened once more.
+    answer('not json')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(batches[2].unsubscribe).toEqual([first.sub])
+    const second = batches[2].subscribe[0].sub
+    expect(batches[3]).toEqual({ subscribe: [], unsubscribe: [first.sub, second] })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(batches.at(-1)!.subscribe).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    const settled = batches.length
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(batches).toHaveLength(settled)
+    expect(live()).toHaveLength(1)
+    const [only] = live()
+    expect(only.sub).toBeGreaterThan(second)
+    only.send('doc', { kind: 'test.counter', value: { count: 1 } })
+    expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
+    store.stop()
+  })
+
+  it('sends the closes and opens of a switch in one request', async () => {
+    const { store, server, latest, fetch } = setup()
+    latest().open()
+    store.watchDoc('test.counter')
+    await tick()
+    const posts = () =>
+      fetch.mock.calls.filter(([path]) => (path as string).startsWith('/api/events/')).length
+    const before = posts()
+    store.show(7 as ConversationId)
+    await tick()
+    expect(posts() - before).toBe(1)
+    expect(
+      server.subscriptions.filter((item) => !item.closed).map((item) => item.conversation),
+    ).toEqual([7, 7])
+    store.stop()
+  })
+
+  it('sends a lost close again by itself, also after an answer of the wrong shape', async () => {
+    const { store, server, latest, fetch } = setup(1000)
+    latest().open()
+    const release = store.watchDoc('test.counter')
+    await tick()
+    const counter = server.of(undefined, false)!
+    fetch.mockImplementationOnce(async () => {
+      throw new Error('offline')
+    })
+    fetch.mockImplementationOnce(async () => Response.json({}))
+    release()
+    await tick()
+    expect(counter.closed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(counter.closed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(counter.closed).toBe(true)
+    store.stop()
+  })
+
+  it('takes an answer that does not match its request for a lost one, and leaves other subscriptions alone', async () => {
+    for (const refused of [[], 'shown view'] as const) {
+      const { store, server, latest, fetch } = setup(1000)
+      latest().open()
+      const counter = store.watchDoc('test.counter')
+      await tick()
+      const shown = server.of(undefined, true)!
+      const doc = server.of(undefined, false)!
+      // The close never reaches the server, and the answer that comes back does not fit the request.
+      fetch.mockImplementationOnce(async () =>
+        Response.json({
+          ok: true,
+          refused: refused === 'shown view' ? { [shown.sub]: 404 } : refused,
+        }),
+      )
+      counter()
+      await tick()
+      expect(doc.closed).toBe(false)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(doc.closed).toBe(true)
+      shown.send('view', view([user(1, 'still shown')]))
+      expect(store.getState().view?.entries.map((entry) => entry.id)).toEqual([1])
+      store.stop()
+    }
+  })
+
+  it('takes a refusal of its own open with a bad key or status for a lost answer, and closes what may have opened', async () => {
+    for (const bad of ['status 200', 'hex key'] as const) {
+      const { store, server, latest, fetch } = setup(1000)
+      latest().open()
+      await tick()
+      fetch.mockImplementationOnce(async (path, init) => {
+        server.handle(path as string, init)
+        const [{ sub }] = (JSON.parse(init?.body as string) as { subscribe: { sub: number }[] })
+          .subscribe
+        return Response.json({
+          ok: true,
+          refused: bad === 'status 200' ? { [sub]: 200 } : { [`0x${sub.toString(16)}`]: 404 },
+        })
+      })
+      store.watchDoc('test.counter')
+      await tick()
+      await vi.advanceTimersByTimeAsync(1000)
+      const counters = server.subscriptions.filter((item) => item.docs.includes('test.counter'))
+      expect(counters.map((item) => item.closed)).toEqual([true, false])
+      store.stop()
+    }
+  })
+
+  it('retries a request the endpoint answered 404 without leaving the conversation', async () => {
+    const { store, server, latest, fetch, onFallback } = setup()
+    latest().open()
+    await tick()
+    fetch.mockImplementationOnce(async () =>
+      Response.json({ error: 'Unknown endpoint' }, { status: 404 }),
+    )
+    store.show(7 as ConversationId)
+    await tick()
+    await tick()
+    expect(onFallback).not.toHaveBeenCalled()
+    expect(store.getState().requested).toBe(7)
+    expect(server.of(7, true)).toBeDefined()
+    store.stop()
+  })
+
+  it('falls back to the root without closing what the server refused alongside the view', async () => {
+    const { store, server, latest, fetch, onFallback } = setup()
+    latest().open()
+    store.watchDoc('test.counter')
+    await tick()
+    server.refuse(7, 404)
+    store.show(7 as ConversationId)
+    await tick()
+    await tick()
+    expect(onFallback).toHaveBeenCalledOnce()
+    const batches = fetch.mock.calls
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .map(
+        ([, init]) =>
+          JSON.parse(init?.body as string) as {
+            subscribe: { sub: number; conversation?: number }[]
+            unsubscribe: number[]
+          },
+      )
+    const refused = batches.flatMap((batch) =>
+      batch.subscribe.filter((open) => open.conversation === 7).map((open) => open.sub),
+    )
+    expect(refused).toHaveLength(2)
+    expect(
+      batches.flatMap((batch) => batch.unsubscribe).filter((sub) => refused.includes(sub)),
+    ).toEqual([])
+    expect(
+      server.subscriptions.filter((item) => !item.closed).map((item) => item.conversation),
+    ).toEqual([undefined, undefined])
+    store.stop()
+  })
+
+  it('does not ask the server to close a subscription it refused', async () => {
+    const { store, server, latest, fetch } = setup()
+    latest().open()
+    await tick()
+    server.refuse(9, 404)
+    const release = store.watchDocOf(9 as ConversationId, 'test.plan')
+    await tick()
+    await tick()
+    const closes = fetch.mock.calls
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .flatMap(
+        ([, init]) => (JSON.parse(init?.body as string) as { unsubscribe: number[] }).unsubscribe,
+      )
+    expect(closes).toEqual([])
+    release()
     store.stop()
   })
 
@@ -336,6 +551,7 @@ describe('web replica store', () => {
     back.send('view', view([user(1, 'root')], { 'pi.live': { tools: [{ id: 'a' }] } }))
 
     store.show(7 as ConversationId)
+    await tick()
     expect(back.closed).toBe(true)
     const kept = store.getState().view
     expect(() =>
@@ -405,4 +621,29 @@ describe('web replica store', () => {
     await vi.waitFor(() => expect(store.getState().models).toEqual({ providers: [], models: [] }))
     store.stop()
   })
+})
+
+it('gives a read the server refused as too large its error, instead of retrying it', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers()
+  onTestFinished(() => void vi.useRealTimers())
+  const { store, fetch, latest } = setup()
+  onTestFinished(() => store.stop())
+  latest().open()
+  await vi.advanceTimersByTimeAsync(10)
+  fetch.mockImplementationOnce(async () =>
+    Response.json({ error: 'Request too large' }, { status: 413 }),
+  )
+  const events: unknown[] = []
+  store.watchRead(
+    { extension: 'test', action: 'big', args: 'x' },
+    undefined,
+    (event) => void events.push(event),
+  )
+  await vi.advanceTimersByTimeAsync(10)
+  expect(events).toEqual([{ error: 'The server refused this read', status: 413 }])
+  const posts = fetch.mock.calls.length
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fetch.mock.calls.length).toBe(posts)
 })

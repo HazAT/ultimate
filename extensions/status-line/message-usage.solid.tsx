@@ -3,7 +3,7 @@ import type { JSX } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import { formatDuration, formatTokens, useModels, useTranscript } from '@/sdk/solid'
-import type { EntryRecord } from '@/sdk'
+import type { EntryRecord } from '@/sdk/solid'
 import { promptTokens } from '../../lib/context-usage.ts'
 import { responseAfter, turnOf } from './turns.ts'
 

@@ -1,6 +1,6 @@
 /** @jsxImportSource @solidjs/web */
 import { createMemo, Show } from 'solid-js'
-import { Button } from '@/components/ui/button.solid.tsx'
+import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import { cn, openPanel, showSurface, switchConversation, useNow } from '@/sdk/solid'
 import { active, attention, lookOf, looks, worstFirst } from './looks.ts'
 import type { Look } from './looks.ts'
@@ -34,21 +34,16 @@ export function Chip() {
   return (
     <Show when={summary()}>
       {(state) => (
-        <Button
+        <StatusButton
           aria-label={`${state().count} active: show Automations panel`}
-          class={cn(
-            '-mx-1 h-auto gap-1.5 rounded-sm px-1 font-normal hover:bg-accent hover:text-foreground',
-            attention(state().worst) && looks[state().worst].text,
-          )}
+          class={cn(attention(state().worst) && looks[state().worst].text)}
           data-automations-chip={state().worst}
           onClick={() => openAutomationsPanel(shell)}
-          size={null}
           title={state().breakdown.join(' · ')}
-          variant={null}
         >
           <Dot look={state().worst} />
           {state().count} {state().count === 1 ? 'automation' : 'automations'}
-        </Button>
+        </StatusButton>
       )}
     </Show>
   )

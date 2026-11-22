@@ -70,7 +70,7 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
   until it is concluded or it landed after its latest input (the lander's results, or a root landing note from it;
   a landed branch that gets new work is open again). Each shows its title, its feature tag, a state (`submitted` or
   `landing` while the lander has it, the working phase while it works, brand-colored `waits on <target>` for an
-  agent, remote, timer or starter dependency, amber `waits on you`, red `failed`, else `idle`) and its age; clicking opens it, and its `…` menu is the same as an Earlier row's (Rename, Compact
+  agent, remote or timer dependency, amber `waits on you`, red `failed`, else `idle`) and its age; clicking opens it, and its `…` menu is the same as an Earlier row's (Rename, Compact
   context, Conclude with the pending-work check). A branch
   with a worktree also shows its work so far on a quiet line below (workspaces' `progress`): `N commits` not yet on
   its target, opening `branch:<name>` in Review, and `+ N edits` (uncommitted changed paths), opening
@@ -96,9 +96,9 @@ A solid purple dot means an unread reply, not ongoing work; only the pulsing dot
 Every row reads one state from messages’ `conversationState`, the same the System surface shows: working;
 **waits on you** (@ultimate or a branch with an open question to the user);
 **waits on <target>** (brand-colored, never on a subagent: an open agent or remote request, an enabled timer with
-its next fire time, or an unconcluded branch's starter). The primary is named `@ultimate`, other conversations `#N`;
+its next fire time). The primary is named `@ultimate`, other conversations `#N`;
 when @ultimate itself waits on a remote, its waiting branch shows `waits on @ultimate → <project>` (one hop).
-Every row reads the recorded `board.started` starter, and counts busy subagents and a queued landing as working
+Every row counts busy subagents and a queued landing as working
 (`useUnderway`), so a working tree never reads as waiting. Labels truncate with
 the full text on hover. Truly idle conversations still say `idle`; **done** (green check, subagents only: it answered, and its answer went to its parent);
 **failed** (red cross: its latest input ended unanswered); else idle. Working includes queued input. Standing rows,

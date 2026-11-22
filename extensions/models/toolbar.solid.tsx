@@ -1,5 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { Brain, Check, ChevronDown, Cpu } from '@lucide/solid'
+import { Brain, Check, ChevronDown, Cpu, LoaderCircle } from '@lucide/solid'
 import { createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
@@ -136,7 +136,12 @@ function ThinkingLevels(props: {
   close: () => void
 }) {
   const [error, setError] = createSignal<string>()
+  const [pending, setPending] = createSignal<ThinkingLevel>()
+  let changing = false
   async function choose(level: ThinkingLevel, source: string) {
+    if (changing) return
+    changing = true
+    setPending(level)
     const close = props.close
     setError(undefined)
     try {
@@ -144,6 +149,9 @@ function ThinkingLevels(props: {
       writingAs(source, close)
     } catch (failure) {
       setError(errorMessage(failure))
+    } finally {
+      changing = false
+      setPending(undefined)
     }
   }
   return (
@@ -151,14 +159,17 @@ function ThinkingLevels(props: {
       <For each={props.levels}>
         {(level) => (
           <Button
+            aria-current={level === props.current ? 'true' : undefined}
             aria-label={`${level} effort`}
-            aria-pressed={level === props.current ? 'true' : 'false'}
-            class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] aria-pressed:text-brand"
+            data-selected={level === props.current ? '' : undefined}
+            disabled={pending() !== undefined && pending() !== level}
+            class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] data-selected:text-brand"
             onClick={(_, details) => choose(level, details.source)}
             size={null}
             variant="ghost"
           >
-            <Check class={cn('size-3.5', level !== props.current && 'opacity-0')} />
+            <LoaderCircle class="hidden size-3.5 motion-safe:animate-spin in-data-pending:block" />
+            <Check class="size-3.5 opacity-0 in-data-selected:opacity-100 in-data-pending:hidden" />
             {level}
           </Button>
         )}

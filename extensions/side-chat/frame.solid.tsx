@@ -3,6 +3,7 @@ import { ArrowLeft, GitFork } from '@lucide/solid'
 import { cn } from 'cn'
 import { createMemo, createRoot, createSignal, For, Show, useContext } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
   api,
@@ -135,12 +136,12 @@ export function ComposerFrame(props: SolidComposerProps) {
 
 function ModeSwitch(props: { on: boolean; onToggle: () => void }) {
   return (
-    <Button
+    <Toggle
       aria-label={`Composer sends to ${props.on ? 'a new side chat' : '@ultimate'} · Tab switches`}
-      aria-pressed={props.on ? 'true' : 'false'}
-      class="relative h-5 gap-0 rounded-full bg-muted/60 p-0.5 font-mono text-[10.5px] font-normal"
+      pressed={props.on}
+      class="group/side-mode relative h-5 gap-0 rounded-full bg-muted/60 p-0.5 font-mono text-[10.5px] font-normal data-pressed:bg-muted/60 data-pressed:text-inherit"
       data-ui="side-chat-switch"
-      onClick={() => props.onToggle()}
+      onPressedChange={() => props.onToggle()}
       size={null}
       variant={null}
     >
@@ -148,7 +149,7 @@ function ModeSwitch(props: { on: boolean; onToggle: () => void }) {
         aria-hidden="true"
         class={cn(
           'absolute top-0.5 bottom-0.5 left-0.5 w-[4.75rem] rounded-full bg-background shadow-xs transition-transform duration-300 motion-reduce:transition-none',
-          props.on && 'translate-x-[4.75rem] ring-1 ring-brand/40',
+          'group-data-pressed/side-mode:translate-x-[4.75rem] group-data-pressed/side-mode:ring-1 group-data-pressed/side-mode:ring-brand/40',
         )}
         style={{ 'transition-timing-function': ease }}
       />
@@ -169,7 +170,7 @@ function ModeSwitch(props: { on: boolean; onToggle: () => void }) {
         <GitFork class="size-2.5" />
         Side chat
       </span>
-    </Button>
+    </Toggle>
   )
 }
 

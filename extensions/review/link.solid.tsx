@@ -1,7 +1,14 @@
 /** @jsxImportSource @solidjs/web */
 import { createEffect, onSettled } from 'solid-js'
-import { showSurface, useEvent, useExtensionUiState, useStore, writingAs } from '@/sdk/solid'
-import { defaultSpec, setTarget, specKey } from './link-state.ts'
+import {
+  showSurface,
+  useEvent,
+  useExtensionUiState,
+  useExternal,
+  useStore,
+  writingAs,
+} from '@/sdk/solid'
+import { defaultSpec, getTarget, setTarget, specKey, subscribeTarget } from './link-state.ts'
 import type { ReviewRequest } from './link-state.ts'
 
 function fromAddress(): ReviewRequest | undefined {
@@ -17,8 +24,12 @@ function fromAddress(): ReviewRequest | undefined {
   }
 }
 
+export const useSpec = () => useExtensionUiState(specKey, defaultSpec)
+
+export const useTarget = () => useExternal(getTarget, subscribeTarget)
+
 export function ReviewLink() {
-  const [selectedSpec, setSpec] = useExtensionUiState(specKey, defaultSpec)
+  const [selectedSpec, setSpec] = useSpec()
   const shownSurface = useStore((state) => state.ui.surface?.id)
   const open = (request: ReviewRequest) => {
     setTarget(request.at)

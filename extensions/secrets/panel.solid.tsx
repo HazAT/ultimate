@@ -11,6 +11,7 @@ import {
   Switch,
 } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Input, SecretInput } from '@/components/ui/input.solid.tsx'
 import {
   ROOT,
@@ -364,19 +365,17 @@ export function SecretsPanel() {
             </Match>
           </Switch>
           <Show when={data()}>
-            <Button
+            <Toggle
               aria-label="Add a secret"
-              aria-pressed={adding() ? 'true' : 'false'}
-              class="-my-1 -mr-1.5 size-6 text-muted-foreground"
-              onClick={() => {
-                setOpen(adding() ? undefined : { kind: 'add' })
-              }}
+              pressed={!!adding()}
+              class="-my-1 -mr-1.5 size-6 text-muted-foreground data-pressed:bg-transparent data-pressed:text-muted-foreground data-pressed:hover:bg-accent data-pressed:hover:text-accent-foreground dark:data-pressed:hover:bg-accent/50"
+              onPressedChange={(pressed) => setOpen(pressed ? { kind: 'add' } : undefined)}
               size="icon-sm"
               title="Add a secret"
               variant="ghost"
             >
               <Plus class="size-3.5" />
-            </Button>
+            </Toggle>
           </Show>
         </span>
       </div>

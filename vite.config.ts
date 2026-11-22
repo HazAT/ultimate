@@ -1,15 +1,15 @@
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
 import solid from '@solidjs/vite-plugin'
 import solidV2Strict from 'eslint-plugin-solid/configs/v2-strict'
 import { defineConfig } from 'vite-plus'
+import { webAliases } from './lib/web-alias.ts'
 
 const solidFiles = /\.solid\.tsx$/
 const uiSdkSolidBuild = /\/@ui-sdk\/solid\/dist\/solid\/.*\.jsx$/
 const lucideSolidSource = /\/@lucide\/solid\/dist\/source\/.*\.jsx$/
 const solidPlugin = () => solid({ include: [solidFiles, uiSdkSolidBuild, lucideSolidSource] })
-const alias = { '@': fileURLToPath(new URL('web/src', import.meta.url)) }
+const alias = webAliases(fileURLToPath(new URL('.', import.meta.url)))
 const excludeE2e = ['test/e2e/**', 'extensions/*/test/e2e/**']
 const maxWorkers = 8
 const solidRules = Object.fromEntries(
@@ -67,7 +67,8 @@ const noReactRules = Object.fromEntries(
 
 export default defineConfig({
   root: 'web',
-  plugins: [react({ exclude: [solidFiles, /\/node_modules\//] }), solidPlugin(), tailwindcss()],
+  plugins: [solidPlugin(), tailwindcss()],
+  oxc: { jsx: { runtime: 'automatic', importSource: 'react' } },
   resolve: { alias },
   lint: {
     plugins: ['typescript', 'unicorn', 'import', 'promise', 'vitest', 'react'],
@@ -102,14 +103,6 @@ export default defineConfig({
       {
         files: ['web/public/sw.js'],
         rules: { 'unicorn/require-post-message-target-origin': 'off' },
-      },
-      {
-        files: ['extensions/instance/web.tsx'],
-        rules: { 'react/iframe-missing-sandbox': 'off' },
-      },
-      {
-        files: ['web/src/app/transcript.tsx'],
-        rules: { 'react/immutability': 'off' },
       },
       {
         files: ['test/**', 'extensions/*/test/**'],
@@ -275,7 +268,18 @@ export default defineConfig({
         rules: { 'ultimate/api-file-shape': 'error', 'ultimate/api-naming': 'error' },
       },
       {
-        files: ['extensions/**/*.tsx'],
+        files: [
+          'extensions/**/*.ts',
+          'extensions/**/*.tsx',
+          '.ultimate/extensions/**/*.ts',
+          '.ultimate/extensions/**/*.tsx',
+        ],
+        excludeFiles: [
+          'extensions/*/server.ts',
+          '.ultimate/extensions/*/server.ts',
+          'extensions/*/test/**',
+          '.ultimate/extensions/*/test/**',
+        ],
         rules: { 'ultimate/no-raw-stream': 'error' },
       },
       {
@@ -331,7 +335,9 @@ export default defineConfig({
           'jsx-a11y/control-has-associated-label': 'error',
           'jsx-a11y/label-has-associated-control': [
             'error',
-            { controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput'] },
+            {
+              controlComponents: ['Switch', 'Checkbox', 'Slider', 'Input', 'SecretInput', 'Toggle'],
+            },
           ],
           'jsx-a11y/no-static-element-interactions': 'error',
           'jsx-a11y/click-events-have-key-events': 'error',
@@ -340,6 +346,10 @@ export default defineConfig({
           'jsx-a11y/prefer-tag-over-role': 'error',
           'jsx-a11y/no-autofocus': 'error',
         },
+      },
+      {
+        files: ['**/*.solid.tsx'],
+        rules: { 'ultimate/no-aria-pressed-button': 'error' },
       },
       {
         files: ['web/**', 'extensions/**', '.ultimate/extensions/**'],
@@ -376,7 +386,7 @@ export default defineConfig({
   test: {
     root: '.',
     environment: 'node',
-    globalSetup: ['test/sweep-temp.ts'],
+    globalSetup: ['test/sweep-temp.ts', 'test/whole-suite-lock.ts'],
     setupFiles: ['test/setup.ts', 'test/no-group-signals.ts'],
     // Core and integration tests in test/, each extension's own in extensions/<name>/test/: `pnpm test extensions/<name>/`
     // runs one extension's.

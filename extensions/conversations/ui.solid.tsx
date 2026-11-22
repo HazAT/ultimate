@@ -1,18 +1,19 @@
 /** @jsxImportSource @solidjs/web */
 /**
- * Conversations for other extensions' Solid code: a reference to a conversation, drawn as the transcript draws it.
+ * Conversations for other extensions' browser code: references to conversations with their features, agent marks, which
+ * conversations a conclusion hides, the overview document and the conversation actions, and the points where optional
+ * extensions describe a conversation (its working phase, its plan task).
  */
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { icons } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { ROOT, cn, useConversations, useDocOf, useUiState } from '@/sdk/solid'
-import type { Presence } from './marks.tsx'
 import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
 import { agentMark, agentTitle } from './mark-style.ts'
 import { MarksDoc, OverviewDoc } from './refs.ts'
 
-/** A working conversation's phase `word` and whether it is only `waiting` on its subagents. The `label` is React. */
+/** A working conversation's phase `word` and whether it is only `waiting` on its subagents. */
 export { ConversationPhase } from './points.ts'
 /** The plan task a conversation works on. Use its `title` and render its chip through `ConversationTaskChip`. */
 export { ConversationTask } from './points.ts'
@@ -20,7 +21,17 @@ export { ConversationTask } from './points.ts'
 export { ConversationEpic } from './points.ts'
 export { ConversationTaskChip, Unsummarized } from './points.ts'
 export { hiddenConversationIds } from './visible.ts'
-export type { Presence } from './marks.tsx'
+export {
+  Compacted,
+  ConcludeAction,
+  ContextDoc,
+  OverviewDoc,
+  RenameAction,
+  ResumeAction,
+  SummariesAction,
+} from './refs.ts'
+/** What an agent mark's dot shows: working, waiting on its subagents, awaiting the user, or idle. */
+export type Presence = 'working' | 'waiting' | 'awaiting' | 'idle'
 
 /** Since when each conversation counts as concluded: forever while concluded, otherwise its last conclusion time. */
 export function useConcludedSince() {
@@ -118,8 +129,7 @@ export function FeatureTag(props: { feature: string; class?: string }) {
 }
 
 /**
- * Conversation `id` as its standing agent's name, else its feature tag, else `title` or its live title, then `#id`;
- * the same parts as React's `ConversationRef`.
+ * Conversation `id` as its standing agent's name, else its feature tag, else `title` or its live title, then `#id`.
  */
 export function ConversationRef(props: { id: ConversationId; title?: string; class?: string }) {
   const overview = useDocOf(() => ROOT, OverviewDoc)

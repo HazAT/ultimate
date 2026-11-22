@@ -7,8 +7,8 @@ import type {
   ToolDiagnostic,
   TaskId,
 } from '@earendil-works/pi-durable'
-import type { ComponentType, ReactNode } from 'react'
-import type { Component as SolidComponent, Element as SolidElement } from 'solid-js'
+import type { Accessor, Component } from 'solid-js'
+import type { JSX } from '@solidjs/web'
 import type { ImageContent, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 
@@ -37,16 +37,14 @@ export type SlotName =
  * A slot component, optionally with an `order` (default 0; ties keep folder-name order). In the status line, `phone`
  * keeps the item on the line on a phone; the others move behind its ⋯ popover there.
  */
-export type Contribution =
-  | ComponentType
-  | { component: ComponentType; order?: number; phone?: boolean }
+export type Contribution = Component | { component: Component; order?: number; phone?: boolean }
 
 /** A tab in the right panel. */
 export interface PanelContribution {
   id: string
   title: string
-  icon?: ComponentType<{ className?: string }>
-  component: ComponentType
+  icon?: Component<{ class?: string }>
+  component: Component
   order?: number
   /** `false` keeps the panel out of the tab row until it is opened (`openPanel`, a command); default `true`. */
   tab?: boolean
@@ -54,20 +52,21 @@ export interface PanelContribution {
 
 /**
  * A full-screen composition the user switches to: the built-in Agent surface (`extensions/agent`) or an app. Build it
- * from the primitives in `@/sdk` (`Header`, `Conversation`, `Dock`, `StatusLine`, …) and your own components.
+ * from the primitives in `@/sdk/solid` (`Header`, `Conversation`, `Dock`, `StatusLine`, …) and your own
+ * components.
  */
 export interface SurfaceContribution {
   /** Global id, stored in `shell.surface`; prefix it with the extension name when it is generic. `agent` is the home. */
   id: string
   title: string
-  icon: ComponentType<{ className?: string }>
+  icon: Component<{ class?: string }>
   /** One line for the switcher. */
   description?: string
   /** Position after Agent in the switcher, ⌘K, and `mod+1…9`; lower first (default 0), then by title. */
   order?: number
-  component: ComponentType
+  component: Component
   /** A small component after the title in the title bar's tab, such as a count of what waits there; render nothing to show none. */
-  badge?: ComponentType
+  badge?: Component
 }
 
 /** One tool call as the transcript sees it: the model's call, live progress, and the result. */
@@ -84,7 +83,7 @@ export interface ToolCallView {
   status: 'streaming' | 'pending' | 'running' | 'done' | 'error' | 'interrupted'
   /** Streamed output while running; the result's text once finished. */
   output: string
-  /** Images of the result, such as screenshots; `ToolImages` from `@/components/ai/tool` renders them. */
+  /** Images of the result, such as screenshots; `ToolImages` from `@/components/ai/tool.solid.tsx` renders them. */
   images: readonly ImageContent[]
   /** Last `details()` while running, the result's details once finished; each tool defines its shape. */
   details?: unknown
@@ -98,63 +97,51 @@ export interface ToolCallView {
 }
 
 /** `core` is the rendering so far, starting with the generic tool card. */
-export type ToolRenderer = ComponentType<{ call: ToolCallView; core: ReactNode }>
-export type SolidToolProps = { call: ToolCallView; core: SolidElement }
-export type SolidEntryProps = { entry: EntryRecord; core: SolidElement; blocks?: readonly number[] }
-/** A tool call as one short line of plain text, for a folded run's step list; hooks are allowed. */
-export type ToolLineRenderer = ComponentType<{ call: ToolCallView }>
+export type SolidToolProps = { call: ToolCallView; core: JSX.Element }
+export type ToolRenderer = Component<SolidToolProps>
 /**
  * `core` is the core's rendering of the entry: return it for entries you leave alone, or wrap it. `blocks` are the
  * content blocks of an assistant message a compact row shows, when it shows only some.
  */
-export type EntryRenderer = ComponentType<{
-  entry: EntryRecord
-  core: ReactNode
-  blocks?: readonly number[]
-}>
+export type SolidEntryProps = { entry: EntryRecord; core: JSX.Element; blocks?: readonly number[] }
+export type EntryRenderer = Component<SolidEntryProps>
+/** A tool call as one short line of plain text, for a folded run's step list. */
+export type ToolLineRenderer = Component<{ call: ToolCallView }>
 
 /**
- * A link in Markdown (messages, reports), a Solid component (`*.solid.tsx`): `href` and the link's `children`, and
+ * A link in Markdown (messages, reports): `href` and the link's `children`, and
  * `core`, the rendering so far, starting with the default link that opens in a new tab. Return `core` for links you
  * leave alone.
  */
-export type LinkRenderer = SolidComponent<{
-  href: string
-  children: SolidElement
-  core: SolidElement
-}>
+export type LinkRenderer = Component<{ href: string; children: JSX.Element; core: JSX.Element }>
 
 /**
- * An inline code span in Markdown (messages, reports), a Solid component: its text as `code`, and `core`, the
+ * An inline code span in Markdown (messages, reports): its text as `code`, and `core`, the
  * rendering so far, starting with the default `<code>`. Return `core` for spans you leave alone.
  */
-export type InlineCodeRenderer = SolidComponent<{ code: string; core: SolidElement }>
+export type InlineCodeRenderer = Component<{ code: string; core: JSX.Element }>
 
 /**
- * A fenced code block in Markdown by its language, a Solid component: `code`, `language`, `incomplete` while the
+ * A fenced code block in Markdown by its language: `code`, `language`, `incomplete` while the
  * fence still streams, and `core`, the rendering so far, starting with the highlighted block with its copy button.
  */
-export type CodeBlockRenderer = SolidComponent<{
+export type CodeBlockRenderer = Component<{
   code: string
   language: string
   incomplete: boolean
-  core: SolidElement
+  core: JSX.Element
 }>
 
 /**
  * A queued input above the composer: `item`, `core`, the core's row, and `cancel`, its cancel button. Return `core` for
- * items you leave alone. Contribute a Solid one as `island(C)` with `C` typed `SolidInboxProps`; a React one mounts
- * through the core's bridge.
+ * items you leave alone.
  */
-export type InboxRenderer = ComponentType<{ item: InboxItem; core: ReactNode; cancel: ReactNode }>
-export type SolidInboxProps = { item: InboxItem; core: SolidElement; cancel: SolidElement }
+export type SolidInboxProps = { item: InboxItem; core: JSX.Element; cancel: JSX.Element }
+export type InboxRenderer = Component<SolidInboxProps>
 
-/**
- * Wraps the shown conversation's composer (`core`); `dock` when it sits in a narrow side region. Contribute a Solid one
- * as `island(C)` with `C` typed `SolidComposerProps`; a React one mounts through the core's bridge.
- */
-export type ComposerRenderer = ComponentType<{ core: ReactNode; dock?: boolean }>
-export type SolidComposerProps = { core: SolidElement; dock?: boolean }
+/** Wraps the shown conversation's composer (`core`); `dock` when it sits in a narrow side region. */
+export type SolidComposerProps = { core: JSX.Element; dock?: boolean }
+export type ComposerRenderer = Component<SolidComposerProps>
 
 /** Where a `ComposerRedirect` sends what the composer inside it submits, and what its empty composer says. */
 export interface ComposerTarget {
@@ -174,9 +161,8 @@ export interface DocumentProps {
 export interface DocumentContribution {
   kind: string
   title: string
-  icon?: ComponentType<{ className?: string }>
-  /** React or `island(C)`. */
-  component: ComponentType<DocumentProps>
+  icon?: Component<{ class?: string }>
+  component: Component<DocumentProps>
 }
 
 /** Navigation and shell actions, passed to commands and returned by `useUltimate()`. */
@@ -247,7 +233,7 @@ export interface CompactContribution {
    */
   thread?: (row: CompactRow, docs: CompactDocs) => boolean | 'hidden'
   /** The line a receded stretch shows; the first matching facet's wins, an update count otherwise. */
-  summary?: ComponentType<CompactSummaryProps>
+  summary?: Component<CompactSummaryProps>
 }
 /** A compact transcript row: an entry, and the visible tool calls it shows when it shows only some of its blocks. */
 export interface CompactRow {
@@ -270,9 +256,10 @@ export type CompactCallTest = (call: ToolCall, docs: CompactDocs) => boolean
 
 /**
  * A value one extension's browser code asks for and another provides: the web's extension point. The asking extension
- * declares it in its `ui.tsx` as `definePoint<Input, Value>('<owner>.<point>')` and renders `<Provided point input>`;
- * a higher extension imports it and lists `provide(Point, useValue)` under `provides`. Dependencies keep pointing at
- * the owner, as with a server extension point.
+ * declares it in a `.ts` file its `ui.solid.tsx` re-exports, as `definePoint<Input, Value>('<owner>.<point>')`, and
+ * reads it with `useProvided` or renders it with `<Provided point input>` from `@/sdk/solid`; a higher
+ * extension imports it and lists `provide(Point, …)` under `provides`. Dependencies keep pointing at the owner, as with
+ * a server extension point.
  */
 export interface Point<Input, Value> {
   readonly point: string
@@ -316,8 +303,8 @@ export const ComposerPlaceholder = definePoint<
  * rendering so far as `core` and returns it, wraps it or replaces it.
  */
 export const EmptyTranscript = definePoint<
-  { conversation: ConversationId; core: ReactNode },
-  ReactNode
+  { conversation: ConversationId; core: JSX.Element },
+  JSX.Element
 >('ultimate.emptyTranscript')
 /**
  * The text another conversation can follow to read message `id` of `conversation` (`codemode` provides it); a stored
@@ -347,22 +334,34 @@ export const FileUpload = definePoint<
   { upload: (file: File) => Promise<string>; maxBytes: number; keptMs: number } | undefined
 >('ultimate.fileUpload')
 
-/** What a facet provides for a point: `useValue` is a hook, run once per `<Provided>` with its input. */
+/** What a facet provides for a point. */
 export interface Provision {
   point: string
-  use: (input: never) => unknown
+  use: unknown
 }
-export const provide = <Input, Value>(
+/**
+ * A facet's value for `point`. A point whose value is UI takes a component, rendered with the input as its props; any
+ * other takes a function from the input accessor to the value's accessor, run once under each reader:
+ * `provide(PreviewUp, (id) => createMemo(() => running().has(id())))`.
+ */
+export function provide<Input, Value>(
   point: Point<Input, Value>,
-  useValue: (input: Input) => Value,
-): Provision => ({ point: point.point, use: useValue })
+  value: JSX.Element extends Value
+    ? Component<Input & object>
+    : (input: Accessor<Input>) => Accessor<Value>,
+): Provision {
+  return { point: point.point, use: value }
+}
 
-/** The browser facet of an extension: `extensions/<name>/web.tsx` default-exports one. */
+/**
+ * The browser facet of an extension: `extensions/<name>/web.solid.tsx` default-exports one. A `web.tsx` is React and
+ * runs on the compat layer (docs/extensions/react-compat.md).
+ */
 export interface WebExtension {
   slots?: Partial<Record<SlotName, Contribution | readonly Contribution[]>>
   panels?: readonly PanelContribution[]
   /** Badges after a right-panel tab's label or icon, by panel id (any extension's panel), in discovery order. */
-  panelBadges?: Readonly<Record<string, ComponentType>>
+  panelBadges?: Readonly<Record<string, Component>>
   surfaces?: readonly SurfaceContribution[]
   /** Tool-call renderers by tool name. */
   tools?: Readonly<Record<string, ToolRenderer>>
@@ -380,13 +379,13 @@ export interface WebExtension {
   /** Fenced code block renderers by language; they compose in discovery order, each wrapping the one before it. */
   codeBlocks?: Readonly<Record<string, CodeBlockRenderer>>
   /** Contributions to the hover action row on stored messages, in discovery order; `text` is what Copy message copies. */
-  messageActions?: readonly ComponentType<{ entry: EntryRecord; text: string }>[]
+  messageActions?: readonly Component<{ entry: EntryRecord; text: string }>[]
   /** Readouts on the hover action row on stored messages, before its time, in discovery order. */
-  messageDetails?: readonly ComponentType<{ entry: EntryRecord }>[]
+  messageDetails?: readonly Component<{ entry: EntryRecord }>[]
   /** Inline labels after the Final answer heading on stored assistant messages. */
-  answerLabels?: readonly ComponentType<{ entry: EntryRecord }>[]
+  answerLabels?: readonly Component<{ entry: EntryRecord }>[]
   /** Overlays on the user's bubble, rendered after it inside a positioned box exactly its size (`absolute inset-0`). */
-  userBubble?: readonly ComponentType<{ entry: EntryRecord }>[]
+  userBubble?: readonly Component<{ entry: EntryRecord }>[]
   /** Shows matching conversations in compact mode; the visible tools of every matching facet combine. */
   compact?: CompactContribution
   /** Document renderers; a later facet wins a kind. */

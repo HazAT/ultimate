@@ -35,15 +35,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: 'github.com/example/ultimate' })
     return harness.server?.handle(path, init) ?? Response.json({ ok: true })
   }
+  const { answerReadsWith } = await import('../../../../test/web/fake-source.ts')
+  const pageFetch = answerReadsWith(fetch)
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
       harness.sources.push(stream)
       return stream
     },
-    fetch,
+    fetch: pageFetch,
   })
-  const api = createApi(store, { fetch })
+  const api = createApi(store, { fetch: pageFetch })
   return {
     store,
     api,
@@ -190,8 +192,10 @@ it('renders the live rows and opens the landing at its entry, with Review using 
 
   const review = vi.fn<(spec: string, who: string) => void>()
   await registry.setLoaders({
-    '/extensions/review/web.tsx': async () => ({
-      default: { provides: [provide(Review, (spec) => () => review(spec, writerNow()))] },
+    '/extensions/review/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(Review, (spec) => () => () => review(spec(), writerNow()))],
+      },
     }),
   })
   flush()
@@ -260,7 +264,7 @@ it('filters problems and time through durable state, and offers System only when
   )
 
   await registry.setLoaders({
-    '/extensions/system/web.tsx': async () => ({
+    '/extensions/system/web.solid.tsx': async () => ({
       default: {
         surfaces: [{ id: 'system', title: 'System', icon: () => null, component: () => null }],
       },

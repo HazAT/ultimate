@@ -2,7 +2,7 @@
 import type { EntryRecord, ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
 import type { Accessor } from 'solid-js'
-import { api } from '@/sdk/solid'
+import { api } from '../sdk/hooks.ts'
 import { reachedFork } from './fork.ts'
 import { gapAfter, mergeRows } from './history.ts'
 

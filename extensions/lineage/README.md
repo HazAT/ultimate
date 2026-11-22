@@ -5,7 +5,7 @@ documents, tools and model-facing text.
 
 ## Concepts
 
-- **Roots.** `lineage.roots` on conversation 1 (`{ roots }`, initially `[1]`; `useRoots()` in `roots.tsx`) lists them.
+- **Roots.** `lineage.roots` on conversation 1 (`{ roots }`, initially `[1]`; `useRoots()` in `ui.solid.tsx`) lists them.
   A conversation's root is found up through owners (subagents) and fork sources (branches). A project has one root;
   independent work goes into branches. The first branch of an empty root makes it a tally from that entry
   (`lineage.tally.since`). Tallies refuse inputs and run no turns.
@@ -74,7 +74,7 @@ of at most 120 characters, `body` at most 2000, `source` a `#<conversation>/<ent
   incidents. Landings write no memory; @ultimate remembers by judgment, and each dream's memory pass prunes what no
   longer passes that test.
 
-The **Memory** surface (`MEMORY_SURFACE` in `ui.tsx`, opened from the sidebar's Memory row) shows every root's memory
+The **Memory** surface (`MEMORY_SURFACE` in `ui.solid.tsx`, opened from the sidebar's Memory row) shows every root's memory
 grouped into Decisions, Facts and Lessons, newest first, with a filter, the count and brief size, and the `MemoryHeader`
 point (dream's Dream button). A row expands to its body and source; its trash icon calls `forget`. `useOpenMemory(slug?)`
 and `MemoryChip` open it on one memory.

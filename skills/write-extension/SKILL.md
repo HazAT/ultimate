@@ -24,30 +24,30 @@ Read the table at the top of `extensions/README.md` and open the extension it na
 
 ## 3. Pick the facets
 
-| File        | For                                                             | Goes live           |
-| ----------- | --------------------------------------------------------------- | ------------------- |
-| `web.tsx`   | UI: `defineWebExtension({ slots, panels, surfaces, tools, … })` | Rebuilt on save     |
-| `server.ts` | tools, prompt sections, hooks, documents, `actions`             | reinstalled on save |
-| `api.ts`    | a typed service other extensions call                           | with its importers  |
-| `refs.ts`   | typed refs of your actions and documents for the browser        | with its importers  |
-| `ui.tsx`    | components and hooks other extensions' browser code imports     | with its importers  |
-| `README.md` | required; first paragraph is one sentence the UI shows          | read on change      |
+| File            | For                                                             | Goes live           |
+| --------------- | --------------------------------------------------------------- | ------------------- |
+| `web.solid.tsx` | UI: `defineWebExtension({ slots, panels, surfaces, tools, … })` | Rebuilt on save     |
+| `server.ts`     | tools, prompt sections, hooks, documents, `actions`             | reinstalled on save |
+| `api.ts`        | a typed service other extensions call                           | with its importers  |
+| `refs.ts`       | typed refs of your actions and documents for the browser        | with its importers  |
+| `ui.solid.tsx`  | components and readers other extensions' browser code imports   | with its importers  |
+| `README.md`     | required; first paragraph is one sentence the UI shows          | read on change      |
 
 Open in `docs/extensions/` only what you use: `slots.md` (slots, panels), `renderers.md` (tool, entry, link and
 composer renderers), `commands.md`, `documents.md`, `surfaces.md`, `actions.md`, `contracts.md` (`api.ts`, `refs.ts`,
-`ui.tsx`), `events.md`, `server.md` (host, tools, prompt sections), `sdk.md`, `styling.md`. For a full app,
+`ui.solid.tsx`), `events.md`, `server.md` (host, tools, prompt sections), `sdk.md`, `styling.md`. For a full app,
 `example-app.md`. The index's Topics table says what each covers.
 
 ## 4. Rules that bite
 
-- UI is moving to Solid 2.0 with ui-sdk: before writing or changing a `*.solid.tsx` file or anything in
-  `web/src/components/ui`, read the `solid-ui` skill.
-- A React file (`*.tsx`) imports only `@/sdk`, `@/components/ui/*`, `@/components/ai/*`, `react`, `lucide-react`. A
-  Solid file (`*.solid.tsx`) imports what the `solid-ui` skill lists. Never `fetch` your own server, use actions. Another extension only through its `api.ts` (server) or `ui.tsx` (browser).
+- UI is Solid 2.0 with ui-sdk: before writing or changing a `*.solid.tsx` file or anything in
+  `web/src/components/ui`, read the `solid-ui` skill for patterns and imports.
+- Use actions, not `fetch`, to reach your own server. Reach another extension only through its `api.ts` (server)
+  or its `refs.ts` and `ui.solid.tsx` (browser).
 - Ids (surface, command, dialog) start with the extension name.
 - Prompt sections stay stable between turns; anything that changes goes in a `beforeInput` note.
-- An outcome a user waits for gets a card that matches existing ones (`extensions/subagents/messages.tsx`,
-  `extensions/workspaces/log.tsx`), never raw Markdown.
+- An outcome a user waits for gets a card that matches existing ones (`extensions/subagents/messages.solid.tsx`,
+  `extensions/workspaces/log.solid.tsx`), never raw Markdown.
 - Theme tokens only (`text-brand`, `text-muted-foreground`, `border-border/70`); dense and quiet, `font-mono` for meta.
 
 ## 5. Verify

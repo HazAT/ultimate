@@ -1,8 +1,8 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { AnsiOutput } from '../../web/src/components/ai/ansi-output.tsx'
-import { ToolOutput } from '../../web/src/components/ai/tool.tsx'
+import { AnsiOutput } from '../../web/src/compat/ai/ansi-output.tsx'
+import { ToolOutput } from '../../web/src/compat/ai/tool.tsx'
 
 const render = (output: string) => renderToStaticMarkup(createElement(AnsiOutput, { output }))
 

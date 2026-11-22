@@ -4,7 +4,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
-import type { ToolCallView } from '@/sdk'
+import type { ToolCallView } from '@/sdk/solid'
 import { Transcript, createTranscriptFrame, events } from '@/sdk/solid'
 import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
@@ -81,7 +81,7 @@ it('shows a forwarded screenshot as a zoomable thumbnail from the loaded transcr
       { role: 'toolResult', content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }] },
     ],
   } as unknown as EntryRecord
-  const transcript = createTranscriptFrame([shot])
+  const transcript = createTranscriptFrame(() => [shot])
   const view = renderSolid(() => (
     <Transcript value={transcript.frame}>
       <Bubble
@@ -148,8 +148,8 @@ it('names each bubble of one codemode script by its board message, so an agent c
     model: [{ role: 'assistant', content: [], timestamp: 0 }],
   } as unknown as EntryRecord
   await client.registry.setLoaders({
-    'extensions/codemode/web.tsx': async () => ({
-      default: { provides: [provide(MessageReference, ({ id }) => `#43/${id}`)] },
+    'extensions/codemode/web.solid.tsx': async () => ({
+      default: { provides: [provide(MessageReference, (input) => () => `#43/${input().id}`)] },
     }),
   })
   renderSolid(() => (

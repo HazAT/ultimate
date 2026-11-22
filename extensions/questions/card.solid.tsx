@@ -1,12 +1,13 @@
 /** @jsxImportSource @solidjs/web */
+import type { JSX } from '@solidjs/web'
 import { MessageCircleQuestion } from '@lucide/solid'
 import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Input, Textarea } from '@/components/ui/input.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
-import { Provided } from '@/sdk/parts.solid.tsx'
 import {
+  Provided,
   api,
   cn,
   errorMessage,
@@ -16,6 +17,7 @@ import {
   useUiState,
   useViewport,
   writingAs,
+  type Point,
 } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
@@ -23,8 +25,6 @@ import { MessagesDoc } from '../messages/refs.ts'
 import { keyCard, openQuestions, waitsOnUser } from './open.ts'
 import type { Message } from './open.ts'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import type { ReactNode } from 'react'
-import type { Point } from '@/sdk'
 import { QuestionItem } from './question.solid.tsx'
 import { AnswerAction, DismissAction } from './refs.ts'
 import type { Reply } from './refs.ts'
@@ -45,7 +45,9 @@ import type { CardState, Draft } from './state.ts'
 const CHECK_LANDING_BEFORE_ADVANCE_MS = 320
 const KEEPALIVE_BYTES = 60 * 1024
 
-export const CardActions: Point<Message, ReactNode> = { point: 'questions.card-actions' }
+export const CardActions: Point<{ message: Message }, JSX.Element> = {
+  point: 'questions.card-actions',
+}
 
 type CardProps = {
   message: Message
@@ -79,11 +81,11 @@ function AnswerCard(props: CardProps & { id: number }) {
   const card = () => cardKey(props.id)
   const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})
   const state = createMemo(() => cardOf(cards(), card(), questions()))
-  const change = (edit: (old: CardState) => CardState, automatic = false) => {
+  const change = (edit: (old: CardState) => CardState, unrecorded = false) => {
     const key = card()
     const list = questions()
     const write = () => setCards((old) => ({ ...old, [key]: edit(cardOf(old, key, list)) }))
-    if (automatic) writingAs('app', write)
+    if (unrecorded) writingAs('app', write)
     else write()
   }
   const answerRequest = () => {
@@ -111,7 +113,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   const Actions = (controls: { disabled: boolean; class?: string }) => (
     <>
       <Show when={props.withActions !== false}>
-        <Provided point={CardActions} input={props.message} last />
+        <Provided point={CardActions} input={{ message: props.message }} last />
       </Show>
       <Button
         aria-label={`Dismiss message ${props.id}`}
@@ -181,26 +183,30 @@ function AnswerCard(props: CardProps & { id: number }) {
           ?.focus({ preventScroll: true }),
       )
   }
-  const draft = (index: number, edit: (old: Draft) => Draft) =>
-    change((old) => ({
-      ...old,
-      drafts: { ...old.drafts, [index]: edit(old.drafts[index] ?? { chosen: [] }) },
-    }))
-  const select = (index: number, option: number, click = false) => {
+  const draft = (index: number, edit: (old: Draft) => Draft, typed = false) =>
+    change(
+      (old) => ({
+        ...old,
+        drafts: { ...old.drafts, [index]: edit(old.drafts[index] ?? { chosen: [] }) },
+      }),
+      typed,
+    )
+  const select = (index: number, option: number, click = false, pressed?: boolean) => {
     const question = questions()[index]
     const choice = question && choices(question)[option]
     if (!choice) return
     change((old) => {
       const previous = old.drafts[index] ?? { chosen: [] }
+      const on = pressed ?? !(choice.custom ? previous.other : previous.chosen.includes(option))
       const next =
         question.kind === 'multi'
           ? choice.custom
-            ? { ...previous, other: !previous.other }
+            ? { ...previous, other: on }
             : {
                 ...previous,
-                chosen: previous.chosen.includes(option)
-                  ? previous.chosen.filter((i) => i !== option)
-                  : [...previous.chosen, option].toSorted((a, b) => a - b),
+                chosen: on
+                  ? [...new Set([...previous.chosen, option])].toSorted((a, b) => a - b)
+                  : previous.chosen.filter((i) => i !== option),
               }
           : { ...previous, chosen: choice.custom ? [] : [option], other: !!choice.custom }
       return { ...old, current: index, drafts: { ...old.drafts, [index]: next } }
@@ -346,7 +352,7 @@ function AnswerCard(props: CardProps & { id: number }) {
         placeholder="Your answer…"
         value={state().text}
         disabled={busy()}
-        onValueChange={(text) => change((old) => ({ ...old, text }))}
+        onValueChange={(text) => change((old) => ({ ...old, text }), true)}
         autocomplete="on"
         spellcheck
         class="h-auto min-h-8 flex-1 basis-40 border-border px-2.5 py-1 font-sans text-[13px] placeholder:text-muted-foreground/70 focus-visible:border-brand/60 focus-visible:ring-0 max-md:min-h-11"
@@ -409,8 +415,8 @@ function AnswerCard(props: CardProps & { id: number }) {
                   disabled={disabled()}
                   hints={hints()}
                   onOpen={() => go(index)}
-                  onSelect={(option) => select(index, option, true)}
-                  onText={(value) => draft(index, (old) => ({ ...old, text: value }))}
+                  onSelect={(option, pressed) => select(index, option, true, pressed)}
+                  onText={(value) => draft(index, (old) => ({ ...old, text: value }), true)}
                   onFieldKey={fieldKey}
                 />
               </div>
@@ -427,7 +433,7 @@ function AnswerCard(props: CardProps & { id: number }) {
               rows={1}
               value={note()}
               disabled={disabled()}
-              onValueChange={(value) => change((old) => ({ ...old, note: value }))}
+              onValueChange={(value) => change((old) => ({ ...old, note: value }), true)}
               onKeyDown={(event) => {
                 if (event.isComposing) return
                 if (event.key === 'Enter' && !event.shiftKey) {
@@ -483,7 +489,7 @@ function AnswerCard(props: CardProps & { id: number }) {
               </Show>
             </span>
           </Show>
-          <span class="ml-auto flex items-center gap-1.5">
+          <span class="ml-auto flex flex-wrap items-center justify-end gap-1.5">
             <Actions disabled={disabled()} class="max-md:h-11" />
             <SendButton
               messageId={props.id}

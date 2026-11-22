@@ -2,7 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { inboxItems, keyOf, selectionAfterChange, shown, UNLOADED } from '../../items.ts'
 import type { Anchor, Selection } from '../../items.ts'
-import type { InboxItem } from '../../ui.tsx'
+import type { InboxItem } from '../../points.ts'
 import type { Message } from '../../../messages/refs.ts'
 
 const ask = (id: number, at: number, fields: Partial<Message> = {}): Message => ({

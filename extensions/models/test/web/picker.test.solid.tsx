@@ -43,7 +43,7 @@ import { LoginDialog } from '../../login.solid.tsx'
 import { ModelPicker } from '../../picker.solid.tsx'
 import { ModelButton, ThinkingButton } from '../../toolbar.solid.tsx'
 import { openLogin } from '../../state.ts'
-import models from '../../web.tsx'
+import models from '../../web.solid.tsx'
 
 const agent = createAgent()
 const server = fakeSubscriptions(harness.sources)
@@ -144,6 +144,35 @@ const writes = () =>
     ]
   })
 
+it('keeps the picked effort pending and ignores a quick second choice', async () => {
+  const pending = Promise.withResolvers<Response>()
+  const respond = harness.fetch.getMockImplementation()!
+  harness.fetch.mockImplementation((url, init) =>
+    typeof url === 'string' && url.endsWith('/configure') ? pending.promise : respond(url, init),
+  )
+  const page = renderSolid(() => <ThinkingButton />)
+  expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
+  const high = page.querySelector<HTMLButtonElement>('[aria-label="high effort"]')!
+  const low = page.querySelector<HTMLButtonElement>('[aria-label="low effort"]')!
+  const off = page.querySelector<HTMLButtonElement>('[aria-label="off effort"]')!
+  expect(off.getAttribute('aria-current')).toBe('true')
+  expect(high.getAttribute('aria-current')).toBeNull()
+  high.click()
+  low.click()
+  await sync()
+  expect(high.hasAttribute('data-pending')).toBe(true)
+  expect(low.disabled).toBe(true)
+  expect(off.disabled).toBe(true)
+  low.click()
+  await sync()
+  expect(writes()).toEqual([
+    { path: '/api/conversations/1/configure', body: { thinkingLevel: 'high' }, source: 'person' },
+  ])
+  pending.resolve(Response.json({ ok: true }))
+  await sync()
+  expect(page.querySelector('[aria-label="high effort"]')).toBeNull()
+})
+
 it('lets an agent pick a model and a family by name, recording both writes as the agent', async () => {
   const container = renderSolid(() => (
     <>
@@ -202,7 +231,7 @@ it('targets the side chat from thinking controls and the picker, including after
   ))
   try {
     await sync()
-    server.of(side)!.send('view', view(side, 'orion', 'low'))
+    server.of(side, true)!.send('view', view(side, 'orion', 'low'))
     await sync()
     expect(container.querySelector('[aria-label="Open the model picker"]')?.textContent).toContain(
       'orion',
@@ -218,7 +247,7 @@ it('targets the side chat from thinking controls and the picker, including after
     expect(await act('Open the model picker', 'press')).toMatchObject({ ok: true })
     expect(await act('Search model catalog', 'run', 'accounts/login')).toMatchObject({ ok: true })
     expect(await act('Faux credentials (API key, faux)', 'press')).toMatchObject({ ok: true })
-    server.of(side)!.send('doc', {
+    server.of(side, false)!.send('doc', {
       kind: 'models.login',
       value: {
         flows: { 'flow-1': { provider: 'faux', type: 'api_key', status: 'complete', events: [] } },

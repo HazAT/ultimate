@@ -1,6 +1,5 @@
 /** @jsxImportSource @solidjs/web */
-import { Conversation, Dock } from '@/sdk/parts.solid.tsx'
-import { useConversation, useViewport } from '@/sdk/solid'
+import { Conversation, Dock, useConversation, useViewport } from '@/sdk/solid'
 import { WireTab } from './tab.solid.tsx'
 
 export function Wire() {

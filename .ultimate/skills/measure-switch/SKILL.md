@@ -16,7 +16,7 @@ it when done.
 
 ```bash
 SRC=~/.ultimate/projects/<project-home>/state.sqlite   # or chapters/<name>/state.sqlite for a later chapter
-node .ultimate/skills/measure-switch/copy-paused.ts $SRC ~/switch-perf/home
+node .ultimate/skills/measure-switch/copy-paused.ts $SRC $HOME/switch-perf/home
 ```
 
 It reads the source with `VACUUM INTO` (never moves or writes it) and appends a manual pause to the copy's root
@@ -26,7 +26,7 @@ checkout whose `pause` extension matches the source's version. Pick the chapter 
 
 ## 2. Start a preview on it and confirm the pause
 
-`instance start {home: "~/switch-perf/home"}`, then:
+`instance start {home: "<absolute $HOME>/switch-perf/home"}` (an absolute path: `instance` refuses `~`), then:
 
 ```bash
 curl -s -X POST -H 'content-type: application/json' -H "origin: $URL" -d '{"args":null}' \
@@ -49,7 +49,7 @@ node .ultimate/skills/measure-switch/profile-summary.ts ~/switch-perf/a.cpuprofi
 - `settledMs` and `longMs` are the user-facing numbers; `eventKb` shows what the server sends. A tab keeps one event
   stream and a switch only resubscribes on it, so `streams` (new streams during the switch) should stay 0.
 - **What each server event costs while a turn streams or branches work:** `renders.ts` counts per event the main-thread
-  time until the next task, the React components rendered, and which components started those renders (`owners`):
+  time until the next task and the DOM mutations in the transcript during that window:
 
   ```bash
   node .ultimate/skills/measure-switch/renders.ts $URL <id> --seconds 45          # watch: the live host, read-only
@@ -57,13 +57,26 @@ node .ultimate/skills/measure-switch/profile-summary.ts ~/switch-perf/a.cpuprofi
   ```
 
   A paused copy streams nothing, so watch the live host (the page only reads) or send a prompt on a fresh preview.
-  An owner near the top of the tree (`App`, a sidebar `Tree`) re-rendering on every `ops` event means a hook there
-  reads a whole object (`useConversation()`, `state.docsOf`) where a selector of the one field it uses would do.
+  Many mutations on every `ops` event are a reason to look for a part that rebuilds DOM where a keyed list or a
+  narrower read would only update what changed; `--profile` shows which functions the time went to.
 
-- Compare before and after in one session, on one instance home: run main, stop, apply the change, start again on the
-  same home. Numbers drift between sessions with machine load; repeat runs and compare medians.
 - Server changes (`server/`, `shared/`) need the instance restarted; web and extension changes hot-reload.
 
-## 4. Clean up
+## 4. Compare two trees
 
-Stop the instance and `rm -rf ~/switch-perf`. Nothing from the copy goes into the repository.
+One run's warm median moves 30–50 ms with machine load, so compare the two sides interleaved, against one snapshot.
+Check the base out in a throwaway detached worktree ([comparing before and after](../../../docs/worktrees.md#comparing-before-and-after);
+never `git stash`), copy the paused snapshot once, `cp -r` it to a second home, and start one server per tree, each on
+its own home: `instance start {home}` previews your checkout; for the base tree start a scratch server from its
+worktree (`docs/running.md`). Confirm both are paused, then:
+
+```bash
+node .ultimate/skills/measure-switch/paired.ts $URL_A $URL_B 1 <id,id,...> --runs 4 --rounds 3
+```
+
+It runs `switch.ts` against A, then B, `--runs` times, and prints each run's warm median, the warm medians per side
+and B minus A. Main against main came out 494 against 504 ms settled: differences of that size are noise.
+
+## 5. Clean up
+
+Stop the instances, remove the worktree and `rm -rf ~/switch-perf`. Nothing from the copy goes into the repository.
