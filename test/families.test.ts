@@ -2,7 +2,12 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { definitionRuns, mergeFamilies, parseFamilies } from '../lib/families.ts'
-import { readFamilies, readFamilyLayers, writeFamilies } from '../lib/families-settings.ts'
+import {
+  mergeLayers,
+  readFamilies,
+  readFamilyLayers,
+  writeFamilies,
+} from '../lib/families-settings.ts'
 import { temp } from './helpers.ts'
 
 const families = (value: unknown, project?: unknown) =>
@@ -85,4 +90,26 @@ it("starts every project from the user's modelFamilies, under the saved and team
   expect((await review(fresh)).model).toBe('acme/review')
   const team = { modelFamilies: { families: { review: { model: 'acme/team' } } } }
   expect((await review(fresh, team)).model).toBe('acme/team')
+})
+
+it('keeps the last valid project families when the setting turns invalid, and says so', async () => {
+  const userHome = await temp('ultimate-families-')
+  const root = join(userHome, 'project')
+  await mkdir(root)
+  const project = (color: string) => ({
+    modelFamilies: { families: { lead: { model: 'acme/lead', color } } },
+  })
+  const fresh = join(userHome, 'fresh')
+  await mkdir(fresh)
+  // Before it ever parsed, an invalid layer counts as empty, loudly.
+  const first = await readFamilyLayers(userHome, fresh, project('green'))
+  expect(first.project.families).toEqual({})
+  expect(first.errors).toEqual([expect.stringContaining('None of its families apply')])
+  expect((await readFamilies(userHome, root, project('sky'))).families.lead.model).toBe('acme/lead')
+  // An invalid colour no longer drops every project family's model.
+  const broken = await readFamilyLayers(userHome, root, project('green'))
+  expect(mergeLayers(broken).families.lead.model).toBe('acme/lead')
+  expect(broken.errors).toEqual([
+    expect.stringMatching(/^project settings: modelFamilies: .*Keeping its last valid families/),
+  ])
 })
