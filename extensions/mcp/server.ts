@@ -16,7 +16,7 @@ import {
 import type { Tool } from '@earendil-works/pi-mcp'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
-import { pace, retryAfter, type Cancel } from '../../lib/timers.ts'
+import { retryAfter, type Cancel } from '../../lib/timers.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -29,7 +29,6 @@ export const pollActions = ['status']
 
 const PROGRESS_RENEWED_CALL_TIMEOUT_MS = 10 * 60_000
 const FIRST_RETRY = 5_000
-const RATE_LIMITED_RETRY_MS = 5_000
 const rateLimited = (error: unknown) => error instanceof McpHttpError && error.status === 429
 const LAST_RETRY = 5 * 60_000
 
@@ -166,11 +165,6 @@ const listing = (server: Server) =>
     ),
   ].join('\n')
 const schemaOf = (tool: Tool) => `${tool.name} input: ${JSON.stringify(tool.inputSchema)}`
-function missingRequiredArgs(tool: Tool, args: Record<string, unknown>) {
-  const required = (tool.inputSchema as { required?: unknown }).required
-  const missing = Array.isArray(required) ? required.filter((field) => !(field in args)) : []
-  return missing.length ? `missing required ${missing.join(', ')}` : undefined
-}
 const renewTimeoutOnProgress = () => {}
 const failure = (text: string) => ({ output: [{ type: 'text' as const, text }], isError: true })
 
@@ -372,28 +366,13 @@ export default async function mcp(host: ExtensionHost) {
                   `MCP server ${name} is ${server.state}: ${server.error ?? 'not connected'}`,
                 )
               if (!tool) return { output: [{ type: 'text', text: listing(server) }] }
-              const known = server.tools.find((entry) => entry.name === tool)
-              if (!known)
-                return failure(
-                  `MCP ${name} has no tool ${tool}. Tools: ${server.tools.map((entry) => entry.name).join(', ')}`,
-                )
-              const missing = missingRequiredArgs(known, args ?? {})
-              if (missing) return failure(`MCP ${name}/${tool}: ${missing}.\n${schemaOf(known)}`)
               const client = server.client
-              const call = () =>
-                client.callTool(tool, args ?? {}, {
+              try {
+                const result = await client.callTool(tool, args ?? {}, {
                   signal: context.abortSignal,
                   timeoutMs: PROGRESS_RENEWED_CALL_TIMEOUT_MS,
                   onProgress: renewTimeoutOnProgress,
                 })
-              const callOnceMoreIfRateLimited = () =>
-                call().catch(async (error: unknown) => {
-                  if (!rateLimited(error)) throw error
-                  await pace(RATE_LIMITED_RETRY_MS, context.abortSignal)
-                  return call()
-                })
-              try {
-                const result = await callOnceMoreIfRateLimited()
                 return { output: toLlmContent(result), isError: result.isError === true }
               } catch (error) {
                 const brokenConnectionNoResend = !(
@@ -405,9 +384,10 @@ export default async function mcp(host: ExtensionHost) {
                 )
                 if (brokenConnectionNoResend && server.client === client)
                   rebuiltOnOpen('open reconnects every configured MCP server', restart(server))
+                const known = server.tools.find((entry) => entry.name === tool)
                 return failure(
                   `MCP ${name}/${tool} failed: ${redact(server, error)}` +
-                    (error instanceof McpError ? `\n${schemaOf(known)}` : ''),
+                    (error instanceof McpError && known ? `\n${schemaOf(known)}` : ''),
                 )
               }
             },
