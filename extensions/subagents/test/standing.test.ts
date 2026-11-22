@@ -130,6 +130,7 @@ async function fixture() {
       service = value as SubagentsService
     },
     need: idleNeed,
+    want: () => undefined,
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},

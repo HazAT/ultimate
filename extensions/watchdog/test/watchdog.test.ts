@@ -5,7 +5,7 @@ import type {
   Task,
   ToolExecutionApi,
 } from '@earendil-works/pi-durable'
-import { until } from '../../../test/helpers.ts'
+import { apis, until } from '../../../test/helpers.ts'
 import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
 import { createModels } from '@earendil-works/pi-ai/models'
 import { obj } from '@earendil-works/pi-schema'
@@ -28,7 +28,7 @@ import {
 } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
 import watchdog, { diagnose, RETRY_DELAYS_MS } from '../server.ts'
-import type { WatchdogService } from '../api.ts'
+import { WatchdogApi } from '../api.ts'
 import { Messages } from '../../messages/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
 import { Roots, Tally } from '../../lineage/api.ts'
@@ -90,11 +90,11 @@ async function fixture(
   const onOpen: (() => Promise<void>)[] = []
   const onClose: (() => Promise<void>)[] = []
   const notices: string[] = []
-  let service: WatchdogService | undefined
+  const services = apis()
+  services.provided.set('conversations', { concludedIn })
+  services.provided.set('workspaces', { doc: Workspaces, get: async () => undefined })
   const host = {
-    implement: (_api: unknown, implementation: WatchdogService) => {
-      service = implementation
-    },
+    ...services,
     harness: () => harness,
     metadata: Metadata,
     notice: (text: string) => notices.push(text),
@@ -103,9 +103,13 @@ async function fixture(
     onRelease: () => {},
     scanSubmissions: (...args: Parameters<MemoryStorage['scanSubmissions']>) =>
       storage.scanSubmissions(...args),
-    need: (api: { name: string }) =>
-      api.name === 'conversations' ? { concludedIn } : { doc: Workspaces },
   } as unknown as ExtensionHost
+  const subagentsHost = {
+    ...host,
+    onOpen: () => {},
+    onClose: () => {},
+  } as unknown as Parameters<typeof subagents>[0]
+  const backendForStop = subagents(subagentsHost)
   const original = watchdog(host)
   const backend = {
     ...original,
@@ -239,7 +243,7 @@ async function fixture(
     root,
     registry,
     host,
-    failures: (since: number) => service!.failures(since),
+    failures: (since: number) => services.need(WatchdogApi).failures(since),
     ultimate,
     notices,
     conversation,
@@ -249,13 +253,6 @@ async function fixture(
     held: () => entered,
     release: hold.resolve,
     stop: async (id: ConversationId, parent: ConversationId) => {
-      const backendForStop = subagents({
-        ...host,
-        implement: () => {},
-        onOpen: () => {},
-        onClose: () => {},
-        need: () => ({ get: async () => undefined }),
-      } as unknown as Parameters<typeof subagents>[0])
       const tool = backendForStop.tools!.find((candidate) => candidate.name === 'subagent')!
       const memos = new Map<string, unknown>()
       return tool.execute(

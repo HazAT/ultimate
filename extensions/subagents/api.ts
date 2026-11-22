@@ -4,7 +4,14 @@
  */
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
-import type { Agent, ConversationId, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
+import type {
+  Agent,
+  ConversationId,
+  EntryId,
+  SubmissionRecord,
+  TaskId,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import { defineApi } from '../../shared/extension-api.ts'
@@ -33,8 +40,8 @@ export const Subagents = defineDoc<{
       answer?: EntryId
       /**
        * Unset while delivering; then `done`, `unanswered` (stopped by the parent), `interrupted` (stopped in the
-       * child), `failed` (a provider error the watchdog holds, or a delivery error) or `given-up` (the watchdog
-       * reported that provider error instead of retrying it: final).
+       * child), `failed` (a run failure the `ChildFailures` provider holds, or a delivery error) or `given-up` (the
+       * provider reported that failure instead of retrying it: final).
        */
       status?: string
     }
@@ -105,7 +112,26 @@ export type SubagentsService = {
     id: ConversationId,
     options: { definition: AgentDefinition; parentAgent: Agent; modelRuntime: ModelRuntime },
   ) => Promise<void>
+  /** Inside `tx`, mark `parent`'s latest action on `child` `given-up` if it holds a failed run: reported, not retried. */
+  giveUp(tx: Tx, parent: ConversationId, child: ConversationId): Promise<void>
 }
+export type ChildFailuresService = {
+  /** Whether a child input that ended unanswered for `reason` is the provider's to retry or report. */
+  holds(reason: string): boolean
+  /** Whether `input` is a continuation the provider submitted to retry a failed run. */
+  continues(input: SubmissionRecord): boolean
+  /** Inside `tx`, the provider's tasks on `parent` that may still continue `child`, with each one's request ID. */
+  continuations(
+    tx: Tx,
+    parent: ConversationId,
+    child: ConversationId,
+  ): Promise<{ task: TaskId; request: string }[]>
+}
+/**
+ * The extension point that takes over children's failed runs (the watchdog: retries, then a failure card). Without a
+ * provider the reporter tells the parent itself.
+ */
+export const ChildFailures = defineApi<ChildFailuresService>()('subagents.failures')
 /** Child conversations and standing agents; `need` it where delegation is required, else `want` it. */
 export const SubagentsApi = defineApi<SubagentsService>()('subagents')
 export const tier = 'core'

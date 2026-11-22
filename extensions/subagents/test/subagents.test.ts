@@ -1,6 +1,7 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // First: helpers mocks the faux provider's token pacing, which must apply before the server modules load.
-import { eventHost, idleNeed, until, temp, removeTemp } from '../../../test/helpers.ts'
+import { apis, eventHost, idleNeed, until, temp, removeTemp } from '../../../test/helpers.ts'
+import type { Api } from '../../../shared/extension-api.ts'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import { projectSettings } from '../../../lib/project-setup.ts'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
@@ -33,7 +34,7 @@ import type { OpenHost } from '../../../server/harness.ts'
 import subagents, { actions } from '../server.ts'
 import watchdog from '../../watchdog/server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
-import { Runs, Started, Subagents } from '../api.ts'
+import { ChildFailures, Runs, Started, Subagents } from '../api.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import codemode from '../../codemode/server.ts'
 import { Metadata } from '../../../server/metadata.ts'
@@ -64,7 +65,7 @@ async function fixture(
   respond?: (
     transcript: Parameters<FauxResponseFactory>[0],
   ) => ReturnType<FauxResponseFactory> | undefined,
-  watch = false,
+  failures?: 'watchdog' | 'held',
 ) {
   const ultimateRoot = await directory()
   const userHome = await directory()
@@ -93,13 +94,17 @@ async function fixture(
   let opened: OpenHost | undefined
   const onOpen: (() => Promise<void>)[] = []
   const onClose: (() => Promise<void>)[] = []
+  const services = apis()
+  const need = <S>(api: Api<string, S>) =>
+    services.provided.has(api.name) ? services.need(api) : idleNeed(api)
   const backend = subagents({
     projectSettings: () => projectSettings(prepared.projectRoot, prepared.userHome),
     ...prepared,
     harness: () => opened!.harness,
     metadata: Metadata,
-    implement: () => {},
-    need: idleNeed,
+    implement: services.implement,
+    want: services.want,
+    need,
     resource: (_key, create) => create(),
     extensions: () => [],
     notice: () => {},
@@ -143,14 +148,20 @@ async function fixture(
         }
       : backend,
   )
-  if (watch)
+  if (failures === 'held')
+    services.implement(ChildFailures, {
+      holds: (reason) => reason === 'model_error' || reason === 'no_model',
+      continues: (input) => input.requestId?.startsWith('watchdog-retry:') === true,
+      continuations: async () => [],
+    })
+  if (failures === 'watchdog')
     prepared.registry.install(
       watchdog({
         ...prepared,
         harness: () => opened!.harness,
         metadata: Metadata,
-        implement: () => {},
-        need: idleNeed,
+        implement: services.implement,
+        need,
         notice: (message: string) => errors.push(message),
         onOpen: (callback: () => Promise<void>) => {
           onOpen.push(callback)
@@ -585,17 +596,38 @@ async function reports(opened: OpenHost) {
 }
 
 describe('provider error recovery', () => {
+  it('reports a provider failure to the parent itself when nothing takes child failures over', async () => {
+    const f = await fixture(undefined, undefined, undefined, (transcript) =>
+      transcript.messages.at(-1)?.role === 'user' && transcript.messages.at(-1)?.content === 'fail'
+        ? fauxAssistantMessage('', {
+            stopReason: 'error',
+            errorMessage: 'invalid model configuration',
+          })
+        : undefined,
+    )
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'fail', background: true })
+    await until(async () => (await reports(f.opened)).length === 1)
+    const [child] = await children(f.opened)
+    expect((await reports(f.opened))[0].model![0].content).toBe(
+      `[subagent ${child.conversationId} failed: model_error: invalid model configuration]`,
+    )
+  })
   it.each([false, true])(
     'delivers a successful watchdog retry of a finished child’s one-way message once (offline: %s)',
     async (offlineAnswer) => {
-      const f = await fixture(undefined, undefined, undefined, (transcript) =>
-        transcript.messages.at(-1)?.role === 'user' &&
-        transcript.messages.at(-1)?.content === 'one-way failure'
-          ? fauxAssistantMessage('', {
-              stopReason: 'error',
-              errorMessage: 'Our servers are currently overloaded. Please try again later.',
-            })
-          : undefined,
+      const f = await fixture(
+        undefined,
+        undefined,
+        undefined,
+        (transcript) =>
+          transcript.messages.at(-1)?.role === 'user' &&
+          transcript.messages.at(-1)?.content === 'one-way failure'
+            ? fauxAssistantMessage('', {
+                stopReason: 'error',
+                errorMessage: 'Our servers are currently overloaded. Please try again later.',
+              })
+            : undefined,
+        'held',
       )
       await call(f.opened, { action: 'start', agent: 'scout', task: 'initial answer' })
       const [child] = await children(f.opened)
@@ -671,7 +703,7 @@ describe('provider error recovery', () => {
               errorMessage: 'invalid model configuration',
             })
           : undefined,
-      true,
+      'watchdog',
     )
     await call(f.opened, { action: 'start', agent: 'scout', task: 'fail', background: true })
     const failures = async () =>
@@ -698,12 +730,21 @@ describe('provider error recovery', () => {
     'leaves provider failures to watchdog and delivers its retry answer once (offline: %s)',
     async (offlineAnswer) => {
       const held = { ...gate(), entered: false, phase: 'deliver' }
-      const f = await fixture(undefined, undefined, held, (transcript) => {
-        const last = transcript.messages.at(-1)!
-        if (last.role === 'user' && last.content === 'provider failure')
-          return fauxAssistantMessage([], { stopReason: 'error', errorMessage: 'provider failed' })
-        return undefined
-      })
+      const f = await fixture(
+        undefined,
+        undefined,
+        held,
+        (transcript) => {
+          const last = transcript.messages.at(-1)!
+          if (last.role === 'user' && last.content === 'provider failure')
+            return fauxAssistantMessage([], {
+              stopReason: 'error',
+              errorMessage: 'provider failed',
+            })
+          return undefined
+        },
+        'held',
+      )
       await call(f.opened, {
         action: 'start',
         agent: 'scout',
@@ -789,13 +830,19 @@ describe('provider error recovery', () => {
   )
 
   it('returns provider failure to foreground start without sending a parent failure report', async () => {
-    const f = await fixture(undefined, undefined, undefined, (transcript) =>
-      transcript.messages.at(-1)?.role === 'user' && transcript.messages.at(-1)?.content === 'fail'
-        ? fauxAssistantMessage('', {
-            stopReason: 'error',
-            errorMessage: 'invalid model configuration',
-          })
-        : undefined,
+    const f = await fixture(
+      undefined,
+      undefined,
+      undefined,
+      (transcript) =>
+        transcript.messages.at(-1)?.role === 'user' &&
+        transcript.messages.at(-1)?.content === 'fail'
+          ? fauxAssistantMessage('', {
+              stopReason: 'error',
+              errorMessage: 'invalid model configuration',
+            })
+          : undefined,
+      'held',
     )
     const result = await call(f.opened, { action: 'start', agent: 'scout', task: 'fail' })
     expect(result.text).toContain('failed')

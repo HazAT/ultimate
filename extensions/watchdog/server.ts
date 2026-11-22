@@ -23,7 +23,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
 import { Messages } from '../messages/api.ts'
 import type { Message } from '../messages/api.ts'
-import { Standing, Subagents } from '../subagents/api.ts'
+import { ChildFailures, Standing, SubagentsApi } from '../subagents/api.ts'
 import { Roots, Tally } from '../lineage/api.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
@@ -38,10 +38,9 @@ async function isTally(tx: Tx, id: ConversationId) {
 export const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000]
 export const FAILURE_LIMIT = 20
 
+const RETRY = 'watchdog-retry:'
 const continuedFailure = (input: SubmissionRecord) =>
-  input.requestId?.startsWith('watchdog-retry:')
-    ? Number(input.requestId.slice('watchdog-retry:'.length))
-    : undefined
+  input.requestId?.startsWith(RETRY) ? Number(input.requestId.slice(RETRY.length)) : undefined
 const retriesOf = (input: { retried: boolean; retries?: number }) =>
   input.retries ?? (input.retried ? 1 : 0)
 const retryDelay = (retries: number) =>
@@ -226,15 +225,18 @@ async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Genera
   return { upper, lower, step, assistant, title }
 }
 
+type WatchdogInput = Failure & {
+  failedTask: number
+  recipient: ConversationId
+  temporary: boolean
+  until: number
+  delivery?: true
+}
+
 export default function watchdog(host: ExtensionHost) {
+  const subagents = host.need(SubagentsApi)
   const Watchdog = defineTask<
-    Failure & {
-      failedTask: number
-      recipient: ConversationId
-      temporary: boolean
-      until: number
-      delivery?: true
-    },
+    WatchdogInput,
     { phase: 'wait' } | { phase: 'retry' } | { phase: 'report' },
     null
   >({
@@ -247,7 +249,7 @@ export default function watchdog(host: ExtensionHost) {
       wait: (task, runtime, ctx) => runtime.sleepUntil(task.input.until, { phase: 'retry' }, ctx),
       retry: async (task, runtime, ctx) => {
         const { conversation, failedTask, error } = task.input
-        const request = `watchdog-retry:${failedTask}`
+        const request = `${RETRY}${failedTask}`
         const child = (await runtime.conversation(conversation, ctx))!
         let retryAlreadySubmitted = false
         let movedOn = false
@@ -323,17 +325,7 @@ export default function watchdog(host: ExtensionHost) {
           })
           reported.failures.sort((a, b) => b.at - a.at)
           reported.failures.splice(FAILURE_LIMIT)
-          const actions = Object.values((await tx.doc(Subagents, recipient)).actions)
-          const actionWhoseFailureIsNowReported = actions.findLast(
-            (candidate) => candidate.conversationId === conversation,
-          )
-          if (actionWhoseFailureIsNowReported?.status === 'failed') {
-            const input = await tx.submissionByRequest(
-              conversation,
-              `subagent:${actionWhoseFailureIsNowReported.reporter}`,
-            )
-            if (input && failedInput(input)) actionWhoseFailureIsNowReported.status = 'given-up'
-          }
+          await subagents.giveUp(tx, recipient, conversation)
           return terminal
         }, ctx)
       },
@@ -458,6 +450,28 @@ export default function watchdog(host: ExtensionHost) {
   }
   host.onClose(close)
   host.onRelease(close)
+  host.implement(ChildFailures, {
+    holds: (reason) => reportedReasons.includes(reason),
+    continues: (input) => continuedFailure(input) !== undefined,
+    continuations: async (tx, parent, child) => {
+      const continuations = []
+      let cursor: Cursor | undefined
+      do {
+        const page = await tx.scanTasks(
+          { conversationId: parent, kind: Watchdog.definition.name },
+          500,
+          cursor,
+        )
+        for (const task of page.items) {
+          const { conversation, failedTask } = task.input as WatchdogInput
+          if (conversation === child)
+            continuations.push({ task: task.id, request: `${RETRY}${failedTask}` })
+        }
+        cursor = page.next
+      } while (cursor)
+      return continuations
+    },
+  })
   host.implement(WatchdogApi, {
     failures: async (since) =>
       (

@@ -24,6 +24,7 @@ import {
   AssistantEntry,
   configure,
   ToolResultEntry,
+  defineDoc,
   defineExtension,
   defineTask,
   defineTool,
@@ -56,8 +57,8 @@ import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { ConversationsApi, Marks } from '../conversations/api.ts'
 import type { AgentMarkStyle } from '../conversations/refs.ts'
 import { Pin } from '../models/api.ts'
-import { Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
-import type { SubagentsService } from './api.ts'
+import { ChildFailures, Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
+import type { ChildFailuresService, SubagentsService } from './api.ts'
 import { definitionRuns, refName, refOf } from '../../lib/families.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
 import {
@@ -114,6 +115,15 @@ const Anchor = defineTask<null, { phase: 'done' }, null>({
   abort: (_task, runtime, context) =>
     runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), context),
 })
+const Recovered = defineDoc<{ highWater?: number }>({
+  kind: 'ultimate.subagents-recovered',
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  checkpointWhen: () => false,
+  initial: () => ({}),
+})
 const textOf = (message: AssistantMessage | undefined) =>
   (message?.content ?? []).flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('')
 const reportRequestForAnswer = (answer: EntryId) => `subagent-answer:${answer}`
@@ -134,7 +144,7 @@ const replyText = (id: ConversationId, message: AssistantMessage | undefined) =>
   hasCompletedTextAnswer(message)
     ? answerText(message)
     : `Subagent ${id} ${unanswered(message)}. Message it to continue.`
-function createReporter() {
+function createReporter(failures: () => ChildFailuresService | undefined) {
   return defineTask<
     {
       conversationId: ConversationId
@@ -203,15 +213,15 @@ function createReporter() {
                 },
               }
             }
-            const failureBelongsToWatchdog =
-              settled.status === 'unanswered' &&
-              ['model_error', 'no_model', 'interrupted', 'restart_limit'].includes(settled.reason)
-            if (failureBelongsToWatchdog) {
+            if (settled.status === 'unanswered' && failures()?.holds(settled.reason)) {
               action.status = 'failed'
               return { status: 'running', checkpoint: { phase: 'report' } }
             }
             if (settled.status === 'unanswered' && settled.reason !== 'aborted') {
-              const failure = settled.reason
+              const failure =
+                typeof settled.detail === 'string'
+                  ? `${settled.reason}: ${settled.detail}`
+                  : settled.reason
               return { status: 'running', checkpoint: { phase: 'report', report: failure } }
             }
             const childStopped = settled.status === 'unanswered'
@@ -546,6 +556,7 @@ export default function subagents(
     | 'home'
     | 'projectSettings'
     | 'need'
+    | 'want'
     | 'implement'
     | 'resource'
     | 'extensions'
@@ -558,6 +569,8 @@ export default function subagents(
 ) {
   const conversations = host.need(ConversationsApi)
   const workspaces = host.need(WorkspacesApi)
+  host.want(ChildFailures)
+  const failures = () => host.want(ChildFailures)
   const residentDefinitions = async () =>
     (
       await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
@@ -623,6 +636,15 @@ export default function subagents(
     },
     async reconfigure(tx, id, { definition, parentAgent, modelRuntime }) {
       await reconfigure(tx, id, definition, parentAgent, modelRuntime)
+    },
+    async giveUp(tx, parent, child) {
+      const action = Object.values((await tx.doc(Subagents, parent)).actions).findLast(
+        (candidate) => candidate.conversationId === child,
+      )
+      if (action?.status !== 'failed') return
+      const input = await tx.submissionByRequest(child, `subagent:${action.reporter}`)
+      if (input?.status === 'unanswered' && failures()?.holds(input.reason))
+        action.status = 'given-up'
     },
     async residents(_ctx) {
       return (await residentDefinitions()).map(({ name, description }) => ({ name, description }))
@@ -729,7 +751,7 @@ export default function subagents(
     }
     return { ...definition, runs }
   }
-  const Reporter = createReporter()
+  const Reporter = createReporter(failures)
   let unsubscribe: (() => void) | undefined
   let recovery = Promise.resolve()
   const recoverUnreportedAnswer = async (submission: SubmissionRecord) => {
@@ -762,7 +784,7 @@ export default function subagents(
         if (sibling?.status === 'done' && sibling.answer === submission.answer)
           parentMessageNeedsReporter = false
       }
-      if (!parentMessageNeedsReporter && !submission.requestId?.startsWith('watchdog-retry:')) {
+      if (!parentMessageNeedsReporter && !failures()?.continues(submission)) {
         const action = childActions.at(-1)
         const interrupted = action?.status === 'interrupted'
         if (
@@ -829,12 +851,30 @@ export default function subagents(
           })
       }
     })
+    const recovered =
+      (await host.harness().snapshot(Recovered, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))
+        ?.highWater ?? 0
+    const unseen: SubmissionRecord[] = []
     let cursor: Cursor | undefined
     do {
-      const page = await host.scanSubmissions({ status: 'done' }, 500, cursor, BACKGROUND_CONTEXT)
-      for (const submission of page.items) await recoverUnreportedAnswer(submission)
-      cursor = page.next
+      const page = await host.scanSubmissions(
+        { order: 'descending' },
+        500,
+        cursor,
+        BACKGROUND_CONTEXT,
+      )
+      unseen.push(...page.items.filter((submission) => submission.id > recovered))
+      cursor = (page.items.at(-1)?.id ?? 0) > recovered ? page.next : undefined
     } while (cursor)
+    for (const submission of unseen.toReversed()) await recoverUnreportedAnswer(submission)
+    const unsettled = unseen.findLast(
+      (submission) => submission.status === 'queued' || submission.status === 'placed',
+    )
+    await host.harness().commit(async (tx) => {
+      ;(await tx.doc(Recovered, ROOT_CONVERSATION_ID)).highWater = unsettled
+        ? unsettled.id - 1
+        : (unseen[0]?.id ?? recovered)
+    }, BACKGROUND_CONTEXT)
   })
   return defineExtension({
     name: 'subagents',
@@ -1195,33 +1235,16 @@ export default function subagents(
           if (args.action === 'stop') {
             const live = await api.snapshot(LiveDoc, id, context)
             const state = await api.snapshot(Subagents, api.conversationId, context)
-            const watchdogs = await api.commit(async (tx) => {
-              const tasks = []
-              let cursor: Cursor | undefined
-              do {
-                const page = await tx.scanTasks(
-                  { conversationId: api.conversationId, kind: 'watchdog.failure' },
-                  500,
-                  cursor,
-                )
-                tasks.push(
-                  ...page.items.filter(
-                    (task) => (task.input as { conversation?: ConversationId }).conversation === id,
-                  ),
-                )
-                cursor = page.next
-              } while (cursor)
-              return tasks.map((task) => ({
-                task: task.id,
-                request: `watchdog-retry:${(task.input as { failedTask: number }).failedTask}`,
-              }))
-            }, context)
+            const continuations = await api.commit(
+              async (tx) => (await failures()?.continuations(tx, api.conversationId, id)) ?? [],
+              context,
+            )
             const capturedStopTarget = await api.memo(
               'stopTarget',
               {
                 run: live?.run?.taskId ?? null,
                 inputs: live?.run?.inputs ?? [],
-                watchdogs,
+                continuations,
                 reporters: Object.values(state?.actions ?? {}).flatMap((action) =>
                   action.conversationId === id ? [action.reporter] : [],
                 ),
@@ -1230,7 +1253,7 @@ export default function subagents(
             )
             for (const reporter of [
               ...capturedStopTarget.reporters,
-              ...capturedStopTarget.watchdogs.map((task) => task.task),
+              ...capturedStopTarget.continuations.map((task) => task.task),
             ]) {
               await host.harness().abortTask(reporter, context)
               await api.waitForTask(reporter, context)
@@ -1239,7 +1262,7 @@ export default function subagents(
               return Promise.all(
                 [
                   ...capturedStopTarget.reporters.map((reporter) => `subagent:${reporter}`),
-                  ...capturedStopTarget.watchdogs.map((task) => task.request),
+                  ...capturedStopTarget.continuations.map((task) => task.request),
                 ].map((request) => tx.submissionByRequest(id, request)),
               )
             }, context)
