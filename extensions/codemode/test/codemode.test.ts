@@ -579,6 +579,28 @@ it('composes read and bash with private nested results and final JSON details', 
     child: 7,
     title: 'T',
   })
+  server.host.registry.install(
+    defineExtension({
+      name: 'streams-then-throws',
+      tools: [
+        defineTool({
+          name: 'flaky',
+          description: 'Streams progress, then fails',
+          parameters: obj({}),
+          execute: async (_args, api) => {
+            api.output('Starting…')
+            throw new Error('disk full')
+          },
+        }),
+      ],
+    }),
+  )
+  const thrown = await run(
+    server,
+    `try { await tools.flaky({}); } catch (error) { return error.message; }`,
+  )
+  expect(thrown.data.details.value).toContain('Starting…')
+  expect(thrown.data.details.value).toContain('disk full')
   const structured = await run(server, `return await tools.structured({answer:42});`)
   expect(structured.data.details.value).toEqual({ answer: 42 })
   const invalid = await run(server, `await tools.structured({answer:'wrong'});`)
