@@ -36,7 +36,7 @@ import subagents from '../../subagents/server.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import { concludedIn } from '../../conversations/server.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
+import type { ExtensionHost, Opener } from '../../../server/extensions.ts'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -87,8 +87,8 @@ async function fixture(
   const options = { models, registry, now: () => now, settings: { retry: { maxRetries: 0 } } }
   let harness = await Harness.open(storage, options, context)
   const root = await harness.root(context, { agent: { model } })
-  const onOpen: (() => Promise<void>)[] = []
-  const onClose: (() => Promise<void>)[] = []
+  const onOpen: Opener[] = []
+  const onClose: (() => void | Promise<void>)[] = []
   const notices: string[] = []
   let service: WatchdogService | undefined
   const host = {
@@ -98,8 +98,7 @@ async function fixture(
     harness: () => harness,
     metadata: Metadata,
     notice: (text: string) => notices.push(text),
-    onOpen: (callback: () => Promise<void>) => onOpen.push(callback),
-    onClose: (callback: () => Promise<void>) => onClose.push(callback),
+    onOpen: (callback: Opener) => onOpen.push(callback),
     scanSubmissions: (...args: Parameters<MemoryStorage['scanSubmissions']>) =>
       storage.scanSubmissions(...args),
     need: (api: { name: string }) =>
@@ -208,11 +207,14 @@ async function fixture(
     ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ultimate
   }, context)
   async function open() {
-    for (const callback of onOpen) await callback()
+    for (const callback of onOpen) {
+      const cleanup = await callback()
+      if (cleanup) onClose.push(cleanup)
+    }
     harness.resume()
   }
   async function close() {
-    for (const callback of onClose) await callback()
+    for (const callback of onClose.splice(0)) await callback()
     await harness.close(context)
   }
   if (install) await open()
@@ -281,7 +283,7 @@ async function fixture(
       await open()
     },
     detach: async () => {
-      for (const callback of onClose) await callback()
+      for (const callback of onClose.splice(0)) await callback()
     },
     reopen: async () => {
       await close()
@@ -289,7 +291,7 @@ async function fixture(
       await open()
     },
     crash: async () => {
-      for (const callback of onClose) await callback()
+      for (const callback of onClose.splice(0)) await callback()
       harness = await Harness.open(storage, options, context)
       await open()
     },

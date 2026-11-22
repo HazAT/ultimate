@@ -5,6 +5,7 @@ import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durab
 import { expect, it } from 'vitest'
 import { compactionEvents } from '../compactions.ts'
 import { until } from '../../../test/helpers.ts'
+import type { Opener } from '../../../server/extensions.ts'
 
 async function watched() {
   const models = createModels()
@@ -23,17 +24,16 @@ async function watched() {
   const emitted: unknown[] = []
   const resources = new Map<string, unknown>()
   let open!: () => Promise<void>
-  let close!: () => Promise<void>
+  let close: () => void | Promise<void> = () => {}
   compactionEvents({
     harness: () => harness,
     emit: async (_tx: unknown, _event: unknown, data: unknown) => {
       emitted.push(data)
     },
-    onOpen: (callback: () => Promise<void>) => {
-      open = callback
-    },
-    onClose: (callback: () => Promise<void>) => {
-      close = callback
+    onOpen: (callback: Opener) => {
+      open = async () => {
+        close = (await callback()) ?? close
+      }
     },
     notice: (message: string) => notices.push(message),
     resource: (key: string, create: () => unknown) => {

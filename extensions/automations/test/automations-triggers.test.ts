@@ -11,7 +11,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { afterEach, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
+import type { ExtensionHost, Opener } from '../../../server/extensions.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { callTrace } from '../../../server/trace.ts'
 import { Metadata } from '../../../server/metadata.ts'
@@ -44,7 +44,7 @@ async function fixture() {
   const events = eventHost(() => opened.harness, 'automations')
   const resources = new Map<string, unknown>()
   let opener: () => Promise<void>
-  let closer: () => Promise<void>
+  let closer: () => void | Promise<void> = () => {}
   let fail = false
   let rolledBack = false
   const send = vi.fn<() => Promise<object>>(async () => ({}))
@@ -66,11 +66,10 @@ async function fixture() {
       if (!resources.has(key)) resources.set(key, create())
       return resources.get(key)
     },
-    onOpen: (fn: () => Promise<void>) => {
-      opener = fn
-    },
-    onClose: (fn: () => Promise<void>) => {
-      closer = fn
+    onOpen: (fn: Opener) => {
+      opener = async () => {
+        closer = (await fn()) ?? closer
+      }
     },
     ...apis(
       new Map<string, unknown>([
@@ -119,7 +118,7 @@ async function fixture() {
   await events.start()
   closes.push(async () => {
     await events.stop()
-    await closer!()
+    await closer()
     await opened.close()
   })
   const action = (name: keyof typeof actions, args: JsonValue = {}) =>
@@ -155,7 +154,7 @@ async function fixture() {
       return opened.harness
     },
     opener: () => opener!(),
-    closer: () => closer!(),
+    closer: () => closer(),
     fail: () => {
       fail = true
     },

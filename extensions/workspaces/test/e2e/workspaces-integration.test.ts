@@ -17,7 +17,7 @@ import { context, prepareHarness } from '../../../../server/harness.ts'
 import { Metadata } from '../../../../server/metadata.ts'
 import { eventLog } from '../../../../server/events.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
-import type { ExtensionHost } from '../../../../server/extensions.ts'
+import type { ExtensionHost, Opener } from '../../../../server/extensions.ts'
 import type { ActionContext } from '../../../../server/actions.ts'
 import workspaceExtension, { actions, order as workspacesOrder } from '../../server.ts'
 import { Workspaces, workspaces } from '../../workspaces.ts'
@@ -98,8 +98,19 @@ async function fixture(
   const restart = vi.fn<ExtensionHost['restart']>(async () => 'RESTART_CALLED')
   const notice = vi.fn<ExtensionHost['notice']>()
   // As the server: openers run each time the harness opens, cleanups each time it closes.
-  const openers: (() => Promise<void>)[] = []
+  const openers: Opener[] = []
   const closers: (() => Promise<void>)[] = []
+  const openEnds: (() => void | Promise<void>)[] = []
+  const openAll = async () => {
+    for (const open of openers) {
+      const end = await open()
+      if (end) openEnds.push(end)
+    }
+  }
+  const closeAll = async () => {
+    for (const end of openEnds.splice(0)) await end()
+    for (const close of closers) await close()
+  }
   const lookup = ({ name }: { name: string }) => services.get(name)
   // As the server: the real event log, and reactors that run while the harness is open.
   const events = eventLog(
@@ -115,8 +126,10 @@ async function fixture(
     eventLog: events.eventLog,
     react: (...[name, tokens, handler]: Parameters<typeof events.reactor>) => {
       const reactor = events.reactor(name, tokens, handler)
-      openers.push(reactor.start)
-      closers.push(reactor.stop)
+      openers.push(async () => {
+        await reactor.start()
+        return reactor.stop
+      })
       // oxlint-disable-next-line typescript/no-floating-promises -- reactor start waits for its drain chain, which records handler failures rather than rejecting.
       if (started) void reactor.start()
     },
@@ -134,7 +147,7 @@ async function fixture(
     },
     restart,
     notice,
-    onOpen: (callback: () => Promise<void>) => openers.push(callback),
+    onOpen: (callback: Opener) => openers.push(callback),
     onClose: (close: () => Promise<void>) => closers.push(close),
     doc: () => undefined,
     conversations: () => [],
@@ -209,10 +222,10 @@ async function fixture(
   }
   prepared.faux!.setResponses([route])
   opened = await prepared.open()
-  for (const open of openers) await open()
+  await openAll()
   started = true
   cleanup.push(async () => {
-    for (const close of closers) await close()
+    await closeAll()
     await opened.close()
   })
   const create = async () => {
@@ -252,10 +265,10 @@ async function fixture(
     },
     asked,
     reopen: async () => {
-      for (const close of closers) await close()
+      await closeAll()
       await opened.close()
       opened = await prepared.open()
-      for (const open of openers) await open()
+      await openAll()
     },
   }
 }
