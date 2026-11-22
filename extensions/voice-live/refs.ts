@@ -1,85 +1,75 @@
-/** Live voice actions and the standing Voice conversation. Browser-safe. */
+/** Voice mode: a push-to-talk fork of @ultimate, its actions, session document and handoff entry. Browser-safe. */
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
-import { actionRef } from '../../shared/extension-api.ts'
+import { actionRef, docRef } from '../../shared/extension-api.ts'
 
-export type VoiceStatus = { available: true } | { available: false; reason: string }
+/** How one turn reached the model: the recording itself (`audio`) or its transcript (`text`). */
+export type VoiceRoute = 'audio' | 'text'
+
+/** The voice session on the root: the fork in use, while one is open. */
 export type VoiceSession = {
-  phase: 'started' | 'ended'
-  at: number
-  seconds?: number
-}
-/**
- * Where a Voice navigation goes, carried out by the page that holds the voice session: a surface by id or title, a
- * conversation, or the Inbox at an open question (`message`, its id in the Messages log).
- */
-export type VoiceGo = { surface?: string; conversation?: ConversationId; message?: number }
-/**
- * One line of the Voice transcript. `user`: the cleaned request forwarded to @ultimate;
- * `live`: GPT-Live's backchannels; `ultimate`: Voice's speech, `re` the forwarded line it answers;
- * `notice`: an unanswered request or a navigation that failed; `note`: quiet context sent to GPT-Live;
- * `action`: what Voice did on screen or to a card (`go` for a navigation). `at`: when a forwarded line went out.
- */
-export type VoiceLine = {
-  role: 'user' | 'live' | 'ultimate' | 'notice' | 'note' | 'action'
-  text: string
-  forwarded?: true
-  at?: number
-  re?: number
-  source?: { conversation: ConversationId; entry: EntryId }
-  speech?: true
-  go?: VoiceGo
-}
-/** A question to the user that opened while voice mode was on, handed to Voice to announce. */
-export type VoiceQuestion = { message: number; from: ConversationId; title?: string; gist: string }
-export type VoiceUtterance = { text: string; line: number }
-/**
- * What Voice was given at a session's start: the project memory, the user's recent requests to @ultimate and the open
- * branches, as `text`. Only the newest one reaches the model, at its place in the transcript, or after the summary once
- * compaction cut it. `error`: it could not be put together, and Voice started without one.
- */
-export type VoiceContext = {
-  text: string
-  memories: number
-  requests: number
-  branches: number
-  /** Open questions to the user; absent on briefs from before they were listed. */
-  questions?: number
-  tokens: number
-  at: number
-  /** How long it took to put together. */
-  ms?: number
-  error?: string
-  /** Placed again after a compaction cut it. */
-  again?: true
-}
-/** @ultimate's full answer to forwarded line `re`, as Voice received it; `source` is the answer in @ultimate. */
-export type VoiceAnswer = {
-  text: string
-  re: number
-  source?: { conversation: ConversationId; entry: EntryId }
+  id?: ConversationId
+  of?: ConversationId
+  at?: EntryId
+  startedAt?: number
 }
 
-/** No arguments → API key availability, or a reason explaining how to enable it. */
-export const StatusAction = actionRef<null, VoiceStatus>('voice-live', 'status')
-/** `{ sdp }` offer → `{ sdp, conversation }` answer; creates a billable WebRTC session. */
-export const StartAction = actionRef<
-  { sdp: string },
-  { sdp: string; conversation: ConversationId }
->('voice-live', 'start')
-/** A finished user transcript → input to the Voice agent, steering while busy. */
-export const HeardAction = actionRef<{ text: string }, Record<string, never>>('voice-live', 'heard')
-/** GPT-Live's own line or a notice. The user's lines use heard instead. */
-export const LogAction = actionRef<{ role: 'live' | 'notice'; text: string }, { line: number }>(
-  'voice-live',
-  'log',
-)
 /**
- * A question to the user opened while this page's voice mode is on → input to Voice to announce, once per message.
- * The page calls it when the user is not mid-sentence.
+ * One user turn of a voice session, as data on its `voice.turn` input entry. `audio` names the stored recording, `text`
+ * is its transcript (or the typed text), `seconds` the recording's length, `route` how it reached the model, `hint`
+ * what was said about an interrupted reply.
  */
-export const AskedAction = actionRef<{ message: number }, Record<string, never>>(
+export type VoiceTurn = {
+  text: string
+  audio?: string
+  seconds?: number
+  route: VoiceRoute
+  hint?: string
+  images?: number
+}
+
+/** A handoff to @ultimate, written as a `voice.handoff` input entry in @ultimate and as the tool's result in the fork. */
+export type VoiceHandoff = {
+  title: string
+  outcome: string
+  decided?: string[]
+  open?: string[]
+  instruction: string
+  attachments?: string[]
+  from: ConversationId
+}
+
+/** The open voice session on the root: the fork's id, the conversation and entry it forked from, and when. */
+export const VoiceSessionDoc = docRef<VoiceSession>('voice.session')
+
+/** `{ audio: base64, mimeType }` → `{ audio }`, the id of the recording kept for the session's next turn. */
+export const RecordAction = actionRef<{ audio: string; mimeType: string }, { audio: string }>(
   'voice-live',
-  'asked',
+  'record',
 )
-/** Record the ended divider after closing the data-channel session. */
-export const EndAction = actionRef<{ seconds?: number }, Record<string, never>>('voice-live', 'end')
+
+/**
+ * A turn: the transcript (or typed text), the recording it came from, images, and a hint about an interrupted reply.
+ * Opens the session on its first turn. Returns the session's conversation and the route the turn takes.
+ */
+export const TurnAction = actionRef<
+  {
+    text: string
+    audio?: string
+    seconds?: number
+    hint?: string
+    images?: { data: string; mimeType: string }[]
+  },
+  { conversation: ConversationId; route: VoiceRoute }
+>('voice-live', 'turn')
+
+/** Stop the session's current reply, for an interruption. */
+export const StopAction = actionRef<null, Record<string, never>>('voice-live', 'stop')
+
+/** End the session: the fork is concluded and the next turn forks @ultimate again. */
+export const EndAction = actionRef<null, Record<string, never>>('voice-live', 'end')
+
+/** The voice model and whether it hears audio, for the dock's header. */
+export const StatusAction = actionRef<
+  null,
+  { model: string; route: VoiceRoute; transcribes: boolean; reason?: string }
+>('voice-live', 'status')

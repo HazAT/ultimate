@@ -1,969 +1,436 @@
-import { parseConversationId } from '../../lib/ids.ts'
-import type {
-  TaskId,
-  ConversationId,
-  Cursor,
-  ToolExecutionApi,
-  ToolTaskInput,
-  Tx,
-} from '@earendil-works/pi-durable'
-import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import type { Message } from '@earendil-works/pi-ai'
+import type { ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import {
-  AssistantEntry,
+  AgentDoc,
   defineDoc,
   defineExtension,
-  defineTask,
   defineTool,
   GenerationTask,
   hook,
   ROOT_CONVERSATION_ID,
+  ToolTask,
 } from '@earendil-works/pi-durable'
-import type { Context } from '@earendil-works/chord/context'
-import { bool, int, obj, opt, str } from '@earendil-works/pi-schema'
+import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { arr, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import {
-  OPENAI_SECRET as SECRET,
-  openaiSecretOrNonOAuthKey,
-  openaiError,
-} from '../../lib/openai.ts'
-import type { OpenAiError } from '../../lib/openai.ts'
-import { formatAgo } from '../../lib/format.ts'
-import { openQuestion } from '../../lib/message-state.ts'
-import { Messages, MessagesApi } from '../messages/api.ts'
-import type { Message, Question } from '../messages/api.ts'
-import { Standing, SubagentsApi } from '../subagents/api.ts'
-import { ConversationsApi } from '../conversations/api.ts'
-import { LineageApi } from '../lineage/api.ts'
-import {
-  AskedAction,
-  EndAction,
-  HeardAction,
-  LogAction,
-  StartAction,
-  StatusAction,
-} from './refs.ts'
-import {
-  VoiceLineEntry,
-  VoiceContextEntry,
-  VoiceAnswerEntry,
-  VoiceHeardEntry,
-  VoiceQuestionEntry,
-  VoiceUtteranceEntry,
-} from './entries.ts'
-import type {
-  VoiceAnswer,
-  VoiceContext,
-  VoiceGo,
-  VoiceLine,
-  VoiceQuestion,
-  VoiceSession,
-} from './refs.ts'
-import { voiceBrief } from './brief.ts'
+import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { readSettings, userSettingsPath } from '../../lib/settings.ts'
+import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
+import { ConversationsApi } from '../conversations/api.ts'
+import { Standing } from '../subagents/api.ts'
+import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
+import { EndAction, RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
+import type { VoiceHandoff, VoiceRoute, VoiceSession, VoiceTurn } from './refs.ts'
+import { voicePrompt } from './prompt.ts'
 
-const NO_KEY = `Live voice needs an OpenAI API key: add ${SECRET} in ⌘K → Secrets`
-export const secrets = [
-  {
-    name: SECRET,
-    description: 'OpenAI API key for live voice',
-    url: 'https://platform.openai.com/api-keys',
-    provider: 'openai',
-  },
-]
+const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024
+const READ_TOOLS = ['read', 'bash', 'memory', 'web_search', 'web_fetch', 'voice_handoff']
 
-export function liveInstructions() {
-  return `Listen to the user. Speak exactly the commentary you receive, in the user's language, without adding content. Never answer questions about their work yourself or announce a handoff on your own.
+export const userActions = ['record', 'turn', 'stop', 'end']
 
-Backchannel policy
-Give only short, natural backchannels while listening. Answer connection checks, greetings and thanks yourself in a few words ("Yep, I hear you."). Commentary supplies all substantive answers. Say commentary as your own words: never mention that it came from somewhere else, and never say what you were told to say.
-
-Interruption policy
-Stop speaking and listen when the user interrupts.
-
-Delegation policy
-Do not generate <|SpawnThinking|>: always. Do not delegate. The Voice agent receives every finished line and handles requests. Thinking notes are quiet context, not words to read aloud.`
-}
-
-const ForwardReceipt = defineDoc<{ scheduled: boolean }>({
-  kind: 'voice-live.forwarded',
+export const Session = defineDoc<VoiceSession>({
+  kind: 'voice.session',
   checkpointWhen: () => false,
   version: 1,
-  scope: 'task',
-  initial: () => ({ scheduled: false }),
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
 })
-export const userActions = ['status', 'start', 'heard', 'asked', 'log', 'end']
-const terminal = {
-  status: 'terminal',
-  outcome: { status: 'completed', result: null },
-} as const
 
-async function voiceId(host: ExtensionHost) {
-  const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context)
-  if (!standing?.voice) throw new Error('Start live voice first')
-  return standing.voice
+const Fork = defineDoc<{
+  of?: ConversationId
+  at?: EntryId
+  seen?: EntryId
+  introduced?: true
+  ended?: true
+}>({
+  kind: 'voice.fork',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})
+
+export const docs = [Session, Fork]
+
+export const hearsAudio = (model: { provider: string; modelId: string }) =>
+  /gemini/i.test(model.modelId)
+
+async function voiceModel(host: ExtensionHost) {
+  const settings = await readSettings(userSettingsPath(host.userHome))
+  const configured = (settings.voice as { model?: unknown } | undefined)?.model
+  if (typeof configured === 'string' && configured.includes('/')) {
+    const [provider, ...rest] = configured.split('/')
+    return { provider, modelId: rest.join('/') }
+  }
+  return DEFAULT_MODEL
 }
 
-async function lines(tx: Tx, id: ConversationId, limit: number) {
-  const result: VoiceLine[] = []
+const recordings = (host: ExtensionHost) => join(host.home, 'voice')
+const recordingPath = (host: ExtensionHost, id: string) => {
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error('Unknown recording')
+  return join(recordings(host), `${id}.json`)
+}
+
+async function readRecording(host: ExtensionHost, id: string) {
+  return JSON.parse(await readFile(recordingPath(host, id), 'utf8')) as {
+    data: string
+    mimeType: string
+  }
+}
+
+async function lastSettledAnswer(host: ExtensionHost, main: ConversationId) {
+  let cursor: Cursor | undefined
+  let answer: EntryId | undefined
+  do {
+    const page = await host.scanSubmissions(
+      { conversationId: main, status: 'done' },
+      100,
+      cursor,
+      context,
+    )
+    for (const input of page.items)
+      if (input.type === 'input' && input.status === 'done' && (answer ?? 0) < input.answer)
+        answer = input.answer
+    cursor = page.next
+  } while (cursor)
+  if (answer === undefined) throw new Error('@ultimate has no finished turn to fork from yet')
+  return answer
+}
+
+async function withClosingToolResults(tx: Tx, main: ConversationId, answer: EntryId) {
+  const entry = (await tx.entry(answer))!
+  const pending = new Set(
+    entry.model?.flatMap((message) =>
+      message.role === 'assistant'
+        ? message.content.flatMap((part) => (part.type === 'toolCall' ? [part.id] : []))
+        : [],
+    ) ?? [],
+  )
+  if (!pending.size) return answer
   let cursor: Cursor | undefined
   do {
-    const page = await tx.scanEntries({ conversationId: id, order: 'descending' }, 100, cursor)
-    for (const entry of page.items) {
-      if (VoiceLineEntry.is(entry)) result.push(entry.data)
-      if (result.length === limit) return result.toReversed()
+    const page = await tx.scanEntries(
+      { conversationId: main, minEntryId: answer, order: 'ascending' },
+      100,
+      cursor,
+    )
+    for (const result of page.items) {
+      for (const message of result.model ?? [])
+        if (message.role === 'toolResult') pending.delete(message.toolCallId)
+      if (!pending.size) return result.id
     }
     cursor = page.next
   } while (cursor)
-  return result.toReversed()
+  throw new Error('@ultimate is finishing a tool round; try again in a moment')
 }
 
-const pendingBriefs = (host: ExtensionHost) =>
-  host.resource('voice-live.briefs', () => new Map<ConversationId, Promise<unknown>>())
+async function openSession(host: ExtensionHost) {
+  const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
+  if (main === undefined) throw new Error('@ultimate is not available')
+  const answer = await lastSettledAnswer(host, main)
+  const model = await voiceModel(host)
+  return host.harness().commit(async (tx) => {
+    const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+    if (session.id !== undefined && !(await tx.doc(Fork, session.id)).ended) return session.id
+    const at = await withClosingToolResults(tx, main, answer)
+    const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
+    Object.assign(await tx.doc(Fork, fork.id), { of: main, at, seen: at })
+    const agent = await tx.doc(AgentDoc, fork.id)
+    agent.model = model
+    agent.thinkingLevel = 'low'
+    if (Array.isArray(agent.tools) && !agent.tools.includes('voice_handoff'))
+      agent.tools = [...agent.tools, 'voice_handoff']
+    const loaded = agent.modelTools
+    agent.modelTools = Array.isArray(loaded)
+      ? [...loaded, 'voice_handoff']
+      : { ...loaded, add: [...(loaded?.add ?? []), 'voice_handoff'] }
+    Object.assign(await tx.doc(host.metadata, fork.id), { title: 'Voice', label: 'voice' })
+    await host.need(ConversationsApi).setAutomaticSummaries(tx, fork.id, false)
+    Object.assign(session, { id: fork.id, of: main, at, startedAt: Date.now() })
+    return fork.id
+  }, context)
+}
 
-const briefMessage = (text: string) => ({
-  role: 'user' as const,
-  content: text,
-  timestamp: Date.now(),
-})
-
-async function newestBrief(tx: Tx, id: ConversationId) {
+async function sinceFork(tx: Tx, main: ConversationId, after: EntryId) {
+  const lines: string[] = []
   let cursor: Cursor | undefined
   do {
-    const page = await tx.scanEntries({ conversationId: id, order: 'descending' }, 100, cursor)
-    const found = page.items.find((candidate) => VoiceContextEntry.is(candidate))
-    if (found) return found
-    cursor = page.next
-  } while (cursor)
-  return undefined
-}
-
-async function queueLatestBrief(
-  host: ExtensionHost,
-  id: ConversationId,
-  session: string,
-  brief: VoiceContext,
-) {
-  const supersededBrief = await host.harness().commit((tx) => newestBrief(tx, id), context)
-  const conversation = (await host.harness().conversation(id, context))!
-
-  await conversation.submit(
-    {
-      type: 'write',
-      requestId: `voice:context:${session}`,
-      entry: {
-        kind: VoiceContextEntry.kind,
-        data: { ...brief, transient: true },
-        ...(brief.error ? {} : { model: [briefMessage(brief.text)] }),
-        ...(supersededBrief
-          ? { edits: [{ target: supersededBrief.id, action: 'omit' as const }] }
-          : {}),
-      },
-    },
-    context,
-  )
-}
-
-async function writeDisplayOnlyEntry(
-  host: ExtensionHost,
-  id: ConversationId,
-  kind: 'voice.line' | 'voice.session',
-  data: VoiceLine | VoiceSession,
-  requestId: string,
-) {
-  const conversation = (await host.harness().conversation(id, context))!
-  const settled = await (
-    await conversation.submit({ type: 'write', requestId, entry: { kind, data } }, context)
-  ).wait(context)
-  if (settled.status !== 'done' || settled.type !== 'write')
-    throw new Error(`Voice write failed: ${settled.reason}`)
-  return settled.entry
-}
-
-function questionsText(questions: Question[]) {
-  return questions
-    .map((q, i) =>
-      [
-        `${q.ref ?? i + 1}. ${q.text}`,
-        ...(q.options ?? []).map(
-          (o, j) =>
-            `${o.key ?? String.fromCharCode(97 + j)}: ${o.label}${o.detail ? ` — ${o.detail}` : ''}${o.recommended ? ' (the asker’s pick)' : ''}`,
-        ),
-        ...(q.scale
-          ? [
-              `Scale ${q.scale.min} (${q.scale.low ?? ''}) to ${q.scale.max} (${q.scale.high ?? ''})`,
-            ]
-          : []),
-      ].join('\n'),
+    const page = await tx.scanEntries(
+      { conversationId: main, minEntryId: offsetEntryId(after, 1), order: 'ascending' },
+      100,
+      cursor,
     )
-    .join('\n\n')
-}
-
-function askerOf(
-  host: ExtensionHost,
-  message: Pick<Message, 'from'>,
-  main: ConversationId | undefined,
-) {
-  if (message.from === main) return '@ultimate'
-  const title = host.conversations().find((c) => c.id === message.from)?.title
-  return `#${message.from}${title ? ` "${title}"` : ''}`
-}
-
-function questionText(host: ExtensionHost, message: Message, main: ConversationId | undefined) {
-  return [
-    `Message ${message.id} from ${askerOf(host, message, main)}, asked ${formatAgo(message.at, Date.now(), { ago: true })}:`,
-    message.text,
-    ...(message.questions?.length ? ['', `Questions:\n${questionsText(message.questions)}`] : []),
-  ].join('\n')
-}
-
-export async function openList(host: ExtensionHost, ctx: Context) {
-  const [open, standing] = await Promise.all([
-    host.need(MessagesApi).openQuestions(ctx),
-    host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx),
-  ])
-  const now = Date.now()
-  return open.length
-    ? open
-        .map(
-          (q) =>
-            `- message ${q.message} from ${askerOf(host, { from: q.conversation }, standing?.ultimate)}: ${q.text} (asked ${formatAgo(q.at, now, { ago: true })})`,
-        )
-        .join('\n')
-    : 'No open questions.'
-}
-
-async function gistOf(host: ExtensionHost, message: number, ctx: Context) {
-  return (await host.need(MessagesApi).openQuestions(ctx)).find((q) => q.message === message)?.text
-}
-
-const speak = (host: ExtensionHost, id: ConversationId, text: string, taskId: TaskId) =>
-  writeDisplayOnlyEntry(
-    host,
-    id,
-    'voice.line',
-    { role: 'ultimate', text, speech: true },
-    `voice:say:${taskId}`,
-  )
-
-const forwardedLineKey = (request: string) => `voice:line:${request}`
-
-const forwardedUserLine = (input: { text: string }): VoiceLine => ({
-  role: 'user',
-  text: input.text,
-  forwarded: true,
-  at: Date.now(),
-})
-
-async function submitAnswerOnce(
-  host: ExtensionHost,
-  voice: ConversationId,
-  line: number,
-  text: string,
-  source?: VoiceAnswer['source'],
-) {
-  const conversation = (await host.harness().conversation(voice, context))!
-  const data: VoiceAnswer = { text, re: line, ...(source ? { source } : {}) }
-  await conversation.submit(
-    {
-      type: 'input',
-      requestId: `voice:answer:${line}`,
-      whenBusy: 'steer',
-      entry: { kind: VoiceAnswerEntry.kind, data },
-      content: `@ultimate answered (to forwarded line ${line}):\n${text}`,
-    },
-    context,
-  )
-}
-
-export function answerTask(host: ExtensionHost) {
-  return defineTask<
-    {
-      voice: ConversationId
-      main: ConversationId
-      request: string
-      text: string
-      firstMessage: number
-      message?: number
-    },
-    { phase: 'answer' },
-    null
-  >({
-    name: 'voice-live.answer',
-    version: 1,
-    initial: () => ({ phase: 'answer' }),
-    phases: {
-      answer: async (task, runtime, ctx) => {
-        const input = task.input
-        const main = input.main
-        const recipient = (await host.harness().conversation(main, ctx))!
-        const line = await writeDisplayOnlyEntry(
-          host,
-          input.voice,
-          'voice.line',
-          forwardedUserLine(input),
-          forwardedLineKey(input.request),
-        )
-
-        const explicitlyNamedQuestion = input.message ?? false
-        let receipt
-
-        const log = await runtime.snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
-        const matchingReplyBeforeCrash =
-          explicitlyNamedQuestion === false
-            ? undefined
-            : log?.messages.find(
-                (m) =>
-                  m.from === 'user' && m.re === explicitlyNamedQuestion && m.text === input.text,
-              )
-        const reply =
-          explicitlyNamedQuestion === false
-            ? undefined
-            : (matchingReplyBeforeCrash?.id ??
-              (await host
-                .need(MessagesApi)
-                .answer(explicitlyNamedQuestion, input.text, ctx)
-                .catch((error: unknown) => {
-                  const alreadyAnsweredElsewhere =
-                    error instanceof Error && error.message === 'These questions are no longer open'
-                  if (alreadyAnsweredElsewhere) return undefined
-                  throw error
-                })))
-        if (reply !== undefined) {
-          const watch = (await runtime.watchDoc(Messages, ROOT_CONVERSATION_ID, ctx))!
-          const placed = Promise.withResolvers<void>()
-          const inspect = (value: typeof watch.value) => {
-            const m = value?.messages.find((candidate) => candidate.id === reply)
-            if (m?.entry) placed.resolve()
-            else if (m && ['failed', 'stopped'].includes(m.state))
-              placed.reject(new Error(m.error ?? 'Voice reply was not delivered'))
-          }
-          watch.start(async (call) => {
-            if (call.kind === 'value') inspect(call.value)
-          })
-          try {
-            inspect(watch.value)
-            await awaitWithContext(placed.promise, ctx)
-          } finally {
-            await watch.stop()
-          }
-          let cursor: Cursor | undefined
-          do {
-            const page = await host.scanSubmissions({ conversationId: main }, 100, cursor, ctx)
-            const found = page.items.find((s) => s.requestId === `board:${reply}`)
-            if (found) {
-              receipt = await host.harness().submission(found.id, ctx)
-              break
-            }
-            cursor = page.next
-          } while (cursor)
-          if (!receipt) throw new Error('Voice question reply has no input receipt')
-        } else {
-          receipt = await recipient.submit(
-            {
-              type: 'input',
-              requestId: `voice:${line}`,
-              whenBusy: 'steer',
-              entry: {
-                kind: VoiceUtteranceEntry.kind,
-                data: { text: input.text, line },
-              },
-              content: `The user, by voice (live transcript, may contain mistakes):\n${input.text}`,
-            },
-            ctx,
+    for (const entry of page.items)
+      for (const message of entry.model ?? []) {
+        const text =
+          typeof message.content === 'string'
+            ? message.content
+            : message.role === 'toolResult'
+              ? ''
+              : message.content
+                  .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+                  .join(' ')
+        if (text.trim() && message.role !== 'toolResult')
+          lines.push(
+            `${message.role === 'user' ? 'In' : '@ultimate'}: ${text.trim().slice(0, 400)}`,
           )
-        }
-        const settled = await receipt.wait(ctx)
-        if (settled.status !== 'done' || settled.type !== 'input') {
-          await writeDisplayOnlyEntry(
-            host,
-            input.voice,
-            'voice.line',
-            {
-              role: 'notice',
-              text:
-                settled.status === 'unanswered' && settled.reason === 'aborted'
-                  ? 'Ultimate was stopped before it answered.'
-                  : 'Ultimate did not answer that.',
-              re: line,
-            },
-            `voice:notice:${line}`,
-          )
-          await submitAnswerOnce(host, input.voice, line, 'Ultimate did not answer that request.')
-          await runtime.commit(
-            () => ({
-              status: 'terminal',
-              outcome: {
-                status: 'failed',
-                error: { message: 'Ultimate did not answer the voice input' },
-              },
-            }),
-            ctx,
-          )
-          return
-        }
-        const source = await host.harness().commit(async (tx) => {
-          const answer = await tx.entry(AssistantEntry, settled.answer)
-          const message = answer?.model?.[0]
-          const plain =
-            message?.role === 'assistant'
-              ? message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
-              : ''
-
-          const toolCallsInAnsweredRun = new Set<string>()
-          let cursor: Cursor | undefined
-          do {
-            const page = await tx.scanEntries(
-              {
-                conversationId: main,
-                minEntryId: settled.entry,
-                maxEntryId: settled.answer,
-                order: 'ascending',
-              },
-              100,
-              cursor,
-            )
-            for (const entry of page.items)
-              for (const m of entry.model ?? [])
-                if (m.role === 'assistant')
-                  for (const p of m.content)
-                    if (p.type === 'toolCall') toolCallsInAnsweredRun.add(p.id)
-            cursor = page.next
-          } while (cursor)
-          const sent = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.findLast(
-            (m) =>
-              m.id >= input.firstMessage &&
-              m.from === main &&
-              m.to === 'user' &&
-              m.call &&
-              [...toolCallsInAnsweredRun].some(
-                (call) => m.call === call || m.call!.startsWith(`${call}/`),
-              ),
-          )
-          return sent
-            ? `${sent.text}${sent.questions?.length ? `\n\nQuestions:\n${questionsText(sent.questions)}` : ''}`
-            : plain
-        }, ctx)
-        await submitAnswerOnce(
-          host,
-          input.voice,
-          line,
-          source || 'Ultimate finished without an answer.',
-          {
-            conversation: main,
-            entry: settled.answer,
-          },
-        )
-        await runtime.commit(() => terminal, ctx)
-      },
-    },
-    abort: (_task, runtime, ctx) =>
-      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx),
-  })
+      }
+    cursor = page.next
+  } while (cursor && lines.length < 40)
+  return lines.slice(-12)
 }
 
-function liveFailureWithProviderReason({ status, message, code }: OpenAiError) {
-  const said = message ? `: ${message}` : ''
-  return `OpenAI live session failed (HTTP ${status}${code ? ` ${code}` : ''})${said}`
-}
+const unwrap = <T extends object>(args: unknown) =>
+  (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as Partial<T>
 
 export const actions = {
-  status: implementAction(StatusAction, async (_args, { host, signal }) =>
-    (await openaiSecretOrNonOAuthKey(host, signal))
-      ? { available: true as const }
-      : { available: false as const, reason: NO_KEY },
-  ),
-  start: implementAction(StartAction, async (args, { host, signal }) => {
-    const sdp = args && typeof args === 'object' && !Array.isArray(args) ? args.sdp : undefined
-    if (typeof sdp !== 'string' || !sdp.trim()) throw new Error('Expected an SDP offer')
-    const key = await openaiSecretOrNonOAuthKey(host, signal)
-    if (!key) throw new Error(NO_KEY)
-    const id = await host.need(SubagentsApi).standing('voice', context)
-
-    const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
-    const started = performance.now()
-    const advisoryBrief = (
-      main
-        ? voiceBrief(host, main, context)
-        : Promise.reject(new Error('@ultimate is not available'))
-    ).then(
-      (made) => ({ ...made, ms: Math.round(performance.now() - started) }),
-      (error: unknown): VoiceContext => ({
-        text: '',
-        memories: 0,
-        requests: 0,
-        branches: 0,
-        tokens: 0,
-        at: Date.now(),
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    )
-    const sessionSeedLineLimit = 10
-    const sessionSeedLineCharsBelowTokenCap = 200
-    const recent = await host.harness().commit((tx) => lines(tx, id, sessionSeedLineLimit), context)
-    const boundedSessionSeed = recent
-      .filter((line) => line.role !== 'note')
-      .map((line) => ({
-        type: 'message',
-        role: line.role === 'user' ? 'user' : 'assistant',
-        content: [
-          {
-            type: line.role === 'user' ? 'input_text' : 'output_text',
-            text: line.text.slice(0, sessionSeedLineCharsBelowTokenCap),
-          },
-        ],
-      }))
-    const response = await fetch('https://api.openai.com/v1/live/sessions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        session: {
-          model: 'gpt-live-1',
-          instructions: liveInstructions(),
-          audio: { output: { voice: 'marin' } },
-          delegation: { type: 'client' },
-          ...(boundedSessionSeed.length ? { input: boundedSessionSeed } : {}),
-        },
-        transport: { type: 'webrtc', sdp },
-      }),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
-    })
-    if (!response.ok) throw new Error(liveFailureWithProviderReason(await openaiError(response)))
-    const answer = (await response.json()) as {
-      session?: { id?: string }
-      transport?: { type?: string; sdp?: string }
+  status: implementAction(StatusAction, async (_args, { host }) => {
+    const model = await voiceModel(host)
+    const available = host.modelRuntime
+      .getAvailableSnapshot()
+      .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
+    return {
+      model: `${model.provider}/${model.modelId}`,
+      route: hearsAudio(model) ? ('audio' as const) : ('text' as const),
+      transcribes: true,
+      ...(available ? {} : { reason: `${model.provider}/${model.modelId} has no login` }),
     }
-    if (!answer.session?.id || answer.transport?.type !== 'webrtc' || !answer.transport.sdp)
-      throw new Error('OpenAI returned no WebRTC session answer')
-    await writeDisplayOnlyEntry(
-      host,
-      id,
-      'voice.session',
-      { phase: 'started', at: Date.now() },
-      `voice:start:${answer.session.id}`,
-    )
-    const briefs = pendingBriefs(host)
-    const placing = advisoryBrief
-      .then((made) => queueLatestBrief(host, id, answer.session!.id!, made))
-      .catch((error: unknown) => console.error('Voice brief:', error))
-      .finally(() => {
-        if (briefs.get(id) === placing) briefs.delete(id)
-      })
-    briefs.set(id, placing)
-    return { sdp: answer.transport.sdp, conversation: id }
   }),
-  heard: implementAction(HeardAction, async (args, { host }) => {
-    const text = args && typeof args === 'object' && !Array.isArray(args) ? args.text : undefined
-    if (typeof text !== 'string' || !text.trim()) throw new Error('Expected text')
-    const id = await voiceId(host)
-
-    await pendingBriefs(host).get(id)
+  record: implementAction(RecordAction, async (args, { host }) => {
+    const { audio, mimeType } = unwrap<{ audio: unknown; mimeType: unknown }>(args)
+    if (
+      typeof audio !== 'string' ||
+      !audio ||
+      typeof mimeType !== 'string' ||
+      !mimeType.startsWith('audio/')
+    )
+      throw new Error('Expected { audio: base64, mimeType: audio/* }')
+    if (Buffer.byteLength(audio, 'base64') > MAX_AUDIO_BYTES)
+      throw new Error('The recording is too large')
+    const id = randomUUID()
+    await mkdir(recordings(host), { recursive: true })
+    await writeFile(recordingPath(host, id), JSON.stringify({ data: audio, mimeType }), {
+      mode: 0o600,
+    })
+    return { audio: id }
+  }),
+  turn: implementAction(TurnAction, async (args, { host }) => {
+    const { text, audio, seconds, hint, images } = unwrap<{
+      text: unknown
+      audio: unknown
+      seconds: unknown
+      hint: unknown
+      images: unknown
+    }>(args)
+    if (typeof text !== 'string' || (!text.trim() && typeof audio !== 'string'))
+      throw new Error('Expected text or a recording')
+    if (audio !== undefined && typeof audio !== 'string') throw new Error('Expected a recording id')
+    if (audio !== undefined) await readRecording(host, audio)
+    const pictures = (Array.isArray(images) ? images : []).map((image: unknown) => {
+      const { data, mimeType } = unwrap<{ data: unknown; mimeType: unknown }>(image)
+      if (
+        typeof data !== 'string' ||
+        typeof mimeType !== 'string' ||
+        !imageMimeTypes.includes(mimeType)
+      )
+        throw new Error(`Expected images as { data, mimeType: ${imageMimeTypes.join(' | ')} }`)
+      if (Buffer.byteLength(data, 'base64') > maxImageBytes)
+        throw new Error('An image exceeds 2 MiB')
+      return { type: 'image' as const, data, mimeType }
+    })
+    if (pictures.length > maxImages) throw new Error(`At most ${maxImages} images`)
+    const id = await openSession(host)
+    const model = (await host.harness().snapshot(AgentDoc, id, context))?.model ?? DEFAULT_MODEL
+    const route: VoiceRoute = typeof audio === 'string' && hearsAudio(model) ? 'audio' : 'text'
+    const data: VoiceTurn = {
+      text: text.trim(),
+      route,
+      ...(typeof audio === 'string' ? { audio } : {}),
+      ...(typeof seconds === 'number' && Number.isFinite(seconds) ? { seconds } : {}),
+      ...(typeof hint === 'string' && hint.trim() ? { hint: hint.trim() } : {}),
+      ...(pictures.length ? { images: pictures.length } : {}),
+    }
+    const said = data.text || '(no transcript yet)'
+    const words =
+      typeof audio === 'string'
+        ? `Daniel, by voice${route === 'audio' ? ' (his recording follows)' : ' (transcribed)'}: ${said}`
+        : `Daniel, typed: ${said}`
+    const content = [
+      ...(data.hint ? [{ type: 'text' as const, text: data.hint }] : []),
+      { type: 'text' as const, text: words },
+      ...pictures,
+    ]
     const conversation = (await host.harness().conversation(id, context))!
     await conversation.submit(
       {
         type: 'input',
         whenBusy: 'steer',
-        entry: { kind: VoiceHeardEntry.kind, data: { text: text.trim() } },
-        content: `The user, by voice (live transcript, may contain mistakes):\n${text.trim()}`,
+        entry: { kind: VoiceTurnEntry.kind, data },
+        content,
       },
       context,
     )
+    return { conversation: id, route }
+  }),
+  stop: implementAction(StopAction, async (_args, { host }) => {
+    const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+    if (id !== undefined) await (await host.harness().conversation(id, context))?.abort(context)
     return {}
   }),
-  asked: implementAction(AskedAction, async (args, { host }) => {
-    const id = args && typeof args === 'object' && !Array.isArray(args) ? args.message : undefined
-    if (typeof id !== 'number') throw new Error('Expected a message id')
-    const voice = await voiceId(host)
-    const [open, standing] = await Promise.all([
-      host.need(MessagesApi).openQuestions(context),
-      host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context),
-    ])
-    const question = open.find((q) => q.message === id)
-
-    if (!question) return {}
-    const data: VoiceQuestion = {
-      message: id,
-      from: question.conversation,
-      title: askerOf(host, { from: question.conversation }, standing?.ultimate),
-      gist: question.text,
-    }
-    const conversation = (await host.harness().conversation(voice, context))!
-    const oncePerQuestionKey = `voice:asked:${id}`
-    await conversation.submit(
-      {
-        type: 'input',
-        requestId: oncePerQuestionKey,
-        whenBusy: 'steer',
-        entry: { kind: VoiceQuestionEntry.kind, data },
-        content: `A new question for the user arrived: message ${id} from ${data.title}: ${data.gist}`,
-      },
-      context,
-    )
-    return {}
-  }),
-  log: implementAction(LogAction, async (args, { host }) => {
-    const { role, text } = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
-    if ((role !== 'live' && role !== 'notice') || typeof text !== 'string' || !text.trim())
-      throw new Error('Expected a live or notice role and text')
-    const line = await writeDisplayOnlyEntry(
-      host,
-      await voiceId(host),
-      'voice.line',
-      { role, text: text.trim() },
-      `voice:log:${crypto.randomUUID()}`,
-    )
-    return { line }
-  }),
-  end: implementAction(EndAction, async (args, { host }) => {
-    const seconds =
-      args && typeof args === 'object' && !Array.isArray(args) ? args.seconds : undefined
-    if (
-      seconds !== undefined &&
-      (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0)
-    )
-      throw new Error('Expected nonnegative seconds')
-    await writeDisplayOnlyEntry(
-      host,
-      await voiceId(host),
-      'voice.session',
-      {
-        phase: 'ended',
-        at: Date.now(),
-        ...(seconds !== undefined ? { seconds } : {}),
-      },
-      `voice:end:${crypto.randomUUID()}`,
-    )
+  end: implementAction(EndAction, async (_args, { host }) => {
+    const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+    if (id === undefined) return {}
+    await (await host.harness().conversation(id, context))?.abort(context)
+    await host.harness().commit(async (tx) => {
+      ;(await tx.doc(Fork, id)).ended = true
+      const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+      delete session.id
+      delete session.of
+      delete session.at
+      delete session.startedAt
+      await host.need(ConversationsApi).concludeIn(tx, [id], 'user')
+    }, context)
+    await rm(recordings(host), { recursive: true, force: true })
     return {}
   }),
 }
 
-export default (host: ExtensionHost) => {
-  async function commitForwardOnce(
-    api: ToolExecutionApi,
-    ctx: Context,
-    text: string,
-    message?: number,
-  ) {
-    const main = (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
-    if (!main) throw new Error('@ultimate is not available')
-    const input = {
-      voice: api.conversationId,
-      main,
-      request: String(api.taskId),
-      text,
-      ...(message !== undefined ? { message } : {}),
-    }
+async function withRecording(
+  host: ExtensionHost,
+  messages: readonly Message[],
+  turn: { data: VoiceTurn; model?: readonly Message[] },
+) {
+  const said = turn.model?.find((message) => message.role === 'user')
+  const at = messages.findLastIndex(
+    (message) => message.role === 'user' && message.timestamp === said?.timestamp,
+  )
+  const message = messages[at]
+  if (message?.role !== 'user' || typeof message.content === 'string') return undefined
+  const { data, mimeType } = await readRecording(host, turn.data.audio!)
+  return messages.with(at, {
+    ...message,
+    content: [...message.content, { type: 'image' as const, data, mimeType }],
+  })
+}
 
-    await api.commit(async (tx) => {
-      const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-      const receipt = await tx.doc(ForwardReceipt, api.taskId)
-      if (receipt.scheduled) return
-      await tx.createTask(
-        answerTask(host),
-        { ...input, firstMessage: log.next },
-        {
-          conversationId: api.conversationId,
-          ownership: { kind: 'conversation' },
-          background: true,
-        },
-      )
-      receipt.scheduled = true
-    }, ctx)
-    host.harness().resume()
-    await writeDisplayOnlyEntry(
-      host,
-      api.conversationId,
-      'voice.line',
-      forwardedUserLine(input),
-      forwardedLineKey(input.request),
-    )
-  }
-  host.need(MessagesApi)
-  host.need(SubagentsApi)
-  host.need(LineageApi)
+export default function voiceExtension(host: ExtensionHost) {
   host.need(ConversationsApi)
   return defineExtension({
     name: 'voice-live',
-    tasks: [answerTask(host)],
     hooks: [
       hook(GenerationTask, {
-        beforeRequest: async (request, api, ctx) => {
-          if (
-            (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.voice !== api.conversationId
-          )
-            return undefined
-          const id = api.conversationId
-          const view = await (await host.harness().conversation(id, ctx))!.context(ctx)
-          if (!view.head) return undefined
-          const postCutoffBrief = await host.harness().commit(async (tx) => {
-            const newest = await newestBrief(tx, id)
-            const data = newest?.data
-            if (!newest || !data || data.error || view.entries.some((e) => e.id === newest.id))
-              return undefined
-            const again = briefMessage(data.text)
-            await tx.appendEntry(id, {
-              kind: VoiceContextEntry.kind,
-              data: { ...data, again: true, transient: true },
-              model: [again],
+        beforeInput: async (_input, { tx, conversationId }) => {
+          const fork = await tx.doc(Fork, conversationId)
+          if (fork.of === undefined) return undefined
+          if (fork.ended) throw new Error('This voice session has ended')
+          const entries = []
+          const seen = fork.seen ?? fork.at!
+          if (!fork.introduced) {
+            fork.introduced = true
+            entries.push({
+              kind: 'conversations.identity',
+              model: [
+                {
+                  role: 'user' as const,
+                  content: voicePrompt(conversationId, fork.of),
+                  timestamp: Date.now(),
+                },
+              ],
             })
-            return again
-          }, ctx)
-          return postCutoffBrief ? { messages: [...request.messages, postCutoffBrief] } : undefined
+          } else {
+            const latest = (await tx.scanEntries({ conversationId: fork.of }, 1)).items[0]?.id
+            if (latest !== undefined && latest > seen) {
+              const lines = await sinceFork(tx, fork.of, seen)
+              fork.seen = latest
+              if (lines.length)
+                entries.push({
+                  kind: 'conversations.identity',
+                  model: [
+                    {
+                      role: 'user' as const,
+                      content: `Meanwhile in @ultimate's main conversation (newest last):\n${lines.join('\n')}`,
+                      timestamp: Date.now(),
+                    },
+                  ],
+                })
+            }
+          }
+          return entries.length ? { entries } : undefined
+        },
+        beforeRequest: async (request, api, ctx) => {
+          const fork = await api.snapshot(Fork, api.conversationId, ctx)
+          if (fork?.of === undefined) return undefined
+          const page = await api.entries({ order: 'descending' }, 20, undefined, ctx)
+          const turn = page.items.find((entry) => VoiceTurnEntry.is(entry))
+          if (!turn || !VoiceTurnEntry.is(turn) || turn.data.route !== 'audio' || !turn.data.audio)
+            return undefined
+          const messages = await withRecording(host, request.messages, turn)
+          return messages ? { messages } : undefined
+        },
+      }),
+      hook(ToolTask, {
+        beforeTool: async (call, api, ctx) => {
+          const fork = await api.snapshot(Fork, api.conversationId, ctx)
+          if (fork?.of === undefined) return undefined
+          if (fork.ended) return { block: 'This voice session has ended' }
+          if (READ_TOOLS.includes(call.name)) return undefined
+          return {
+            block: `Voice mode only reads and hands off: ${call.name} is blocked. Use voice_handoff to ask @ultimate to do it.`,
+          }
         },
       }),
     ],
     tools: [
       defineTool({
-        name: 'voice_say',
+        name: 'voice_handoff',
         deferred: true,
         description:
-          'Speak text to the user through GPT-Live. Use for your answer, clarification or brief acknowledgement.',
-        parameters: obj({ text: str({ minLength: 1 }) }),
-        ...safeToRerun(
-          "The tool task's request id writes the spoken line once; correlation is memoized.",
-        ),
-        async execute({ text }, api, ctx) {
-          if (api.conversationId !== (await voiceId(host))) throw new Error('Only Voice speaks')
-
-          const task = await api.getTask(api.taskId, ctx)
-          const roundInput = task?.input as ToolTaskInput
-          const roundReplyTo =
-            (await api.memo('re', ctx)) ??
-            (await api.memo(
-              're',
-              await api.commit(async (tx) => {
-                let cursor: Cursor | undefined
-                do {
-                  const page = await tx.scanEntries(
-                    {
-                      conversationId: api.conversationId,
-                      ...(roundInput.kind === 'model' ? { maxEntryId: roundInput.assistant } : {}),
-                      order: 'descending',
-                    },
-                    100,
-                    cursor,
-                  )
-                  for (const entry of page.items) {
-                    if (VoiceAnswerEntry.is(entry)) return entry.data.re
-                    if (entry.kind === 'voice.heard') return false
-                  }
-                  cursor = page.next
-                } while (cursor)
-                return false
-              }, ctx),
-              ctx,
-            ))
-          await writeDisplayOnlyEntry(
-            host,
-            api.conversationId,
-            'voice.line',
+          'Hand the agreed outcome of this voice conversation to the main @ultimate as a message it acts on. Only after Daniel agreed. Write it the way you would brief yourself.',
+        parameters: obj({
+          title: str({ minLength: 1 }),
+          outcome: str({ minLength: 1 }),
+          decided: opt(arr(str())),
+          open: opt(arr(str())),
+          instruction: str({ minLength: 1 }),
+          attachments: opt(arr(str())),
+        }),
+        ...safeToRerun('The handoff is submitted once per tool call through its request id.'),
+        async execute(args, api, ctx) {
+          const fork = await api.snapshot(Fork, api.conversationId, ctx)
+          if (fork?.of === undefined) throw new Error('voice_handoff works only in a voice session')
+          const handoff: VoiceHandoff = { ...args, from: api.conversationId }
+          const lines = [
+            `Handoff from voice mode (#${api.conversationId}, a fork of you where Daniel talked it through): ${args.title}`,
+            `Outcome: ${args.outcome}`,
+            ...(args.decided?.length ? ['Decided:', ...args.decided.map((d) => `- ${d}`)] : []),
+            ...(args.open?.length ? ['Open:', ...args.open.map((o) => `- ${o}`)] : []),
+            ...(args.attachments?.length
+              ? ['Screenshots he shared:', ...args.attachments.map((a) => `- ${a}`)]
+              : []),
+            `Instruction: ${args.instruction}`,
+          ]
+          const main = (await host.harness().conversation(fork.of, ctx))!
+          await main.submit(
             {
-              role: 'ultimate',
-              text,
-              speech: true,
-              ...(typeof roundReplyTo === 'number' ? { re: roundReplyTo } : {}),
+              type: 'input',
+              requestId: `voice:handoff:${api.taskId}`,
+              whenBusy: 'followUp',
+              entry: { kind: VoiceHandoffEntry.kind, data: handoff },
+              content: lines.join('\n'),
             },
-            `voice:say:${api.taskId}`,
+            ctx,
           )
-          return {
-            output: [{ type: 'text', text: 'Spoken.' }],
-            control: { terminate: true },
-          }
-        },
-      }),
-      defineTool({
-        name: 'voice_ask_ultimate',
-        deferred: true,
-        description:
-          'Pass a clear, self-contained request in the user’s words to @ultimate. Its answer returns as input; do not wait here.',
-        parameters: obj({ request: str({ minLength: 1 }) }),
-        ...safeToRerun(
-          'A transactional receipt schedules once; the forwarded line has a stable write request id.',
-        ),
-        async execute({ request }, api, ctx) {
-          if (api.conversationId !== (await voiceId(host)))
-            throw new Error('Only Voice forwards requests')
-          await commitForwardOnce(api, ctx, request)
-          return {
-            output: [
-              {
-                type: 'text',
-                text: 'Passed to @ultimate. Its answer will arrive as input.',
-              },
-            ],
-          }
-        },
-      }),
-      defineTool({
-        name: 'voice_show',
-        deferred: true,
-        description:
-          'Show something on the user’s screen: a surface (`surface`, its id or title: agent, inbox, memory, review, system, pr-triage…), a conversation (`conversation`, its id), or an open question in the Inbox (`message`). Give exactly one. With `say`, also speak that short line and end your turn.',
-        parameters: obj({
-          surface: opt(str({ minLength: 1 })),
-          conversation: opt(int()),
-          message: opt(int()),
-          say: opt(str({ minLength: 1 })),
-        }),
-        ...safeToRerun('Stable request ids write each line once.'),
-        async execute({ surface, conversation, message, say }, api, ctx) {
-          if (api.conversationId !== (await voiceId(host))) throw new Error('Only Voice navigates')
-          if ([surface, conversation, message].filter((v) => v !== undefined).length !== 1)
-            throw new Error('Give exactly one of surface, conversation or message')
-          let go: VoiceGo
-          let label: string
-          if (message !== undefined) {
-            const gist = await gistOf(host, message, ctx)
-            if (gist === undefined)
-              throw new Error(`Message ${message} is not an open question to the user`)
-            go = { message }
-            label = `Inbox · ${gist}`
-          } else if (conversation !== undefined) {
-            const found = host.conversations().find((c) => c.id === conversation)
-            if (!found) throw new Error(`No conversation #${conversation}`)
-            go = { conversation: parseConversationId(conversation) }
-            label = `#${conversation}${found.title ? ` ${found.title}` : ''}`
-          } else {
-            go = { surface: surface! }
-            label = surface!
-          }
-          await writeDisplayOnlyEntry(
-            host,
-            api.conversationId,
-            'voice.line',
-            { role: 'action', text: label, go },
-            `voice:show:${api.taskId}`,
-          )
-          if (!say) return { output: [{ type: 'text', text: `Showing ${label}.` }] }
-          await speak(host, api.conversationId, say, api.taskId)
-          return {
-            output: [{ type: 'text', text: 'Shown and spoken.' }],
-            control: { terminate: true },
-          }
-        },
-      }),
-      defineTool({
-        name: 'voice_question',
-        deferred: true,
-        description:
-          'Read the questions waiting on the user. Without `message`: every open one, oldest first (the Inbox order). With `message`: that one in full (who asks, its text, each numbered question with lettered options and the asker’s picks) and, unless `show` is false, its card shown in the Inbox.',
-        parameters: obj({ message: opt(int()), show: opt(bool()) }),
-        ...safeToRerun("Reads, and one navigation line under the tool task's stable request id."),
-        async execute({ message, show }, api, ctx) {
-          if (api.conversationId !== (await voiceId(host)))
-            throw new Error('Only Voice reads questions')
-          if (message === undefined)
-            return { output: [{ type: 'text', text: await openList(host, ctx) }] }
-          const [log, standing, gist] = await Promise.all([
-            api.snapshot(Messages, ROOT_CONVERSATION_ID, ctx),
-            api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx),
-            gistOf(host, message, ctx),
-          ])
-          const found = log?.messages.find((m) => m.id === message)
-          if (!found || gist === undefined)
-            return {
-              output: [
-                {
-                  type: 'text',
-                  text: `Message ${message} is no longer open.\n\nStill open:\n${await openList(host, ctx)}`,
-                },
-              ],
-            }
-          if (show !== false)
-            await writeDisplayOnlyEntry(
-              host,
-              api.conversationId,
-              'voice.line',
-              { role: 'action', text: `Inbox · ${gist}`, go: { message } },
-              `voice:show:${api.taskId}`,
-            )
-          return {
-            output: [{ type: 'text', text: questionText(host, found, standing?.ultimate) }],
-          }
-        },
-      }),
-      defineTool({
-        name: 'voice_answer',
-        deferred: true,
-        description:
-          'Settle open question `message` with the user’s answer `text` (numbered parts with their letters, in their words), or close it unanswered with `dismiss`. Only after you read the answer back and the user confirmed it. Returns the questions still open.',
-        parameters: obj({
-          message: int(),
-          text: opt(str({ minLength: 1 })),
-          dismiss: opt(bool()),
-        }),
-        ...safeToRerun(
-          'A reply or dismissal commits a receipt keyed by this call, so a replay after a crash finds the settlement instead of the closed question. The forward to @ultimate is memoized.',
-        ),
-        async execute({ message, text, dismiss }, api, ctx) {
-          if (api.conversationId !== (await voiceId(host)))
-            throw new Error('Only Voice answers questions')
-          if (!dismiss && !text) throw new Error('Give the answer text, or dismiss')
-          const main = (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
-          const found = (await api.snapshot(Messages, ROOT_CONVERSATION_ID, ctx))?.messages.find(
-            (m) => m.id === message,
-          )
-          const call = { taskId: api.taskId, callId: api.callId }
-
-          const forwardedBeforeReplay = await api.memo<boolean>('settled', ctx)
-          const toMain =
-            forwardedBeforeReplay || (!dismiss && found !== undefined && found.from === main)
-          if (toMain) {
-            if (!forwardedBeforeReplay) {
-              if (!openQuestion(found!))
-                throw new Error(`Message ${message} is not an open question to the user`)
-
-              await commitForwardOnce(api, ctx, text!, message)
-              await api.memo('settled', true, ctx)
-            }
-          } else if (dismiss) await host.need(MessagesApi).dismiss(message, ctx, undefined, call)
-          else await host.need(MessagesApi).answer(message, text!, ctx, undefined, call)
-          if (!toMain)
-            await writeDisplayOnlyEntry(
-              host,
-              api.conversationId,
-              'voice.line',
-              {
-                role: 'action',
-                text: dismiss
-                  ? `Dismissed message ${message}`
-                  : `Answered message ${message}: ${text}`,
-              },
-              `voice:answered:${api.taskId}`,
-            )
-          return {
-            output: [
-              {
-                type: 'text',
-                text: `${dismiss ? 'Dismissed' : 'Answered'}${toMain ? '; @ultimate’s reply will arrive as input' : ''}.\n\nStill open:\n${await openList(host, ctx)}`,
-              },
-            ],
-          }
-        },
-      }),
-      defineTool({
-        name: 'voice_note',
-        deferred: true,
-        description: 'Give GPT-Live quiet context, without speaking it.',
-        parameters: obj({ text: str({ minLength: 1 }) }),
-        ...safeToRerun("The tool task's stable request id writes the context note once."),
-        async execute({ text }, api) {
-          if (api.conversationId !== (await voiceId(host)))
-            throw new Error('Only Voice sends thinking notes')
-          await writeDisplayOnlyEntry(
-            host,
-            api.conversationId,
-            'voice.line',
-            { role: 'note', text },
-            `voice:note:${api.taskId}`,
-          )
-          return {
-            output: [{ type: 'text', text: 'Noted.' }],
-            control: { terminate: true },
-          }
+          return { output: [{ type: 'text', text: 'Sent to @ultimate.' }] }
         },
       }),
     ],

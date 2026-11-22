@@ -91,7 +91,6 @@ export default defineConfig({
           'extensions/sounds/engine.ts',
           'extensions/sounds/speaker.ts',
           'extensions/sounds/tones.ts',
-          'extensions/voice-live/session.ts',
         ],
         rules: { 'ultimate/no-unowned-work': 'error' },
       },
