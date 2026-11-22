@@ -198,3 +198,45 @@ it('lets an agent tick the right one of two same-text to-dos, add one for @ultim
   })
   expect(harness.submits).toEqual([{ text: 'Work on to-do #2: Tidy', source: 'agent' }])
 })
+
+it('links the URLs in a to-do, and only its checkbox ticks it', async ({ onTestFinished }) => {
+  store.start()
+  onTestFinished(() => store.stop())
+  harness.sources.at(-1)!.open()
+  harness.actions.length = 0
+  const container = renderSolid(() => (
+    <ExtensionName value="todos">
+      <TodoList inbox={0} />
+    </ExtensionName>
+  ))
+  await settle()
+  const note = 'obsidian://open?vault=jamie-brain&file=Marketing%20Me'
+  harness.server!.of(1)!.send('doc', {
+    kind: 'todos',
+    value: {
+      next: 2,
+      items: [todo(1, 'user', `Think (${note}), then see https://example.com/a?b=1.`)],
+    },
+  })
+  await settle()
+  flush()
+  const row = container.querySelector('[data-todo="1"]')!
+  expect(
+    [...row.querySelectorAll('a')].map((link) => [link.textContent, link.href, link.target]),
+  ).toEqual([
+    [note, note, '_blank'],
+    ['https://example.com/a?b=1', 'https://example.com/a?b=1', '_blank'],
+  ])
+  expect(row.textContent).toContain(`Think (${note}), then see https://example.com/a?b=1.`)
+
+  for (const link of row.querySelectorAll('a'))
+    link.addEventListener('click', (event) => event.preventDefault())
+  row.querySelector('a')!.click()
+  row.querySelector<HTMLElement>('[data-todo-text]')!.click()
+  await settle()
+  expect(harness.actions).toEqual([])
+
+  row.querySelector<HTMLElement>('[role="checkbox"]')!.click()
+  await settle()
+  expect(harness.actions).toEqual([{ name: 'done', args: { id: 1 }, source: 'person' }])
+})

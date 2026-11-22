@@ -32,6 +32,8 @@ import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
 
 const waits = 'text-amber-700 dark:text-amber-300'
+const webOrObsidianLinkWithoutClosingPunctuation =
+  /((?:https?|obsidian):\/\/[^\s<>()]*[^\s<>().,;:!?'"])/
 
 export function TodoList() {
   const { entries, failures } = Waiting()
@@ -181,7 +183,7 @@ function TodoRow(props: {
     props.todo.owner === 'user' ? 'Ask @ultimate to help with this' : 'Have @ultimate work on this'
   return (
     <li class="group/todo flex items-start rounded hover:bg-muted/50" data-todo={props.todo.id}>
-      <label class="flex min-w-0 flex-1 items-start gap-2.5 py-1.5 pl-2">
+      <label class="flex shrink-0 cursor-pointer self-stretch py-1.5 pr-1.5 pl-2">
         <Checkbox
           aria-label={`${props.todo.done ? 'Reopen' : 'Done'} #${props.todo.id}: ${props.todo.text}`}
           bind={[() => !!props.todo.done, () => void props.toggle(props.todo)]}
@@ -191,13 +193,32 @@ function TodoRow(props: {
               'data-checked:border-muted-foreground/40 data-checked:bg-muted data-checked:text-muted-foreground',
           )}
         />
+      </label>
+      <div class="flex min-w-0 flex-1 items-start gap-2.5 py-1.5 pl-1">
         <span
           class={cn(
             'min-w-0 flex-1 text-[13px] leading-snug break-words',
             props.todo.done && 'text-muted-foreground line-through decoration-muted-foreground/50',
           )}
+          data-todo-text
         >
-          {props.todo.text}
+          <For
+            each={props.todo.text.split(webOrObsidianLinkWithoutClosingPunctuation)}
+            keyed={false}
+          >
+            {(part, index) => (
+              <Show when={index % 2} fallback={part()}>
+                <a
+                  class="wrap-anywhere text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+                  href={part()}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {part()}
+                </a>
+              </Show>
+            )}
+          </For>
         </span>
         <time
           class="shrink-0 pt-px font-mono text-[11px] text-muted-foreground/70"
@@ -207,7 +228,7 @@ function TodoRow(props: {
           {props.todo.done && props.todo.owner === 'ultimate' ? '@ultimate · ' : ''}
           {props.todo.id} · {formatAgo(at(), props.now)}
         </time>
-      </label>
+      </div>
       <Show when={props.start && !props.todo.done} fallback={<span class="w-2 shrink-0" />}>
         <Button
           aria-label={`${help()} #${props.todo.id}: ${props.todo.text}`}
