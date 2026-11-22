@@ -329,9 +329,32 @@ it('calls extension actions with caller context and rejects missing or disabled 
     export const actions = {
       echo: async (args, ctx) => ({ args, conversationId: ctx.conversationId, signal: ctx.signal instanceof AbortSignal }),
       fail: async () => { throw new Error('Action failed'); },
-    };`,
+      secret: async () => ({ ok: true }),
+    };
+    export const userActions = ['secret'];`,
   )
-  await until(() => !!server.extensions.action('action-test', 'echo'))
+  const userOnlyPath = join(options.ultimateRoot, 'extensions/user-only-test')
+  await mkdir(userOnlyPath)
+  await writeFile(
+    join(userOnlyPath, 'server.ts'),
+    `import { defineExtension } from '@earendil-works/pi-durable';
+    export default defineExtension({ name: 'user-only-test' });
+    export const actions = { onlyUser: async () => ({ ok: true }) };
+    export const userActions = ['onlyUser'];`,
+  )
+  const noActionsPath = join(options.ultimateRoot, 'extensions/no-actions-test')
+  await mkdir(noActionsPath)
+  await writeFile(
+    join(noActionsPath, 'server.ts'),
+    `import { defineExtension } from '@earendil-works/pi-durable';
+    export default defineExtension({ name: 'no-actions-test' });`,
+  )
+  await until(
+    () =>
+      !!server.extensions.action('action-test', 'echo') &&
+      !!server.extensions.action('user-only-test', 'onlyUser') &&
+      server.extensions.info().some((entry) => entry.name === 'no-actions-test' && entry.server),
+  )
   const result = await run(
     server,
     `return await ultimate.action('action-test', 'echo', { value: 42 });`,
@@ -356,9 +379,28 @@ it('calls extension actions with caller context and rejects missing or disabled 
   const defaults = await run(server, `return await ultimate.action('action-test', 'echo');`)
   expect(defaults.data.details.value).toMatchObject({ args: null })
   for (const [extension, action, error] of [
-    ['missing', 'echo', 'Unknown extension action: missing/echo'],
-    ['action-test', 'missing', 'Unknown extension action: action-test/missing'],
-    ['action-test', 'toString', 'Unknown extension action: action-test/toString'],
+    ['missing', 'echo', 'Unknown extension action: missing/echo (unknown extension)'],
+    [
+      'action-test',
+      'missing',
+      'Unknown extension action: action-test/missing (available: echo, fail)',
+    ],
+    [
+      'action-test',
+      'toString',
+      'Unknown extension action: action-test/toString (available: echo, fail)',
+    ],
+    ['action-test', 'secret', 'action-test/secret is a user-only action'],
+    [
+      'user-only-test',
+      'missing',
+      'Unknown extension action: user-only-test/missing (no agent actions)',
+    ],
+    [
+      'no-actions-test',
+      'missing',
+      'Unknown extension action: no-actions-test/missing (extension exposes no actions)',
+    ],
     ['action-test', 'fail', 'Action failed'],
   ]) {
     const failed = await run(server, `return await ultimate.action('${extension}', '${action}');`)
@@ -373,7 +415,9 @@ it('calls extension actions with caller context and rejects missing or disabled 
   await until(() => !server.extensions.action('action-test', 'echo'))
   const disabled = await run(server, `return await ultimate.action('action-test', 'echo');`)
   expect(disabled.data.isError).toBe(true)
-  expect(disabled.text).toContain('Unknown extension action: action-test/echo')
+  expect(disabled.text).toContain(
+    'Unknown extension action: action-test/echo (extension is disabled)',
+  )
 })
 
 it('discovers extension contracts: summaries first, then one api.ts and refs.ts by name', async () => {

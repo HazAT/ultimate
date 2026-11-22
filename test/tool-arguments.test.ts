@@ -7,10 +7,24 @@ import {
   fauxToolCall,
 } from '@earendil-works/pi-ai/providers/faux'
 import { isRetryableAssistantError } from '@earendil-works/pi-ai/utils/retry'
-import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durable'
+import {
+  createRegistry,
+  defineExtension,
+  defineTool,
+  Harness,
+  MemoryStorage,
+} from '@earendil-works/pi-durable'
+import { arr, bool, obj, opt, str } from '@earendil-works/pi-schema'
 import { afterEach, expect, it, vi } from 'vitest'
+import { strEnum } from '../lib/schema.ts'
 import { context } from '../server/harness.ts'
-import { guardStream, guardToolArguments, MAX_WHITESPACE_RUN } from '../server/tool-arguments.ts'
+import {
+  enrichValidationMessage,
+  guardStream,
+  guardToolArguments,
+  MAX_WHITESPACE_RUN,
+  validationHints,
+} from '../server/tool-arguments.ts'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -181,4 +195,160 @@ it('lets the generation retry a degenerate response and answer', async () => {
     { stopReason: 'stop', errorMessage: undefined },
   ])
   expect(faux.state.callCount).toBe(2)
+})
+
+it('adds schema hints to missing enum, object and unknown-field validation errors without duplicating them', () => {
+  const schema = {
+    ...obj({
+      action: strEnum(['start', 'stop', 'list']),
+      questions: opt(
+        arr(
+          obj({
+            text: str({ minLength: 1 }),
+            kind: strEnum(['choice', 'multi', 'confirm', 'text', 'scale']),
+            options: opt(
+              arr(
+                obj({
+                  label: str({ minLength: 1 }),
+                  key: opt(str()),
+                  detail: opt(str()),
+                }),
+              ),
+            ),
+          }),
+        ),
+      ),
+    }),
+    additionalProperties: false,
+  }
+
+  const message = [
+    'Validation failed for tool "demo":',
+    '  - action: missing',
+    '  - questions.0.kind: missing',
+    '  - questions.0.options.0: expected object, got string',
+    '  - extra: unknown field',
+    '',
+    'Received arguments:',
+    '{\n  "note": "  - action: missing"\n}',
+  ].join('\n')
+
+  expect(enrichValidationMessage(message, schema)).toBe(
+    [
+      'Validation failed for tool "demo":',
+      '  - action: missing (expected one of ["start","stop","list"])',
+      '  - questions.0.kind: missing (expected one of ["choice","multi","confirm","text","scale"])',
+      '  - questions.0.options.0: expected object, got string (required: label; optional: key, detail)',
+      '  - extra: unknown field (allowed: action, questions)',
+      '',
+      'Received arguments:',
+      '{\n  "note": "  - action: missing"\n}',
+    ].join('\n'),
+  )
+
+  const alreadyEnumerated =
+    'Validation failed for tool "demo":\n  - action: expected one of ["start","stop","list"]\n\nReceived arguments:\n{"action":"bad"}'
+  expect(enrichValidationMessage(alreadyEnumerated, schema)).toBe(alreadyEnumerated)
+})
+
+it('enriches invalid_arguments diagnostics through the validationHints afterTool hook', async () => {
+  const faux = fauxProvider()
+  const collection = createModels()
+  collection.setProvider(faux.provider)
+  const demo = defineExtension({
+    name: 'demo-tools',
+    tools: [
+      defineTool({
+        name: 'subagent',
+        description: 'Delegate work.',
+        parameters: obj({
+          action: strEnum(['start', 'message', 'wait', 'stop', 'list', 'land', 'discard']),
+          agent: opt(str()),
+        }),
+        execute: async () => ({ output: [{ type: 'text', text: 'ok' }] }),
+      }),
+      defineTool({
+        name: 'message',
+        description: 'Send a message.',
+        parameters: obj({
+          to: str(),
+          text: str({ minLength: 1 }),
+          questions: opt(
+            arr(
+              obj({
+                text: str({ minLength: 1 }),
+                kind: strEnum(['choice', 'multi', 'confirm', 'text', 'scale']),
+                options: opt(
+                  arr(
+                    obj({
+                      label: str({ minLength: 1 }),
+                      key: opt(str()),
+                      recommended: opt(bool()),
+                    }),
+                  ),
+                ),
+              }),
+            ),
+          ),
+        }),
+        execute: async () => ({ output: [{ type: 'text', text: 'ok' }] }),
+      }),
+    ],
+  })
+  const registry = createRegistry()
+  const hints = validationHints(
+    (name) =>
+      registry
+        .snapshot()
+        .tools()
+        .findLast((entry) => entry.tool.name === name)?.tool.parameters,
+  )
+  registry.install(hints)
+  registry.install(demo)
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall('subagent', {}, { id: 'c1' }),
+        fauxToolCall(
+          'message',
+          { to: 'user', text: 'Pick', questions: [{ text: 'Which?', options: ['a', 'b'] }] },
+          { id: 'c2' },
+        ),
+      ],
+      { stopReason: 'toolUse' },
+    ),
+    fauxAssistantMessage('Fixed.'),
+  ])
+  const storage = new MemoryStorage()
+  storage.close = async () => {}
+  const harness = await Harness.open(
+    storage,
+    { models: collection, registry, settings: { extensions: [hints, demo] } },
+    context,
+  )
+  cleanups.push(() => harness.close(context))
+  const root = await harness.root(context, {
+    agent: { model: { provider: 'faux', modelId: 'faux-1' } },
+  })
+  const submitted = await root.submit({ type: 'input', content: 'Run tools.' }, context)
+  expect((await submitted.wait(context)).status).toBe('done')
+  const results = (await root.context(context)).entries.filter(
+    (entry) => entry.kind === 'pi.tool-result',
+  )
+  const textOf = (entry: (typeof results)[number]) =>
+    (
+      (entry.model?.[0] as { content?: { type: string; text?: string }[] } | undefined)?.content ??
+      []
+    )
+      .map((part) => part.text ?? '')
+      .join('\n')
+  expect(textOf(results[0])).toContain(
+    'action: missing (expected one of ["start","message","wait","stop","list","land","discard"])',
+  )
+  expect(textOf(results[1])).toContain(
+    'questions.0.kind: missing (expected one of ["choice","multi","confirm","text","scale"])',
+  )
+  expect(textOf(results[1])).toContain(
+    'questions.0.options.0: expected object, got string (required: label; optional: key, recommended)',
+  )
 })
