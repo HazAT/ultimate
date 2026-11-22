@@ -14,7 +14,9 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-/** A Streamable HTTP MCP server with one `echo` tool, answering only requests that carry the token. */
+/** A Streamable HTTP MCP server with `echo` and `shout` tools, answering only requests that carry the token. A call with
+ * `{text: 'busy'}` is refused with a 429, as a rate-limited gateway does; `shout` without `text` gets invalid params. */
+let initializes = 0
 async function serve(token: string) {
   const server = createServer((request, response) => {
     if (request.method !== 'POST') {
@@ -29,10 +31,31 @@ async function serve(token: string) {
     request.on('data', (chunk) => (text += chunk))
     request.on('end', () => {
       const message = JSON.parse(text)
+      if (message.method === 'initialize') initializes++
       const params = message.params ?? {}
       const args = params.arguments ?? {}
       if (message.id === undefined) {
         response.writeHead(202).end()
+        return
+      }
+      if (args.text === 'busy') {
+        response.writeHead(429, { 'content-type': 'application/json' }).end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: message.id,
+            result: { content: [{ type: 'text', text: 'ratelimited' }], isError: true },
+          }),
+        )
+        return
+      }
+      if (params.name === 'shout' && args.text === undefined) {
+        response.writeHead(200, { 'content-type': 'application/json' }).end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: message.id,
+            error: { code: -32602, message: 'text is required' },
+          }),
+        )
         return
       }
       const results: Record<string, unknown> = {
@@ -47,6 +70,15 @@ async function serve(token: string) {
               name: 'echo',
               description: 'Says it back',
               inputSchema: { type: 'object', properties: { text: { type: 'string' } } },
+            },
+            {
+              name: 'shout',
+              description: 'Says it loud',
+              inputSchema: {
+                type: 'object',
+                properties: { text: { type: 'string' } },
+                required: ['text'],
+              },
             },
           ],
         },
@@ -100,7 +132,7 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
   const status = () => actions.status(null, { host } as never) as unknown as McpServerStatus[]
   await until(() => status().every((server) => server.state !== 'connecting'))
   expect(status()).toMatchObject([
-    { name: 'echo', state: 'connected', tools: 1 },
+    { name: 'echo', state: 'connected', tools: 2 },
     { name: 'locked', state: 'failed' },
     { name: 'broken', state: 'failed', error: 'Invalid entry: needs a command or a url' },
   ])
@@ -113,6 +145,18 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
     isError: false,
   })
   expect(await run({ server: 'echo', tool: 'echo', args: {} })).toMatchObject({ isError: true })
+  const shout = await run({ server: 'echo', tool: 'shout', args: { loud: true } })
+  expect(shout).toMatchObject({ isError: true })
+  expect(JSON.stringify(shout)).toContain('text is required')
+  expect(JSON.stringify(shout)).toContain('\\"required\\":[\\"text\\"]')
+  const connections = initializes
+  expect(await run({ server: 'echo', tool: 'echo', args: { text: 'busy' } })).toMatchObject({
+    isError: true,
+  })
+  expect(await run({ server: 'echo', tool: 'echo', args: { text: 'hi' } })).toMatchObject({
+    isError: false,
+  })
+  expect(initializes).toBe(connections)
   expect(await run({ server: 'locked', tool: 'echo' })).toMatchObject({
     isError: true,
     output: [{ text: expect.stringContaining('MCP server locked is failed') }],
