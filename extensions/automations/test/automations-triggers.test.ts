@@ -69,7 +69,6 @@ async function fixture() {
     onOpen: (fn: () => Promise<void>) => {
       opener = fn
     },
-    onRelease: () => {},
     onClose: (fn: () => Promise<void>) => {
       closer = fn
     },

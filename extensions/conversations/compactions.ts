@@ -7,7 +7,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { Compacted } from './refs.ts'
 
 export function compactionEvents(
-  host: Pick<ExtensionHost, 'harness' | 'emit' | 'onOpen' | 'onClose' | 'notice' | 'resource'>,
+  host: Pick<ExtensionHost, 'harness' | 'emit' | 'onOpen' | 'notice' | 'resource'>,
 ) {
   const emittedAcrossReloads = host.resource('conversations.compactions', () => new Set<number>())
   const failuresNoticedAcrossReloads = host.resource(
@@ -31,10 +31,8 @@ export function compactionEvents(
         .catch((error: unknown) => host.notice(`Compaction event: ${String(error)}`)),
     )
   }
-  let stop: (() => void) | undefined
   host.onOpen(async () => {
-    stop?.()
-    stop = onCommit(host.harness(), (publication) => {
+    return onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'task') {
           const task = change.value
@@ -58,9 +56,5 @@ export function compactionEvents(
         emitWithoutCrashRecovery(entry, reason)
       }
     })
-  })
-  host.onClose(async () => {
-    stop?.()
-    stop = undefined
   })
 }

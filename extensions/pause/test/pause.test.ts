@@ -114,7 +114,6 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
     })(),
     onOpen: (callback: () => Promise<void>) => void openers.push(callback),
     onClose: () => {},
-    onRelease: () => {},
     conversations: () => [],
   } as unknown as ExtensionHost
   prepared.registry.install(pauseExtension(host))

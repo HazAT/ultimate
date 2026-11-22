@@ -551,7 +551,6 @@ export default function subagents(
     | 'extensions'
     | 'notice'
     | 'onOpen'
-    | 'onClose'
     | 'scanSubmissions'
     | 'emit'
   >,
@@ -730,7 +729,6 @@ export default function subagents(
     return { ...definition, runs }
   }
   const Reporter = createReporter()
-  let unsubscribe: (() => void) | undefined
   let recovery = Promise.resolve()
   const recoverUnreportedAnswer = async (submission: SubmissionRecord) => {
     if (
@@ -804,11 +802,6 @@ export default function subagents(
       }
     }, BACKGROUND_CONTEXT)
   }
-  host.onClose(async () => {
-    unsubscribe?.()
-    unsubscribe = undefined
-    await recovery
-  })
   host.onOpen(async () => {
     await pruneRetired(BACKGROUND_CONTEXT)
     for (const { name } of await residentDefinitions()) {
@@ -818,8 +811,7 @@ export default function subagents(
           .standing(name, BACKGROUND_CONTEXT)
           .catch((error: unknown) => host.notice(`Standing agent @${name}: ${String(error)}`))
     }
-    unsubscribe?.()
-    unsubscribe = onCommit(host.harness(), (publication) => {
+    const unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type !== 'submission') continue
         recovery = recovery
@@ -835,6 +827,10 @@ export default function subagents(
       for (const submission of page.items) await recoverUnreportedAnswer(submission)
       cursor = page.next
     } while (cursor)
+    return async () => {
+      unsubscribe()
+      await recovery
+    }
   })
   return defineExtension({
     name: 'subagents',

@@ -85,7 +85,6 @@ async function fixture() {
       return resources.get(key)
     },
     metadata: Metadata,
-    onRelease: () => {},
     onClose: (callback: () => Promise<void>) => void closers.push(callback),
     onOpen: (callback: () => Promise<void>) => void openers.push(callback),
     projectSetup: async () => ({ decision: false }),

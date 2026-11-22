@@ -51,7 +51,6 @@ export async function seedSeen(tx: Tx, id: ConversationId, main: string, at: num
 }
 
 export function watchSeen(host: ExtensionHost, ctx: Context) {
-  let unsubscribe: (() => void) | undefined
   let pending = Promise.resolve()
   const seed = (id: ConversationId) => {
     pending = pending.then(async () => {
@@ -64,7 +63,7 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
   }
   host.onOpen(async () => {
     const harness = host.harness()
-    unsubscribe = onCommit(harness, (publication) => {
+    const unsubscribe = onCommit(harness, (publication) => {
       for (const change of publication.changes)
         if (change.type === 'conversation' && !change.value.owner)
           rebuiltOnOpen(
@@ -85,10 +84,10 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
       return ids
     }, ctx)
     for (const id of records) await seed(id)
-  })
-  host.onClose(async () => {
-    unsubscribe?.()
-    await pending
+    return async () => {
+      unsubscribe()
+      await pending
+    }
   })
 }
 

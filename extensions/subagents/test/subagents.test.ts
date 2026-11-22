@@ -32,7 +32,7 @@ import { emit } from '../../../server/events.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import subagents, { actions } from '../server.ts'
 import watchdog from '../../watchdog/server.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
+import type { ExtensionHost, Opener } from '../../../server/extensions.ts'
 import { Runs, Started, Subagents } from '../api.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import codemode from '../../codemode/server.ts'
@@ -91,8 +91,8 @@ async function fixture(
   prepared.registry.install(CodingTools)
   if (extension) prepared.registry.install(extension)
   let opened: OpenHost | undefined
-  const onOpen: (() => Promise<void>)[] = []
-  const onClose: (() => Promise<void>)[] = []
+  const onOpen: Opener[] = []
+  const onClose: (() => void | Promise<void>)[] = []
   const backend = subagents({
     projectSettings: () => projectSettings(prepared.projectRoot, prepared.userHome),
     ...prepared,
@@ -105,9 +105,6 @@ async function fixture(
     notice: () => {},
     onOpen: (callback) => {
       onOpen.push(callback)
-    },
-    onClose: (callback) => {
-      onClose.push(callback)
     },
     emit,
   })
@@ -152,13 +149,9 @@ async function fixture(
         implement: () => {},
         need: idleNeed,
         notice: (message: string) => errors.push(message),
-        onOpen: (callback: () => Promise<void>) => {
+        onOpen: (callback: Opener) => {
           onOpen.push(callback)
         },
-        onClose: (callback: () => Promise<void>) => {
-          onClose.push(callback)
-        },
-        onRelease: () => {},
       } as unknown as ExtensionHost),
     )
   prepared.registry.install(
@@ -180,7 +173,6 @@ async function fixture(
       },
       resource: (_key, create) => create(),
       onOpen: () => {},
-      onRelease: () => {},
       onClose: () => {},
       onLoadError: () => {},
       onBeforeLoad: () => {},
@@ -246,7 +238,11 @@ async function fixture(
       for (const callback of onClose) await callback()
       await close()
     }
-    for (const callback of onOpen) await callback()
+    onClose.length = 0
+    for (const callback of onOpen) {
+      const cleanup = await callback()
+      if (cleanup) onClose.push(cleanup)
+    }
     hosts.push(opened)
     return opened
   }

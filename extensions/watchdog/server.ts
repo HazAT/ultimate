@@ -449,15 +449,7 @@ export default function watchdog(host: ExtensionHost) {
     }, context)
   }
 
-  let unsubscribe: (() => void) | undefined
   let recovery = Promise.resolve()
-  const close = async () => {
-    unsubscribe?.()
-    unsubscribe = undefined
-    await recovery
-  }
-  host.onClose(close)
-  host.onRelease(close)
   host.implement(WatchdogApi, {
     failures: async (since) =>
       (
@@ -465,8 +457,7 @@ export default function watchdog(host: ExtensionHost) {
       ).filter((failure) => failure.at >= since),
   })
   host.onOpen(async () => {
-    unsubscribe?.()
-    unsubscribe = onCommit(host.harness(), (publication) => {
+    const unsubscribe = onCommit(host.harness(), (publication) => {
       const inputs = publication.changes.flatMap((change) =>
         change.type === 'submission' && failedInput(change.value) ? [change.value] : [],
       )
@@ -517,6 +508,10 @@ export default function watchdog(host: ExtensionHost) {
       const receipts = await tx.doc(Receipts, ROOT_CONVERSATION_ID)
       advanceCompletedPrefixWatermark(receipts, tasks)
     }, context)
+    return async () => {
+      unsubscribe()
+      await recovery
+    }
   })
   return defineExtension({
     name: 'watchdog',

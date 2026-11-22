@@ -17,6 +17,7 @@ import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { prepareHarness } from '../../../server/harness.ts'
 import { emit } from '../../../server/events.ts'
 import type { OpenHost } from '../../../server/harness.ts'
+import type { Opener } from '../../../server/extensions.ts'
 import subagents from '../server.ts'
 import { Profile, Standing, Started } from '../api.ts'
 import type { SubagentsService } from '../api.ts'
@@ -89,7 +90,7 @@ async function fixture() {
   prepared.registry.install(defineExtension({ name: 'owned', tools: [tool] }))
   let host!: OpenHost
   let service!: SubagentsService
-  const openers: (() => Promise<void>)[] = []
+  const openers: Opener[] = []
   // Holds the next commit the extension makes until `release`, so a test edits a definition between a call's start
   // and its commit.
   let held: { reached: () => void; release: Promise<void> } | undefined
@@ -134,7 +135,6 @@ async function fixture() {
     extensions: () => [],
     notice: () => {},
     onOpen: (callback) => openers.push(callback),
-    onClose: () => {},
     emit,
   })
   prepared.registry.install(backend)

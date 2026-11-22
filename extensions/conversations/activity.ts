@@ -5,9 +5,8 @@ import { isInput } from '../../lib/entries.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 
 export function activityBehavior(
-  host: Pick<ExtensionHost, 'harness' | 'metadata' | 'onOpen' | 'onClose' | 'notice'>,
+  host: Pick<ExtensionHost, 'harness' | 'metadata' | 'onOpen' | 'notice'>,
 ) {
-  let stop: (() => void) | undefined
   let closed = false
   let draining: Promise<void> | undefined
   const pending = new Set<ConversationId>()
@@ -80,7 +79,7 @@ export function activityBehavior(
   }
   host.onOpen(async () => {
     closed = false
-    stop = onCommit(host.harness(), (publication) => {
+    const stop = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
         if (change.type === 'conversation') pending.add(change.value.id)
         if (
@@ -103,10 +102,10 @@ export function activityBehavior(
     }, context)
     schedule()
     await draining
-  })
-  host.onClose(async () => {
-    closed = true
-    stop?.()
-    await draining
+    return async () => {
+      closed = true
+      stop()
+      await draining
+    }
   })
 }

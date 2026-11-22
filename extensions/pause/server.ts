@@ -34,10 +34,7 @@ const State = defineDoc<PauseDocState>({
 })
 export const docs = [State]
 
-type Host = Pick<
-  ExtensionHost,
-  'harness' | 'resource' | 'onOpen' | 'onClose' | 'onRelease' | 'implement' | 'conversations'
->
+type Host = Pick<ExtensionHost, 'harness' | 'resource' | 'onOpen' | 'implement' | 'conversations'>
 
 const sharedPauseFlag = (host: Pick<ExtensionHost, 'resource'>) =>
   host.resource('pause.flag', () => ({ paused: false }))
@@ -371,16 +368,7 @@ async function noteRunsThenRelease(host: Host, auto = false) {
 
 export default function pauseExtension(host: Host) {
   host.implement(PauseApi, { paused: () => sharedPauseFlag(host).paused })
-  let unsubscribe: (() => void) | undefined
-  const close = async () => {
-    unsubscribe?.()
-    unsubscribe = undefined
-    outsideSchedulerTimer(host).cancel?.()
-  }
-  host.onClose(close)
-  host.onRelease(close)
   host.onOpen(async () => {
-    unsubscribe?.()
     await serializePause(host, async () => {
       const doc = await read(host)
       sharedPauseFlag(host).paused = doc.paused
@@ -389,7 +377,7 @@ export default function pauseExtension(host: Host) {
       rearmAutoPlay(host, doc)
       await writePauseLimitOnce(host, doc)
     })
-    unsubscribe = onCommit(host.harness(), (publication) => {
+    const unsubscribe = onCommit(host.harness(), (publication) => {
       const generationsSleepingBeforeRetry = new Set(
         publication.changes.flatMap((change) =>
           change.type === 'task' &&
@@ -425,6 +413,10 @@ export default function pauseExtension(host: Host) {
         )
       }
     })
+    return () => {
+      unsubscribe()
+      outsideSchedulerTimer(host).cancel?.()
+    }
   })
   return { name: 'pause' }
 }

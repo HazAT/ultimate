@@ -185,7 +185,6 @@ export default function pushExtension(host: ExtensionHost) {
     },
   )
 
-  let stop: (() => void) | undefined
   const pushNewFailure = async (tx: Tx) => {
     const token = host.doc(OVERVIEW)
     if (!token) return
@@ -204,7 +203,7 @@ export default function pushExtension(host: ExtensionHost) {
   }
   host.onOpen(async () => {
     await committed(pushNewFailure)
-    stop = onCommit(host.harness(), (publication) => {
+    return onCommit(host.harness(), (publication) => {
       if (
         !publication.changes.some(
           (change) =>
@@ -220,12 +219,6 @@ export default function pushExtension(host: ExtensionHost) {
       )
     })
   })
-  const close = async () => {
-    stop?.()
-    stop = undefined
-  }
-  host.onRelease(close)
-  host.onClose(close)
   return defineExtension({ name: 'push', tasks: [Deliver] })
 }
 

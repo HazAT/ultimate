@@ -70,7 +70,6 @@ async function fixture() {
     metadata: Metadata,
     ...eventHost(() => opened.harness, 'automations'),
     implement: () => {},
-    onRelease: () => {},
     onClose: () => {},
     projectSetup: async () => ({ decision: false }),
     extensions: () => [{ name: 'subagents', enabled: true }],

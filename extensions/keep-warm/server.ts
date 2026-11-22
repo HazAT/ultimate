@@ -301,12 +301,12 @@ export default function keepWarm(host: ExtensionHost) {
         shared.running = undefined
       })
   })
-  host.onRelease(async () => {
-    shared.released.abort()
-    await shared.running
-  })
   host.onOpen(async () => {
     if (shared.released.signal.aborted) shared.released = new AbortController()
+    return async () => {
+      shared.released.abort()
+      await shared.running
+    }
   })
   host.onClose(async () => {
     stopPolling()

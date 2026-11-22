@@ -854,13 +854,11 @@ export default function automations(host: ExtensionHost) {
   host.onOpen(async () => {
     await api.open()
     await api.trigger.open()
+    return async () => {
+      await api.trigger.close()
+      await api.close()
+    }
   })
-  const close = async () => {
-    await api.trigger.close()
-    await api.close()
-  }
-  host.onRelease(close)
-  host.onClose(close)
   return defineExtension({
     name: 'automations',
     tasks: [api.Scheduler, api.RunTask, api.Deliver],

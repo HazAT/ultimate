@@ -57,7 +57,6 @@ async function fixture() {
     implement: (_api: unknown, value: PushService) => (service = value),
     react: () => {},
     onOpen: (callback: () => Promise<void>) => openers.push(callback),
-    onRelease: () => {},
     onClose: () => {},
     doc: () => undefined,
     notice: (message: string) => {

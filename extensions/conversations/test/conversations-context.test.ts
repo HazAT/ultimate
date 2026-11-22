@@ -50,7 +50,7 @@ async function fixture({ start = true } = {}) {
     agent: { model: { provider: 'faux', modelId: 'small' } },
   })
   let open!: () => Promise<void>
-  let close!: () => Promise<void>
+  let close: () => void | Promise<void> = () => {}
   const notices: string[] = []
   const modelReads: string[] = []
   let failModelLookup = false
@@ -64,10 +64,9 @@ async function fixture({ start = true } = {}) {
       },
     },
     onOpen: (callback) => {
-      open = callback
-    },
-    onClose: (callback) => {
-      close = callback
+      open = async () => {
+        close = (await callback()) ?? close
+      }
     },
     notice: (message) => {
       notices.push(message)

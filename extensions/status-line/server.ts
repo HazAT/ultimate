@@ -37,25 +37,19 @@ const partial = (live: LiveState | null | undefined): Rates => {
     : zero()
 }
 
-type Host = Pick<ExtensionHost, 'harness' | 'onOpen' | 'onClose' | 'notice'>
+type Host = Pick<ExtensionHost, 'harness' | 'onOpen' | 'notice'>
 export default function statusLine(host: Host) {
   let latest: RateSample | null = null
   let spend: Totals = usageTotals({ models: {}, tools: {} })
-  let unsubscribe: (() => void) | undefined
-  let stopSampling: Cancel | undefined
-  let epoch = 0
   snapshots.set(host, () => latest && { ...latest, totals: { ...spend } })
-  const stop = () => {
-    epoch++
-    stopSampling?.()
-    unsubscribe?.()
-    unsubscribe = undefined
-    latest = null
-  }
-  host.onClose(async () => stop())
   host.onOpen(async () => {
-    stop()
-    const opened = epoch
+    let unsubscribe: (() => void) | undefined
+    let stopSampling: Cancel | undefined
+    const stop = () => {
+      stopSampling?.()
+      unsubscribe?.()
+      latest = null
+    }
     const harness = host.harness()
     const documents = new Map<number, { settled: Rates; partial: Rates }>()
     const spending = new Map<number, Totals>()
@@ -90,7 +84,6 @@ export default function statusLine(host: Host) {
           }
           cursor = page.next
         } while (cursor !== undefined)
-        if (opened !== epoch) return
         sample(performance.now(), total)
         unsubscribe = onCommit(harness, (publication) => {
           for (const change of publication.changes) {
@@ -109,15 +102,14 @@ export default function statusLine(host: Host) {
           }
         })
       }, context)
-      if (opened !== epoch) return
       stopSampling = every(1000, () => {
         latest = sample(performance.now(), total)
       })
     } catch (error) {
-      if (opened !== epoch) return
       stop()
       host.notice(`Instance token rates unavailable: ${String(error)}`)
     }
+    return stop
   })
   return defineExtension({ name: 'status-line' })
 }

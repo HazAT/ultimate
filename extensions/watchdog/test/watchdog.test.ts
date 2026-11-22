@@ -100,7 +100,6 @@ async function fixture(
     notice: (text: string) => notices.push(text),
     onOpen: (callback: () => Promise<void>) => onOpen.push(callback),
     onClose: (callback: () => Promise<void>) => onClose.push(callback),
-    onRelease: () => {},
     scanSubmissions: (...args: Parameters<MemoryStorage['scanSubmissions']>) =>
       storage.scanSubmissions(...args),
     need: (api: { name: string }) =>

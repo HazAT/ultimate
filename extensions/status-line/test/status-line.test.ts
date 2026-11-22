@@ -54,15 +54,14 @@ async function fixture() {
   prepared.registry.install(defineExtension({ name: 'status-line-fixture', tasks: [anchor] }))
   const opened = await prepared.open()
   let open!: () => Promise<void>
-  let close!: () => Promise<void>
+  let close: () => void | Promise<void> = () => {}
   const notices: string[] = []
   const host: Parameters<typeof statusLine>[0] = {
     harness: () => opened.harness,
     onOpen: (callback) => {
-      open = callback
-    },
-    onClose: (callback) => {
-      close = callback
+      open = async () => {
+        close = (await callback()) ?? close
+      }
     },
     notice: (value) => {
       notices.push(value)

@@ -299,7 +299,6 @@ function watchTally(host: ExtensionHost, ctx: Context) {
   let roots = new Set<ConversationId>()
   const dirty = new Set<ConversationId>()
   let serializedTokenRecounts = Promise.resolve()
-  let unsubscribe: (() => void) | undefined
   const recountContextAndMemoryBriefTokens = () => {
     serializedTokenRecounts = serializedTokenRecounts
       .then(async () => {
@@ -324,7 +323,7 @@ function watchTally(host: ExtensionHost, ctx: Context) {
   }
   host.onOpen(async () => {
     roots = new Set(await rootsOf(host, ctx))
-    unsubscribe = onCommit(host.harness(), (publication) => {
+    const unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes)
         if (change.type === 'document' && change.record.kind === Roots.definition.kind)
           roots = new Set(
@@ -347,10 +346,10 @@ function watchTally(host: ExtensionHost, ctx: Context) {
     })
     for (const id of roots) dirty.add(id)
     recountContextAndMemoryBriefTokens()
-  })
-  host.onClose(async () => {
-    unsubscribe?.()
-    await serializedTokenRecounts
+    return async () => {
+      unsubscribe()
+      await serializedTokenRecounts
+    }
   })
 }
 
