@@ -108,6 +108,7 @@ const starterLine = (
     ...(outcome.reason ? [outcome.reason] : []),
     ...(outcome.needsRestart ? ['needs restart'] : []),
     ...(outcome.flaky?.length ? [`flaky: ${outcome.flaky.join(', ')}`] : []),
+    ...(outcome.slow?.length ? [`slow: ${outcome.slow.join(', ')}`] : []),
   ]
     .join(' · ')
     .replace(/\s*\n\s*/g, ' ')
@@ -132,6 +133,11 @@ export const limitsFor = (check: Check, limits: CheckLimits): CheckLimits =>
     : { stall: Math.min(limits.stall, check.timeout), total: check.timeout }
 const vitestFailureLine = /^\s*(FAIL|×|✗)\s/
 const seconds = (value: number) => (value < 60 ? `${value} s` : `${+(value / 60).toFixed(1)} min`)
+const slowShareOfLimit = 0.8
+export const slowNote = (command: string, ms: number, limits: CheckLimits) =>
+  ms > limits.total * 1000 * slowShareOfLimit
+    ? `${command} · ${seconds(Math.round(ms / 1000))} of ${seconds(limits.total)} (${Math.round(ms / limits.total / 10)} %)`
+    : undefined
 
 export const checkPids = (home: string) => join(home, 'lander-checks')
 export const sweepChecks = async (home: string) => {
@@ -290,6 +296,7 @@ type CheckedIntegration = {
   base: string
   integrated: string
   flaky: string[]
+  slow?: string[]
 }
 const landedOutcome = (landed: Landed): LanderOutcome => ({
   outcome: 'landed',
@@ -298,6 +305,7 @@ const landedOutcome = (landed: Landed): LanderOutcome => ({
   commits: landed.commits,
   paths: landed.paths,
   flaky: landed.flaky,
+  ...(landed.slow?.length ? { slow: landed.slow } : {}),
   ...(landed.weight ? { weight: landed.weight } : {}),
 })
 type CommittedDeliveryDecision = {
@@ -503,6 +511,7 @@ export function createLander(
               : `had nothing new to land on ${entry.target}.`,
             ...(landed.commits.length ? [`Commits:\n${landed.commits.join('\n')}`] : []),
             ...landed.flaky.map((command) => `Flaky: ${command}`),
+            ...(landed.slow ?? []).map((command) => `Slow: ${command}`),
           ].join('\n')
         const fail = async (reason: string, output?: string, hint?: string) => {
           const landed = await recordedFirstFastForward()
@@ -664,6 +673,7 @@ export function createLander(
             await step('setting up')
             await setup(source, path, await host.projectSettings(), signal)
             const flaky: string[] = []
+            const slow: string[] = []
             for (const [position, group] of settings.checks.entries()) {
               const members = Array.isArray(group) ? group : [group]
               const commands = members.map((check) => check.command)
@@ -677,9 +687,17 @@ export function createLander(
                   limitsFor(members[member], limits),
                   base,
                 )
-              const runCheckWithOneDurableRerun = async (command: string, member: number) => {
+              const runCheckWithOneDurableRerun = async (
+                command: string,
+                member: number,
+              ): Promise<{ failure?: string; flaky?: string; slow?: string }> => {
                 const attemptMemoKey = `check:${id}:${attempt}:${Array.isArray(group) ? `${position}.${member}` : position}`
                 const causeMemoKey = `${attemptMemoKey}:cause`
+                const slowMemoKey = `${attemptMemoKey}:slow`
+                const noteIfSlow = async (ms: number) => {
+                  const note = slowNote(command, ms, limitsFor(members[member], limits))
+                  if (note) await runtime.memo(slowMemoKey, note, context)
+                }
                 let memoizedFirstRun =
                   (await runtime.memo<'passed' | 'failed'>(attemptMemoKey, context)) ??
                   ((await runtime.memo<string>(causeMemoKey, context)) ? 'failed' : undefined)
@@ -701,9 +719,14 @@ export function createLander(
                   })
                   if (ran.failure !== undefined)
                     await runtime.memo(causeMemoKey, ran.cause, context)
+                  else await noteIfSlow(ms)
                   memoizedFirstRun = await runtime.memo(attemptMemoKey, unmemoizedResult, context)
                 }
-                if (memoizedFirstRun === 'passed') return {}
+                const slowRun = async () => {
+                  const note = await runtime.memo<string>(slowMemoKey, context)
+                  return note ? { slow: note } : {}
+                }
+                if (memoizedFirstRun === 'passed') return slowRun()
                 let rerun = await runtime.memo<{ failure?: string }>(
                   `${attemptMemoKey}:rerun`,
                   context,
@@ -713,6 +736,7 @@ export function createLander(
                   const began = performance.now()
                   const ran = await run(command, member)
                   const timing = { ms: performance.now() - began, timedOut: ran.timedOut }
+                  if (ran.failure === undefined) await noteIfSlow(timing.ms)
                   if (ran.failure === undefined)
                     await step(`checked: ${command}`, {
                       result: {
@@ -739,7 +763,10 @@ export function createLander(
                 }
                 if (rerun.failure !== undefined) return { failure: rerun.failure }
                 const cause = await runtime.memo<string>(causeMemoKey, context)
-                return { flaky: cause ? `${command} · ${cause}` : command }
+                return {
+                  flaky: cause ? `${command} · ${cause}` : command,
+                  ...(await slowRun()),
+                }
               }
               const settledCheckGroup = await Promise.allSettled(
                 commands.map(runCheckWithOneDurableRerun),
@@ -756,6 +783,7 @@ export function createLander(
                   'Fix it at its cause (a flaky test too: fix or delete it), verify and submit again.',
                 )
               flaky.push(...results.flatMap((result) => result.flaky ?? []))
+              slow.push(...results.flatMap((result) => result.slow ?? []))
             }
             const checkedTreeChanged =
               (await git(path, 'rev-parse', 'HEAD')) !== mergedBeforeChecks.sha ||
@@ -768,11 +796,11 @@ export function createLander(
               )
             checkedIntegration = await runtime.memo<CheckedIntegration>(
               `prepared:${id}:${attempt}`,
-              { base, integrated: mergedBeforeChecks.sha, flaky },
+              { base, integrated: mergedBeforeChecks.sha, flaky, ...(slow.length ? { slow } : {}) },
               context,
             )
           }
-          const { base, integrated, flaky } = checkedIntegration
+          const { base, integrated, flaky, slow } = checkedIntegration
           await step('fast-forwarding')
           let refused: string | undefined
           const moved = await serializeSourceWrites(source, async () => {
@@ -812,6 +840,7 @@ export function createLander(
             commits: lines(await git(source, 'log', '--oneline', `${base}..${integrated}`)),
             paths: lines(await git(source, 'diff', '--name-only', base, integrated)),
             flaky,
+            ...(slow?.length ? { slow } : {}),
             ...(weight ? { weight } : {}),
           }
           let landed = firstFastForwardCandidate

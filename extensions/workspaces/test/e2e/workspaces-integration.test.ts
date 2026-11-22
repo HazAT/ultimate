@@ -1481,6 +1481,20 @@ it.concurrent('reruns only the failing command of a group, reports its output tw
   expect(runs(submissions[0])).toEqual(['if [ failed', 'if [ flaky', 'true passed'])
   for (const event of checks) expect(event.data.ms).toEqual(expect.any(Number))
 })
+it.concurrent('lands a check that passed past 80 % of its limit with a slow note', async () => {
+  const f = await lander({ checks: ['true', { command: 'sleep 2.5', timeout: 3 }] })
+  const id = await f.create()
+  await f.service.ready(id, context)
+  await commit((await f.service.get(id, context))!.path, 'slow.txt')
+  await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed as')
+  expect(report).toMatch(/Slow: sleep 2\.5 · \d s of 3 s \(\d+ %\)/)
+  expect((await landerLog(f)).log.at(-1)).toMatchObject({
+    outcome: 'landed',
+    slow: [expect.stringMatching(/^sleep 2\.5 · /)],
+  })
+})
 it.concurrent('fast-forwards the worktree that has the target checked out, past unrelated dirty files but not over overlapping ones', async () => {
   const f = await lander({})
   const id = await f.create()
