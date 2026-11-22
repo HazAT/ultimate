@@ -49,7 +49,7 @@ export function reminderTask(host: ExtensionHost, Goals: Goals) {
           await (want === 'on' ? automations.resume(reminder.id) : automations.pause(reminder.id))
         await runtime.commit(async (tx) => {
           const goal = await find(tx, id)
-          if (goal && reminder && goal.reminder !== reminder.id) goal.reminder = reminder.id
+          if (goal && reminder) goal.reminder ??= reminder.id
           if (wanted(goal) !== want) await enqueueReminderSync(tx, task, id)
           return { status: 'terminal', outcome: { status: 'completed', result: null } }
         }, ctx)
