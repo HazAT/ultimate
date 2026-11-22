@@ -50,18 +50,21 @@ export function compactionEvents(
   }
   const newestEntries = async (tx: Tx) => {
     const latest = new Map<ConversationId, EntryId>()
+    let newestOfAll = parseEntryId(0)
     let page: Cursor | undefined
     do {
       const conversations = await tx.scanConversations({}, 256, page)
       for (const { id } of conversations.items) {
         const newest = await tx.latestEntryId(id)
-        if (newest !== undefined) latest.set(id, newest)
+        if (newest === undefined) continue
+        latest.set(id, newest)
+        if (newest > newestOfAll) newestOfAll = newest
       }
       page = conversations.next
     } while (page !== undefined)
     const announced = await tx.doc(Announced, ROOT_CONVERSATION_ID)
-    announced.through ??= parseEntryId(Math.max(0, ...latest.values()))
-    return { through: announced.through, latest }
+    announced.through ??= newestOfAll
+    return { through: announced.through, latest, newestOfAll }
   }
   const markHistoryAnnounced = async () => {
     const harness = host.harness()
@@ -71,12 +74,13 @@ export function compactionEvents(
   }
   const catchUp = async () => {
     const harness = host.harness()
-    const { through, latest } = await harness.commit(newestEntries, context)
+    const { through, latest, newestOfAll } = await harness.commit(newestEntries, context)
     const missed: Compaction[] = []
     for (const [id, newest] of latest) {
       if (newest <= through) continue
       const conversation = await harness.conversation(id, context)
-      if (!conversation) continue
+      if (!conversation)
+        throw new Error(`Conversation #${id} vanished during the compaction catch-up`)
       let cursor: Cursor | undefined
       do {
         const page = await conversation.entries(
@@ -90,9 +94,8 @@ export function compactionEvents(
         cursor = page.next
       } while (cursor !== undefined)
     }
-    const upTo = parseEntryId(Math.max(through, ...latest.values()))
     const inOrder = missed.toSorted((a, b) => a.id - b.id)
-    await harness.commit(announce(inOrder, upTo), context)
+    await harness.commit(announce(inOrder, newestOfAll), context)
   }
   let observed: EntryId | undefined
   let failed = false
