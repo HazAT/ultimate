@@ -1,10 +1,13 @@
 import { mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { sqliteCode } from '../lib/errors.ts'
 import { acquireLock, readOwner } from '../lib/lock.ts'
 
 const folder = join(homedir(), '.ultimate')
 const path = join(folder, 'test-suites.lock')
+const waitBeforeEachReportMs = 30_000
+const busy = 5
 
 /**
  * Two whole suites at once went over the machine's memory budget and the kernel killed them, so a whole-suite run
@@ -14,9 +17,12 @@ export default async function oneWholeSuiteAtATime() {
   if (!process.env.ULTIMATE_WHOLE_SUITE) return undefined
   await mkdir(folder, { recursive: true })
   const value = { pid: process.pid }
-  const lock = await acquireLock(path, value).catch(async () => {
+  for (;;) {
+    const lock = await acquireLock(path, value, waitBeforeEachReportMs).catch((error: Error) => {
+      if (sqliteCode(error.cause) !== busy) throw error
+      return undefined
+    })
+    if (lock) return () => lock.close()
     console.log(`Waiting for the whole test run of pid ${(await readOwner(path))?.pid} to finish.`)
-    return acquireLock(path, value, Number.MAX_SAFE_INTEGER)
-  })
-  return () => lock.close()
+  }
 }

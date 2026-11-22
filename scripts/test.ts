@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
+import { parseCLI } from 'vitest/node'
 import { exec } from '../lib/exec.ts'
 import { git } from '../lib/git.ts'
 import { extensionGraph } from './deps.ts'
@@ -60,15 +61,18 @@ export function extensionFolders(paths: string[], cwd: string) {
 
 const lines = (text: string) => text.split('\0').filter(Boolean)
 
+const gitList = async (cwd: string, ...args: string[]) =>
+  lines((await exec('git', args, { cwd, maxBuffer: 16 * 1024 * 1024 })).stdout)
+
 async function changedPaths(cwd: string, base: string) {
-  const changed = await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base)
-  const untracked = await git(cwd, 'ls-files', '-z', '--others', '--exclude-standard')
-  return [...new Set([...lines(changed), ...lines(untracked)])]
+  const changed = await gitList(cwd, 'diff', '--name-only', '--no-renames', '-z', base)
+  const untracked = await gitList(cwd, 'ls-files', '-z', '--others', '--exclude-standard')
+  return [...new Set([...changed, ...untracked])]
 }
 
 async function testsNaming(cwd: string, paths: string[]) {
   if (!paths.length) return []
-  const found = await git(
+  return gitList(
     cwd,
     'grep',
     '-l',
@@ -79,14 +83,13 @@ async function testsNaming(cwd: string, paths: string[]) {
     '*.test.ts',
     '*.test.solid.tsx',
   ).catch((error: { code?: number }) => {
-    if (error.code === 1) return ''
+    if (error.code === 1) return []
     throw error
   })
-  return lines(found)
 }
 
 async function testsIn(cwd: string, folder: string) {
-  const listed = await git(
+  const listed = await gitList(
     cwd,
     'ls-files',
     '-z',
@@ -95,7 +98,7 @@ async function testsIn(cwd: string, folder: string) {
     '--exclude-standard',
     folder,
   )
-  return lines(listed).filter((file) => testFile.test(file))
+  return listed.filter((file) => testFile.test(file))
 }
 
 export async function selectByPath(cwd: string, paths: string[]) {
@@ -146,7 +149,7 @@ function run([command, ...args]: string[], env = process.env) {
 }
 
 function runSuite(suite: Suite, args: string[]) {
-  const scoped = args.some((arg) => !arg.startsWith('-') && existsSync(arg))
+  const scoped = parseCLI(['vitest', ...args]).filter.length > 0
   return run([...commands[suite], ...args], scoped ? process.env : wholeSuiteEnv)
 }
 
