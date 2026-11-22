@@ -10,7 +10,6 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { arr, bool, int, lit, map, num, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import {
-  AgentDoc,
   defineDoc,
   defineExtension,
   defineTool,
@@ -34,6 +33,7 @@ import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { LineageApi } from '../lineage/api.ts'
+import { ConversationsApi } from '../conversations/api.ts'
 import { AutomationsApi } from './api.ts'
 import {
   CreateAction,
@@ -95,7 +95,7 @@ export const Automations = defineDoc<Ledger>({
     return ledger
   },
 })
-type Change = { result: JsonValue; abort?: TaskId; effect?: Effect }
+type Change = { result: JsonValue; abort?: TaskId; effect?: Effect; stop?: ConversationId }
 const ReceiptsByToolCallId = defineDoc<Record<string, Partial<Change>>>({
   kind: 'ultimate.automation-receipts',
   checkpointWhen: () => false,
@@ -369,13 +369,7 @@ function backend(host: ExtensionHost) {
           ? []
           : [caller!]
       const owed = await owedAtCreation(tx, id, subscribers, runBy)
-      const conversationId = await agentConversation(
-        tx,
-        prepared,
-        id,
-        name,
-        (await tx.doc(AgentDoc, caller!)).cwd ?? host.projectRoot,
-      )
+      const conversationId = await agentConversation(tx, prepared, id, name)
       const now = Date.now()
       const sub: Automation = {
         id,
@@ -412,6 +406,8 @@ function backend(host: ExtensionHost) {
       sub.subscribers = sub.subscribers.filter((s) => s !== prepared.subscriber)
       reachesSomeone(sub)
     } else if (args.action === 'resume' || args.action === 'run') {
+      if (sub.script!.state === 'stopped' && caller === sub.script!.conversationId)
+        throw new Error(`Automation ${id} is stopped; only its owner resumes it`)
       sub.enabled = true
       sub.script!.state = 'running'
       const crashSweepPid = () => sub.script!.pid
@@ -426,6 +422,8 @@ function backend(host: ExtensionHost) {
       }
     } else if (args.action === 'pause' || args.action === 'delete' || args.action === 'escalate') {
       const pid = sub.script!.pid
+      const watcher = sub.script!.conversationId
+      const stopsWatcher = args.action !== 'escalate' && caller !== watcher
       if (args.action === 'escalate')
         await scripts.escalate(tx, sub, required(args.reason, 'reason'))
       else {
@@ -434,10 +432,16 @@ function backend(host: ExtensionHost) {
       }
       if (args.action !== 'escalate')
         await scripts.drop(tx, sub, args.action === 'delete' ? 'was deleted' : 'was stopped')
-      if (args.action === 'delete') delete state.automations[id]
+      if (args.action === 'delete') {
+        delete state.automations[id]
+        const conversations = host.need(ConversationsApi)
+        if (stopsWatcher && !(await conversations.concludedIn(tx)).has(watcher))
+          await conversations.concludeIn(tx, [watcher], caller ?? 'user')
+      }
       return {
         result: args.action === 'delete' ? { id } : sub,
         effect: { id, action: 'pause', ...(pid ? { previousPid: pid } : {}) },
+        ...(stopsWatcher ? { stop: watcher } : {}),
       }
     }
     return { result: sub }
@@ -716,6 +720,10 @@ function backend(host: ExtensionHost) {
   }
   async function apply(receipt: Partial<Change>) {
     if (receipt.abort) await host.harness().abortTask(receipt.abort, BACKGROUND_CONTEXT)
+    if (receipt.stop)
+      await (
+        await host.harness().conversation(receipt.stop, BACKGROUND_CONTEXT)
+      )?.abort(BACKGROUND_CONTEXT, { background: true })
     await scripts.apply(receipt.effect)
   }
   async function operate(args: Args, caller?: ConversationId): Promise<JsonValue> {
@@ -824,6 +832,7 @@ export default function automations(host: ExtensionHost) {
   host.need(SubagentsApi)
   host.need(MessagesApi)
   host.need(WorkspacesApi)
+  host.need(ConversationsApi)
   const api = backend(host)
   host.implement(AutomationsApi, {
     create: async (args) => (await api.operate({ ...args, action: 'create' })) as Automation,

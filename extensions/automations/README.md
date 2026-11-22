@@ -24,7 +24,9 @@ Exactly one per automation:
   makes the first FIRE finish the automation. A recurring script may print `DONE [text]` and exit 0 to stop cleanly.
   Any other unplanned exit wakes only the watcher, to repair or escalate. The third failure in a row (a FIRE or an hour
   of running resets the count), or a watcher whose turn ends mid-repair, escalates instead: the script stops as
-  `failed`, subscribers get `automations.escalated`, and @ultimate a message.
+  `failed`, subscribers get `automations.escalated`, and @ultimate a message. Pausing stops the watcher's turn and
+  its queued inputs, deleting also concludes it, and briefs or failures still on their way to a stopped automation's
+  watcher are dropped. A watcher cannot resume an automation its owner stopped.
 
 ## Actions
 

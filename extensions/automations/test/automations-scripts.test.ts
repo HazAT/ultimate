@@ -1,10 +1,17 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterAll, expect, it } from 'vitest'
+import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
+import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
+import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
+import type { JsonValue } from '@earendil-works/chord/json'
 import { doneText, fireText, trimLog } from '../types.ts'
 import type { Automation } from '../types.ts'
+import { Automations } from '../server.ts'
 import { context } from '../../../server/harness.ts'
-import { fauxServer, removeTemp, temp, until } from '../../../test/helpers.ts'
+import { UiState } from '../../../shared/ui-state.ts'
+import { fauxServer, held, removeTemp, temp, until } from '../../../test/helpers.ts'
 
 const homes: string[] = []
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
@@ -43,6 +50,85 @@ it('retains the newest output within both line and byte limits', () => {
   expect(Buffer.byteLength(long)).toBeLessThanOrEqual(256 * 1024)
   expect(long.endsWith('\nend\n')).toBe(true)
   expect(trimLog('progress\n')).toBe('progress\n')
+})
+
+it('stops a paused or deleted automation’s watcher, which cannot resume it', async () => {
+  // Regression: an owner deleted a script automation while its watcher was mid-turn; the watcher read "Unknown
+  // automation", created it again with a new watcher, and that chain repeated five times. Watchers also resumed
+  // automations their owner had just paused.
+  const home = await temp('ultimate-automations-watcher-')
+  homes.push(home)
+  const definitions = join(home, '.ultimate/agents')
+  await mkdir(definitions, { recursive: true })
+  await mkdir(join(home, 'project'))
+  await writeFile(
+    join(definitions, 'watcher.md'),
+    '---\nname: watcher\ndescription: Test\nmodel: faux/faux-1\ntools: [automation]\n---\nShort.\n',
+  )
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot: join(home, 'project'),
+    userHome: home,
+    home: join(home, 'state'),
+  })
+  servers.push(server)
+  const watcherTurn: FauxResponseFactory = (transcript, options, state, model) => {
+    server.host.faux!.appendResponses([watcherTurn])
+    const last = transcript.messages.at(-1)!
+    if (last.role === 'toolResult') return fauxAssistantMessage('Stopped.')
+    const text = typeof last.content === 'string' ? last.content : JSON.stringify(last.content)
+    const resume = /Resume (A\d+)/.exec(text)
+    if (resume)
+      return fauxAssistantMessage(
+        [fauxToolCall('automation', { action: 'resume', id: resume[1] })],
+        {
+          stopReason: 'toolUse',
+        },
+      )
+    return held(transcript, options, state, model)
+  }
+  server.host.faux!.setResponses([watcherTurn])
+  const caller = await server.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const invoke = (action: string, args: JsonValue, from?: ConversationId) =>
+    server.extensions.invoke('automations', action, args, new AbortController().signal, from)
+  const create = async (name: string) =>
+    (await invoke('create', { name, ask: 'Watch deploys' }, caller.id)) as Automation
+  const busy = async (id: ConversationId) =>
+    (await server.harness.snapshot(LiveDoc, id, context))?.run !== undefined
+  const ledger = async () => (await server.harness.snapshot(Automations, context))!
+
+  const deleted = await create('Deleted')
+  const watcher = deleted.script!.conversationId
+  await until(() => busy(watcher))
+  await invoke('delete', { id: deleted.id })
+  expect(await busy(watcher)).toBe(false)
+  const ui = await server.harness.snapshot(UiState, ROOT_CONVERSATION_ID, context)
+  expect(ui?.['ext.conversations.concluded']).toContain(watcher)
+  expect(Object.values((await ledger()).automations).map((a) => a.name)).not.toContain('Deleted')
+
+  const paused = await create('Paused')
+  const pausedWatcher = paused.script!.conversationId
+  await until(() => busy(pausedWatcher))
+  await invoke('pause', { id: paused.id })
+  expect(await busy(pausedWatcher)).toBe(false)
+  const run = join(home, '.ultimate/automations/state', paused.id, 'run')
+  await writeFile(run, '#!/bin/sh\nsleep 60\n', { mode: 0o700 })
+  const conversation = (await server.harness.conversation(pausedWatcher, context))!
+  await conversation.submit({ type: 'input', content: `Resume ${paused.id}` }, context)
+  await until(async () =>
+    (await conversation.context(context)).entries.some(
+      (e) =>
+        e.kind === 'pi.tool-result' &&
+        JSON.stringify(e).includes('is stopped; only its owner resumes it'),
+    ),
+  )
+  expect((await ledger()).automations[paused.id]).toMatchObject({
+    enabled: false,
+    script: { state: 'stopped' },
+  })
 })
 
 // A project extension outside the clone cannot import api.ts; the token is its name, which is all `want` needs.
