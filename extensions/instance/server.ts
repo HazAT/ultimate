@@ -297,7 +297,10 @@ async function stopInstance(instances: Map<string, Instance>, instance: Instance
     await unlink(join(instance.home, 'ultimate.lock')).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
     })
-    await cleanPreview(instance.home)
+    if (!(await cleanPreview(instance.home)))
+      throw new Error(
+        `Preview ${instance.id} home was not cleaned because it is locked; retry stop after the lock is released`,
+      )
   }
   instances.delete(instance.id)
 }
