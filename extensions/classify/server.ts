@@ -1,11 +1,4 @@
-import {
-  defineDoc,
-  defineExtension,
-  hook,
-  NestedCallDoc,
-  ToolTask,
-} from '@earendil-works/pi-durable'
-import { CODEMODE_TOOL_NAME } from '@earendil-works/pi-durable/codemode'
+import { defineExtension, hook, section, ToolTask } from '@earendil-works/pi-durable'
 import { typesafeProvider } from '@earendil-works/pi-ai/providers/typesafe'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readSecret } from '../../lib/secrets.ts'
@@ -28,15 +21,7 @@ function record(value: unknown): value is Record<string, unknown> {
 const providerId = 'typesafe'
 const modelId = 'jev-1.14.0'
 const inputCost = 0.042
-const maxClassifyCalls = 1_000
 const classifyToolName = 'pi.codemode.models.classify'
-const Admissions = defineDoc<{ keys: string[] }>({
-  kind: 'classify.admissions',
-  scope: 'task',
-  version: 1,
-  initial: () => ({ keys: [] }),
-  checkpointWhen: () => false,
-})
 
 export const cooldownMs = 15 * 60_000
 const rejected: Record<number, string> = {
@@ -159,66 +144,23 @@ export default function classify(host: ExtensionHost) {
   host.implement(ClassifyApi, service)
   return defineExtension({
     name: 'classify',
+    sections: [
+      section('classify', ({ agent }) =>
+        agent.tools.some((tool) => tool.name === 'codemode')
+          ? `For many small judgments (hundreds of entries, inputs, traces), write the workflow in code: call \`models.classify({provider: 'typesafe', id: '${modelId}'}, {state, questions})\` per item and branch with plain \`if\`s on each answer's choice and probabilities instead of reading items yourself. Jev answers in about 0.2 s for a fraction of a cent; at most 4 run at once and 1000 per script. A script resumes after a restart; keep long-run progress with store() so a later call can continue.`
+          : undefined,
+      ),
+    ],
     hooks: [
       hook(ToolTask, {
         async beforeTool(call, api, context) {
-          if (call.name !== classifyToolName || !call.parent) return undefined
-          const parent = call.parent.taskId
-          const admitted = await host.harness().commit(async (tx) => {
-            const input = (await tx.task(api.taskId))?.input
-            if (!record(input) || input.kind !== 'nested' || typeof input.key !== 'string')
-              throw new Error('Missing nested classifier call')
-            const { keys } = await tx.doc(Admissions, parent)
-            if (keys.includes(input.key)) return true
-            if (keys.length >= maxClassifyCalls) return false
-            keys.push(input.key)
-            return true
-          }, context)
-          if (!admitted) return { block: 'classify: at most 1000 calls per script' }
-          if (
-            billingOrAuthPause &&
-            record(call.arguments.model) &&
-            call.arguments.model.provider === providerId
-          ) {
-            const key = (await api.models.getAuth(providerId, { signal: context.abortSignal }))
-              ?.auth.apiKey
-            const block = pausedError(key)
-            if (block) return { block }
-          }
-          return undefined
-        },
-        async afterTool(call, result, api, context) {
-          if (call.name !== CODEMODE_TOOL_NAME) return undefined
-          const admitted = await api.snapshot(Admissions, api.taskId, context)
-          if (!admitted?.keys.length) return undefined
-          const nested = await Promise.all(
-            admitted.keys.map((key) => api.snapshot(NestedCallDoc, api.taskId, key, context)),
-          )
-          let calls = 0
-          let tokens = 0
-          let cost = 0
-          for (const entry of nested) {
-            if (entry?.result?.structuredOutput === undefined) continue
-            const usage = entry.result.usage
-            const input = usage?.input ?? 0
-            calls++
-            tokens += input
-            cost += usage?.cost?.total ?? (input * inputCost) / 1_000_000
-          }
-          if (!calls) return undefined
-          const input = new Intl.NumberFormat('en', {
-            notation: 'compact',
-            maximumFractionDigits: 1,
-          })
-            .format(tokens)
-            .toLowerCase()
-          const dollars = new Intl.NumberFormat('en', {
-            style: 'currency',
-            currency: 'USD',
-            maximumSignificantDigits: 3,
-          }).format(cost)
-          const text = `classify: ${calls} ${calls === 1 ? 'call' : 'calls'}, ${input} input tokens, ≈${dollars}`
-          return { ...result, output: [...(result.output ?? []), { type: 'text', text }] }
+          if (call.name !== classifyToolName || !billingOrAuthPause) return undefined
+          if (!record(call.arguments.model) || call.arguments.model.provider !== providerId)
+            return undefined
+          const key = (await api.models.getAuth(providerId, { signal: context.abortSignal }))?.auth
+            .apiKey
+          const block = pausedError(key)
+          return block ? { block } : undefined
         },
       }),
     ],

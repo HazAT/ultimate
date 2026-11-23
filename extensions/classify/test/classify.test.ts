@@ -9,6 +9,7 @@ import {
 import { InlineCodemodeSandbox, loadQuickJSWasm } from '@earendil-works/pi-codemode'
 import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durable'
 import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
+import { modelCallLimits } from '../../codemode/models.ts'
 import { afterEach, expect, it, vi } from 'vitest'
 import classify, { cooldownMs } from '../server.ts'
 import { ClassifyApi } from '../api.ts'
@@ -94,7 +95,8 @@ async function codemodeFixture() {
   const faux = fauxProvider()
   f.modelRuntime.registerNativeProvider(faux.provider)
   const sandbox = new InlineCodemodeSandbox({ wasm: loadQuickJSWasm() })
-  registry.install(createCodemodeExtension({ sandbox, models: true }))
+  const codemode = createCodemodeExtension({ sandbox, models: true })
+  registry.install({ ...codemode, hooks: [modelCallLimits(() => harness)] })
   registry.install(f.extension)
   harness = await Harness.open(new MemoryStorage(), { models: f.modelRuntime, registry }, context)
   cleanups.push(async () => {
@@ -136,7 +138,7 @@ it('shares a codemode 402 with the service and bills only the completed requests
   const paused = await run(`text((await ${scriptCall}).errorMessage); await ${scriptCall};`)
   expect(paused).toContain('System One API error (402): billing_error')
   expect(paused).toContain('Tool call blocked: TypeSafe 402: out of credits')
-  expect(paused).toContain('classify: 1 call, 0 input tokens, ≈$0')
+  expect(paused).toContain('models: 1 call, 0 input tokens, ≈$0')
   await expect(service.ask(request, new AbortController().signal)).rejects.toThrow(
     'TypeSafe 402: out of credits',
   )
@@ -147,7 +149,7 @@ it('shares a codemode 402 with the service and bills only the completed requests
   await writeSecret(root, 'TYPESAFE_API_KEY', 'updated-sentinel')
   const resumed = await run(`text((await ${scriptCall}).answers.phase.choice);`)
   expect(resumed).toContain('verifying')
-  expect(resumed).toContain('classify: 1 call, 123 input tokens, ≈$0.00000517')
+  expect(resumed).toContain('models: 1 call, 123 input tokens, ≈$0.00000517')
   expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Authorization')).toBe(
     'Bearer updated-sentinel',
   )
@@ -158,8 +160,8 @@ it('blocks call 1001 of a codemode script', async () => {
   const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => Response.json(body))
   vi.stubGlobal('fetch', fetch)
   const result = await run(`for (let i = 0; i < 1001; i++) await ${scriptCall};`)
-  expect(result).toContain('classify: at most 1000 calls per script')
-  expect(result).toContain('classify: 1000 calls, 123k input tokens, ≈$0.00517')
+  expect(result).toContain('models: at most 1000 classify/generateImages calls per script')
+  expect(result).toContain('models: 1000 calls, 123k input tokens, ≈$0.00517')
   expect(fetch).toHaveBeenCalledTimes(1000)
 })
 
@@ -274,4 +276,18 @@ it.each([
   await expect(service.ask(request, new AbortController().signal)).rejects.toThrow(
     'Malformed TypeSafe response',
   )
+})
+
+it('names the pinned Jev model in the prompt only for agents with codemode', async () => {
+  const { extension } = await fixture()
+  const section = extension.sections![0]
+  const render = (names: string[]) =>
+    section.render(
+      { agent: { tools: names.map((name) => ({ name })) } } as unknown as Parameters<
+        typeof section.render
+      >[0],
+      context,
+    )
+  expect(await render(['codemode'])).toContain("id: 'jev-1.14.0'")
+  expect(await render(['read'])).toBeUndefined()
 })

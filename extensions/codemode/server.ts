@@ -54,6 +54,7 @@ import type { CallSummary } from './refs.ts'
 import { PendingDoc, SummaryDoc } from './api.ts'
 import { fixedLine, parseSummary, SUMMARY_SYSTEM, summaryCalls, summaryInput } from './summary.ts'
 import type { Call } from './summary.ts'
+import { MAX_MODEL_CALLS, modelCallLimits } from './models.ts'
 
 const RetiredStore = defineDoc({
   kind: 'codemode.store',
@@ -598,6 +599,7 @@ export default function codemode(host: ExtensionHost) {
     tasks: [Summary],
     tools: [...pi.tools!, actionTool, tellTool],
     hooks: [
+      modelCallLimits(() => host.harness()),
       hook(ToolTask, {
         beforeTool: async (call, api, context) => {
           if (topLevelCodemode(call)) await copyRetiredStoreOnce(api, context)
@@ -621,7 +623,7 @@ export default function codemode(host: ExtensionHost) {
             ' Only text(), image() and return values enter context; filter to concise findings.' +
             ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through tools.action({extension, action, args}).' +
             ' A subagent started from a script runs in the background; wait for it at top level.',
-          "For many small judgments (hundreds of entries, inputs, traces), write the workflow in code: call `models.classify({provider: 'typesafe', id: 'jev-1.14.0'}, {state, questions})` per item and branch with plain `if`s on each answer's choice and probabilities instead of reading items yourself. Jev answers in about 0.2 s for a fraction of a cent; at most 4 run at once and 1000 per script. A script resumes after a restart; keep long-run progress with store() so a later call can continue.",
+          `A script makes at most ${MAX_MODEL_CALLS} models.classify/generateImages calls; its result ends with a usage line. A script resumes after a restart; keep long-run progress with store() so a later call can continue.`,
           `Read-only introspection globals (each result is journaled):\n\`\`\`ts\n${declarations}\n\`\`\``,
           tools,
         ]

@@ -16,7 +16,7 @@ Pi's `typesafe` provider configures both, through `~/.pi/agent/models.json` like
 
 ## Scripts
 
-Call `models.classify({ provider: 'typesafe', id: 'jev-1.14.0' }, { state, questions })` in codemode and branch on the answer's choice or probabilities. Pi runs up to four model calls at once. A script can make up to 1,000 `models.classify` calls, including after a restart. The result reports completed classifications, input tokens and estimated cost.
+Call `models.classify({ provider: 'typesafe', id: 'jev-1.14.0' }, { state, questions })` in codemode and branch on the answer's choice or probabilities. The `classify` prompt section, shown to agents with codemode, says so. Pi runs up to four model calls at once. Codemode caps a script at 1,000 `models.*` calls, whatever the provider and including after a restart, and ends its result with a usage line (completed calls, input tokens, estimated cost); see `extensions/codemode/README.md`.
 
 A 401 (rejected key), 402 (out of credits) or 403 (forbidden) pauses both script and service calls for that key for 15 minutes. Calls during the pause fail without sending a request. Changing the key lets requests proceed immediately.
 

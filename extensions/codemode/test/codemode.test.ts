@@ -67,7 +67,7 @@ async function fixture() {
       .replace("'../../lib/agents.ts'", JSON.stringify(resolve('lib/agents.ts')))
       .replace("'../../lib/api-files.ts'", JSON.stringify(resolve('lib/api-files.ts'))),
   )
-  for (const file of ['api.ts', 'chapters.ts', 'projects.ts', 'refs.ts', 'summary.ts'])
+  for (const file of ['api.ts', 'chapters.ts', 'models.ts', 'projects.ts', 'refs.ts', 'summary.ts'])
     await cp(resolve('extensions/codemode', file), join(ultimateRoot, 'extensions/codemode', file))
   const options = {
     ultimateRoot,
@@ -153,7 +153,8 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   expect(text).toContain('Use edit/write outside codemode')
   expect(text).toContain('filter to concise findings')
   expect(text).toContain('act on them through tools.action({extension, action, args})')
-  expect(text).toContain("models.classify({provider: 'typesafe', id: 'jev-1.14.0'}")
+  expect(text).toContain('at most 1000 models.classify/generateImages calls')
+  expect(text).not.toContain('jev-1.14.0')
   expect(text).toContain('declare const ultimate')
   expect(text).toContain('entries(conversationId: number')
   expect(text).toContain('### `action`')
