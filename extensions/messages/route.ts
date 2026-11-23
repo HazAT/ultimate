@@ -59,7 +59,11 @@ async function branchSaidBefore(tx: Tx, id: ConversationId, before: EntryId) {
     const page = await tx.scanEntries({ conversationId: id, maxEntryId: before }, 64, cursor)
     for (const entry of page.items) {
       const message = entry.model?.[0]
-      if (message?.role !== 'assistant' || message.stopReason !== 'stop') continue
+      if (
+        message?.role !== 'assistant' ||
+        (message.stopReason !== 'stop' && message.stopReason !== 'length')
+      )
+        continue
       const text = message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
       if (text.trim()) return text.slice(-EXCERPT.before)
     }
@@ -99,18 +103,9 @@ async function judge(
   }
 }
 
-async function answeredAgain(tx: Tx, id: ConversationId, answer: EntryId) {
-  let cursor: Parameters<Tx['scanEntries']>[2]
-  do {
-    const page = await tx.scanEntries(
-      { conversationId: id, minEntryId: (answer + 1) as EntryId, order: 'ascending' },
-      256,
-      cursor,
-    )
-    if (page.items.some((entry) => entry.model?.[0]?.role === 'assistant')) return true
-    cursor = page.next
-  } while (cursor !== undefined)
-  return false
+async function supersededSince(tx: Tx, from: ConversationId, to: ConversationId, since: number) {
+  const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+  return messages.some((m) => m.from === from && m.to === to && m.id >= since)
 }
 
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
@@ -303,6 +298,7 @@ interface Route {
     routed?: EntryId
     judged?: Judged
   }
+  supersededByMessagesFrom?: number
 }
 
 export function route(host: ExtensionHost) {
@@ -386,8 +382,10 @@ export function route(host: ExtensionHost) {
 
             let answersOnlyRoutedInputs = true
             const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-            for (const { entry: entryId } of inputsSettledByThisAnswer) {
-              const entry = await tx.entry(entryId)
+            const entries = await Promise.all(
+              inputsSettledByThisAnswer.map(({ entry }) => tx.entry(entry)),
+            )
+            for (const entry of entries) {
               const data: Partial<DeliveredMessage> | undefined =
                 MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
               const repliedByMessageMidRun =
@@ -436,13 +434,10 @@ export function route(host: ExtensionHost) {
             }
             const [toStarter] = routeToStarter(text, { echo: answersOnlyRoutedInputs })
             if (!report) return [toStarter]
-            const entries = await Promise.all(
-              inputsSettledByThisAnswer.map(({ entry }) => tx.entry(entry)),
-            )
             const first = Math.min(...inputsSettledByThisAnswer.map(({ entry }) => entry))
             return {
               answer,
-              toStarter,
+              toStarter: { ...toStarter, supersededByMessagesFrom: log.next },
               state: {
                 branch_said_before: await branchSaidBefore(tx, id, (first - 1) as EntryId),
                 inputs: entries.map((entry) => ({
@@ -492,18 +487,18 @@ export function route(host: ExtensionHost) {
         }, ctx)
       },
       forward: async (task, runtime, ctx) => {
-        for (const { to, text, requestId, options } of task.state.checkpoint.routes) {
+        for (const { to, text, requestId, options, supersededByMessagesFrom: since } of task.state
+          .checkpoint.routes) {
           if (!text.trim()) continue
           const id = runtime.conversationId
-          const answer = options.judged?.answer
           await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {
             requestId,
             ...options,
-            ...(answer === undefined
+            ...(since === undefined
               ? {}
               : {
                   stillReports: async (tx: Tx) =>
-                    !(await answeredAgain(tx, id, answer)) &&
+                    !(await supersededSince(tx, id, to, since)) &&
                     !(await concludedOrWorkUnderway(host, tx, id)),
                 }),
           })

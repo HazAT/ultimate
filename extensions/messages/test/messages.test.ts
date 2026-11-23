@@ -1791,6 +1791,26 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
   await b.settled()
   expect((await b.from()).filter((m) => m.text === 'Answer: go')).toHaveLength(1)
 
+  // A reply that only answers a sibling's question while the judge weighs a result leaves that result a report.
+  let releaseResult: ((p: number) => void) | undefined
+  verdict = async () => new Promise<number>((done) => (releaseResult = done))
+  await (await b.branch.submit({ type: 'input', content: 'result' }, context)).wait(context)
+  await until(async () => releaseResult !== undefined)
+  await sendMessage(
+    f.host,
+    f.recipient.id,
+    { to: `#${b.id}`, text: 'Which host?', reply: true },
+    context,
+  )
+  await until(
+    async () =>
+      (await f.log())!.messages.filter((m) => m.from === b.id && m.to === f.recipient.id)
+        .length === 2,
+  )
+  releaseResult!(0.9)
+  await b.settled()
+  expect((await sent('result'))!).toMatchObject({ report: true, judged: { report: 0.9 } })
+
   // A crash while Jev answers never asks it again: the restarted route reports without a verdict.
   const calls = asked.length
   let hung!: () => void
