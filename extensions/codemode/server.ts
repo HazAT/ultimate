@@ -49,6 +49,7 @@ import { closedChapter, compactEntry, id, limit, readChapter, searchHit } from '
 import type { EntriesOptions, HistoryRead, SearchOptions } from './chapters.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { MessagesApi } from '../messages/api.ts'
+import { Profile } from '../subagents/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Summarized } from './refs.ts'
@@ -82,6 +83,15 @@ const StoreCopied = defineDoc({
   history: 'rewindable',
   fork: 'asOf',
   initial: (): { copied: boolean } => ({ copied: false }),
+})
+const ScriptToolsSettled = defineDoc({
+  kind: 'codemode.script-tools-settled',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: (): { done: boolean } => ({ done: false }),
 })
 const KEPT_SUMMARY_LIMIT = 1000
 export { SummaryDoc }
@@ -617,6 +627,25 @@ export default function codemode(host: ExtensionHost) {
   const scriptOnly = [...pi.tools!, actionTool, tellTool]
     .filter((tool) => tool.callers?.includes('model') === false)
     .map((tool) => tool.name)
+  const grantedScriptTools = async (tx: Tx, conversationId: ConversationId) => {
+    let current: ConversationId | undefined = conversationId
+    while (current !== undefined) {
+      const profile = await tx.doc(Profile, current)
+      if (profile.adhoc) return scriptOnly
+      if (profile.definition !== undefined) {
+        const { definitions } = await discoverAgents(
+          host.ultimateRoot,
+          host.projectRoot,
+          host.userHome,
+          host.modelRuntime,
+        )
+        const denied = definitions.find((item) => item.name === profile.definition)?.denyTools
+        return denied ? scriptOnly.filter((name) => !denied.includes(name)) : scriptOnly
+      }
+      current = (await tx.conversation(current))?.parent?.conversationId
+    }
+    return []
+  }
   return defineExtension({
     name: 'codemode',
     tasks: [Summary],
@@ -628,11 +657,13 @@ export default function codemode(host: ExtensionHost) {
         beforeInput: async (_input, { tx, conversationId }) => {
           const agent = await tx.doc(AgentDoc, conversationId)
           const tools = agent.tools
-          const legacyToolList =
-            Array.isArray(tools) &&
-            tools.includes('codemode') &&
-            !scriptOnly.some((name) => tools.includes(name))
-          if (legacyToolList) tools.push(...scriptOnly)
+          if (!Array.isArray(tools) || !tools.includes('codemode')) return undefined
+          if (scriptOnly.every((name) => tools.includes(name))) return undefined
+          const settled = await tx.doc(ScriptToolsSettled, conversationId)
+          if (settled.done) return undefined
+          settled.done = true
+          const granted = await grantedScriptTools(tx, conversationId)
+          for (const name of granted) if (!tools.includes(name)) tools.push(name)
           return undefined
         },
       }),
