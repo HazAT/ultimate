@@ -94,21 +94,24 @@ function toggle(extensions: JsonObject, name: string, enabled: boolean) {
     extensions[opposite] = (extensions[opposite] as string[]).filter((entry) => entry !== name)
 }
 async function missingSecrets(host: ExtensionHost, chosen: Record<string, boolean>) {
+  const declared = host
+    .extensions()
+    .filter((extension) => chosen[extension.name] && extension.enabled)
+    .flatMap((extension) => extension.server?.secrets ?? [])
+    .filter(
+      ({ name, provider }) =>
+        !process.env[name] &&
+        !(
+          provider &&
+          host.modelRuntime.getProviderAuthStatus(provider).configured &&
+          !host.modelRuntime.isUsingOAuth(provider)
+        ),
+    )
+  if (!declared.length) return []
   const stored = new Set((await secretMetadata(host.userHome)).map((secret) => secret.name))
-  const missing = new Set<string>()
-  for (const extension of host.extensions())
-    if (chosen[extension.name] && extension.enabled)
-      for (const { name, provider } of extension.server?.secrets ?? [])
-        if (
-          !stored.has(name) &&
-          !(
-            provider &&
-            host.modelRuntime.getProviderAuthStatus(provider).configured &&
-            !host.modelRuntime.isUsingOAuth(provider)
-          )
-        )
-          missing.add(name)
-  return [...missing].toSorted()
+  return [...new Set(declared.map(({ name }) => name))]
+    .filter((name) => !stored.has(name))
+    .toSorted()
 }
 async function inspectResourceNames(projectRoot: string) {
   const directory = join(projectRoot, '.ultimate/agents')
