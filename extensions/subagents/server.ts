@@ -35,6 +35,7 @@ import {
   LiveDoc,
   InboxDoc,
   GenerationTask,
+  ToolTask,
   hook,
   ROOT_CONVERSATION_ID,
   section,
@@ -944,13 +945,9 @@ export default function subagents(
             for (const id of results) {
               const message = (await tx.entry(ToolResultEntry, id))?.model?.[0]
               if (message?.role !== 'toolResult' || message.isError) continue
-              const info = message.details as
-                | { answerId?: EntryId; subagentAnswers?: EntryId[] }
-                | undefined
+              const info = message.details as { answerId?: EntryId } | undefined
               if (message.toolName === 'subagent' && info?.answerId !== undefined)
                 answers.add(info.answerId)
-              if (message.toolName === 'codemode')
-                for (const answer of info?.subagentAnswers ?? []) answers.add(answer)
             }
             if (!answers.size) return
             const submissions = []
@@ -987,6 +984,20 @@ export default function subagents(
         },
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: (_input, { tx, conversationId }) => stateNote(tx, conversationId, Date.now()),
+      }),
+      hook(ToolTask, {
+        beforeTool: (call) => {
+          if (call.name !== 'subagent' || !call.parent) return undefined
+          const { action, background } = call.arguments
+          if (action === 'wait' || background === false)
+            return {
+              block:
+                'A script starts and messages subagents in the background only: wait at top level',
+            }
+          if (action === 'start' || action === 'message')
+            return { arguments: { ...call.arguments, background: true } }
+          return undefined
+        },
       }),
     ],
     sections: [
@@ -1216,7 +1227,8 @@ export default function subagents(
               ? `\nIsolate: ${isolate.path}\nBranch: ${isolate.branch}${warning}`
               : ''
             const background =
-              index.agents[String(action.conversationId)]?.background ?? args.background === true
+              args.background === true ||
+              (index.agents[String(action.conversationId)]?.background ?? false)
             const info = details(action.conversationId, background)
             await api.details(info, context)
             if (background)

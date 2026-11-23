@@ -30,7 +30,11 @@ it('labels a failed read-only or empty script without the model, and asks it whe
 })
 
 it('asks the model for actions, writes, commands and several calls', () => {
-  const action = { name: 'ultimate.action', args: ['conversations', 'conclude', {}], status: 'ok' }
+  const action = {
+    name: 'action',
+    args: { extension: 'conversations', action: 'conclude', args: {} },
+    status: 'ok',
+  }
   expect(fixedLine([action])).toBeUndefined()
   expect(fixedLine([{ name: 'bash', args: { command: 'ls' }, status: 'ok' }])).toBeUndefined()
   expect(fixedLine([{ name: 'write', args: { path: 'a' }, status: 'ok' }])).toBeUndefined()
@@ -40,14 +44,12 @@ it('asks the model for actions, writes, commands and several calls', () => {
 
 it('sends only the calls and a failure, never the script or a result', () => {
   const conclude = {
-    name: 'ultimate.action',
+    name: 'action',
     args: ['conversations', 'conclude', { ids: [1] }],
     status: 'ok',
   }
   expect(JSON.parse(summaryInput([conclude]))).toEqual({
-    calls: [
-      { name: 'ultimate.action', status: 'ok', args: '["conversations","conclude",{"ids":[1]}]' },
-    ],
+    calls: [{ name: 'action', status: 'ok', args: '["conversations","conclude",{"ids":[1]}]' }],
   })
   expect(JSON.parse(summaryInput([], 'Error: no such conversation'))).toEqual({
     calls: [],
@@ -59,7 +61,7 @@ it('removes credentials from arguments and errors before they reach the summary 
   const input = summaryInput(
     [
       {
-        name: 'ultimate.action',
+        name: 'action',
         args: ['secrets', 'set', { name: 'GH', value: 'v', apiKey: 'sk-live-1' }],
         status: 'ok',
       },
@@ -120,7 +122,7 @@ it('drops the word after a credential name, and unsafe object keys, through summ
       status: 'ok',
     },
     {
-      name: 'ultimate.action',
+      name: 'action',
       args: ['secrets', 'set', { nested: { ghp_abcdefghij1234567890: 'v', session: 's3ss10n' } }],
       status: 'ok',
     },

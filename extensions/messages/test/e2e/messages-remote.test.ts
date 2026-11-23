@@ -77,7 +77,7 @@ it('tells another running Ultimate, whose @ultimate answers back as a reply', as
     await conversation.submit(
       {
         type: 'input',
-        content: `TELL return await ultimate.tell({ project: 'beta', text: 'Start a branch that does X' })`,
+        content: `TELL return await tools.tell({ project: 'beta', text: 'Start a branch that does X' })`,
       },
       context,
     )

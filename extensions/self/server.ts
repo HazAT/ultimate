@@ -37,6 +37,7 @@ export default function self(host: ExtensionHost) {
         description:
           'Restart the shared Ultimate host after authorized changes to server/, shared/ or its packages (patches/, pnpm-lock.yaml). Land an isolated workspace into the running clone first.',
         parameters: obj({}),
+        callers: ['model'],
         ...safeToRerun(
           'The target generation is memoized before the swap, so replay reports it without restarting again.',
         ),

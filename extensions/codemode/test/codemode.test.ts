@@ -5,10 +5,10 @@ import {
   fauxToolCall,
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
-import { num, obj, opt, str } from '@earendil-works/pi-schema'
+import { num, obj } from '@earendil-works/pi-schema'
 import { defineExtension, defineTool, hook, ToolTask } from '@earendil-works/pi-durable'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
-import type { ConversationId, ToolExecutionResult } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
 import {
   copyApis,
@@ -22,7 +22,8 @@ import {
 } from '../../../test/helpers.ts'
 import { context } from '../../../server/harness.ts'
 import { FIRST_CHAPTER, requestChapter } from '../../../lib/chapters.ts'
-import { Store, SummaryDoc } from '../server.ts'
+import { SummaryDoc } from '../server.ts'
+import { CodemodeStoreDoc } from '@earendil-works/pi-durable/codemode'
 import { Summarized } from '../refs.ts'
 import planExtension from '../../plan/server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
@@ -118,7 +119,7 @@ it('reads an inactive chapter through the sandbox and rejects project with chapt
   };`,
   )
   expect(result.data.isError).not.toBe(true)
-  expect(result.data.details.value).toMatchObject({
+  expect(result.value).toMatchObject({
     entries: live,
     search: live,
     conversations: expect.arrayContaining([
@@ -129,7 +130,7 @@ it('reads an inactive chapter through the sandbox and rejects project with chapt
       }),
     ]),
   })
-  const { conversations } = result.data.details.value as {
+  const { conversations } = result.value as {
     conversations: { id: number; title: string }[]
   }
   expect(conversations.find((item) => item.id === long)!.title.length).toBeLessThanOrEqual(60)
@@ -137,7 +138,7 @@ it('reads an inactive chapter through the sandbox and rejects project with chapt
     next,
     `return await ultimate.entries(1, { project: 'anything', chapter: '${FIRST_CHAPTER}' });`,
   )
-  expect(conflict.data.details.error).toContain('chapter and project cannot be used together')
+  expect(conflict.output).toContain('chapter and project cannot be used together')
 })
 
 it('keeps codemode guidance without repeating top-level tool schemas', async () => {
@@ -151,12 +152,12 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   )
   expect(text).toContain('Use edit/write outside codemode')
   expect(text).toContain('filter to concise findings')
-  expect(text).toContain('a tool that declares structured output resolves to it')
-  expect(text).toContain(
-    'Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action.',
-  )
-  expect(text).toContain('Available: read, write, edit, bash')
-  expect(text).not.toContain('declare const tools')
+  expect(text).toContain('act on them through tools.action({extension, action, args})')
+  expect(text).toContain("models.classify({provider: 'typesafe', id: 'jev-1.14.0'}")
+  expect(text).toContain('declare const ultimate')
+  expect(text).toContain('entries(conversationId: number')
+  expect(text).toContain('### `action`')
+  expect(text).toContain('### `tell`')
   const withRestart = await section.render(
     {
       conversationId: server.root.id,
@@ -165,11 +166,11 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
     context,
   )
   expect(withRestart).toContain('Call restart only at top level')
-  expect(withRestart?.split('Available: ')[1].split(', ')).not.toContain('restart')
+  expect(agent.tools.map((tool) => tool.name)).not.toContain('action')
+  expect(agent.tools.map((tool) => tool.name)).not.toContain('tell')
   const tool = agent.tools.find((item) => item.name === 'codemode')!
-  expect(tool.description).toContain('store(key,value)/load(key)')
-  expect(tool.description).toContain('yielded wait discards them')
-  expect(tool.description).toContain('declare const ultimate')
+  expect(tool.replay).toBe('safe')
+  expect(tool.description).toContain('models.classify(')
 })
 
 it('keeps model-only tools callable directly but out of script bindings and guidance', async () => {
@@ -203,14 +204,13 @@ it('keeps model-only tools callable directly but out of script bindings and guid
   expect(executions).toBe(1)
   expect(result.data.isError).toBe(true)
   expect(result.text).toContain('model_only_probe')
-  expect(result.data.details.calls).toEqual([])
   const agent = await server.root.agent(context)
   const section = server.host.registry.snapshot().extension('codemode')!.sections![0]
   const guidance = await section.render(
     { conversationId: server.root.id, agent } as Parameters<typeof section.render>[0],
     context,
   )
-  expect(guidance?.split('Available: ')[1].split(', ')).not.toContain('model_only_probe')
+  expect(guidance).not.toContain('model_only_probe')
 })
 
 async function run(
@@ -226,19 +226,27 @@ async function run(
   await server.harness.waitForIdle(context)
   const state = await server.root.context(context)
   const entry = state.entries.findLast((item) => item.kind === 'pi.tool-result')!
+  const message = entry.model![0] as unknown as {
+    content: { type: string; text?: string }[]
+    details: { calls: { name: string; status: string; args: string; error?: string }[] }
+    isError: boolean
+  }
+  const output = message.content
+    .slice(1)
+    .flatMap((block) => (block.type === 'text' ? [block.text!] : []))
+    .join('\n')
   return {
-    text: JSON.stringify(entry.model?.[0]?.role === 'toolResult' ? entry.model[0].content : []),
-    data: entry.model![0] as unknown as {
-      details: {
-        calls: { name: string; status: string; ms: number }[]
-        value?: unknown
-        error?: string
-        yielded?: boolean
-        pendingSubagents?: { conversationId: number; background?: boolean }[]
-        subagentAnswers?: number[]
-      }
-      isError: boolean
-    },
+    text: JSON.stringify(message.content),
+    output,
+    value: parsed(output),
+    data: message,
+  }
+}
+const parsed = (text: string): unknown => {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
   }
 }
 
@@ -289,7 +297,7 @@ it('traces a tool a codemode script calls, and its service call, inside the code
   await until(async () =>
     (await server.root.agent(context)).tools.some((tool) => tool.name === 'probe'),
   )
-  expect((await run(server, `return await tools.probe({});`)).data.details.value).toBe('probed')
+  expect((await run(server, `return await tools.probe({});`)).value).toBe('probed')
   const echo = server.extensions.trace.query().find((row) => row.name === 'trace-echo.echo')!
   expect(shape(server.extensions.trace.tree(echo.trace))).toEqual([
     [
@@ -334,9 +342,9 @@ it('calls extension actions with caller context and rejects missing or disabled 
   await until(() => !!server.extensions.action('action-test', 'echo'))
   const result = await run(
     server,
-    `return await ultimate.action('action-test', 'echo', { value: 42 });`,
+    `return await tools.action({extension: 'action-test', action: 'echo', args: { value: 42 }});`,
   )
-  expect(result.data.details.value).toEqual({
+  expect(result.value).toEqual({
     args: { value: 42 },
     conversationId: server.root.id,
     signal: true,
@@ -347,21 +355,27 @@ it('calls extension actions with caller context and rejects missing or disabled 
     `const calls = await ultimate.trace({ conversation: ${server.root.id} });
     const action = calls.findLast((call) => call.name === 'action-test/echo');
     const [tool] = await ultimate.traceTree(action.trace);
-    return { action, tool: [tool.kind, tool.name, tool.children.map((call) => call.name)] };`,
+    return { action, tool: [tool.kind, tool.name, tool.children.map((call) => [call.name, call.children.map((inner) => inner.name)])] };`,
   )
-  expect(traced.data.details.value).toMatchObject({
+  expect(traced.value).toMatchObject({
     action: { kind: 'action', caller: 'agent', ok: true, args: '{"value":42}' },
-    tool: ['tool', 'codemode', ['action-test/echo']],
+    tool: ['tool', 'codemode', [['action', ['action-test/echo']]]],
   })
-  const defaults = await run(server, `return await ultimate.action('action-test', 'echo');`)
-  expect(defaults.data.details.value).toMatchObject({ args: null })
+  const defaults = await run(
+    server,
+    `return await tools.action({extension: 'action-test', action: 'echo'});`,
+  )
+  expect(defaults.value).toMatchObject({ args: null })
   for (const [extension, action, error] of [
     ['missing', 'echo', 'Unknown extension action: missing/echo'],
     ['action-test', 'missing', 'Unknown extension action: action-test/missing'],
     ['action-test', 'toString', 'Unknown extension action: action-test/toString'],
     ['action-test', 'fail', 'Action failed'],
   ]) {
-    const failed = await run(server, `return await ultimate.action('${extension}', '${action}');`)
+    const failed = await run(
+      server,
+      `return await tools.action({extension: '${extension}', action: '${action}'});`,
+    )
     expect(failed.data.isError).toBe(true)
     expect(failed.text).toContain(error)
   }
@@ -371,9 +385,26 @@ it('calls extension actions with caller context and rejects missing or disabled 
     JSON.stringify({ extensions: { disable: ['action-test'] } }),
   )
   await until(() => !server.extensions.action('action-test', 'echo'))
-  const disabled = await run(server, `return await ultimate.action('action-test', 'echo');`)
+  const disabled = await run(
+    server,
+    `return await tools.action({extension: 'action-test', action: 'echo'});`,
+  )
   expect(disabled.data.isError).toBe(true)
   expect(disabled.text).toContain('Unknown extension action: action-test/echo')
+  for (const name of ['action', 'tell']) {
+    server.host.faux!.setResponses([
+      fauxAssistantMessage([fauxToolCall(name, { extension: 'action-test', action: 'echo' })], {
+        stopReason: 'toolUse',
+      }),
+      fauxAssistantMessage('Complete'),
+    ])
+    await server.root.submit({ type: 'input', content: `call ${name} directly` }, context)
+    await server.harness.waitForIdle(context)
+    const direct = (await server.root.context(context)).entries.findLast(
+      (entry) => entry.kind === 'pi.tool-result',
+    )!
+    expect(JSON.stringify(direct.model)).toContain(`Tool ${name} is not available`)
+  }
 })
 
 it('discovers extension contracts: summaries first, then one api.ts and refs.ts by name', async () => {
@@ -410,7 +441,7 @@ it('discovers extension contracts: summaries first, then one api.ts and refs.ts 
     try { await ultimate.api('no-such-extension') } catch (error) { unknown = error.message }
     return { apis, source: await ultimate.api('contract-test'), unknown };`,
   )
-  const value = result.data.details.value as {
+  const value = result.value as {
     apis: { name: string; summary: string }[]
     source: string
     unknown: string
@@ -428,7 +459,7 @@ it('discovers extension contracts: summaries first, then one api.ts and refs.ts 
   for (const api of value.apis) expect(api.summary).not.toBe('')
   expect(value.source).toBe(
     `// contract-test/api.ts: the server contract: services, extension points, documents\n${source}\n` +
-      `// contract-test/refs.ts: the browser contract: documents, actions (call them with ultimate.action) and events\n${refs}`,
+      `// contract-test/refs.ts: the browser contract: documents, actions (call them with tools.action) and events\n${refs}`,
   )
   expect(value.unknown).toMatch(
     /^No enabled extension "no-such-extension" with an api\.ts or refs\.ts; known: .*\bcontract-test\b/,
@@ -453,11 +484,11 @@ it('applies each automation call in one script to its own arguments', async () =
      const id = created.split(' ')[0];
      await tools.automation({action:'subscribe', id, to:'@ultimate'});
      await tools.automation({action:'unsubscribe', id, to:'#${server.root.id}'});
-     const stored = (await ultimate.action('automations', 'list')).find((item) => item.id === id);
+     const stored = (await tools.action({extension: 'automations', action: 'list'})).find((item) => item.id === id);
      const lines = (await tools.automation({action:'list'})).split('\\n');
      return { line: lines.find((line) => line.startsWith(id + ' ')).slice(id.length + 1), subscribers: stored.subscribers };`,
   )
-  expect(result.data.details.value).toEqual({
+  expect(result.value).toEqual({
     line: expect.stringMatching(/^Probe — Every 1 day — next: .* — enabled → @ultimate$/),
     subscribers: ['@ultimate'],
   })
@@ -480,26 +511,24 @@ it('reserves trust and secret writes for the UI while allowing normal actions', 
   ] as const) {
     const denied = await run(
       server,
-      `return await ultimate.action('${extension}', '${action}', ${JSON.stringify(args)});`,
+      `return await tools.action({extension: '${extension}', action: '${action}', args: ${JSON.stringify(args)}});`,
     )
     expect(denied.data.isError).toBe(true)
     expect(denied.text).toContain(`${extension}/${action} is a user-only action`)
     const response = await post(server, `/api/extensions/${extension}/actions/${action}`, { args })
     expect(response.status).toBe(200)
   }
-  const normal = await run(server, `return await ultimate.action('secrets', 'list');`)
+  const normal = await run(
+    server,
+    `return await tools.action({extension: 'secrets', action: 'list'});`,
+  )
   expect(normal.data.isError).not.toBe(true)
-  expect(normal.data.details.value).toEqual([
-    expect.objectContaining({ name: 'TEST_KEY', set: true }),
-  ])
+  expect(normal.value).toEqual([expect.objectContaining({ name: 'TEST_KEY', set: true })])
 })
 
-it('logs ultimate helper calls and labels a one-call script by its call id, with an event', async () => {
+it('labels a one-call script by its ultimate helper and call id, with an event', async () => {
   const { server } = await fixture()
-  const result = await run(server, `return (await ultimate.conversations()).length`)
-  expect(result.data.details.calls.map((call) => [call.name, call.status])).toEqual([
-    ['ultimate.conversations', 'ok'],
-  ])
+  await run(server, `return (await ultimate.conversations()).length`)
   const view = await server.root.context(context)
   const call = view.entries.findLast((entry) => entry.kind === 'pi.tool-result')!
   const callId = call.model?.[0]?.role === 'toolResult' ? call.model[0].toolCallId : ''
@@ -524,10 +553,9 @@ it('composes read and bash with private nested results and final JSON details', 
   const path = join(server.host.home, 'scratch.txt')
   const result = await run(
     server,
-    `const source = await tools.read({path:${JSON.stringify(path)}}); const shell = await tools.bash({command:'echo nested-private'}); const failed = await tools.bash({command:'exit 3'}); text(source.trim()); return {length:shell.output.length, exitCode: failed.exitCode};`,
+    `const source = await tools.read({path:${JSON.stringify(path)}}); const shell = await tools.bash({command:'echo nested-private'}); const failed = await tools.bash({command:'exit 3'}); return {source: source.trim(), length:shell.output.length, exitCode: failed.exitCode};`,
   )
   expect(result.text).toContain('Script completed')
-  expect(result.text).toContain('before')
   expect(result.text).not.toContain('nested-private')
   expect(result.data.details.calls.map((call) => [call.name, call.status])).toEqual([
     ['read', 'ok'],
@@ -535,7 +563,7 @@ it('composes read and bash with private nested results and final JSON details', 
     ['bash', 'error'],
   ])
   // A schema tool resolves to its structured output, a nonzero exit included.
-  expect(result.data.details.value).toEqual({ length: 15, exitCode: 3 })
+  expect(result.value).toEqual({ source: 'before', length: 15, exitCode: 3 })
   const view = await server.root.context(context)
   expect(view.entries.filter((entry) => entry.kind === 'pi.tool-result')).toHaveLength(1)
   server.host.registry.install(
@@ -573,7 +601,7 @@ it('composes read and bash with private nested results and final JSON details', 
      await tools.plan({action:'update', key: task.key, status:'todo', child: 7});
      return await tools.plan({action:'show', key: task.key});`,
   )
-  expect(extended.data.details.value).toMatchObject({
+  expect(extended.value).toMatchObject({
     description: 'draft\nmore',
     status: 'todo',
     child: 7,
@@ -599,10 +627,9 @@ it('composes read and bash with private nested results and final JSON details', 
     server,
     `try { await tools.flaky({}); } catch (error) { return error.message; }`,
   )
-  expect(thrown.data.details.value).toContain('Starting…')
-  expect(thrown.data.details.value).toContain('disk full')
+  expect(thrown.value).toBe('Starting…')
   const structured = await run(server, `return await tools.structured({answer:42});`)
-  expect(structured.data.details.value).toEqual({ answer: 42 })
+  expect(structured.value).toEqual({ answer: 42 })
   const invalid = await run(server, `await tools.structured({answer:'wrong'});`)
   expect(invalid.data.isError).toBe(true)
   expect(invalid.data.details.calls[0].status).toBe('error')
@@ -632,17 +659,17 @@ it('composes read and bash with private nested results and final JSON details', 
     server,
     `return await Promise.all([tools.rendezvous({}), tools.rendezvous({})]);`,
   )
-  expect(parallel.data.details.value).toEqual(['overlapped', 'overlapped'])
+  expect(parallel.value).toEqual(['overlapped', 'overlapped'])
   const caught = await run(
     server,
     `try { await tools.read({path:'missing-file'}); } catch (error) { return error.message; }`,
   )
   expect(caught.data.details.calls[0].status).toBe('error')
-  expect(String(caught.data.details.value)).toContain('missing-file')
+  expect(String(caught.value)).toContain('missing-file')
   const failed = await run(server, `text('kept');\nawait tools.read({path:'missing-file'});`)
   expect(failed.text).toContain('Script failed')
   expect(failed.text).toContain('kept')
-  expect(failed.data.details.error).toContain('missing-file')
+  expect(failed.output).toContain('missing-file')
   expect(failed.data.isError).toBe(true)
 })
 
@@ -709,24 +736,24 @@ it("reads another running project's history through its API, and names a project
     const found = await ultimate.search(needle, { project: 'poe2-rust', limit: 1 });
     const tail = await ultimate.entries(list[0].id, { project: 'POE2-RUST', kinds: ['pi.user'], limit: 1 });
     const own = await ultimate.search(needle);
-    const theirs = await ultimate.doc('codemode.store', undefined, { project: 'poe2-rust' });
+    const theirs = await ultimate.doc('pi.codemode.store', undefined, { project: 'poe2-rust' });
     return { found: found.length, tail: tail[0].kind, own: own.length, theirs: JSON.stringify(theirs) };`,
   )
   // Their conversation 1 ran a script but stored nothing.
-  expect(asked.data.details.value).toEqual({
+  expect(asked.value).toEqual({
     found: 1,
     tail: 'pi.user',
     own: 0,
-    theirs: '{}',
+    theirs: '{"values":{}}',
   })
   // Naming this project reads here, defaulting to the calling conversation as without a project.
   await run(server, `store('here-key', 1); return 1`)
   const stored = await run(
     server,
     `const here = (await ultimate.projects()).find((p) => p.current).name;
-    return await ultimate.doc('codemode.store', undefined, { project: here });`,
+    return await ultimate.doc('pi.codemode.store', undefined, { project: here });`,
   )
-  expect(JSON.stringify(stored.data.details.value)).toContain('here-key')
+  expect(JSON.stringify(stored.value)).toContain('here-key')
   await other.close()
   servers.splice(servers.indexOf(other), 1)
   await rm(join(projects, 'poe2-rust-1/ultimate.lock'))
@@ -748,7 +775,7 @@ it('lists conversations with their title and cwd', async () => {
   await post(server, '/api/ui', { ops: [{ key: 'ext.conversations.concluded', value: [done] }] })
   const result = await run(server, `return await ultimate.conversations()`)
   expect(result.data.isError).toBe(false)
-  const listed = result.data.details.value as { id: number }[]
+  const listed = result.value as { id: number }[]
   expect(listed.find((item) => item.id === open)).toMatchObject({
     title: 'Parser work',
     cwd: expect.any(String),
@@ -773,7 +800,7 @@ it('lists conversations whose titles are whole prompts with short titles, far be
   )
   const result = await run(server, `return await ultimate.conversations()`)
   expect(result.data.isError).toBe(false)
-  const listed = result.data.details.value as { id: number; title?: string }[]
+  const listed = result.value as { id: number; title?: string }[]
   for (const item of listed.filter((entry) => ids.includes(entry.id))) {
     expect(item.title).toMatch(/^Rewrite the parser and keep every token .*…$/)
     expect(item.title!.length).toBeLessThanOrEqual(60)
@@ -798,7 +825,7 @@ it("lists project agents once the project's setup is trusted, and says when it i
       `const a = await ultimate.agents(); return { setup: a.projectSetup, project: a.definitions.filter((d) => d.source === 'project').map((d) => d.name) }`,
     )
     expect(result.data.isError).toBe(false)
-    return result.data.details.value
+    return result.value
   }
   // The faux fixture trusts its project; declining it hides the project's definitions and says why.
   const trust = new ProjectTrustStore(join(options.userHome, '.ultimate'))
@@ -813,29 +840,27 @@ it('reads stored history and documents from before a reset', async () => {
   await server.root.reset(undefined, context)
   const result = await run(
     server,
-    `const matches = await ultimate.search('history-needle'); const entries = await ultimate.entries(1, {kinds:['pi.user'], limit:1}); const old = await ultimate.entries(1, {before:entries[0].id}); return {matches:matches.length, old:old.length, doc:await ultimate.doc('codemode.store')};`,
+    `const matches = await ultimate.search('history-needle'); const entries = await ultimate.entries(1, {kinds:['pi.user'], limit:1}); const old = await ultimate.entries(1, {before:entries[0].id}); return {matches:matches.length, old:old.length, doc:await ultimate.doc('pi.codemode.store')};`,
   )
   expect(result.data.isError).toBe(false)
-  expect(result.data.details.value).toMatchObject({
-    doc: { saved: 7 },
+  expect(result.value).toMatchObject({
+    doc: { values: { saved: 7 } },
   })
-  expect((result.data.details.value as { matches: number }).matches).toBeGreaterThan(0)
-  expect((result.data.details.value as { old: number }).old).toBeGreaterThan(0)
+  expect((result.value as { matches: number }).matches).toBeGreaterThan(0)
+  expect((result.value as { old: number }).old).toBeGreaterThan(0)
 })
 
 it('searches compactly by default, filters kinds, and returns whole entries with full', async () => {
   const { server } = await fixture()
   await run(server, `return 1;`, `kinds-needle ${'padding '.repeat(500)}`)
-  const { value } = (
-    await run(
-      server,
-      `return {
+  const { value } = (await run(
+    server,
+    `return {
         compact: await ultimate.search('kinds-needle', { kinds: ['pi.user'] }),
         none: await ultimate.search('kinds-needle', { kinds: ['board.message'] }),
         full: await ultimate.search('kinds-needle', { kinds: ['pi.user'], full: true }),
       };`,
-    )
-  ).data.details as {
+  )) as {
     value: { compact: { excerpt: string }[]; none: unknown[]; full: { data: unknown }[] }
   }
   expect(value.compact).toEqual([
@@ -855,239 +880,32 @@ it('searches compactly by default, filters kinds, and returns whole entries with
 
 it('persists store over two calls and harness close/reopen; discards failed writes', async () => {
   const { server, options } = await fixture()
+  const values = async (harness = server.harness) =>
+    (await harness.snapshot(CodemodeStoreDoc, server.root.id, context))?.values
   expect(
-    (await run(server, `store('runs', (load('runs') ?? 0)+1); return load('runs');`)).data.details
-      .value,
+    (await run(server, `store('runs', (load('runs') ?? 0)+1); return load('runs');`)).value,
   ).toBe(1)
-  expect(
-    (await run(server, `store('runs', load('runs')+1); return load('runs');`)).data.details.value,
-  ).toBe(2)
+  expect((await run(server, `store('runs', load('runs')+1); return load('runs');`)).value).toBe(2)
   await run(server, `store('runs', 99); throw new Error('no commit');`)
-  expect(await server.harness.snapshot(Store, server.root.id, context)).toEqual({ runs: 2 })
+  expect(await values()).toEqual({ runs: 2 })
   await server.close()
   servers.splice(servers.indexOf(server), 1)
   const reopened = await createServer(options)
   servers.push(reopened)
   expect(
-    (await run(reopened, `const n = load('runs'); store('runs', undefined); return n;`)).data
-      .details.value,
+    (await run(reopened, `const n = load('runs'); store('runs', undefined); return n;`)).value,
   ).toBe(2)
-  expect(await reopened.harness.snapshot(Store, reopened.root.id, context)).toEqual({})
-  const truncated = await run(
-    reopened,
-    `// @options: {"max_output_tokens":20}\ntext('x'.repeat(1000));`,
-  )
-  expect(truncated.text).toContain('Output truncated')
+  expect(await values(reopened.harness)).toEqual({})
 })
 
-it('aborts nested work without committing store writes', async () => {
-  const { server } = await fixture()
-  server.host.faux!.setResponses([
-    fauxAssistantMessage(
-      [
-        fauxToolCall('codemode', {
-          code: `await tools.read({path:${JSON.stringify(join(server.host.home, 'scratch.txt'))}}); await tools.bash({command:'sleep 30'}); store('aborted', true);`,
-        }),
-      ],
-      { stopReason: 'toolUse' },
-    ),
-    fauxAssistantMessage('Complete'),
-  ])
-  await server.root.submit({ type: 'input', content: 'abort this' }, context)
-  await until(async () => {
-    const state = await server.root.watch(context)
-    try {
-      return JSON.stringify(state.value.docs['pi.live']).includes('✓ tools.read')
-    } finally {
-      await state.stop()
-    }
-  })
-  await server.root.abort(context)
-  await server.harness.waitForIdle(context)
-  expect(await server.harness.snapshot(Store, server.root.id, context)).toBeUndefined()
-  const view = await server.root.context(context)
-  expect(JSON.stringify(view.entries.findLast((entry) => entry.kind === 'pi.tool-result'))).toMatch(
-    /aborted|interrupted/,
-  )
-})
-
-it.each([
-  ['sequential', `await tools.subagent({action:'wait', id:41});`],
-  ['foreground start', `await tools.subagent({action:'start'});`],
-  [
-    'catch',
-    `try { await tools.subagent({action:'wait', id:41}); } catch { text('caught'); await tools.effect({}); }`,
-  ],
-  [
-    'finally',
-    `try { await tools.subagent({action:'wait', id:41}); } finally { text('finalized'); await tools.effect({}); }`,
-  ],
-])('yields %s without executing the remainder or committing store writes', async (_name, wait) => {
-  const { server } = await fixture()
-  let effects = 0
-  server.host.registry.install(
-    defineExtension({
-      name: 'yield-test',
-      tools: [
-        defineTool({
-          name: 'subagent',
-          description: 'Fake child wait',
-          parameters: obj({ action: str(), id: opt(num()) }),
-          execute: async ({ id }): Promise<ToolExecutionResult> =>
-            id === 1
-              ? {
-                  output: [{ type: 'text', text: 'earlier-private-answer' }],
-                  details: { conversationId: 1, answerId: 101 },
-                }
-              : {
-                  output: [{ type: 'text', text: 'Unfinished; yielded to steering' }],
-                  details: { yielded: true, conversationId: id ?? 41, background: true },
-                },
-        }),
-        defineTool({
-          name: 'effect',
-          description: 'Record a side effect',
-          parameters: obj({}),
-          execute: async () => {
-            effects++
-            return { output: [{ type: 'text', text: 'effect' }] }
-          },
-        }),
-      ],
-    }),
-  )
-  await run(server, `store('saved', 7); store('deleted', true);`)
-  const result = await run(
-    server,
-    `await tools.subagent({action:'wait', id:1}); await tools.effect({}); text('prior-output'); store('saved', 99); store('deleted', undefined); store('new', true); ${wait} text('continued'); await tools.effect({}); return 'finished';`,
-  )
-  expect(result.data.isError).toBe(false)
-  expect(result.data.details).toMatchObject({
-    yielded: true,
-    pendingSubagents: [{ conversationId: 41, background: true }],
-    calls: [
-      { name: 'subagent', status: 'ok' },
-      { name: 'effect', status: 'ok' },
-      { name: 'subagent', status: 'yielded' },
-    ],
-  })
-  expect(result.data.details).not.toHaveProperty('subagentAnswers')
-  expect(result.data.details.value).toBeUndefined()
-  expect(result.data.details.error).toBeUndefined()
-  expect(result.text).toContain(
-    'Script yielded to steering; subagents still running; remaining script not executed; prior side effects may have happened',
-  )
-  expect(result.text).toContain('41')
-  expect(result.text).toContain('prior-output')
-  expect(result.text).not.toMatch(
-    /Script completed|Script failed|continued|caught|finalized|finished|earlier-private-answer/,
-  )
-  expect(effects).toBe(1)
-  expect(await server.harness.snapshot(Store, server.root.id, context)).toEqual({
-    saved: 7,
-    deleted: true,
-  })
-  // A sandbox-local yield does not cancel the parent's invocation or its next tool round.
-  expect((await run(server, `return await tools.effect({});`)).data.details.value).toBe('effect')
-  expect(effects).toBe(2)
-  const answered = await run(server, `await tools.subagent({action:'wait', id:1});`)
-  expect(answered.data.details.subagentAnswers).toEqual([101])
-})
-
-it('yields Promise.all, cancels pending host work, and preserves other waiting child IDs', async () => {
-  const { server } = await fixture()
-  let entered = 0
-  let release!: () => void
-  const barrier = new Promise<void>((done) => {
-    release = done
-  })
-  let cancelled = 0
-  let effects = 0
-  const rendezvous = () => {
-    if (++entered === 3) release()
-  }
-  server.host.registry.install(
-    defineExtension({
-      name: 'parallel-yield-test',
-      tools: [
-        defineTool({
-          name: 'subagent',
-          description: 'Fake parallel wait',
-          parameters: obj({ action: str(), id: num() }),
-          execute: async ({ id }, _api, nestedContext) => {
-            rendezvous()
-            if (id === 41) {
-              await barrier
-              return {
-                output: [{ type: 'text', text: 'Still running' }],
-                details: { yielded: true, conversationId: id },
-              }
-            }
-            await new Promise<void>((_resolve, reject) => {
-              nestedContext.abortSignal!.addEventListener(
-                'abort',
-                () => {
-                  cancelled++
-                  reject(new Error('Wait cancelled'))
-                },
-                { once: true },
-              )
-            })
-            throw new Error('Unreachable')
-          },
-        }),
-        defineTool({
-          name: 'effect',
-          description: 'Normal cancellable tool',
-          parameters: obj({}),
-          execute: async (_args, _api, nestedContext) => {
-            rendezvous()
-            await new Promise<void>((_resolve, reject) => {
-              nestedContext.abortSignal!.addEventListener(
-                'abort',
-                () => {
-                  cancelled++
-                  reject(new Error('Work cancelled'))
-                },
-                { once: true },
-              )
-            })
-            effects++
-            return { output: [{ type: 'text', text: 'effect' }] }
-          },
-        }),
-      ],
-    }),
-  )
-  const result = await run(
-    server,
-    `store('parallel', true); try { await Promise.all([tools.subagent({action:'wait', id:41}), tools.subagent({action:'wait', id:42}), tools.effect({})]); } catch { text('caught'); } finally { text('finalized'); } text('continued'); return 'finished';`,
-  )
-  expect(result.data.isError).toBe(false)
-  expect(result.data.details.yielded).toBe(true)
-  expect(result.data.details).not.toHaveProperty('subagentAnswers')
-  expect(result.data.details.pendingSubagents).toEqual([
-    { conversationId: 41 },
-    { conversationId: 42 },
-  ])
-  expect(result.data.details.calls.map((call) => [call.name, call.status])).toEqual([
-    ['subagent', 'yielded'],
-    ['subagent', 'cancelled'],
-    ['effect', 'cancelled'],
-  ])
-  expect(cancelled).toBe(2)
-  expect(effects).toBe(0)
-  expect(result.text).not.toMatch(/caught|finalized|continued|finished|Script failed/)
-  expect(await server.harness.snapshot(Store, server.root.id, context)).toBeUndefined()
-})
-
-it('recovers an unsafe interrupted script with its committed nested-call log', async () => {
+it('resumes an interrupted script from its journal without running finished calls again', async () => {
   const { server, options } = await fixture()
+  const marker = join(server.host.home, 'ran.txt')
   server.host.faux!.setResponses([
     fauxAssistantMessage(
       [
         fauxToolCall('codemode', {
-          code: `await tools.read({path:${JSON.stringify(join(server.host.home, 'scratch.txt'))}}); await tools.bash({command:'sleep 30'}); store('finished', true);`,
+          code: `await tools.bash({command:'echo once >> ${marker}'}); const listed = await ultimate.conversations(); await tools.bash({command:'sleep 30'}); store('finished', listed.length); return 'resumed';`,
         }),
       ],
       { stopReason: 'toolUse' },
@@ -1098,7 +916,7 @@ it('recovers an unsafe interrupted script with its committed nested-call log', a
   await until(async () => {
     const state = await server.root.watch(context)
     try {
-      return JSON.stringify(state.value.docs['pi.live']).includes('✓ tools.read')
+      return JSON.stringify(state.value.docs['pi.live']).includes('sleep 30')
     } finally {
       await state.stop()
     }
@@ -1109,9 +927,10 @@ it('recovers an unsafe interrupted script with its committed nested-call log', a
   const reopened = await createServer(options)
   servers.push(reopened)
   await reopened.harness.waitForIdle(context)
-  const state = await reopened.root.context(context)
-  const result = state.entries.find((entry) => entry.kind === 'pi.tool-result')
-  expect(JSON.stringify(result)).toContain('interrupted')
-  expect(JSON.stringify(result)).toContain('✓ tools.read')
-  expect(await reopened.harness.snapshot(Store, reopened.root.id, context)).toBeUndefined()
+  expect(await readFile(marker, 'utf8')).toBe('once\n')
+  const result = (await reopened.root.context(context)).entries.find(
+    (entry) => entry.kind === 'pi.tool-result',
+  )
+  expect(JSON.stringify(result)).toContain('Script failed')
+  expect(JSON.stringify(result)).toContain('bash (error)')
 })

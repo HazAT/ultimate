@@ -1,4 +1,4 @@
-One stream of everything Ultimate records: durable events (`host.eventLog`) and the call trace (`host.trace`: service, action, reactor, tool and model calls), merged into one row shape, paged and filtered on the server. The System surface reads it; agents can call it with `ultimate.action('system', 'stream', …)`. Optional; it changes nothing.
+One stream of everything Ultimate records: durable events (`host.eventLog`) and the call trace (`host.trace`: service, action, reactor, tool and model calls), merged into one row shape, paged and filtered on the server. The System surface reads it; agents can call it with `tools.action({extension: 'system', action: 'stream', args: …})`. Optional; it changes nothing.
 
 Actions (contracts in `refs.ts`):
 

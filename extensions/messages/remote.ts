@@ -63,7 +63,7 @@ export async function projectsSection(
       }),
   )
   if (!lines.length) return undefined
-  return `Other projects on this machine and their standing agents besides their own @ultimate. Reach one with codemode \`ultimate.tell({project, text, reply?, machine?}): Promise<{message, delivered}>\`; its @ultimate routes to the others. With reply (default true) its answer returns to you as a reply; machine picks one instance when the project runs on several.\n${lines.join('\n')}`
+  return `Other projects on this machine and their standing agents besides their own @ultimate. Reach one with codemode \`tools.tell({project, text, reply?, machine?}): Promise<{message, delivered}>\`; its @ultimate routes to the others. With reply (default true) its answer returns to you as a reply; machine picks one instance when the project runs on several.\n${lines.join('\n')}`
 }
 
 export async function tell(

@@ -286,7 +286,7 @@ describe('side chats', () => {
   it('refuses side-chat lifecycle actions invoked by an agent', async () => {
     const f = await fixture()
     await f.call(f.main, 'codemode', {
-      code: "return await ultimate.action('side-chat', 'open', {text: 'agent must not open'})",
+      code: "return await tools.action({extension: 'side-chat', action: 'open', args: {text: 'agent must not open'}})",
     })
     expect(JSON.stringify(await entries(f.server, f.main))).toContain(
       'side-chat/open is a user-only action',

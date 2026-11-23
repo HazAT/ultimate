@@ -366,7 +366,7 @@ export function delivery(host: ExtensionHost) {
                     remote: m.remote!,
                   },
                 },
-                content: `${error}\nIt answered its message ${m.re}${m.interim ? ' (your interim answer)' : ''}:\n${m.text}\n\nFind out why it is unreachable, then pass the answer on with ultimate.tell once it can take it, or tell the user if it needs them.`,
+                content: `${error}\nIt answered its message ${m.re}${m.interim ? ' (your interim answer)' : ''}:\n${m.text}\n\nFind out why it is unreachable, then pass the answer on with tools.tell once it can take it, or tell the user if it needs them.`,
               },
               ctx,
             )
