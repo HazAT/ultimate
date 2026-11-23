@@ -1,5 +1,5 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
-import { ChevronRight, CornerDownRight, Mic, Play, Scissors } from '@lucide/solid'
+import { Check, ChevronRight, CornerDownRight, Mic, Play, Scissors } from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
@@ -44,7 +44,7 @@ export function Waveform(props: { envelope?: readonly number[]; live?: boolean; 
   return <canvas aria-hidden="true" class={props.class} height={56} ref={canvas} width={440} />
 }
 
-function TraceLine(props: { trace: Trace }) {
+function TraceLine(props: { trace: Trace; turn: string }) {
   const stages = useExternal(
     () => props.trace.stages.get(),
     (changed) => props.trace.stages.subscribe(changed),
@@ -56,6 +56,11 @@ function TraceLine(props: { trace: Trace }) {
   const [now, setNow] = createSignal(Date.now())
   const running = createMemo(() => stages().some((stage) => stage.status === 'running'))
   createEffect(running, (on) => (on ? every(100, () => setNow(Date.now())) : undefined))
+  const succeeded = createMemo(
+    () =>
+      !running() && stages().every((stage) => ['done', 'slow', 'skipped'].includes(stage.status)),
+  )
+  const [open, setOpen] = createSignal(false)
   const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
   const detail = (stage: Stage) =>
     [
@@ -68,50 +73,72 @@ function TraceLine(props: { trace: Trace }) {
     ]
       .filter(Boolean)
       .join(' ')
+  const list = (checks: boolean) => (
+    <For each={stages()}>
+      {(stage, index) => (
+        <>
+          <Show when={index() > 0 && !checks}>
+            <span class="text-muted-foreground/40">·</span>
+          </Show>
+          <span
+            class={cn(
+              'inline-flex items-center gap-1 whitespace-nowrap',
+              stage.status === 'idle' && 'text-muted-foreground/35',
+              stage.status === 'skipped' && 'text-muted-foreground/50',
+              stage.status === 'running' && 'text-brand',
+              stage.status === 'slow' && 'text-warning',
+              stage.status === 'failed' && 'text-error',
+            )}
+            data-stage={stage.key}
+            data-status={stage.status}
+          >
+            <Show when={stage.status === 'running'}>
+              <span class="size-1.5 animate-pulse-dot rounded-full bg-brand" />
+            </Show>
+            <Show when={checks && (stage.status === 'done' || stage.status === 'slow')}>
+              <Check class="size-3 text-success" />
+            </Show>
+            {stage.label}
+            <Show when={detail(stage)}>
+              <span class={cn(stage.status === 'running' && 'text-brand/80')}>{detail(stage)}</span>
+            </Show>
+          </span>
+        </>
+      )}
+    </For>
+  )
   return (
     <div
-      class="flex min-w-0 flex-wrap items-center gap-x-1.5 font-mono text-[11px] leading-5 text-muted-foreground/70 tabular-nums"
+      class="min-w-0 font-mono text-[11px] leading-5 text-muted-foreground/70 tabular-nums"
       data-ui="transcript-meta"
       data-voice-trace
     >
-      <For each={stages()}>
-        {(stage, index) => (
-          <>
-            <Show when={index() > 0}>
-              <span class="text-muted-foreground/40">·</span>
+      <Show
+        when={succeeded()}
+        fallback={
+          <div class="flex min-w-0 flex-wrap items-center gap-x-1.5">
+            {list(false)}
+            <Show when={total()}>
+              <span class="whitespace-nowrap text-foreground/70">{total()}</span>
             </Show>
-            <span
-              class={cn(
-                'inline-flex items-center gap-1 whitespace-nowrap',
-                stage.status === 'idle' && 'text-muted-foreground/35',
-                stage.status === 'skipped' && 'text-muted-foreground/50',
-                stage.status === 'running' && 'text-brand',
-                stage.status === 'slow' && 'text-warning',
-                stage.status === 'failed' && 'text-error',
-              )}
-              data-stage={stage.key}
-              data-status={stage.status}
-            >
-              <Show when={stage.status === 'running'}>
-                <span class="size-1.5 animate-pulse-dot rounded-full bg-brand" />
-              </Show>
-              {stage.label}
-              <Show when={detail(stage)}>
-                <span
-                  class={cn(
-                    stage.status === 'done' && 'text-muted-foreground',
-                    stage.status === 'running' && 'text-brand/80',
-                  )}
-                >
-                  {detail(stage)}
-                </span>
-              </Show>
-            </span>
-          </>
-        )}
-      </For>
-      <Show when={total()}>
-        <span class="whitespace-nowrap text-foreground/70">{total()}</span>
+          </div>
+        }
+      >
+        <Collapsible bind={[open, setOpen]} class="min-w-0">
+          <CollapsibleTrigger
+            aria-label={`Stages of turn ${short(props.turn)}`}
+            class="group/trace flex h-auto items-center gap-1 rounded-none p-0 font-mono text-[11px] font-normal text-muted-foreground/70 hover:text-muted-foreground"
+          >
+            <Check class="size-3 text-success" />
+            {total() ?? 'done'}
+            <ChevronRight class="size-3 transition-transform group-data-open/trace:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div class="flex min-w-0 flex-wrap items-center gap-x-2.5 pt-0.5 pl-4">
+              {list(true)}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </Show>
     </div>
   )
@@ -421,7 +448,7 @@ export function Session(props: { fork: ConversationId }) {
                   turn={turn()}
                 />
                 <Show when={dock.local()[turn().key]?.trace}>
-                  {(trace) => <TraceLine trace={trace()} />}
+                  {(trace) => <TraceLine trace={trace()} turn={turn().key} />}
                 </Show>
               </>
             )}

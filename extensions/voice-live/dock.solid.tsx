@@ -237,10 +237,7 @@ async function sendTurn(input: {
   dock.setStatus(input.recorded ? 'Sending your voice…' : 'Sending…')
   if (input.interrupted) dock.cues.steer()
   else dock.cues.send()
-  if (input.recorded) {
-    trace.start('mic')
-    trace.done('mic', `${input.recorded.seconds.toFixed(1)} s`)
-  }
+  if (input.recorded) trace.record('mic', input.recorded.seconds * 1000)
   try {
     const status = await api.action(StatusAction, null)
     trace.label('model', status.model.split('/')[0])
@@ -269,7 +266,7 @@ async function sendTurn(input: {
         throw new Error('Transcription failed and this model needs text')
       trace.done('transcribe')
       text = transcript
-    } else if (transcribing) trace.skip('transcribe', 'parallel')
+    } else if (transcribing) trace.drop('transcribe')
     const typedText = attachments.flatMap((item) => (item.kind === 'text' ? [item.text] : []))
     if (typedText.length)
       text = [text, ...typedText.map((item) => `Pasted text:\n${item}`)]

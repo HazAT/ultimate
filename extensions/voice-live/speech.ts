@@ -14,7 +14,20 @@ export type PlayerState = {
   startedAt: number
 }
 
-export const estimate = (text: string, rate: number) => text.length / (CHARS_PER_SECOND * rate)
+const measured = new Map<number, number>()
+const rateKey = (rate: number) => Math.round(rate * 20) / 20
+
+export const charsPerSecond = (rate: number) =>
+  measured.get(rateKey(rate)) ?? CHARS_PER_SECOND * rate
+
+function learn(rate: number, chars: number, seconds: number) {
+  if (seconds < 0.8 || chars < 12) return
+  const sample = chars / seconds
+  const known = measured.get(rateKey(rate))
+  measured.set(rateKey(rate), known === undefined ? sample : known * 0.6 + sample * 0.4)
+}
+
+export const estimate = (text: string, rate: number) => text.length / charsPerSecond(rate)
 
 export function splitReply(parts: readonly { text: string; final: boolean }[]) {
   const sentences: Sentence[] = []
@@ -89,21 +102,30 @@ export function createPlayer(options: {
     const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.rate = options.rate()
     let boundaries = false
+    let audible: number | undefined
+    const rate = utterance.rate
     const startedAt = Date.now()
-    stopWordClock = options.frame(() => {
-      if (boundaries || mine !== token) return
-      const at = ((Date.now() - startedAt) / 1000) * CHARS_PER_SECOND * utterance.rate
+    const show = (at: number) => {
       const charIndex = item.starts.findLast((start) => start <= at) ?? 0
-      if (charIndex !== state.get().charIndex) publish({ charIndex })
+      if (charIndex > state.get().charIndex) publish({ charIndex })
+    }
+    utterance.addEventListener('start', () => {
+      if (mine !== token) return
+      audible = Date.now()
+      stopWordClock = options.frame(() => {
+        if (boundaries || mine !== token || audible === undefined) return
+        show(((Date.now() - audible) / 1000) * charsPerSecond(rate))
+      })
     })
     utterance.addEventListener('boundary', (event) => {
       if (event.name && event.name !== 'word') return
       boundaries = true
-      if (mine === token) publish({ charIndex: event.charIndex })
+      if (mine === token) show(event.charIndex)
     })
     const finished = () => {
       if (mine !== token) return
       stopWordClock?.()
+      if (audible !== undefined) learn(rate, item.text.length, (Date.now() - audible) / 1000)
       if (items[index + 1]) play(index + 1)
       else publish({ playing: false, charIndex: -1 })
     }

@@ -53,6 +53,12 @@ export function createTrace(keys: StageKey[], labels: Partial<Record<StageKey, s
         }
       })
     },
+    record(key: StageKey, ms: number) {
+      update(key, (stage) => ({ ...stage, status: 'done', ms, detail: '' }))
+    },
+    drop(key: StageKey) {
+      stages.set(stages.get().filter((stage) => stage.key !== key))
+    },
     skip(key: StageKey, detail: string) {
       const running = current()
       if (running && running.key !== key) this.done(running.key)
