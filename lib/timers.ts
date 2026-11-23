@@ -49,11 +49,6 @@ export function batch(batchWindowMs: number, fn: () => void, { unref }: { unref?
   })
 }
 
-export function unlessRepeated(autoRepeatGapMs: number, fn: () => void): Cancel {
-  const handle = setTimeout(fn, autoRepeatGapMs)
-  return () => clearTimeout(handle)
-}
-
 export function deadline(
   deadlineMs: number,
   expire: () => void,

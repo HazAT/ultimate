@@ -10,6 +10,8 @@ import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { Message } from '@earendil-works/pi-ai'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { EntryId } from '@earendil-works/pi-durable'
+import { Branch } from '../../lineage/api.ts'
 import { context } from '../../../server/harness.ts'
 import { Fork, Session, Ui } from '../server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
@@ -191,7 +193,7 @@ it('a recording whose transcript is empty is never sent to the model', async () 
   expect(f.requests).toHaveLength(asked)
 })
 
-it('ui waits for the page: the request lands on voice.ui and the page answer is the result', async () => {
+it('ui waits for the page: one page claims the request, and only its answer is the result', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })
   const calls = () => f.server.harness.snapshot(Ui, first.id, context)
@@ -203,8 +205,14 @@ it('ui waits for the page: the request lands on voice.ui and the page answer is 
   const call = (await calls())!.calls[0]
   expect(call).toMatchObject({ op: 'query', input: { text: 'Secrets' } })
   await sent
+  const claim = (page: string) => f.action('ui-claim', { id: call.id, page })
+  expect((await claim('page-a')).data.result).toEqual({ claimed: true })
+  expect((await claim('page-b')).data.result).toEqual({ claimed: false })
+  await f.action('ui-answer', { id: call.id, page: 'page-b', result: ['from the wrong page'] })
+  expect((await calls())!.calls).toHaveLength(1)
   const answered = await f.action('ui-answer', {
     id: call.id,
+    page: 'page-a',
     result: [{ ref: 'c7', label: 'Secrets' }],
   })
   expect(answered.status).toBe(200)
@@ -251,6 +259,33 @@ it('the status lists the setup: ready pieces and what is missing', async () => {
     ready: false,
     fix: expect.stringContaining('TYPESAFE_API_KEY'),
   })
+})
+
+it('a send keeps the draft unless it is admitted, and accepts a screenshot alone', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  f.transcribed.push('kept part')
+  const kept = (
+    await f.action('record', { audio, mimeType: 'audio/webm', collect: { seconds: 1 } })
+  ).data.result.audio as string
+  await until(async () => (await f.forkOf(first.id))?.transcripts?.[kept] !== undefined)
+  const stale = await f.action('turn', {
+    key: 'stale',
+    text: '',
+    audio: kept,
+    clips: [kept, '00000000-0000-0000-0000-000000000000'],
+  })
+  expect(stale.status).not.toBe(200)
+  expect((await f.forkOf(first.id))?.draft?.map((clip) => clip.audio)).toEqual([kept])
+
+  const picture = (
+    await f.action('turn', {
+      key: 'picture',
+      text: '',
+      images: [{ data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }],
+    })
+  ).status
+  expect(picture).toBe(200)
 })
 
 it('a model picked in the fork itself carries over to the next session', async () => {
@@ -321,14 +356,31 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   expect(after.id).not.toBe(blocked.id)
 })
 
-it('voice_handoff with `to` reaches the branch on screen and refuses one that is not', async () => {
+it('voice_handoff with `to` reaches a real branch on screen and refuses one off screen or not a branch', async () => {
   const f = await fixture()
-  const branch = await f.server.harness.createConversation(
-    {
-      ownership: { kind: 'ownerless' },
-      agent: { model: { provider: 'faux', modelId: 'main-faux' } },
-    },
-    context,
+  const conversation = () =>
+    f.server.harness.createConversation(
+      {
+        ownership: { kind: 'ownerless' },
+        agent: { model: { provider: 'faux', modelId: 'main-faux' } },
+      },
+      context,
+    )
+  const branch = await conversation()
+  const plain = await conversation()
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Branch, branch.id)).branch = { from: f.main, at: 1 as EntryId, intent: 'test' }
+  }, context)
+  await f.turn({
+    key: 'plain',
+    screen: plain.id,
+    text: `CALL ${JSON.stringify({
+      name: 'voice_handoff',
+      args: { to: plain.id, title: 'T', outcome: 'O', instruction: 'I' },
+    })}`,
+  })
+  expect(JSON.stringify(f.requests.at(-1)!.messages.at(-1))).toContain(
+    `#${plain.id} is not a branch`,
   )
   const send = (key: string, screen: number) =>
     f.turn({

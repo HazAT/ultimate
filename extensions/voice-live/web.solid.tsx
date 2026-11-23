@@ -8,9 +8,11 @@ import {
   MessageActions,
   renderEntry,
   switchConversation,
+  useDocOf,
   UserText,
 } from '@/sdk/solid'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
+import { VoiceForkDoc } from './refs.ts'
 import { KEYS, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
 import { VoicePanel, VoiceToggle } from './panel.solid.tsx'
 import { timeOf } from './turns.solid.tsx'
@@ -58,6 +60,15 @@ const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
 
 const TurnRow = renderEntry(VoiceTurnEntry, function TurnRow(props) {
   const data = () => props.entry.data
+  const fork = useDocOf(() => props.entry.conversationId, VoiceForkDoc)
+  const said = () => {
+    const clips = data().clips ?? (data().audio ? [data().audio!] : [])
+    const heard = clips.map((clip) => fork()?.transcripts?.[clip]).filter(Boolean)
+    return [heard.join(' '), data().route === 'audio' ? data().text : '']
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  const text = () => said() || data().text || '(no transcript)'
   return (
     <Message class="group/message mt-3 first:mt-0" from="user">
       <MessageContent>
@@ -67,12 +78,12 @@ const TurnRow = renderEntry(VoiceTurnEntry, function TurnRow(props) {
             {data().seconds?.toFixed(1)} s
           </span>
         </Show>
-        <UserText text={data().text || '(no transcript)'} />
+        <UserText text={text()} />
       </MessageContent>
       <MessageActions
         class="-mt-1 justify-end"
         entry={props.entry}
-        text={data().text}
+        text={text()}
         timestamp={timeOf(props.entry)}
       />
     </Message>

@@ -296,7 +296,8 @@ function ComposerEditor(props: { dock?: boolean }) {
   })
   const uploading = () => files().some((file) => !file.path)
   const blocked = () => (loading() ? undefined : blockedBy(conversation().agent, models()))
-  const empty = () => !text().trim() && images().length === 0 && files().length === 0
+  const empty = () =>
+    !text().trim() && images().length === 0 && files().length === 0 && !target()?.ready?.()
   const inert = () => loading() || sending() || attach.reading()
 
   const update = (next: string) => {

@@ -59,6 +59,8 @@ export type VoiceFork = {
   failed?: Record<string, string>
   /** Recordings collected but not sent yet, in order, when the user sends on Enter or by saying so. */
   draft?: VoiceClip[]
+  /** The recordings each admitted turn carries, by turn key: a turn whose recordings all came back empty is withdrawn. */
+  pending?: Record<string, string[]>
   handedOff?: true
   /** The conversation on the user's screen at the latest turn, the one a handoff `to` may name. */
   screen?: ConversationId
@@ -145,6 +147,8 @@ export type VoiceUiCall = {
   op: 'query' | 'act' | 'snapshot'
   input?: JsonValue
   at: number
+  /** The page that claimed it: only that page runs it and answers. */
+  page?: string
 }
 
 /** The UI requests waiting for the user's page, on the voice fork; the voice panel runs each and answers it. */
@@ -153,21 +157,31 @@ export type VoiceUi = { calls: VoiceUiCall[] }
 /** `voice.ui` on the voice fork: see `VoiceUi`. */
 export const VoiceUiDoc = docRef<VoiceUi>('voice.ui')
 
-/** `{ id, result }` → the page's result for UI request `id`, which wakes the waiting `ui` tool call. */
-export const UiAnswerAction = actionRef<{ id: string; result: JsonValue }, Record<string, never>>(
+/**
+ * `{ id, page }` → whether this page now holds UI request `id`: the first page to claim an unclaimed, unexpired request
+ * gets it, and only it runs the request, once.
+ */
+export const UiClaimAction = actionRef<{ id: string; page: string }, { claimed: boolean }>(
   'voice-live',
-  'ui-answer',
+  'ui-claim',
 )
+
+/** `{ id, page, result }` → the claiming page's result for UI request `id`, which wakes the waiting `ui` tool call. */
+export const UiAnswerAction = actionRef<
+  { id: string; page: string; result: JsonValue },
+  Record<string, never>
+>('voice-live', 'ui-answer')
 
 /** Drop every collected recording that was not sent. */
 export const DiscardAction = actionRef<null, Record<string, never>>('voice-live', 'discard')
 
 /**
  * `{ audio }`, a collected recording with its transcript in → whether it ends the message with a spoken send ("send it",
- * "go", "follow up"): `send` with its delivery, `dropped` when the recording was only that command and left the draft;
+ * "go", "follow up"): `send` with its delivery and the exact `clips` to send, `dropped` when the recording was only that
+ * command and left the draft;
  * `unavailable` says why it cannot tell (no classifier key).
  */
 export const IntentAction = actionRef<
   { audio: string },
-  { send?: VoiceDelivery; dropped?: true; unavailable?: string }
+  { send?: VoiceDelivery; clips?: string[]; dropped?: true; unavailable?: string }
 >('voice-live', 'intent')

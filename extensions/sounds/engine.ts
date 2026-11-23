@@ -5,8 +5,6 @@ import type { Sound } from './cues.ts'
 import type { Happening, Role, Tool } from './agents.ts'
 import type { Variant } from './variants.ts'
 
-export type Note = readonly [startSeconds: number, frequencyHz: number, lengthSeconds: number]
-
 const limitedMaster = new Tone.Volume(-6)
 limitedMaster.chain(new Tone.Limiter(-3), Tone.getDestination())
 const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.28 }).connect(limitedMaster)
@@ -54,16 +52,6 @@ export const unlock = async () => {
   restAfter(reverbTailSeconds)
 }
 export const running = () => Tone.getContext().state === 'running'
-
-const bells = new Tone.PolySynth(Tone.FMSynth, {
-  harmonicity: 3.01,
-  modulationIndex: 1.6,
-  oscillator: { type: 'sine' },
-  envelope: { attack: 0.005, decay: 1.2, sustain: 0, release: 1.2 },
-  modulation: { type: 'sine' },
-  modulationEnvelope: { attack: 0.002, decay: 0.4, sustain: 0, release: 0.4 },
-}).connect(reverb)
-bells.maxPolyphony = 24
 
 const hz = (midi: number) => Tone.mtof(midi as Tone.Unit.MidiNote)
 
@@ -145,15 +133,6 @@ export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffe
   voice.start(now + voiceLeadInSeconds)
   restAfter(voiceLeadInSeconds + buffer.duration + reverbTailSeconds)
   await pace((voiceLeadInSeconds + buffer.duration) * 1000)
-}
-
-export async function playNotes(notes: readonly Note[], gain01 = 0.18) {
-  await unlock()
-  const now = Tone.now() + 0.03
-  for (const [start, frequency, length] of notes)
-    bells.triggerAttackRelease(frequency, length, now + start, Math.min(1, gain01 * 3))
-  const end = Math.max(0, ...notes.map(([start, , length]) => start + length))
-  restAfter(end + reverbTailSeconds)
 }
 
 const dMajorIviIVV = [

@@ -44,7 +44,7 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
-import { every, unlessRepeated } from '../../lib/timers.ts'
+import { deadline, every } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   discardDraft,
@@ -553,6 +553,7 @@ function Bottom(props: { fork: ConversationId | undefined }) {
   const target = (): ComposerTarget => ({
     placeholder: `Type, paste a screenshot, or hold ${holdKeys()} to talk…`,
     images: true,
+    ready: () => draftOf().length > 0,
     send: (text, images) => sendTyped(text, images),
   })
   return (
@@ -626,7 +627,7 @@ export function VoicePanel() {
       if (event.code !== holding && !modifier) return
       swallow(event)
       letGo?.()
-      letGo = unlessRepeated(AUTO_REPEAT_GAP_MS, () => {
+      letGo = deadline(AUTO_REPEAT_GAP_MS, () => {
         letGo = undefined
         holding = undefined
         void release()

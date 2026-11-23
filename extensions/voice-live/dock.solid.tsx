@@ -180,8 +180,12 @@ function markCut() {
   return hintFor(reply.key, reply.text, cut)
 }
 
+let pressing = 0
+let released = 0
+
 export async function press() {
-  if (dock.mic.recording()) return
+  if (dock.mic.recording() || pressing > released) return
+  const mine = ++pressing
   const reason = unsupported()
   if (reason) {
     dock.setError(reason)
@@ -193,9 +197,18 @@ export async function press() {
   try {
     await dock.mic.start()
   } catch (failure) {
+    released = mine
     dock.hold(undefined)
     if (paused) dock.player.resume()
     dock.setError(errorMessage(failure))
+    return
+  }
+  if (released >= mine) {
+    await dock.mic.stop()
+    dock.hold(undefined)
+    if (paused) dock.player.resume()
+    dock.setPhase('idle')
+    dock.setStatus('Hold to talk')
     return
   }
   dock.setPhase('recording')
@@ -206,6 +219,7 @@ export async function press() {
 }
 
 export async function release() {
+  released = pressing
   const recorded = await dock.mic.stop()
   if (!recorded) return
   const held = dock.held()
@@ -242,19 +256,39 @@ async function collectClip(recorded: Recorded) {
     })
     await settled(kept)
     const intent = await api.action(IntentAction, { audio: kept })
-    if (intent.send) await sendDraft(intent.send, '', true)
+    if (intent.send && intent.clips) {
+      const chosen = new Set(intent.clips)
+      await sendDraft(
+        intent.send,
+        '',
+        true,
+        draftOf().filter((clip) => chosen.has(clip.audio)),
+      )
+    }
   } catch (failure) {
     dock.setError(errorMessage(failure))
   }
 }
 
-export async function sendDraft(delivery: VoiceDelivery = 'steer', typed = '', spoken = false) {
-  const clips = draftOf()
+export async function sendDraft(
+  delivery: VoiceDelivery = 'steer',
+  typed = '',
+  spoken = false,
+  clips: readonly VoiceClip[] = draftOf(),
+  fromComposer = false,
+) {
   if (!clips.length && !typed.trim()) return
-  const interrupted =
-    playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
-  dock.player.pause()
-  await sendTurn({ clips, typed: typed.trim(), delivery, interrupted, spokenSend: spoken })
+  const busy = playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
+  const interrupted = busy && delivery === 'steer'
+  if (interrupted) dock.player.pause()
+  await sendTurn({
+    clips: [...clips],
+    typed: typed.trim(),
+    delivery,
+    interrupted,
+    spokenSend: spoken,
+    fromComposer,
+  })
 }
 
 export const discardDraft = () => api.action(DiscardAction, null)
@@ -264,12 +298,12 @@ export async function sendTyped(
   images: readonly { data: string; mimeType: string }[] = [],
 ) {
   const pasted: Pasted[] = images.map((image) => ({ kind: 'image' as const, ...image }))
-  if (draftOf().length && !pasted.length) return sendDraft('steer', text)
+  if (draftOf().length && !pasted.length) return sendDraft('steer', text, false, draftOf(), true)
   if (!text.trim() && !pasted.length) return
   const interrupted =
     playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
   dock.player.pause()
-  await sendTurn({ typed: text.trim(), pasted, interrupted })
+  await sendTurn({ typed: text.trim(), pasted, interrupted, fromComposer: true })
 }
 
 function heardNothing(key: string, trace: Trace) {
@@ -290,6 +324,7 @@ async function sendTurn(input: {
   delivery?: VoiceDelivery
   interrupted: boolean
   spokenSend?: boolean
+  fromComposer?: boolean
 }) {
   const cut = input.interrupted ? markCut() : undefined
   const sentBySaying = input.spokenSend
@@ -398,6 +433,7 @@ async function sendTurn(input: {
     dock.cues.error()
     dock.setPhase('error')
     dock.setStatus(errorMessage(failure))
+    if (input.fromComposer) throw failure
   }
 }
 
@@ -572,6 +608,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
 
 export function endSession() {
   dock.player.stop()
+  void dock.mic.release()
   dock.setLocal({})
   dock.setCuts([])
   dock.setPhase('idle')

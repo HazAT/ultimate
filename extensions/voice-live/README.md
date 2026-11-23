@@ -27,7 +27,7 @@ collect mode (optional), each with what to do when it is missing.
    - Typed text, pasted text and pasted or dropped screenshots go through the same `turn`, with Enter in the prompt box.
 4. **The session** is a fork of @ultimate, made on the first turn from its last finished answer, like a side chat:
    ownerless, its automatic summaries off, out of the sidebar's lists. It keeps the fork's tools and adds
-   `voice_handoff`; `beforeTool` lets it only read (read, bash for reading, memory, web search and fetch) and hand off.
+   `voice_handoff` and `ui`; `beforeTool` lets it only read (read, memory, web search and fetch), run codemode, drive the UI and hand off: no bash, no file edits.
    Its first input carries the voice-mode prompt (`prompt.ts`) as a hidden `conversations.identity` entry; each later
    input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
    conversation are on screen. The session stays hot until it hands off or End: after a handoff the next turn

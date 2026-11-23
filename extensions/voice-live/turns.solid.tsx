@@ -33,7 +33,7 @@ import {
 } from './dock.solid.tsx'
 import type { TurnView } from './dock.solid.tsx'
 import { drawWave } from './recorder.ts'
-import { UiAnswerAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
+import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
 import type { VoiceFork, VoiceUiCall } from './refs.ts'
 import { splitReply } from './speech.ts'
 import type { Sentence } from './speech.ts'
@@ -503,7 +503,8 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
   )
 }
 
-const running = new Set<string>()
+const page = crypto.randomUUID()
+const seen = new Set<string>()
 
 async function runUi(call: VoiceUiCall) {
   const agent = pageAgent()
@@ -515,6 +516,17 @@ async function runUi(call: VoiceUiCall) {
   } catch (failure) {
     return { error: errorMessage(failure) }
   }
+}
+
+async function claimAndRun(call: VoiceUiCall) {
+  const { claimed } = await api.action(UiClaimAction, { id: call.id, page })
+  if (!claimed) return
+  const result = await runUi(call)
+  await api.action(UiAnswerAction, {
+    id: call.id,
+    page,
+    result: JSON.parse(JSON.stringify(result ?? null)),
+  })
 }
 
 export function Voicing(props: { fork: ConversationId }) {
@@ -538,16 +550,9 @@ export function Voicing(props: { fork: ConversationId }) {
     () => (ui()?.calls ?? []).map((call) => ({ ...call })),
     (calls) => {
       for (const call of calls) {
-        if (running.has(call.id)) continue
-        running.add(call.id)
-        void runUi(call)
-          .then((result) =>
-            api.action(UiAnswerAction, {
-              id: call.id,
-              result: JSON.parse(JSON.stringify(result ?? null)),
-            }),
-          )
-          .finally(() => running.delete(call.id))
+        if (call.page || seen.has(call.id)) continue
+        seen.add(call.id)
+        void claimAndRun(call)
       }
     },
   )
