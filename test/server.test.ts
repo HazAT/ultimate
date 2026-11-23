@@ -98,7 +98,7 @@ export const actions = { ping: async () => 'pong', revoke: async () => { remove(
           body: '{}',
         })
       ).json(),
-    ).toEqual({ result: 'pong' })
+    ).toEqual({ result: 'pong', rev: expect.any(Number) })
     for (const forwarded of ['x-forwarded-for', 'x-forwarded-host', 'forwarded']) {
       for (const login of [null, 'other', 'owner']) {
         for (const originHeader of ['', server.url]) {
@@ -884,6 +884,42 @@ export default host => { host.resource('cleanup.process',()=>{
     expect(stream.conversations()).toEqual(server.api.conversations())
     await stream.close()
   })
+  it('keeps the published busy flag idle when a turn with a metadata change aborts between graph batches', async () => {
+    const { server } = await fixture()
+    const stream = await attach(server)
+    const root = 1 as ConversationId
+    const summary = () => server.api.conversations().find((item) => item.id === root)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const started = Promise.withResolvers<void>()
+      server.host.faux!.setResponses([
+        (...args) => {
+          started.resolve()
+          return held(...args)
+        },
+      ])
+      await post(server, '/api/conversations/1/submit', { text: 'work briefly' })
+      await started.promise
+      await server.harness.commit(async (tx) => {
+        ;(await tx.doc(Metadata, root)).title = 'Changed during the turn'
+      }, context)
+      await until(() => summary()?.title === 'Changed during the turn')
+      await post(server, '/api/conversations/1/abort')
+      await server.harness.waitForIdle(context)
+      await vi.advanceTimersByTimeAsync(100)
+      await until(() =>
+        stream.conversations().some((item) => item.title === 'Changed during the turn'),
+      )
+      expect(Object.values(stream.tasks().tasks).some((task) => task.conversationId === root)).toBe(
+        false,
+      )
+      expect(summary()?.busy).toBe(false)
+      expect(stream.conversations().find((item) => item.id === root)?.busy).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      await stream.close()
+    }
+  })
   it('refuses only the subscription whose document fails to open, and opens its siblings', async () => {
     const { server } = await fixture(true)
     const stream = await attach(server, { view: false })
@@ -1013,14 +1049,12 @@ export const actions = {
     })
     await until(() => answers(second, 1).length === 1)
     expect(server.api.reads()).toBe(1)
-    expect([answers(first, 1), answers(second, 1)]).toEqual([
-      [{ result: 'one' }],
-      [{ result: 'one' }],
-    ])
+    expect(answers(first, 1)).toEqual([{ result: 'one', rev: expect.any(Number) }])
+    expect(answers(second, 1)).toEqual(answers(first, 1))
 
     await post(server, '/api/extensions/probe/actions/set', { args: { value: 'two' } })
     await until(() => answers(first, 1).length === 2 && answers(second, 1).length === 2)
-    expect(answers(first, 1).at(-1)).toEqual({ result: 'two' })
+    expect(answers(first, 1).at(-1)).toEqual({ result: 'two', rev: expect.any(Number) })
 
     vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(
@@ -1032,8 +1066,21 @@ export const actions = {
       }),
     ).toEqual({ ok: true, refused: {} })
     await until(() => answers(first, 2).length === 1 && answers(first, 3).length === 1)
-    expect(answers(first, 2)).toEqual([{ error: 'probe failed', status: 500 }])
-    expect(answers(first, 3)).toEqual([{ error: 'Unknown extension action', status: 404 }])
+    expect(answers(first, 2)).toEqual([
+      { error: 'probe failed', status: 500, rev: expect.any(Number) },
+    ])
+    expect(answers(first, 3)).toEqual([
+      { error: 'Unknown extension action', status: 404, rev: expect.any(Number) },
+    ])
+    const failed = await post(server, '/api/extensions/probe/actions/value', {
+      args: { fail: true },
+    })
+    expect(failed).toEqual({
+      status: 500,
+      data: { error: 'probe failed', rev: expect.any(Number) },
+    })
+    await until(() => answers(first, 2).length === 2)
+    expect(answers(first, 2).at(-1)).toEqual({ ...failed.data, status: failed.status })
 
     expect(await subscribe(second, { subscribe: [{ sub: 5, read }] }, {})).toEqual({
       ok: true,
@@ -1129,6 +1176,23 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(value).toEqual({ count: 1 })
     await stream.close()
   })
+  it('watches an existing document without committing to its conversation again', async () => {
+    const { server } = await fixture(true)
+    const stream = await attach(server, { docs: ['test.counter'], view: false })
+    await until(() => stream.events.some((event) => event.name === 'doc' && event.sub === 0))
+    const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
+    const conversation = (await server.harness.conversation(1 as ConversationId, context))!
+    const commit = vi.spyOn(conversation, 'commit')
+    vi.spyOn(server.harness, 'conversation').mockResolvedValueOnce(conversation)
+    expect(
+      await post(server, `/api/events/${id}`, {
+        subscribe: [{ sub: 1, docs: ['test.counter'], view: false }],
+      }),
+    ).toEqual({ status: 200, data: { ok: true, refused: {} } })
+    await until(() => stream.events.some((event) => event.name === 'doc' && event.sub === 1))
+    expect(commit).not.toHaveBeenCalled()
+    await stream.close()
+  })
   it("streams a conversation's pi.live alone, without its view", async () => {
     const { server } = await fixture(true)
     const stream = await attach(server, { docs: ['pi.live'], view: false })
@@ -1170,10 +1234,10 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
       ]),
     ).toEqual({ status: 200, data: { ok: true, refused: { 8: 404 } } })
     expect((await batch([], [6])).status).toBe(200)
-    // A close that overtakes its open wins, once: the open consumes it, and a resent close of a closed one is harmless.
+    // An unknown close does not affect later opens; repeating a close is harmless.
     expect((await batch([], [7])).status).toBe(200)
     expect((await batch([{ sub: 7, ...docs }])).status).toBe(200)
-    expect((await batch([], [6])).status).toBe(200)
+    expect((await batch([], [6, 7])).status).toBe(200)
     expect((await batch([{ sub: 9, ...docs }], [9])).status).toBe(200)
     const invalid = await fetch(`${server.url}/api/events/${id}`, {
       method: 'POST',
@@ -1184,8 +1248,8 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect((await batch([], [1], crypto.randomUUID())).status).toBe(410)
     const of = (name: string) =>
       stream.events.filter((event) => event.name === name).map((event) => event.sub)
-    await until(() => of('doc').length === 3)
-    expect(of('doc')).toEqual([0, 5, 6])
+    await until(() => of('doc').length === 4)
+    expect(of('doc')).toEqual([0, 5, 6, 7])
     expect(of('view')).toEqual([0])
     server.host.faux!.setResponses([
       fauxAssistantMessage([fauxToolCall('increment', {})], { stopReason: 'toolUse' }),
@@ -1199,7 +1263,7 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     await stream.close()
     await until(async () => (await batch([], [5])).status === 410)
   })
-  it('ends a stream whose closes of never-opened subscriptions pile up, so it starts over clean', async () => {
+  it('treats any number of unknown or repeated closes as idempotent without ending the stream', async () => {
     const { server } = await fixture(true)
     const stream = await attach(server, { view: false })
     const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
@@ -1212,8 +1276,9 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     const range = (from: number) => Array.from({ length: 500 }, (_, index) => from + index)
     expect(await close(range(100))).toBe(200)
     expect(await close(range(600))).toBe(200)
-    expect(await close(range(1100))).toBe(410)
-    await until(() => stream.connections() > 1)
+    expect(await close(range(1100))).toBe(200)
+    expect(await close(range(100))).toBe(200)
+    expect(stream.connections()).toBe(1)
     await stream.close()
   })
   it('runs logins in the models extension: prompt, answer, cancel, no credential leak, dead flows cancelled', async () => {
@@ -1270,6 +1335,7 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect((await flows())[second].prompt).toBeUndefined()
     expect((await action('answer', { flowId: second, value: 'late-credential' })).data).toEqual({
       error: 'Unknown login flow',
+      rev: expect.any(Number),
     })
     // The call trace records answers, accepted or rejected, without their credentials.
     const answers = server.extensions.trace

@@ -76,6 +76,7 @@ export interface ExtensionActionRequest {
 }
 export interface ExtensionActionResponse {
   result: JsonValue
+  rev?: number
 }
 type AlwaysEnabledCore = true
 export interface ExtensionInfo {
@@ -220,7 +221,9 @@ export interface SubscriptionsRequest {
   unsubscribe: number[]
 }
 type ReadAgainAfterMs = number
-export type ReadEvent = { result: JsonValue } | { error: string; status: number }
+export type ReadEvent = ({ result: JsonValue } | { error: string; status: number }) & {
+  rev?: number
+}
 export interface SubscriptionsAnswer {
   ok: true
   refused: Record<number, HttpStatusOfRefusedOpen>

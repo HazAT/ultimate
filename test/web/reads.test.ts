@@ -25,13 +25,13 @@ function setup(status = 'open') {
     connection = next
     for (const listener of listeners) listener()
   }
-  const action = vi.fn<() => Promise<unknown>>()
+  const action = vi.fn<() => Promise<{ result: unknown; rev?: number }>>()
   return {
     watched,
     store,
     action,
     connect,
-    reads: createReads({ action } as unknown as Api, store as never),
+    reads: createReads({ readAction: action as Api['readAction'] }, store as never),
   }
 }
 
@@ -50,13 +50,15 @@ it('subscribes once per action and args for all readers, at the fastest interval
   expect(action).not.toHaveBeenCalled()
 })
 
-it("shows a read's failure through its reader's onError, or else as a notice, once per new answer", () => {
-  const { watched, reads, store } = setup()
+it("shows a read's failure through its reader's onError, or else as a notice, once per new answer", async () => {
+  const { watched, reads, store, action } = setup()
   const onError = vi.fn<(error: ActionError) => void>()
   const read = reads.get('test', 'status', null)
   const release = read.use({ onError })
-  watched[0].send({ error: 'boom', status: 500 })
-  watched[0].send({ error: 'boom', status: 500 })
+  watched[0].send({ error: 'boom', status: 500, rev: 1 })
+  action.mockRejectedValueOnce(new ActionError('test', 'status', 500, 'boom', 2))
+  await read.refetch()
+  watched[0].send({ error: 'boom', status: 500, rev: 2 })
   expect(onError).toHaveBeenCalledTimes(1)
   expect(read.get().error).toMatchObject({ extension: 'test', action: 'status', status: 500 })
   release()
@@ -69,11 +71,12 @@ it("keeps the stream's newer answer when an older refetch answers last", async (
   const { watched, reads, action } = setup()
   const read = reads.get('test', 'status', null)
   read.use({})
-  const older = Promise.withResolvers<unknown>()
+  const older = Promise.withResolvers<{ result: string; rev: number }>()
   action.mockReturnValueOnce(older.promise)
   const refetched = read.refetch()
-  watched[0].send({ result: 'newer' })
-  older.resolve('older')
+  await Promise.resolve()
+  watched[0].send({ result: 'newer', rev: 2 })
+  older.resolve({ result: 'older', rev: 1 })
   expect(await refetched).toBe('older')
   expect(read.get()).toMatchObject({ data: 'newer', loading: false, settled: true })
 })
@@ -81,40 +84,107 @@ it("keeps the stream's newer answer when an older refetch answers last", async (
 it('lets a running refetch finish and runs once more after it, however often it is asked meanwhile', async () => {
   const { reads, action } = setup()
   const read = reads.get('test', 'status', null)
-  const first = Promise.withResolvers<unknown>()
-  action.mockReturnValueOnce(first.promise).mockResolvedValueOnce('second')
+  const first = Promise.withResolvers<{ result: string; rev: number }>()
+  action.mockReturnValueOnce(first.promise).mockResolvedValueOnce({ result: 'second', rev: 2 })
   const running = read.refetch()
   await Promise.resolve()
   const again = [read.refetch(), read.refetch(), read.refetch()]
   await Promise.resolve()
   await Promise.resolve()
   expect(action).toHaveBeenCalledTimes(1)
-  first.resolve('first')
+  first.resolve({ result: 'first', rev: 1 })
   expect(await running).toBe('first')
   expect(await Promise.all(again)).toEqual(['second', 'second', 'second'])
   expect(action).toHaveBeenCalledTimes(2)
   expect(read.get()).toMatchObject({ data: 'second', loading: false })
 })
 
-it('keeps ui steps waiting for the stream even when a refetch answers first', async () => {
+it('applies an HTTP refetch immediately and settles UI steps without waiting for the stream', async () => {
   const { watched, reads, action } = setup()
   const read = reads.get('test', 'status', null)
   read.use({})
-  action.mockResolvedValueOnce('over http')
+  const done = reads.settledInUse()
+  action.mockResolvedValueOnce({ result: 'over http', rev: 2 })
   await read.refetch()
+  expect(read.get()).toMatchObject({ data: 'over http', settled: true, loading: false })
+  await done
+  watched[0].send({ result: 'older from the stream', rev: 1 })
+  expect(read.get().data).toBe('over http')
+  watched[0].send({ result: 'newer from the stream', rev: 3 })
+  expect(read.get().data).toBe('newer from the stream')
+})
+
+it('cancels a queued refetch and suppresses errors from an in-flight refetch when the last reader leaves', async () => {
+  const { reads, action, store } = setup()
+  const read = reads.get('test', 'status', null)
+  const onError = vi.fn<(error: ActionError) => void>()
+  const release = read.use({ onError })
+  const attempt = Promise.withResolvers<never>()
+  action.mockReturnValueOnce(attempt.promise)
+  const running = read.refetch()
+  await Promise.resolve()
+  const queued = read.refetch()
+  release()
+  attempt.reject(new ActionError('test', 'status', 500, 'late failure', 1))
+  await Promise.all([running, queued])
+  expect(action).toHaveBeenCalledOnce()
+  expect(onError).not.toHaveBeenCalled()
+  expect(store.notify).not.toHaveBeenCalled()
+  expect(read.get()).toEqual({ settled: false, loading: false })
+})
+
+it('can refetch again after a loading listener throws', async () => {
+  const { reads, action } = setup()
+  const read = reads.get('test', 'status', null)
+  const stop = read.subscribe(() => {
+    if (read.get().loading) throw new Error('listener failed')
+  })
+  await expect(read.refetch()).rejects.toThrow('listener failed')
+  expect(read.get().loading).toBe(false)
+  expect(action).not.toHaveBeenCalled()
+  stop()
+  action.mockResolvedValueOnce({ result: 'recovered', rev: 1 })
+  await expect(read.refetch()).resolves.toBe('recovered')
+  expect(read.get()).toMatchObject({ data: 'recovered', loading: false })
+})
+
+it('waits for a fresh answer on remount even when it matches the cached answer', async () => {
+  const { watched, reads } = setup()
+  const read = reads.get('test', 'status', null)
+  const release = read.use({})
+  watched[0].send({ result: 'answer', rev: 10 })
+  release()
+  read.use({})
   let settled = false
   const done = reads.settledInUse().then(() => (settled = true))
   await Promise.resolve()
   expect(settled).toBe(false)
-  watched[0].send({ result: 'from the stream' })
+  watched[0].send({ result: 'answer', rev: 1 })
   await done
-  expect(read.get().data).toBe('from the stream')
+  expect(settled).toBe(true)
+})
+
+it('accepts a lower revision after reconnecting, without letting an old HTTP response take it back', async () => {
+  const { watched, reads, action, connect } = setup()
+  const read = reads.get('test', 'status', null)
+  read.use({})
+  watched[0].send({ result: 'old process', rev: 10 })
+  const late = Promise.withResolvers<{ result: string; rev: number }>()
+  action.mockReturnValueOnce(late.promise)
+  const running = read.refetch()
+  await Promise.resolve()
+  connect('reconnecting')
+  connect('open')
+  watched[0].send({ result: 'new process', rev: 1 })
+  late.resolve({ result: 'old process, late', rev: 11 })
+  await running
+  expect(read.get()).toMatchObject({ data: 'new process', loading: false })
 })
 
 it('answers a refetch of an unwatched read itself, and stays quiet when its request never reached the server', async () => {
   const { reads, action, store } = setup()
   const read = reads.get('test', 'status', null)
-  action.mockResolvedValueOnce('fresh')
+  action.mockResolvedValueOnce({ result: 'fresh', rev: 1 })
   await read.refetch()
   expect(read.get()).toMatchObject({ data: 'fresh', loading: false })
   action.mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))

@@ -112,6 +112,6 @@ it('starts two project supervisors concurrently on distinct free ports and stora
   }
   expect(await post(urls[0], '/api/extensions/hello/actions/hello', 'hi')).toEqual({
     status: 200,
-    data: { result: { args: 'hi', value: 'live', cwd: projects[0] } },
+    data: { result: { args: 'hi', value: 'live', cwd: projects[0] }, rev: expect.any(Number) },
   })
 }, 60000)

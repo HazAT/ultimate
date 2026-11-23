@@ -36,15 +36,26 @@ describe('extension actions', () => {
     })
   })
 
+  it('returns revisions for read actions while ordinary actions still return only the result', async () => {
+    const { api, fetch } = setup(() => json(200, { result: ['draft'], rev: 42 }))
+    const read = ref('notes', 'list')
+    await expect(api.readAction(read)).resolves.toEqual({ result: ['draft'], rev: 42 })
+    expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toEqual({ args: null })
+    await expect(api.action(read)).resolves.toEqual(['draft'])
+  })
+
   it('rejects with an ActionError naming the extension, action, status, and message', async () => {
-    const { api } = setup(() => json(500, { error: 'Extension action failed' }))
-    const error = await api.action(ref('notes', 'save'), 'x').catch((failure: unknown) => failure)
+    const { api } = setup(() => json(500, { error: 'Extension action failed', rev: 23 }))
+    const error = await api
+      .readAction(ref('notes', 'save'), 'x')
+      .catch((failure: unknown) => failure)
     expect(error).toBeInstanceOf(ActionError)
     expect(error).toMatchObject({
       extension: 'notes',
       action: 'save',
       status: 500,
       message: 'Extension action failed',
+      rev: 23,
     })
     const missing = setup(() => json(404, { error: 'Unknown extension action' }))
     await expect(missing.api.action(ref('notes', 'nope'))).rejects.toMatchObject({ status: 404 })

@@ -41,12 +41,14 @@ export class ActionError extends Error {
   readonly action: string
   /** HTTP status: 404 for an unknown action, 500 when it threw. */
   readonly status: number
-  constructor(extension: string, action: string, status: number, message: string) {
+  readonly rev?: number
+  constructor(extension: string, action: string, status: number, message: string, rev?: number) {
     super(message)
     this.name = 'ActionError'
     this.extension = extension
     this.action = action
     this.status = status
+    this.rev = rev
   }
 }
 
@@ -55,9 +57,11 @@ export const actionMessage = (error: ActionError) =>
 
 export class HttpError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly rev?: number
+  constructor(status: number, message: string, rev?: number) {
     super(message)
     this.status = status
+    this.rev = rev
   }
 }
 
@@ -89,7 +93,11 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
         data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
           ? data.error
           : `${response.status} ${response.statusText}`
-      throw new HttpError(response.status, error)
+      const rev =
+        data && typeof data === 'object' && 'rev' in data && typeof data.rev === 'number'
+          ? data.rev
+          : undefined
+      throw new HttpError(response.status, error, rev)
     }
     return data as T
   }
@@ -99,6 +107,23 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
   }
   const conversation = (id: ConversationId | undefined, action: string) =>
     `/api/conversations/${id ?? shown()}/${action}`
+
+  async function runAction<Args, Result>(
+    { extension, name }: ActionRef<Args, Result>,
+    args: Args | undefined,
+    { conversationId, signal, keepalive }: ActionOptions,
+  ): Promise<{ result: Result; rev?: number }> {
+    const path = `/api/extensions/${encodeURIComponent(extension)}/actions/${encodeURIComponent(name)}`
+    const body: ExtensionActionRequest = { args: args ?? null, conversationId }
+    try {
+      const { result, rev } = await post<ExtensionActionResponse>(path, body, { signal, keepalive })
+      return { result: result as Result, rev }
+    } catch (error) {
+      if (signal?.aborted) throw error
+      const http = error instanceof HttpError ? error : undefined
+      throw new ActionError(extension, name, http?.status ?? 0, errorMessage(error), http?.rev)
+    }
+  }
 
   return {
     submit: (
@@ -141,26 +166,17 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
       ref: ActionRef<Args, Result>,
       ...[args, call = {}]: ActionArgs<Args, ActionOptions>
     ): Promise<Result> => {
-      const { extension, name } = ref
-      const { conversationId, signal, keepalive } = call
-      const path = `/api/extensions/${encodeURIComponent(extension)}/actions/${encodeURIComponent(name)}`
-      const body: ExtensionActionRequest = {
-        args: args ?? null,
-        conversationId: conversationId ?? shown(),
-      }
-      try {
-        const { result } = await post<ExtensionActionResponse>(path, body, { signal, keepalive })
-        return result as Result
-      } catch (error) {
-        if (signal?.aborted) throw error
-        throw new ActionError(
-          extension,
-          name,
-          error instanceof HttpError ? error.status : 0,
-          errorMessage(error),
-        )
-      }
+      const { result } = await runAction(ref, args, {
+        ...call,
+        conversationId: call.conversationId ?? shown(),
+      })
+      return result
     },
+
+    readAction: <Args, Result>(
+      ref: ActionRef<Args, Result>,
+      ...[args, call = {}]: ActionArgs<Args, ActionOptions>
+    ) => runAction(ref, args, call),
 
     updateUi: (change: UiUpdateRequest, who?: UiWho, exit?: { keepalive: boolean }) =>
       post<UiUpdateResponse>('/api/ui', change, { who, ...exit }),

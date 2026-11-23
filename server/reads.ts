@@ -11,10 +11,10 @@ interface Entry {
   spec: ReadSpec
   subscribers: Map<symbol, { every?: number; send: Send }>
   sent?: string
+  sentRev?: number
   answeredAt: number
   running?: AbortController
   again?: Cancel
-  started: number
   shown: number
 }
 
@@ -28,15 +28,19 @@ const failure = (error: unknown, status?: number): ReadEvent => ({
 
 export function createReads(run: Run, now = () => Date.now()) {
   const entries = new Map<string, Entry>()
+  let nextRev = 0
 
   function publish(entry: Entry, startedAt: number, event: ReadEvent) {
     if (startedAt < entry.shown) return
     entry.shown = startedAt
     entry.answeredAt = now()
+    const stamped: ReadEvent = { ...event, rev: startedAt }
     const json = JSON.stringify(event)
-    if (json !== entry.sent) {
-      entry.sent = json
-      for (const { send } of entry.subscribers.values()) send(event)
+    const temporary = 'error' in event && event.status >= 500
+    if (temporary || json !== entry.sent) {
+      entry.sent = temporary ? undefined : json
+      entry.sentRev = temporary ? undefined : startedAt
+      for (const { send } of entry.subscribers.values()) send(stamped)
     }
     schedule(entry)
   }
@@ -53,7 +57,7 @@ export function createReads(run: Run, now = () => Date.now()) {
   function runOnce(entry: Entry) {
     if (entry.running) return
     const controller = (entry.running = new AbortController())
-    const startedAt = ++entry.started
+    const startedAt = ++nextRev
     inProcess(
       'a read runs only for the pages subscribed to it, and they resubscribe to a new process, which runs it again',
       run(entry.spec, controller.signal)
@@ -79,15 +83,17 @@ export function createReads(run: Run, now = () => Date.now()) {
       const key = readKey(spec)
       let entry = entries.get(key)
       if (!entry) {
-        entry = { spec, subscribers: new Map(), answeredAt: 0, started: 0, shown: 0 }
+        entry = { spec, subscribers: new Map(), answeredAt: 0, shown: 0 }
         entries.set(key, entry)
       }
       const id = Symbol(key)
       const own = entry
       own.subscribers.set(id, { every, send })
-      if (own.sent !== undefined) send(JSON.parse(own.sent) as ReadEvent)
       if (own.sent === undefined) runOnce(own)
-      else schedule(own)
+      else {
+        send({ ...(JSON.parse(own.sent) as ReadEvent), rev: own.sentRev })
+        schedule(own)
+      }
       return () => {
         if (!own.subscribers.delete(id)) return
         if (own.subscribers.size) return schedule(own)
@@ -96,12 +102,15 @@ export function createReads(run: Run, now = () => Date.now()) {
         entries.delete(key)
       }
     },
-    answering(spec: ReadSpec): Send {
-      const entry = entries.get(readKey(spec))
-      if (!entry) return () => {}
-      const startedAt = ++entry.started
-      return (event) => {
-        if (entries.get(readKey(spec)) === entry) publish(entry, startedAt, event)
+    answering(spec: ReadSpec) {
+      const rev = ++nextRev
+      const key = readKey(spec)
+      const entry = entries.get(key)
+      return {
+        rev,
+        publish: (event: ReadEvent) => {
+          if (entry && entries.get(key) === entry) publish(entry, rev, event)
+        },
       }
     },
     refused: (status: number, message: string): ReadEvent => failure(message, status),
