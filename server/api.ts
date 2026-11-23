@@ -21,7 +21,13 @@ import type {
 } from '../shared/protocol.ts'
 import { createReads } from './reads.ts'
 import type { Reads } from './reads.ts'
-import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
+import {
+  MAX_SUBSCRIPTION_BATCH_BYTES,
+  UI_REVISION,
+  imageMimeTypes,
+  maxImageBytes,
+  maxImages,
+} from '../shared/protocol.ts'
 import { listModels } from './models.ts'
 import { hostDefault } from '../lib/agents.ts'
 import { expandSkillCommand } from './skills.ts'
@@ -61,13 +67,22 @@ export class Events {
 async function body(
   request: IncomingMessage,
   limit = 1024 * 1024,
+  drainLimit = limit,
 ): Promise<Record<string, unknown>> {
   let data = ''
+  let bytes = 0
+  let tooLarge = false
   request.setEncoding('utf8')
   for await (const chunk of request) {
-    data += chunk.toString()
-    if (Buffer.byteLength(data) > limit) throw new HttpError(413, 'Request too large')
+    const piece = chunk.toString()
+    bytes += Buffer.byteLength(piece)
+    if (bytes > limit) {
+      tooLarge = true
+      data = ''
+      if (bytes > drainLimit) throw new HttpError(413, 'Request too large')
+    } else data += piece
   }
+  if (tooLarge) throw new HttpError(413, 'Request too large')
   try {
     const value = JSON.parse(data || '{}')
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error()
@@ -557,7 +572,11 @@ export async function createApi(
         if (subscription && request.method === 'POST') {
           const connection = connections.get(subscription[1])
           if (!connection) throw new HttpError(410, 'Event stream ended')
-          const data: Partial<Record<keyof SubscriptionsRequest, unknown>> = await body(request)
+          const data: Partial<Record<keyof SubscriptionsRequest, unknown>> = await body(
+            request,
+            MAX_SUBSCRIPTION_BATCH_BYTES,
+            MAX_SUBSCRIPTION_BATCH_BYTES * 4,
+          )
           const opens = data.subscribe ?? []
           const closes = data.unsubscribe ?? []
           if (

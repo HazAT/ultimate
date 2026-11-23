@@ -5,6 +5,7 @@ import { deadline, nextTurn, retryAfter } from '../../../lib/timers.ts'
 import { keepLast } from '../../../lib/errors.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
+import { MAX_SUBSCRIPTION_BATCH_BYTES } from '../../../shared/protocol.ts'
 import type {
   ConversationSummary,
   ModelsResponse,
@@ -71,8 +72,12 @@ export interface StoreOptions {
   ui?: Partial<UiState>
 }
 
+const ROOT = parseConversationId(1)
 const EVENT_SOURCE_CLOSED_NO_RETRY = 2
 const STREAM_GONE_RECONNECT_RESUBSCRIBES = 410
+const utf8Bytes = new TextEncoder()
+const jsonBytes = (value: unknown) => utf8Bytes.encode(JSON.stringify(value)).byteLength
+const EMPTY_BATCH_BYTES = jsonBytes({ subscribe: [], unsubscribe: [] })
 const names = [
   'stream',
   'system',
@@ -111,10 +116,15 @@ interface ReadWatch {
   onEvent: (event: ReadNotice) => void
   refused?: boolean
 }
+interface DocWatch {
+  count: number
+  refused?: Set<ConversationId>
+}
 interface Wanted {
   spec: Spec
   handler: Handler
-  watch?: ReadWatch
+  readWatch?: ReadWatch
+  docWatch?: { watch: DocWatch; target: ConversationId }
 }
 
 function applyDoc(docs: Docs, event: DocChange): Docs {
@@ -142,9 +152,9 @@ export function createStore(options: StoreOptions = {}) {
     },
   }
   const listeners = new Set<() => void>()
-  const docKinds = new Map<string, number>()
+  const docKinds = new Map<string, DocWatch>()
 
-  const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
+  const docWatchCountsByConversation = new Map<ConversationId, Map<string, DocWatch>>()
   const watchedViews = new Map<ConversationId, number>()
   const watchedReads = new Map<string, ReadWatch>()
 
@@ -153,7 +163,7 @@ export function createStore(options: StoreOptions = {}) {
   let streamId: string | undefined
   const handlers = new Map<number, Handler>()
   let nextSub = 0
-  const live = new Map<string, { sub: number; watch?: ReadWatch }>()
+  const live = new Map<string, { sub: number; readWatch?: ReadWatch }>()
   const opening = new Map<number, { spec: Spec; failed: Refused }>()
   const closing = new Set<number>()
   let opened = false
@@ -289,13 +299,9 @@ export function createStore(options: StoreOptions = {}) {
     return sub
   }
   function retire(sub: number) {
-    if (!handlers.delete(sub) || streamId === undefined) return false
-    if (opening.delete(sub)) return false
+    if (!handlers.delete(sub) || streamId === undefined) return
+    if (opening.delete(sub)) return
     closing.add(sub)
-    return true
-  }
-  function unsubscribe(sub: number) {
-    if (retire(sub)) scheduleFlush()
   }
   function scheduleFlush() {
     if (flushQueued) return
@@ -326,28 +332,69 @@ export function createStore(options: StoreOptions = {}) {
   function takeBatch() {
     const opens = new Map<number, { spec: Spec; failed: Refused }>()
     const closes: number[] = []
+    const locallyRefused: [number, Refused][] = []
     let remaining = maxBatchSize
+    let bytes = EMPTY_BATCH_BYTES
     for (const [sub, entry] of opening) {
       if (remaining <= 0) break
+      const itemBytes = jsonBytes({ sub, ...entry.spec })
+      if (EMPTY_BATCH_BYTES + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES) {
+        opening.delete(sub)
+        locallyRefused.push([sub, entry.failed])
+        continue
+      }
+      const nextBytes = bytes + itemBytes + (opens.size > 0 ? 1 : 0)
+      if (opens.size > 0 && nextBytes > MAX_SUBSCRIPTION_BATCH_BYTES) break
       opens.set(sub, entry)
       opening.delete(sub)
+      bytes = nextBytes
       remaining--
     }
     for (const sub of closing) {
       if (remaining <= 0) break
+      const itemBytes = String(sub).length
+      const nextBytes = bytes + itemBytes + (closes.length > 0 ? 1 : 0)
+      if ((opens.size > 0 || closes.length > 0) && nextBytes > MAX_SUBSCRIPTION_BATCH_BYTES) break
       closes.push(sub)
       closing.delete(sub)
+      bytes = nextBytes
       remaining--
     }
-    return { opens, closes }
+    return { opens, closes, locallyRefused }
+  }
+  function deliverRefusals(refusals: [number, number, Refused | undefined][]) {
+    let firstError: unknown
+    let failed = false
+    for (const [sub, status, refuse] of refusals) {
+      handlers.delete(sub)
+      closing.delete(sub)
+      if (!refuse) continue
+      try {
+        refuse(status)
+      } catch (error) {
+        if (!failed) {
+          failed = true
+          firstError = error
+        }
+      }
+    }
+    if (failed) throw firstError
   }
   function flush() {
     if (!flushQueued || flushing) return
     flushQueued = false
     const stream = streamId
     if (stream === undefined || (!opening.size && !closing.size)) return
+    const { opens, closes, locallyRefused } = takeBatch()
+    const localRefusals: [number, number, Refused | undefined][] = locallyRefused.map(
+      ([sub, refuse]) => [sub, 413, refuse],
+    )
+    if (!opens.size && !closes.length) {
+      if (opening.size || closing.size) scheduleFlush()
+      deliverRefusals(localRefusals)
+      return
+    }
     flushing = true
-    const { opens, closes } = takeBatch()
     const batchSize = opens.size + closes.length
     const batch: SubscriptionsRequest = {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
@@ -369,10 +416,10 @@ export function createStore(options: StoreOptions = {}) {
       .then(async (response) => {
         if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return 'gone' as const
         if (response.status === 413) {
-          const singleRead = opens.size === 1 && closes.length === 0
-          if (singleRead) {
+          const singleOpen = opens.size === 1 && closes.length === 0
+          if (singleOpen) {
             const [[sub, { spec }]] = opens
-            if ('read' in spec) return { refused: { [sub]: 413 } }
+            if ('read' in spec || !spec.view) return { refused: { [sub]: 413 } }
           }
           if (batchSize > 1) maxBatchSize = Math.max(1, Math.floor(batchSize / 2))
           return 'ambiguous' as const
@@ -386,13 +433,12 @@ export function createStore(options: StoreOptions = {}) {
         if (activeFlush !== controller || streamId !== stream) return
         if (result === 'gone') return connect()
         if (result === 'ambiguous') return reconnectAfterRetry()
-        for (const id of Object.keys(result.refused)) {
-          const sub = Number(id)
-          handlers.delete(sub)
-          closing.delete(sub)
-        }
-        for (const [sub, status] of Object.entries(result.refused))
-          opens.get(Number(sub))?.failed(status)
+        deliverRefusals(
+          Object.entries(result.refused).map(([id, status]) => {
+            const sub = Number(id)
+            return [sub, status, opens.get(sub)?.failed]
+          }),
+        )
         if (!opening.size && !closing.size) maxBatchSize = Infinity
       })
       .finally(() => {
@@ -405,6 +451,7 @@ export function createStore(options: StoreOptions = {}) {
         flushQueued = false
         if (opening.size || closing.size) scheduleFlush()
       })
+    deliverRefusals(localRefusals)
   }
 
   function answeredFor(
@@ -451,11 +498,14 @@ export function createStore(options: StoreOptions = {}) {
       handler: (name, raw) =>
         name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
     })
-    for (const kind of docKinds.keys())
-      result.set(
-        `${shown}:doc:${kind}`,
-        docSubscription(state.requested, kind, (change) => handle('doc', change)),
-      )
+    const shownTarget = state.requested ?? ROOT
+    for (const [kind, watch] of docKinds) {
+      if (watch.refused?.has(shownTarget)) continue
+      result.set(`${shown}:doc:${kind}`, {
+        ...docSubscription(state.requested, kind, (change) => handle('doc', change)),
+        docWatch: { watch, target: shownTarget },
+      })
+    }
     for (const conversation of watchedViews.keys())
       result.set(`${conversation}:view`, {
         spec: { conversation, docs: [], view: true },
@@ -470,25 +520,27 @@ export function createStore(options: StoreOptions = {}) {
         },
       })
     for (const [conversation, kinds] of docWatchCountsByConversation)
-      for (const kind of kinds.keys())
-        result.set(
-          `${conversation}:doc:${kind}`,
-          docSubscription(conversation, kind, (change) => {
+      for (const [kind, watch] of kinds) {
+        if (watch.refused?.has(conversation)) continue
+        result.set(`${conversation}:doc:${kind}`, {
+          ...docSubscription(conversation, kind, (change) => {
             const docs = state.docsOf[conversation] ?? {}
             const next = applyDoc(docs, change)
             if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
           }),
-        )
-    for (const [key, watch] of watchedReads) {
-      if (watch.refused) continue
-      const { read, every } = watch
+          docWatch: { watch, target: conversation },
+        })
+      }
+    for (const [key, readWatch] of watchedReads) {
+      if (readWatch.refused) continue
+      const { read, every } = readWatch
       result.set(`read:${key}`, {
         spec: every === undefined ? { read } : { read, every },
-        watch,
+        readWatch,
         handler: (name, raw) => {
-          if (name !== 'read' || watchedReads.get(key) !== watch) return
+          if (name !== 'read' || watchedReads.get(key) !== readWatch) return
           const parsed = JSON.parse(raw) as ReadNotice
-          watch.onEvent(
+          readWatch.onEvent(
             parsed.rev === undefined || Number.isSafeInteger(parsed.rev)
               ? parsed
               : { ...parsed, rev: undefined },
@@ -499,14 +551,32 @@ export function createStore(options: StoreOptions = {}) {
     return result
   }
 
-  function refusedOpen(key: string, sub: number, status: number, watch?: ReadWatch) {
+  function refusedOpen(
+    key: string,
+    sub: number,
+    status: number,
+    readWatch?: ReadWatch,
+    docWatch?: { watch: DocWatch; target: ConversationId },
+  ) {
     if (live.get(key)?.sub !== sub) return
     live.delete(key)
-    unsubscribe(sub)
-    if (watch && status >= 400 && status < 500) {
-      if (watchedReads.get(key.slice(5)) === watch) {
-        watch.refused = true
-        watch.onEvent({ error: 'The server refused this read', status })
+    if (docWatch && status === 413) {
+      if (docWatch.watch.count > 0) {
+        docWatch.watch.refused ??= new Set()
+        if (!docWatch.watch.refused.has(docWatch.target)) {
+          docWatch.watch.refused.add(docWatch.target)
+          handle('notice', {
+            level: 'error',
+            message: `Subscription too large: ${key.slice(0, 120)}`,
+          })
+        }
+      } else scheduleReconcile()
+      return
+    }
+    if (readWatch && status >= 400 && status < 500) {
+      if (watchedReads.get(key.slice(5)) === readWatch) {
+        readWatch.refused = true
+        readWatch.onEvent({ error: 'The server refused this read', status })
       } else scheduleReconcile()
       return
     }
@@ -541,20 +611,20 @@ export function createStore(options: StoreOptions = {}) {
     cancelReconcile = undefined
     if (stopped) return
     const want = wanted()
-    for (const [key, { sub, watch }] of live) {
+    for (const [key, { sub, readWatch }] of live) {
       const next = want.get(key)
-      if (next && next.watch === watch) continue
+      if (next && next.readWatch === readWatch) continue
       live.delete(key)
       retire(sub)
     }
     if (closing.size) scheduleFlush()
     if (streamId !== undefined)
-      for (const [key, { spec, handler, watch }] of want)
+      for (const [key, { spec, handler, readWatch, docWatch }] of want)
         if (!live.has(key)) {
           const sub: number = subscribe(spec, handler, (status) =>
-            refusedOpen(key, sub, status, watch),
+            refusedOpen(key, sub, status, readWatch, docWatch),
           )
-          live.set(key, { sub, watch })
+          live.set(key, { sub, readWatch })
         }
     const keep = <T>(record: Readonly<Record<string, T>>, has: (key: string) => boolean) =>
       Object.keys(record).every(has)
@@ -705,25 +775,25 @@ export function createStore(options: StoreOptions = {}) {
     },
 
     watchDoc(kind: string) {
-      docKinds.set(kind, (docKinds.get(kind) ?? 0) + 1)
+      const watch = docKinds.get(kind) ?? { count: 0 }
+      watch.count++
+      docKinds.set(kind, watch)
       scheduleReconcile()
       return () => {
-        const left = (docKinds.get(kind) ?? 1) - 1
-        if (left > 0) docKinds.set(kind, left)
-        else docKinds.delete(kind)
+        if (--watch.count === 0 && docKinds.get(kind) === watch) docKinds.delete(kind)
         scheduleReconcile()
       }
     },
 
     watchDocOf(conversation: ConversationId, kind: string) {
-      const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, number>()
+      const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, DocWatch>()
       docWatchCountsByConversation.set(conversation, kinds)
-      kinds.set(kind, (kinds.get(kind) ?? 0) + 1)
+      const watch = kinds.get(kind) ?? { count: 0 }
+      watch.count++
+      kinds.set(kind, watch)
       scheduleReconcile()
       return () => {
-        const left = (kinds.get(kind) ?? 1) - 1
-        if (left > 0) kinds.set(kind, left)
-        else kinds.delete(kind)
+        if (--watch.count === 0 && kinds.get(kind) === watch) kinds.delete(kind)
         if (!kinds.size) docWatchCountsByConversation.delete(conversation)
         scheduleReconcile()
       }

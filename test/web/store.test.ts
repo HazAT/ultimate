@@ -506,6 +506,259 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('bounds subscription batches by exact UTF-8 byte size including separators', async () => {
+    const { store, server, fetch, latest } = setup(5)
+    latest().open()
+    await tick()
+    const before = fetch.mock.calls.length
+    const encoder = new TextEncoder()
+
+    // Exact 1 MiB singleton boundary using multibyte UTF-8 ('é' = 1 UTF-16 char, 2 UTF-8 bytes).
+    const nextSub = server.subscriptions.length + 1
+    const baseSpec = {
+      sub: nextSub,
+      read: { extension: 'test', action: 'exct1', args: '' },
+    }
+    const overhead = encoder.encode(
+      JSON.stringify({ subscribe: [baseSpec], unsubscribe: [] }),
+    ).byteLength
+    const exactBytes = 1024 * 1024 - overhead
+    const exactArgs = 'é'.repeat(Math.floor(exactBytes / 2)) + (exactBytes % 2 ? 'a' : '')
+    const overArgs = `${exactArgs}a`
+
+    const exactEvents: unknown[] = []
+    store.watchRead(
+      { extension: 'test', action: 'exct1', args: exactArgs },
+      undefined,
+      (event) => void exactEvents.push(event),
+    )
+    await tick()
+    expect(exactEvents).toEqual([])
+    const exactPost = fetch.mock.calls.at(-1)![1]!.body as string
+    expect(encoder.encode(exactPost).byteLength).toBe(1024 * 1024)
+    expect(server.reads.some((item) => !item.closed && item.read.action === 'exct1')).toBe(true)
+
+    // 1 byte over 1 MiB (same-length action name) is refused locally.
+    const overEvents: unknown[] = []
+    store.watchRead(
+      { extension: 'test', action: 'over1', args: overArgs },
+      undefined,
+      (event) => void overEvents.push(event),
+    )
+    await tick()
+    expect(overEvents).toEqual([{ error: 'The server refused this read', status: 413 }])
+
+    // Multi-item separator boundary: two reads whose combined size without the comma is 1 MiB, so the comma forces a split.
+    const subA = nextSub + 2
+    const subB = nextSub + 3
+    const twoEmpty = encoder.encode(
+      JSON.stringify({
+        subscribe: [
+          { sub: subA, read: { extension: 'test', action: 'pairA', args: '' } },
+          { sub: subB, read: { extension: 'test', action: 'pairB', args: '' } },
+        ],
+        unsubscribe: [],
+      }),
+    ).byteLength
+    const pairPayloadBytes = 1024 * 1024 - twoEmpty + 1
+    const half = Math.floor(pairPayloadBytes / 2)
+    const beforePair = fetch.mock.calls.length
+    store.watchRead(
+      { extension: 'test', action: 'pairA', args: 'a'.repeat(half) },
+      undefined,
+      () => {},
+    )
+    store.watchRead(
+      { extension: 'test', action: 'pairB', args: 'b'.repeat(pairPayloadBytes - half) },
+      undefined,
+      () => {},
+    )
+    await tick()
+    await tick()
+    const pairPosts = fetch.mock.calls
+      .slice(beforePair)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+    expect(pairPosts).toHaveLength(2)
+
+    const allPosts = fetch.mock.calls
+      .slice(before)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+    for (const [, init] of allPosts)
+      expect(encoder.encode(init?.body as string).byteLength).toBeLessThanOrEqual(1024 * 1024)
+    store.stop()
+  })
+
+  it('keeps document 413 refusals scoped to their target across reconnect, clears on release, and retries on another conversation', async () => {
+    const { store, server, fetch, latest } = setup(5)
+    latest().open()
+    await tick()
+
+    // Locally oversized doc.
+    const hugeDoc = 'd'.repeat(1024 * 1024)
+    const releaseHuge = store.watchDoc(hugeDoc)
+    await tick()
+    const hugeNotices = store
+      .getState()
+      .notices.filter((n) => n.message.includes('Subscription too large'))
+    expect(hugeNotices).toHaveLength(1)
+    expect(hugeNotices[0].message.length).toBeLessThan(200)
+
+    // Server-refused 413 on a single doc whose kind has a suffix matching another doc kind ('b').
+    fetch.mockResolvedValueOnce(Response.json({ error: 'Request too large' }, { status: 413 }))
+    const releaseCompound = store.watchDoc('a:doc:b')
+    await tick()
+    const releaseSuffix = store.watchDoc('b')
+    await tick()
+    // Releasing 'b' must NOT clear the refusal on 'a:doc:b'.
+    releaseSuffix()
+    await tick()
+    expect(
+      store.getState().notices.filter((n) => n.message.includes('Subscription too large')),
+    ).toHaveLength(2)
+
+    // Reconnect on the same target: neither refused doc is POSTed again and no second notice is emitted.
+    const beforeReconnect = fetch.mock.calls.length
+    latest().drop()
+    latest().open()
+    await tick()
+    await tick()
+    const reconnectDocs = fetch.mock.calls
+      .slice(beforeReconnect)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .flatMap(
+        ([, init]) =>
+          (JSON.parse(init?.body as string) as SubscriptionsRequest).subscribe as {
+            docs?: string[]
+          }[],
+      )
+    expect(reconnectDocs.some((spec) => spec.docs?.includes(hugeDoc))).toBe(false)
+    expect(reconnectDocs.some((spec) => spec.docs?.includes('a:doc:b'))).toBe(false)
+    expect(
+      store.getState().notices.filter((n) => n.message.includes('Subscription too large')),
+    ).toHaveLength(2)
+
+    // Explicit root (1) stays quiet; navigating to a non-root conversation (7) attempts the watch; returning to root stays quiet.
+    const beforeExplicitRoot = fetch.mock.calls.length
+    store.show(1 as ConversationId)
+    await tick()
+    const explicitRootDocs = fetch.mock.calls
+      .slice(beforeExplicitRoot)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .flatMap(
+        ([, init]) =>
+          (JSON.parse(init?.body as string) as SubscriptionsRequest).subscribe as {
+            docs?: string[]
+          }[],
+      )
+    expect(explicitRootDocs.some((spec) => spec.docs?.includes('a:doc:b'))).toBe(false)
+
+    store.show(7 as ConversationId)
+    await tick()
+    expect(server.of(7, false)?.docs).toEqual(['a:doc:b'])
+
+    const beforeBackToRoot = fetch.mock.calls.length
+    store.show(undefined)
+    await tick()
+    const backToRootDocs = fetch.mock.calls
+      .slice(beforeBackToRoot)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .flatMap(
+        ([, init]) =>
+          (JSON.parse(init?.body as string) as SubscriptionsRequest).subscribe as {
+            docs?: string[]
+          }[],
+      )
+    expect(backToRootDocs.some((spec) => spec.docs?.includes('a:doc:b'))).toBe(false)
+
+    // Releasing and reacquiring 'a:doc:b' on root clears the refusal and opens a fresh subscription.
+    releaseCompound()
+    await tick()
+    const releaseRecovered = store.watchDoc('a:doc:b')
+    await tick()
+    expect(
+      server.subscriptions.some(
+        (item) => !item.closed && item.conversation === undefined && item.docs.includes('a:doc:b'),
+      ),
+    ).toBe(true)
+
+    releaseHuge()
+    releaseRecovered()
+    store.stop()
+  })
+
+  it('does not let a late 413 suppress a reacquired document watch, and reconnects on a singleton view 413', async () => {
+    const { store, server, sources, fetch, latest } = setup(5)
+    latest().open()
+    await tick()
+
+    // Release -> pending 413 resolves -> reacquire must send a fresh POST.
+    const pending413 = Promise.withResolvers<Response>()
+    fetch.mockImplementationOnce(() => pending413.promise)
+    const releaseFirst = store.watchDoc('late.doc')
+    await tick()
+    releaseFirst()
+    pending413.resolve(Response.json({ error: 'Request too large' }, { status: 413 }))
+    await Promise.resolve()
+    await Promise.resolve()
+    const beforeReacquire = fetch.mock.calls.length
+    const releaseSecond = store.watchDoc('late.doc')
+    await tick()
+    const reacquirePosts = fetch.mock.calls
+      .slice(beforeReacquire)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+    expect(reacquirePosts.length).toBeGreaterThanOrEqual(1)
+    expect(server.of(undefined, false)?.docs).toEqual(['late.doc'])
+    releaseSecond()
+    await tick()
+
+    // Singleton view 413 (opens.size === 1, closes.length === 0) triggers stream reconnect instead of leaving the view disconnected.
+    const sourcesBefore = sources.length
+    fetch.mockResolvedValueOnce(Response.json({ error: 'Request too large' }, { status: 413 }))
+    const releaseView = store.watchConversation(7 as ConversationId)
+    await tick()
+    expect(sources.length).toBe(sourcesBefore + 1)
+    latest().open()
+    await tick()
+    expect(server.of(7, true)).toBeDefined()
+    releaseView()
+    store.stop()
+  })
+
+  it('still dispatches valid opens and notifies other refusals when one local 413 callback throws', async () => {
+    const { store, server, latest } = setup(5)
+    latest().open()
+    await tick()
+    const secondRefusal: unknown[] = []
+    const microtasks: (() => void)[] = []
+    const spy = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation((fn) => {
+      microtasks.push(fn)
+    })
+    try {
+      store.watchRead(
+        { extension: 'test', action: 'big-1', args: 'x'.repeat(1_100_000) },
+        undefined,
+        () => {
+          throw new Error('refusal boom')
+        },
+      )
+      store.watchRead(
+        { extension: 'test', action: 'big-2', args: 'y'.repeat(1_100_000) },
+        undefined,
+        (event) => void secondRefusal.push(event),
+      )
+      store.watchRead({ extension: 'test', action: 'valid', args: null }, undefined, () => {})
+      await vi.advanceTimersByTimeAsync(10)
+      expect(microtasks).toHaveLength(1)
+      expect(() => microtasks[0]()).toThrow('refusal boom')
+      await tick()
+      expect(server.reads.some((item) => !item.closed && item.read.action === 'valid')).toBe(true)
+      expect(secondRefusal).toEqual([{ error: 'The server refused this read', status: 413 }])
+    } finally {
+      spy.mockRestore()
+      store.stop()
+    }
+  })
+
   it('sends the closes and opens of a switch in one request', async () => {
     const { store, server, latest, fetch } = setup()
     latest().open()
