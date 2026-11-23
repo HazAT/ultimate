@@ -1778,6 +1778,18 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
     undefined,
     { answer: expect.any(Number), report: 0.95, movedOn: true },
   ])
+  // Answering another conversation's question later does not promote the superseded note into a report.
+  await sendMessage(
+    f.host,
+    f.recipient.id,
+    { to: `#${b.id}`, text: 'Which port?', reply: true },
+    context,
+  )
+  await until(async () =>
+    (await f.log())!.messages.some((m) => m.from === b.id && m.to === f.recipient.id),
+  )
+  await b.settled()
+  expect((await b.from()).filter((m) => m.text === 'Answer: go')).toHaveLength(1)
 
   // A crash while Jev answers never asks it again: the restarted route reports without a verdict.
   const calls = asked.length

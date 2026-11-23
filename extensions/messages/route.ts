@@ -100,11 +100,17 @@ async function judge(
 }
 
 async function answeredAgain(tx: Tx, id: ConversationId, answer: EntryId) {
-  const later = await tx.scanEntries(
-    { conversationId: id, minEntryId: (answer + 1) as EntryId, order: 'ascending' },
-    256,
-  )
-  return later.items.some((entry) => entry.model?.[0]?.role === 'assistant')
+  let cursor: Parameters<Tx['scanEntries']>[2]
+  do {
+    const page = await tx.scanEntries(
+      { conversationId: id, minEntryId: (answer + 1) as EntryId, order: 'ascending' },
+      256,
+      cursor,
+    )
+    if (page.items.some((entry) => entry.model?.[0]?.role === 'assistant')) return true
+    cursor = page.next
+  } while (cursor !== undefined)
+  return false
 }
 
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
@@ -413,7 +419,13 @@ export function route(host: ExtensionHost) {
               if (!report) return []
 
               const promoteLastNote = (last: Message | undefined) => {
-                if (last?.from !== id || last.reply || last.report || last.re !== undefined)
+                if (
+                  last?.from !== id ||
+                  last.reply ||
+                  last.report ||
+                  last.re !== undefined ||
+                  last.judged
+                )
                   return []
                 return routeToStarter(last.text, {})
               }
@@ -463,11 +475,8 @@ export function route(host: ExtensionHost) {
         }
         const verdict = judged
         await runtime.commit(async (tx) => {
-          const movedOn =
-            (await answeredAgain(tx, id, answer)) || (await concludedOrWorkUnderway(host, tx, id))
-          const effective: Judged = movedOn ? { ...verdict, movedOn: true } : verdict
-          ;(await tx.doc(Judgements, id)).answers[answer] = effective
-          const report = !movedOn && (!('report' in verdict) || verdict.report >= 0.5)
+          ;(await tx.doc(Judgements, id)).answers[answer] = verdict
+          const report = !('report' in verdict) || verdict.report >= 0.5
           return {
             status: 'running',
             checkpoint: {
@@ -475,7 +484,7 @@ export function route(host: ExtensionHost) {
               routes: [
                 {
                   ...toStarter,
-                  options: { ...toStarter.options, note: !report, report, judged: effective },
+                  options: { ...toStarter.options, note: !report, report, judged: verdict },
                 },
               ],
             },
@@ -485,9 +494,18 @@ export function route(host: ExtensionHost) {
       forward: async (task, runtime, ctx) => {
         for (const { to, text, requestId, options } of task.state.checkpoint.routes) {
           if (!text.trim()) continue
-          await send(host, runtime.conversationId, { to: `#${to}`, text, reply: false }, ctx, {
+          const id = runtime.conversationId
+          const answer = options.judged?.answer
+          await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {
             requestId,
             ...options,
+            ...(answer === undefined
+              ? {}
+              : {
+                  stillReports: async (tx: Tx) =>
+                    !(await answeredAgain(tx, id, answer)) &&
+                    !(await concludedOrWorkUnderway(host, tx, id)),
+                }),
           })
         }
         await runtime.commit(() => terminal, ctx)

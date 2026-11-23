@@ -7,7 +7,7 @@ import type { Judged } from './refs.ts'
 
 const percent = (p: number) => `${Math.round(p * 100)}%`
 
-export function JudgedChip(props: { judged: Judged; class?: string }) {
+export function JudgedChip(props: { judged: Judged }) {
   const verdict = () => {
     const judged = props.judged
     const jev =
@@ -37,10 +37,7 @@ export function JudgedChip(props: { judged: Judged; class?: string }) {
   }
   return (
     <span
-      class={cn(
-        'inline-flex h-5 max-w-full min-w-0 shrink-0 items-center gap-1 rounded-full border border-border/70 bg-background px-1.5 font-mono text-[10px] font-normal text-muted-foreground',
-        props.class,
-      )}
+      class="inline-flex h-5 max-w-full min-w-0 shrink-0 items-center gap-1 rounded-full border border-border/70 bg-background px-1.5 font-mono text-[10px] font-normal text-muted-foreground"
       data-judged={verdict().woke ? 'report' : 'note'}
       title={verdict().title}
     >

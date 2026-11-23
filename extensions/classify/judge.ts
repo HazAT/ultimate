@@ -1,7 +1,7 @@
 import type { JudgeService } from '../messages/api.ts'
 import type { ClassifyQuestion, ClassifyService } from './api.ts'
 
-export const reportQuestion = {
+const reportQuestion = {
   type: 'choice',
   instructions:
     'A branch agent works on a task for @ultimate, the coordinator that started it; the user can also talk to the branch directly in its conversation. Read what the branch said before, the inputs its latest run answered, and its final answer. Decide whether @ultimate must be woken with this final answer.',
@@ -12,6 +12,12 @@ export const reportQuestion = {
   },
 } satisfies ClassifyQuestion
 
+function shortCause(error: unknown, signal: AbortSignal) {
+  if (signal.aborted) return new Error('cancelled')
+  const status = /^TypeSafe (\d{3})\b/.exec(error instanceof Error ? error.message : '')?.[1]
+  return new Error(status ? `TypeSafe ${status}` : 'TypeSafe request failed')
+}
+
 export function judge(classify: ClassifyService): JudgeService {
   return {
     async report(state, signal) {
@@ -20,10 +26,7 @@ export function judge(classify: ClassifyService): JudgeService {
         .then(
           (result) => result.answers,
           (error: unknown) => {
-            if (signal.aborted) throw error
-            const message = error instanceof Error ? error.message : ''
-            const status = /^TypeSafe (\d{3})\b/.exec(message)?.[1]
-            throw new Error(status ? `TypeSafe ${status}` : 'TypeSafe request failed')
+            throw shortCause(error, signal)
           },
         )
       const answer = answers.route
