@@ -1483,6 +1483,20 @@ async function branched(f: Awaited<ReturnType<typeof fixture>>, prompt = 'Explor
   await settled()
   return { id, branch, from, later, settled }
 }
+it("applies the coordinator definition's denied tools to a new branch, for the model and for scripts", async () => {
+  const f = await fixture()
+  const coordinator = join(f.host.ultimateRoot, 'agents/coordinator.md')
+  await writeFile(
+    coordinator,
+    (await readFile(coordinator, 'utf8')).replace('---\n', '---\ndenyTools: [hold]\n'),
+  )
+  expect((await f.opened.root.agent(context)).tools.map((tool) => tool.name)).toContain('hold')
+  const b = await branched(f)
+  const agent = await b.branch.agent(context)
+  expect(agent.tools.map((tool) => tool.name)).toContain('message')
+  expect(agent.tools.map((tool) => tool.name)).not.toContain('hold')
+  expect(agent.callable.map((tool) => tool.name)).not.toContain('hold')
+})
 it('lets a branch ask the user directly and leaves passive question and answer notes for @ultimate', async () => {
   const f = await fixture()
   const b = await branched(f)
