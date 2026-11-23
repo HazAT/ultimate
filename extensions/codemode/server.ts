@@ -4,6 +4,7 @@ import type {
   Cursor,
   HookApi,
   JsonObject,
+  TaskId,
   ToolExecutionResult,
   ToolHookCall,
   Tx,
@@ -71,13 +72,6 @@ const StoreCopied = defineDoc({
   history: 'latest',
   fork: 'current',
   initial: (): { conversations: number[] } => ({ conversations: [] }),
-})
-const GlobalCalls = defineDoc({
-  kind: 'codemode.global-calls',
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'task',
-  initial: (): { calls: { name: string; args: JsonValue; status: string }[] } => ({ calls: [] }),
 })
 const KEPT_SUMMARY_LIMIT = 1000
 export { SummaryDoc }
@@ -412,22 +406,23 @@ export default function codemode(host: ExtensionHost) {
     return created
   })
   const ultimateHelpers = helpers(host)
+  const helperCallsByTask = new Map<TaskId, Call[]>()
   const globals: CodemodeGlobal[] = ultimateHelpers.map((helper) => ({
     name: `ultimate.${helper.name}`,
     spread: true,
     execute: async (args, api, context) => {
       const values = Array.isArray(args) ? args : []
-      const record = (status: string) =>
-        api.commit(async (tx) => {
-          const call = { name: `ultimate.${helper.name}`, args: asJson(values) ?? [], status }
-          ;(await tx.doc(GlobalCalls, api.taskId)).calls.push(call)
-        }, context)
+      const record = (status: string) => {
+        const calls = helperCallsByTask.get(api.taskId) ?? []
+        calls.push({ name: `ultimate.${helper.name}`, args: values, status })
+        helperCallsByTask.set(api.taskId, calls)
+      }
       try {
         const value = asJson(await helper.execute(values, api.conversationId, context)) ?? null
-        await record('ok')
+        record('ok')
         return value
       } catch (error) {
-        if (!context.abortSignal?.aborted) await record('error')
+        if (!context.abortSignal?.aborted) record('error')
         throw error
       }
     },
@@ -503,15 +498,11 @@ export default function codemode(host: ExtensionHost) {
       const store = await tx.doc(CodemodeStoreDoc, api.conversationId)
       for (const [key, value] of Object.entries(old)) store.values[key] ??= value
     }, context)
-  const summarize = async (
-    api: HookApi,
-    call: ToolHookCall,
-    result: ToolExecutionResult,
-    context: Context,
-  ) => {
+  const summarize = async (api: HookApi, call: ToolHookCall, result: ToolExecutionResult) => {
     const details = result.details as CodemodeToolDetails | undefined
-    const globalCalls = (await api.snapshot(GlobalCalls, api.taskId, context))?.calls ?? []
-    const calls = [...globalCalls, ...summaryCalls(details?.calls ?? [])]
+    const helperCalls = helperCallsByTask.get(api.taskId) ?? []
+    helperCallsByTask.delete(api.taskId)
+    const calls = [...helperCalls, ...summaryCalls(details?.calls ?? [])]
     const error = scriptError(result)
     return host.harness().commit(async (tx) => {
       const doc = await tx.doc(SummaryDoc, api.conversationId)
@@ -611,8 +602,8 @@ export default function codemode(host: ExtensionHost) {
           if (topLevelCodemode(call)) await copyRetiredStoreOnce(api, context)
           return undefined
         },
-        afterTool: async (call, result, api, context) => {
-          if (topLevelCodemode(call)) await summarize(api, call, result, context)
+        afterTool: async (call, result, api) => {
+          if (topLevelCodemode(call)) await summarize(api, call, result)
           return undefined
         },
       }),
