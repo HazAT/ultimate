@@ -17,6 +17,8 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { arr, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
+import { defineEffect } from '../../lib/effect.ts'
+import { openaiSecretOrNonOAuthKey, openaiTranscribe } from '../../lib/openai.ts'
 import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
@@ -31,7 +33,6 @@ import {
   OpenAction,
   StatusAction,
   StopAction,
-  TranscriptAction,
   TurnAction,
 } from './refs.ts'
 import type { VoiceFork, VoiceHandoff, VoiceRoute, VoiceSession, VoiceTurn } from './refs.ts'
@@ -40,9 +41,10 @@ import { voicePrompt } from './prompt.ts'
 const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const PLACEHOLDER = '(no transcript yet)'
+const TRANSCRIBE_TIMEOUT_MS = 65_000
 const READ_TOOLS = ['read', 'bash', 'memory', 'web_search', 'web_fetch', 'voice_handoff']
 
-export const userActions = ['open', 'record', 'turn', 'transcript', 'model', 'stop', 'end']
+export const userActions = ['open', 'record', 'turn', 'model', 'stop', 'end']
 
 export const Session = defineDoc<VoiceSession>({
   kind: 'voice.session',
@@ -54,7 +56,7 @@ export const Session = defineDoc<VoiceSession>({
   initial: () => ({}),
 })
 
-const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; ended?: true }>({
+export const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; ended?: true }>({
   kind: 'voice.fork',
   checkpointWhen: () => false,
   version: 1,
@@ -92,6 +94,40 @@ async function readRecording(host: ExtensionHost, id: string) {
     mimeType: string
   }
 }
+
+const transcriptions = new WeakMap<ExtensionHost, ReturnType<typeof transcribeEffect>>()
+const transcribe = (host: ExtensionHost) => {
+  const known = transcriptions.get(host)
+  if (known) return known
+  const effect = transcribeEffect(host)
+  transcriptions.set(host, effect)
+  return effect
+}
+
+const transcribeEffect = (host: ExtensionHost) =>
+  defineEffect<{ session: ConversationId; audio: string }, string>(
+    'voice-live.transcribe',
+    async ({ audio }, { signal }) => {
+      const key = await openaiSecretOrNonOAuthKey(host, signal)
+      if (!key) throw new Error('Transcription needs an OpenAI API key in ⌘K → Secrets')
+      const { data, mimeType } = await readRecording(host, audio)
+      const answer = await openaiTranscribe(
+        key,
+        new Blob([Buffer.from(data, 'base64')], { type: mimeType }),
+        AbortSignal.any([signal, AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS)]),
+      )
+      if (answer.text === undefined)
+        throw new Error(
+          `Transcription failed (HTTP ${answer.status})${answer.detail ? `: ${answer.detail}` : ''}`,
+        )
+      return answer.text.trim()
+    },
+    async (tx, { session, audio }, outcome) => {
+      const fork = await tx.doc(Fork, session)
+      if (outcome.ok) fork.transcripts = { ...fork.transcripts, [audio]: outcome.value }
+      else fork.failed = { ...fork.failed, [audio]: outcome.error }
+    },
+  )
 
 async function lastSettledAnswer(host: ExtensionHost, main: ConversationId) {
   let cursor: Cursor | undefined
@@ -245,6 +281,15 @@ export const actions = {
     await writeFile(recordingPath(host, id), JSON.stringify({ data: audio, mimeType }), {
       mode: 0o600,
     })
+    const session = await openSession(host)
+    await host.harness().commit(async (tx) => {
+      await tx.createTask(
+        transcribe(host),
+        { session, audio: id },
+        { conversationId: session, ownership: { kind: 'conversation' }, background: true },
+      )
+    }, context)
+    host.harness().resume()
     return { audio: id }
   }),
   open: implementAction(OpenAction, async (_args, { host }) => ({
@@ -319,18 +364,6 @@ export const actions = {
       context,
     )
     return { conversation: id, route }
-  }),
-  transcript: implementAction(TranscriptAction, async (args, { host }) => {
-    const { audio, text } = unwrap<{ audio: unknown; text: unknown }>(args)
-    if (typeof audio !== 'string' || typeof text !== 'string')
-      throw new Error('Expected { audio, text }')
-    const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-    if (id === undefined) return {}
-    await host.harness().commit(async (tx) => {
-      const fork = await tx.doc(Fork, id)
-      fork.transcripts = { ...fork.transcripts, [audio]: text.trim() }
-    }, context)
-    return {}
   }),
   model: implementAction(ModelAction, async (args, { host }) => {
     const { model } = unwrap<{ model: unknown }>(args)
@@ -409,6 +442,7 @@ export default function voiceExtension(host: ExtensionHost) {
   host.need(ConversationsApi)
   return defineExtension({
     name: 'voice-live',
+    tasks: [transcribe(host)],
     hooks: [
       hook(GenerationTask, {
         beforeInput: async (_input, { tx, conversationId }) => {

@@ -3,7 +3,7 @@ import { implementAction } from '../../lib/actions.ts'
 import {
   OPENAI_SECRET as SECRET,
   openaiSecretOrNonOAuthKey,
-  openaiError,
+  openaiTranscribe,
 } from '../../lib/openai.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
@@ -21,37 +21,6 @@ export const secrets = [
     provider: 'openai',
   },
 ]
-
-export async function openaiTranscribe(
-  key: string,
-  audio: Blob,
-  signal: AbortSignal,
-): Promise<{ status: number; text?: string; detail?: string }> {
-  const form = new FormData()
-  const extension = audio.type.includes('mp4') ? 'mp4' : audio.type.includes('ogg') ? 'ogg' : 'webm'
-  form.set('file', audio, `recording.${extension}`)
-  form.set('model', 'gpt-4o-mini-transcribe')
-  form.set('response_format', 'json')
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}` },
-    body: form,
-    signal,
-  })
-  if (!response.ok) {
-    const { status, message } = await openaiError(response)
-    return { status, detail: message }
-  }
-  let answer: { text?: unknown } | undefined
-  try {
-    answer = await response.json()
-  } catch {
-    answer = undefined
-  }
-  return typeof answer?.text === 'string'
-    ? { status: response.status, text: answer.text }
-    : { status: 502, detail: 'no text in the answer' }
-}
 
 function failure(status: number, detail: string | undefined) {
   if (status === 401) return `OpenAI rejected the API key: check ${SECRET} in ⌘K → Secrets`

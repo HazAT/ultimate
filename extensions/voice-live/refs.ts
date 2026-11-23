@@ -43,13 +43,15 @@ export type VoiceHandoff = {
 }
 
 /**
- * On a voice fork: what it forked from, each recording's transcript by recording id once it arrived, and `handedOff`
- * once it handed off to @ultimate: the session goes cold, and the next turn forks @ultimate afresh.
+ * On a voice fork: what it forked from, each recording's transcript by recording id once its durable transcription
+ * settled (`failed` holds the error of one that did not), and `handedOff` once it handed off to @ultimate: the session
+ * goes cold, and the next turn forks @ultimate afresh.
  */
 export type VoiceFork = {
   of?: ConversationId
   at?: EntryId
   transcripts?: Record<string, string>
+  failed?: Record<string, string>
   handedOff?: true
 }
 
@@ -58,7 +60,10 @@ export const VoiceSessionDoc = docRef<VoiceSession>('voice.session')
 /** The voice fork's own document, on the fork: see `VoiceFork`. */
 export const VoiceForkDoc = docRef<VoiceFork>('voice.fork')
 
-/** `{ audio: base64, mimeType }` → `{ audio }`, the id of the recording kept for the session's next turn. */
+/**
+ * `{ audio: base64, mimeType }` → `{ audio }`, the id of the recording kept for the session's next turn. Opens the
+ * session and starts the recording's durable transcription, which lands in the fork's `transcripts` or `failed`.
+ */
 export const RecordAction = actionRef<{ audio: string; mimeType: string }, { audio: string }>(
   'voice-live',
   'record',
@@ -80,12 +85,6 @@ export const TurnAction = actionRef<
   },
   { conversation: ConversationId; route: VoiceRoute }
 >('voice-live', 'turn')
-
-/** A recording's transcript, arrived after its turn went out: kept on the session's fork for later requests. */
-export const TranscriptAction = actionRef<{ audio: string; text: string }, Record<string, never>>(
-  'voice-live',
-  'transcript',
-)
 
 /** `{ model: 'provider/model' }` → the voice model from now on, the open session's included. */
 export const ModelAction = actionRef<{ model: string }, Record<string, never>>(

@@ -13,10 +13,18 @@ import {
 } from '@/components/ui/collapsible.solid.tsx'
 import { cn, column, MessageActions, useDocOf, useExternal, UserText } from '@/sdk/solid'
 import { every, nextTurn } from '../../lib/timers.ts'
-import { dock, playerState, replyOf, useSpeaking, useTurns } from './dock.solid.tsx'
+import {
+  dock,
+  playerState,
+  replyOf,
+  settleTranscripts,
+  useSpeaking,
+  useTurns,
+} from './dock.solid.tsx'
 import type { TurnView } from './dock.solid.tsx'
 import { drawWave } from './recorder.ts'
 import { VoiceForkDoc } from './refs.ts'
+import type { VoiceFork } from './refs.ts'
 import { splitReply } from './speech.ts'
 import type { Sentence } from './speech.ts'
 import type { Stage, Trace } from './trace.ts'
@@ -140,13 +148,19 @@ function TraceLine(props: { trace: Trace; turn: string }) {
   )
 }
 
-function YourTurn(props: { turn: TurnView; transcripts: Readonly<Record<string, string>> }) {
+function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined }) {
   const data = () => props.turn.data
   const local = () => dock.local()[props.turn.key]
-  const said = () =>
-    data().audio
-      ? (local()?.transcript ?? props.transcripts[data().audio!] ?? (data().text || undefined))
-      : data().text
+  const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
+  const said = () => {
+    const recording = audio()
+    if (!data().audio) return data().text
+    return (recording && props.fork?.transcripts?.[recording]) ?? (data().text || undefined)
+  }
+  const failed = () => {
+    const recording = audio()
+    return local()?.failed ?? (recording ? props.fork?.failed?.[recording] : undefined)
+  }
   return (
     <Message class="group/message mt-3 first:mt-0" data-voice-turn={props.turn.key} from="user">
       <MessageContent>
@@ -168,7 +182,7 @@ function YourTurn(props: { turn: TurnView; transcripts: Readonly<Record<string, 
                   envelope={data().envelope}
                 />
               </Show>
-              <Show when={said() !== undefined && !local()?.failed}>
+              <Show when={said() !== undefined && !failed()}>
                 <span class="truncate text-muted-foreground/60">
                   {data().route === 'audio' ? 'the model hears your voice' : 'the model reads this'}
                 </span>
@@ -177,11 +191,11 @@ function YourTurn(props: { turn: TurnView; transcripts: Readonly<Record<string, 
           </div>
         </Show>
         <Show
-          when={!local()?.failed}
+          when={!failed()}
           fallback={
             <p class="font-mono text-[12px] text-error">
               {data().audio ? 'Transcription failed: ' : 'Not sent: '}
-              {local()?.failed}
+              {failed()}
             </p>
           }
         >
@@ -189,7 +203,16 @@ function YourTurn(props: { turn: TurnView; transcripts: Readonly<Record<string, 
             when={said()}
             fallback={
               <Show when={data().audio}>
-                <Shimmer class="font-mono text-[12px]">transcribing…</Shimmer>
+                <Show
+                  when={said() === undefined}
+                  fallback={
+                    <span class="font-mono text-[12px] text-muted-foreground">
+                      no words heard in the transcript
+                    </span>
+                  }
+                >
+                  <Shimmer class="font-mono text-[12px]">transcribing…</Shimmer>
+                </Show>
               </Show>
             }
           >
@@ -418,10 +441,16 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
   )
 }
 
+export function Voicing(props: { fork: ConversationId }) {
+  const fork = useDocOf(() => props.fork, VoiceForkDoc)
+  createEffect(fork, (doc) => settleTranscripts(doc))
+  useSpeaking(useTurns())
+  return null
+}
+
 export function Session(props: { fork: ConversationId }) {
   const view = useTurns()
   const fork = useDocOf(() => props.fork, VoiceForkDoc)
-  useSpeaking(view)
   let log: HTMLDivElement | undefined
   createEffect(
     () => {
@@ -437,7 +466,7 @@ export function Session(props: { fork: ConversationId }) {
           <For each={view().turns} keyed={(turn) => turn.key}>
             {(turn, index) => (
               <>
-                <YourTurn transcripts={fork()?.transcripts ?? {}} turn={turn()} />
+                <YourTurn fork={fork()} turn={turn()} />
                 <Reply
                   busy={view().busy}
                   last={index() === view().turns.length - 1}

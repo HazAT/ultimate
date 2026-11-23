@@ -57,7 +57,7 @@ import {
 } from './dock.solid.tsx'
 import { ModelAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { estimate } from './speech.ts'
-import { Session, Waveform } from './turns.solid.tsx'
+import { Session, Voicing, Waveform } from './turns.solid.tsx'
 
 const toolbarButton =
   'flex h-7 max-w-56 min-w-0 shrink items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground'
@@ -375,24 +375,39 @@ export function VoicePanel() {
   onSettled(() => {
     let holding: string | undefined
     const down = (event: KeyboardEvent) => {
+      if (holding !== undefined) {
+        if (event.code === holding || event.repeat) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        return
+      }
       if (event.repeat) return
-      const editable =
-        event.target instanceof Element &&
-        event.target.closest('input, textarea, select, [contenteditable="true"]')
+      const field =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>('input, textarea, select, [contenteditable="true"]')
+          : null
+      const emptyVoiceBox =
+        field instanceof HTMLTextAreaElement &&
+        !!field.closest('[data-voice-panel]') &&
+        !field.value.trim()
       const chord = keyChord(event)
-      const space = chord === 'space' && !editable && voiceOpen()
+      const space = chord === 'space' && voiceOpen() && (!field || emptyVoiceBox)
       if (!space && chord !== parseHold()) return
       event.preventDefault()
       event.stopPropagation()
       holding = event.code
       if (!voiceOpen()) setVoiceOpen(true)
-      void press()
+      void press().then(() => {
+        if (holding === undefined) void release()
+      })
     }
     const up = (event: KeyboardEvent) => {
-      if (holding === undefined || !dock.mic.recording()) return
+      if (holding === undefined) return
       const modifier = ['Meta', 'Control', 'Shift', 'Alt'].includes(event.key)
       if (event.code !== holding && !modifier) return
       event.preventDefault()
+      event.stopPropagation()
       holding = undefined
       void release()
     }
@@ -526,6 +541,13 @@ export function VoicePanel() {
             </Button>
           </span>
         </header>
+        <Show when={id()}>
+          {(open) => (
+            <ScopedConversation id={open()}>
+              <Voicing fork={open()} />
+            </ScopedConversation>
+          )}
+        </Show>
         <Show
           when={!folded()}
           fallback={

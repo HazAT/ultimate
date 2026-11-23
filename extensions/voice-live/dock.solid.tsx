@@ -3,19 +3,11 @@ import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
 import { api, errorMessage, useConversation, useUiState } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
-import { TranscribeAction } from '../voice/refs.ts'
 import { createCues } from './cues.ts'
 import { base64, createMic, unsupported } from './recorder.ts'
 import type { Recorded } from './recorder.ts'
-import {
-  EndAction,
-  RecordAction,
-  StatusAction,
-  StopAction,
-  TranscriptAction,
-  TurnAction,
-} from './refs.ts'
-import type { VoiceTurn } from './refs.ts'
+import { EndAction, RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
+import type { VoiceFork, VoiceTurn } from './refs.ts'
 import { createPlayer, splitReply, splitSentences } from './speech.ts'
 import type { Player } from './speech.ts'
 import { createTrace } from './trace.ts'
@@ -34,8 +26,7 @@ type Pasted = { kind: 'image'; data: string; mimeType: string } | { kind: 'text'
 export type Phase = 'idle' | 'recording' | 'sending' | 'thinking' | 'speaking' | 'done' | 'error'
 type Local = {
   trace: Trace
-  transcribing?: boolean
-  transcript?: string
+  audio?: string
   failed?: string
   optimistic?: VoiceTurn
   images?: { data: string; mimeType: string }[]
@@ -96,6 +87,24 @@ export const dock = createRoot(() => {
 
 const [screen, setScreen] = createRoot(() => createSignal<string>())
 export { setScreen }
+
+const waiting = new Map<
+  string,
+  { resolve: (text: string) => void; reject: (error: Error) => void }
+>()
+const settled = (audio: string) =>
+  new Promise<string>((resolve, reject) => waiting.set(audio, { resolve, reject }))
+
+export function settleTranscripts(fork: VoiceFork | null | undefined) {
+  for (const [audio, wait] of waiting) {
+    const text = fork?.transcripts?.[audio]
+    const failed = fork?.failed?.[audio]
+    if (text === undefined && failed === undefined) continue
+    waiting.delete(audio)
+    if (text !== undefined) wait.resolve(text)
+    else wait.reject(new Error(`Transcription failed: ${failed}`))
+  }
+}
 
 export const voiceOpen = () => dock.open()
 export const setVoiceOpen = (open: boolean) => dock.setOpen(open)
@@ -225,7 +234,6 @@ async function sendTurn(input: {
   )
   patchLocal(key, {
     trace,
-    ...(input.recorded ? { transcribing: true } : {}),
     optimistic: {
       key,
       text: input.typed ?? '',
@@ -251,29 +259,13 @@ async function sendTurn(input: {
     const audio = input.recorded ? await base64(input.recorded.blob) : undefined
     const mimeType = input.recorded?.blob.type ?? ''
     const kept = audio ? (await api.action(RecordAction, { audio, mimeType })).audio : undefined
-    const transcribing =
-      audio && kept
-        ? api
-            .action(TranscribeAction, { audio, mimeType })
-            .then(async ({ text }) => {
-              patchLocal(key, { transcript: text, transcribing: false })
-              await api.action(TranscriptAction, { audio: kept, text })
-              return text
-            })
-            .catch((failure: unknown) => {
-              patchLocal(key, { transcribing: false, failed: errorMessage(failure) })
-              return undefined
-            })
-        : undefined
+    if (kept) patchLocal(key, { audio: kept })
     let text = input.typed ?? ''
-    if (transcribing && status.route === 'text') {
+    if (kept && status.route === 'text') {
       trace.start('transcribe')
-      const transcript = await transcribing
-      if (transcript === undefined)
-        throw new Error('Transcription failed and this model needs text')
+      text = await settled(kept)
       trace.done('transcribe')
-      text = transcript
-    } else if (transcribing) trace.drop('transcribe')
+    } else if (kept) trace.drop('transcribe')
     const typedText = attachments.flatMap((item) => (item.kind === 'text' ? [item.text] : []))
     if (typedText.length)
       text = [text, ...typedText.map((item) => `Pasted text:\n${item}`)]

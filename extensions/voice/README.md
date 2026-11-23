@@ -10,7 +10,7 @@ Voice input: a mic button beside Send records speech and puts its transcript int
   URL or localhost.
 - **Transcription** is the `transcribe` action (`{ audio: base64, mimeType }` → `{ text }`), which posts the audio to
   OpenAI's documented `https://api.openai.com/v1/audio/transcriptions` with `gpt-4o-mini-transcribe`
-  (`openaiTranscribe` in `server.ts` is the one place that knows the endpoint). Recordings up to 8 MB are accepted.
+  (`openaiTranscribe` in `lib/openai.ts` is the one place that knows the endpoint). Recordings up to 8 MB are accepted.
 - **Key:** the `OPENAI_API_KEY` secret (⌘K → Secrets), else an API key Pi's `openai` provider holds. The key is never
   logged or returned. Without one, `status` answers `{ available: false, reason }`, the button is dimmed, and tapping it
   opens the secret's row in the Secrets panel.

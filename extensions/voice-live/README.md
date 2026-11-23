@@ -8,22 +8,26 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
 
 ## Flow
 
-1. **Open** Voice from the title bar's `voice` button or `Alt+Space`, on any surface. The panel floats over the page.
-2. **Hold** the talk button, or Space while focus is outside a text field. The page records Opus with a live waveform;
-   a press cue confirms it hears you. Release sends. A press shorter than 0.6 s or without voice sends nothing.
+1. **Open** Voice from the title bar's `voice` button or `Ctrl/⌘+Shift+V`, on any surface. The panel floats over the
+   page: drag it by its header, fold it to a one-line talk bar; it says whether the session is hot or cold.
+2. **Hold** the talk button; Space outside a text field or in Voice's empty prompt box; or the talk-anywhere shortcut
+   (`Ctrl/⌘+Shift+Space`, set in Voice settings) from anywhere. The page records Opus with a live waveform; a press
+   cue confirms it hears you. Release sends. A press shorter than 0.6 s or without voice sends nothing.
 3. **The turn**: the recording goes to the server (`record`), which keeps it for the session under
-   `<home>/voice/`. The browser asks `voice.transcribe` for the transcript at the same time.
+   `<home>/voice/` and starts a durable `voice-live.transcribe` task. Its result lands in the fork's `voice.fork`
+   document (`transcripts`, or `failed` with the error), so a reload or restart shows the real state.
    - A model that hears audio (Gemini) gets the turn at once: `turn` submits the transcript placeholder as the input,
      and a `beforeRequest` hook adds the recording to that request only. Stored history stays text, so compaction,
      renderers and other models never see audio. The transcript arrives in parallel and shows as your message.
-   - Any other model waits for the transcript; the trace shows the transcribe stage on the critical path.
+   - Any other model waits for that transcript; the trace shows the transcribe stage on the critical path.
    - Typed text, pasted text and pasted or dropped screenshots go through the same `turn`, with Enter in the prompt box.
 4. **The session** is a fork of @ultimate, made on the first turn from its last finished answer, like a side chat:
    ownerless, its automatic summaries off, out of the sidebar's lists. It keeps the fork's tools and adds
    `voice_handoff`; `beforeTool` lets it only read (read, bash for reading, memory, web search and fetch) and hand off.
    Its first input carries the voice-mode prompt (`prompt.ts`) as a hidden `conversations.identity` entry; each later
-   input carries a short digest of what @ultimate did since the last turn. The session stays open until End, which
-   concludes the fork and deletes the session's recordings.
+   input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
+   conversation are on screen. The session stays hot until it hands off or End: after a handoff the next turn
+   concludes it and forks @ultimate afresh; End concludes it and deletes the session's recordings.
 5. **Replies** stream from the fork's live partial. Each finished sentence is spoken by the browser's
    `speechSynthesis` at the chosen speed and highlighted word by word (word events, or an estimate when the voice sends
    none). The playback bar shows the paragraph, sentence and time left, and skips by sentence or paragraph; any
@@ -37,8 +41,9 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
 
 ## Trace and cues
 
-Every turn has a stage trace under it: mic, transcribe (or `parallel`), send, model, thinking with its token count,
-voice, then "heard after X s" from release to the first spoken word. Slow stages turn amber, failures red. Soft cues
+Every turn has a stage trace under it: mic, transcribe (only when the model waits for it), send, model, thinking with
+its token count, voice; each finished stage gets a checkmark. Once heard, it folds to "✓ heard after X s" (release to
+the first spoken word). Slow stages turn amber, failures red. Soft cues
 mark press, send, each finished stage, the thinking pulse, the first word, done and errors; the speak, cues and speed
 settings live in the UI state `ext.voice-live.settings`.
 

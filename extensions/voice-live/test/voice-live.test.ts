@@ -1,6 +1,6 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach, beforeAll, expect, it } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -11,8 +11,9 @@ import type { Message } from '@earendil-works/pi-ai'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { context } from '../../../server/harness.ts'
-import { Session } from '../server.ts'
+import { Fork, Session } from '../server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
+import { writeSecret } from '../../secrets/store.ts'
 
 let ultimateRoot: string
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
@@ -24,6 +25,7 @@ beforeAll(async () => {
   )
 })
 afterEach(async () => {
+  vi.unstubAllGlobals()
   await Promise.all(servers.splice(0).map((server) => server.close()))
 })
 
@@ -36,6 +38,19 @@ async function fixture() {
     join(home, '.ultimate/settings.json'),
     JSON.stringify({ voice: { model: 'faux/gemini-faux' } }),
   )
+  await writeSecret(home, 'OPENAI_API_KEY', 'sk-test')
+  const realFetch = globalThis.fetch
+  const transcribed: string[] = []
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : input.toString()
+    if (url !== 'https://api.openai.com/v1/audio/transcriptions') return realFetch(input, init)
+    const text = transcribed.shift()
+    return Promise.resolve(
+      text === undefined
+        ? Response.json({ error: { message: 'quota' } }, { status: 429 })
+        : Response.json({ text }),
+    )
+  })
   const faux = fauxProvider({
     models: [{ id: 'main-faux' }, { id: 'gemini-faux', input: ['text', 'image'] }],
   })
@@ -78,7 +93,8 @@ async function fixture() {
     await (await server.harness.conversation(id, context))!.waitForIdle(context)
     return { id, route: result.data.result.route as string }
   }
-  return { server, home, main, requests, action, turn }
+  const forkOf = (id: ConversationId) => server.harness.snapshot(Fork, id, context)
+  return { server, home, main, requests, action, turn, transcribed, forkOf }
 }
 
 const userParts = (message: Message | undefined) =>
@@ -89,6 +105,8 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   const recorded = await f.action('record', { audio, mimeType: 'audio/webm' })
   const kept = recorded.data.result.audio as string
   const first = await f.turn({ key: 'one', text: '', audio: kept, seconds: 2 })
+  await until(async () => (await f.forkOf(first.id))?.failed?.[kept] !== undefined)
+  expect((await f.forkOf(first.id))?.failed?.[kept]).toContain('HTTP 429')
   expect(first.route).toBe('audio')
   const fork = f.requests.at(-1)!
   expect(fork.model).toBe('gemini-faux')
@@ -101,7 +119,11 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   })
 
   expect(JSON.stringify(fork.messages)).toContain('(no transcript yet)')
-  await f.action('transcript', { audio: kept, text: 'what about the sidebar' })
+  f.transcribed.push('what about the sidebar')
+  const again = (await f.action('record', { audio, mimeType: 'audio/webm' })).data.result
+    .audio as string
+  await until(async () => (await f.forkOf(first.id))?.transcripts?.[again] !== undefined)
+  await f.turn({ key: 'heard', text: '', audio: again, seconds: 2 })
   const second = await f.turn({ key: 'two', text: 'typed follow-up' })
   expect(second.id).toBe(first.id)
   const later = f.requests.at(-1)!
@@ -114,9 +136,12 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   expect(JSON.stringify(later.messages)).toContain(
     'by voice (his recording follows): what about the sidebar',
   )
-  expect(JSON.stringify(later.messages.filter((message) => message.role === 'user'))).not.toContain(
-    '(no transcript yet)',
-  )
+  expect(
+    later.messages.filter(
+      (message) =>
+        message.role === 'user' && JSON.stringify(message).includes('(no transcript yet)'),
+    ),
+  ).toHaveLength(1)
 
   await f.action('end', null)
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({})
@@ -133,6 +158,7 @@ it('switching to a model that does not hear audio sends it the transcript instea
   const first = await f.turn({ key: 'one', text: 'start' })
   const switched = await f.action('model', { model: 'faux/main-faux' })
   expect([switched.status, switched.data.error]).toEqual([200, undefined])
+  f.transcribed.push('what about the sidebar')
   const recorded = await f.action('record', { audio, mimeType: 'audio/webm' })
   const second = await f.turn({
     key: 'two',
