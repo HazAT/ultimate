@@ -290,7 +290,7 @@ it('stops sending after a 402 until the cooldown ends', async () => {
   vi.stubGlobal('fetch', fetch)
   const signal = new AbortController().signal
   await expect(service.ask(request, signal)).rejects.toThrow('TypeSafe 402: billing_error')
-  await expect(service.ask(request, signal)).rejects.toThrow('TypeSafe 402: billing_error')
+  await expect(service.ask(request, signal)).rejects.toThrow('TypeSafe 402: out of credits')
   expect(fetch).toHaveBeenCalledTimes(1)
   expect(notice).toHaveBeenCalledWith(expect.stringContaining('TypeSafe: out of credits'))
   vi.advanceTimersByTime(cooldownMs)
@@ -328,7 +328,7 @@ it('names the pinned Jev model in the prompt only for agents with codemode', asy
   expect(await render(['read'])).toBeUndefined()
 })
 
-it('keeps a 402 pause across a restart, storing only a fingerprint of the key', async () => {
+it('keeps a 402 pause across a restart, storing only a key fingerprint and the status', async () => {
   const dir = await temp()
   cleanup.push(dir)
   const file = join(dir, 'state.sqlite')
@@ -336,11 +336,11 @@ it('keeps a 402 pause across a restart, storing only a fingerprint of the key', 
   const first = await fixture(true, undefined, undefined, sqlite)
   const fetch = vi
     .fn<typeof globalThis.fetch>()
-    .mockResolvedValueOnce(new Response('billing_error', { status: 402 }))
+    .mockResolvedValueOnce(new Response('rejected key echo-sentinel', { status: 402 }))
     .mockImplementation(async () => Response.json(body))
   vi.stubGlobal('fetch', fetch)
   const signal = new AbortController().signal
-  await expect(first.service.ask(request, signal)).rejects.toThrow('TypeSafe 402')
+  await expect(first.service.ask(request, signal)).rejects.toThrow('echo-sentinel')
   for (const close of cleanups.splice(0).toReversed()) await close()
   const second = await fixture(true, undefined, undefined, sqlite)
   await expect(second.service.ask(request, signal)).rejects.toThrow('TypeSafe 402')
@@ -368,5 +368,7 @@ it('keeps a 402 pause across a restart, storing only a fingerprint of the key', 
     ),
   )
   expect(stored).toMatch(/"keyId":"[0-9a-f]{16}"/)
+  expect(stored).toMatch(/"status":402/)
   expect(stored).not.toContain('test-sentinel')
+  expect(stored).not.toContain('echo-sentinel')
 })

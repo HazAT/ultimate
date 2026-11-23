@@ -32,7 +32,7 @@ const modelId = 'jev-1.14.0'
 const inputCost = 0.042
 const classifyToolName = 'pi.codemode.models.classify'
 
-type Pause = { keyId: string; until: number; error: string }
+type Pause = { keyId: string; status: number; until: number }
 const PauseDoc = defineDoc<{ pause?: Pause }>({
   kind: 'classify.pause',
   scope: 'conversation',
@@ -63,12 +63,12 @@ export default function classify(host: ExtensionHost) {
     key !== undefined &&
     billingOrAuthPause.keyId === keyId(key) &&
     Date.now() < billingOrAuthPause.until
-      ? billingOrAuthPause.error
+      ? `TypeSafe ${billingOrAuthPause.status}: ${rejected[billingOrAuthPause.status]}`
       : undefined
-  const pause = async (key: string, status: number, error: string) => {
+  const pause = async (key: string, status: number) => {
     const reason = rejected[status]
     if (!reason || pausedError(key)) return
-    const paused = { keyId: keyId(key), until: Date.now() + cooldownMs, error }
+    const paused = { keyId: keyId(key), status, until: Date.now() + cooldownMs }
     billingOrAuthPause = paused
     await host.harness().commit(async (tx) => {
       ;(await tx.doc(PauseDoc, ROOT_CONVERSATION_ID)).pause = paused
@@ -110,11 +110,7 @@ export default function classify(host: ExtensionHost) {
           if (blocked) throw new Error(blocked)
           const response = await requestFetch(input, init)
           if (key && rejected[response.status]) {
-            await pause(
-              key,
-              response.status,
-              `TypeSafe ${response.status}: ${rejected[response.status]}`,
-            )
+            await pause(key, response.status)
           }
           return response
         },
@@ -150,7 +146,7 @@ export default function classify(host: ExtensionHost) {
       })
       if (!response.ok) {
         const error = `TypeSafe ${response.status}: ${(await response.text()).slice(0, 1000)}`
-        await pause(key, response.status, error)
+        await pause(key, response.status)
         throw new Error(error)
       }
       const body: unknown = await response.json()
