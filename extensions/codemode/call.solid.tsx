@@ -111,7 +111,8 @@ function outputOf(call: ToolCallView) {
   const texts = (call.result?.content ?? []).flatMap((block) =>
     block.type === 'text' ? [block.text] : [],
   )
-  return texts.slice(1).join('\n').trim()
+  const pisHeader = /^Script (completed|failed)\nWall time /.test(texts[0] ?? '')
+  return (pisHeader ? texts.slice(1) : texts).join('\n').trim()
 }
 
 const codeOf = (call: ToolCallView) => (typeof call.args.code === 'string' ? call.args.code : '')

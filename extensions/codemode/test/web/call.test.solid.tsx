@@ -85,3 +85,28 @@ it('shows the finished run with its calls and output', async () => {
   )
   await expectDistinctAgentNames(agent)
 })
+
+it('keeps an error result that has no script header, such as a resume refused after a restart', async () => {
+  const error = 'The script cannot resume: the sandbox changed since it started (a -> b).'
+  const call: ToolCallView = {
+    id: 'call-2',
+    name: 'codemode',
+    args: { code: 'await tools.read({path: "a"})' },
+    status: 'error',
+    output: error,
+    images: [],
+    diagnostics: [],
+    details: { calls: [] },
+    result: {
+      role: 'toolResult',
+      toolCallId: 'call-2',
+      toolName: 'codemode',
+      content: [{ type: 'text', text: error }],
+      isError: true,
+      timestamp: 100,
+    },
+  }
+  const container = renderSolid(() => <CodemodeCall call={call} core={null} />)
+  await settle()
+  expect([...container.querySelectorAll('pre')].map((pre) => pre.textContent)).toContain(error)
+})
