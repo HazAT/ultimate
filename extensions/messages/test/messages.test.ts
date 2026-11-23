@@ -41,9 +41,8 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { AskedCalls, Judge, Messages, MessageSent } from '../api.ts'
-import type { JudgeService } from '../api.ts'
-import type { JudgeState } from '../route.ts'
+import { AskedCalls, Judge, Judgements, Messages, MessageSent } from '../api.ts'
+import type { JudgeService, JudgeState } from '../api.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -1700,51 +1699,85 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
   const f = await fixture()
   const b = await branched(f)
   const asked: JudgeState[] = []
-  let verdict: () => Record<string, number> = () => ({ report: 0.2, note: 0.8 })
+  let verdict: () => Promise<number> = async () => 0.2
   f.provided.set(Judge.name, {
-    choose: async ({ state }) => {
-      asked.push(state as JudgeState)
+    report: async (state) => {
+      asked.push(state)
       return verdict()
     },
   } satisfies JudgeService)
-  const generations = async () =>
-    (await f.opened.root.context(context)).entries.filter((e) => e.kind === 'pi.assistant').length
-  const before = await generations()
+  const delivered = async (id: number) =>
+    (await f.opened.root.context(context)).entries.find(
+      (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === id,
+    )
+  const judgements = async () =>
+    (await f.opened.harness.snapshot(Judgements, b.id as ConversationId, context))?.answers
   const say = async (content: string) => {
     await (await b.branch.submit({ type: 'input', content }, context)).wait(context)
     await b.settled()
-    return (await b.from()).findLast((m) => m.to === 1)!
+    const message = (await b.from()).findLast((m) => m.to === 1)!
+    const answer = (await b.branch.context(context)).entries.findLast(
+      (e) => e.kind === 'pi.assistant',
+    )!.id
+    return { message, answer, entry: await delivered(message.id) }
   }
+  const generations = async () =>
+    (await f.opened.root.context(context)).entries.filter((e) => e.kind === 'pi.assistant').length
+  const before = await generations()
+
   const note = await say('What does + Legacy mean?')
-  expect(note).toMatchObject({
+  expect(note.message).toMatchObject({
     text: 'Answer: What does + Legacy mean?',
     reply: false,
-    judged: { answer: expect.any(Number), report: 0.2 },
+    judged: { answer: note.answer, report: 0.2 },
   })
-  expect(note.report).toBeUndefined()
+  expect(note.message.report).toBeUndefined()
   expect(asked.at(-1)).toEqual({
     branch_said_before: expect.stringMatching(/^Answer: Message from #1 \(@ultimate\):\nExplore/),
     inputs: [{ from: 'user typed in the branch', text: 'What does + Legacy mean?' }],
     final_answer: 'Answer: What does + Legacy mean?',
   })
-  const placedNote = (await f.opened.root.context(context)).entries.find(
-    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === note.id,
-  )
-  expect([placedNote?.data, placedNote?.input]).toEqual([
-    expect.objectContaining({ delivery: 'note', judged: note.judged }),
+  expect([note.entry?.data, note.entry?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note', judged: note.message.judged }),
     undefined,
   ])
   expect(await generations()).toBe(before)
 
-  // A judge that fails (no key, a 402 pause) must not swallow an answer the starter needed.
-  verdict = () => {
-    throw new Error('TypeSafe 402: out of credits')
+  // A failed or malformed verdict (no key, a 402 pause, a bad score) must not swallow an answer the starter needed,
+  // and a provider's error body stays out of the transcript.
+  const wakes = async (content: string, error: string) => {
+    const { message, answer, entry } = await say(content)
+    expect(message).toMatchObject({ report: true, judged: { answer, error } })
+    expect([entry?.data, entry?.input]).toEqual([
+      expect.objectContaining({ delivery: 'followUp' }),
+      true,
+    ])
+    expect((await judgements())?.[answer]).toEqual(message.judged)
   }
-  const reported = await say('1a 2b, go')
-  expect(reported).toMatchObject({
-    report: true,
-    judged: { error: 'TypeSafe 402: out of credits' },
-  })
+  verdict = async () => {
+    throw new Error('TypeSafe 402: {"secret":"upstream body"}')
+  }
+  await wakes('1a 2b, go', 'TypeSafe 402')
+  verdict = async () => -1
+  await wakes('ship it', 'invalid verdict')
+
+  // A crash while Jev answers never asks it again: the restarted route reports without a verdict.
+  const calls = asked.length
+  let hung!: () => void
+  const hanging = new Promise<void>((done) => (hung = done))
+  verdict = async () => {
+    hung()
+    return new Promise<number>(() => {})
+  }
+  await b.branch.submit({ type: 'input', content: 'all done?' }, context)
+  await hanging
+  await f.opened.close()
+  verdict = async () => 0
+  await f.open()
+  await until(async () => (await b.from()).at(-1)?.text === 'Answer: all done?')
+  await f.opened.harness.waitForIdle(context)
+  expect(asked).toHaveLength(calls + 1)
+  expect((await b.from()).at(-1)).toMatchObject({ report: true, judged: { error: 'interrupted' } })
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()

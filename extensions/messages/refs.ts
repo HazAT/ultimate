@@ -98,6 +98,9 @@ export const StartedDoc = docRef<{ by?: ConversationId }>('board.started')
 /** Every message between conversations and the user, oldest first, on conversation 1. */
 export const MessagesDoc = docRef<MessagesData>('board')
 
+/** The judge's verdict on each of a branch's final answers, by answer entry, on the branch. */
+export const JudgementsDoc = docRef<{ answers: Record<number, Judged> }>('board.judged')
+
 /**
  * `{ conversation, call }` → `{ entry }`: the response in `conversation`'s history that made tool call `call` (a
  * message's `call`), however old; no `entry` when the history has none.

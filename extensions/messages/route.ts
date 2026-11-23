@@ -12,7 +12,9 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { Judge, Messages } from './api.ts'
+import { Judge, Judgements, Messages } from './api.ts'
+import type { JudgeState } from './api.ts'
+import { within } from '../../lib/timers.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
@@ -28,15 +30,6 @@ import { scanNonterminalTasks } from './tasks.ts'
 
 const JUDGE_TIMEOUT_MS = 10_000
 const EXCERPT = { before: 600, input: 500, answer: 1200 }
-export const judgeQuestion = {
-  instructions:
-    'A branch agent works on a task for @ultimate, the coordinator that started it; the user can also talk to the branch directly in its conversation. Read what the branch said before, the inputs its latest run answered, and its final answer. Decide whether @ultimate must be woken with this final answer.',
-  criteria: {
-    report:
-      "@ultimate must act on or know it now: the user made or confirmed a decision (picks, approvals, 'go', 'follow your picks'), work finished, was submitted or is blocked, an assessment or decisions for @ultimate, or a question or request for @ultimate that the branch has not already sent it.",
-    note: "Back-and-forth the user drives in the branch: answering the user's questions or ideas, an iteration or preview round, filling in a card the user has not sent yet, a progress update while work continues, a question left open for the user, telling the user it already messaged @ultimate, or acknowledging a message that needs no action. @ultimate can read it later.",
-  },
-}
 
 function inputSource(entry: EntryRecord | undefined): string {
   if (entry?.kind === 'pi.user') return 'user typed in the branch'
@@ -75,11 +68,7 @@ async function branchSaidBefore(tx: Tx, id: ConversationId, before: EntryId) {
   return ''
 }
 
-export type JudgeState = {
-  branch_said_before: string
-  inputs: { from: string; text: string }[]
-  final_answer: string
-}
+class JudgeTimeout extends Error {}
 
 async function judge(
   host: ExtensionHost,
@@ -87,16 +76,27 @@ async function judge(
   signal: AbortSignal,
 ): Promise<{ report: number } | { error: string }> {
   const service = host.want(Judge)
-  if (!service) return { error: 'no judge: classify is off' }
+  if (!service) return { error: 'classify is off' }
+  const stop = new AbortController()
   try {
-    const probabilities = await service.choose(
-      { state, ...judgeQuestion },
-      AbortSignal.any([signal, AbortSignal.timeout(JUDGE_TIMEOUT_MS)]),
+    const cancelled = new Promise<never>((_resolve, reject) =>
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
     )
-    return { report: probabilities.report ?? 1 }
+    const p = await within(
+      JUDGE_TIMEOUT_MS,
+      Promise.race([service.report(state, AbortSignal.any([signal, stop.signal])), cancelled]),
+      () => new JudgeTimeout(),
+      signal,
+    )
+    if (!Number.isFinite(p) || p < 0 || p > 1) return { error: 'invalid verdict' }
+    return { report: p }
   } catch (error) {
     if (signal.aborted) throw error
-    return { error: error instanceof Error ? error.message : String(error) }
+    if (error instanceof JudgeTimeout) return { error: 'timed out' }
+    const status = /^TypeSafe (\d{3})\b/.exec(error instanceof Error ? error.message : '')?.[1]
+    return { error: status ? `TypeSafe ${status}` : 'judge failed' }
+  } finally {
+    stop.abort()
   }
 }
 
@@ -444,24 +444,35 @@ export function route(host: ExtensionHost) {
       },
       judge: async (task, runtime, ctx) => {
         const { answer, toStarter, state } = task.state.checkpoint
+        const id = runtime.conversationId
         let judged = await runtime.memo<Judged>('judged', ctx)
         if (!judged) {
-          const verdict = await judge(host, state, runtime.signal)
+          const askedBeforeACrash = await runtime.memo<true>('asked', ctx)
+          if (!askedBeforeACrash) await runtime.memo('asked', true, ctx)
+          const verdict = askedBeforeACrash
+            ? { error: 'interrupted' }
+            : await judge(host, state, runtime.signal)
           judged = await runtime.memo<Judged>('judged', { answer, ...verdict }, ctx)
         }
-        const report = !('report' in judged) || judged.report >= 0.5
-        await runtime.commit(
-          () => ({
+        const verdict = judged
+        await runtime.commit(async (tx) => {
+          ;(await tx.doc(Judgements, id)).answers[answer] = verdict
+          const report =
+            (!('report' in verdict) || verdict.report >= 0.5) &&
+            !(await concludedOrWorkUnderway(host, tx, id))
+          return {
             status: 'running',
             checkpoint: {
               phase: 'forward',
               routes: [
-                { ...toStarter, options: { ...toStarter.options, note: !report, report, judged } },
+                {
+                  ...toStarter,
+                  options: { ...toStarter.options, note: !report, report, judged: verdict },
+                },
               ],
             },
-          }),
-          ctx,
-        )
+          }
+        }, ctx)
       },
       forward: async (task, runtime, ctx) => {
         for (const { to, text, requestId, options } of task.state.checkpoint.routes) {
