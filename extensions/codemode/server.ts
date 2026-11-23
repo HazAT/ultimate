@@ -69,9 +69,9 @@ const StoreCopied = defineDoc({
   checkpointWhen: () => false,
   version: 1,
   scope: 'conversation',
-  history: 'latest',
-  fork: 'current',
-  initial: (): { conversations: number[] } => ({ conversations: [] }),
+  history: 'rewindable',
+  fork: 'asOf',
+  initial: (): { copied: boolean } => ({ copied: false }),
 })
 const KEPT_SUMMARY_LIMIT = 1000
 export { SummaryDoc }
@@ -490,13 +490,14 @@ export default function codemode(host: ExtensionHost) {
   })
   const copyRetiredStoreOnce = (api: HookApi, context: Context) =>
     host.harness().commit(async (tx) => {
-      const copied = await tx.doc(StoreCopied, ROOT_CONVERSATION_ID)
-      if (copied.conversations.includes(api.conversationId)) return
-      copied.conversations.push(api.conversationId)
+      const marker = await tx.doc(StoreCopied, api.conversationId)
+      if (marker.copied) return
+      marker.copied = true
       const old = await tx.doc(RetiredStore, api.conversationId)
       if (!Object.keys(old).length) return
       const store = await tx.doc(CodemodeStoreDoc, api.conversationId)
-      for (const [key, value] of Object.entries(old)) store.values[key] ??= value
+      for (const [key, value] of Object.entries(old))
+        if (!Object.hasOwn(store.values, key)) store.values[key] = value
     }, context)
   const summarize = async (api: HookApi, call: ToolHookCall, result: ToolExecutionResult) => {
     const details = result.details as CodemodeToolDetails | undefined

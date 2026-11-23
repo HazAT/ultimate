@@ -64,7 +64,7 @@ Entry/search limits default to 100 and must be 1–1000. Pagination of raw entri
 
 ## Durable store
 
-`store(key, value)` / `load(key)` use Pi's conversation document `pi.codemode.store` (`{ values }`, rewindable, fork as-of). A script sees the values as they were when it started; its writes commit with its result, in the same transaction, and only when it completes. Values from the retired `codemode.store` are copied into it once per conversation, on its first codemode call after the upgrade (`codemode.store-copied` on the root records which).
+`store(key, value)` / `load(key)` use Pi's conversation document `pi.codemode.store` (`{ values }`, rewindable, fork as-of). A script sees the values as they were when it started; its writes commit with its result, in the same transaction, and only when it completes. Values from the retired `codemode.store` are copied into it once per conversation, on its first codemode call after the upgrade, without replacing a key the new store already has. The marker `codemode.store-copied` is a rewindable conversation document forked as of the fork point, written in the same commit, so a fork or rewind sees the same copy and a key deleted after the copy stays deleted.
 
 ## Summaries
 
