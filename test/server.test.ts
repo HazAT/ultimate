@@ -1328,6 +1328,66 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(stopped).toHaveBeenCalledOnce()
     await stream.close()
   })
+  it('stops established watches immediately on stream close even while another open is stalled', async () => {
+    const { server } = await fixture(true)
+    const stream = await attach(server, { view: false })
+    const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
+    const establishedStopped = vi.fn<() => void>()
+    const stalledStopped = vi.fn<() => void>()
+    const watchStarted = Promise.withResolvers<void>()
+    const gate = Promise.withResolvers<void>()
+    const watchDoc = server.harness.watchDoc.bind(server.harness)
+    vi.spyOn(server.harness, 'watchDoc')
+      .mockImplementationOnce(async (...args) => {
+        const watch = (await watchDoc(...args))!
+        const stop = watch.stop.bind(watch)
+        return Object.assign(watch, {
+          stop: () => {
+            establishedStopped()
+            return stop()
+          },
+        })
+      })
+      .mockImplementationOnce(async (...args) => {
+        watchStarted.resolve()
+        await gate.promise
+        const watch = (await watchDoc(...args))!
+        const stop = watch.stop.bind(watch)
+        return Object.assign(watch, {
+          stop: () => {
+            stalledStopped()
+            return stop()
+          },
+        })
+      })
+    expect(
+      (
+        await fetch(`${server.url}/api/events/${id}`, {
+          method: 'POST',
+          headers: { Origin: server.url },
+          body: JSON.stringify({
+            subscribe: [{ sub: 1, docs: ['pi.live'], view: false }],
+            unsubscribe: [],
+          }),
+        })
+      ).status,
+    ).toBe(200)
+    const stalled = fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url },
+      body: JSON.stringify({
+        subscribe: [{ sub: 2, docs: ['pi.live'], view: false }],
+        unsubscribe: [],
+      }),
+    })
+    await watchStarted.promise
+    await stream.close()
+    await until(() => establishedStopped.mock.calls.length === 1)
+    expect(stalledStopped).not.toHaveBeenCalled()
+    gate.resolve()
+    await stalled.catch(() => {})
+    await until(() => stalledStopped.mock.calls.length === 1)
+  })
   it('marks superseded HTTP results and failures (including HTTP started before watch), recovers after HTTP 404, and stamps AbortError 500s', async () => {
     const { server } = await fixture(false, {
       race: `import { defineExtension } from '@earendil-works/pi-durable'

@@ -114,8 +114,17 @@ async function postJson<T>(
     throw new HttpError(response.status, error, rev, superseded)
   }
   const data: unknown = await response.json()
-  if (!data || typeof data !== 'object') throw new Error('Invalid response JSON')
+  if (!data || typeof data !== 'object' || Array.isArray(data))
+    throw new Error('Invalid response JSON')
   return data as T
+}
+
+function validActionResponse(data: unknown): data is ExtensionActionResponse {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+  const record = data as Record<string, unknown>
+  if (record.rev !== undefined && !Number.isSafeInteger(record.rev)) return false
+  if (record.superseded !== undefined && record.superseded !== true) return false
+  return Object.hasOwn(record, 'result') || typeof record.rev === 'number'
 }
 
 async function runExtensionAction<Args, Result>(
@@ -127,15 +136,9 @@ async function runExtensionAction<Args, Result>(
   const path = `/api/extensions/${encodeURIComponent(extension)}/actions/${encodeURIComponent(name)}`
   const body: ExtensionActionRequest = { args: args ?? null, conversationId }
   try {
-    const { result, rev, superseded } = await postJson<ExtensionActionResponse>(
-      request,
-      path,
-      body,
-      {
-        signal,
-        keepalive,
-      },
-    )
+    const data = await postJson<unknown>(request, path, body, { signal, keepalive })
+    if (!validActionResponse(data)) throw new Error('Invalid action response')
+    const { result, rev, superseded } = data
     return { result: result as Result, rev, superseded }
   } catch (error) {
     if (signal?.aborted) throw error

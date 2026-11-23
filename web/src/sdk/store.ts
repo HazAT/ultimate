@@ -595,6 +595,9 @@ export function createStore(options: StoreOptions = {}) {
     current.addEventListener('error', () => {
       if (multiplexedEventSource !== current) return
       streamId = undefined
+      abortActiveFlush()
+      flushing = false
+      flushQueued = false
       setConnection(opened || state.view ? 'reconnecting' : 'connecting')
 
       if (current.readyState === EVENT_SOURCE_CLOSED_NO_RETRY)

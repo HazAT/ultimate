@@ -448,6 +448,28 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('aborts an in-flight subscription POST immediately when SSE drops, even without a replacement stream', async () => {
+    const { store, fetch, latest } = setup(50, undefined, 200)
+    latest().open()
+    await tick()
+    let aborted = false
+    fetch.mockImplementationOnce(
+      (_path, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true
+            reject(init.signal?.reason)
+          })
+        }),
+    )
+    store.show(7 as ConversationId)
+    await tick()
+    expect(aborted).toBe(false)
+    latest().drop()
+    expect(aborted).toBe(true)
+    store.stop()
+  })
+
   it('splits a multi-item 413 batch so valid reads still open and only an individually oversized read is refused', async () => {
     const { store, server, sources, fetch, latest } = setup(5)
     latest().open()

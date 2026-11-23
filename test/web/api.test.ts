@@ -60,20 +60,34 @@ describe('extension actions', () => {
     await expect(missing.api.action(ref('notes', 'nope'))).rejects.toMatchObject({ status: 404 })
   })
 
-  it('treats a truncated or non-JSON 200 body as a status-0 transport failure rather than a null result', async () => {
-    const { api, readAction } = setup(
-      () =>
-        new Response('{truncated', {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-    )
-    await expect(readAction(ref('notes', 'list'))).rejects.toMatchObject({
-      status: 0,
-      extension: 'notes',
-      action: 'list',
+  it('treats truncated or malformed 200 bodies as status-0 transport failures while keeping null and stamped no-value answers', async () => {
+    for (const body of ['{truncated', '[]', '{"ok":true}', '{"result":"x","rev":"bad"}']) {
+      const { api, readAction } = setup(
+        () =>
+          new Response(body, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      )
+      await expect(readAction(ref('notes', 'list'))).rejects.toMatchObject({
+        status: 0,
+        extension: 'notes',
+        action: 'list',
+      })
+      await expect(api.action(ref('notes', 'list'))).rejects.toMatchObject({ status: 0 })
+    }
+    const explicitNull = setup(() => json(200, { result: null, rev: 7 }))
+    await expect(explicitNull.readAction(ref('notes', 'list'))).resolves.toEqual({
+      result: null,
+      rev: 7,
+      superseded: undefined,
     })
-    await expect(api.action(ref('notes', 'list'))).rejects.toMatchObject({ status: 0 })
+    const stampedNoValue = setup(() => json(200, { rev: 8 }))
+    await expect(stampedNoValue.readAction(ref('notes', 'list'))).resolves.toEqual({
+      result: undefined,
+      rev: 8,
+      superseded: undefined,
+    })
   })
 
   it('fails a 503 like any other server error', async () => {

@@ -421,10 +421,14 @@ export async function createApi(
       connections.delete(id)
       events.listeners.delete(send)
       streams.delete(stop)
-      await ui!.stop()
-      await connection.queue
-      await Promise.all([...connection.subscriptions.values()].map((close) => close()))
       sse.end()
+      const established = [...connection.subscriptions.values()]
+      connection.subscriptions.clear()
+      await Promise.all([ui!.stop(), ...established.map((close) => close())])
+      await connection.queue
+      const late = [...connection.subscriptions.values()]
+      connection.subscriptions.clear()
+      if (late.length) await Promise.all(late.map((close) => close()))
     }
     streams.add(stop)
     response.on('close', () => {
