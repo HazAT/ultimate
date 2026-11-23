@@ -455,7 +455,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
       const trace = dock.local()[key]?.trace
       if (trace?.stages.get().find((stage) => stage.key === 'voice')?.status === 'running') {
         trace.done('voice')
-        trace.finish(`→ heard after ${((Date.now() - trace.born) / 1000).toFixed(1)} s`)
+        trace.finish(`heard after ${((Date.now() - trace.born) / 1000).toFixed(1)} s`)
       }
       dock.setPhase('speaking')
       dock.setStatus('Speaking')

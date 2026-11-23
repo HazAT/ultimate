@@ -57,8 +57,7 @@ function TraceLine(props: { trace: Trace; turn: string }) {
   const running = createMemo(() => stages().some((stage) => stage.status === 'running'))
   createEffect(running, (on) => (on ? every(100, () => setNow(Date.now())) : undefined))
   const succeeded = createMemo(
-    () =>
-      !running() && stages().every((stage) => ['done', 'slow', 'skipped'].includes(stage.status)),
+    () => !!total() && !running() && !stages().some((stage) => stage.status === 'failed'),
   )
   const [open, setOpen] = createSignal(false)
   const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
@@ -74,7 +73,7 @@ function TraceLine(props: { trace: Trace; turn: string }) {
       .filter(Boolean)
       .join(' ')
   const list = (checks: boolean) => (
-    <For each={stages()}>
+    <For each={checks ? stages().filter((stage) => stage.status !== 'idle') : stages()}>
       {(stage, index) => (
         <>
           <Show when={index() > 0 && !checks}>
