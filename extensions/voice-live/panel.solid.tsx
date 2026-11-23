@@ -47,6 +47,7 @@ import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   discardDraft,
   dock,
+  playerState,
   draftOf,
   endSession,
   KEYS,
@@ -165,8 +166,7 @@ function TalkBar(props: { words?: boolean }) {
       class={cn(
         'relative flex h-9 w-full touch-none items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-3 font-normal text-muted-foreground transition-colors select-none hover:border-ring/50 hover:bg-muted/50',
         recording() && 'border-error/40 bg-error/5 hover:border-error/40 hover:bg-error/5',
-        dock.phase() === 'speaking' &&
-          'border-brand/40 motion-safe:animate-[voice-breathe_2.4s_ease-in-out_infinite]',
+        audible() && 'border-brand/40',
       )}
       size={null}
       title={holdTitle()}
@@ -206,7 +206,13 @@ function TalkBar(props: { words?: boolean }) {
 const breathe = `@keyframes voice-breathe {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-brand) 0%, transparent); }
   50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-brand) 22%, transparent); }
+}
+@keyframes voice-glow {
+  0%, 100% { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4), 0 0 18px 0 color-mix(in oklab, var(--color-brand) 14%, transparent); }
+  50% { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4), 0 0 36px 4px color-mix(in oklab, var(--color-brand) 30%, transparent); }
 }`
+
+const audible = () => playerState().playing
 
 function TalkButton(props: { unfold: () => void }) {
   return (
@@ -226,7 +232,7 @@ function TalkButton(props: { unfold: () => void }) {
           'relative flex size-16 shrink-0 touch-none items-center justify-center rounded-full border border-border bg-card text-foreground shadow-xl shadow-black/40 transition-colors select-none',
           recording() && 'border-error/60 bg-error/15 text-error',
           working() && 'border-ring/60 text-muted-foreground',
-          dock.phase() === 'speaking' &&
+          audible() &&
             'border-brand/60 text-brand motion-safe:animate-[voice-breathe_2.4s_ease-in-out_infinite]',
           (dock.error() || dock.phase() === 'error') && 'border-error/60 text-error',
         )}
@@ -625,9 +631,13 @@ export function VoicePanel() {
             : folded()
               ? 'right-4 bottom-4 w-[min(26rem,46vw)] rounded-xl'
               : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
+          audible() &&
+            !(phone() && folded()) &&
+            'border-brand/50 motion-safe:animate-[voice-glow_2.8s_ease-in-out_infinite]',
         )}
         data-voice-folded={folded() || undefined}
         data-voice-panel
+        data-voice-speaking={audible() || undefined}
         style={style()}
       >
         <style>{breathe}</style>
