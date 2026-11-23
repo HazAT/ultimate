@@ -14,7 +14,16 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
-import { api, cn, errorMessage, useAction, useDialog, useModels, writingAs } from '@/sdk/solid'
+import {
+  ROOT,
+  api,
+  cn,
+  errorMessage,
+  useAction,
+  useDialog,
+  useModels,
+  writingAs,
+} from '@/sdk/solid'
 import { ModelRow } from '../models/ui.solid.tsx'
 import { SetSummaryModelAction, SummaryModelAction } from './refs.ts'
 import { parseSummaryModel } from './summary-model-ref.ts'
@@ -43,7 +52,7 @@ export function SummaryModelDialog() {
 
 function SummaryChoices(props: { close: () => void }) {
   const models = useModels()
-  const setting = useAction(SummaryModelAction)
+  const setting = useAction(SummaryModelAction, null, { conversation: ROOT })
   const [query, setQuery] = createSignal('')
   const [error, setError] = createSignal<string>()
   const [highlight, setHighlight] = createSignal<string | null>()

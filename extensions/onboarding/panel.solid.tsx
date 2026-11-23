@@ -20,6 +20,7 @@ import {
   events,
   keepLast,
   shortenPath,
+  ROOT,
   useAction,
   useDialog,
   useEvent,
@@ -280,11 +281,15 @@ function Field(props: { label: string; children: JSX.Element }) {
 function Details(props: { extension: ExtensionInfo }) {
   const extension = () => props.extension
   const records = useExtensions()
-  const details = useAction(DetailsAction, {
-    get name() {
-      return extension().name
+  const details = useAction(
+    DetailsAction,
+    {
+      get name() {
+        return extension().name
+      },
     },
-  })
+    { conversation: ROOT },
+  )
   const server = () => extension().server
   const data = details.data
   const tools = () => server()?.tools ?? []
@@ -574,6 +579,7 @@ function ExtensionList(props: { system: SystemInfo }) {
   const [notes, setNotes] = createSignal<Record<string, string>>({})
   const [toggleAnnouncement, setToggleAnnouncement] = createSignal('')
   const secrets = useAction(ListAction, null, {
+    conversation: ROOT,
     onError: keepLast,
     on: () => props.system.extensions.map((extension) => [extension.name, extension.enabled]),
   })

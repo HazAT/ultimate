@@ -299,7 +299,7 @@ function useFlightWork(branches: () => readonly ConversationId[]) {
   const data = useData()
   const keys = createMemo(() => {
     const ready = branches().filter((id) => data.index().items[id]?.state === 'ready')
-    return ready.length ? [ready.join(',')] : []
+    return ready.length ? [ready.toSorted((a, b) => a - b).join(',')] : []
   })
   const commits = useEvents({ events: [Committed], limit: 1 })
   const runs = createMemo<{ busy: ConversationId[]; refetch: number }>((previous) => {
@@ -338,7 +338,7 @@ function useFlightActivity(branches: () => readonly ConversationId[]) {
   const trees = createMemo(() => new Map(branches().map((id) => [id, below(id)])))
   const keys = createMemo(() => {
     const ids = [...trees()].flatMap(([id, children]) => [id, ...children])
-    return ids.length ? [ids.join(',')] : []
+    return ids.length ? [ids.toSorted((a, b) => a - b).join(',')] : []
   })
   const moved = createMemo(() =>
     [...trees()]

@@ -83,8 +83,9 @@ it('reaches a newer page that arrived while an older follow came back empty', as
   ))
   await settle()
   const newest = harness.server!.reads.find((read) => read.read.action === 'stream')!
+  let rev = 0
   const page = (rows: SystemRow[], head: string) =>
-    stream.send('read', { result: { rows, head } }, newest.sub)
+    stream.send('read', { result: { rows, head }, rev: ++rev }, newest.sub)
 
   page([row('a')], 'h1')
   await settle()
@@ -137,9 +138,9 @@ it('reloads the newest page when a partial follow grows the feed past KEEP', asy
   )!
   const rows = (prefix: string, count: number) =>
     Array.from({ length: count }, (_, index) => row(`${prefix}${index}`))
-  stream.send('read', { result: { rows: rows('old', 990), head: 'h1' } }, newest.sub)
+  stream.send('read', { result: { rows: rows('old', 990), head: 'h1' }, rev: 1 }, newest.sub)
   await settle()
-  stream.send('read', { result: { rows: rows('top', 100), head: 'h2' } }, newest.sub)
+  stream.send('read', { result: { rows: rows('top', 100), head: 'h2' }, rev: 2 }, newest.sub)
   await settle()
   harness.follows[0].answer(rows('new', 20), 'h2')
   await settle()

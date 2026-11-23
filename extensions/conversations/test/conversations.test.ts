@@ -450,7 +450,7 @@ it('renames top-level conversations', async () => {
   await message(id, 'Fix the parser', 2000)
   const title = async () => (await server.harness.snapshot(Metadata, id, context))?.title
 
-  expect(await action('rename', { id, title: '  Parser work  ' })).toEqual({
+  expect(await action('rename', { id, title: '  Parser work  ' })).toMatchObject({
     status: 200,
     data: { result: { ok: true } },
   })
@@ -468,7 +468,7 @@ it('renames top-level conversations', async () => {
   await message(root.id, 'Root work', 1000)
   const entry = (await root.context(context)).entries.find((item) => item.kind === 'pi.user')!
   const fork = await root.fork(entry.id, { ownership: { kind: 'ownerless' } }, context)
-  expect(await action('rename', { id: fork.id, title: 'Branch work' })).toEqual({
+  expect(await action('rename', { id: fork.id, title: 'Branch work' })).toMatchObject({
     status: 200,
     data: { result: { ok: true } },
   })
@@ -483,7 +483,7 @@ it('renames top-level conversations', async () => {
     ['rename', { id: child.id, title: 'x' }, owned],
     ['conclude', { ids: [child.id] }, owned],
   ] as const)
-    expect(await action(name, args)).toEqual({ status: 500, data: { error } })
+    expect(await action(name, args)).toMatchObject({ status: 500, data: { error } })
 })
 
 it('projects arbitrary typed inputs, ignores user-role writes, and preserves activity across heads and reopen', async () => {
@@ -661,7 +661,7 @@ it('conclude merges concurrent additions, deduplicates ids and returns kept chec
     second,
   ])
   const rejected = await create()
-  expect(await action('conclude', { ids: [rejected, 999999] })).toEqual({
+  expect(await action('conclude', { ids: [rejected, 999999] })).toMatchObject({
     status: 500,
     data: { error: 'Unknown conversation 999999' },
   })
@@ -669,7 +669,7 @@ it('conclude merges concurrent additions, deduplicates ids and returns kept chec
     first,
     second,
   ])
-  expect(await action('conclude', { ids: ['bad'] })).toEqual({
+  expect(await action('conclude', { ids: ['bad'] })).toMatchObject({
     status: 500,
     data: { error: 'Expected conversation ids' },
   })
@@ -743,7 +743,7 @@ it('refuses to conclude a root or a standing agent', async () => {
     [ultimate, 'a standing agent; standing agents'],
     [lander, 'a standing agent; standing agents'],
   ] as const) {
-    expect(await action('conclude', { ids: [branch, id] })).toEqual({
+    expect(await action('conclude', { ids: [branch, id] })).toMatchObject({
       status: 500,
       data: { error: `#${id} is ${kind} cannot be concluded` },
     })
@@ -785,7 +785,7 @@ it('resume removes concluded ancestors and leaves unrelated ids alone', async ()
     context,
   )
   await action('conclude', { ids: [parent, child.id, unrelated] })
-  expect(await action('resume', { ids: [child.id] })).toEqual({
+  expect(await action('resume', { ids: [child.id] })).toMatchObject({
     status: 200,
     data: { result: { resumed: [parent, child.id] } },
   })

@@ -12,6 +12,7 @@ import {
   useConversations,
   useDocOf,
   useNow,
+  useStore,
 } from '@/sdk/solid'
 import { OverviewDoc } from '../conversations/refs.ts'
 import { useConcluded } from '../conversations/ui.solid.tsx'
@@ -74,6 +75,8 @@ export function OpenMessages() {
   const id = useConversationId()
   const log = useDocOf(() => ROOT, MessagesDoc)
   const concluded = useConcluded()
+  const concludedSet = createMemo(() => new Set(concluded()))
+  const hasUiState = useStore((state) => state.shared !== undefined)
   const conversations = useConversations()
   const overview = useDocOf(() => ROOT, OverviewDoc)
   const workspaces = useDocOf(() => ROOT, WorkspacesDoc)
@@ -82,9 +85,11 @@ export function OpenMessages() {
   )
   const starters = mapArray(
     () =>
-      conversations()
-        .filter((c) => c.branchOf)
-        .map((c) => c.id),
+      hasUiState()
+        ? conversations()
+            .filter((c) => c.branchOf && !concludedSet().has(c.id))
+            .map((c) => c.id)
+        : [],
     (branchId) => {
       const started = useDocOf(() => branchId, StartedDoc)
       return () => ({ id: branchId, starter: started()?.by })
@@ -101,7 +106,6 @@ export function OpenMessages() {
       return {
         ...branch,
         working: underway()(branch.id),
-        concluded: concluded().includes(branch.id),
       }
     })
     return openMessages(log()?.messages ?? [], current, branches, timers())

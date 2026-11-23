@@ -88,14 +88,18 @@ function Section(props: { title: string; children: JSX.Element }) {
 }
 
 function GoBackDialog(props: { entry: EntryRecord; onClose: () => void }) {
-  const preview = useAction(RewindPreviewAction, {
-    get conversation() {
-      return props.entry.conversationId
+  const preview = useAction(
+    RewindPreviewAction,
+    {
+      get conversation() {
+        return props.entry.conversationId
+      },
+      get at() {
+        return props.entry.id
+      },
     },
-    get at() {
-      return props.entry.id
-    },
-  })
+    { conversation: ROOT },
+  )
   const [summarize, setSummarize] = createSignal(false)
   const [error, setError] = createSignal<string>()
   const refused = () => preview.data()?.refused

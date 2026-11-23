@@ -22,6 +22,7 @@ import {
   events,
   formatKeys,
   keepLast,
+  ROOT,
   useAction,
   useConversationId,
   useEvent,
@@ -476,7 +477,7 @@ function ScheduleFields(props: FieldsProps) {
 const filterTypes = { string: 'Text', number: 'Number', boolean: 'Boolean' }
 function EventFields(props: FieldsProps) {
   const draft = () => props.draft
-  const { data, error } = useAction(EventsAction, null, { onError: keepLast })
+  const { data, error } = useAction(EventsAction, null, { conversation: ROOT, onError: keepLast })
   const selected = () => data()?.find((choice) => choice.name === draft().event)
   return (
     <>

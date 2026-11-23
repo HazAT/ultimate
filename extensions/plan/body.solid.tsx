@@ -29,6 +29,7 @@ import {
   cn,
   formatTime,
   switchConversation,
+  ROOT,
   useAction,
   useConversationSummary,
   useCopy,
@@ -206,7 +207,7 @@ function IsolateRow(props: { child: ConversationId; coordinator: ConversationId 
         return props.child
       },
     },
-    { on: () => [child()?.busy, parent()?.busy], focus: true },
+    { conversation: ROOT, on: () => [child()?.busy, parent()?.busy], focus: true },
   )
   return (
     <Show when={data()}>

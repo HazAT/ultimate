@@ -75,7 +75,9 @@ export interface ExtensionActionRequest {
   conversationId?: ConversationId
 }
 export interface ExtensionActionResponse {
-  result: JsonValue
+  result?: JsonValue
+  rev?: number
+  superseded?: true
 }
 type AlwaysEnabledCore = true
 export interface ExtensionInfo {
@@ -220,7 +222,8 @@ export interface SubscriptionsRequest {
   unsubscribe: number[]
 }
 type ReadAgainAfterMs = number
-export type ReadEvent = { result: JsonValue } | { error: string; status: number }
+export type ReadPayload = { result: JsonValue } | { error: string; status: number }
+export type ReadEvent = ReadPayload & { rev: number }
 export interface SubscriptionsAnswer {
   ok: true
   refused: Record<number, HttpStatusOfRefusedOpen>

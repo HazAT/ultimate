@@ -19,6 +19,7 @@ import {
   keepLast,
   openPanel,
   shortenPath,
+  ROOT,
   useAction,
   useDialog,
   useEvent,
@@ -203,8 +204,10 @@ function DefinitionLoader(props: {
   close: () => void
 }) {
   const name = untrack(() => props.name)
-  const shown = name ? useAction(DefinitionAction, { name }, { onError: keepLast }) : undefined
-  const discovery = useAction(DefinitionsAction)
+  const shown = name
+    ? useAction(DefinitionAction, { name }, { conversation: ROOT, onError: keepLast })
+    : undefined
+  const discovery = useAction(DefinitionsAction, null, { conversation: ROOT })
   const [revision, revise] = createSignal(1)
   async function changed(saved?: string) {
     const { close, show } = props

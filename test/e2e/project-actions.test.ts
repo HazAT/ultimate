@@ -179,12 +179,15 @@ it('loads external project facets over user and built-in names, actions and tran
     await post(server.url, '/api/extensions/coding-tools/actions/hello', { ok: true }),
   ).toEqual({
     status: 200,
-    data: { result: { args: { ok: true }, value: 'project', cwd: projectRoot } },
+    data: {
+      result: { args: { ok: true }, value: 'project', cwd: projectRoot },
+      rev: expect.any(Number),
+    },
   })
   expect((await post(server.url, '/api/extensions/coding-tools/actions/unknown')).status).toBe(404)
   expect(await post(server.url, '/api/extensions/coding-tools/actions/fail')).toEqual({
     status: 500,
-    data: { error: 'deliberate failure' },
+    data: { error: 'deliberate failure', rev: expect.any(Number) },
   })
   expect((await post(server.url, '/api/extensions/coding-tools/actions/timeout')).status).toBe(500)
   expect(

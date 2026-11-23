@@ -77,10 +77,32 @@ export function answerReadsWith(
     const path = input as string
     const done = new Headers(init?.headers).has(ranByTheServer)
       ? []
-      : [...servers].map((server) => server.startAnswer(path, init))
+      : [...servers]
+          .map((server) => server.startAnswer(path, init))
+          .filter((answer) => answer !== undefined)
     const response = await fetch(path, init)
-    for (const answer of done) await answer(response)
-    return response
+    if (!done.length) return response
+    const data = (await response
+      .clone()
+      .json()
+      .catch(() => ({}))) as {
+      result?: ReadSpec['args']
+      error?: string
+    }
+    let superseded = false
+    for (const { publish } of done) {
+      const current = publish(
+        response.ok
+          ? { result: data.result ?? null }
+          : { error: data.error ?? `${response.status}`, status: response.status },
+      )
+      if (!current) superseded = true
+    }
+    const { status, statusText, headers } = response
+    return Response.json(
+      { ...data, rev: done.at(-1)!.rev, ...(superseded ? { superseded: true } : {}) },
+      { status, statusText, headers },
+    )
   }
 }
 
@@ -122,31 +144,20 @@ export function fakeSubscriptions(sources: FakeSource[], actions?: ActionFetch) 
   const server = {
     subscriptions,
     reads,
-    /** Claims an HTTP action's place among its read's answers; the returned function sends the answer to its pages. */
+    /** Claims the action's revision before it runs so the HTTP response and its streamed answer share it. */
     startAnswer(path: string, init?: RequestInit) {
       const match = /^\/api\/extensions\/([^/]+)\/actions\/([^/]+)$/.exec(path)
-      if (!match) return async (_response: Response) => {}
+      if (!match) return undefined
       const body = JSON.parse((init?.body as string) || '{}') as {
         args?: unknown
         conversationId?: number
       }
-      const send = running.answering({
+      return running.answering({
         extension: decodeURIComponent(match[1]),
         action: decodeURIComponent(match[2]),
         args: (body.args ?? null) as ReadSpec['args'],
         ...(body.conversationId === undefined ? {} : { conversation: body.conversationId }),
       })
-      return async (response: Response) => {
-        const data = (await response
-          .clone()
-          .json()
-          .catch(() => ({}))) as { result?: unknown; error?: string }
-        send(
-          (response.ok
-            ? { result: data.result ?? null }
-            : { error: data.error ?? `${response.status}`, status: response.status }) as ReadEvent,
-        )
-      }
     },
     /**
      * A conversation's subscriptions (undefined: the server's root) as one: `view` and `ops` go to its newest open view
@@ -193,16 +204,11 @@ export function fakeSubscriptions(sources: FakeSource[], actions?: ActionFetch) 
         unsubscribe: number[]
       }
       const failed: Record<number, number> = {}
-      const source = sources.find((item) => item.id === stream)!
-      const stopClosed = () => {
-        for (const read of reads) if (read.closed) stops.get(`${read.stream}/${read.sub}`)?.()
-      }
-      stopClosed()
-      const closeAfterOpens = () => {
-        for (const sub of batch.unsubscribe) deleted.add(`${stream}/${sub}`)
-        stopClosed()
-      }
+      const source = sources.find((item) => item.id === stream && item.readyState === 1)
+      if (!source) return Response.json({ error: 'Event stream ended' }, { status: 410 })
+      const closing = new Set(batch.unsubscribe)
       for (const { sub, ...spec } of batch.subscribe) {
+        if (closing.has(sub)) continue
         if (spec.read) {
           const read: FakeRead = {
             stream,
@@ -240,7 +246,13 @@ export function fakeSubscriptions(sources: FakeSource[], actions?: ActionFetch) 
           send: (name, data) => source.send(name, data, sub),
         })
       }
-      closeAfterOpens()
+      for (const { sub, stream: opened, closed } of [...subscriptions, ...reads])
+        if (opened === stream && !closed && closing.has(sub)) {
+          const key = `${stream}/${sub}`
+          deleted.add(key)
+          stops.get(key)?.()
+          stops.delete(key)
+        }
       return Response.json({ ok: true, refused: failed })
     },
   }

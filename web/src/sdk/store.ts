@@ -1,7 +1,7 @@
 import { parseConversationId } from '../../../lib/ids.ts'
 import type { JsonObject, TaskGraph, ConversationId } from '@earendil-works/pi-durable'
 import { applyImmutable } from '@earendil-works/chord/delta'
-import { nextTurn, retryAfter } from '../../../lib/timers.ts'
+import { deadline, nextTurn, retryAfter } from '../../../lib/timers.ts'
 import { keepLast } from '../../../lib/errors.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -9,7 +9,7 @@ import type {
   ConversationSummary,
   ModelsResponse,
   Notice,
-  ReadEvent,
+  ReadPayload,
   ReadSpec,
   ServerEvents,
   StreamedView,
@@ -66,6 +66,7 @@ export interface StoreOptions {
   eventSource?: (url: string) => EventSourceLike
   fetch?: typeof fetch
   retryMs?: number
+  flushTimeoutMs?: number
   onFallback?: () => void
   ui?: Partial<UiState>
 }
@@ -103,9 +104,17 @@ type Spec =
 type Refused = (status: number) => void
 
 type DocChange = ServerEvents['doc'] | ServerEvents['docOps']
+type ReadNotice = ReadPayload & { rev?: number }
+interface ReadWatch {
+  read: ReadSpec
+  every?: number
+  onEvent: (event: ReadNotice) => void
+  refused?: boolean
+}
 interface Wanted {
   spec: Spec
   handler: Handler
+  watch?: ReadWatch
 }
 
 function applyDoc(docs: Docs, event: DocChange): Docs {
@@ -137,25 +146,25 @@ export function createStore(options: StoreOptions = {}) {
 
   const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
   const watchedViews = new Map<ConversationId, number>()
-  const watchedReads = new Map<
-    string,
-    { read: ReadSpec; every?: number; onEvent: (event: ReadEvent) => void }
-  >()
+  const watchedReads = new Map<string, ReadWatch>()
 
   let multiplexedEventSource: EventSourceLike | undefined
 
   let streamId: string | undefined
   const handlers = new Map<number, Handler>()
   let nextSub = 0
-  const live = new Map<string, number>()
+  const live = new Map<string, { sub: number; watch?: ReadWatch }>()
   const opening = new Map<number, { spec: Spec; failed: Refused }>()
   const closing = new Set<number>()
   let opened = false
   let cancelRetry: Cancel | undefined
   let cancelReconcile: Cancel | undefined
   let cancelResubscribe: Cancel | undefined
-  let cancelCloseRetry: Cancel | undefined
+  let cancelFlushTimeout: Cancel | undefined
+  let activeFlush: AbortController | undefined
   let flushQueued = false
+  let flushing = false
+  let maxBatchSize = Infinity
   let noticeId = 0
   let stopped = true
 
@@ -293,51 +302,108 @@ export function createStore(options: StoreOptions = {}) {
     flushQueued = true
     queueMicrotask(flush)
   }
-  function flush() {
-    if (!flushQueued) return
+  function abortActiveFlush() {
+    cancelFlushTimeout?.()
+    cancelFlushTimeout = undefined
+    activeFlush?.abort()
+    activeFlush = undefined
+  }
+  function reconnectAfterRetry() {
+    cancelRetry?.()
+    abortActiveFlush()
+    multiplexedEventSource?.close()
+    multiplexedEventSource = undefined
+    streamId = undefined
+    flushing = false
     flushQueued = false
-    const stream = streamId
-    const opens = new Map(opening)
-    const closes = [...closing]
+    handlers.clear()
     opening.clear()
     closing.clear()
-    if (stream === undefined || (!opens.size && !closes.length)) return
+    live.clear()
+    if (state.connection.status === 'open') setConnection('reconnecting')
+    cancelRetry = retryAfter(options.retryMs ?? 1000, connect)
+  }
+  function takeBatch() {
+    const opens = new Map<number, { spec: Spec; failed: Refused }>()
+    const closes: number[] = []
+    let remaining = maxBatchSize
+    for (const [sub, entry] of opening) {
+      if (remaining <= 0) break
+      opens.set(sub, entry)
+      opening.delete(sub)
+      remaining--
+    }
+    for (const sub of closing) {
+      if (remaining <= 0) break
+      closes.push(sub)
+      closing.delete(sub)
+      remaining--
+    }
+    return { opens, closes }
+  }
+  function flush() {
+    if (!flushQueued || flushing) return
+    flushQueued = false
+    const stream = streamId
+    if (stream === undefined || (!opening.size && !closing.size)) return
+    flushing = true
+    const { opens, closes } = takeBatch()
+    const batchSize = opens.size + closes.length
     const batch: SubscriptionsRequest = {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
       unsubscribe: closes,
     }
-    const unanswered = (status = 0) => ({
-      refused: Object.fromEntries(
-        [...opens].map(([sub, { spec }]) => [sub, 'read' in spec ? status : 0]),
-      ),
-      confirmed: false,
+    const controller = new AbortController()
+    activeFlush = controller
+    const cancelTimeout = deadline(options.flushTimeoutMs ?? 15_000, () => {
+      if (activeFlush !== controller || streamId !== stream) return
+      reconnectAfterRetry()
     })
+    cancelFlushTimeout = cancelTimeout
     void request(`/api/events/${stream}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(batch),
+      signal: controller.signal,
     })
       .then(async (response) => {
-        if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return undefined
-        if (!response.ok) return unanswered(response.status)
-        const answer = (await response.json()) as Partial<SubscriptionsAnswer>
-        return answeredFor(opens, answer)
-          ? { refused: answer.refused, confirmed: true }
-          : unanswered()
-      })
-      .catch(() => unanswered())
-      .then((result) => {
-        if (streamId !== stream || result === undefined) return
-        const { refused, confirmed } = result
-        if (confirmed) for (const sub of Object.keys(refused)) handlers.delete(Number(sub))
-        else if (closes.length) {
-          for (const sub of closes) closing.add(sub)
-          cancelCloseRetry ??= retryAfter(options.retryMs ?? 1000, () => {
-            cancelCloseRetry = undefined
-            scheduleFlush()
-          })
+        if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return 'gone' as const
+        if (response.status === 413) {
+          const singleRead = opens.size === 1 && closes.length === 0
+          if (singleRead) {
+            const [[sub, { spec }]] = opens
+            if ('read' in spec) return { refused: { [sub]: 413 } }
+          }
+          if (batchSize > 1) maxBatchSize = Math.max(1, Math.floor(batchSize / 2))
+          return 'ambiguous' as const
         }
-        for (const [sub, status] of Object.entries(refused)) opens.get(Number(sub))?.failed(status)
+        if (response.status !== 200) return 'ambiguous' as const
+        const answer = (await response.json()) as Partial<SubscriptionsAnswer>
+        return answeredFor(opens, answer) ? { refused: answer.refused } : ('ambiguous' as const)
+      })
+      .catch(() => 'ambiguous' as const)
+      .then((result) => {
+        if (activeFlush !== controller || streamId !== stream) return
+        if (result === 'gone') return connect()
+        if (result === 'ambiguous') return reconnectAfterRetry()
+        for (const id of Object.keys(result.refused)) {
+          const sub = Number(id)
+          handlers.delete(sub)
+          closing.delete(sub)
+        }
+        for (const [sub, status] of Object.entries(result.refused))
+          opens.get(Number(sub))?.failed(status)
+        if (!opening.size && !closing.size) maxBatchSize = Infinity
+      })
+      .finally(() => {
+        if (activeFlush !== controller) return
+        cancelTimeout()
+        cancelFlushTimeout = undefined
+        activeFlush = undefined
+        if (streamId !== stream) return
+        flushing = false
+        flushQueued = false
+        if (opening.size || closing.size) scheduleFlush()
       })
   }
 
@@ -413,30 +479,47 @@ export function createStore(options: StoreOptions = {}) {
             if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
           }),
         )
-    for (const [key, { read, every }] of watchedReads)
+    for (const [key, watch] of watchedReads) {
+      if (watch.refused) continue
+      const { read, every } = watch
       result.set(`read:${key}`, {
         spec: every === undefined ? { read } : { read, every },
+        watch,
         handler: (name, raw) => {
-          if (name === 'read') watchedReads.get(key)?.onEvent(JSON.parse(raw) as ReadEvent)
+          if (name !== 'read' || watchedReads.get(key) !== watch) return
+          const parsed = JSON.parse(raw) as ReadNotice
+          watch.onEvent(
+            parsed.rev === undefined || Number.isSafeInteger(parsed.rev)
+              ? parsed
+              : { ...parsed, rev: undefined },
+          )
         },
       })
+    }
     return result
   }
 
-  function refusedOpen(key: string, sub: number, status: number) {
-    if (live.get(key) !== sub) return
-    const read = key.startsWith('read:') ? watchedReads.get(key.slice(5)) : undefined
-    if (read && status >= 400 && status < 500) {
-      read.onEvent({ error: 'The server refused this read', status })
-      return
-    }
+  function refusedOpen(key: string, sub: number, status: number, watch?: ReadWatch) {
+    if (live.get(key)?.sub !== sub) return
     live.delete(key)
     unsubscribe(sub)
+    if (watch && status >= 400 && status < 500) {
+      if (watchedReads.get(key.slice(5)) === watch) {
+        watch.refused = true
+        watch.onEvent({ error: 'The server refused this read', status })
+      } else scheduleReconcile()
+      return
+    }
+    const requested = state.requested
     const requestedConversationNeverOpened =
-      key === `${shownKey()}:view` && status === 404 && state.requested !== undefined && !state.view
+      key === `${shownKey()}:view` &&
+      status === 404 &&
+      requested !== undefined &&
+      (!state.view || state.restored)
     if (requestedConversationNeverOpened) {
       retireShownUntilReconcile()
-      set({ requested: undefined, docs: {} })
+      recentViewsWithRawSnapshots.delete(requested)
+      set({ requested: undefined, view: undefined, restored: false, docs: {} })
       options.onFallback?.()
       reconcile()
     } else
@@ -446,7 +529,7 @@ export function createStore(options: StoreOptions = {}) {
       })
   }
   function retireShownUntilReconcile() {
-    for (const [key, sub] of live)
+    for (const [key, { sub }] of live)
       if (key.startsWith('shown:')) {
         live.delete(key)
         retire(sub)
@@ -458,17 +541,20 @@ export function createStore(options: StoreOptions = {}) {
     cancelReconcile = undefined
     if (stopped) return
     const want = wanted()
-    for (const [key, sub] of live)
-      if (!want.has(key)) {
-        live.delete(key)
-        retire(sub)
-      }
+    for (const [key, { sub, watch }] of live) {
+      const next = want.get(key)
+      if (next && next.watch === watch) continue
+      live.delete(key)
+      retire(sub)
+    }
     if (closing.size) scheduleFlush()
     if (streamId !== undefined)
-      for (const [key, { spec, handler }] of want)
+      for (const [key, { spec, handler, watch }] of want)
         if (!live.has(key)) {
-          const sub: number = subscribe(spec, handler, (status) => refusedOpen(key, sub, status))
-          live.set(key, sub)
+          const sub: number = subscribe(spec, handler, (status) =>
+            refusedOpen(key, sub, status, watch),
+          )
+          live.set(key, { sub, watch })
         }
     const keep = <T>(record: Readonly<Record<string, T>>, has: (key: string) => boolean) =>
       Object.keys(record).every(has)
@@ -477,11 +563,17 @@ export function createStore(options: StoreOptions = {}) {
     const docsOf: Record<number, Docs> = {}
     for (const [conversation, kinds] of docWatchCountsByConversation)
       docsOf[conversation] = keep(state.docsOf[conversation] ?? {}, (kind) => kinds.has(kind))
-    set({
-      docs: keep(state.docs, (kind) => docKinds.has(kind)),
-      docsOf,
-      viewsOf: keep(state.viewsOf, (id) => watchedViews.has(parseConversationId(Number(id)))),
-    })
+    const nextDocs = keep(state.docs, (kind) => docKinds.has(kind))
+    const nextDocsOf =
+      Object.keys(state.docsOf).length === docWatchCountsByConversation.size &&
+      Object.entries(docsOf).every(([id, docs]) => docs === state.docsOf[Number(id)])
+        ? state.docsOf
+        : docsOf
+    const nextViewsOf = keep(state.viewsOf, (id) =>
+      watchedViews.has(parseConversationId(Number(id))),
+    )
+    if (nextDocs !== state.docs || nextDocsOf !== state.docsOf || nextViewsOf !== state.viewsOf)
+      set({ docs: nextDocs, docsOf: nextDocsOf, viewsOf: nextViewsOf })
   }
   function scheduleReconcile() {
     if (!stopped) cancelReconcile ??= nextTurn(reconcile)
@@ -489,8 +581,11 @@ export function createStore(options: StoreOptions = {}) {
 
   function connect() {
     cancelRetry?.()
+    abortActiveFlush()
     multiplexedEventSource?.close()
     streamId = undefined
+    flushing = false
+    if (state.connection.status === 'open') setConnection('reconnecting')
     const current = open('/api/events')
     multiplexedEventSource = current
     opened = false
@@ -502,6 +597,9 @@ export function createStore(options: StoreOptions = {}) {
     current.addEventListener('error', () => {
       if (multiplexedEventSource !== current) return
       streamId = undefined
+      abortActiveFlush()
+      flushing = false
+      flushQueued = false
       setConnection(opened || state.view ? 'reconnecting' : 'connecting')
 
       if (current.readyState === EVENT_SOURCE_CLOSED_NO_RETRY)
@@ -519,11 +617,12 @@ export function createStore(options: StoreOptions = {}) {
           )
         } else if (name === 'stream') {
           streamId = (JSON.parse(raw) as ServerEvents['stream']).id
+          abortActiveFlush()
+          flushing = false
+          flushQueued = false
           handlers.clear()
           opening.clear()
           closing.clear()
-          cancelCloseRetry?.()
-          cancelCloseRetry = undefined
           live.clear()
           reconcile()
           flush()
@@ -566,10 +665,12 @@ export function createStore(options: StoreOptions = {}) {
       cancelReconcile = undefined
       cancelResubscribe?.()
       cancelResubscribe = undefined
-      cancelCloseRetry?.()
-      cancelCloseRetry = undefined
+      abortActiveFlush()
 
       streamId = undefined
+      flushing = false
+      flushQueued = false
+      maxBatchSize = Infinity
       handlers.clear()
       opening.clear()
       closing.clear()
@@ -627,7 +728,7 @@ export function createStore(options: StoreOptions = {}) {
         scheduleReconcile()
       }
     },
-    watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadEvent) => void) {
+    watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadNotice) => void) {
       const key = JSON.stringify([read, every ?? null])
       const watch = { read, every, onEvent }
       watchedReads.set(key, watch)

@@ -2,13 +2,17 @@ import type { ConversationView, ConversationId } from '@earendil-works/pi-durabl
 import type { Op } from '@earendil-works/chord/delta'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStore } from '../../web/src/sdk/store.ts'
-import type { ServerEvents } from '../../shared/protocol.ts'
+import type { ReadPayload, ServerEvents, SubscriptionsRequest } from '../../shared/protocol.ts'
 
 import { FakeSource, fakeSubscriptions } from './fake-source.ts'
 
-function setup(retryMs = 5) {
+function setup(
+  retryMs = 5,
+  answerRead?: Parameters<typeof fakeSubscriptions>[1],
+  flushTimeoutMs?: number,
+) {
   const sources: FakeSource[] = []
-  const server = fakeSubscriptions(sources)
+  const server = fakeSubscriptions(sources, answerRead)
   const fetch = vi.fn<typeof globalThis.fetch>(
     async (path, init) =>
       server.handle(path as string, init) ?? Response.json({ providers: [], models: [] }),
@@ -22,6 +26,7 @@ function setup(retryMs = 5) {
     },
     fetch,
     retryMs,
+    flushTimeoutMs,
     onFallback,
   })
   store.start()
@@ -43,6 +48,10 @@ const view = (
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 const tick = () => vi.advanceTimersByTimeAsync(10)
+const subscriptionBatches = (fetch: ReturnType<typeof setup>['fetch']) =>
+  fetch.mock.calls
+    .filter(([path]) => (path as string).startsWith('/api/events/'))
+    .map(([, init]) => JSON.parse(init?.body as string) as SubscriptionsRequest)
 
 describe('web replica store', () => {
   it('applies ops to the snapshot and starts over from a fresh snapshot after a reconnect', () => {
@@ -245,6 +254,77 @@ describe('web replica store', () => {
     expect(latest().closed).toBe(true)
   })
 
+  it('serializes subscription requests and coalesces changes queued during an open', async () => {
+    const { store, server, fetch, latest } = setup()
+    const pending = Promise.withResolvers<void>()
+    fetch.mockImplementationOnce(async (path, init) => {
+      await pending.promise
+      return server.handle(path as string, init)!
+    })
+    latest().open()
+    const fleeting = store.watchDoc('test.fleeting')
+    await tick()
+    fleeting()
+    store.show(7 as ConversationId)
+    store.watchDoc('test.final')
+    await tick()
+    const [first] = subscriptionBatches(fetch)
+    expect(subscriptionBatches(fetch)).toHaveLength(1)
+    expect(first.subscribe).toMatchObject([{ docs: [], view: true }])
+    pending.resolve()
+    await tick()
+    const batches = subscriptionBatches(fetch)
+    expect(batches).toHaveLength(2)
+    expect(batches[1]).toMatchObject({
+      subscribe: [
+        { conversation: 7, docs: [], view: true },
+        { conversation: 7, docs: ['test.final'], view: false },
+      ],
+      unsubscribe: [first.subscribe[0].sub],
+    })
+    expect(
+      server.subscriptions.filter((item) => !item.closed).map((item) => item.conversation),
+    ).toEqual([7, 7])
+    store.stop()
+  })
+
+  it('immediately replaces a stream rejected with 410 instead of waiting for its error event', async () => {
+    const { store, fetch, latest, sources, server } = setup(1000)
+    fetch.mockResolvedValueOnce(Response.json({ error: 'Event stream ended' }, { status: 410 }))
+    const first = latest()
+    first.open()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(first.closed).toBe(true)
+    expect(sources).toHaveLength(2)
+    expect(store.getState().connection.status).toBe('reconnecting')
+    latest().open()
+    expect(server.of()?.stream).toBe(latest().id)
+    expect(store.getState().connection.status).toBe('open')
+    store.stop()
+  })
+
+  it('does not notify when reconciliation preserves the same document and view records', async () => {
+    const { store, server, latest } = setup()
+    latest().open()
+    const id = 7 as ConversationId
+    const releaseDoc = store.watchDocOf(id, 'test.counter')
+    const releaseView = store.watchConversation(id)
+    await tick()
+    server.of(7, false)!.send('doc', { kind: 'test.counter', value: { count: 1 } })
+    server.of(7, true)!.send('view', view([], {}, 7))
+    const before = store.getState()
+    const listener = vi.fn<() => void>()
+    store.subscribe(listener)
+    releaseDoc()
+    releaseView()
+    store.watchDocOf(id, 'test.counter')
+    store.watchConversation(id)
+    await tick()
+    expect(store.getState()).toBe(before)
+    expect(listener).not.toHaveBeenCalled()
+    store.stop()
+  })
+
   it('shows another conversation on the same stream and falls back to the root when it cannot open', async () => {
     const { store, sources, server, latest, onFallback } = setup()
     latest().open()
@@ -262,55 +342,167 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('retires an open whose answer was lost, and keeps its close until the server confirms it', async () => {
-    const { store, server, latest, fetch } = setup(1000)
+  it('falls back to the root when a restored conversation is refused, and forgets the cached view', async () => {
+    const { store, server, latest, onFallback } = setup()
     latest().open()
+    const id = 7 as ConversationId
+    store.show(id)
     await tick()
-    const batches: { subscribe: { sub: number }[]; unsubscribe: number[] }[] = []
-    const answer = (
-      kind: 'lost after the server handled it' | 'lost before the server saw it' | 'not json',
-    ) =>
+    server.of(7)!.send('view', view([user(2, 'cached')], {}, 7))
+    store.show(undefined)
+    await tick()
+    server.refuse(7, 404)
+    store.show(id)
+    expect(store.getState()).toMatchObject({ restored: true, view: { conversation: { id } } })
+    await tick()
+    expect(store.getState()).toMatchObject({
+      requested: undefined,
+      view: undefined,
+      restored: false,
+    })
+    expect(onFallback).toHaveBeenCalledOnce()
+    expect(server.of(undefined, true)).toBeDefined()
+    store.show(id)
+    expect(store.getState()).toMatchObject({ view: undefined, restored: false })
+    store.stop()
+  })
+
+  it('replaces the stream after an ambiguous batch failure so no watch can be orphaned', async () => {
+    for (const failure of [
+      'lost after the server handled it',
+      'lost before the server saw it',
+      'not json',
+      'bad shape',
+      'bad status',
+      'hex key',
+      'endpoint 404',
+      'status 202',
+    ] as const) {
+      const { store, server, sources, latest, fetch, onFallback } = setup(1000)
+      latest().open()
+      await tick()
+      const firstStream = latest()
       fetch.mockImplementationOnce(async (path, init) => {
-        batches.push(JSON.parse(init?.body as string))
-        if (kind === 'lost before the server saw it') throw new Error('offline')
+        const { subscribe } = JSON.parse(init?.body as string) as SubscriptionsRequest
+        const sub = subscribe[0]?.sub
+        if (failure === 'lost before the server saw it') throw new Error('offline')
+        if (failure === 'endpoint 404')
+          return Response.json({ error: 'Unknown endpoint' }, { status: 404 })
+        if (failure === 'status 202')
+          return Response.json({ ok: true, refused: {} }, { status: 202 })
         server.handle(path as string, init)
-        if (kind === 'not json') return new Response('not json')
+        if (failure === 'not json') return new Response('not json')
+        if (failure === 'bad shape') return Response.json({ ok: true, refused: [] })
+        if (failure === 'bad status') return Response.json({ ok: true, refused: { [sub]: 200 } })
+        if (failure === 'hex key')
+          return Response.json({ ok: true, refused: { [`0x${sub.toString(16)}`]: 404 } })
         throw new Error('connection reset')
       })
+      store.watchDoc('test.counter')
+      await tick()
+      expect(firstStream.closed).toBe(true)
+      expect(store.getState().connection.status).toBe('reconnecting')
+      expect(server.subscriptions.filter((item) => !item.closed)).toEqual([])
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(sources).toHaveLength(2)
+      latest().open()
+      await tick()
+      expect(onFallback).not.toHaveBeenCalled()
+      const counters = server.subscriptions.filter(
+        (item) => !item.closed && item.docs.includes('test.counter'),
+      )
+      expect(counters).toHaveLength(1)
+      counters[0].send('doc', { kind: 'test.counter', value: { count: 1 } })
+      expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
+      store.stop()
+    }
+  })
+
+  it('aborts a stalled subscription POST at its deadline and replaces the stream so later changes proceed', async () => {
+    const { store, server, sources, fetch, latest } = setup(50, undefined, 200)
+    latest().open()
+    await tick()
+    let aborted = false
+    fetch.mockImplementationOnce(
+      (_path, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true
+            reject(init.signal?.reason)
+          })
+        }),
+    )
+    const first = latest()
+    store.show(7 as ConversationId)
+    await tick()
+    store.watchDoc('test.counter')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(aborted).toBe(true)
+    expect(first.closed).toBe(true)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(sources).toHaveLength(2)
+    latest().open()
+    await tick()
+    expect(server.of(7, true)).toBeDefined()
+    expect(server.of(7, false)?.docs).toEqual(['test.counter'])
+    store.stop()
+  })
+
+  it('aborts an in-flight subscription POST immediately when SSE drops, even without a replacement stream', async () => {
+    const { store, fetch, latest } = setup(50, undefined, 200)
+    latest().open()
+    await tick()
+    let aborted = false
+    fetch.mockImplementationOnce(
+      (_path, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true
+            reject(init.signal?.reason)
+          })
+        }),
+    )
+    store.show(7 as ConversationId)
+    await tick()
+    expect(aborted).toBe(false)
+    latest().drop()
+    expect(aborted).toBe(true)
+    store.stop()
+  })
+
+  it('splits a multi-item 413 batch so valid reads still open and only an individually oversized read is refused', async () => {
+    const { store, server, sources, fetch, latest } = setup(5)
+    latest().open()
+    await tick()
     fetch.mockImplementation(async (path, init) => {
-      if ((path as string).startsWith('/api/events/'))
-        batches.push(JSON.parse(init?.body as string))
+      if ((path as string).startsWith('/api/events/')) {
+        const body = init?.body as string
+        if (body.length > 200) return Response.json({ error: 'Request too large' }, { status: 413 })
+      }
       return server.handle(path as string, init) ?? Response.json({ providers: [], models: [] })
     })
-    const live = () => server.subscriptions.filter((item) => !item.closed && item.docs.length)
-
-    // The open reaches the server but its answer is lost; the close sent at once never reaches it.
-    answer('lost after the server handled it')
-    answer('lost before the server saw it')
-    store.watchDoc('test.counter')
+    const smallEvents: unknown[] = []
+    const bigEvents: unknown[] = []
+    store.watchRead(
+      { extension: 'test', action: 'small', args: null },
+      undefined,
+      (event) => void smallEvents.push(event),
+    )
+    store.watchRead(
+      { extension: 'test', action: 'big', args: 'x'.repeat(250) },
+      undefined,
+      (event) => void bigEvents.push(event),
+    )
     await tick()
-    const [first] = batches[0].subscribe
-    expect(batches[1]).toEqual({ subscribe: [], unsubscribe: [first.sub] })
-    expect(live().map((item) => item.sub)).toEqual([first.sub])
-
-    // The retry carries that close again; the server handles it, but its answer cannot be read, so the retried open
-    // is closed in turn and opened once more.
-    answer('not json')
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(batches[2].unsubscribe).toEqual([first.sub])
-    const second = batches[2].subscribe[0].sub
-    expect(batches[3]).toEqual({ subscribe: [], unsubscribe: [first.sub, second] })
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(batches.at(-1)!.subscribe).toHaveLength(1)
-    await vi.advanceTimersByTimeAsync(5000)
-    const settled = batches.length
-    await vi.advanceTimersByTimeAsync(5000)
-    expect(batches).toHaveLength(settled)
-    expect(live()).toHaveLength(1)
-    const [only] = live()
-    expect(only.sub).toBeGreaterThan(second)
-    only.send('doc', { kind: 'test.counter', value: { count: 1 } })
-    expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
+    expect(sources).toHaveLength(2)
+    latest().open()
+    await tick()
+    await tick()
+    expect(bigEvents).toEqual([{ error: 'The server refused this read', status: 413 }])
+    const small = server.reads.find((item) => !item.closed && item.read.action === 'small')!
+    expect(small).toBeDefined()
+    latest().send('read', { result: 'ok', rev: 1 }, small.sub)
+    expect(smallEvents).toEqual([{ result: 'ok', rev: 1 }])
     store.stop()
   })
 
@@ -331,8 +523,8 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('sends a lost close again by itself, also after an answer of the wrong shape', async () => {
-    const { store, server, latest, fetch } = setup(1000)
+  it('replaces the stream when a close POST fails ambiguously, closing the old watch cleanly', async () => {
+    const { store, server, sources, latest, fetch } = setup(1000)
     latest().open()
     const release = store.watchDoc('test.counter')
     await tick()
@@ -340,79 +532,14 @@ describe('web replica store', () => {
     fetch.mockImplementationOnce(async () => {
       throw new Error('offline')
     })
-    fetch.mockImplementationOnce(async () => Response.json({}))
     release()
     await tick()
-    expect(counter.closed).toBe(false)
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(counter.closed).toBe(false)
-    await vi.advanceTimersByTimeAsync(1000)
     expect(counter.closed).toBe(true)
-    store.stop()
-  })
-
-  it('takes an answer that does not match its request for a lost one, and leaves other subscriptions alone', async () => {
-    for (const refused of [[], 'shown view'] as const) {
-      const { store, server, latest, fetch } = setup(1000)
-      latest().open()
-      const counter = store.watchDoc('test.counter')
-      await tick()
-      const shown = server.of(undefined, true)!
-      const doc = server.of(undefined, false)!
-      // The close never reaches the server, and the answer that comes back does not fit the request.
-      fetch.mockImplementationOnce(async () =>
-        Response.json({
-          ok: true,
-          refused: refused === 'shown view' ? { [shown.sub]: 404 } : refused,
-        }),
-      )
-      counter()
-      await tick()
-      expect(doc.closed).toBe(false)
-      await vi.advanceTimersByTimeAsync(1000)
-      expect(doc.closed).toBe(true)
-      shown.send('view', view([user(1, 'still shown')]))
-      expect(store.getState().view?.entries.map((entry) => entry.id)).toEqual([1])
-      store.stop()
-    }
-  })
-
-  it('takes a refusal of its own open with a bad key or status for a lost answer, and closes what may have opened', async () => {
-    for (const bad of ['status 200', 'hex key'] as const) {
-      const { store, server, latest, fetch } = setup(1000)
-      latest().open()
-      await tick()
-      fetch.mockImplementationOnce(async (path, init) => {
-        server.handle(path as string, init)
-        const [{ sub }] = (JSON.parse(init?.body as string) as { subscribe: { sub: number }[] })
-          .subscribe
-        return Response.json({
-          ok: true,
-          refused: bad === 'status 200' ? { [sub]: 200 } : { [`0x${sub.toString(16)}`]: 404 },
-        })
-      })
-      store.watchDoc('test.counter')
-      await tick()
-      await vi.advanceTimersByTimeAsync(1000)
-      const counters = server.subscriptions.filter((item) => item.docs.includes('test.counter'))
-      expect(counters.map((item) => item.closed)).toEqual([true, false])
-      store.stop()
-    }
-  })
-
-  it('retries a request the endpoint answered 404 without leaving the conversation', async () => {
-    const { store, server, latest, fetch, onFallback } = setup()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sources).toHaveLength(2)
     latest().open()
     await tick()
-    fetch.mockImplementationOnce(async () =>
-      Response.json({ error: 'Unknown endpoint' }, { status: 404 }),
-    )
-    store.show(7 as ConversationId)
-    await tick()
-    await tick()
-    expect(onFallback).not.toHaveBeenCalled()
-    expect(store.getState().requested).toBe(7)
-    expect(server.of(7, true)).toBeDefined()
+    expect(server.subscriptions.filter((item) => !item.closed && item.docs.length)).toEqual([])
     store.stop()
   })
 
@@ -623,6 +750,76 @@ describe('web replica store', () => {
   })
 })
 
+it('retries a read by reconnecting after an unconfirmed batch-level 403', async () => {
+  const { store, fetch, server, sources, latest } = setup()
+  latest().open()
+  await tick()
+  fetch.mockResolvedValueOnce(Response.json({ error: 'Forbidden' }, { status: 403 }))
+  const onEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
+  store.watchRead({ extension: 'test', action: 'read', args: null }, undefined, onEvent)
+  await tick()
+  expect(onEvent).not.toHaveBeenCalled()
+  expect(sources).toHaveLength(2)
+  latest().open()
+  await tick()
+  const reopened = server.reads.at(-1)!
+  expect(reopened.closed).toBe(false)
+  latest().send('read', { result: 'available', rev: 1 }, reopened.sub)
+  expect(onEvent).toHaveBeenCalledExactlyOnceWith({ result: 'available', rev: 1 })
+  store.stop()
+})
+
+it('does not retry a terminally refused read until its watch is replaced, even in the same tick', async () => {
+  const { store, fetch, server, latest } = setup()
+  latest().open()
+  await tick()
+  fetch.mockImplementationOnce(async (_path, init) => {
+    const { subscribe } = JSON.parse(init?.body as string) as SubscriptionsRequest
+    return Response.json({ ok: true, refused: { [subscribe[0].sub]: 403 } })
+  })
+  const read = { extension: 'test', action: 'read', args: null }
+  const onRefusal = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
+  const release = store.watchRead(read, undefined, onRefusal)
+  await tick()
+  expect(onRefusal).toHaveBeenCalledExactlyOnceWith({
+    error: 'The server refused this read',
+    status: 403,
+  })
+  const before = subscriptionBatches(fetch).length
+  await tick()
+  expect(subscriptionBatches(fetch)).toHaveLength(before)
+  release()
+  const onEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
+  store.watchRead(read, undefined, onEvent)
+  await tick()
+  expect(subscriptionBatches(fetch)).toHaveLength(before + 1)
+  latest().send('read', { result: 'available', rev: 1 }, server.reads.at(-1)!.sub)
+  expect(onEvent).toHaveBeenCalledExactlyOnceWith({ result: 'available', rev: 1 })
+  store.stop()
+})
+
+it('opens a read watch again on same-tick remount so a cached answer is replayed', async () => {
+  const action = vi.fn<() => Response>(() => Response.json({ result: 'shared' }))
+  const { store, server, latest } = setup(5, action)
+  latest().open()
+  const read = { extension: 'test', action: 'read', args: null }
+  const firstEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
+  const release = store.watchRead(read, undefined, firstEvent)
+  await tick()
+  const first = server.reads.at(-1)!
+  expect(firstEvent).toHaveBeenCalledExactlyOnceWith({ result: 'shared', rev: expect.any(Number) })
+  release()
+  const onEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
+  store.watchRead(read, undefined, onEvent)
+  latest().send('read', { result: 'retired', rev: 99 }, first.sub)
+  expect(onEvent).not.toHaveBeenCalled()
+  await tick()
+  expect(first.closed).toBe(true)
+  expect(onEvent).toHaveBeenCalledExactlyOnceWith(firstEvent.mock.calls[0][0])
+  expect(action).toHaveBeenCalledOnce()
+  store.stop()
+})
+
 it('gives a read the server refused as too large its error, instead of retrying it', async ({
   onTestFinished,
 }) => {
@@ -646,4 +843,36 @@ it('gives a read the server refused as too large its error, instead of retrying 
   const posts = fetch.mock.calls.length
   await vi.advanceTimersByTimeAsync(1000)
   expect(fetch.mock.calls.length).toBe(posts)
+})
+
+it('recovers from a raw SSE read frame with a non-safe-integer revision without reconnecting', async () => {
+  const { store, server, sources, latest } = setup()
+  const { createReads } = await import('../../web/src/sdk/reads.ts')
+  const readAction = vi.fn<() => Promise<{ result: unknown; rev?: number }>>()
+  const reads = createReads(readAction as never, store)
+  latest().open()
+  await tick()
+  const onError = vi.fn<(error: unknown) => void>()
+  const read = reads.get('test', 'status', null)
+  read.use({ onError })
+  await tick()
+  const sub = server.reads.at(-1)!.sub
+  latest().dispatchEvent(
+    new MessageEvent('read', {
+      data: `${sub}\n{"error":"temporary","status":500,"rev":1e400}`,
+    }),
+  )
+  expect(read.get().error).toMatchObject({ status: 500, message: 'temporary', rev: undefined })
+  expect(onError).toHaveBeenCalledTimes(1)
+  latest().send('read', { result: 'recovered', rev: 2 }, sub)
+  expect(read.get()).toMatchObject({ data: 'recovered', error: undefined, settled: true })
+  latest().dispatchEvent(
+    new MessageEvent('read', {
+      data: `${sub}\n{"error":"late malformed","status":500,"rev":1e400}`,
+    }),
+  )
+  expect(read.get()).toMatchObject({ data: 'recovered', error: undefined, settled: true })
+  expect(onError).toHaveBeenCalledTimes(1)
+  expect(sources).toHaveLength(1)
+  store.stop()
 })

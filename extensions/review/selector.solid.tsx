@@ -10,7 +10,7 @@ import {
   CommandList,
 } from '@/components/ui/command.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
-import { cn, useAction } from '@/sdk/solid'
+import { ROOT, cn, useAction } from '@/sdk/solid'
 import { shortSpec } from './comments.ts'
 import { RangesAction } from './refs.ts'
 import type { ReviewRange } from './refs.ts'
@@ -62,11 +62,15 @@ export function Selector(props: SelectorProps) {
 function Ranges(
   props: Omit<SelectorProps, 'title'> & { query: string; setQuery: (query: string) => void },
 ) {
-  const ranges = useAction(RangesAction, {
-    get conversation() {
-      return props.conversation
+  const ranges = useAction(
+    RangesAction,
+    {
+      get conversation() {
+        return props.conversation
+      },
     },
-  })
+    { conversation: ROOT },
+  )
   const [highlight, setHighlight] = createSignal<string>()
   const custom = () => props.query.trim()
   const shown = createMemo(() => {

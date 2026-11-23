@@ -1,12 +1,12 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'
 import { createEffect, createMemo, For, onCleanup } from 'solid-js'
-import { keepLast, useAction, useExternal, useStore } from '@/sdk/solid'
+import { ROOT, keepLast, useAction, useExternal, useStore } from '@/sdk/solid'
 import { getPreviews, getShown, polled, show, subscribe } from './previews.ts'
 import { ListAction } from './refs.ts'
 
 export function Poll() {
-  const list = useAction(ListAction, null, { onError: keepLast, every: 5000 })
+  const list = useAction(ListAction, null, { conversation: ROOT, onError: keepLast, every: 5000 })
   createEffect(list.data, (data) => {
     if (data) polled(data, () => void list.refetch())
   })

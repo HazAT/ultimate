@@ -1,9 +1,9 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { actionRef } from '../../../shared/extension-api.ts'
-import type { ReadEvent, ReadSpec } from '../../../shared/protocol.ts'
-import { ActionError, actionMessage } from './api.ts'
-import type { ActionArgs, ActionOptions, Api } from './api.ts'
+import type { ReadPayload, ReadSpec } from '../../../shared/protocol.ts'
+import { ActionError, actionMessage, readActionOf } from './api.ts'
+import type { Api, ReadAction } from './api.ts'
 import type { Store } from './store.ts'
 
 export interface Reader {
@@ -33,16 +33,23 @@ export interface Read {
 
 const MAX_RETAINED_IDLE_READS = 50
 
-export function createReads(api: Api, store: Store) {
-  const reads = new Map<string, Read & { readers: Set<Reader>; answered: () => boolean }>()
+export function createReads(api: Api | ReadAction, store: Store) {
+  const readAction = typeof api === 'function' ? api : readActionOf(api)
+  const reads = new Map<
+    string,
+    Read & { readers: Set<Reader>; answered: () => boolean; resetRev: () => void }
+  >()
   const changed = new Set<() => void>()
   const inUseReadsSettled = () =>
     store.getState().connection.status !== 'open' ||
     [...reads.values()].every((read) => !read.readers.size || read.answered())
   let connection = store.getState().connection.status
+  let connectionGeneration = 0
   store.subscribe(() => {
     const status = store.getState().connection.status
     if (status === connection) return
+    connectionGeneration++
+    for (const read of reads.values()) read.resetRev()
     connection = status
     for (const listener of changed) listener()
   })
@@ -73,7 +80,10 @@ export function createReads(api: Api, store: Store) {
     let running: Promise<unknown> | undefined
     let queued: Promise<unknown> | undefined
     let answered = false
+    let used = false
+    let readerGeneration = 0
     let lastAnswer: string | undefined
+    let lastRev: number | undefined
     let watching: { every: number | undefined; stop: () => void } | undefined
     const spec: ReadSpec = {
       extension,
@@ -86,11 +96,21 @@ export function createReads(api: Api, store: Store) {
       for (const listener of listeners) listener()
       for (const listener of changed) listener()
     }
-    function answer(event: ReadEvent, onError = errorHandler()) {
+    function answer(event: ReadPayload & { rev?: number }) {
+      const rev = Number.isSafeInteger(event.rev) ? event.rev : undefined
+      if (lastRev !== undefined && (rev === undefined || rev < lastRev)) {
+        if (state.loading !== fetching) set({ loading: fetching })
+        return
+      }
+      if (rev !== undefined) lastRev = rev
+      const wasAnswered = answered
       answered = true
-      const json = JSON.stringify(event)
+      const payload =
+        'result' in event ? { result: event.result } : { error: event.error, status: event.status }
+      const json = JSON.stringify(payload)
       if (json === lastAnswer) {
-        if (!state.settled || state.loading) set({ settled: true, loading: fetching })
+        if (!wasAnswered || !state.settled || state.loading !== fetching)
+          set({ settled: true, loading: fetching })
         return
       }
       lastAnswer = json
@@ -98,8 +118,9 @@ export function createReads(api: Api, store: Store) {
         set({ data: event.result, error: undefined, settled: true, loading: fetching })
         return
       }
-      const failure = new ActionError(extension, name, event.status, event.error)
+      const failure = new ActionError(extension, name, event.status, event.error, rev)
       set({ error: failure, settled: true, loading: fetching })
+      const onError = errorHandler()
       if (onError) onError(failure)
       else store.notify({ level: 'error', message: actionMessage(failure) })
     }
@@ -116,46 +137,59 @@ export function createReads(api: Api, store: Store) {
       watching?.stop()
       watching = { every: wanted, stop: store.watchRead(spec, wanted, (event) => answer(event)) }
     }
-    function start(onError: Reader['onError']) {
+    function start() {
       const request = Promise.withResolvers<unknown>()
       running = request.promise
       const release = () => {
         if (running === request.promise) running = undefined
       }
       request.promise.then(release, release)
-      request.resolve(run(onError))
+      request.resolve(run())
       return request.promise
     }
-    async function run(onError: Reader['onError']) {
-      fetching = true
-      set({ loading: true })
+    async function run() {
+      const readersAtStart = readerGeneration
+      const connectionAtStart = connectionGeneration
       try {
-        const data = await api.action(
+        fetching = true
+        set({ loading: true })
+        const { data, event } = await readAction(
           actionRef<unknown, unknown>(extension, name),
-          ...([args, { conversationId }] as ActionArgs<unknown, ActionOptions>),
+          args,
+          { conversationId },
+        ).then(
+          ({ result, rev, superseded }) => ({
+            data: result,
+            event: superseded ? undefined : { result: (result ?? null) as JsonValue, rev },
+          }),
+          (failure: ActionError) => ({
+            data: undefined,
+            event:
+              failure.status === 0 || failure.superseded
+                ? undefined
+                : { error: failure.message, status: failure.status, rev: failure.rev },
+          }),
         )
-        settleAttempt({ result: (data ?? null) as JsonValue }, onError)
+        fetching = false
+        if (
+          event &&
+          readerGeneration === readersAtStart &&
+          connectionGeneration === connectionAtStart
+        )
+          answer(event)
         return data
-      } catch (error) {
-        const failure = error as ActionError
-        settleAttempt(
-          failure.status === 0 ? undefined : { error: failure.message, status: failure.status },
-          onError,
-        )
-        return undefined
+      } finally {
+        fetching = false
+        if (state.loading) set({ loading: false })
       }
-    }
-    function settleAttempt(event: ReadEvent | undefined, onError: Reader['onError']) {
-      fetching = false
-      const streamWritesTheSharedAnswer = watching !== undefined
-      if (event && !streamWritesTheSharedAnswer) return answer(event, onError)
-      if (!streamWritesTheSharedAnswer) answered = true
-      set({ loading: fetching })
     }
     const read = {
       readers,
       get: () => state,
       answered: () => answered,
+      resetRev: () => {
+        lastRev = undefined
+      },
       subscribe(listener: () => void) {
         listeners.add(listener)
         return () => {
@@ -163,6 +197,7 @@ export function createReads(api: Api, store: Store) {
         }
       },
       use(reader: Reader) {
+        used = true
         reads.delete(key)
         reads.set(key, read)
         readers.add(reader)
@@ -171,15 +206,21 @@ export function createReads(api: Api, store: Store) {
           readers.delete(reader)
           repoll()
           if (readers.size) return
+          readerGeneration++
+          answered = false
+          lastRev = undefined
+          queued = undefined
           evictOldestIdleReads()
           for (const listener of changed) listener()
         }
       },
       refetch() {
-        const onError = errorHandler()
+        const readersAtQueue = readerGeneration
         const go = () => {
+          if (readersAtQueue !== readerGeneration) return undefined
           queued = undefined
-          return start(onError)
+          if (used && !readers.size) return undefined
+          return start()
         }
         queued ??= (running ?? Promise.resolve()).then(go, go)
         return queued
