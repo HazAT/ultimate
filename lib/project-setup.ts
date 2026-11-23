@@ -45,7 +45,7 @@ export function decisionRoot(projectRoot: string) {
   return basename(common) === '.git' ? realpathSync(dirname(common)) : root
 }
 
-function readDecision(projectRoot: string, userHome: string) {
+export function readDecision(projectRoot: string, userHome = homedir()) {
   try {
     const root = decisionRoot(projectRoot)
     const entry = new ProjectTrustStore(join(userHome, '.ultimate')).getEntry(root)
