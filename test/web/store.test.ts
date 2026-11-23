@@ -506,33 +506,108 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('bounds subscription batches by serialized byte size and refuses an individually oversized read locally', async () => {
+  it('bounds subscription batches by exact UTF-8 byte size and refuses oversized opens locally', async () => {
     const { store, server, fetch, latest } = setup(5)
     latest().open()
     await tick()
     const before = fetch.mock.calls.length
-    const chunk = 'a'.repeat(450_000)
-    const oversizedEvents: unknown[] = []
-    for (let i = 0; i < 10; i++)
-      store.watchRead({ extension: 'test', action: `valid-${i}`, args: chunk }, undefined, () => {})
+    const encoder = new TextEncoder()
+
+    // Exact 1 MiB boundary using multibyte UTF-8 characters ('é' = 1 UTF-16 char, 2 UTF-8 bytes).
+    const nextSub = server.subscriptions.length + 1
+    const baseSpec = {
+      sub: nextSub,
+      read: { extension: 'test', action: 'exct1', args: '' },
+    }
+    const overhead = encoder.encode(
+      JSON.stringify({ subscribe: [baseSpec], unsubscribe: [] }),
+    ).byteLength
+    const exactBytes = 1024 * 1024 - overhead
+    const exactArgs = 'é'.repeat(Math.floor(exactBytes / 2)) + (exactBytes % 2 ? 'a' : '')
+    const overArgs = `${exactArgs}a`
+
+    const exactEvents: unknown[] = []
     store.watchRead(
-      { extension: 'test', action: 'too-big', args: 'b'.repeat(1_100_000) },
+      { extension: 'test', action: 'exct1', args: exactArgs },
       undefined,
-      (event) => void oversizedEvents.push(event),
+      (event) => void exactEvents.push(event),
     )
     await tick()
+    expect(exactEvents).toEqual([])
+    const exactPost = fetch.mock.calls.at(-1)![1]!.body as string
+    expect(encoder.encode(exactPost).byteLength).toBe(1024 * 1024)
+    expect(server.reads.some((item) => !item.closed && item.read.action === 'exct1')).toBe(true)
+
+    // 1 byte over 1 MiB (same-length action name), an oversized doc, and 4 valid multibyte reads.
+    const overEvents: unknown[] = []
+    store.watchRead(
+      { extension: 'test', action: 'over1', args: overArgs },
+      undefined,
+      (event) => void overEvents.push(event),
+    )
+    store.watchDoc('d'.repeat(1024 * 1024))
+    const validChunk = 'é'.repeat(230_000)
+    for (let i = 0; i < 4; i++)
+      store.watchRead(
+        { extension: 'test', action: `valid-${i}`, args: validChunk },
+        undefined,
+        () => {},
+      )
     await tick()
+    await tick()
+
     const posts = fetch.mock.calls
       .slice(before)
       .filter(([path]) => (path as string).startsWith('/api/events/'))
-    expect(posts.length).toBeGreaterThanOrEqual(5)
     for (const [, init] of posts)
-      expect(new TextEncoder().encode(init?.body as string).byteLength).toBeLessThanOrEqual(
-        1024 * 1024,
+      expect(encoder.encode(init?.body as string).byteLength).toBeLessThanOrEqual(1024 * 1024)
+    expect(overEvents).toEqual([{ error: 'The server refused this read', status: 413 }])
+    expect(store.getState().notices.some((n) => n.message.includes('Subscription too large'))).toBe(
+      true,
+    )
+    for (let i = 0; i < 4; i++)
+      expect(server.reads.some((item) => !item.closed && item.read.action === `valid-${i}`)).toBe(
+        true,
       )
-    expect(oversizedEvents).toEqual([{ error: 'The server refused this read', status: 413 }])
-    expect(server.reads.filter((item) => !item.closed)).toHaveLength(10)
     store.stop()
+  })
+
+  it('still dispatches valid opens and notifies other refusals when one local 413 callback throws', async () => {
+    const { store, server, latest } = setup(5)
+    latest().open()
+    await tick()
+    const secondRefusal: unknown[] = []
+    const throwingRefusal = () => {
+      throw new Error('refusal boom')
+    }
+    const caught: unknown[] = []
+    const onError = (error: unknown) => {
+      caught.push(error)
+    }
+    const listeners = process.listeners('uncaughtException')
+    process.removeAllListeners('uncaughtException')
+    process.on('uncaughtException', onError)
+    try {
+      store.watchRead(
+        { extension: 'test', action: 'big-1', args: 'x'.repeat(1_100_000) },
+        undefined,
+        throwingRefusal,
+      )
+      store.watchRead(
+        { extension: 'test', action: 'big-2', args: 'y'.repeat(1_100_000) },
+        undefined,
+        (event) => void secondRefusal.push(event),
+      )
+      store.watchRead({ extension: 'test', action: 'valid', args: null }, undefined, () => {})
+      await tick()
+      expect(server.reads.some((item) => !item.closed && item.read.action === 'valid')).toBe(true)
+      expect(secondRefusal).toEqual([{ error: 'The server refused this read', status: 413 }])
+      expect(caught.map((e) => (e as Error).message)).toEqual(['refusal boom'])
+    } finally {
+      process.off('uncaughtException', onError)
+      for (const listener of listeners) process.on('uncaughtException', listener)
+      store.stop()
+    }
   })
 
   it('sends the closes and opens of a switch in one request', async () => {

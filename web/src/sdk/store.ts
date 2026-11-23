@@ -5,6 +5,7 @@ import { deadline, nextTurn, retryAfter } from '../../../lib/timers.ts'
 import { keepLast } from '../../../lib/errors.ts'
 import type { Cancel } from '../../../lib/timers.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
+import { MAX_SUBSCRIPTION_BATCH_BYTES } from '../../../shared/protocol.ts'
 import type {
   ConversationSummary,
   ModelsResponse,
@@ -73,10 +74,9 @@ export interface StoreOptions {
 
 const EVENT_SOURCE_CLOSED_NO_RETRY = 2
 const STREAM_GONE_RECONNECT_RESUBSCRIBES = 410
-const MAX_SUBSCRIPTION_BATCH_BYTES = 1024 * 1024
-const BATCH_ENVELOPE_BYTES = 64
 const utf8Bytes = new TextEncoder()
 const jsonBytes = (value: unknown) => utf8Bytes.encode(JSON.stringify(value)).byteLength
+const EMPTY_BATCH_BYTES = jsonBytes({ subscribe: [], unsubscribe: [] })
 const names = [
   'stream',
   'system',
@@ -329,32 +329,50 @@ export function createStore(options: StoreOptions = {}) {
     const closes: number[] = []
     const locallyRefused: [number, Refused][] = []
     let remaining = maxBatchSize
-    let bytes = BATCH_ENVELOPE_BYTES
+    let bytes = EMPTY_BATCH_BYTES
     for (const [sub, entry] of opening) {
       if (remaining <= 0) break
-      const itemBytes = jsonBytes({ sub, ...entry.spec }) + 1
-      if (BATCH_ENVELOPE_BYTES + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES && 'read' in entry.spec) {
+      const itemBytes = jsonBytes({ sub, ...entry.spec })
+      if (EMPTY_BATCH_BYTES + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES) {
         opening.delete(sub)
         locallyRefused.push([sub, entry.failed])
         continue
       }
-      if (opens.size > 0 && bytes + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES) break
+      const nextBytes = bytes + itemBytes + (opens.size > 0 ? 1 : 0)
+      if (opens.size > 0 && nextBytes > MAX_SUBSCRIPTION_BATCH_BYTES) break
       opens.set(sub, entry)
       opening.delete(sub)
-      bytes += itemBytes
+      bytes = nextBytes
       remaining--
     }
     for (const sub of closing) {
       if (remaining <= 0) break
-      const itemBytes = String(sub).length + 1
-      if ((opens.size > 0 || closes.length > 0) && bytes + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES)
-        break
+      const itemBytes = String(sub).length
+      const nextBytes = bytes + itemBytes + (closes.length > 0 ? 1 : 0)
+      if ((opens.size > 0 || closes.length > 0) && nextBytes > MAX_SUBSCRIPTION_BATCH_BYTES) break
       closes.push(sub)
       closing.delete(sub)
-      bytes += itemBytes
+      bytes = nextBytes
       remaining--
     }
     return { opens, closes, locallyRefused }
+  }
+  function notifyLocallyRefused(locallyRefused: [number, Refused][]) {
+    let firstError: unknown
+    let failed = false
+    for (const [sub, refuse] of locallyRefused) {
+      handlers.delete(sub)
+      closing.delete(sub)
+      try {
+        refuse(413)
+      } catch (error) {
+        if (!failed) {
+          failed = true
+          firstError = error
+        }
+      }
+    }
+    if (failed) throw firstError
   }
   function flush() {
     if (!flushQueued || flushing) return
@@ -362,13 +380,9 @@ export function createStore(options: StoreOptions = {}) {
     const stream = streamId
     if (stream === undefined || (!opening.size && !closing.size)) return
     const { opens, closes, locallyRefused } = takeBatch()
-    for (const [sub, failed] of locallyRefused) {
-      handlers.delete(sub)
-      closing.delete(sub)
-      failed(413)
-    }
     if (!opens.size && !closes.length) {
       if (opening.size || closing.size) scheduleFlush()
+      notifyLocallyRefused(locallyRefused)
       return
     }
     flushing = true
@@ -393,10 +407,10 @@ export function createStore(options: StoreOptions = {}) {
       .then(async (response) => {
         if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return 'gone' as const
         if (response.status === 413) {
-          const singleRead = opens.size === 1 && closes.length === 0
-          if (singleRead) {
-            const [[sub, { spec }]] = opens
-            if ('read' in spec) return { refused: { [sub]: 413 } }
+          const singleOpen = opens.size === 1 && closes.length === 0
+          if (singleOpen) {
+            const [[sub]] = opens
+            return { refused: { [sub]: 413 } }
           }
           if (batchSize > 1) maxBatchSize = Math.max(1, Math.floor(batchSize / 2))
           return 'ambiguous' as const
@@ -429,6 +443,7 @@ export function createStore(options: StoreOptions = {}) {
         flushQueued = false
         if (opening.size || closing.size) scheduleFlush()
       })
+    notifyLocallyRefused(locallyRefused)
   }
 
   function answeredFor(
@@ -525,6 +540,10 @@ export function createStore(options: StoreOptions = {}) {
 
   function refusedOpen(key: string, sub: number, status: number, watch?: ReadWatch) {
     if (live.get(key)?.sub !== sub) return
+    if (!watch && status === 413) {
+      handle('notice', { level: 'error', message: `Subscription too large: ${key}` })
+      return
+    }
     live.delete(key)
     if (watch && status >= 400 && status < 500) {
       if (watchedReads.get(key.slice(5)) === watch) {

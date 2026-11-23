@@ -217,6 +217,7 @@ export interface ReadSpec {
 }
 export type ViewSubscription = { sub: number; conversation?: number; docs: string[]; view: boolean }
 export type ReadSubscription = { sub: number; read: ReadSpec; every?: ReadAgainAfterMs }
+export const MAX_SUBSCRIPTION_BATCH_BYTES = 1024 * 1024
 export interface SubscriptionsRequest {
   subscribe: (ViewSubscription | ReadSubscription)[]
   unsubscribe: number[]

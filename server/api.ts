@@ -21,7 +21,13 @@ import type {
 } from '../shared/protocol.ts'
 import { createReads } from './reads.ts'
 import type { Reads } from './reads.ts'
-import { UI_REVISION, imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
+import {
+  MAX_SUBSCRIPTION_BATCH_BYTES,
+  UI_REVISION,
+  imageMimeTypes,
+  maxImageBytes,
+  maxImages,
+} from '../shared/protocol.ts'
 import { listModels } from './models.ts'
 import { hostDefault } from '../lib/agents.ts'
 import { expandSkillCommand } from './skills.ts'
@@ -565,7 +571,10 @@ export async function createApi(
         if (subscription && request.method === 'POST') {
           const connection = connections.get(subscription[1])
           if (!connection) throw new HttpError(410, 'Event stream ended')
-          const data: Partial<Record<keyof SubscriptionsRequest, unknown>> = await body(request)
+          const data: Partial<Record<keyof SubscriptionsRequest, unknown>> = await body(
+            request,
+            MAX_SUBSCRIPTION_BATCH_BYTES,
+          )
           const opens = data.subscribe ?? []
           const closes = data.unsubscribe ?? []
           if (
