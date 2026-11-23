@@ -22,7 +22,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branches, WorkspacesApi } from '../workspaces/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { LineageApi, Replies } from '../lineage/api.ts'
-import { Messages, MessagesApi } from './api.ts'
+import { Judgements, Messages, MessagesApi } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
 import { CallerAction, SettleAction } from './refs.ts'
@@ -51,7 +51,7 @@ import { branchTool } from './branch.ts'
 import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
-export const docs = [Messages, Started, Serving]
+export const docs = [Messages, Started, Serving, Judgements]
 
 async function openMessage(host: ExtensionHost, messageId: number, ctx: Context) {
   const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
@@ -303,13 +303,15 @@ export default function messages(host: ExtensionHost) {
               started.yielded !== undefined && started.yielded >= api.taskId
             if (generationObserverAlreadyCreated) return
             started.yielded = api.taskId
-            await tx.createTask(
+            const after = started.lastRoute
+            started.lastRoute = await tx.createTask(
               route(host),
               {
                 generation: api.taskId as TaskId<GenerationResult>,
                 inputs: [...((await tx.doc(LiveDoc, api.conversationId)).run?.inputs ?? [])],
                 by,
                 ...(down ? { down } : {}),
+                ...(after !== undefined ? { after } : {}),
               },
               {
                 ownership: { kind: 'conversation' },
@@ -333,7 +335,7 @@ export default function messages(host: ExtensionHost) {
         const upward =
           starter === undefined
             ? ''
-            : ` #${starter} started you: when you stop with nothing under way (no subagent, landing or reply pending), your final answer goes to it and wakes it; while work is under way, or when the run answered only the user's own input, it arrives as a note, and so do your one-way messages to it.`
+            : ` #${starter} started you: when you stop with nothing under way (no subagent, landing or reply pending), your final answer goes to it and wakes it; while work is under way, or when it is only back-and-forth with the user in your conversation (not a decision, result, blocker or request for #${starter}), it arrives as a note, and so do your one-way messages to it.`
         return `Use message to contact #id or @name. Any conversation except a subagent may message user. Messages wake their recipient; its answer returns as a reply and wakes you. End your turn instead of waiting. A one-way message (reply: false) gets no answer; use reply: true when you need one. Inputs identify their sender; answer here and your answer is sent to the sender automatically; do not use message to reply. A message to an agent whose message you still owe an answer becomes that answer and ends your run; use it only to attach images.${upward}\n${agents.map((a) => `@${a.name} — ${a.description}`).join('\n')}`
       }),
 

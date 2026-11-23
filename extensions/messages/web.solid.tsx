@@ -1,6 +1,7 @@
 import { attention, ConversationKind, defineWebExtension, provide } from '@/sdk/solid'
 import { CompactAnswer, MessageAnswerLabel, HiddenEntry } from './compact-answer.solid.tsx'
 import { scriptMessaged, threadRow, ultimateCompact } from './data.ts'
+import { JudgedAnswerLabel } from './judged.solid.tsx'
 import { MessageInput } from './message-input.solid.tsx'
 import { StretchSummary } from './stretch-summary.solid.tsx'
 import { BranchCall, MessageCall } from './tool-cards.solid.tsx'
@@ -44,7 +45,7 @@ export default defineWebExtension({
     thread: (row, docs) => threadRow(row, docs.board as MessagesData | null | undefined),
     summary: StretchSummary,
   },
-  answerLabels: [MessageAnswerLabel],
+  answerLabels: [MessageAnswerLabel, JudgedAnswerLabel],
   provides: [
     provide(
       ConversationKind,

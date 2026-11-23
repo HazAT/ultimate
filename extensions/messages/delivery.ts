@@ -94,6 +94,7 @@ export function delivery(host: ExtensionHost) {
             ...questionLinkOutsideLog(m),
             ...(m.routed !== undefined ? { routed: true } : {}),
             ...(m.echo ? { echo: true } : {}),
+            ...(m.judged ? { judged: m.judged } : {}),
             delivery: task.input.note ? 'note' : task.input.steer ? 'steer' : 'followUp',
             ...(replayStableImages.length ? { images: replayStableImages.length } : {}),
             ...(m.remote ? { remote: m.remote } : {}),

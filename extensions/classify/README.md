@@ -20,6 +20,10 @@ Call `models.classify({ provider: 'typesafe', id: 'jev-1.14.0' }, { state, quest
 
 A 401 (rejected key), 402 (out of credits) or 403 (forbidden) pauses both script and service calls for that key for 15 minutes. The pause survives a restart: the root conversation's `classify.pause` document keeps `{ keyId, status, until }`, where `keyId` is the first 16 hex characters of the key's SHA-256, never the key or the response body; the paused error is rebuilt from the status. Calls during the pause fail without sending a request. Changing the key lets requests proceed immediately.
 
+## Branch reports
+
+Classify provides messages' `messages.judge` point: before a branch's final answer wakes the agent that started it, one `choice` judges whether it is a report or back-and-forth with the user (see `extensions/messages/README.md`). Excerpts of every branch answer and its inputs, including what the user typed in the branch, go to TypeSafe.
+
 ## Service contract
 
 Import `ClassifyApi` from `api.ts`, then call `host.want(ClassifyApi)` at call time. A disabled provider returns `undefined`.

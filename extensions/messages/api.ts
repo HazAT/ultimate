@@ -15,8 +15,8 @@ import type { Context } from '@earendil-works/chord/context'
 import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
-import { MessagesDoc } from './refs.ts'
-import type { Question, Remote, Via } from './refs.ts'
+import { JudgementsDoc, MessagesDoc } from './refs.ts'
+import type { Judged, Question, Remote, Via } from './refs.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -52,6 +52,8 @@ export type Message = {
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
   via?: Via
+  /** How the judge weighed this branch's final answer before it went to the starter. */
+  judged?: Judged
 }
 /**
  * The tool call ids of every reply-expected question a conversation asked the user, oldest first, on that
@@ -142,6 +144,34 @@ export type MessagesService = {
 }
 export { MessageSent } from './refs.ts'
 export type { Question, Serves } from './refs.ts'
+/** The judge's verdict on each of a branch's final answers, by answer entry, on the branch; never trimmed. */
+export const Judgements = defineDoc<{ answers: Record<number, Judged> }>({
+  kind: JudgementsDoc.kind,
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ answers: {} }),
+})
+
+/** What the judge reads about a branch's final answer: excerpts of its previous answer, the inputs it answered and the answer. */
+export type JudgeState = {
+  branch_said_before: string
+  inputs: { from: string; text: string }[]
+  final_answer: string
+}
+export type JudgeService = {
+  /**
+   * The probability that the branch's final answer is something its starter must act on or know now, rather than
+   * back-and-forth with the user. It throws an Error whose message is a short cause safe to show the user (never a
+   * provider's response body) when it cannot judge. Messages reports on a throw or anything outside [0, 1].
+   */
+  report(state: JudgeState, signal: AbortSignal): Promise<number>
+}
+/** The extension point that judges whether a branch's answer wakes its starter; classify provides it. `want` it. */
+export const Judge = defineApi<JudgeService>()('messages.judge')
+
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')
 

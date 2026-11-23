@@ -1,6 +1,7 @@
 import type {
   ConversationId,
   EntryId,
+  EntryRecord,
   GenerationResult,
   SubmissionId,
   TaskId,
@@ -11,11 +12,13 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { Messages } from './api.ts'
+import { Judge, Judgements, Messages } from './api.ts'
+import type { JudgeState } from './api.ts'
+import { within } from '../../lib/timers.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
-import type { DeliveredMessage, Serves } from './refs.ts'
+import type { DeliveredMessage, Judged, Serves } from './refs.ts'
 import { FiredEntry, FinishedEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry } from '../workspaces/api.ts'
 import { Standing } from '../subagents/api.ts'
@@ -25,7 +28,80 @@ import { ownerOutput, sameOwner, Serving, Started } from './addresses.ts'
 import { sendResult } from './delivery.ts'
 import { scanNonterminalTasks } from './tasks.ts'
 
-const userInputKinds = new Set(['pi.user', 'voice.utterance', 'review.comments'])
+const JUDGE_TIMEOUT_MS = 10_000
+const EXCERPT = { before: 600, input: 500, answer: 1200 }
+
+function inputSource(entry: EntryRecord | undefined): string {
+  if (entry?.kind === 'pi.user') return 'user typed in the branch'
+  if (entry?.kind === 'voice.utterance') return 'user spoke in the branch'
+  if (entry?.kind === 'review.comments') return "user reviewed the branch's diff"
+  const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+  if (data?.from === 'user')
+    return data.re !== undefined
+      ? "user answered the branch's question card"
+      : 'note about the user'
+  if (data)
+    return `message from ${typeof data.from === 'number' ? `#${data.from}` : 'another project'}`
+  return entry?.kind ?? 'input'
+}
+
+function textOf(entry: EntryRecord | undefined): string {
+  const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+  if (data) return data.text
+  const content = entry?.model?.[0]?.content
+  if (typeof content === 'string') return content
+  return (content ?? []).flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
+}
+
+async function branchSaidBefore(tx: Tx, id: ConversationId, before: EntryId) {
+  let cursor: Parameters<Tx['scanEntries']>[2]
+  do {
+    const page = await tx.scanEntries({ conversationId: id, maxEntryId: before }, 64, cursor)
+    for (const entry of page.items) {
+      const message = entry.model?.[0]
+      if (
+        message?.role !== 'assistant' ||
+        (message.stopReason !== 'stop' && message.stopReason !== 'length')
+      )
+        continue
+      const text = message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
+      if (text.trim()) return text.slice(-EXCERPT.before)
+    }
+    cursor = page.next
+  } while (cursor !== undefined)
+  return ''
+}
+
+class JudgeTimeout extends Error {}
+
+async function judge(
+  host: ExtensionHost,
+  state: JudgeState,
+  signal: AbortSignal,
+): Promise<{ report: number } | { error: string }> {
+  const service = host.want(Judge)
+  if (!service) return { error: 'no judge' }
+  const stop = new AbortController()
+  try {
+    const cancelled = new Promise<never>((_resolve, reject) =>
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
+    )
+    const p = await within(
+      JUDGE_TIMEOUT_MS,
+      Promise.race([service.report(state, AbortSignal.any([signal, stop.signal])), cancelled]),
+      () => new JudgeTimeout(),
+      signal,
+    )
+    if (!Number.isFinite(p) || p < 0 || p > 1) return { error: 'invalid verdict' }
+    return { report: p }
+  } catch (error) {
+    if (signal.aborted) throw error
+    if (error instanceof JudgeTimeout) return { error: 'timed out' }
+    return { error: error instanceof Error ? error.message.slice(0, 80) : 'judge failed' }
+  } finally {
+    stop.abort()
+  }
+}
 
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
   if ((await tx.doc(LiveDoc, id)).run || (await tx.doc(InboxDoc, id)).items.length) return true
@@ -210,7 +286,13 @@ interface Route {
   to: ConversationId
   text: string
   requestId: string
-  options: { note?: boolean; report?: boolean; echo?: boolean; routed?: EntryId }
+  options: {
+    note?: boolean
+    report?: boolean
+    echo?: boolean
+    routed?: EntryId
+    judged?: Judged
+  }
 }
 
 export function route(host: ExtensionHost) {
@@ -220,8 +302,12 @@ export function route(host: ExtensionHost) {
       inputs: SubmissionId[]
       by: ConversationId
       down?: boolean
+      after?: TaskId<null>
     },
-    { phase: 'observe' } | { phase: 'answered' } | { phase: 'forward'; routes: Route[] },
+    | { phase: 'observe' }
+    | { phase: 'answered' }
+    | { phase: 'judge'; answer: EntryId; toStarter: Route; state: JudgeState }
+    | { phase: 'forward'; routes: Route[] },
     null
   >({
     name: 'board.route',
@@ -233,7 +319,7 @@ export function route(host: ExtensionHost) {
           () => ({
             status: 'waiting',
             checkpoint: { phase: 'answered' },
-            on: [task.input.generation],
+            on: [task.input.generation, ...(task.input.after ? [task.input.after] : [])],
             policy: 'allSettled',
           }),
           ctx,
@@ -248,7 +334,9 @@ export function route(host: ExtensionHost) {
           const inputs = await Promise.all(
             task.input.inputs.map((submission) => tx.submission(submission)),
           )
-          const handle = async (): Promise<Route[]> => {
+          const handle = async (): Promise<
+            Route[] | { answer: EntryId; toStarter: Route; state: JudgeState }
+          > => {
             const inputsSettledByThisAnswer = inputs.flatMap((input) =>
               input?.type === 'input' && input.status === 'done' && input.answer === answer
                 ? [{ entry: input.entry, submission: input.id }]
@@ -288,10 +376,11 @@ export function route(host: ExtensionHost) {
             let everyInputReturnsToAnotherAsker = true
 
             let answersOnlyRoutedInputs = true
-            let answersOnlyUserInputs = true
             const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-            for (const { entry: entryId } of inputsSettledByThisAnswer) {
-              const entry = await tx.entry(entryId)
+            const entries = await Promise.all(
+              inputsSettledByThisAnswer.map(({ entry }) => tx.entry(entry)),
+            )
+            for (const entry of entries) {
               const data: Partial<DeliveredMessage> | undefined =
                 MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
               const repliedByMessageMidRun =
@@ -307,13 +396,10 @@ export function route(host: ExtensionHost) {
               if (asked && data?.from === by) return []
               if (!asked) everyInputReturnsToAnotherAsker = false
               if (data?.routed !== true) answersOnlyRoutedInputs = false
-              if (!entry || !userInputKinds.has(entry.kind)) answersOnlyUserInputs = false
             }
 
             const report =
-              !answersOnlyRoutedInputs &&
-              !answersOnlyUserInputs &&
-              !(await concludedOrWorkUnderway(host, tx, id))
+              !answersOnlyRoutedInputs && !(await concludedOrWorkUnderway(host, tx, id))
             const routeToStarter = (body: string, options: Route['options']) => [
               {
                 to: by,
@@ -326,29 +412,85 @@ export function route(host: ExtensionHost) {
               if (!report) return []
 
               const promoteLastNote = (last: Message | undefined) => {
-                if (last?.from !== id || last.reply || last.report || last.re !== undefined)
+                if (
+                  last?.from !== id ||
+                  last.reply ||
+                  last.report ||
+                  last.re !== undefined ||
+                  (last.judged && 'report' in last.judged && last.judged.report < 0.5)
+                )
                   return []
-                return routeToStarter(last.text, {})
+                return routeToStarter(last.text, last.judged ? { judged: last.judged } : {})
               }
               const last = log.messages.findLast(
                 (m) => (m.from === id && m.to === by) || (m.from === by && m.to === id),
               )
               return promoteLastNote(last)
             }
-            return routeToStarter(text, { echo: answersOnlyRoutedInputs })
+            const [toStarter] = routeToStarter(text, { echo: answersOnlyRoutedInputs })
+            if (!report) return [toStarter]
+            const first = Math.min(...inputsSettledByThisAnswer.map(({ entry }) => entry))
+            return {
+              answer,
+              toStarter,
+              state: {
+                branch_said_before: await branchSaidBefore(tx, id, (first - 1) as EntryId),
+                inputs: entries.map((entry) => ({
+                  from: inputSource(entry),
+                  text: textOf(entry).slice(0, EXCERPT.input),
+                })),
+                final_answer: text.slice(0, EXCERPT.answer),
+              },
+            }
           }
           const routes = await handle()
+          if (!Array.isArray(routes))
+            return { status: 'running', checkpoint: { phase: 'judge', ...routes } }
           return routes.length
             ? { status: 'running', checkpoint: { phase: 'forward', routes } }
             : terminal
         }, ctx)
       },
+      judge: async (task, runtime, ctx) => {
+        const { answer, toStarter, state } = task.state.checkpoint
+        const id = runtime.conversationId
+        let judged = await runtime.memo<Judged>('judged', ctx)
+        if (!judged) {
+          const askedBeforeACrash = await runtime.memo<true>('asked', ctx)
+          if (!askedBeforeACrash) await runtime.memo('asked', true, ctx)
+          const verdict = askedBeforeACrash
+            ? { error: 'interrupted' }
+            : await judge(host, state, runtime.signal)
+          judged = await runtime.memo<Judged>('judged', { answer, ...verdict }, ctx)
+        }
+        const verdict = judged
+        await runtime.commit(async (tx) => {
+          ;(await tx.doc(Judgements, id)).answers[answer] = verdict
+          const report = !('report' in verdict) || verdict.report >= 0.5
+          return {
+            status: 'running',
+            checkpoint: {
+              phase: 'forward',
+              routes: [
+                {
+                  ...toStarter,
+                  options: { ...toStarter.options, note: !report, report, judged: verdict },
+                },
+              ],
+            },
+          }
+        }, ctx)
+      },
       forward: async (task, runtime, ctx) => {
         for (const { to, text, requestId, options } of task.state.checkpoint.routes) {
           if (!text.trim()) continue
-          await send(host, runtime.conversationId, { to: `#${to}`, text, reply: false }, ctx, {
+          const id = runtime.conversationId
+          await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {
             requestId,
             ...options,
+            ...(options.judged
+              ? { stillReports: async (tx: Tx) => !(await concludedOrWorkUnderway(host, tx, id)) }
+              : {}),
           })
         }
         await runtime.commit(() => terminal, ctx)

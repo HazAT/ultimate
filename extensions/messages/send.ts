@@ -1,11 +1,11 @@
-import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
 import { AskedCalls, Messages, MessageSent } from './api.ts'
 import type { Message, Question } from './api.ts'
-import type { Via } from './refs.ts'
+import type { Judged, Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { UserInputEvent } from '../../shared/events.ts'
@@ -76,6 +76,8 @@ export async function send(
     report?: boolean
     routed?: EntryId
     echo?: boolean
+    judged?: Judged
+    stillReports?: (tx: Tx) => Promise<boolean>
     serveBranch?: true
   } = {},
 ) {
@@ -188,6 +190,11 @@ export async function send(
     }
     if (options.serveBranch && typeof from === 'number' && typeof to === 'number')
       await serve(host, tx, from, { kind: 'branch', id: to })
+    let { report, note } = options
+    if (report && options.stillReports && !(await options.stillReports(tx))) {
+      report = false
+      note = true
+    }
     const message = await append(tx, {
       from,
       to,
@@ -198,9 +205,10 @@ export async function send(
       ...(callId === undefined ? {} : { call: callId }),
       ...(images ? { images } : {}),
       ...(questions ? { questions } : {}),
-      ...(options.report ? { report: true as const } : {}),
+      ...(report ? { report: true as const } : {}),
       ...(options.routed !== undefined ? { routed: options.routed } : {}),
       ...(options.echo ? { echo: true as const } : {}),
+      ...(options.judged ? { judged: options.judged } : {}),
       ...(via ? { via } : {}),
     })
     if (to === 'user' && message.reply && typeof from === 'number' && callId !== undefined)
@@ -275,7 +283,7 @@ export async function send(
         {
           message,
           steer,
-          note: options.note ?? (starter === to && input.reply === false),
+          note: note ?? (starter === to && input.reply === false),
           fromLabel,
           toLabel,
         },
