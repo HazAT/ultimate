@@ -70,6 +70,15 @@ const StoreCopied = defineDoc({
   fork: 'asOf',
   initial: (): { copied: boolean } => ({ copied: false }),
 })
+const ScriptToolsSwept = defineDoc({
+  kind: 'codemode.script-tools-swept',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: (): { done: boolean } => ({ done: false }),
+})
 const KEPT_SUMMARY_LIMIT = 1000
 export { SummaryDoc }
 export const docs = [CodemodeStoreDoc, SummaryDoc, PendingDoc]
@@ -590,6 +599,28 @@ export default function codemode(host: ExtensionHost) {
     })
   }
   const topLevelCodemode = (call: ToolHookCall) => call.name === 'codemode' && !call.parent
+  const scriptOnly = [...pi.tools!, actionTool, tellTool]
+    .filter((tool) => tool.callers?.includes('model') === false)
+    .map((tool) => tool.name)
+  host.onOpen(() =>
+    host.harness().commit(async (tx) => {
+      const swept = await tx.doc(ScriptToolsSwept, ROOT_CONVERSATION_ID)
+      if (swept.done) return
+      swept.done = true
+      const ids: ConversationId[] = []
+      let cursor: Cursor | undefined
+      do {
+        const page = await tx.scanConversations({}, 256, cursor)
+        ids.push(...page.items.map((record) => record.id))
+        cursor = page.next
+      } while (cursor)
+      for (const conversation of ids) {
+        const agent = await tx.doc(AgentDoc, conversation)
+        if (!Array.isArray(agent.tools) || !agent.tools.includes('codemode')) continue
+        for (const name of scriptOnly) if (!agent.tools.includes(name)) agent.tools.push(name)
+      }
+    }, BACKGROUND_CONTEXT),
+  )
   return defineExtension({
     name: 'codemode',
     tasks: [Summary],

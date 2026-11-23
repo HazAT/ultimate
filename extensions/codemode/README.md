@@ -4,7 +4,7 @@ Codemode is Pi Durable's code mode tool (`createCodemodeExtension` from `@earend
 
 **Journaled replay.** The tool is `replay: 'safe'`: Pi journals every nested call's and global's result, and a script a restart interrupts runs again from its start data, gets the recorded results in the same order and continues live, so finished calls (a bash command, a paid classify call) never run twice. A script that takes another path on the rerun fails instead. Tools that must never run twice are `replay: 'unsafe'`: an interrupted one fails rather than running again.
 
-**Script-only tools.** `action` and `tell` have `callers: ['tools']`, so only scripts call them, and `replay: 'unsafe'`. `restart` has `callers: ['model']`, so scripts never see it. `lib/agents.ts` `definitionAgent` keeps the parent's script-only tools in a definition's tool list when the definition has codemode, so subagents and standing agents get them.
+**Script-only tools.** `action` and `tell` have `callers: ['tools']`, so only scripts call them, and `replay: 'unsafe'`. `restart` has `callers: ['model']`, so scripts never see it. `lib/agents.ts` `definitionAgent` keeps the parent's script-only tools in a definition's tool list when the definition has codemode, so subagents and standing agents get them. Conversations created before that keep an exact tool list; a one-off sweep at load (marker `codemode.script-tools-swept` on the root) appended the script-only tools to every stored list that has codemode.
 
 **Subagents in scripts.** A nested `subagent` start or message always runs in the background (subagents' `beforeTool` hook sets `background: true`), so its answer arrives as a normal report; a nested `wait` or `background: false` is refused with "wait at top level".
 
