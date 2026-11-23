@@ -1,5 +1,9 @@
+import {
+  answerIncludingClosingToolResults,
+  lastSettledInputAnswer,
+} from '../../lib/settled-answer.ts'
 import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
-import type { ConversationId, Cursor, EntryId, TaskId, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, Cursor, TaskId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import {
   defineDoc,
@@ -88,60 +92,6 @@ export const docs = [Side, Index, QuestionSides]
 export const userActions = ['open', 'discard', 'inject']
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
 const crashSafeSummaryWriteRequest = (side: ConversationId) => `sidechat:summary:${side}`
-
-async function lastSettledInputAnswer(host: ExtensionHost, main: ConversationId): Promise<EntryId> {
-  let cursor: Cursor | undefined
-  let answer: EntryId | undefined
-  do {
-    const page = await host.scanSubmissions(
-      { conversationId: main, status: 'done' },
-      100,
-      cursor,
-      context,
-    )
-    for (const input of page.items)
-      if (
-        input.type === 'input' &&
-        input.status === 'done' &&
-        (answer === undefined || input.answer > answer)
-      )
-        answer = input.answer
-    cursor = page.next
-  } while (cursor)
-  if (answer === undefined) throw new Error('@ultimate has no finished turn to fork yet')
-  return answer
-}
-
-async function answerIncludingClosingToolResults(
-  tx: Tx,
-  main: ConversationId,
-  answer: EntryId,
-): Promise<EntryId> {
-  const entry = (await tx.entry(answer))!
-  const pending = new Set(
-    entry.model?.flatMap((message) =>
-      message.role === 'assistant'
-        ? message.content.flatMap((part) => (part.type === 'toolCall' ? [part.id] : []))
-        : [],
-    ) ?? [],
-  )
-  if (!pending.size) return answer
-  let cursor: Cursor | undefined
-  do {
-    const page = await tx.scanEntries(
-      { conversationId: main, minEntryId: answer, order: 'ascending' },
-      100,
-      cursor,
-    )
-    for (const result of page.items) {
-      for (const message of result.model ?? [])
-        if (message.role === 'toolResult') pending.delete(message.toolCallId)
-      if (!pending.size) return result.id
-    }
-    cursor = page.next
-  } while (cursor)
-  throw new Error(`Finished answer #${main}/${answer} is missing its tool results`)
-}
 
 function sideId(args: unknown): ConversationId {
   const id = args && typeof args === 'object' && 'id' in args ? args.id : undefined
@@ -582,7 +532,7 @@ export const actions = {
       if ((await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate !== main)
         throw new Error('Only @ultimate can open a side chat')
     }, context)
-    const answer = await lastSettledInputAnswer(host, main)
+    const answer = await lastSettledInputAnswer(host, main, context)
     const id = await host.harness().commit(async (tx) => {
       const at = await answerIncludingClosingToolResults(tx, main, answer)
       const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })

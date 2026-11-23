@@ -1,7 +1,4 @@
 import type { Sound } from './cues.ts'
-import type { Note } from './engine.ts'
-
-export type { Note } from './engine.ts'
 
 let volumeGain01 = 1
 let lazyEngine: Promise<typeof import('./engine.ts')> | undefined
@@ -23,6 +20,3 @@ export const play = async (sound: Sound) => (await engine()).play(sound)
 
 export const say = async (sound: Sound, text: string, pcm?: ArrayBuffer) =>
   (await engine()).say(sound, text, pcm)
-
-export const playNotes = async (notes: readonly Note[], gain01 = 0.18) =>
-  (await engine()).playNotes(notes, gain01)

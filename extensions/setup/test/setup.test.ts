@@ -172,7 +172,7 @@ it("lets a provider's configured auth stand in for the secret that names it", as
 
 it("lets an openai API key stand in for voice's OPENAI_API_KEY, but not an OAuth login", async () => {
   const voice = {
-    name: 'voice-live',
+    name: 'voice',
     enabled: true,
     layer: 'user',
     server: {

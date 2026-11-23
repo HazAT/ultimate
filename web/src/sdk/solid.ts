@@ -92,6 +92,7 @@ export {
 } from './hooks.ts'
 export {
   cn,
+  chordOf,
   column,
   elidePath,
   errorMessage,
@@ -99,6 +100,7 @@ export {
   formatBytes,
   formatDuration,
   formatKeys,
+  pageAgent,
   formatTime,
   formatTokens,
   isMac,
@@ -209,6 +211,8 @@ export { useProvided } from './contribution.solid.tsx'
 /** Building blocks of surfaces; see docs/extensions/surfaces.md. */
 export { Header } from '../app/header.solid.tsx'
 export { Conversation, Dock, Panels, Sidebar, StatusLine } from '../app/shell.solid.tsx'
+/** The prompt box of the scoped or shown conversation alone, without its transcript; wrap it in `ComposerRedirect` to send elsewhere. */
+export { Composer } from '../app/composer.solid.tsx'
 /** An extension's failure, inline or as a block with a report button, as the shell shows it. */
 export { ErrorCard } from '../app/error-card.solid.tsx'
 /** A contribution's `icon` (a panel's, a surface's) with `class`. */

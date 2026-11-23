@@ -141,7 +141,7 @@ async function userRunInput(host: ExtensionHost, id: ConversationId, ctx: Contex
     const record = await (await host.harness().submission(submission, ctx))?.status(ctx)
     if (record?.type !== 'input' || record.entry === undefined) continue
     const entry = await host.harness().commit((tx) => tx.entry(record.entry!), ctx)
-    if (entry?.kind === 'pi.user' || entry?.kind === 'voice.utterance') found = entry.id
+    if (entry?.kind === 'pi.user') found = entry.id
   }
   return found
 }

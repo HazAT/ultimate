@@ -80,7 +80,7 @@ function Core() {
   return (
     <div>
       <textarea id="composer-input" placeholder={target()?.placeholder ?? 'To main'} />
-      <button onClick={() => void target()?.send('a side question')} type="button">
+      <button onClick={() => void target()?.send('a side question', [])} type="button">
         send
       </button>
     </div>

@@ -296,7 +296,8 @@ function ComposerEditor(props: { dock?: boolean }) {
   })
   const uploading = () => files().some((file) => !file.path)
   const blocked = () => (loading() ? undefined : blockedBy(conversation().agent, models()))
-  const empty = () => !text().trim() && images().length === 0 && files().length === 0
+  const empty = () =>
+    !text().trim() && images().length === 0 && files().length === 0 && !target()?.ready?.()
   const inert = () => loading() || sending() || attach.reading()
 
   const update = (next: string) => {
@@ -331,7 +332,7 @@ function ComposerEditor(props: { dock?: boolean }) {
     )
       return
     const submitted = current.get()
-    if (redirect && submitted.images.length) {
+    if (redirect && !redirect.images && submitted.images.length) {
       setError('Images stay here: remove them to send elsewhere')
       return
     }
@@ -344,7 +345,13 @@ function ComposerEditor(props: { dock?: boolean }) {
     }
     let withdrawnSteerToRestoreOnFailure: typeof input | undefined
     try {
-      if (redirect) await writingAs(who, () => redirect.send(input.text))
+      if (redirect)
+        await writingAs(who, () =>
+          redirect.send(
+            input.text,
+            input.images.map(({ data, mimeType }) => ({ data, mimeType })),
+          ),
+        )
       else {
         withdrawnSteerToRestoreOnFailure =
           mode === 'steer' ? await withdrawQueuedSteer(api, conversationId, inbox()) : undefined

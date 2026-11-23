@@ -36,7 +36,7 @@ import type { CommandItem, ExtensionRecord } from './registry.ts'
 import { HOME, panelItems, shownPanels } from './registry.ts'
 import { ROOT } from './api.ts'
 import type { ActionArgs, ActionError } from './api.ts'
-import { api as client, reads, registry, reportCompact, store, uiState } from './client.ts'
+import { api as client, reads, registry, reportCompact, store, uiAgent, uiState } from './client.ts'
 import { events } from './events.ts'
 import { errorMessage } from './format.ts'
 import { restartAccepted, restartPhase, restartTimedOut } from './restart.ts'
@@ -54,6 +54,8 @@ import { subscribeViewport, viewport } from './viewport.ts'
 import type { Viewport } from './viewport.ts'
 
 export { api, bundle, switched } from './client.ts'
+/** This page's ui-sdk agent bridge (`snapshot`, `query`, `act`), to run an agent's UI steps on the user's own page. */
+export const pageAgent = () => uiAgent.bridge()
 /** The page's event bus: `events.emit('secrets:open', { name })`; subscribe for a component's life with `useEvent`. */
 export { events } from './events.ts'
 /**
@@ -78,7 +80,7 @@ export {
   prettyName,
   shortenPath,
 } from './format.ts'
-export { formatKeys, isMac } from './keys.ts'
+export { chordOf, formatKeys, isMac } from './keys.ts'
 /** Whether the device types on a touch keyboard, which focusing an input would slide up over the page. */
 export { touchKeyboard } from './viewport.ts'
 /** The installed link, inline-code and code-block renderers of Markdown, in discovery order (`useExtensions()` records). */

@@ -35,7 +35,6 @@ const chores: Record<string, string> = {
   'watchdog.failure': 'Reporting a failed run of',
   'goal.reminder': 'Updating the goal reminder',
   'side-chat.end': 'Closing a side chat',
-  'voice-live.answer': 'Answering by voice',
   'ultimate.automation-delivery': 'Delivering automation',
 }
 

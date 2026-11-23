@@ -31,7 +31,6 @@ import { SayAction } from './refs.ts'
 import { speaker } from './speaker.ts'
 import * as tones from './tones.ts'
 import { variantOf } from './variants.ts'
-import { questionsSpoken } from './voiced.ts'
 
 const eventClaimKey = 'ultimate.sounds.played'
 const reconnectCatchUpMs = 3000
@@ -52,7 +51,7 @@ async function claimPlayableCues(cues: readonly Cue[]) {
 }
 
 async function sayLine(line: Line) {
-  if (!line.text || (line.sound === 'input' && questionsSpoken())) return tones.play(line.sound)
+  if (!line.text) return tones.play(line.sound)
   const { audio } = await api.action(SayAction, { text: line.text }).catch((error: unknown) => {
     console.warn('Narrator voice failed', error)
     return { audio: null }
