@@ -1,13 +1,14 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { createEffect, createRoot } from 'solid-js'
+import { createEffect, createRoot, createSignal } from 'solid-js'
 import type { Accessor } from 'solid-js'
+
+type Elements = { scroll: HTMLElement; content: HTMLElement }
 
 export interface TranscriptFrame {
   entries: Accessor<readonly EntryRecord[]>
   atBottom: () => boolean
   subscribe: (listener: () => void) => () => void
-  scroll: { readonly current: HTMLElement | null }
-  content: { readonly current: HTMLElement | null }
+  elements: Accessor<Elements | null>
 }
 
 const none: readonly EntryRecord[] = []
@@ -15,8 +16,7 @@ const none: readonly EntryRecord[] = []
 export function createTranscriptFrame(entries: Accessor<readonly EntryRecord[]> = () => none) {
   let atBottom = true
   const listeners = new Set<() => void>()
-  const scroll: { current: HTMLElement | null } = { current: null }
-  const content: { current: HTMLElement | null } = { current: null }
+  const [elements, setElements] = createSignal<Elements | null>(null)
   const frame: TranscriptFrame = {
     entries,
     atBottom: () => atBottom,
@@ -31,8 +31,7 @@ export function createTranscriptFrame(entries: Accessor<readonly EntryRecord[]> 
         stop()
       }
     },
-    scroll,
-    content,
+    elements,
   }
   return {
     frame,
@@ -41,9 +40,8 @@ export function createTranscriptFrame(entries: Accessor<readonly EntryRecord[]> 
       atBottom = next
       for (const listener of listeners) listener()
     },
-    mount: (elements: { scroll: HTMLElement; content: HTMLElement }) => {
-      scroll.current = elements.scroll
-      content.current = elements.content
+    mount: (mounted: Elements) => {
+      setElements(mounted)
     },
   }
 }
