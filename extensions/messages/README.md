@@ -34,10 +34,15 @@ report.**
 - **Reports.** After each run of a branch, its final answer goes to its starter, unless it already returned as a reply.
   When nothing of the branch is under way (no run, queued input, busy subagent, pending submission or open
   reply-enabled message), it goes as a one-way message with `report: true`, which wakes the starter; otherwise as a
-  note, since the branch will run again. A run that answered only the user's own input (typed or spoken in the
-  branch, or a review of its diff) is a note too: the user read it where they asked, and a report would wake the
-  starter for nothing. Their answer to one of the branch's questions is a decision the starter acts on, so the
-  answer to it reports. A landing concludes the branch and wakes the starter itself, asking through
+  note, since the branch will run again. Before a report goes out, a judge weighs it: back-and-forth the user drives in
+  the branch (an iteration round, an answer to their idea, an acknowledgement) goes as a note instead, while a decision,
+  a result, a blocker or a request for the starter reports. The `messages.judge` point asks it; classify provides it
+  with one Jev `choice` (about 0.2 s, a fraction of a cent), sending the branch's previous answer (last 600 characters),
+  each input's source and first 500 characters, and the final answer's first 1200 to TypeSafe. The verdict is memoized
+  in the `board.route` task and kept on the message (`judged: { answer, report }`, the probability it reports; below 0.5
+  it is a note). Without classify, on a timeout (10 s), a pause or any error the answer reports (`judged: { answer,
+  error }`): a wrong wake costs one turn, a lost answer stalls a flow. The message card and the branch's final answer
+  show the verdict as a chip. A landing concludes the branch and wakes the starter itself, asking through
   the `workspaces.branches` point this extension provides (`starter`, `underway`).
 - **Answers back down.** The primary agent's final answer goes to each branch whose reply or report was an input of
   that run (not concluded, not messaged in the run) with `routed: true`, so a weigh-in reaches the branch. The run's
@@ -128,7 +133,7 @@ the log keeps the newest 300 items, and transcripts retain delivered inputs. `Me
 are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`, `failed` or
 `stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`, `questions` and `call` are optional.
 
-- `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote? }`.
+- `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote?, judged? }`.
 - `board.reply` data: `{ id, re, from, text, failed, stopped?, images?, remote?, interim? }`; `stopped` also sets
   `failed`; an `interim` reply is placed as a note (`delivery: 'note'`).
 - Each post emits `board.sent` `{ message, from, to, reply, steer }` (`MessageSent`), never the text; replies emit
@@ -158,7 +163,8 @@ Server side, imported in one direction (`log`, `images`, `addresses`, `questions
   point.
 - `send.ts`: `send()`, validation, receipts, and turning a message to a sender you owe into that answer.
 - `delivery.ts`: the `board.delivery` task, owner-output admission and the `board.settle` task that waits for that input.
-- `route.ts`: the `board.route` task: notes, reports and answers back down.
+- `route.ts`: the `board.route` task: notes, reports (weighed by the judge) and answers back down.
+- `judged.solid.tsx`: the judge's verdict chip on a message card and a branch's final answer.
 - `outcomes.ts`: fail requests whose owner has stopped, failed or been deleted.
 - `remote.ts`: `tell`, the `remote` and `remoteReply` actions.
 - `branch.ts`: the `branch` tool.

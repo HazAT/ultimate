@@ -41,7 +41,9 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { AskedCalls, Messages, MessageSent } from '../api.ts'
+import { AskedCalls, Judge, Messages, MessageSent } from '../api.ts'
+import type { JudgeService } from '../api.ts'
+import type { JudgeState } from '../route.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -1693,30 +1695,56 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
   expect((await b.from())[1].report).toBeUndefined()
   await f.opened.harness.abortTask(pending, context)
 })
-it("leaves a branch's answer to the user's own input as a note that does not wake @ultimate", async () => {
+it("lets the judge leave a branch's back-and-forth with the user as a note, and reports when it cannot judge", async () => {
   // The user talked with a branch in its conversation; each answer woke @ultimate for a turn that did nothing.
   const f = await fixture()
   const b = await branched(f)
+  const asked: JudgeState[] = []
+  let verdict: () => Record<string, number> = () => ({ report: 0.2, note: 0.8 })
+  f.provided.set(Judge.name, {
+    choose: async ({ state }) => {
+      asked.push(state as JudgeState)
+      return verdict()
+    },
+  } satisfies JudgeService)
   const generations = async () =>
     (await f.opened.root.context(context)).entries.filter((e) => e.kind === 'pi.assistant').length
   const before = await generations()
-  await (
-    await b.branch.submit({ type: 'input', content: 'What does + Legacy mean?' }, context)
-  ).wait(context)
-  await b.settled()
-  const toStarter = (await b.from()).filter((m) => m.to === 1)
-  expect(toStarter.slice(1)).toEqual([
-    expect.objectContaining({ text: 'Answer: What does + Legacy mean?', reply: false }),
-  ])
-  expect(toStarter[1].report).toBeUndefined()
-  const note = (await f.opened.root.context(context)).entries.find(
-    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === toStarter[1].id,
+  const say = async (content: string) => {
+    await (await b.branch.submit({ type: 'input', content }, context)).wait(context)
+    await b.settled()
+    return (await b.from()).findLast((m) => m.to === 1)!
+  }
+  const note = await say('What does + Legacy mean?')
+  expect(note).toMatchObject({
+    text: 'Answer: What does + Legacy mean?',
+    reply: false,
+    judged: { answer: expect.any(Number), report: 0.2 },
+  })
+  expect(note.report).toBeUndefined()
+  expect(asked.at(-1)).toEqual({
+    branch_said_before: expect.stringMatching(/^Answer: Message from #1 \(@ultimate\):\nExplore/),
+    inputs: [{ from: 'user typed in the branch', text: 'What does + Legacy mean?' }],
+    final_answer: 'Answer: What does + Legacy mean?',
+  })
+  const placedNote = (await f.opened.root.context(context)).entries.find(
+    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === note.id,
   )
-  expect([note?.data, note?.input]).toEqual([
-    expect.objectContaining({ delivery: 'note' }),
+  expect([placedNote?.data, placedNote?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note', judged: note.judged }),
     undefined,
   ])
   expect(await generations()).toBe(before)
+
+  // A judge that fails (no key, a 402 pause) must not swallow an answer the starter needed.
+  verdict = () => {
+    throw new Error('TypeSafe 402: out of credits')
+  }
+  const reported = await say('1a 2b, go')
+  expect(reported).toMatchObject({
+    report: true,
+    judged: { error: 'TypeSafe 402: out of credits' },
+  })
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()

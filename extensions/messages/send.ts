@@ -5,7 +5,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
 import { AskedCalls, Messages, MessageSent } from './api.ts'
 import type { Message, Question } from './api.ts'
-import type { Via } from './refs.ts'
+import type { Judged, Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
 import { isOwed } from '../../lib/message-state.ts'
 import { UserInputEvent } from '../../shared/events.ts'
@@ -76,6 +76,7 @@ export async function send(
     report?: boolean
     routed?: EntryId
     echo?: boolean
+    judged?: Judged
     serveBranch?: true
   } = {},
 ) {
@@ -201,6 +202,7 @@ export async function send(
       ...(options.report ? { report: true as const } : {}),
       ...(options.routed !== undefined ? { routed: options.routed } : {}),
       ...(options.echo ? { echo: true as const } : {}),
+      ...(options.judged ? { judged: options.judged } : {}),
       ...(via ? { via } : {}),
     })
     if (to === 'user' && message.reply && typeof from === 'number' && callId !== undefined)

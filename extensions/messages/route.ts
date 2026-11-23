@@ -1,6 +1,7 @@
 import type {
   ConversationId,
   EntryId,
+  EntryRecord,
   GenerationResult,
   SubmissionId,
   TaskId,
@@ -11,11 +12,11 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { Messages } from './api.ts'
+import { Judge, Messages } from './api.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
-import type { DeliveredMessage, Serves } from './refs.ts'
+import type { DeliveredMessage, Judged, Serves } from './refs.ts'
 import { FiredEntry, FinishedEntry, MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { LanderReportEntry } from '../workspaces/api.ts'
 import { Standing } from '../subagents/api.ts'
@@ -25,7 +26,79 @@ import { ownerOutput, sameOwner, Serving, Started } from './addresses.ts'
 import { sendResult } from './delivery.ts'
 import { scanNonterminalTasks } from './tasks.ts'
 
-const userInputKinds = new Set(['pi.user', 'voice.utterance', 'review.comments'])
+const JUDGE_TIMEOUT_MS = 10_000
+const EXCERPT = { before: 600, input: 500, answer: 1200 }
+export const judgeQuestion = {
+  instructions:
+    'A branch agent works on a task for @ultimate, the coordinator that started it; the user can also talk to the branch directly in its conversation. Read what the branch said before, the inputs its latest run answered, and its final answer. Decide whether @ultimate must be woken with this final answer.',
+  criteria: {
+    report:
+      "@ultimate must act on or know it now: the user made or confirmed a decision (picks, approvals, 'go', 'follow your picks'), work finished, was submitted or is blocked, an assessment or decisions for @ultimate, or a question or request for @ultimate that the branch has not already sent it.",
+    note: "Back-and-forth the user drives in the branch: answering the user's questions or ideas, an iteration or preview round, filling in a card the user has not sent yet, a progress update while work continues, a question left open for the user, telling the user it already messaged @ultimate, or acknowledging a message that needs no action. @ultimate can read it later.",
+  },
+}
+
+function inputSource(entry: EntryRecord | undefined): string {
+  if (entry?.kind === 'pi.user') return 'user typed in the branch'
+  if (entry?.kind === 'voice.utterance') return 'user spoke in the branch'
+  if (entry?.kind === 'review.comments') return "user reviewed the branch's diff"
+  const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+  if (data?.from === 'user')
+    return data.re !== undefined
+      ? "user answered the branch's question card"
+      : 'note about the user'
+  if (data)
+    return `message from ${typeof data.from === 'number' ? `#${data.from}` : 'another project'}`
+  return entry?.kind ?? 'input'
+}
+
+function textOf(entry: EntryRecord | undefined): string {
+  const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+  if (data) return data.text
+  const content = entry?.model?.[0]?.content
+  if (typeof content === 'string') return content
+  return (content ?? []).flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
+}
+
+async function branchSaidBefore(tx: Tx, id: ConversationId, before: EntryId) {
+  let cursor: Parameters<Tx['scanEntries']>[2]
+  do {
+    const page = await tx.scanEntries({ conversationId: id, maxEntryId: before }, 64, cursor)
+    for (const entry of page.items) {
+      const message = entry.model?.[0]
+      if (message?.role !== 'assistant' || message.stopReason !== 'stop') continue
+      const text = message.content.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('')
+      if (text.trim()) return text.slice(-EXCERPT.before)
+    }
+    cursor = page.next
+  } while (cursor !== undefined)
+  return ''
+}
+
+export type JudgeState = {
+  branch_said_before: string
+  inputs: { from: string; text: string }[]
+  final_answer: string
+}
+
+async function judge(
+  host: ExtensionHost,
+  state: JudgeState,
+  signal: AbortSignal,
+): Promise<{ report: number } | { error: string }> {
+  const service = host.want(Judge)
+  if (!service) return { error: 'no judge: classify is off' }
+  try {
+    const probabilities = await service.choose(
+      { state, ...judgeQuestion },
+      AbortSignal.any([signal, AbortSignal.timeout(JUDGE_TIMEOUT_MS)]),
+    )
+    return { report: probabilities.report ?? 1 }
+  } catch (error) {
+    if (signal.aborted) throw error
+    return { error: error instanceof Error ? error.message : String(error) }
+  }
+}
 
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
   if ((await tx.doc(LiveDoc, id)).run || (await tx.doc(InboxDoc, id)).items.length) return true
@@ -210,7 +283,13 @@ interface Route {
   to: ConversationId
   text: string
   requestId: string
-  options: { note?: boolean; report?: boolean; echo?: boolean; routed?: EntryId }
+  options: {
+    note?: boolean
+    report?: boolean
+    echo?: boolean
+    routed?: EntryId
+    judged?: Judged
+  }
 }
 
 export function route(host: ExtensionHost) {
@@ -221,7 +300,10 @@ export function route(host: ExtensionHost) {
       by: ConversationId
       down?: boolean
     },
-    { phase: 'observe' } | { phase: 'answered' } | { phase: 'forward'; routes: Route[] },
+    | { phase: 'observe' }
+    | { phase: 'answered' }
+    | { phase: 'judge'; answer: EntryId; toStarter: Route; state: JudgeState }
+    | { phase: 'forward'; routes: Route[] },
     null
   >({
     name: 'board.route',
@@ -248,7 +330,9 @@ export function route(host: ExtensionHost) {
           const inputs = await Promise.all(
             task.input.inputs.map((submission) => tx.submission(submission)),
           )
-          const handle = async (): Promise<Route[]> => {
+          const handle = async (): Promise<
+            Route[] | { answer: EntryId; toStarter: Route; state: JudgeState }
+          > => {
             const inputsSettledByThisAnswer = inputs.flatMap((input) =>
               input?.type === 'input' && input.status === 'done' && input.answer === answer
                 ? [{ entry: input.entry, submission: input.id }]
@@ -288,7 +372,6 @@ export function route(host: ExtensionHost) {
             let everyInputReturnsToAnotherAsker = true
 
             let answersOnlyRoutedInputs = true
-            let answersOnlyUserInputs = true
             const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
             for (const { entry: entryId } of inputsSettledByThisAnswer) {
               const entry = await tx.entry(entryId)
@@ -307,13 +390,10 @@ export function route(host: ExtensionHost) {
               if (asked && data?.from === by) return []
               if (!asked) everyInputReturnsToAnotherAsker = false
               if (data?.routed !== true) answersOnlyRoutedInputs = false
-              if (!entry || !userInputKinds.has(entry.kind)) answersOnlyUserInputs = false
             }
 
             const report =
-              !answersOnlyRoutedInputs &&
-              !answersOnlyUserInputs &&
-              !(await concludedOrWorkUnderway(host, tx, id))
+              !answersOnlyRoutedInputs && !(await concludedOrWorkUnderway(host, tx, id))
             const routeToStarter = (body: string, options: Route['options']) => [
               {
                 to: by,
@@ -335,13 +415,53 @@ export function route(host: ExtensionHost) {
               )
               return promoteLastNote(last)
             }
-            return routeToStarter(text, { echo: answersOnlyRoutedInputs })
+            const [toStarter] = routeToStarter(text, { echo: answersOnlyRoutedInputs })
+            if (!report) return [toStarter]
+            const entries = await Promise.all(
+              inputsSettledByThisAnswer.map(({ entry }) => tx.entry(entry)),
+            )
+            const first = Math.min(...inputsSettledByThisAnswer.map(({ entry }) => entry))
+            return {
+              answer,
+              toStarter,
+              state: {
+                branch_said_before: await branchSaidBefore(tx, id, (first - 1) as EntryId),
+                inputs: entries.map((entry) => ({
+                  from: inputSource(entry),
+                  text: textOf(entry).slice(0, EXCERPT.input),
+                })),
+                final_answer: text.slice(0, EXCERPT.answer),
+              },
+            }
           }
           const routes = await handle()
+          if (!Array.isArray(routes))
+            return { status: 'running', checkpoint: { phase: 'judge', ...routes } }
           return routes.length
             ? { status: 'running', checkpoint: { phase: 'forward', routes } }
             : terminal
         }, ctx)
+      },
+      judge: async (task, runtime, ctx) => {
+        const { answer, toStarter, state } = task.state.checkpoint
+        let judged = await runtime.memo<Judged>('judged', ctx)
+        if (!judged) {
+          const verdict = await judge(host, state, runtime.signal)
+          judged = await runtime.memo<Judged>('judged', { answer, ...verdict }, ctx)
+        }
+        const report = !('report' in judged) || judged.report >= 0.5
+        await runtime.commit(
+          () => ({
+            status: 'running',
+            checkpoint: {
+              phase: 'forward',
+              routes: [
+                { ...toStarter, options: { ...toStarter.options, note: !report, report, judged } },
+              ],
+            },
+          }),
+          ctx,
+        )
       },
       forward: async (task, runtime, ctx) => {
         for (const { to, text, requestId, options } of task.state.checkpoint.routes) {

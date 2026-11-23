@@ -12,6 +12,7 @@ import { typesafeProvider } from '@earendil-works/pi-ai/providers/typesafe'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readSecret } from '../../lib/secrets.ts'
 import { ClassifyApi } from './api.ts'
+import { Judge } from '../messages/api.ts'
 import type { ClassifyAnswer, ClassifyService } from './api.ts'
 
 export const secrets = [
@@ -193,6 +194,17 @@ export default function classify(host: ExtensionHost) {
     },
   }
   host.implement(ClassifyApi, service)
+  host.implement(Judge, {
+    async choose({ state, instructions, criteria }, signal) {
+      const { answers } = await service.ask(
+        { state, questions: { choice: { type: 'choice', instructions, criteria } } },
+        signal,
+      )
+      if (answers.choice.type !== 'choice')
+        throw new Error(`classify answered ${answers.choice.type}, not choice`)
+      return answers.choice.probabilities
+    },
+  })
   return defineExtension({
     name: 'classify',
     sections: [
