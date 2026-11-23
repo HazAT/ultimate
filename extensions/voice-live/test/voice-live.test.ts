@@ -216,6 +216,32 @@ it('ui waits for the page: the request lands on voice.ui and the page answer is 
   expect((await calls())!.calls).toEqual([])
 })
 
+it('collected recordings wait in the draft and go out together as one turn', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  f.transcribed.push('first part', 'second part')
+  const keep = async () =>
+    (
+      await f.action('record', {
+        audio,
+        mimeType: 'audio/webm',
+        collect: { seconds: 1.5, envelope: [0.2, 0.4] },
+      })
+    ).data.result.audio as string
+  const a = await keep()
+  const b = await keep()
+  await until(async () => Object.keys((await f.forkOf(first.id))?.transcripts ?? {}).length === 2)
+  expect((await f.forkOf(first.id))?.draft?.map((clip) => clip.audio)).toEqual([a, b])
+  const asked = f.requests.length
+  const sent = await f.turn({ key: 'together', text: '', audio: a, clips: [a, b] })
+  expect(sent.id).toBe(first.id)
+  expect((await f.forkOf(first.id))?.draft).toEqual([])
+  expect(f.requests).toHaveLength(asked + 1)
+  const said = f.requests.at(-1)!.messages.at(-1)
+  expect(JSON.stringify(said)).toContain('first part second part')
+  expect(userParts(said).filter((part) => part.type === 'image')).toHaveLength(2)
+})
+
 it('a model picked in the fork itself carries over to the next session', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })

@@ -6,8 +6,16 @@ import { every } from '../../lib/timers.ts'
 import { createCues } from './cues.ts'
 import { base64, createMic, unsupported } from './recorder.ts'
 import type { Recorded } from './recorder.ts'
-import { EndAction, RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
-import type { VoiceFork, VoiceTurn } from './refs.ts'
+import {
+  DiscardAction,
+  EndAction,
+  IntentAction,
+  RecordAction,
+  StatusAction,
+  StopAction,
+  TurnAction,
+} from './refs.ts'
+import type { VoiceClip, VoiceDelivery, VoiceFork, VoiceTurn } from './refs.ts'
 import { createPlayer, splitReply, splitSentences } from './speech.ts'
 import type { Player } from './speech.ts'
 import { createTrace } from './trace.ts'
@@ -40,6 +48,7 @@ export const dock = createRoot(() => {
   const [rate, setRate] = useUiState('ext.voice-live.rate', 1.15)
   const [open, setOpen] = useUiState('ext.voice-live.open', false)
   const [holdKeys, setHoldKeys] = useUiState('ext.voice-live.hold', 'mod+shift+space')
+  const [collect, setCollect] = useUiState('ext.voice-live.collect', false)
   const [phase, setPhase] = createSignal<Phase>('idle')
   const [status, setStatus] = createSignal('Hold to talk')
   const [local, setLocal] = createSignal<Record<string, Local>>({})
@@ -60,6 +69,8 @@ export const dock = createRoot(() => {
     setRate,
     holdKeys,
     setHoldKeys,
+    collect,
+    setCollect,
     open,
     setOpen,
     phase,
@@ -95,15 +106,21 @@ const waiting = new Map<
   string,
   { resolve: (text: string) => void; reject: (error: Error) => void }
 >()
-const forks = new Map<ConversationId, VoiceFork>()
+const forks = new Map<ConversationId, Readonly<VoiceFork>>()
+const [draft, setDraft] = createRoot(() => createSignal<VoiceClip[]>([]))
+export const draftOf = draft
 const settled = (audio: string) =>
   new Promise<string>((resolve, reject) => {
     waiting.set(audio, { resolve, reject })
     for (const fork of forks.values()) settleTranscripts(fork)
   })
 
-export function settleTranscripts(fork: VoiceFork | null | undefined, id?: ConversationId) {
+export function settleTranscripts(
+  fork: Readonly<VoiceFork> | null | undefined,
+  id?: ConversationId,
+) {
   if (fork && id !== undefined) forks.set(id, fork)
+  if (id !== undefined) setDraft(fork?.draft ?? [])
   for (const [audio, wait] of waiting) {
     const text = fork?.transcripts?.[audio]
     const failed = fork?.failed?.[audio]
@@ -206,14 +223,48 @@ export async function release() {
     }
     return
   }
+  if (dock.collect()) {
+    await collectClip(recorded)
+    return
+  }
   await sendTurn({ recorded, interrupted: !!held?.busy })
 }
+
+async function collectClip(recorded: Recorded) {
+  dock.setPhase('idle')
+  dock.setStatus('Collecting · say "send it" or press Enter')
+  try {
+    const audio = await base64(recorded.blob)
+    const { audio: kept } = await api.action(RecordAction, {
+      audio,
+      mimeType: recorded.blob.type,
+      collect: { seconds: recorded.seconds, envelope: recorded.envelope },
+    })
+    await settled(kept)
+    const intent = await api.action(IntentAction, { audio: kept })
+    if (intent.send) await sendDraft(intent.send)
+  } catch (failure) {
+    dock.setError(errorMessage(failure))
+  }
+}
+
+export async function sendDraft(delivery: VoiceDelivery = 'steer', typed = '') {
+  const clips = draftOf()
+  if (!clips.length && !typed.trim()) return
+  const interrupted =
+    playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
+  dock.player.pause()
+  await sendTurn({ clips, typed: typed.trim(), delivery, interrupted })
+}
+
+export const discardDraft = () => api.action(DiscardAction, null)
 
 export async function sendTyped(
   text: string,
   images: readonly { data: string; mimeType: string }[] = [],
 ) {
   const pasted: Pasted[] = images.map((image) => ({ kind: 'image' as const, ...image }))
+  if (draftOf().length && !pasted.length) return sendDraft('steer', text)
   if (!text.trim() && !pasted.length) return
   const interrupted =
     playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
@@ -235,6 +286,8 @@ async function sendTurn(input: {
   recorded?: Recorded
   typed?: string
   pasted?: Pasted[]
+  clips?: VoiceClip[]
+  delivery?: VoiceDelivery
   interrupted: boolean
 }) {
   const cut = input.interrupted ? markCut() : undefined
@@ -245,8 +298,11 @@ async function sendTurn(input: {
   }
   const attachments = input.pasted ?? []
   const key = crypto.randomUUID()
+  const clips = input.clips ?? []
+  const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
+  const envelope = input.recorded?.envelope ?? clips.flatMap((clip) => clip.envelope ?? [])
   const trace = createTrace(
-    input.recorded
+    input.recorded || clips.length
       ? ['mic', 'transcribe', 'send', 'model', 'thinking', 'voice']
       : ['send', 'model', 'thinking', 'voice'],
   )
@@ -256,9 +312,10 @@ async function sendTurn(input: {
       key,
       text: input.typed ?? '',
       route: 'text',
-      ...(input.recorded
-        ? { audio: 'pending', seconds: input.recorded.seconds, envelope: input.recorded.envelope }
+      ...(input.recorded || clips.length
+        ? { audio: clips[0]?.audio ?? 'pending', seconds, envelope }
         : {}),
+      ...(clips.length > 1 ? { clips: clips.map((clip) => clip.audio) } : {}),
       ...(hint ? { hint } : {}),
     },
     images: attachments.flatMap((item) =>
@@ -267,21 +324,26 @@ async function sendTurn(input: {
   })
   dock.setPending(key)
   dock.setPhase('sending')
-  dock.setStatus(input.recorded ? 'Sending your voice…' : 'Sending…')
+  dock.setStatus(input.recorded || clips.length ? 'Sending your voice…' : 'Sending…')
   if (input.interrupted) dock.cues.steer()
   else dock.cues.send()
-  if (input.recorded) trace.record('mic', input.recorded.seconds * 1000)
+  if (input.recorded || clips.length) trace.record('mic', seconds * 1000)
   try {
     const status = await api.action(StatusAction, null)
     trace.label('model', status.model.split('/')[0])
     const audio = input.recorded ? await base64(input.recorded.blob) : undefined
     const mimeType = input.recorded?.blob.type ?? ''
-    const kept = audio ? (await api.action(RecordAction, { audio, mimeType })).audio : undefined
+    const kept = audio
+      ? (await api.action(RecordAction, { audio, mimeType })).audio
+      : clips[0]?.audio
     if (kept) patchLocal(key, { audio: kept })
     let text = input.typed ?? ''
     if (kept && status.route === 'text') {
       trace.start('transcribe')
-      text = await settled(kept)
+      const heard = await Promise.all(
+        (clips.length ? clips.map((clip) => clip.audio) : [kept]).map(settled),
+      )
+      text = [heard.filter((part) => part.trim()).join(' '), text].filter(Boolean).join('\n\n')
       trace.done('transcribe')
       if (!text.trim() && !attachments.length) {
         heardNothing(key, trace)
@@ -298,9 +360,9 @@ async function sendTurn(input: {
       key,
       text,
       ...(kept ? { audio: kept } : {}),
-      ...(input.recorded
-        ? { seconds: input.recorded.seconds, envelope: input.recorded.envelope }
-        : {}),
+      ...(clips.length ? { clips: clips.map((clip) => clip.audio) } : {}),
+      ...(input.delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
+      ...(input.recorded || clips.length ? { seconds, envelope } : {}),
       ...(hint ? { hint } : {}),
       ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),
       images: attachments.flatMap((item) =>

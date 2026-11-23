@@ -25,9 +25,13 @@ export type VoiceTurn = {
   key: string
   text: string
   audio?: string
+  /** Every recording of a collected turn, in order; `audio` is the first. */
+  clips?: string[]
   seconds?: number
   envelope?: number[]
   route: VoiceRoute
+  /** `followUp` when the user asked for it; a steer otherwise. */
+  delivery?: VoiceDelivery
   hint?: string
   images?: number
 }
@@ -53,10 +57,18 @@ export type VoiceFork = {
   at?: EntryId
   transcripts?: Record<string, string>
   failed?: Record<string, string>
+  /** Recordings collected but not sent yet, in order, when the user sends on Enter or by saying so. */
+  draft?: VoiceClip[]
   handedOff?: true
   /** The conversation on the user's screen at the latest turn, the one a handoff `to` may name. */
   screen?: ConversationId
 }
+
+/** One collected recording: its id, length in seconds and loudness envelope. */
+export type VoiceClip = { audio: string; seconds: number; envelope?: number[] }
+
+/** How a turn reaches a busy model: `steer` interrupts the run, `followUp` waits until it ends. */
+export type VoiceDelivery = 'steer' | 'followUp'
 
 /** The open voice session on the root: the fork's id, the conversation and entry it forked from, and when. */
 export const VoiceSessionDoc = docRef<VoiceSession>('voice.session')
@@ -67,10 +79,10 @@ export const VoiceForkDoc = docRef<VoiceFork>('voice.fork')
  * `{ audio: base64, mimeType }` → `{ audio }`, the id of the recording kept for the session's next turn. Opens the
  * session and starts the recording's durable transcription, which lands in the fork's `transcripts` or `failed`.
  */
-export const RecordAction = actionRef<{ audio: string; mimeType: string }, { audio: string }>(
-  'voice-live',
-  'record',
-)
+export const RecordAction = actionRef<
+  { audio: string; mimeType: string; collect?: { seconds: number; envelope?: number[] } },
+  { audio: string }
+>('voice-live', 'record')
 
 /**
  * A turn: the transcript (or typed text), the recording it came from, images, and a hint about an interrupted reply.
@@ -82,6 +94,8 @@ export const TurnAction = actionRef<
     key: string
     text: string
     audio?: string
+    clips?: string[]
+    delivery?: VoiceDelivery
     seconds?: number
     envelope?: number[]
     hint?: string
@@ -132,3 +146,16 @@ export const UiAnswerAction = actionRef<{ id: string; result: JsonValue }, Recor
   'voice-live',
   'ui-answer',
 )
+
+/** Drop every collected recording that was not sent. */
+export const DiscardAction = actionRef<null, Record<string, never>>('voice-live', 'discard')
+
+/**
+ * `{ audio }`, a collected recording with its transcript in → whether it ends the message with a spoken send ("send it",
+ * "go", "follow up"): `send` with its delivery, `dropped` when the recording was only that command and left the draft;
+ * `unavailable` says why it cannot tell (no classifier key).
+ */
+export const IntentAction = actionRef<
+  { audio: string },
+  { send?: VoiceDelivery; dropped?: true; unavailable?: string }
+>('voice-live', 'intent')

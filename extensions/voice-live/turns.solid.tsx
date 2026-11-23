@@ -165,7 +165,11 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
   const said = () => {
     const recording = audio()
     if (!data().audio) return data().text
-    return (recording && props.fork?.transcripts?.[recording]) ?? (data().text || undefined)
+    const clips = data().clips ?? (recording ? [recording] : [])
+    const heard = clips.map((clip) => props.fork?.transcripts?.[clip])
+    if (clips.length && heard.every((text) => text !== undefined))
+      return heard.filter(Boolean).join(' ')
+    return data().text || undefined
   }
   const failed = () => {
     const recording = audio()
@@ -518,7 +522,20 @@ async function runUi(call: VoiceUiCall) {
 export function Voicing(props: { fork: ConversationId }) {
   const fork = useDocOf(() => props.fork, VoiceForkDoc)
   const ui = useDocOf(() => props.fork, VoiceUiDoc)
-  createEffect(fork, (doc) => settleTranscripts(doc, props.fork))
+  createEffect(
+    () => {
+      const doc = fork()
+      return doc
+        ? ({
+            ...doc,
+            transcripts: { ...doc.transcripts },
+            failed: { ...doc.failed },
+            draft: (doc.draft ?? []).map((clip) => ({ ...clip })),
+          } as VoiceFork)
+        : doc
+    },
+    (doc) => settleTranscripts(doc, props.fork),
+  )
   createEffect(
     () => (ui()?.calls ?? []).map((call) => ({ ...call })),
     (calls) => {

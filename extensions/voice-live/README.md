@@ -48,6 +48,17 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
    goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`); a
    conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
 
+## Collect until send
+
+A setting (Voice settings → Collect until send, UI state `ext.voice-live.collect`) keeps every recording instead of
+sending it. `record` with `collect` appends the clip to the fork's `voice.fork` `draft`, so the collection survives a
+reload, and each clip is transcribed as usual. After each clip, `intent` asks Jev (classify) whether the latest
+recording ends with a send command: "send it", "go" and similar send as a steer, "follow up" or "queue it" as a
+follow-up; a clip that is only the command leaves the draft. Enter in the prompt box, or the box's send and follow-up
+buttons, send it too; discard drops it. The collected clips go out as one turn (`clips`): a model that hears audio gets
+every recording, a text model their joined transcripts. The panel shows a Collecting box with the clips, their length
+and their transcripts so far; folded, the talk bar shows "N collected" and the phone button a count badge.
+
 ## Trace and cues
 
 Every turn has a stage trace under it: mic, transcribe (only when the model waits for it), send, model, thinking with

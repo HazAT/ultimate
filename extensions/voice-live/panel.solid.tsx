@@ -45,11 +45,14 @@ import type { ComposerTarget } from '@/sdk/solid'
 import { every, unlessRepeated } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
+  discardDraft,
   dock,
+  draftOf,
   endSession,
   KEYS,
   press,
   release,
+  sendDraft,
   sendTyped,
   setScreen,
   setVoiceOpen,
@@ -182,6 +185,12 @@ function TalkBar() {
         <Status class="shrink-0" />
         <Waveform class="h-5 min-w-0 flex-1 text-error" live />
       </Show>
+      <Show when={!recording() && draftOf().length}>
+        <span class="flex shrink-0 items-center gap-1 rounded-full bg-brand/15 px-1.5 font-mono text-[10.5px] text-brand">
+          <span class="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
+          {draftOf().length} collected
+        </span>
+      </Show>
       <Show when={!recording()}>
         <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-muted-foreground/70 pointer-coarse:hidden">
           hold <Kbd>{holdKeys()}</Kbd>
@@ -224,6 +233,11 @@ function TalkButton(props: { unfold: () => void }) {
       >
         <Show when={recording()}>
           <span class="absolute inset-0 animate-ping rounded-full border-2 border-error/40" />
+        </Show>
+        <Show when={draftOf().length && !recording()}>
+          <span class="absolute -top-1 -right-1 flex size-6 items-center justify-center rounded-full border-2 border-background bg-brand font-mono text-[11px] text-brand-foreground">
+            {draftOf().length}
+          </span>
         </Show>
         <Show when={working()}>
           <span class="absolute inset-1 animate-spin rounded-full border-2 border-transparent border-t-ring/70" />
@@ -283,6 +297,15 @@ function Settings(props: { model?: boolean }) {
             Talk anywhere
             <ShortcutRecorder />
           </div>
+          <label class="flex items-start justify-between gap-3">
+            <span class="flex flex-col gap-0.5">
+              Collect until send
+              <span class="text-[10.5px] leading-snug text-muted-foreground/70">
+                Keeps every recording; sends on Enter or when you say "send it" ("follow up" queues)
+              </span>
+            </span>
+            <Toggle aria-label="Collect until send" bind={[dock.collect, dock.setCollect]} />
+          </label>
         </div>
       </PopoverContent>
     </Popover>
@@ -399,6 +422,67 @@ function PlaybackStrip() {
   )
 }
 
+function Collected(props: { fork: ConversationId | undefined }) {
+  const fork = useDocOf(() => props.fork, VoiceForkDoc)
+  const clips = () => draftOf()
+  const seconds = () => clips().reduce((sum, clip) => sum + clip.seconds, 0)
+  const text = () =>
+    clips()
+      .map((clip) => fork()?.transcripts?.[clip.audio])
+      .filter((part) => part !== undefined)
+      .join(' ')
+  const pending = () => clips().some((clip) => fork()?.transcripts?.[clip.audio] === undefined)
+  return (
+    <Show when={clips().length}>
+      <div
+        class="flex flex-col gap-1.5 rounded-lg border border-brand/40 bg-brand/5 px-3 py-2"
+        data-voice-collected
+      >
+        <div class="flex items-center gap-2 font-mono text-[11px] text-brand">
+          <span class="size-1.5 shrink-0 rounded-full bg-brand motion-safe:animate-pulse" />
+          Collecting · {clips().length} {clips().length === 1 ? 'clip' : 'clips'} ·{' '}
+          {seconds().toFixed(1)} s
+          <span class="ml-auto flex items-center gap-1">
+            <Button
+              aria-label="Discard collected"
+              class="h-6 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-error/10 hover:text-error"
+              onClick={() => discardDraft()}
+              size={null}
+              variant={null}
+            >
+              discard
+            </Button>
+            <Button
+              aria-label="Send collected as follow-up"
+              class="h-6 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => sendDraft('followUp')}
+              size={null}
+              variant={null}
+            >
+              follow-up
+            </Button>
+            <Button
+              aria-label="Send collected"
+              class="h-6 rounded-md bg-brand px-2 font-mono text-[11px] font-normal text-brand-foreground hover:bg-brand/90"
+              onClick={() => sendDraft('steer')}
+              size={null}
+              variant={null}
+            >
+              send ↵
+            </Button>
+          </span>
+        </div>
+        <p class="text-[13px] leading-relaxed text-foreground/90">
+          {text()}
+          <Show when={pending()}>
+            <Shimmer class="ml-1 font-mono text-[11px]">transcribing…</Shimmer>
+          </Show>
+        </p>
+      </div>
+    </Show>
+  )
+}
+
 function Bottom(props: { fork: ConversationId | undefined }) {
   const target = (): ComposerTarget => ({
     placeholder: `Type, paste a screenshot, or hold ${holdKeys()} to talk…`,
@@ -409,6 +493,7 @@ function Bottom(props: { fork: ConversationId | undefined }) {
     <footer class="flex shrink-0 flex-col gap-1.5 pt-1" data-voice-bottom>
       <div class="flex flex-col gap-1.5 px-4">
         <PlaybackStrip />
+        <Collected fork={props.fork} />
         <TalkBar />
       </div>
       <Show when={props.fork} fallback={<div class="pb-3" />}>
