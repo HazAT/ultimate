@@ -62,15 +62,13 @@ const script = (id: number, callId: string, asks: number, failed = false, helper
   result(BRANCH, id + 1, callId, 'codemode', [{ type: 'text', text: 'done' }], {
     isError: failed,
     details: {
-      calls: [
-        ...(helper ? [{ name: 'ultimate.entries', args: [1], status: 'ok', ms: 1 }] : []),
-        ...Array.from({ length: asks }, (_, n) => ({
-          name: 'message',
-          args: { to: 'user', text: `Q${n + 1}` },
-          status: 'ok',
-          ms: 1,
-        })),
-      ],
+      calls: Array.from({ length: asks }, (_, n) => ({
+        id: n + 1 + (helper ? 1 : 0),
+        name: 'message',
+        args: JSON.stringify({ to: 'user', text: `Q${n + 1}` }),
+        status: 'ok',
+        durationMs: 1,
+      })),
     },
   }),
   call(BRANCH, id, callId, 'codemode', { code: '…' }),
@@ -205,23 +203,23 @@ it('a question asked from a script starts after the one before it', async () => 
     ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
     ...script(20, 'older', 1),
   ]
-  const { ctx } = fixture(branch, [question(3, 'run/1'), question(4, 'run/2')])
+  const { ctx } = fixture(branch, [question(3, 'run/c1'), question(4, 'run/c2')])
   const first = await actions.frames({ conversation: BRANCH, message: 3 }, ctx)
   const second = await actions.frames({ conversation: BRANCH, message: 4 }, ctx)
   expect(first.frames.map((frame) => frame.entry)).toEqual([41, 51])
   expect(second.frames).toEqual([])
 
-  const trimmed = fixture(branch, [question(4, 'run/2')]).ctx
+  const trimmed = fixture(branch, [question(4, 'run/c2')]).ctx
   expect((await actions.frames({ conversation: BRANCH, message: 4 }, trimmed)).frames).toEqual([])
 })
 
-it('an ultimate.* helper takes no nested call id, so a trimmed log keeps questions apart', async () => {
+it('a helper call takes a VM call id, so the nested ids keep questions apart', async () => {
   const branch = [
     ...script(60, 'run', 2, false, true),
     ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
     ...script(20, 'older', 1),
   ]
-  const { ctx } = fixture(branch, [question(4, 'run/2')])
+  const { ctx } = fixture(branch, [question(4, 'run/c3')])
   expect((await actions.frames({ conversation: BRANCH, message: 4 }, ctx)).frames).toEqual([])
 })
 

@@ -126,7 +126,15 @@ const asksTheUser = (args: Readonly<Record<string, unknown>> | undefined) =>
 const SENT = /^Message \d+ sent\.$/m
 
 type ToolResult = Extract<PiMessage, { role: 'toolResult' }>
-type NestedCall = { name?: string; args?: unknown; status?: string }
+type NestedCall = { id?: number; name?: string; args?: string; status?: string }
+
+const parsedArgs = (args: string | undefined) => {
+  try {
+    return JSON.parse(args ?? '') as unknown
+  } catch {
+    return undefined
+  }
+}
 
 function questionsOf(
   call: { id: string; name: string; arguments: Readonly<Record<string, unknown>> },
@@ -141,17 +149,18 @@ function questionsOf(
         result.content.some((block) => block.type === 'text' && SENT.test(block.text)))
       ? [call.id]
       : []
-  const nested = ((result?.details as { calls?: NestedCall[] } | undefined)?.calls ?? [])
-    .filter((item) => !item.name?.startsWith('ultimate.'))
-    .flatMap((item, index) =>
-      item.name === 'message' &&
-      item.status === 'ok' &&
-      asksTheUser(item.args as Readonly<Record<string, unknown>>)
-        ? [`${call.id}/${index + 1}`]
-        : [],
-    )
+  const nested = ((result?.details as { calls?: NestedCall[] } | undefined)?.calls ?? []).flatMap(
+    (item) => {
+      if (item.name !== 'message' || item.status !== 'ok' || item.id === undefined) return []
+      const args = parsedArgs(item.args)
+      return args && typeof args === 'object' && asksTheUser(args as Record<string, unknown>)
+        ? [`${call.id}/c${item.id}`]
+        : []
+    },
+  )
   const live = [...logged].filter((id) => id.startsWith(`${call.id}/`) && !nested.includes(id))
-  return [...nested, ...live].toSorted((a, b) => Number(a.split('/')[1]) - Number(b.split('/')[1]))
+  const position = (id: string) => Number(id.split('/')[1].replace(/^c/, ''))
+  return [...nested, ...live].toSorted((a, b) => position(a) - position(b))
 }
 
 async function windowOf(host: ExtensionHost, branch: ConversationId, message: number) {
