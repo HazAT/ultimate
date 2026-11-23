@@ -541,11 +541,11 @@ export const actions = {
           send: {
             type: 'choice',
             instructions:
-              'The user is dictating a message to an assistant in several recordings and sends it by voice. Does the latest recording end the message with a command to send it now?',
+              'The user is dictating a message to an assistant in several recordings and sends it by voice. Does the latest recording end the message by handing it over: a command to send it, or a turn to the assistant asking it to start working on what was said?',
             criteria: {
-              hold: 'No send command: it is more of the message, or a pause, or a question to itself.',
+              hold: 'Not handed over yet: more of the message, a pause, thinking aloud to themselves, or describing what they will ask later.',
               steer:
-                'It ends with a plain send command such as "send it", "go", "confirm", "let\'s go", "that\'s it, send", or "steer".',
+                'It ends by handing over now: a send command ("send it", "go", "confirm", "let\'s go", "that\'s it", "steer"), or a turn to the assistant to act on it ("let\'s brainstorm this", "let\'s think it through", "what do you think?", "can you look into that", "help me with this").',
               followUp:
                 'It ends with a command to send it as a follow-up ("send as follow-up", "follow up", "queue it").',
             },
@@ -553,7 +553,7 @@ export const actions = {
           only: {
             type: 'noul',
             instructions:
-              'Is the latest recording nothing but that send command, with no other content?',
+              'Is the latest recording nothing but a bare send command ("send it", "go", "follow up"), with no other content? A request to brainstorm or think something through is content, not a bare command.',
           },
         },
       },
@@ -561,7 +561,7 @@ export const actions = {
     )
     const send = answers.send
     if (send?.type !== 'choice' || send.choice === 'hold' || send.confidence < 0.6) return {}
-    const only = answers.only?.type === 'noul' && answers.only.noul > 0.6
+    const only = answers.only?.type === 'noul' && answers.only.noul > 0.5
     if (only)
       await host.harness().commit(async (tx) => {
         const draft = await tx.doc(Fork, id)

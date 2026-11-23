@@ -53,8 +53,9 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
 A setting (Voice settings → Collect until send, UI state `ext.voice-live.collect`) keeps every recording instead of
 sending it. `record` with `collect` appends the clip to the fork's `voice.fork` `draft`, so the collection survives a
 reload, and each clip is transcribed as usual. After each clip, `intent` asks Jev (classify) whether the latest
-recording ends with a send command: "send it", "go" and similar send as a steer, "follow up" or "queue it" as a
-follow-up; a clip that is only the command leaves the draft. Enter in the prompt box, or the box's send and follow-up
+recording hands the message over: a send command ("send it", "go") or a turn to voice to act on it ("let's
+brainstorm this", "let's think it through", "what do you think?") sends it as a steer, "follow up" or "queue it" as a
+follow-up; a clip that is only a bare send command leaves the draft, a request to act stays in the message. Enter in the prompt box, or the box's send and follow-up
 buttons, send it too; discard drops it. The collected clips go out as one turn (`clips`): a model that hears audio gets
 every recording, a text model their joined transcripts. The panel shows a Collecting box with the clips, their length
 and their transcripts so far; folded, the talk bar shows "N collected" and the phone button a count badge.
