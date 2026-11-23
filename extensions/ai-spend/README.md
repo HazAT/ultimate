@@ -2,27 +2,6 @@ A **Spend** tab in the top bar: what this project's model calls cost, by convers
 
 It only reads the store. Its one write is its own history file.
 
-## What it looks like
-
-The screenshots use synthetic data from `scripts/seed.ts`, 35 days of made-up conversations.
-
-The overview: what the range cost against the window before it, the week and month forecasts, cache hit and leaks,
-and spend per day.
-
-![Overview: summary cards and spend per day](screenshots/overview.png)
-
-The breakdown by tree, with a coordinator opened to show the workers and reviewers it started.
-
-![Breakdown by tree, one coordinator expanded](screenshots/breakdown.png)
-
-The cache: what it leaked and why, what pinging or a one-hour cache would save, and the priciest turns.
-
-![Cache leaks by cause, the two what-ifs, and the priciest turns](screenshots/cache.png)
-
-What each tool's results cost, estimated by splitting each response's real cost.
-
-![Tools: estimated cost per tool](screenshots/tools.png)
-
 ## What it shows
 
 Spend over a time range, grouped by any of: conversation, tree (the root a conversation descends from, by owner then
