@@ -134,7 +134,8 @@ function TalkBar() {
       class={cn(
         'relative flex h-9 w-full touch-none items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-3 font-normal text-muted-foreground transition-colors select-none hover:border-ring/50 hover:bg-muted/50',
         recording() && 'border-error/40 bg-error/5 hover:border-error/40 hover:bg-error/5',
-        dock.phase() === 'speaking' && 'border-brand/30',
+        dock.phase() === 'speaking' &&
+          'border-brand/40 motion-safe:animate-[voice-breathe_2.4s_ease-in-out_infinite]',
       )}
       size={null}
       title={holdTitle()}
@@ -152,6 +153,51 @@ function TalkBar() {
         </span>
       </Show>
     </Button>
+  )
+}
+
+const breathe = `@keyframes voice-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-brand) 0%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-brand) 22%, transparent); }
+}`
+
+function TalkButton(props: { unfold: () => void }) {
+  return (
+    <div class="flex items-center justify-end gap-2.5" data-voice-talk-button>
+      <Button
+        aria-label="Unfold voice"
+        class="h-auto max-w-[60vw] min-w-0 truncate rounded-full border border-border/70 bg-background/95 px-3 py-1.5 text-left font-mono text-[11.5px] font-normal shadow-lg shadow-black/30"
+        onClick={() => props.unfold()}
+        size={null}
+        variant={null}
+      >
+        <Status class="text-[11.5px]" />
+      </Button>
+      <Button
+        aria-label="Hold to talk"
+        class={cn(
+          'relative flex size-16 shrink-0 touch-none items-center justify-center rounded-full border border-border bg-card text-foreground shadow-xl shadow-black/40 transition-colors select-none',
+          recording() && 'border-error/60 bg-error/15 text-error',
+          working() && 'border-ring/60 text-muted-foreground',
+          dock.phase() === 'speaking' &&
+            'border-brand/60 text-brand motion-safe:animate-[voice-breathe_2.4s_ease-in-out_infinite]',
+          (dock.error() || dock.phase() === 'error') && 'border-error/60 text-error',
+        )}
+        size={null}
+        variant={null}
+        {...holdHandlers()}
+      >
+        <Show when={recording()}>
+          <span class="absolute inset-0 animate-ping rounded-full border-2 border-error/40" />
+        </Show>
+        <Show when={working()}>
+          <span class="absolute inset-1 animate-spin rounded-full border-2 border-transparent border-t-ring/70" />
+        </Show>
+        <Show when={dock.phase() === 'speaking'} fallback={<Mic class="size-6" />}>
+          <AudioLines class="size-6" />
+        </Show>
+      </Button>
+    </div>
   )
 }
 
@@ -451,7 +497,7 @@ export function VoicePanel() {
           'pointer-events-auto fixed z-40 flex flex-col overflow-hidden border border-border bg-background shadow-2xl shadow-black/40',
           phone()
             ? folded()
-              ? 'inset-x-2 bottom-2 rounded-xl'
+              ? 'pointer-events-none right-3 bottom-[calc(9rem+env(safe-area-inset-bottom))] left-3 overflow-visible border-0 bg-transparent shadow-none [&_button]:pointer-events-auto'
               : 'inset-x-0 top-11 bottom-0 rounded-t-2xl border-b-0'
             : folded()
               ? 'right-4 bottom-4 w-[min(26rem,46vw)] rounded-xl'
@@ -461,9 +507,11 @@ export function VoicePanel() {
         data-voice-panel
         style={style()}
       >
+        <style>{breathe}</style>
         <header
           class={cn(
             'flex h-10 shrink-0 touch-none items-center gap-2 border-b border-border/60 px-3 select-none',
+            phone() && folded() && 'hidden',
             !phone() && 'cursor-grab active:cursor-grabbing',
             folded() && 'border-b-0',
           )}
@@ -540,9 +588,16 @@ export function VoicePanel() {
         <Show
           when={!folded()}
           fallback={
-            <div class="px-2 pb-2">
-              <TalkBar />
-            </div>
+            <Show
+              when={phone()}
+              fallback={
+                <div class="px-2 pb-2">
+                  <TalkBar />
+                </div>
+              }
+            >
+              <TalkButton unfold={() => setFolded(false)} />
+            </Show>
           }
         >
           <Show
