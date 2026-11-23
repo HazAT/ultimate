@@ -275,7 +275,7 @@ function TranscriptView(props: {
           grouped(),
           (row) =>
             !('work' in row || 'aside' in row) &&
-            thread({ entry: row.entry, calls: shownCalls(row) }),
+            thread({ entry: row.entry, calls: shownCalls(row) }, history.entries()),
         )
       : grouped()
   })

@@ -42,7 +42,8 @@ export default defineWebExtension({
       (call, docs) => scriptMessaged(call, docs.board as MessagesData | null | undefined),
     ],
     docs: ['board', StandingDoc.kind],
-    thread: (row, docs) => threadRow(row, docs.board as MessagesData | null | undefined),
+    thread: (row, docs, entries) =>
+      threadRow(row, docs.board as MessagesData | null | undefined, entries),
     summary: StretchSummary,
   },
   answerLabels: [MessageAnswerLabel, JudgedAnswerLabel],

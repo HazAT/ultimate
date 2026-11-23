@@ -17,6 +17,32 @@ export function answeredMessages(messages: Message[], conversation: Conversation
   return messages.filter((message) => message.to === conversation && message.answer === entry)
 }
 
+const finalAnswer = (entry: EntryRecord) => {
+  const message = entry.model?.[0]
+  return (
+    entry.kind === 'pi.assistant' &&
+    message?.role === 'assistant' &&
+    ['stop', 'length'].includes(message.stopReason)
+  )
+}
+
+const runHasNoTypedInput = (transcript: readonly EntryRecord[], entry: EntryRecord) => {
+  const own = transcript.filter(
+    (other) => other.conversationId === entry.conversationId && other.id < entry.id,
+  )
+  const boundary = own.findLastIndex(finalAnswer)
+  return boundary >= 0 && !own.slice(boundary + 1).some((other) => other.kind === 'pi.user')
+}
+
+export function foldsAsReply(
+  answered: readonly Message[],
+  transcript: readonly EntryRecord[],
+  entry: EntryRecord,
+) {
+  if (!answered.length || answered.some((m) => !m.reply || m.from === 'user')) return false
+  return runHasNoTypedInput(transcript, entry)
+}
+
 export const emptyMessages: MessagesData = { messages: [], next: 1 }
 
 export const waitingOnUser = (log: MessagesData) => log.messages.filter(openQuestion).length
@@ -161,6 +187,7 @@ export function backgroundRow(
     calls,
   }: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData> | null | undefined,
+  transcript: readonly EntryRecord[],
 ): boolean | 'hidden' {
   if (hiddenUncountedCompactKinds.has(entry.kind)) return 'hidden'
   if (landed(entry)) return false
@@ -179,9 +206,9 @@ export function backgroundRow(
           (call.arguments as { to?: unknown } | undefined)?.to !== 'user'),
     )
   if (message.stopReason !== 'stop') return false
-  if (routedTo(log?.messages ?? [], entry).length) return true
+  if (routedTo(log?.messages ?? [], entry).length) return runHasNoTypedInput(transcript, entry)
   const answered = answeredMessages(log?.messages ?? [], entry.conversationId, entry.id)
-  return answered.length > 0 && answered.every((m) => m.reply && m.from !== 'user')
+  return foldsAsReply(answered, transcript, entry)
 }
 
 const routedTo = (messages: readonly Message[], entry: EntryRecord) =>
@@ -190,6 +217,7 @@ const routedTo = (messages: readonly Message[], entry: EntryRecord) =>
 export function threadRow(
   row: { entry: EntryRecord; calls: readonly { id: string; name: string; arguments: unknown }[] },
   log: Readonly<MessagesData> | null | undefined,
+  transcript: readonly EntryRecord[],
 ): boolean | 'hidden' {
   const { entry, calls } = row
   if (hiddenUncountedCompactKinds.has(entry.kind) || entry.kind === 'pi.system') return 'hidden'
@@ -200,7 +228,7 @@ export function threadRow(
     const data: { from?: unknown } | undefined = entry.data
     return data?.from === 'user'
   }
-  if (entry.kind !== 'pi.assistant' || backgroundRow(row, log) !== false) return false
+  if (entry.kind !== 'pi.assistant' || backgroundRow(row, log, transcript) !== false) return false
   if (calls.length)
     return calls.some(
       (call) =>

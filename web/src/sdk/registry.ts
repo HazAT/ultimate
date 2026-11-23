@@ -1,3 +1,4 @@
+import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { Component } from 'solid-js'
 import { deadline } from '../../../lib/timers.ts'
 import type { Cancel } from '../../../lib/timers.ts'
@@ -538,7 +539,11 @@ export function compactTools(
 ):
   | {
       keeps: CompactCallTest
-      thread?: (row: CompactRow, docs: CompactDocs) => boolean | 'hidden'
+      thread?: (
+        row: CompactRow,
+        docs: CompactDocs,
+        entries: readonly EntryRecord[],
+      ) => boolean | 'hidden'
       summary?: {
         extension: string
         version: number
@@ -594,11 +599,11 @@ export function compactTools(
         }
       }),
     thread: matching.some(({ compact }) => compact.thread)
-      ? (row, docs) => {
+      ? (row, docs, entries) => {
           if (rowRequiresAttentionAndCannotFold(row)) return true
           const verdicts = matching.map(({ name, compact }) => {
             try {
-              return compact.thread?.(row, docs) ?? false
+              return compact.thread?.(row, docs, entries) ?? false
             } catch (error) {
               report(name, error)
 

@@ -459,13 +459,13 @@ describe('web extension registry', () => {
       vi.fn(),
     )!
     const setup = { type: 'toolCall' as const, id: 's', name: 'setup', arguments: {} }
-    expect(thread!(row('dream.prepared'), {})).toBe(true)
-    expect(thread!(row('other'), {})).toBe(false)
+    expect(thread!(row('dream.prepared'), {}, [])).toBe(true)
+    expect(thread!(row('other'), {}, [])).toBe(false)
     expect(summary).toMatchObject({ extension: 'a', component: Summary })
     expect(keeps(setup, {})).toBe(true)
-    expect(thread!({ entry: { kind: 'pi.assistant' } as EntryRecord, calls: [setup] }, {})).toBe(
-      true,
-    )
+    expect(
+      thread!({ entry: { kind: 'pi.assistant' } as EntryRecord, calls: [setup] }, {}, []),
+    ).toBe(true)
   })
 
   it('keeps a call its test keeps from the root documents, and counts a throwing test as no', async () => {

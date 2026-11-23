@@ -5,7 +5,7 @@ import { callerOf } from '../../caller.ts'
 import {
   answerTo,
   answeredMessages,
-  backgroundRow,
+  backgroundRow as backgroundRowIn,
   conversationState,
   conversationWait,
   waitLabel,
@@ -20,7 +20,7 @@ import {
   scriptMessaged,
   sentBy,
   sentStatus,
-  threadRow,
+  threadRow as threadRowIn,
   ultimateCompact,
   waitingOnUser,
 } from '../../data.ts'
@@ -241,6 +241,20 @@ const row = (kind: string, data?: object, model?: object, calls: object[] = []) 
   calls: calls as { id: string; name: string; arguments: unknown }[],
 })
 const said = (stopReason: string) => ({ role: 'assistant', stopReason, content: [] })
+const earlierRun = [
+  {
+    id: 10,
+    conversationId: 7,
+    kind: 'pi.assistant',
+    model: [said('stop')],
+  } as unknown as EntryRecord,
+]
+const backgroundRow = (
+  ...args: [Parameters<typeof backgroundRowIn>[0], Parameters<typeof backgroundRowIn>[1]]
+) => backgroundRowIn(...args, earlierRun)
+const threadRow = (
+  ...args: [Parameters<typeof threadRowIn>[0], Parameters<typeof threadRowIn>[1]]
+) => threadRowIn(...args, earlierRun)
 
 it.each([row('lineage.note').entry, row('workspaces.lander-report', { id: 'submission' }).entry])(
   'does not mark $kind without landing data as landed',

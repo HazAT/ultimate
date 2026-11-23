@@ -19,7 +19,7 @@ export function StretchSummary(props: CompactSummaryProps) {
   const rows = createMemo(() => {
     const log = board() ?? emptyMessages
     return props.rows
-      .map((row) => ({ row, background: backgroundRow(row, log) }))
+      .map((row) => ({ row, background: backgroundRow(row, log, transcript()) }))
       .filter(({ row, background }) => background !== 'hidden' && row.entry.kind !== 'pi.system')
   })
   const shas = createMemo(() => [

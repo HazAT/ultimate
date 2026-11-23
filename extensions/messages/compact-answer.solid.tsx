@@ -7,10 +7,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { ROOT, useCompact, useConversationId, useDocOf } from '@/sdk/solid'
+import { ROOT, useCompact, useConversationId, useDocOf, useTranscript } from '@/sdk/solid'
 import { Bubble } from './bubble.solid.tsx'
 import { Answers } from './card-parts.solid.tsx'
-import { answeredMessages, sentBy } from './data.ts'
+import { answeredMessages, foldsAsReply, sentBy } from './data.ts'
 import { MessagesDoc } from './refs.ts'
 import { Address } from './ui.solid.tsx'
 
@@ -100,8 +100,8 @@ function ReplyFold(props: AnswerProps & { text: string; at: number }) {
   const answered = createMemo(() =>
     answeredMessages(log()?.messages ?? [], props.entry.conversationId, props.entry.id),
   )
-  const agentReply = () =>
-    answered().length > 0 && answered().every((m) => m.reply && m.from !== 'user')
+  const transcript = useTranscript()
+  const agentReply = () => foldsAsReply(answered(), transcript(), props.entry)
   return (
     <Show
       when={agentReply()}

@@ -1,4 +1,4 @@
-import type { EntryRecord, EntryId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryRecord, EntryId, JsonObject } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
 import {
   anchorSelector,
@@ -13,6 +13,8 @@ import {
 } from '../../web/src/app/compact.ts'
 import type { CompactPart, WorkRun } from '../../web/src/app/compact.ts'
 import { threadRow } from '../../extensions/messages/data.ts'
+import type { MessagesData } from '../../extensions/messages/refs.ts'
+import { compactTools } from '../../web/src/sdk/registry.ts'
 
 vi.mock('../../extensions/lineage/ui.tsx', async () => import('../../extensions/lineage/refs.ts'))
 vi.mock(
@@ -243,7 +245,7 @@ describe('folded groups', () => {
       entry('board.answered'),
       user('next'),
     ].map((value) => ({ entry: value }))
-    const thread = (row: CompactPart) => threadRow({ entry: row.entry, calls: [] }, undefined)
+    const thread = (row: CompactPart) => threadRow({ entry: row.entry, calls: [] }, undefined, [])
     expect(groupBetween(rows, thread).some((row) => 'between' in row)).toBe(false)
     // Nor of a system prompt change alone, which a stretch's line does not count either.
     const prompt = [rows[2], { entry: system() }, { entry: assistant('stop', text('pong')) }]
@@ -251,5 +253,60 @@ describe('folded groups', () => {
     // With a row that shows, the stretch folds with the hidden one inside it.
     const shown = [rows[0], rows[1], { entry: entry('lineage.note') }, rows[2]]
     expect(groupBetween(shown, thread).filter((row) => 'between' in row)).toHaveLength(1)
+  })
+})
+
+describe('an answer to typed input in a run that also answered an agent', () => {
+  const folded = (typed: boolean, routed = false, bounded = true) => {
+    nextId = 1
+    const earlier = assistant('stop', text('Done.'))
+    const entries = [
+      ...(bounded ? [earlier] : []),
+      ...(typed ? [user('and the docs?')] : []),
+      assistant('stop', text('Fine.')),
+    ]
+    const board: JsonObject = {
+      messages: [
+        { id: 1, from: 5, to: 1, reply: true, answer: entries.at(-1)!.id },
+        ...(routed ? [{ id: 2, from: 1, to: 6, routed: entries.at(-1)!.id }] : []),
+      ],
+      next: 2,
+    }
+    const registered = compactTools(
+      [
+        {
+          name: 'messages',
+          loading: false,
+          version: 1,
+          extension: {
+            compact: {
+              when: () => true,
+              thread: (row, docs, loaded) => threadRow(row, docs.board as MessagesData, loaded),
+            },
+          },
+        },
+      ],
+      { id: 1 as ConversationId, busy: false },
+      { board },
+      vi.fn(),
+    )!
+    return groupBetween(
+      entries.map((value) => ({ entry: value })),
+      (row) => registered.thread!({ entry: row.entry, calls: [] }, { board }, entries),
+    )
+  }
+
+  it('shows the answer outside the updates group', () => {
+    expect(folded(true).some((row) => 'between' in row)).toBe(false)
+  })
+
+  it('shows the answer even when it was also routed to a branch', () => {
+    expect(folded(true, true).some((row) => 'between' in row)).toBe(false)
+    expect(folded(false, true).some((row) => 'between' in row)).toBe(true)
+    expect(folded(false, true, false).some((row) => 'between' in row)).toBe(false)
+  })
+
+  it('still folds an answer that only settled an agent reply', () => {
+    expect(folded(false).some((row) => 'between' in row)).toBe(true)
   })
 })

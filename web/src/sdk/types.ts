@@ -231,7 +231,11 @@ export interface CompactContribution {
    * them recedes into one faded stretch. A row is a stored entry with the visible calls it shows; `hidden` marks one that
    * renders nothing, so a stretch of only those shows no line.
    */
-  thread?: (row: CompactRow, docs: CompactDocs) => boolean | 'hidden'
+  thread?: (
+    row: CompactRow,
+    docs: CompactDocs,
+    entries: readonly EntryRecord[],
+  ) => boolean | 'hidden'
   /** The line a receded stretch shows; the first matching facet's wins, an update count otherwise. */
   summary?: Component<CompactSummaryProps>
 }

@@ -643,7 +643,9 @@ export function useCompact() {
     const thread = compact.thread
     return {
       keeps: (call: ToolCall) => compact.keeps(call, rootDocs),
-      thread: thread && ((row: CompactRow) => thread(row, rootDocs)),
+      thread:
+        thread &&
+        ((row: CompactRow, entries: readonly EntryRecord[]) => thread(row, rootDocs, entries)),
       summary: compact.summary,
     }
   })
