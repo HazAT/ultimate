@@ -92,6 +92,7 @@ export {
 } from './hooks.ts'
 export {
   cn,
+  chordOf,
   column,
   elidePath,
   errorMessage,

@@ -24,6 +24,7 @@ import { Slider } from '@/components/ui/slider.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
   api,
+  chordOf,
   cn,
   Composer,
   ComposerRedirect,
@@ -65,7 +66,10 @@ const iconButton =
 const rowButton =
   'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
 const keys = () => formatKeys(KEYS)[0].join('+')
-const holdKeys = () => formatKeys('mod+shift+space')[0].join('+')
+const holdKeys = () => formatKeys(dock.holdKeys())[0].join('+')
+const parseHold = () => dock.holdKeys().trim().toLowerCase()
+const keyChord = (event: KeyboardEvent) =>
+  event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
 
 const recording = () => dock.phase() === 'recording'
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
@@ -142,9 +146,13 @@ function TalkBar() {
         <Status class="shrink-0" />
         <Waveform class="h-5 min-w-0 flex-1 text-error" live />
       </Show>
-      <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground/70 pointer-coarse:hidden">
-        hold <Kbd>Space</Kbd> or <Kbd>{holdKeys()}</Kbd>
-      </span>
+      <Show when={!recording()}>
+        <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-muted-foreground/70 pointer-coarse:hidden">
+          <Kbd>Space</Kbd>
+          <span class="text-muted-foreground/40">/</span>
+          <Kbd>{holdKeys()}</Kbd>
+        </span>
+      </Show>
     </Button>
   )
 }
@@ -192,9 +200,48 @@ function Settings(props: { model?: boolean }) {
               </span>
             </span>
           </label>
+          <div class="flex items-center justify-between gap-3">
+            Talk anywhere
+            <ShortcutRecorder />
+          </div>
         </div>
       </PopoverContent>
     </Popover>
+  )
+}
+
+function ShortcutRecorder() {
+  const [listening, setListening] = createSignal(false)
+  const record = (event: KeyboardEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.key === 'Escape') {
+      setListening(false)
+      return
+    }
+    const chord = keyChord(event)
+    const hasKey = !['mod', 'ctrl', 'alt', 'shift'].includes(chord.split('+').at(-1)!)
+    const hasModifier = chord.includes('+')
+    if (!hasKey || !hasModifier) return
+    dock.setHoldKeys(chord)
+    setListening(false)
+  }
+  return (
+    <Button
+      aria-label="Talk anywhere shortcut"
+      class={cn(
+        'flex h-6 items-center gap-1 rounded-md border border-border/70 px-1.5 font-mono text-[11px] font-normal text-foreground/85 hover:bg-accent',
+        listening() && 'border-brand/60 text-brand',
+      )}
+      onBlur={() => setListening(false)}
+      onClick={() => setListening(true)}
+      onKeyDown={(event: KeyboardEvent) => listening() && record(event)}
+      size={null}
+      title="Click, then press a key with a modifier (Ctrl, Alt, Shift); Esc cancels"
+      variant={null}
+    >
+      {listening() ? 'press keys…' : holdKeys()}
+    </Button>
   )
 }
 
@@ -326,29 +373,34 @@ export function VoicePanel() {
     },
   )
   onSettled(() => {
+    let holding: string | undefined
     const down = (event: KeyboardEvent) => {
-      if (event.code !== 'Space' || event.repeat) return
-      const editable = (event.target as HTMLElement | null)?.closest(
-        'input, textarea, select, [contenteditable="true"]',
-      )
-      const chord = (event.metaKey || event.ctrlKey) && event.shiftKey
-      if (chord || (!editable && voiceOpen())) {
-        event.preventDefault()
-        if (!voiceOpen()) setVoiceOpen(true)
-        void press()
-      }
+      if (event.repeat) return
+      const editable =
+        event.target instanceof Element &&
+        event.target.closest('input, textarea, select, [contenteditable="true"]')
+      const chord = keyChord(event)
+      const space = chord === 'space' && !editable && voiceOpen()
+      if (!space && chord !== parseHold()) return
+      event.preventDefault()
+      event.stopPropagation()
+      holding = event.code
+      if (!voiceOpen()) setVoiceOpen(true)
+      void press()
     }
     const up = (event: KeyboardEvent) => {
-      if (event.code === 'Space' && dock.mic.recording()) {
-        event.preventDefault()
-        void release()
-      }
+      if (holding === undefined || !dock.mic.recording()) return
+      const modifier = ['Meta', 'Control', 'Shift', 'Alt'].includes(event.key)
+      if (event.code !== holding && !modifier) return
+      event.preventDefault()
+      holding = undefined
+      void release()
     }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
+    window.addEventListener('keydown', down, { capture: true })
+    window.addEventListener('keyup', up, { capture: true })
     return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
+      window.removeEventListener('keydown', down, { capture: true })
+      window.removeEventListener('keyup', up, { capture: true })
     }
   })
   const phone = () => viewport() === 'phone'
@@ -381,10 +433,10 @@ export function VoicePanel() {
   const style = () => {
     const at = place()
     if (phone() || !at) return undefined
-    const height = folded() ? '3rem' : 'min(44rem, 100vh - 5rem)'
+    const height = folded() ? '6rem' : 'min(44rem, 100vh - 5rem)'
     return {
       right: `min(${at.right}px, 100vw - min(36rem, 46vw) - 0.5rem)`,
-      bottom: `min(${at.bottom}px, 100vh - ${height} - 0.5rem)`,
+      bottom: `min(${at.bottom}px, 100vh - ${height} - 3rem)`,
     }
   }
   return (
@@ -417,7 +469,7 @@ export function VoicePanel() {
         >
           <AudioLines class="size-3.5 shrink-0 text-brand" />
           <span class="text-[13px] font-semibold">Voice</span>
-          <Show when={!folded()} fallback={<Status class="min-w-0 flex-1" />}>
+          <Show when={!folded()}>
             <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
               {id()
                 ? `hot · fork of @ultimate${fork()?.of ? ` #${fork()!.of}` : ''} · #${id()}`
@@ -425,8 +477,8 @@ export function VoicePanel() {
             </span>
           </Show>
           <span class="ml-auto flex shrink-0 items-center gap-1">
+            <Settings model />
             <Show when={!folded()}>
-              <Settings model />
               <Show when={id()}>
                 <Button
                   aria-label="Open the voice conversation"
@@ -477,7 +529,7 @@ export function VoicePanel() {
         <Show
           when={!folded()}
           fallback={
-            <div class="px-3 pb-3">
+            <div class="px-2 pb-2">
               <TalkBar />
             </div>
           }

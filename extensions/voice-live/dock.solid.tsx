@@ -47,6 +47,7 @@ export const dock = createRoot(() => {
   const [cuesOn, setCuesOn] = useUiState('ext.voice-live.cues', true)
   const [rate, setRate] = useUiState('ext.voice-live.rate', 1.15)
   const [open, setOpen] = useUiState('ext.voice-live.open', false)
+  const [holdKeys, setHoldKeys] = useUiState('ext.voice-live.hold', 'mod+shift+space')
   const [phase, setPhase] = createSignal<Phase>('idle')
   const [status, setStatus] = createSignal('Hold to talk')
   const [local, setLocal] = createSignal<Record<string, Local>>({})
@@ -65,6 +66,8 @@ export const dock = createRoot(() => {
     setCuesOn,
     rate,
     setRate,
+    holdKeys,
+    setHoldKeys,
     open,
     setOpen,
     phase,

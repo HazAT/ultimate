@@ -78,7 +78,7 @@ export {
   prettyName,
   shortenPath,
 } from './format.ts'
-export { formatKeys, isMac } from './keys.ts'
+export { chordOf, formatKeys, isMac } from './keys.ts'
 /** Whether the device types on a touch keyboard, which focusing an input would slide up over the page. */
 export { touchKeyboard } from './viewport.ts'
 /** The installed link, inline-code and code-block renderers of Markdown, in discovery order (`useExtensions()` records). */
