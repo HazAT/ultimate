@@ -1545,16 +1545,15 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   expect(f.observed).toContainEqual(
     expect.stringContaining(`Message from user:\nAnswer to message ${question.id}:\n${text}`),
   )
-  // The user read the branch's answer where they gave theirs, so its starter gets it only as a note.
-  const toStarter = (await b.from()).find((m) => m.to === 1 && m.text.includes('A: Yes'))!
-  expect(toStarter.report).toBeUndefined()
-  const note = (await entries('board.message')).find(
-    (e) => (e.data as { id?: number }).id === toStarter.id,
+  // A card answer is a decision @ultimate acts on (a dream branch stalled when it arrived as a note).
+  const toStarter = (await b.from()).filter((m) => m.to === 1 && m.text.includes('A: Yes'))
+  expect(toStarter).toEqual([expect.objectContaining({ report: true })])
+  await until(
+    async () =>
+      (await entries('pi.assistant')).length > generations &&
+      (await f.opened.harness.snapshot(LiveDoc, ROOT_CONVERSATION_ID, context))?.run === undefined,
   )
-  expect([note?.data, note?.input]).toEqual([
-    expect.objectContaining({ delivery: 'note' }),
-    undefined,
-  ])
+  expect(f.observed).toContainEqual(expect.stringContaining('A: Yes'))
   expect(await entries('board.asked')).toHaveLength(1)
   expect(await entries('board.answered')).toHaveLength(1)
 })
