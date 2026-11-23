@@ -287,12 +287,11 @@ export function openMessages(
     id: number
     starter?: number
     working?: boolean
-    concluded?: boolean
   }[] = [],
   automations?: WaitFacts['automations'],
 ) {
   const owedBranches = branches.filter((branch) => {
-    if (branch.concluded || branch.starter !== id) return false
+    if (branch.starter !== id) return false
     const wait = waitsOn(branch.id, { ...branch, messages, automations })
     return wait?.on === 'agent' && wait.to === id
   })

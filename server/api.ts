@@ -111,6 +111,7 @@ type StreamUniqueSubscriptionId = number
 interface Connection {
   send: ReturnType<typeof eventStream>['send']
   subscriptions: Map<StreamUniqueSubscriptionId, () => Promise<void>>
+  queue: Promise<void>
   ended: boolean
 }
 function reply(response: ServerResponse, status: number, data: unknown) {
@@ -212,14 +213,15 @@ async function runAction(
     publish({ result: result ?? null })
     reply(response, 200, { result, rev })
   } catch (error) {
-    const clientLeft = controller.signal.aborted || (error as Error)?.name === 'AbortError'
-    if (!clientLeft) console.error(`Extension action ${name}/${key}:`, error)
+    const clientLeft = controller.signal.aborted
+    const aborted = clientLeft || (error as Error)?.name === 'AbortError'
+    if (!aborted) console.error(`Extension action ${name}/${key}:`, error)
     const userFacingActionError = (error instanceof Error ? error.message : String(error)).slice(
       0,
       500,
     )
     if (!clientLeft) publish({ error: userFacingActionError, status: 500 })
-    reply(response, 500, { error: userFacingActionError, rev: clientLeft ? undefined : rev })
+    reply(response, 500, { error: userFacingActionError, rev })
   } finally {
     response.off('close', cancel)
   }
@@ -379,6 +381,7 @@ export async function createApi(
     const connection: Connection = {
       send: sse.send,
       subscriptions: new Map(),
+      queue: Promise.resolve(),
       ended: false,
     }
     connections.set(id, connection)
@@ -400,6 +403,7 @@ export async function createApi(
       events.listeners.delete(send)
       streams.delete(stop)
       await ui!.stop()
+      await connection.queue
       await Promise.all([...connection.subscriptions.values()].map((close) => close()))
       sse.end()
     }
@@ -554,43 +558,51 @@ export async function createApi(
               return spec as Record<string, unknown> & { sub: number }
             })
             .filter(({ sub }) => !closing.has(sub))
-          const refused: Record<number, number> = {}
-          const keepsSharedReadsRunning = specs.filter((spec) => spec.read !== undefined)
-          for (const spec of keepsSharedReadsRunning)
-            try {
-              subscribeRead(
-                connection,
-                spec.sub,
-                readSpec(spec.read),
-                readInterval(spec.every),
-                browserRequest(request),
-              )
-            } catch (error) {
-              refused[spec.sub] = error instanceof HttpError ? error.status : 500
+          const run = connection.queue.then(async () => {
+            if (connection.ended) throw new HttpError(410, 'Event stream ended')
+            const refused: Record<number, number> = {}
+            const keepsSharedReadsRunning = specs.filter((spec) => spec.read !== undefined)
+            for (const spec of keepsSharedReadsRunning)
+              try {
+                subscribeRead(
+                  connection,
+                  spec.sub,
+                  readSpec(spec.read),
+                  readInterval(spec.every),
+                  browserRequest(request),
+                )
+              } catch (error) {
+                refused[spec.sub] = error instanceof HttpError ? error.status : 500
+              }
+            for (const sub of closing) {
+              const close = connection.subscriptions.get(sub)
+              connection.subscriptions.delete(sub)
+              if (close) await close()
             }
-          for (const sub of closing) {
-            const close = connection.subscriptions.get(sub)
-            connection.subscriptions.delete(sub)
-            if (close) await close()
-          }
-          await Promise.all(
-            specs
-              .filter((spec) => spec.read === undefined)
-              .map(async (spec) => {
-                try {
-                  const docs = spec.docs ?? []
-                  if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
-                    throw new HttpError(400, 'Invalid document kinds')
-                  const conversation = conversationParam(spec.conversation)
-                  await subscribe(connection, spec.sub, conversation, docs, spec.view !== false)
-                } catch (error) {
-                  if (!(error instanceof HttpError))
-                    console.error(`Subscribing to ${JSON.stringify(spec)} failed:`, error)
-                  refused[spec.sub] = error instanceof HttpError ? error.status : 500
-                }
-              }),
+            await Promise.all(
+              specs
+                .filter((spec) => spec.read === undefined)
+                .map(async (spec) => {
+                  try {
+                    const docs = spec.docs ?? []
+                    if (!Array.isArray(docs) || !docs.every((kind) => typeof kind === 'string'))
+                      throw new HttpError(400, 'Invalid document kinds')
+                    const conversation = conversationParam(spec.conversation)
+                    await subscribe(connection, spec.sub, conversation, docs, spec.view !== false)
+                  } catch (error) {
+                    if (!(error instanceof HttpError))
+                      console.error(`Subscribing to ${JSON.stringify(spec)} failed:`, error)
+                    refused[spec.sub] = error instanceof HttpError ? error.status : 500
+                  }
+                }),
+            )
+            return refused
+          })
+          connection.queue = run.then(
+            () => undefined,
+            () => undefined,
           )
-          json(200, { ok: true, refused } satisfies SubscriptionsAnswer)
+          json(200, { ok: true, refused: await run } satisfies SubscriptionsAnswer)
           return true
         }
         const history = /^\/api\/conversations\/(\d+)\/history$/.exec(url.pathname)

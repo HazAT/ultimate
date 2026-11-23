@@ -1,9 +1,9 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { actionRef } from '../../../shared/extension-api.ts'
-import type { ReadEvent, ReadSpec } from '../../../shared/protocol.ts'
-import { ActionError, actionMessage } from './api.ts'
-import type { Api } from './api.ts'
+import type { ReadPayload, ReadSpec } from '../../../shared/protocol.ts'
+import { ActionError, actionMessage, readActionOf } from './api.ts'
+import type { Api, ReadAction } from './api.ts'
 import type { Store } from './store.ts'
 
 export interface Reader {
@@ -33,7 +33,8 @@ export interface Read {
 
 const MAX_RETAINED_IDLE_READS = 50
 
-export function createReads(api: Pick<Api, 'readAction'>, store: Store) {
+export function createReads(api: Api | ReadAction, store: Store) {
+  const readAction = typeof api === 'function' ? api : readActionOf(api)
   const reads = new Map<
     string,
     Read & { readers: Set<Reader>; answered: () => boolean; resetRev: () => void }
@@ -47,10 +48,8 @@ export function createReads(api: Pick<Api, 'readAction'>, store: Store) {
   store.subscribe(() => {
     const status = store.getState().connection.status
     if (status === connection) return
-    if (connection === 'open') {
-      connectionGeneration++
-      for (const read of reads.values()) read.resetRev()
-    }
+    connectionGeneration++
+    for (const read of reads.values()) read.resetRev()
     connection = status
     for (const listener of changed) listener()
   })
@@ -97,7 +96,7 @@ export function createReads(api: Pick<Api, 'readAction'>, store: Store) {
       for (const listener of listeners) listener()
       for (const listener of changed) listener()
     }
-    function answer(event: ReadEvent, onError = errorHandler()) {
+    function answer(event: ReadPayload & { rev?: number }) {
       if (event.rev !== undefined && lastRev !== undefined && event.rev < lastRev) {
         if (state.loading !== fetching) set({ loading: fetching })
         return
@@ -120,6 +119,7 @@ export function createReads(api: Pick<Api, 'readAction'>, store: Store) {
       }
       const failure = new ActionError(extension, name, event.status, event.error, event.rev)
       set({ error: failure, settled: true, loading: fetching })
+      const onError = errorHandler()
       if (onError) onError(failure)
       else store.notify({ level: 'error', message: actionMessage(failure) })
     }
@@ -136,42 +136,46 @@ export function createReads(api: Pick<Api, 'readAction'>, store: Store) {
       watching?.stop()
       watching = { every: wanted, stop: store.watchRead(spec, wanted, (event) => answer(event)) }
     }
-    function start(onError: Reader['onError']) {
+    function start() {
       const request = Promise.withResolvers<unknown>()
       running = request.promise
       const release = () => {
         if (running === request.promise) running = undefined
       }
       request.promise.then(release, release)
-      request.resolve(run(onError))
+      request.resolve(run())
       return request.promise
     }
-    async function run(onError: Reader['onError']) {
+    async function run() {
       const readersAtStart = readerGeneration
       const connectionAtStart = connectionGeneration
       try {
         fetching = true
         set({ loading: true })
-        const { data, event } = await api
-          .readAction(actionRef<unknown, unknown>(extension, name), args, { conversationId })
-          .then(
-            ({ result, rev }) => ({
-              data: result,
-              event: { result: (result ?? null) as JsonValue, rev },
-            }),
-            (failure: ActionError) => ({
-              data: undefined,
-              event:
-                failure.status === 0
-                  ? undefined
-                  : { error: failure.message, status: failure.status, rev: failure.rev },
-            }),
-          )
+        const { data, event } = await readAction(
+          actionRef<unknown, unknown>(extension, name),
+          args,
+          { conversationId },
+        ).then(
+          ({ result, rev }) => ({
+            data: result,
+            event: { result: (result ?? null) as JsonValue, rev },
+          }),
+          (failure: ActionError) => ({
+            data: undefined,
+            event:
+              failure.status === 0
+                ? undefined
+                : { error: failure.message, status: failure.status, rev: failure.rev },
+          }),
+        )
         fetching = false
-        if (readerGeneration === readersAtStart && connectionGeneration === connectionAtStart) {
-          if (event) answer(event, onError)
-          else answered = true
-        }
+        if (
+          event &&
+          readerGeneration === readersAtStart &&
+          connectionGeneration === connectionAtStart
+        )
+          answer(event)
         return data
       } finally {
         fetching = false
@@ -210,13 +214,12 @@ export function createReads(api: Pick<Api, 'readAction'>, store: Store) {
         }
       },
       refetch() {
-        const onError = errorHandler()
         const readersAtQueue = readerGeneration
         const go = () => {
           if (readersAtQueue !== readerGeneration) return undefined
           queued = undefined
           if (used && !readers.size) return undefined
-          return start(onError)
+          return start()
         }
         queued ??= (running ?? Promise.resolve()).then(go, go)
         return queued

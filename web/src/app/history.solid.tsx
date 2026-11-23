@@ -39,34 +39,31 @@ export function createHistory(
   let previousActive: readonly EntryRecord[] = []
   let previousOlder: EntryId | undefined
   let paging: AbortController | null = null
-  const fills = new Set<AbortController>()
+  const fills = new AbortController()
   const requestedGaps = new Set<string>()
   const gapsAwaitingRetry: [after: EntryId, upTo: EntryId][] = []
   onCleanup(() => {
     paging?.abort()
-    for (const controller of fills) controller.abort()
+    fills.abort()
   })
 
   const fill = (after: EntryId, upTo: EntryId) => {
     const key = `${after}:${upTo}`
-    if (id === undefined || requestedGaps.has(key)) return
-    const controller = new AbortController()
-    fills.add(controller)
+    if (id === undefined || fills.signal.aborted || requestedGaps.has(key)) return
     requestedGaps.add(key)
     setFilling((count) => count + 1)
     void (async () => {
       try {
-        const { rows } = await read(id, upTo, after, controller.signal)
-        if (controller.signal.aborted) return
+        const { rows } = await read(id, upTo, after, fills.signal)
+        if (fills.signal.aborted) return
         setHistory((previous) => mergeRows(previous, rows))
       } catch (failure) {
-        if (controller.signal.aborted) return
+        if (fills.signal.aborted) return
         requestedGaps.delete(key)
         gapsAwaitingRetry.push([after, upTo])
         setError(message(failure))
       } finally {
-        fills.delete(controller)
-        if (!controller.signal.aborted) setFilling((count) => count - 1)
+        if (!fills.signal.aborted) setFilling((count) => count - 1)
       }
     })()
   }

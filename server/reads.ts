@@ -2,7 +2,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { inProcess } from '../lib/errors.ts'
 import { retryAfter } from '../lib/timers.ts'
 import type { Cancel } from '../lib/timers.ts'
-import type { ReadEvent, ReadSpec } from '../shared/protocol.ts'
+import type { ReadEvent, ReadPayload, ReadSpec } from '../shared/protocol.ts'
 
 type Send = (event: ReadEvent) => void
 type Run = (spec: ReadSpec, signal: AbortSignal) => Promise<unknown>
@@ -12,35 +12,59 @@ interface Entry {
   subscribers: Map<symbol, { every?: number; send: Send }>
   sent?: string
   sentRev?: number
+  broadcastRev?: number
   answeredAt: number
   running?: AbortController
   again?: Cancel
   shown: number
 }
 
+let nextRev = 0
+
 export const readKey = ({ extension, action, args, conversation }: ReadSpec) =>
   JSON.stringify([extension, action, args ?? null, conversation ?? null])
 
-const failure = (error: unknown, status?: number): ReadEvent => ({
+const failure = (error: unknown, status?: number): ReadPayload => ({
   error: (error instanceof Error ? error.message : String(error)).slice(0, 500),
   status: status ?? (error as { status?: number } | undefined)?.status ?? 500,
 })
 
 export function createReads(run: Run, now = () => Date.now()) {
   const entries = new Map<string, Entry>()
-  let nextRev = 0
 
-  function publish(entry: Entry, startedAt: number, event: ReadEvent) {
-    if (startedAt < entry.shown) return
+  function publish(entry: Entry, startedAt: number, event: ReadPayload) {
+    if (startedAt < entry.shown) {
+      if (
+        entry.sent !== undefined &&
+        entry.sentRev !== undefined &&
+        entry.broadcastRev !== entry.sentRev
+      ) {
+        entry.broadcastRev = entry.sentRev
+        const authoritative: ReadEvent = {
+          ...(JSON.parse(entry.sent) as ReadPayload),
+          rev: entry.sentRev,
+        }
+        for (const { send } of entry.subscribers.values()) send(authoritative)
+      }
+      return
+    }
     entry.shown = startedAt
     entry.answeredAt = now()
     const stamped: ReadEvent = { ...event, rev: startedAt }
     const json = JSON.stringify(event)
     const temporary = 'error' in event && event.status >= 500
-    if (temporary || json !== entry.sent) {
-      entry.sent = temporary ? undefined : json
-      entry.sentRev = temporary ? undefined : startedAt
+    if (temporary) {
+      entry.sent = undefined
+      entry.sentRev = undefined
+      entry.broadcastRev = startedAt
       for (const { send } of entry.subscribers.values()) send(stamped)
+    } else if (json !== entry.sent) {
+      entry.sent = json
+      entry.sentRev = startedAt
+      entry.broadcastRev = startedAt
+      for (const { send } of entry.subscribers.values()) send(stamped)
+    } else {
+      entry.sentRev = startedAt
     }
     schedule(entry)
   }
@@ -72,8 +96,10 @@ export function createReads(run: Run, now = () => Date.now()) {
         .then((event) => {
           if (controller.signal.aborted) return
           entry.running = undefined
-          if (startedAt < entry.shown) schedule(entry)
-          else publish(entry, startedAt, event)
+          if (startedAt < entry.shown) {
+            if (entry.sent === undefined && entry.subscribers.size) runOnce(entry)
+            else schedule(entry)
+          } else publish(entry, startedAt, event)
         }),
     )
   }
@@ -91,7 +117,7 @@ export function createReads(run: Run, now = () => Date.now()) {
       own.subscribers.set(id, { every, send })
       if (own.sent === undefined) runOnce(own)
       else {
-        send({ ...(JSON.parse(own.sent) as ReadEvent), rev: own.sentRev })
+        send({ ...(JSON.parse(own.sent) as ReadPayload), rev: own.sentRev! })
         schedule(own)
       }
       return () => {
@@ -108,12 +134,15 @@ export function createReads(run: Run, now = () => Date.now()) {
       const entry = entries.get(key)
       return {
         rev,
-        publish: (event: ReadEvent) => {
+        publish: (event: ReadPayload) => {
           if (entry && entries.get(key) === entry) publish(entry, rev, event)
         },
       }
     },
-    refused: (status: number, message: string): ReadEvent => failure(message, status),
+    refused: (status: number, message: string): ReadEvent => ({
+      ...failure(message, status),
+      rev: ++nextRev,
+    }),
     size: () => entries.size,
   }
 }

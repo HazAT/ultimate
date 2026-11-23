@@ -10,6 +10,7 @@ import type {
   ModelsResponse,
   Notice,
   ReadEvent,
+  ReadPayload,
   ReadSpec,
   ServerEvents,
   StreamedView,
@@ -103,10 +104,11 @@ type Spec =
 type Refused = (status: number) => void
 
 type DocChange = ServerEvents['doc'] | ServerEvents['docOps']
+type ReadNotice = ReadPayload & { rev?: number }
 interface ReadWatch {
   read: ReadSpec
   every?: number
-  onEvent: (event: ReadEvent) => void
+  onEvent: (event: ReadNotice) => void
   refused?: boolean
 }
 interface Wanted {
@@ -678,7 +680,7 @@ export function createStore(options: StoreOptions = {}) {
         scheduleReconcile()
       }
     },
-    watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadEvent) => void) {
+    watchRead(read: ReadSpec, every: number | undefined, onEvent: (event: ReadNotice) => void) {
       const key = JSON.stringify([read, every ?? null])
       const watch = { read, every, onEvent }
       watchedReads.set(key, watch)

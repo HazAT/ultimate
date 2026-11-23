@@ -1088,7 +1088,11 @@ export const actions = {
     })
     await until(() => answers(second, 5).length === 1)
     expect(answers(second, 5)).toEqual([
-      { error: 'Extension actions require a browser request', status: 403 },
+      {
+        error: 'Extension actions require a browser request',
+        status: 403,
+        rev: expect.any(Number),
+      },
     ])
 
     expect(server.api.reads()).toBe(3)
@@ -1279,6 +1283,128 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(await close(range(1100))).toBe(200)
     expect(await close(range(100))).toBe(200)
     expect(stream.connections()).toBe(1)
+    await stream.close()
+  })
+  it('serializes subscription batches per stream so a cleanup close after a rejected pending open does not orphan a watch', async () => {
+    const { server } = await fixture(true)
+    const stream = await attach(server, { view: false })
+    const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
+    const gate = Promise.withResolvers<void>()
+    const watchStarted = Promise.withResolvers<void>()
+    const stopped = vi.fn<() => void>()
+    const watchDoc = server.harness.watchDoc.bind(server.harness)
+    vi.spyOn(server.harness, 'watchDoc').mockImplementationOnce(async (...args) => {
+      watchStarted.resolve()
+      await gate.promise
+      const watch = (await watchDoc(...args))!
+      const stop = watch.stop.bind(watch)
+      return Object.assign(watch, {
+        stop: () => {
+          stopped()
+          return stop()
+        },
+      })
+    })
+    const openAbort = new AbortController()
+    const rejectedOpen = fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url },
+      signal: openAbort.signal,
+      body: JSON.stringify({
+        subscribe: [{ sub: 42, docs: ['pi.live'], view: false }],
+        unsubscribe: [],
+      }),
+    }).catch(() => 'aborted')
+    await watchStarted.promise
+    openAbort.abort()
+    expect(await rejectedOpen).toBe('aborted')
+    const cleanup = fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url },
+      body: JSON.stringify({ subscribe: [], unsubscribe: [42] }),
+    })
+    gate.resolve()
+    expect((await cleanup).status).toBe(200)
+    expect(stopped).toHaveBeenCalledOnce()
+    await stream.close()
+  })
+  it('corrects a stale HTTP refetch with the authoritative revision when an unchanged poll superseded it, and stamps AbortError 500s', async () => {
+    const { server } = await fixture(false, {
+      race: `import { defineExtension } from '@earendil-works/pi-durable'
+
+let releaseStale
+let armed = false
+let stalled = false
+let completedPolls = 0
+export default defineExtension({ name: 'race' })
+export const actions = {
+  arm: async () => {
+    armed = true
+    return true
+  },
+  value: async () => {
+    if (armed) {
+      armed = false
+      stalled = true
+      await new Promise((resolve) => { releaseStale = resolve })
+      return 'stale-http'
+    }
+    completedPolls++
+    return 'A'
+  },
+  status: async () => ({ stalled, completedPolls }),
+  release: async () => {
+    releaseStale?.()
+    return true
+  },
+  abortError: async () => {
+    const error = new Error('action aborted')
+    error.name = 'AbortError'
+    throw error
+  },
+}`,
+    })
+    const stream = await attach(server, { view: false })
+    await until(() => stream.events.some((event) => event.name === 'stream'))
+    const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
+    const read = { extension: 'race', action: 'value', args: null }
+    const answers = () =>
+      stream.events
+        .filter((event) => event.name === 'read' && event.sub === 1)
+        .map((event) => event.data as { result?: unknown; rev: number })
+    await fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url },
+      body: JSON.stringify({ subscribe: [{ sub: 1, read, every: 250 }], unsubscribe: [] }),
+    })
+    await until(() => answers().length === 1)
+    expect(answers()[0]).toEqual({ result: 'A', rev: expect.any(Number) })
+
+    const beforePolls = (
+      (await post(server, '/api/extensions/race/actions/status', { args: null })).data.result as {
+        completedPolls: number
+      }
+    ).completedPolls
+    await post(server, '/api/extensions/race/actions/arm', { args: null })
+    const staleHttp = post(server, '/api/extensions/race/actions/value', { args: null })
+    await until(async () => {
+      const state = (await post(server, '/api/extensions/race/actions/status', { args: null })).data
+        .result as { stalled: boolean; completedPolls: number }
+      return state.stalled && state.completedPolls > beforePolls
+    })
+    expect(answers()).toHaveLength(1)
+    await post(server, '/api/extensions/race/actions/release', { args: null })
+    const httpReply = await staleHttp
+    expect(httpReply.status).toBe(200)
+    await until(() => answers().length === 2)
+    expect(answers()[1].result).toBe('A')
+    expect(answers()[1].rev).toBeGreaterThan(httpReply.data.rev as number)
+
+    const aborted = await post(server, '/api/extensions/race/actions/abortError', { args: null })
+    expect(aborted).toEqual({
+      status: 500,
+      data: { error: 'action aborted', rev: expect.any(Number) },
+    })
     await stream.close()
   })
   it('runs logins in the models extension: prompt, answer, cancel, no credential leak, dead flows cancelled', async () => {

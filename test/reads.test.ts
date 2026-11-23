@@ -22,21 +22,24 @@ it('runs a read once for every page at the fastest interval, and pushes only cha
   const [first, second] = [page(), page()]
   reads.subscribe(spec, 1000, first.send)
   await vi.advanceTimersByTimeAsync(0)
+  const initialRev = first.events[0].rev
   reads.subscribe(spec, 5000, second.send)
-  expect(second.events).toEqual([{ result: 'one', rev: 1 }])
+  expect(second.events).toEqual([{ result: 'one', rev: initialRev }])
   await vi.advanceTimersByTimeAsync(3000)
   expect(run).toHaveBeenCalledTimes(4)
   set('two')
   await vi.advanceTimersByTimeAsync(1000)
   expect(run).toHaveBeenCalledTimes(5)
+  const updatedRev = first.events[1].rev
+  expect(updatedRev).toBe(initialRev + 4)
   expect([first.events, second.events]).toEqual([
     [
-      { result: 'one', rev: 1 },
-      { result: 'two', rev: 5 },
+      { result: 'one', rev: initialRev },
+      { result: 'two', rev: updatedRev },
     ],
     [
-      { result: 'one', rev: 1 },
-      { result: 'two', rev: 5 },
+      { result: 'one', rev: initialRev },
+      { result: 'two', rev: updatedRev },
     ],
   ])
 })
@@ -61,16 +64,58 @@ it("counts an action's own answer as the read's, and drops an older one that ans
   const reader = page()
   reads.subscribe(spec, 1000, reader.send)
   await vi.advanceTimersByTimeAsync(600)
+  const initialRev = reader.events[0].rev
   const older = reads.answering(spec)
   const newer = reads.answering(spec)
   newer.publish({ result: 'newer' })
   older.publish({ result: 'older' })
   expect(reader.events).toEqual([
-    { result: 'one', rev: 1 },
+    { result: 'one', rev: initialRev },
     { result: 'newer', rev: newer.rev },
   ])
   await vi.advanceTimersByTimeAsync(999)
   expect(run).toHaveBeenCalledTimes(1)
+})
+
+it('pushes the authoritative revision when an older action finishes after an unchanged poll', async () => {
+  const { reads, page } = setup()
+  const reader = page()
+  reads.subscribe(spec, 1000, reader.send)
+  await vi.advanceTimersByTimeAsync(0)
+  const initialRev = reader.events[0].rev
+  const stale = reads.answering(spec)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(reader.events).toHaveLength(1)
+  stale.publish({ result: 'stale-value' })
+  expect(reader.events).toHaveLength(2)
+  expect(reader.events[1]).toEqual({ result: 'one', rev: stale.rev + 1 })
+  expect(reader.events[1].rev).toBeGreaterThan(initialRev)
+})
+
+it('runs fresh after an obsolete non-polling attempt exits following a 5xx so a late subscriber never hangs', async () => {
+  const { run, reads, page } = setup()
+  const first = page()
+  const second = page()
+  const slow = Promise.withResolvers<unknown>()
+  run.mockReturnValueOnce(slow.promise).mockResolvedValueOnce('recovered')
+  reads.subscribe(spec, undefined, first.send)
+  const failed = reads.answering(spec)
+  failed.publish({ error: 'boom', status: 500 })
+  reads.subscribe(spec, undefined, second.send)
+  expect(second.events).toEqual([])
+  slow.resolve('obsolete')
+  await vi.advanceTimersByTimeAsync(0)
+  expect(run).toHaveBeenCalledTimes(2)
+  expect(second.events).toEqual([{ result: 'recovered', rev: failed.rev + 1 }])
+  expect(first.events.at(-1)).toEqual(second.events[0])
+})
+
+it('keeps revisions monotonic across separate read managers in the same process', async () => {
+  const first = setup()
+  const second = setup()
+  const a = first.reads.answering(spec)
+  const b = second.reads.answering(spec)
+  expect(b.rev).toBeGreaterThan(a.rev)
 })
 
 it('shares the revision sequence across different reads and actions without subscribers', async () => {
@@ -84,9 +129,9 @@ it('shares the revision sequence across different reads and actions without subs
   reads.subscribe(other, undefined, second.send)
   before.publish({ result: 'not sent to future subscribers' })
   await vi.advanceTimersByTimeAsync(0)
-  expect(before.rev).toBeLessThan(first.events[0].rev!)
-  expect(first.events[0].rev!).toBeLessThan(between.rev)
-  expect(between.rev).toBeLessThan(second.events[0].rev!)
+  expect(before.rev).toBeLessThan(first.events[0].rev)
+  expect(first.events[0].rev).toBeLessThan(between.rev)
+  expect(between.rev).toBeLessThan(second.events[0].rev)
   expect(first.events).toHaveLength(1)
 })
 

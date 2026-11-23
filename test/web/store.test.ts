@@ -2,7 +2,7 @@ import type { ConversationView, ConversationId } from '@earendil-works/pi-durabl
 import type { Op } from '@earendil-works/chord/delta'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStore } from '../../web/src/sdk/store.ts'
-import type { ReadEvent, ServerEvents, SubscriptionsRequest } from '../../shared/protocol.ts'
+import type { ReadPayload, ServerEvents, SubscriptionsRequest } from '../../shared/protocol.ts'
 
 import { FakeSource, fakeSubscriptions } from './fake-source.ts'
 
@@ -728,7 +728,7 @@ it('retries a read after an unconfirmed batch-level 403', async () => {
   latest().open()
   await tick()
   fetch.mockResolvedValueOnce(Response.json({ error: 'Forbidden' }, { status: 403 }))
-  const onEvent = vi.fn<(event: ReadEvent) => void>()
+  const onEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
   store.watchRead({ extension: 'test', action: 'read', args: null }, undefined, onEvent)
   await tick()
   expect(onEvent).not.toHaveBeenCalled()
@@ -748,7 +748,7 @@ it('does not retry a terminally refused read until its watch is replaced, even i
     return Response.json({ ok: true, refused: { [subscribe[0].sub]: 403 } })
   })
   const read = { extension: 'test', action: 'read', args: null }
-  const onRefusal = vi.fn<(event: ReadEvent) => void>()
+  const onRefusal = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
   const release = store.watchRead(read, undefined, onRefusal)
   await tick()
   expect(onRefusal).toHaveBeenCalledExactlyOnceWith({
@@ -759,7 +759,7 @@ it('does not retry a terminally refused read until its watch is replaced, even i
   await tick()
   expect(subscriptionBatches(fetch)).toHaveLength(before)
   release()
-  const onEvent = vi.fn<(event: ReadEvent) => void>()
+  const onEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
   store.watchRead(read, undefined, onEvent)
   await tick()
   expect(subscriptionBatches(fetch)).toHaveLength(before + 1)
@@ -773,15 +773,15 @@ it('opens a read watch again on same-tick remount so a cached answer is replayed
   const { store, server, latest } = setup(5, action)
   latest().open()
   const read = { extension: 'test', action: 'read', args: null }
-  const firstEvent = vi.fn<(event: ReadEvent) => void>()
+  const firstEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
   const release = store.watchRead(read, undefined, firstEvent)
   await tick()
   const first = server.reads.at(-1)!
   expect(firstEvent).toHaveBeenCalledExactlyOnceWith({ result: 'shared', rev: expect.any(Number) })
   release()
-  const onEvent = vi.fn<(event: ReadEvent) => void>()
+  const onEvent = vi.fn<(event: ReadPayload & { rev?: number }) => void>()
   store.watchRead(read, undefined, onEvent)
-  latest().send('read', { result: 'retired' }, first.sub)
+  latest().send('read', { result: 'retired', rev: 99 }, first.sub)
   expect(onEvent).not.toHaveBeenCalled()
   await tick()
   expect(first.closed).toBe(true)

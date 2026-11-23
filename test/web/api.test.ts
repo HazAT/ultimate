@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
-import { ActionError, createApi } from '../../web/src/sdk/api.ts'
+import { ActionError, createApi, createReadAction } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
 import { createUiState } from '../../web/src/sdk/ui-state.ts'
 import { actionRef } from '../../shared/extension-api.ts'
@@ -10,7 +10,8 @@ function setup(respond: (url: string, init: RequestInit) => Response | Promise<R
     respond(input as string, init!),
   )
   const api = createApi(createStore(), { fetch })
-  return { api, fetch }
+  const readAction = createReadAction({ fetch })
+  return { api, readAction, fetch }
 }
 const ref = (extension: string, name: string) => actionRef<unknown, unknown>(extension, name)
 const json = (status: number, body: unknown) =>
@@ -37,18 +38,16 @@ describe('extension actions', () => {
   })
 
   it('returns revisions for read actions while ordinary actions still return only the result', async () => {
-    const { api, fetch } = setup(() => json(200, { result: ['draft'], rev: 42 }))
+    const { api, readAction, fetch } = setup(() => json(200, { result: ['draft'], rev: 42 }))
     const read = ref('notes', 'list')
-    await expect(api.readAction(read)).resolves.toEqual({ result: ['draft'], rev: 42 })
+    await expect(readAction(read)).resolves.toEqual({ result: ['draft'], rev: 42 })
     expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toEqual({ args: null })
     await expect(api.action(read)).resolves.toEqual(['draft'])
   })
 
   it('rejects with an ActionError naming the extension, action, status, and message', async () => {
-    const { api } = setup(() => json(500, { error: 'Extension action failed', rev: 23 }))
-    const error = await api
-      .readAction(ref('notes', 'save'), 'x')
-      .catch((failure: unknown) => failure)
+    const { readAction } = setup(() => json(500, { error: 'Extension action failed', rev: 23 }))
+    const error = await readAction(ref('notes', 'save'), 'x').catch((failure: unknown) => failure)
     expect(error).toBeInstanceOf(ActionError)
     expect(error).toMatchObject({
       extension: 'notes',

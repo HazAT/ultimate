@@ -65,42 +65,85 @@ export class HttpError extends Error {
   }
 }
 
+async function postJson<T>(
+  request: typeof fetch,
+  path: string,
+  body: object = {},
+  {
+    keepalive = false,
+    signal,
+    who = writerNow(),
+  }: { keepalive?: boolean; signal?: AbortSignal; who?: UiWho } = {},
+): Promise<T> {
+  const response = await request(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [SOURCE_HEADER]: who,
+    },
+    body: JSON.stringify(body),
+
+    keepalive,
+    signal,
+  })
+  const data: unknown = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error =
+      data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : `${response.status} ${response.statusText}`
+    const rev =
+      data && typeof data === 'object' && 'rev' in data && typeof data.rev === 'number'
+        ? data.rev
+        : undefined
+    throw new HttpError(response.status, error, rev)
+  }
+  return data as T
+}
+
+async function runExtensionAction<Args, Result>(
+  request: typeof fetch,
+  { extension, name }: ActionRef<Args, Result>,
+  args: Args | undefined,
+  { conversationId, signal, keepalive }: ActionOptions,
+): Promise<{ result: Result; rev?: number }> {
+  const path = `/api/extensions/${encodeURIComponent(extension)}/actions/${encodeURIComponent(name)}`
+  const body: ExtensionActionRequest = { args: args ?? null, conversationId }
+  try {
+    const { result, rev } = await postJson<ExtensionActionResponse>(request, path, body, {
+      signal,
+      keepalive,
+    })
+    return { result: result as Result, rev }
+  } catch (error) {
+    if (signal?.aborted) throw error
+    const http = error instanceof HttpError ? error : undefined
+    throw new ActionError(extension, name, http?.status ?? 0, errorMessage(error), http?.rev)
+  }
+}
+
+export type ReadAction = <Args, Result>(
+  ref: ActionRef<Args, Result>,
+  args?: Args,
+  options?: ActionOptions,
+) => Promise<{ result: Result; rev?: number }>
+
+const readActions = new WeakMap<Api, ReadAction>()
+
+export const readActionOf = (api: Api): ReadAction => readActions.get(api)!
+
+export function createReadAction(options: { fetch?: typeof fetch } = {}): ReadAction {
+  const request = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
+  return (ref, args, call = {}) => runExtensionAction(request, ref, args, call)
+}
+
 export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) {
   const request = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
-  async function post<T>(
+  const post = <T>(
     path: string,
     body: object = {},
-    {
-      keepalive = false,
-      signal,
-      who = writerNow(),
-    }: { keepalive?: boolean; signal?: AbortSignal; who?: UiWho } = {},
-  ): Promise<T> {
-    const response = await request(path, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        [SOURCE_HEADER]: who,
-      },
-      body: JSON.stringify(body),
-
-      keepalive,
-      signal,
-    })
-    const data: unknown = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      const error =
-        data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
-          ? data.error
-          : `${response.status} ${response.statusText}`
-      const rev =
-        data && typeof data === 'object' && 'rev' in data && typeof data.rev === 'number'
-          ? data.rev
-          : undefined
-      throw new HttpError(response.status, error, rev)
-    }
-    return data as T
-  }
+    call?: { keepalive?: boolean; signal?: AbortSignal; who?: UiWho },
+  ) => postJson<T>(request, path, body, call)
   const shown = () => {
     const state = store.getState()
     return state.view?.conversation.id ?? state.requested ?? ROOT
@@ -108,24 +151,7 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
   const conversation = (id: ConversationId | undefined, action: string) =>
     `/api/conversations/${id ?? shown()}/${action}`
 
-  async function runAction<Args, Result>(
-    { extension, name }: ActionRef<Args, Result>,
-    args: Args | undefined,
-    { conversationId, signal, keepalive }: ActionOptions,
-  ): Promise<{ result: Result; rev?: number }> {
-    const path = `/api/extensions/${encodeURIComponent(extension)}/actions/${encodeURIComponent(name)}`
-    const body: ExtensionActionRequest = { args: args ?? null, conversationId }
-    try {
-      const { result, rev } = await post<ExtensionActionResponse>(path, body, { signal, keepalive })
-      return { result: result as Result, rev }
-    } catch (error) {
-      if (signal?.aborted) throw error
-      const http = error instanceof HttpError ? error : undefined
-      throw new ActionError(extension, name, http?.status ?? 0, errorMessage(error), http?.rev)
-    }
-  }
-
-  return {
+  const api = {
     submit: (
       text: string,
       whenBusy?: SubmitRequest['whenBusy'],
@@ -166,20 +192,17 @@ export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) 
       ref: ActionRef<Args, Result>,
       ...[args, call = {}]: ActionArgs<Args, ActionOptions>
     ): Promise<Result> => {
-      const { result } = await runAction(ref, args, {
+      const { result } = await runExtensionAction(request, ref, args, {
         ...call,
         conversationId: call.conversationId ?? shown(),
       })
       return result
     },
 
-    readAction: <Args, Result>(
-      ref: ActionRef<Args, Result>,
-      ...[args, call = {}]: ActionArgs<Args, ActionOptions>
-    ) => runAction(ref, args, call),
-
     updateUi: (change: UiUpdateRequest, who?: UiWho, exit?: { keepalive: boolean }) =>
       post<UiUpdateResponse>('/api/ui', change, { who, ...exit }),
   }
+  readActions.set(api, (ref, args, call = {}) => runExtensionAction(request, ref, args, call))
+  return api
 }
 export type Api = ReturnType<typeof createApi>

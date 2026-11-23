@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { ReadEvent, ReadSpec } from '../../shared/protocol.ts'
 import { ActionError } from '../../web/src/sdk/api.ts'
-import type { Api } from '../../web/src/sdk/api.ts'
+import type { ReadAction } from '../../web/src/sdk/api.ts'
 import { createReads } from '../../web/src/sdk/reads.ts'
 
 function setup(status = 'open') {
@@ -31,7 +31,7 @@ function setup(status = 'open') {
     store,
     action,
     connect,
-    reads: createReads({ readAction: action as Api['readAction'] }, store as never),
+    reads: createReads(action as unknown as ReadAction, store as never),
   }
 }
 
@@ -41,7 +41,7 @@ it('subscribes once per action and args for all readers, at the fastest interval
   const first = read.use({})
   const second = reads.get('test', 'status', null).use({ every: 5000 })
   expect(watched).toMatchObject([{ read: { extension: 'test', action: 'status' }, every: 5000 }])
-  watched[0].send({ result: 'answer' })
+  watched[0].send({ result: 'answer', rev: 1 })
   expect(read.get()).toMatchObject({ data: 'answer', settled: true })
   second()
   expect(watched).toMatchObject([{ every: undefined }])
@@ -63,7 +63,7 @@ it("shows a read's failure through its reader's onError, or else as a notice, on
   expect(read.get().error).toMatchObject({ extension: 'test', action: 'status', status: 500 })
   release()
   read.use({})
-  watched[0].send({ error: 'other', status: 404 })
+  watched[0].send({ error: 'other', status: 404, rev: 3 })
   expect(store.notify).toHaveBeenCalledWith({ level: 'error', message: 'test/status: other' })
 })
 
@@ -164,7 +164,27 @@ it('waits for a fresh answer on remount even when it matches the cached answer',
   expect(settled).toBe(true)
 })
 
-it('accepts a lower revision after reconnecting, without letting an old HTTP response take it back', async () => {
+it('resolves error handling from currently mounted readers instead of notifying a departed reader', async () => {
+  const { reads, action, store } = setup()
+  const read = reads.get('test', 'status', null)
+  const firstError = vi.fn<(error: ActionError) => void>()
+  const secondError = vi.fn<(error: ActionError) => void>()
+  const releaseFirst = read.use({ onError: firstError })
+  const releaseSecond = read.use({ onError: secondError })
+  const attempt = Promise.withResolvers<never>()
+  action.mockReturnValueOnce(attempt.promise)
+  const pending = read.refetch()
+  await Promise.resolve()
+  releaseFirst()
+  attempt.reject(new ActionError('test', 'status', 500, 'shared failure', 1))
+  await pending
+  expect(firstError).not.toHaveBeenCalled()
+  expect(secondError).toHaveBeenCalledOnce()
+  expect(store.notify).not.toHaveBeenCalled()
+  releaseSecond()
+})
+
+it('accepts a lower revision after reconnecting, even if an HTTP refetch ran while disconnected', async () => {
   const { watched, reads, action, connect } = setup()
   const read = reads.get('test', 'status', null)
   read.use({})
@@ -174,11 +194,32 @@ it('accepts a lower revision after reconnecting, without letting an old HTTP res
   const running = read.refetch()
   await Promise.resolve()
   connect('reconnecting')
-  connect('open')
-  watched[0].send({ result: 'new process', rev: 1 })
+  const duringDrop = Promise.withResolvers<{ result: string; rev: number }>()
+  action.mockReturnValueOnce(duringDrop.promise)
+  const reconnectingFetch = read.refetch()
   late.resolve({ result: 'old process, late', rev: 11 })
   await running
+  await Promise.resolve()
+  duringDrop.resolve({ result: 'old process during reconnect', rev: 500 })
+  await reconnectingFetch
+  connect('open')
+  watched[0].send({ result: 'new process', rev: 1 })
   expect(read.get()).toMatchObject({ data: 'new process', loading: false })
+})
+
+it('does not mark a mounted read settled after a status-0 network failure before SSE answers', async () => {
+  const { watched, reads, action } = setup()
+  const read = reads.get('test', 'status', null)
+  read.use({})
+  let settled = false
+  const done = reads.settledInUse().then(() => (settled = true))
+  action.mockRejectedValueOnce(new ActionError('test', 'status', 0, 'Failed to fetch'))
+  await read.refetch()
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  watched[0].send({ result: 'from sse', rev: 1 })
+  await done
+  expect(settled).toBe(true)
 })
 
 it('answers a refetch of an unwatched read itself, and stays quiet when its request never reached the server', async () => {
@@ -201,7 +242,7 @@ it('settles in-use reads once each mounted read has its first answer, so ui step
   const done = reads.settledInUse().then(() => (settled = true))
   await Promise.resolve()
   expect(settled).toBe(false)
-  watched[0].send({ result: 'answer' })
+  watched[0].send({ result: 'answer', rev: 1 })
   await done
   expect(settled).toBe(true)
 })
