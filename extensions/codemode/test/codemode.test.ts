@@ -172,6 +172,14 @@ it('keeps codemode guidance without repeating top-level tool schemas', async () 
   const tool = agent.tools.find((item) => item.name === 'codemode')!
   expect(tool.replay).toBe('safe')
   expect(tool.description).toContain('models.classify(')
+  const replayOf = (name: string) =>
+    server.host.registry
+      .snapshot()
+      .extension('codemode')!
+      .tools!.find((item) => item.name === name)!.replay
+  expect(replayOf('pi.codemode.models.classify')).toBe('safe')
+  expect(replayOf('pi.codemode.models.generateImages')).not.toBe('safe')
+  expect(replayOf('action')).toBe('unsafe')
 })
 
 it('keeps model-only tools callable directly but out of script bindings and guidance', async () => {

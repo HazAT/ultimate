@@ -38,6 +38,7 @@ import {
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { shortTitle } from '../../lib/title.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { ActionContext } from '../../server/actions.ts'
@@ -616,7 +617,20 @@ export default function codemode(host: ExtensionHost) {
   return defineExtension({
     name: 'codemode',
     tasks: [Summary],
-    tools: [...pi.tools!, actionTool, tellTool],
+    tools: [
+      ...pi.tools!.map((tool) =>
+        tool.name === 'pi.codemode.models.classify'
+          ? {
+              ...tool,
+              ...safeToRerun(
+                'A classifier call only reads its input; a rerun bills one more call of a fraction of a cent.',
+              ),
+            }
+          : tool,
+      ),
+      actionTool,
+      tellTool,
+    ],
     hooks: [
       modelCallLimits(() => host.harness()),
       hook(ToolTask, {
