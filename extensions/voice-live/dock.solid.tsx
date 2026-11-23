@@ -91,6 +91,9 @@ export const dock = createRoot(() => {
   }
 })
 
+const [screen, setScreen] = createRoot(() => createSignal<string>())
+export { setScreen }
+
 export const voiceOpen = () => dock.open()
 export const setVoiceOpen = (open: boolean) => dock.setOpen(open)
 export const playerState = createRoot(() => {
@@ -204,7 +207,8 @@ async function sendTurn(input: {
   pasted?: Pasted[]
   interrupted: boolean
 }) {
-  const hint = input.interrupted ? markCut() : undefined
+  const cut = input.interrupted ? markCut() : undefined
+  const hint = [screen(), cut].filter(Boolean).join('\n\n') || undefined
   if (input.interrupted) {
     dock.player.stop()
     await api.action(StopAction, null)

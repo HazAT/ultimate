@@ -146,7 +146,7 @@ it('switching to a model that does not hear audio sends it the transcript instea
   expect(JSON.stringify(request.messages)).not.toContain('audio/webm')
 })
 
-it('only reads and hands off: other tools are blocked, voice_handoff starts @ultimate with a card', async () => {
+it('only reads and hands off: other tools are blocked, voice_handoff starts @ultimate with a card and the next turn forks afresh', async () => {
   const f = await fixture()
   const blocked = await f.turn({
     key: 'blocked',
@@ -182,4 +182,7 @@ it('only reads and hands off: other tools are blocked, voice_handoff starts @ult
         JSON.stringify(request.messages).includes('Handoff from voice mode'),
     ),
   )
+
+  const after = await f.turn({ key: 'after', text: 'next idea' })
+  expect(after.id).not.toBe(blocked.id)
 })

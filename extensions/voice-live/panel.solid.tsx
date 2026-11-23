@@ -2,7 +2,9 @@ import {
   AudioLines,
   ChevronLeft,
   ChevronRight,
+  Maximize2,
   Mic,
+  Minimize2,
   Pause,
   Play,
   Settings2,
@@ -30,8 +32,12 @@ import {
   ScopedConversation,
   switchConversation,
   useAction,
+  useConversationId,
+  useConversationSummary,
   useDocOf,
+  useExtensionUiState,
   useExternal,
+  useSurface,
   useViewport,
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
@@ -44,6 +50,7 @@ import {
   press,
   release,
   sendTyped,
+  setScreen,
   setVoiceOpen,
   voiceOpen,
 } from './dock.solid.tsx'
@@ -58,6 +65,7 @@ const iconButton =
 const rowButton =
   'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
 const keys = () => formatKeys(KEYS)[0].join('+')
+const holdKeys = () => formatKeys('mod+shift+space')[0].join('+')
 
 const recording = () => dock.phase() === 'recording'
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
@@ -112,7 +120,8 @@ function holdHandlers() {
   }
 }
 
-const holdTitle = () => `Hold to talk · or hold Space outside a text field · ${keys()} hides Voice`
+const holdTitle = () =>
+  `Hold to talk · or hold Space outside a text field, ${holdKeys()} anywhere · ${keys()} hides Voice`
 
 function TalkBar() {
   return (
@@ -133,8 +142,8 @@ function TalkBar() {
         <Status class="shrink-0" />
         <Waveform class="h-5 min-w-0 flex-1 text-error" live />
       </Show>
-      <span class="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground/70 pointer-coarse:hidden">
-        hold <Kbd>Space</Kbd>
+      <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground/70 pointer-coarse:hidden">
+        hold <Kbd>Space</Kbd> or <Kbd>{holdKeys()}</Kbd>
       </span>
     </Button>
   )
@@ -301,13 +310,31 @@ export function VoicePanel() {
   const fork = useDocOf(() => session()?.id, VoiceForkDoc)
   const viewport = useViewport()
   const id = () => session()?.id
+  const surface = useSurface()
+  const shown = useConversationId()
+  const summary = useConversationSummary(shown)
+  createEffect(
+    () => [surface(), shown(), summary()?.title] as const,
+    ([on, conversation, title]) => {
+      setScreen(
+        `Daniel's screen: the ${on} surface${
+          on === 'agent' && conversation !== undefined
+            ? `, showing conversation #${conversation}${title ? ` "${title}"` : ''}`
+            : ''
+        }.`,
+      )
+    },
+  )
   onSettled(() => {
     const down = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return
       const editable = (event.target as HTMLElement | null)?.closest(
         'input, textarea, select, [contenteditable="true"]',
       )
-      if (event.code === 'Space' && !event.repeat && !editable && voiceOpen()) {
+      const chord = (event.metaKey || event.ctrlKey) && event.shiftKey
+      if (chord || (!editable && voiceOpen())) {
         event.preventDefault()
+        if (!voiceOpen()) setVoiceOpen(true)
         void press()
       }
     }
@@ -325,6 +352,41 @@ export function VoicePanel() {
     }
   })
   const phone = () => viewport() === 'phone'
+  const [place, setPlace] = useExtensionUiState<{ right: number; bottom: number } | null>(
+    'corner',
+    null,
+  )
+  const [folded, setFolded] = useExtensionUiState('folded', false)
+  const drag = (event: PointerEvent & { currentTarget: HTMLElement }) => {
+    if (phone() || (event.target as HTMLElement).closest('button')) return
+    const panel = event.currentTarget.closest<HTMLElement>('[data-voice-panel]')!
+    const box = panel.getBoundingClientRect()
+    const right = window.innerWidth - box.right
+    const bottom = window.innerHeight - box.bottom
+    const x = event.clientX
+    const y = event.clientY
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const move = (next: PointerEvent) =>
+      setPlace({
+        right: Math.max(8, Math.min(window.innerWidth - box.width - 8, right - (next.clientX - x))),
+        bottom: Math.max(8, Math.min(window.innerHeight - 48, bottom - (next.clientY - y))),
+      })
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  const style = () => {
+    const at = place()
+    if (phone() || !at) return undefined
+    const height = folded() ? '3rem' : 'min(44rem, 100vh - 5rem)'
+    return {
+      right: `min(${at.right}px, 100vw - min(36rem, 46vw) - 0.5rem)`,
+      bottom: `min(${at.bottom}px, 100vh - ${height} - 0.5rem)`,
+    }
+  }
   return (
     <Show when={voiceOpen()}>
       <section
@@ -332,43 +394,74 @@ export function VoicePanel() {
         class={cn(
           'pointer-events-auto fixed z-40 flex flex-col overflow-hidden border border-border bg-background shadow-2xl shadow-black/40',
           phone()
-            ? 'inset-x-0 top-11 bottom-0 rounded-t-2xl border-b-0'
-            : 'top-12 right-4 bottom-4 w-[min(40rem,46vw)] rounded-xl',
+            ? folded()
+              ? 'inset-x-2 bottom-2 rounded-xl'
+              : 'inset-x-0 top-11 bottom-0 rounded-t-2xl border-b-0'
+            : folded()
+              ? 'right-4 bottom-4 w-[min(26rem,46vw)] rounded-xl'
+              : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
         )}
+        data-voice-folded={folded() || undefined}
         data-voice-panel
+        style={style()}
       >
-        <header class="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+        <header
+          class={cn(
+            'flex h-10 shrink-0 touch-none items-center gap-2 border-b border-border/60 px-3 select-none',
+            !phone() && 'cursor-grab active:cursor-grabbing',
+            folded() && 'border-b-0',
+          )}
+          onDblClick={() => setFolded(!folded())}
+          onPointerDown={drag}
+          title={phone() ? undefined : 'Drag to move · double-click to fold'}
+        >
           <AudioLines class="size-3.5 shrink-0 text-brand" />
           <span class="text-[13px] font-semibold">Voice</span>
-          <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
-            {id()
-              ? `fork of @ultimate${fork()?.of ? ` #${fork()!.of}` : ''} · #${id()}`
-              : 'forks @ultimate on your first turn'}
-          </span>
+          <Show when={!folded()} fallback={<Status class="min-w-0 flex-1" />}>
+            <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+              {id()
+                ? `hot · fork of @ultimate${fork()?.of ? ` #${fork()!.of}` : ''} · #${id()}`
+                : 'cold · forks @ultimate when you talk'}
+            </span>
+          </Show>
           <span class="ml-auto flex shrink-0 items-center gap-1">
-            <Settings model />
-            <Show when={id()}>
-              <Button
-                aria-label="Open the voice conversation"
-                class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-                onClick={() => switchConversation(id()!)}
-                size={null}
-                title="Open the voice conversation"
-                variant={null}
-              >
-                <SquareArrowOutUpRight class="size-3.5" />
-              </Button>
-              <Button
-                aria-label="End voice session"
-                class="h-7 rounded-md px-2 font-mono text-[11px] font-normal text-muted-foreground hover:bg-error/10 hover:text-error"
-                onClick={() => endSession()}
-                size={null}
-                title="End the session: the fork concludes and the next turn forks @ultimate again"
-                variant={null}
-              >
-                end
-              </Button>
+            <Show when={!folded()}>
+              <Settings model />
+              <Show when={id()}>
+                <Button
+                  aria-label="Open the voice conversation"
+                  class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                  onClick={() => switchConversation(id()!)}
+                  size={null}
+                  title="Open the voice conversation"
+                  variant={null}
+                >
+                  <SquareArrowOutUpRight class="size-3.5" />
+                </Button>
+                <Button
+                  aria-label="End voice session"
+                  class="h-7 rounded-md px-2 font-mono text-[11px] font-normal text-muted-foreground hover:bg-error/10 hover:text-error"
+                  onClick={() => endSession()}
+                  size={null}
+                  title="End the session: the fork concludes and the next turn forks @ultimate again"
+                  variant={null}
+                >
+                  end
+                </Button>
+              </Show>
             </Show>
+            <Button
+              aria-label={folded() ? 'Unfold voice' : 'Fold voice'}
+              class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => setFolded(!folded())}
+              size={null}
+              title={folded() ? 'Unfold' : 'Fold'}
+              variant={null}
+            >
+              <Show when={folded()} fallback={<Minimize2 class="size-3.5" />}>
+                <Maximize2 class="size-3.5" />
+              </Show>
+            </Button>
             <Button
               aria-label="Close voice"
               class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -382,25 +475,35 @@ export function VoicePanel() {
           </span>
         </header>
         <Show
-          when={id()}
+          when={!folded()}
           fallback={
-            <div class="flex flex-1 flex-col items-center justify-center gap-1.5 px-10 text-center">
-              <AudioLines class="mb-1 size-5 text-brand" />
-              <p class="text-[14px] text-foreground">Think out loud with @ultimate</p>
-              <p class="max-w-sm text-[13px] text-muted-foreground">
-                Hold <Kbd>Space</Kbd> or the mic and talk. Voice forks @ultimate with everything it
-                knows, talks it through with you, and hands the result back when you agree.
-              </p>
+            <div class="px-3 pb-3">
+              <TalkBar />
             </div>
           }
         >
-          {(open) => (
-            <ScopedConversation id={open()}>
-              <Session fork={open()} />
-            </ScopedConversation>
-          )}
+          <Show
+            when={id()}
+            fallback={
+              <div class="flex flex-1 flex-col items-center justify-center gap-1.5 px-10 text-center">
+                <AudioLines class="mb-1 size-5 text-brand" />
+                <p class="text-[14px] text-foreground">Think out loud with @ultimate</p>
+                <p class="max-w-sm text-[13px] text-muted-foreground">
+                  Hold <Kbd>Space</Kbd> here, or <Kbd>{holdKeys()}</Kbd> anywhere, and talk. Voice
+                  forks @ultimate with everything it knows, talks it through with you, and hands the
+                  result back when you agree; then the next talk starts fresh.
+                </p>
+              </div>
+            }
+          >
+            {(open) => (
+              <ScopedConversation id={open()}>
+                <Session fork={open()} />
+              </ScopedConversation>
+            )}
+          </Show>
+          <Bottom fork={id()} />
         </Show>
-        <Bottom fork={id()} />
       </section>
     </Show>
   )

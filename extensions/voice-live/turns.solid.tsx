@@ -74,11 +74,8 @@ function TraceLine(props: { trace: Trace; turn: string }) {
       .join(' ')
   const list = (checks: boolean) => (
     <For each={checks ? stages().filter((stage) => stage.status !== 'idle') : stages()}>
-      {(stage, index) => (
+      {(stage) => (
         <>
-          <Show when={index() > 0 && !checks}>
-            <span class="text-muted-foreground/40">·</span>
-          </Show>
           <span
             class={cn(
               'inline-flex items-center gap-1 whitespace-nowrap',
@@ -94,7 +91,7 @@ function TraceLine(props: { trace: Trace; turn: string }) {
             <Show when={stage.status === 'running'}>
               <span class="size-1.5 animate-pulse-dot rounded-full bg-brand" />
             </Show>
-            <Show when={checks && (stage.status === 'done' || stage.status === 'slow')}>
+            <Show when={stage.status === 'done' || stage.status === 'slow'}>
               <Check class="size-3 text-success" />
             </Show>
             {stage.label}
@@ -115,7 +112,7 @@ function TraceLine(props: { trace: Trace; turn: string }) {
       <Show
         when={succeeded()}
         fallback={
-          <div class="flex min-w-0 flex-wrap items-center gap-x-1.5">
+          <div class="flex min-w-0 flex-wrap items-center gap-x-2.5">
             {list(false)}
             <Show when={total()}>
               <span class="whitespace-nowrap text-foreground/70">{total()}</span>

@@ -139,11 +139,24 @@ async function withClosingToolResults(tx: Tx, main: ConversationId, answer: Entr
   throw new Error('@ultimate is finishing a tool round; try again in a moment')
 }
 
+async function concludeHandedOff(host: ExtensionHost) {
+  const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+  if (id === undefined || !(await host.harness().snapshot(Fork, id, context))?.handedOff) return
+  await host.harness().commit(async (tx) => {
+    const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+    if (session.id !== id) return
+    ;(await tx.doc(Fork, id)).ended = true
+    delete session.id
+    await host.need(ConversationsApi).concludeIn(tx, [id], 'user')
+  }, context)
+}
+
 async function openSession(host: ExtensionHost) {
   const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
   if (main === undefined) throw new Error('@ultimate is not available')
   const answer = await lastSettledAnswer(host, main)
   const model = await voiceModel(host)
+  await concludeHandedOff(host)
   return host.harness().commit(async (tx) => {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
     if (session.id !== undefined && !(await tx.doc(Fork, session.id)).ended) return session.id
@@ -488,6 +501,9 @@ export default function voiceExtension(host: ExtensionHost) {
             `Instruction: ${args.instruction}`,
           ]
           const main = (await host.harness().conversation(fork.of, ctx))!
+          await host.harness().commit(async (tx) => {
+            ;(await tx.doc(Fork, api.conversationId)).handedOff = true
+          }, ctx)
           await main.submit(
             {
               type: 'input',

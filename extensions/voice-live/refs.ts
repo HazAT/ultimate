@@ -42,11 +42,15 @@ export type VoiceHandoff = {
   from: ConversationId
 }
 
-/** On a voice fork: what it forked from, and each recording's transcript by recording id once it arrived. */
+/**
+ * On a voice fork: what it forked from, each recording's transcript by recording id once it arrived, and `handedOff`
+ * once it handed off to @ultimate: the session goes cold, and the next turn forks @ultimate afresh.
+ */
 export type VoiceFork = {
   of?: ConversationId
   at?: EntryId
   transcripts?: Record<string, string>
+  handedOff?: true
 }
 
 /** The open voice session on the root: the fork's id, the conversation and entry it forked from, and when. */
