@@ -130,40 +130,25 @@ const holdTitle = () => `Hold to talk, or hold ${holdKeys()} anywhere · ${keys(
 function SpokenLine() {
   const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
   const sentence = () => dock.player.items()[state().index]
-  let line: HTMLSpanElement | undefined
-  createEffect(
-    () => state().charIndex,
-    (at) => {
-      const word = line?.querySelector<HTMLElement>(`[data-at="${at}"]`)
-      if (line && word)
-        line.scrollTo({ left: Math.max(0, word.offsetLeft - 32), behavior: 'smooth' })
-      else line?.scrollTo({ left: 0 })
-    },
-  )
+  const heard = createMemo(() => {
+    const current = sentence()
+    if (!current) return []
+    const at = state().charIndex
+    return current.words.filter((_, index) => current.starts[index] <= at)
+  })
   return (
     <span
-      class="min-w-0 flex-1 overflow-hidden text-left font-sans text-[13px] whitespace-nowrap text-muted-foreground [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)]"
+      class="flex min-w-0 flex-1 justify-end overflow-hidden font-sans text-[13px] whitespace-nowrap text-foreground [mask-image:linear-gradient(to_right,transparent,black_2.5rem)]"
       data-voice-spoken
-      ref={line}
     >
-      <span class="inline-block px-6">
-        <For each={sentence()?.words ?? []}>
-          {(word, at) => {
-            const start = () => sentence().starts[at()]
-            const said = () => state().charIndex >= start()
-            return (
-              <span
-                class={cn(
-                  'transition-colors duration-150',
-                  said() && 'text-foreground',
-                  state().charIndex === start() && 'text-brand',
-                )}
-                data-at={start()}
-              >
-                {word}{' '}
-              </span>
-            )
-          }}
+      <span class="shrink-0">
+        <For each={heard()}>
+          {(word, at) => (
+            <span class={cn(at() === heard().length - 1 && 'text-brand')}>
+              {word}
+              {at() < heard().length - 1 ? ' ' : ''}
+            </span>
+          )}
         </For>
       </span>
     </span>
