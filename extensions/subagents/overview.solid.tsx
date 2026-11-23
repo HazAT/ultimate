@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
 import { cn, errorMessage, notify, shortenPath, useAction, useDialog, useSystem } from '@/sdk/solid'
+import { Provided } from '@/sdk/parts.solid.tsx'
 import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'
 import {
   AddFamily,
@@ -30,6 +31,7 @@ import {
   Tag,
   useOpenDefinition,
 } from './definitions.solid.tsx'
+import { AgentMark } from './points.ts'
 import { DefinitionsAction } from './refs.ts'
 import type { Definition } from './refs.ts'
 
@@ -298,6 +300,7 @@ function AgentRow(props: {
           </Show>
         </>
       }
+      mark={<Provided input={{ name: definition().name }} point={AgentMark} />}
       move={
         <MoveMenu
           current={props.family?.name}
@@ -335,6 +338,7 @@ function Row(props: {
   description: string
   tags?: JSX.Element
   meta?: JSX.Element
+  mark?: JSX.Element
   move: JSX.Element
   title?: string
   onOpen?: () => void
@@ -372,7 +376,10 @@ function Row(props: {
           </Button>
         )}
       </Show>
-      <div class="shrink-0 pt-1 pr-2">{props.move}</div>
+      <div class="flex shrink-0 items-center gap-1 pt-1 pr-2">
+        {props.mark}
+        {props.move}
+      </div>
     </div>
   )
 }

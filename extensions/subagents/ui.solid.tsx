@@ -17,6 +17,12 @@ export {
   StandingDoc,
 } from './refs.ts'
 
+/**
+ * A quiet mark another extension shows at the end of an agent definition's row in the Agents panel (`name` is the
+ * definition's name), before its move menu. Provide it as `island(C)`.
+ */
+export { AgentMark } from './points.ts'
+
 /** Open the primary agent's standing conversation on the Agent surface. */
 export async function talkToUltimate(
   actions: Pick<UltimateActions, 'switchConversation' | 'showSurface'>,
