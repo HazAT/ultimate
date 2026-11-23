@@ -1,7 +1,7 @@
 import type { ConversationId, EntryId, EntryRecord, Tx } from '@earendil-works/pi-durable'
 import { int, lit, union } from '@earendil-works/pi-schema'
-import { imagesHint, imagesOf, latestImagesEntry } from '../../lib/entries.ts'
-import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
+import { forwardableImages, imagesHint, imagesOf, latestImagesEntry } from '../../lib/entries.ts'
+import { maxImages } from '../../shared/protocol.ts'
 
 export type ImagesRef = 'latest' | EntryId
 
@@ -33,12 +33,8 @@ export async function resolveImages(tx: Tx, from: ConversationId, ref: ImagesRef
     throw new Error(
       `images: entry ${entry.id} has ${images.length} images; at most ${maxImages} go along`,
     )
-  for (const image of images)
-    if (
-      !imageMimeTypes.includes(image.mimeType) ||
-      Buffer.byteLength(image.data, 'base64') > maxImageBytes
-    )
-      throw new Error(`images: entry ${entry.id} has an unsupported image or one over 2 MiB`)
+  if (forwardableImages(entry).length < images.length)
+    throw new Error(`images: entry ${entry.id} has an unsupported image or one over 2 MiB`)
   return { entry: entry.id, count: images.length }
 }
 export const imagesParameter = union([lit('latest'), int({ minimum: 1 })], {

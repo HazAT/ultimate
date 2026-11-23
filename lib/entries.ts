@@ -1,4 +1,5 @@
 import type { ConversationId, EntryRecord, Tx } from '@earendil-works/pi-durable'
+import { imageMimeTypes, maxImageBytes, maxImages } from '../shared/protocol.ts'
 
 export const isInput = (entry: EntryRecord) => entry.kind === 'pi.user' || entry.input === true
 
@@ -14,6 +15,16 @@ export function imagesOf(entry: EntryRecord | undefined) {
             : [],
         )
       : [],
+  )
+}
+
+export function forwardableImages(entry: EntryRecord | undefined) {
+  const images = imagesOf(entry)
+  if (images.length > maxImages) return []
+  return images.filter(
+    (image) =>
+      (imageMimeTypes as readonly string[]).includes(image.mimeType) &&
+      Buffer.byteLength(image.data, 'base64') <= maxImageBytes,
   )
 }
 
@@ -40,11 +51,13 @@ export async function imagesHint(tx: Tx, conversationId: ConversationId) {
   const usable: string[] = []
   let cursor: Parameters<Tx['scanEntries']>[2]
   let pages = 0
+  let seenImages = false
   do {
     const page = await tx.scanEntries({ conversationId }, SCAN_PAGE, cursor)
     pages += 1
+    seenImages ||= page.items.some((entry) => imagesOf(entry).length > 0)
     for (const entry of page.items) {
-      const count = imagesOf(entry).length
+      const count = forwardableImages(entry).length
       if (count) {
         usable.push(`${entry.id} (${count})`)
         if (usable.length === HINT_IDS)
@@ -55,5 +68,7 @@ export async function imagesHint(tx: Tx, conversationId: ConversationId) {
   } while (cursor !== undefined && pages < HINT_PAGE_LIMIT)
   return usable.length
     ? `entries with images here, newest first: ${usable.join(', ')}`
-    : 'no recent entry here has images (captures made inside codemode never become entries; a direct screenshot or browser call does)'
+    : seenImages
+      ? 'recent entries here have images, but none forwardable (type, size or count)'
+      : 'no recent entry here has images (captures made inside codemode never become entries; a direct screenshot or browser call does)'
 }

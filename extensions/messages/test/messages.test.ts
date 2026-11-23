@@ -1365,6 +1365,23 @@ it('refuses image references that do not resolve or exceed the limits', async ()
   )
   await submitWithImages(f, `SEND ${JSON.stringify({ to, text: 'Too many', images: 'latest' })}`, 5)
   expect(f.observed.join('\n')).toContain('has 5 images; at most 4 go along')
+  // Images that forwarding would refuse are not offered as usable; the hint says so instead of "none".
+  const svg = await f.opened.harness.commit(
+    async (tx) =>
+      (
+        await tx.appendEntry(ROOT_CONVERSATION_ID, {
+          kind: 'test.entry',
+          model: result([{ type: 'image', mimeType: 'image/svg+xml', data: 'AAAA' }]),
+        } as never)
+      ).id,
+    context,
+  )
+  await f.send(to, 'Missing', { images: 99999 })
+  expect(f.observed.join('\n')).toContain(
+    'recent entries here have images, but none forwardable (type, size or count)',
+  )
+  await f.send(to, 'Svg', { images: svg })
+  expect(f.observed.join('\n')).toContain(`entry ${svg} has an unsupported image or one over 2 MiB`)
   expect((await f.log())?.messages ?? []).toHaveLength(0)
 })
 it("lets @ultimate's message to the user carry its images", async () => {
@@ -1430,10 +1447,17 @@ it("forwards tool-result images by id, not an earlier turn's as latest, and chec
   )
   await f.send(to, 'Elsewhere', { images: elsewhere })
   expect(f.observed.join('\n')).toContain(`entry ${elsewhere} is not in this conversation`)
-  // A failed reference names usable entry ids, so a wrong guess corrects in one step.
+  // A failed reference names only the entries forwarding would admit, so a listed id never fails again.
   expect(f.observed.join('\n')).toContain(
-    `entry ${elsewhere} is not in this conversation; entries with images here, newest first: ${svg} (1), ${oversized} (1), ${shot} (1)`,
+    `entry ${elsewhere} is not in this conversation; entries with images here, newest first: ${shot} (1)`,
   )
+  const many = await write(result([png(1), png(2), png(3), png(4), png(5)]))
+  await f.send(to, 'Many', { images: many })
+  expect(f.observed.join('\n')).toContain(`entry ${many} has 5 images; at most 4 go along`)
+  await f.send(to, 'Missing again', { images: elsewhere })
+  const hint = f.observed.findLast((line) => line.includes('entries with images here'))!
+  expect(hint).toContain(`newest first: ${shot} (1)`)
+  expect(hint).not.toMatch(new RegExp(`\\b(${svg}|${oversized}|${many}) \\(`))
   expect((await f.log())!.messages.filter((m) => m.from === 1)).toHaveLength(1)
 })
 async function enableBranch(f: Awaited<ReturnType<typeof fixture>>) {
