@@ -188,6 +188,7 @@ export async function owed(host: ExtensionHost, tx: Tx, to: ConversationId, auto
 export const Started = defineDoc<{
   by?: ConversationId
   yielded?: TaskId
+  lastRoute?: TaskId<null>
 }>({
   kind: 'board.started',
   checkpointWhen: () => false,

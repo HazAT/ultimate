@@ -103,25 +103,6 @@ async function judge(
   }
 }
 
-const judgedNote = (judged: Judged) =>
-  judged.movedOn === true || ('report' in judged && judged.report < 0.5)
-
-async function supersededSince(
-  tx: Tx,
-  from: ConversationId,
-  to: ConversationId,
-  since: number,
-  answer: EntryId,
-) {
-  const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-  return messages.some(
-    (m) =>
-      m.from === from &&
-      m.to === to &&
-      (m.judged ? m.judged.answer > answer && !judgedNote(m.judged) : m.id >= since),
-  )
-}
-
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
   if ((await tx.doc(LiveDoc, id)).run || (await tx.doc(InboxDoc, id)).items.length) return true
   if ((await scanNonterminalTasks(tx, 'ultimate.subagent-reporter', id)).length) return true
@@ -312,7 +293,6 @@ interface Route {
     routed?: EntryId
     judged?: Judged
   }
-  supersededByMessagesFrom?: number
 }
 
 export function route(host: ExtensionHost) {
@@ -322,6 +302,7 @@ export function route(host: ExtensionHost) {
       inputs: SubmissionId[]
       by: ConversationId
       down?: boolean
+      after?: TaskId<null>
     },
     | { phase: 'observe' }
     | { phase: 'answered' }
@@ -338,7 +319,7 @@ export function route(host: ExtensionHost) {
           () => ({
             status: 'waiting',
             checkpoint: { phase: 'answered' },
-            on: [task.input.generation],
+            on: [task.input.generation, ...(task.input.after ? [task.input.after] : [])],
             policy: 'allSettled',
           }),
           ctx,
@@ -436,7 +417,7 @@ export function route(host: ExtensionHost) {
                   last.reply ||
                   last.report ||
                   last.re !== undefined ||
-                  (last.judged && judgedNote(last.judged))
+                  (last.judged && 'report' in last.judged && last.judged.report < 0.5)
                 )
                   return []
                 return routeToStarter(last.text, {})
@@ -451,7 +432,7 @@ export function route(host: ExtensionHost) {
             const first = Math.min(...inputsSettledByThisAnswer.map(({ entry }) => entry))
             return {
               answer,
-              toStarter: { ...toStarter, supersededByMessagesFrom: log.next },
+              toStarter,
               state: {
                 branch_said_before: await branchSaidBefore(tx, id, (first - 1) as EntryId),
                 inputs: entries.map((entry) => ({
@@ -501,22 +482,15 @@ export function route(host: ExtensionHost) {
         }, ctx)
       },
       forward: async (task, runtime, ctx) => {
-        for (const { to, text, requestId, options, supersededByMessagesFrom: since } of task.state
-          .checkpoint.routes) {
+        for (const { to, text, requestId, options } of task.state.checkpoint.routes) {
           if (!text.trim()) continue
           const id = runtime.conversationId
           await send(host, id, { to: `#${to}`, text, reply: false }, ctx, {
             requestId,
             ...options,
-            ...(since === undefined
-              ? {}
-              : {
-                  stillReports: async (tx: Tx) => {
-                    if (await supersededSince(tx, id, to, since, options.judged!.answer))
-                      return 'superseded'
-                    return (await concludedOrWorkUnderway(host, tx, id)) ? 'busy' : 'reports'
-                  },
-                }),
+            ...(options.judged
+              ? { stillReports: async (tx: Tx) => !(await concludedOrWorkUnderway(host, tx, id)) }
+              : {}),
           })
         }
         await runtime.commit(() => terminal, ctx)

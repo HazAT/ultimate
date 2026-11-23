@@ -1761,7 +1761,7 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
   verdict = async () => -1
   await wakes('ship it', 'invalid verdict')
 
-  // An older answer whose verdict comes late never overtakes a newer one: it goes as a note.
+  // A verdict that comes late holds back the branch's newer answer: both reach the starter in answer order.
   let releaseGo: ((p: number) => void) | undefined
   verdict = async () => new Promise<number>((done) => (releaseGo = done))
   await (await b.branch.submit({ type: 'input', content: 'go' }, context)).wait(context)
@@ -1769,15 +1769,11 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
   verdict = async () => 0.9
   await (await b.branch.submit({ type: 'input', content: 'hold' }, context)).wait(context)
   const sent = async (text: string) => (await b.from()).find((m) => m.text === `Answer: ${text}`)
-  await until(async () => (await sent('hold')) !== undefined)
   releaseGo!(0.95)
   await b.settled()
-  expect((await sent('hold'))!).toMatchObject({ report: true, judged: { report: 0.9 } })
   const go = (await sent('go'))!
-  expect([go.report, go.judged]).toEqual([
-    undefined,
-    { answer: expect.any(Number), report: 0.95, movedOn: true },
-  ])
+  const hold = (await sent('hold'))!
+  expect([go.report, hold.report, go.id < hold.id]).toEqual([true, true, true])
   // Answering another conversation's question later does not promote the superseded note into a report.
   await sendMessage(
     f.host,
@@ -1829,37 +1825,46 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
   expect(asked).toHaveLength(calls + 1)
   expect((await b.from()).at(-1)).toMatchObject({ report: true, judged: { error: 'interrupted' } })
 })
-it('keeps the newest judged report of a branch when verdicts come back out of order or while it is busy', async () => {
+it("judges and sends a branch's answers in answer order, and a report judged while it is busy waits for its next report", async () => {
   const f = await fixture()
   const b = await branched(f)
   const pending: ((p: number) => void)[] = []
   f.provided.set(Judge.name, {
     report: async () => new Promise<number>((done) => pending.push(done)),
   } satisfies JudgeService)
-  const ask = async (content: string) => {
-    const before = pending.length
-    await (await b.branch.submit({ type: 'input', content }, context)).wait(context)
-    await until(async () => pending.length === before + 1)
-    return pending[before]
-  }
+  const say = async (content: string) =>
+    (await b.branch.submit({ type: 'input', content }, context)).wait(context)
   const sent = async (text: string) => (await b.from()).find((m) => m.text === `Answer: ${text}`)
 
-  // An older answer judged a note, settling after a newer result is weighed, does not swallow that result.
-  const chat = await ask('nice')
-  const weighResult = await ask('result')
-  chat(0.1)
-  await until(async () => (await sent('nice')) !== undefined)
-  weighResult(0.9)
+  // The newer answer is not judged until the older one is sent, so verdicts cannot come back out of order.
+  await say('nice')
+  await until(async () => pending.length === 1)
+  await say('result')
+  const waitsOnOlderRoute = async () =>
+    (await f.opened.harness.inspect(context)).tasks.some(
+      (t) =>
+        t.record.kind === 'board.route' &&
+        t.record.conversationId === b.id &&
+        t.record.state.status === 'waiting' &&
+        t.record.state.on.length === 2,
+    )
+  await until(async () => pending.length === 2 || (await waitsOnOlderRoute()))
+  expect(pending).toHaveLength(1)
+  pending[0](0.1)
+  await until(async () => pending.length === 2)
+  pending[1](0.9)
   await b.settled()
-  expect((await sent('result'))!).toMatchObject({ report: true, judged: { report: 0.9 } })
+  const [nice, newer] = [(await sent('nice'))!, (await sent('result'))!]
+  expect([nice.report, newer.report, nice.id < newer.id]).toEqual([undefined, true, true])
 
   // A result judged while the branch answers a sibling goes as a note, and is promoted once that reply is sent.
-  const late = await ask('late result')
+  await say('late result')
+  await until(async () => pending.length === 3)
   await sendMessage(f.host, f.recipient.id, { to: `#${b.id}`, text: 'HOLD', reply: true }, context)
   await until(f.holding)
-  late(0.9)
+  pending[2](0.9)
   await until(async () => (await sent('late result')) !== undefined)
-  expect((await sent('late result'))!).toMatchObject({ judged: { busy: true } })
+  expect((await sent('late result'))!.report).toBeUndefined()
   f.hold.release()
   await b.settled()
   const toStarter = (await b.from()).filter((m) => m.to === 1)

@@ -10,22 +10,6 @@ const percent = (p: number) => `${Math.round(p * 100)}%`
 export function JudgedChip(props: { judged: Judged }) {
   const verdict = () => {
     const judged = props.judged
-    const jev =
-      'error' in judged
-        ? `no verdict from Jev (${judged.error})`
-        : `Jev: ${judged.report >= 0.5 ? 'report' : 'note'} ${percent(Math.max(judged.report, 1 - judged.report))}`
-    if (judged.busy)
-      return {
-        woke: false,
-        text: 'note · busy',
-        title: `The branch was busy when this answer went out (${jev}), so it went as a note; its next report wakes the starter.`,
-      }
-    if (judged.movedOn)
-      return {
-        woke: false,
-        text: 'note · moved on',
-        title: `The branch moved on while Jev judged this answer (${jev}), so it went as a note.`,
-      }
     if ('error' in judged)
       return {
         woke: true,

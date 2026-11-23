@@ -303,13 +303,15 @@ export default function messages(host: ExtensionHost) {
               started.yielded !== undefined && started.yielded >= api.taskId
             if (generationObserverAlreadyCreated) return
             started.yielded = api.taskId
-            await tx.createTask(
+            const after = started.lastRoute
+            started.lastRoute = await tx.createTask(
               route(host),
               {
                 generation: api.taskId as TaskId<GenerationResult>,
                 inputs: [...((await tx.doc(LiveDoc, api.conversationId)).run?.inputs ?? [])],
                 by,
                 ...(down ? { down } : {}),
+                ...(after !== undefined ? { after } : {}),
               },
               {
                 ownership: { kind: 'conversation' },
