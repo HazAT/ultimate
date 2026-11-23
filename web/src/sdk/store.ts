@@ -373,16 +373,14 @@ export function createStore(options: StoreOptions = {}) {
           const singleRead = opens.size === 1 && closes.length === 0
           if (singleRead) {
             const [[sub, { spec }]] = opens
-            if ('read' in spec) return { refused: { [sub]: 413 }, reconnect: false }
+            if ('read' in spec) return { refused: { [sub]: 413 } }
           }
           if (batchSize > 1) maxBatchSize = Math.max(1, Math.floor(batchSize / 2))
           return 'ambiguous' as const
         }
         if (response.status !== 200) return 'ambiguous' as const
         const answer = (await response.json()) as Partial<SubscriptionsAnswer>
-        return answeredFor(opens, answer)
-          ? { refused: answer.refused, reconnect: false }
-          : ('ambiguous' as const)
+        return answeredFor(opens, answer) ? { refused: answer.refused } : ('ambiguous' as const)
       })
       .catch(() => 'ambiguous' as const)
       .then((result) => {

@@ -104,8 +104,8 @@ async function postJson<T>(
         ? data.error
         : `${response.status} ${response.statusText}`
     const rev =
-      data && typeof data === 'object' && 'rev' in data && typeof data.rev === 'number'
-        ? data.rev
+      data && typeof data === 'object' && 'rev' in data && Number.isSafeInteger(data.rev)
+        ? (data.rev as number)
         : undefined
     const superseded =
       data && typeof data === 'object' && 'superseded' in data && data.superseded === true

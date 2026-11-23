@@ -222,12 +222,21 @@ it('does not mark a mounted read settled after a status-0 network failure before
   expect(settled).toBe(true)
 })
 
-it('does not let an unversioned HTTP error overwrite an authoritative sequenced answer', async () => {
+it('does not let an unversioned HTTP error overwrite an authoritative sequenced answer, and recovers after an initial unversioned 500', async () => {
   const { watched, reads, action, store } = setup()
   const onError = vi.fn<(error: ActionError) => void>()
   const read = reads.get('test', 'status', null)
   read.use({ onError })
+  action.mockRejectedValueOnce(new ActionError('test', 'status', 500, 'temporary', undefined))
+  await read.refetch()
+  expect(read.get().error).toMatchObject({ status: 500, message: 'temporary' })
   watched[0].send({ result: 'good', rev: 5 })
+  expect(read.get()).toMatchObject({
+    data: 'good',
+    error: undefined,
+    loading: false,
+    settled: true,
+  })
   action.mockRejectedValueOnce(new ActionError('test', 'status', 503, 'Bad gateway'))
   await read.refetch()
   expect(read.get()).toMatchObject({
@@ -236,7 +245,7 @@ it('does not let an unversioned HTTP error overwrite an authoritative sequenced 
     loading: false,
     settled: true,
   })
-  expect(onError).not.toHaveBeenCalled()
+  expect(onError).toHaveBeenCalledTimes(1)
   expect(store.notify).not.toHaveBeenCalled()
 })
 

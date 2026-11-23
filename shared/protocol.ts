@@ -75,7 +75,7 @@ export interface ExtensionActionRequest {
   conversationId?: ConversationId
 }
 export interface ExtensionActionResponse {
-  result: JsonValue
+  result?: JsonValue
   rev?: number
   superseded?: true
 }

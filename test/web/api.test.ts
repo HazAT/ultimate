@@ -88,6 +88,18 @@ describe('extension actions', () => {
       rev: 8,
       superseded: undefined,
     })
+    const badErrorRev = setup(
+      () =>
+        new Response('{"error":"temporary","rev":1e400}', {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    )
+    const err = await badErrorRev
+      .readAction(ref('notes', 'list'))
+      .catch((failure: unknown) => failure)
+    expect(err).toBeInstanceOf(ActionError)
+    expect(err).toMatchObject({ status: 500, message: 'temporary', rev: undefined })
   })
 
   it('fails a 503 like any other server error', async () => {

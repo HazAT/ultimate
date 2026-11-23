@@ -1381,12 +1381,13 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
       }),
     })
     await watchStarted.promise
-    await stream.close()
-    await until(() => establishedStopped.mock.calls.length === 1)
+    await server.api.close()
+    expect(establishedStopped).toHaveBeenCalledOnce()
     expect(stalledStopped).not.toHaveBeenCalled()
     gate.resolve()
     await stalled.catch(() => {})
     await until(() => stalledStopped.mock.calls.length === 1)
+    await stream.close()
   })
   it('marks superseded HTTP results and failures (including HTTP started before watch), recovers after HTTP 404, and stamps AbortError 500s', async () => {
     const { server } = await fixture(false, {
