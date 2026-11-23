@@ -116,7 +116,7 @@ it('opens a sent review at the chosen comment, even when both sides share the sa
       ],
     },
   } as unknown as EntryRecord
-  const container = renderSolid(() => <ReviewCard entry={entry} />)
+  const container = renderSolid(() => <ReviewCard entry={entry} core={null} />)
   expect(container.querySelector('[data-review-chip="src/main.ts:4"]')).not.toBeNull()
   expect(container.textContent).toContain('const count = 0')
   await expectDistinctAgentNames(agent)
@@ -134,4 +134,20 @@ it('opens a sent review at the chosen comment, even when both sides share the sa
       source: 'agent',
     },
   ])
+})
+
+it("leaves a review with another extension's spec scheme to the renderer before it", () => {
+  const entry = {
+    id: 11,
+    kind: 'review.comments',
+    data: {
+      spec: 'read:/project/notes.md',
+      comments: [{ file: 'notes.md', side: 'new', start: 2, end: 2, text: 'Clarify this.' }],
+    },
+  } as unknown as EntryRecord
+  const container = renderSolid(() => (
+    <ReviewCard entry={entry} core={<div data-earlier-card="" />} />
+  ))
+  expect(container.querySelector('[data-earlier-card]')).not.toBeNull()
+  expect(container.querySelector('[data-review-card]')).toBeNull()
 })
