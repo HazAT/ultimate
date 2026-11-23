@@ -1483,6 +1483,20 @@ async function branched(f: Awaited<ReturnType<typeof fixture>>, prompt = 'Explor
   await settled()
   return { id, branch, from, later, settled }
 }
+it("applies the coordinator definition's denied tools to a new branch, for the model and for scripts", async () => {
+  const f = await fixture()
+  const coordinator = join(f.host.ultimateRoot, 'agents/coordinator.md')
+  await writeFile(
+    coordinator,
+    (await readFile(coordinator, 'utf8')).replace('---\n', '---\ndenyTools: [hold]\n'),
+  )
+  expect((await f.opened.root.agent(context)).tools.map((tool) => tool.name)).toContain('hold')
+  const b = await branched(f)
+  const agent = await b.branch.agent(context)
+  expect(agent.tools.map((tool) => tool.name)).toContain('message')
+  expect(agent.tools.map((tool) => tool.name)).not.toContain('hold')
+  expect(agent.callable.map((tool) => tool.name)).not.toContain('hold')
+})
 it('lets a branch ask the user directly and leaves passive question and answer notes for @ultimate', async () => {
   const f = await fixture()
   const b = await branched(f)
@@ -1531,16 +1545,15 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   expect(f.observed).toContainEqual(
     expect.stringContaining(`Message from user:\nAnswer to message ${question.id}:\n${text}`),
   )
-  // The user read the branch's answer where they gave theirs, so its starter gets it only as a note.
-  const toStarter = (await b.from()).find((m) => m.to === 1 && m.text.includes('A: Yes'))!
-  expect(toStarter.report).toBeUndefined()
-  const note = (await entries('board.message')).find(
-    (e) => (e.data as { id?: number }).id === toStarter.id,
+  // A card answer is a decision @ultimate acts on (a dream branch stalled when it arrived as a note).
+  const toStarter = (await b.from()).filter((m) => m.to === 1 && m.text.includes('A: Yes'))
+  expect(toStarter).toEqual([expect.objectContaining({ report: true })])
+  await until(
+    async () =>
+      (await entries('pi.assistant')).length > generations &&
+      (await f.opened.harness.snapshot(LiveDoc, ROOT_CONVERSATION_ID, context))?.run === undefined,
   )
-  expect([note?.data, note?.input]).toEqual([
-    expect.objectContaining({ delivery: 'note' }),
-    undefined,
-  ])
+  expect(f.observed).toContainEqual(expect.stringContaining('A: Yes'))
   expect(await entries('board.asked')).toHaveLength(1)
   expect(await entries('board.answered')).toHaveLength(1)
 })
@@ -1561,6 +1574,36 @@ it('forwards images into a new branch with its prompt', async () => {
   expect(message.images?.count).toBe(1)
   const entry = await placed(f, message.to as number, message.id)
   expect(imagesIn(entry)).toEqual([png(0)])
+})
+it('creates nothing when a branch call fails on its images', async () => {
+  const f = await fixture()
+  await enableBranch(f)
+  await (
+    await f.opened.root.submit(
+      {
+        type: 'input',
+        content:
+          'BRANCH ' +
+          JSON.stringify({ prompt: 'Fix this card', isolated: false, images: 'latest' }),
+      },
+      context,
+    )
+  ).wait(context)
+  await f.opened.root.waitForIdle(context)
+  const view = await f.opened.root.context(context)
+  expect(JSON.stringify(view.entries.findLast((e) => e.kind === 'pi.tool-result'))).toContain(
+    'found no images in this turn',
+  )
+  expect(view.entries.filter((e) => e.kind === 'lineage.branched')).toEqual([])
+  const conversations = await f.opened.harness.commit(
+    (tx) => tx.scanConversations({}, 100),
+    context,
+  )
+  for (const conversation of conversations.items)
+    expect(
+      (await f.opened.harness.snapshot(Branch, conversation.id, context))?.branch,
+    ).toBeUndefined()
+  expect((await f.log())?.messages ?? []).toEqual([])
 })
 it("routes a branch's later final answer to its starter once, waking it when the branch stopped idle", async () => {
   const f = await fixture()

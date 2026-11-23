@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { extensionOptions, settledChoice, switchScope } from '../../choices.ts'
+import { extensionChoices, extensionOptions, settledChoice, switchScope } from '../../choices.ts'
 
 it('saves extension switches to user settings unless the user picks this project', () => {
   expect(switchScope(true)).toBe('user')
@@ -17,23 +17,25 @@ it('settles a project card once the project setup is decided elsewhere, keeping 
   expect(settledChoice('git', undefined, true)).toBeUndefined()
 })
 
-it('offers only the optional extensions, unchecked until the user enables them', () => {
-  const fresh = extensionOptions({ enable: [], disable: [] }, {})
-  expect(fresh.map(({ name, checked }) => ({ name, checked }))).toEqual(
-    ['sounds', 'tailscale', 'parallel', 'health', 'cloud', 'classify', 'phase'].map((name) => ({
-      name,
-      checked: false,
-    })),
-  )
-  expect(fresh.find((option) => option.name === 'phase')).toMatchObject({ needs: 'classify' })
-  expect(
-    extensionOptions({ enable: ['sounds'], disable: [] }, {}).find(
-      (option) => option.name === 'sounds',
-    ),
-  ).toMatchObject({ checked: true })
-  expect(
-    extensionOptions({ enable: ['sounds'], disable: [] }, { sounds: false }).find(
-      (option) => option.name === 'sounds',
-    ),
-  ).toMatchObject({ checked: false })
+it('checks Jev and web search until the user turns them off, and other extras only once enabled', () => {
+  const checked = (user: { enable: string[]; disable: string[] }, changed = {}) =>
+    Object.fromEntries(extensionOptions(user, changed).map((o) => [o.key, o.checked]))
+  expect(checked({ enable: [], disable: [] })).toEqual({
+    jev: true,
+    parallel: true,
+    sounds: false,
+    tailscale: false,
+    health: false,
+    cloud: false,
+  })
+  expect(checked({ enable: ['sounds'], disable: ['phase'] })).toMatchObject({
+    jev: false,
+    sounds: true,
+  })
+  expect(checked({ enable: ['sounds'], disable: [] }, { sounds: false })).toMatchObject({
+    sounds: false,
+  })
+  const choices = extensionChoices(extensionOptions({ enable: [], disable: [] }, { cloud: true }))
+  expect(choices).toMatchObject({ classify: true, phase: true, recall: true, parallel: true })
+  expect(choices).toMatchObject({ cloud: true, sounds: false })
 })

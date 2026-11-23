@@ -333,7 +333,7 @@ it('offers setup only to named definitions, refuses inapplicable cards, and dedu
     )
     const choice = {
       card: 'extensions',
-      extensions: { messages: true, faux: false },
+      extensions: { messages: true, faux: false, parallel: true },
       toolCallId: 'setup-1',
     }
     const receipts = await Promise.all(
@@ -353,10 +353,11 @@ it('offers setup only to named definitions, refuses inapplicable cards, and dedu
     expect(entries[0].data).toEqual({
       card: choice.card,
       toolCallId: choice.toolCallId,
-      summary: 'enabled messages; disabled faux',
+      summary: 'enabled messages, parallel; disabled faux',
+      missing: ['PARALLEL_API_KEY'],
     })
     expect(JSON.stringify(entries[0].model)).toContain(
-      'Setup choice (extensions): enabled messages; disabled faux',
+      'Setup choice (extensions): enabled messages, parallel; disabled faux\\nMissing keys: PARALLEL_API_KEY. Ask the user',
     )
     const otherTab = await post(server, '/api/extensions/onboarding/actions/choose', {
       args: { ...choice, extensions: { messages: false, faux: true } },
@@ -366,7 +367,7 @@ it('offers setup only to named definitions, refuses inapplicable cards, and dedu
     expect(otherTab.data.error).toContain('already has a different choice')
     expect(
       JSON.parse(await readFile(join(home, '.ultimate/settings.json'), 'utf8')).extensions,
-    ).toMatchObject({ enable: ['messages'], disable: ['faux'] })
+    ).toMatchObject({ enable: ['messages', 'parallel'], disable: ['faux'] })
 
     // Fail after the setting is applied but before admission. Retrying must still notify the agent once.
     const retry = { card: 'project', local: true, toolCallId: 'retry-project' }
@@ -419,7 +420,7 @@ it('offers setup only to named definitions, refuses inapplicable cards, and dedu
     ).toBe(200)
     expect(
       JSON.parse(await readFile(join(home, '.ultimate/settings.json'), 'utf8')).extensions,
-    ).toMatchObject({ enable: ['messages', 'plan'], disable: ['faux', 'info'] })
+    ).toMatchObject({ enable: ['messages', 'parallel', 'plan'], disable: ['faux', 'info'] })
     expect(
       JSON.stringify(
         await run('codemode', {

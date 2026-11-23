@@ -16,6 +16,9 @@ export const StartEntry = defineEntry<{
 
 export const WalkthroughEntry = defineEntry<Record<string, never>>('walkthrough.start')
 
-export const ChoiceEntry = defineEntry<{ card: string; summary: string; toolCallId: string }>(
-  'onboarding.choice',
-)
+export const ChoiceEntry = defineEntry<{
+  card: string
+  summary: string
+  toolCallId: string
+  missing?: string[]
+}>('onboarding.choice')

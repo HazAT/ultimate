@@ -24,6 +24,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
 import { writeJson } from '../../lib/json-file.ts'
+import { secretMetadata } from '../../lib/secrets.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
@@ -91,6 +92,26 @@ function toggle(extensions: JsonObject, name: string, enabled: boolean) {
   extensions[key] = [...new Set([...((extensions[key] as string[]) ?? []), name])]
   if (extensions[opposite] !== undefined)
     extensions[opposite] = (extensions[opposite] as string[]).filter((entry) => entry !== name)
+}
+async function missingSecrets(host: ExtensionHost, chosen: Record<string, boolean>) {
+  const declared = host
+    .extensions()
+    .filter((extension) => chosen[extension.name] && extension.enabled)
+    .flatMap((extension) => extension.server?.secrets ?? [])
+    .filter(
+      ({ name, provider }) =>
+        !process.env[name] &&
+        !(
+          provider &&
+          host.modelRuntime.getProviderAuthStatus(provider).configured &&
+          !host.modelRuntime.isUsingOAuth(provider)
+        ),
+    )
+  if (!declared.length) return []
+  const stored = new Set((await secretMetadata(host.userHome)).map((secret) => secret.name))
+  return [...new Set(declared.map(({ name }) => name))]
+    .filter((name) => !stored.has(name))
+    .toSorted()
 }
 async function inspectResourceNames(projectRoot: string) {
   const directory = join(projectRoot, '.ultimate/agents')
@@ -321,6 +342,7 @@ export const actions: Record<string, ExtensionAction> = {
     const { card, toolCallId } = args
     let payload: JsonObject
     let summary: string
+    let missing: string[] = []
     if (card === 'extensions') {
       const choices = args.extensions
       if (
@@ -366,9 +388,11 @@ export const actions: Record<string, ExtensionAction> = {
       const conversation = await harness.conversation(id, context)
       if (!conversation) throw new Error('Conversation not found')
       if (!existing) {
-        if (card === 'extensions')
+        if (card === 'extensions') {
           await actions.applyFirstRun({ extensions: payload.extensions! }, actionContext)
-        else if (card === 'project') await actions.decide({ local: payload.local! }, actionContext)
+          missing = await missingSecrets(host, payload.extensions as Record<string, boolean>)
+        } else if (card === 'project')
+          await actions.decide({ local: payload.local! }, actionContext)
         else if (payload.initialize) await host.need(WorkspacesApi).setupGit()
         await harness.commit(async (tx) => {
           ;(await tx.doc(ChoiceRequests, id)).payloads[toolCallId] = payload
@@ -377,8 +401,11 @@ export const actions: Record<string, ExtensionAction> = {
       await conversation.submit(
         {
           type: 'input',
-          content: `Setup choice (${card}): ${summary}`,
-          entry: { kind: ChoiceEntry.kind, data: { card, summary, toolCallId } },
+          content: `Setup choice (${card}): ${summary}${missing.length ? `\nMissing keys: ${missing.join(', ')}. Ask the user in one line to add them with the Add buttons on this card.` : ''}`,
+          entry: {
+            kind: ChoiceEntry.kind,
+            data: { card, summary, toolCallId, ...(missing.length ? { missing } : {}) },
+          },
           requestId,
           whenBusy: 'followUp',
         },

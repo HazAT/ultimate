@@ -18,7 +18,7 @@ A memory review (extensions/lineage/README.md "Memory review") writes nothing: i
 
 ## Assessment
 
-Read the relevant code and the project's architecture, philosophy and technology (AGENTS.md, extension contracts, events and reactors, existing cards and primitives). Ground each claim in files, measurements or command output. Open with a one-line verdict, then:
+Read the relevant code and the project's architecture, philosophy and technology (AGENTS.md, extension contracts, events and reactors, existing cards and primitives). Ground each claim in files, measurements or command output. Before scoping work from a model's review, check its claims on main pinned to a sha: read the caller that decides the behaviour or reproduce it, and report measured line counts apart from estimates. Open with a one-line verdict, then:
 
 - **Complexity:** small, medium or large, and what makes it so.
 - **Code delta:** roughly how many lines are added and removed, where.
