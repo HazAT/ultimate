@@ -1,4 +1,4 @@
-import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
+import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // Harness tests use the faux provider without token pacing.
 import { eventHost, idleNeed, openers, temp, removeTemp } from '../../../test/helpers.ts'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -381,6 +381,33 @@ it('offers deferred tools only when named by the definition, and removes them on
   }, ctx)
   await service.standing('x', ctx)
   expect((await conversation.agent(ctx)).tools.map((tool) => tool.name)).toEqual(['read'])
+})
+
+// #873487/931975: after a landing added script tools, @ultimate's stored tool list kept them out of its scripts.
+it("rebuilds a standing agent's tools from its definition before its next run, keeping denies", async () => {
+  const { service, host, prepared, file } = await fixture()
+  await writeFile(
+    file,
+    definition('Original', 'denyTools: [denied]\n').replace('tools: [read, t]\n', ''),
+  )
+  const id = await service.standing('x', ctx)
+  const conversation = (await host.harness.conversation(id, ctx))!
+  const names = async () => (await conversation.agent(ctx)).tools.map((tool) => tool.name)
+  const landed = (name: string) =>
+    defineTool({
+      name,
+      description: name,
+      parameters: obj({}),
+      execute: async () => ({ output: [] }),
+    })
+  prepared.registry.install(
+    defineExtension({ name: 'landed', tools: [landed('fresh'), landed('denied')] }),
+  )
+  expect(await names()).not.toContain('fresh')
+  prepared.faux!.setResponses([fauxAssistantMessage('Done')])
+  await (await conversation.submit({ type: 'input', content: 'Hello' }, ctx)).wait(ctx)
+  expect(await names()).toContain('fresh')
+  expect(await names()).not.toContain('denied')
 })
 
 // solidcraft #6254: a chat created from a definition kept its old tools after the definition gained `message`.

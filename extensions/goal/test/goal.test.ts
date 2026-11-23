@@ -297,9 +297,14 @@ it('keeps a reminder while the goal is open: paused while waiting on the user, g
 
   // Its fire tells @ultimate what to check; other inputs do not.
   const hooks = extension.hooks![0].handlers as GenerationHooks
+  const placement = {
+    tx,
+    conversationId: ULTIMATE,
+    agent: () => Promise.reject(new Error('Unused')),
+  }
   const note = async (input: object) =>
-    (await hooks.beforeInput(input as never, { tx, conversationId: ULTIMATE }, BACKGROUND_CONTEXT))!
-      .entries![0].model![0].content as string
+    (await hooks.beforeInput(input as never, placement, BACKGROUND_CONTEXT))!.entries![0].model![0]
+      .content as string
   expect(await note({ kind: 'automations.fired', data: { id: 'A1' } })).toContain(
     'This is the goal reminder',
   )
@@ -348,7 +353,7 @@ it('grants nothing through a start card still queued after the user ended its go
   expect(
     await hooks.beforeInput(
       { kind: 'goal.started' },
-      { tx, conversationId: ULTIMATE },
+      { tx, conversationId: ULTIMATE, agent: () => Promise.reject(new Error('Unused')) },
       BACKGROUND_CONTEXT,
     ),
   ).toBeUndefined()

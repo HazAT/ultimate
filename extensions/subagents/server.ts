@@ -1,5 +1,6 @@
 import { parseConversationId } from '../../lib/ids.ts'
 import type {
+  Agent,
   ConversationId,
   ConversationRecord,
   Cursor,
@@ -738,6 +739,19 @@ export default function subagents(
     },
   }
   host.implement(SubagentsApi, service)
+  const refreshStanding = async (
+    tx: Tx,
+    id: ConversationId,
+    agent: (id: ConversationId) => Promise<Agent>,
+  ) => {
+    const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
+    const name = Object.keys(index).find((candidate) => index[candidate] === id)
+    if (name === undefined) return
+    const definition = (await residentDefinitions()).find((item) => item.name === name)
+    if (!definition) return
+    const base = { ...(await agent(ROOT_CONVERSATION_ID)), ...(await hostDefault(host)) }
+    await reconfigure(tx, id, definition, base, host.modelRuntime)
+  }
   const spawnDefinition = async (
     args: {
       agent?: string
@@ -983,7 +997,10 @@ export default function subagents(
           }, context)
         },
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
-        beforeInput: (_input, { tx, conversationId }) => stateNote(tx, conversationId, Date.now()),
+        beforeInput: async (_input, { tx, conversationId, agent }) => {
+          await refreshStanding(tx, conversationId, agent)
+          return stateNote(tx, conversationId, Date.now())
+        },
       }),
       hook(ToolTask, {
         beforeTool: (call) => {
