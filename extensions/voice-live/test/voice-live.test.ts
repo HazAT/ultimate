@@ -87,11 +87,8 @@ const userParts = (message: Message | undefined) =>
 it('forks @ultimate once per session, hears the newest recording and keeps history as text', async () => {
   const f = await fixture()
   const recorded = await f.action('record', { audio, mimeType: 'audio/webm' })
-  const first = await f.turn({
-    text: 'what about the sidebar',
-    audio: recorded.data.result.audio,
-    seconds: 2,
-  })
+  const kept = recorded.data.result.audio as string
+  const first = await f.turn({ key: 'one', text: '', audio: kept, seconds: 2 })
   expect(first.route).toBe('audio')
   const fork = f.requests.at(-1)!
   expect(fork.model).toBe('gemini-faux')
@@ -103,7 +100,9 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
     mimeType: 'audio/webm',
   })
 
-  const second = await f.turn({ text: 'typed follow-up' })
+  expect(JSON.stringify(fork.messages)).toContain('(no transcript yet)')
+  await f.action('transcript', { audio: kept, text: 'what about the sidebar' })
+  const second = await f.turn({ key: 'two', text: 'typed follow-up' })
   expect(second.id).toBe(first.id)
   const later = f.requests.at(-1)!
   const audioParts = later.messages.flatMap((message) =>
@@ -112,18 +111,24 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
     ),
   )
   expect(audioParts).toEqual([])
-  expect(JSON.stringify(later.messages)).toContain('what about the sidebar')
+  expect(JSON.stringify(later.messages)).toContain(
+    'by voice (his recording follows): what about the sidebar',
+  )
+  expect(JSON.stringify(later.messages.filter((message) => message.role === 'user'))).not.toContain(
+    '(no transcript yet)',
+  )
 
   await f.action('end', null)
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({})
   expect(await readdir(join(f.home, 'voice')).catch(() => [])).toEqual([])
-  const next = await f.turn({ text: 'new session' })
+  const next = await f.turn({ key: 'three', text: 'new session' })
   expect(next.id).not.toBe(first.id)
 })
 
 it('only reads and hands off: other tools are blocked, voice_handoff starts @ultimate with a card', async () => {
   const f = await fixture()
   const blocked = await f.turn({
+    key: 'blocked',
     text: `CALL ${JSON.stringify({ name: 'write', args: { path: 'x.txt', content: 'x' } })}`,
   })
   const blockedResult = f.requests.at(-1)!.messages.at(-1)!
@@ -136,7 +141,10 @@ it('only reads and hands off: other tools are blocked, voice_handoff starts @ult
     decided: ['A quiet toggle'],
     instruction: 'Start a branch for a Needs me toggle',
   }
-  await f.turn({ text: `CALL ${JSON.stringify({ name: 'voice_handoff', args: handoff })}` })
+  await f.turn({
+    key: 'handoff',
+    text: `CALL ${JSON.stringify({ name: 'voice_handoff', args: handoff })}`,
+  })
   await until(async () =>
     (await (await f.server.harness.conversation(f.main, context))!.context(context)).entries.some(
       (entry) => entry.kind === 'voice.handoff',

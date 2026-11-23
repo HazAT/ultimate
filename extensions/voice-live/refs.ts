@@ -19,9 +19,11 @@ export type VoiceSession = {
  * what was said about an interrupted reply.
  */
 export type VoiceTurn = {
+  key: string
   text: string
   audio?: string
   seconds?: number
+  envelope?: number[]
   route: VoiceRoute
   hint?: string
   images?: number
@@ -38,8 +40,17 @@ export type VoiceHandoff = {
   from: ConversationId
 }
 
+/** On a voice fork: what it forked from, and each recording's transcript by recording id once it arrived. */
+export type VoiceFork = {
+  of?: ConversationId
+  at?: EntryId
+  transcripts?: Record<string, string>
+}
+
 /** The open voice session on the root: the fork's id, the conversation and entry it forked from, and when. */
 export const VoiceSessionDoc = docRef<VoiceSession>('voice.session')
+/** The voice fork's own document, on the fork: see `VoiceFork`. */
+export const VoiceForkDoc = docRef<VoiceFork>('voice.fork')
 
 /** `{ audio: base64, mimeType }` → `{ audio }`, the id of the recording kept for the session's next turn. */
 export const RecordAction = actionRef<{ audio: string; mimeType: string }, { audio: string }>(
@@ -53,14 +64,22 @@ export const RecordAction = actionRef<{ audio: string; mimeType: string }, { aud
  */
 export const TurnAction = actionRef<
   {
+    key: string
     text: string
     audio?: string
     seconds?: number
+    envelope?: number[]
     hint?: string
     images?: { data: string; mimeType: string }[]
   },
   { conversation: ConversationId; route: VoiceRoute }
 >('voice-live', 'turn')
+
+/** A recording's transcript, arrived after its turn went out: kept on the session's fork for later requests. */
+export const TranscriptAction = actionRef<{ audio: string; text: string }, Record<string, never>>(
+  'voice-live',
+  'transcript',
+)
 
 /** Stop the session's current reply, for an interruption. */
 export const StopAction = actionRef<null, Record<string, never>>('voice-live', 'stop')

@@ -24,15 +24,23 @@ import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.
 import { ConversationsApi } from '../conversations/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
-import { EndAction, RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
-import type { VoiceHandoff, VoiceRoute, VoiceSession, VoiceTurn } from './refs.ts'
+import {
+  EndAction,
+  RecordAction,
+  StatusAction,
+  StopAction,
+  TranscriptAction,
+  TurnAction,
+} from './refs.ts'
+import type { VoiceFork, VoiceHandoff, VoiceRoute, VoiceSession, VoiceTurn } from './refs.ts'
 import { voicePrompt } from './prompt.ts'
 
 const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
+const PLACEHOLDER = '(no transcript yet)'
 const READ_TOOLS = ['read', 'bash', 'memory', 'web_search', 'web_fetch', 'voice_handoff']
 
-export const userActions = ['record', 'turn', 'stop', 'end']
+export const userActions = ['record', 'turn', 'transcript', 'stop', 'end']
 
 export const Session = defineDoc<VoiceSession>({
   kind: 'voice.session',
@@ -44,13 +52,7 @@ export const Session = defineDoc<VoiceSession>({
   initial: () => ({}),
 })
 
-const Fork = defineDoc<{
-  of?: ConversationId
-  at?: EntryId
-  seen?: EntryId
-  introduced?: true
-  ended?: true
-}>({
+const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; ended?: true }>({
   kind: 'voice.fork',
   checkpointWhen: () => false,
   version: 1,
@@ -225,13 +227,16 @@ export const actions = {
     return { audio: id }
   }),
   turn: implementAction(TurnAction, async (args, { host }) => {
-    const { text, audio, seconds, hint, images } = unwrap<{
+    const { key, text, audio, seconds, envelope, hint, images } = unwrap<{
+      key: unknown
       text: unknown
       audio: unknown
       seconds: unknown
+      envelope: unknown
       hint: unknown
       images: unknown
     }>(args)
+    if (typeof key !== 'string' || !key) throw new Error('Expected a turn key')
     if (typeof text !== 'string' || (!text.trim() && typeof audio !== 'string'))
       throw new Error('Expected text or a recording')
     if (audio !== undefined && typeof audio !== 'string') throw new Error('Expected a recording id')
@@ -252,15 +257,23 @@ export const actions = {
     const id = await openSession(host)
     const model = (await host.harness().snapshot(AgentDoc, id, context))?.model ?? DEFAULT_MODEL
     const route: VoiceRoute = typeof audio === 'string' && hearsAudio(model) ? 'audio' : 'text'
+    const levels =
+      Array.isArray(envelope) && envelope.every((level) => typeof level === 'number')
+        ? envelope
+            .slice(-400)
+            .map((level) => Math.round(Math.min(1, Math.max(0, level)) * 100) / 100)
+        : undefined
     const data: VoiceTurn = {
+      key,
       text: text.trim(),
       route,
       ...(typeof audio === 'string' ? { audio } : {}),
       ...(typeof seconds === 'number' && Number.isFinite(seconds) ? { seconds } : {}),
+      ...(levels?.length ? { envelope: levels } : {}),
       ...(typeof hint === 'string' && hint.trim() ? { hint: hint.trim() } : {}),
       ...(pictures.length ? { images: pictures.length } : {}),
     }
-    const said = data.text || '(no transcript yet)'
+    const said = data.text || PLACEHOLDER
     const words =
       typeof audio === 'string'
         ? `Daniel, by voice${route === 'audio' ? ' (his recording follows)' : ' (transcribed)'}: ${said}`
@@ -274,6 +287,7 @@ export const actions = {
     await conversation.submit(
       {
         type: 'input',
+        requestId: `voice:turn:${key}`,
         whenBusy: 'steer',
         entry: { kind: VoiceTurnEntry.kind, data },
         content,
@@ -281,6 +295,18 @@ export const actions = {
       context,
     )
     return { conversation: id, route }
+  }),
+  transcript: implementAction(TranscriptAction, async (args, { host }) => {
+    const { audio, text } = unwrap<{ audio: unknown; text: unknown }>(args)
+    if (typeof audio !== 'string' || typeof text !== 'string')
+      throw new Error('Expected { audio, text }')
+    const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+    if (id === undefined) return {}
+    await host.harness().commit(async (tx) => {
+      const fork = await tx.doc(Fork, id)
+      fork.transcripts = { ...fork.transcripts, [audio]: text.trim() }
+    }, context)
+    return {}
   }),
   stop: implementAction(StopAction, async (_args, { host }) => {
     const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
@@ -305,22 +331,39 @@ export const actions = {
   }),
 }
 
-async function withRecording(
+async function voiceRequest(
   host: ExtensionHost,
   messages: readonly Message[],
-  turn: { data: VoiceTurn; model?: readonly Message[] },
+  turns: { data: VoiceTurn; model?: readonly Message[] }[],
+  transcripts: Record<string, string>,
 ) {
-  const said = turn.model?.find((message) => message.role === 'user')
-  const at = messages.findLastIndex(
-    (message) => message.role === 'user' && message.timestamp === said?.timestamp,
-  )
-  const message = messages[at]
-  if (message?.role !== 'user' || typeof message.content === 'string') return undefined
-  const { data, mimeType } = await readRecording(host, turn.data.audio!)
-  return messages.with(at, {
-    ...message,
-    content: [...message.content, { type: 'image' as const, data, mimeType }],
-  })
+  let result = [...messages]
+  let changed = false
+  const newest = turns[0]
+  for (const turn of turns) {
+    const said = turn.model?.find((message) => message.role === 'user')
+    const at = result.findLastIndex(
+      (message) => message.role === 'user' && message.timestamp === said?.timestamp,
+    )
+    const message = result[at]
+    if (message?.role !== 'user' || typeof message.content === 'string') continue
+    const transcript = turn.data.audio ? transcripts[turn.data.audio] : undefined
+    let content = transcript
+      ? message.content.map((part) =>
+          part.type === 'text' && part.text.endsWith(PLACEHOLDER)
+            ? { ...part, text: part.text.slice(0, -PLACEHOLDER.length) + transcript }
+            : part,
+        )
+      : message.content
+    if (turn === newest && turn.data.route === 'audio' && turn.data.audio) {
+      const { data, mimeType } = await readRecording(host, turn.data.audio)
+      content = [...content, { type: 'image' as const, data, mimeType }]
+    }
+    if (content === message.content) continue
+    result = result.with(at, { ...message, content })
+    changed = true
+  }
+  return changed ? result : undefined
 }
 
 export default function voiceExtension(host: ExtensionHost) {
@@ -370,11 +413,10 @@ export default function voiceExtension(host: ExtensionHost) {
         beforeRequest: async (request, api, ctx) => {
           const fork = await api.snapshot(Fork, api.conversationId, ctx)
           if (fork?.of === undefined) return undefined
-          const page = await api.entries({ order: 'descending' }, 20, undefined, ctx)
-          const turn = page.items.find((entry) => VoiceTurnEntry.is(entry))
-          if (!turn || !VoiceTurnEntry.is(turn) || turn.data.route !== 'audio' || !turn.data.audio)
-            return undefined
-          const messages = await withRecording(host, request.messages, turn)
+          const page = await api.entries({ order: 'descending' }, 200, undefined, ctx)
+          const turns = page.items.flatMap((entry) => (VoiceTurnEntry.is(entry) ? [entry] : []))
+          if (!turns.length) return undefined
+          const messages = await voiceRequest(host, request.messages, turns, fork.transcripts ?? {})
           return messages ? { messages } : undefined
         },
       }),

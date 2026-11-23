@@ -2,48 +2,61 @@ import { cell } from '../../lib/cell.ts'
 
 export const CHARS_PER_SECOND = 14.5
 
-export type Sentence = {
-  text: string
-  turn: number
-  paragraph: number
-  onStart: () => void
-  onWord: (charIndex: number) => void
-  onEnd: () => void
-}
+export type Sentence = { text: string; paragraph: number; starts: number[]; words: string[] }
 
 export type PlayerState = {
+  key?: string
   index: number
+  charIndex: number
   playing: boolean
   paused: boolean
   streaming: boolean
   startedAt: number
-  count: number
 }
 
 export const estimate = (text: string, rate: number) => text.length / (CHARS_PER_SECOND * rate)
 
-const ticking = (rate: number, startedAt: number) =>
-  ((Date.now() - startedAt) / 1000) * CHARS_PER_SECOND * rate
+export function splitSentences(text: string, final: boolean) {
+  const sentences: Sentence[] = []
+  let rest = text
+  let paragraph = 0
+  for (;;) {
+    const boundary = rest.search(/[.!?]\s/) + 1
+    const cut = boundary > 0 ? boundary : final && rest.trim() ? rest.length : 0
+    if (cut <= 0) break
+    const sentence = rest.slice(0, cut)
+    if (/^\s*\n\s*\n/.test(sentence) && sentences.length) paragraph++
+    const starts = [...sentence.matchAll(/\S+/g)].map((match) => match.index)
+    sentences.push({
+      text: sentence,
+      paragraph,
+      starts,
+      words: starts.map((start) => /^\S+/.exec(sentence.slice(start))![0]),
+    })
+    rest = rest.slice(cut)
+  }
+  return { sentences, pending: rest }
+}
 
 export function createPlayer(options: {
   rate: () => number
   enabled: () => boolean
   frame: (fn: () => void) => () => void
 }) {
-  const items: Sentence[] = []
+  let items: Sentence[] = []
   const state = cell<PlayerState>({
     index: -1,
+    charIndex: -1,
     playing: false,
     paused: false,
     streaming: false,
     startedAt: 0,
-    count: 0,
   })
   let token = 0
   let stopWordClock: (() => void) | undefined
   const idle = new Set<() => void>()
   const publish = (change: Partial<PlayerState>) => {
-    state.set({ ...state.get(), ...change, count: items.length })
+    state.set({ ...state.get(), ...change })
     const now = state.get()
     if (now.playing || now.paused || now.streaming) return
     const waiting = [...idle]
@@ -59,30 +72,28 @@ export function createPlayer(options: {
     stopWordClock?.()
     const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.rate = options.rate()
-    const starts = [...item.text.matchAll(/\S+/g)].map((match) => match.index)
     let boundaries = false
     const startedAt = Date.now()
     stopWordClock = options.frame(() => {
       if (boundaries || mine !== token) return
-      const at = ticking(utterance.rate, startedAt)
-      item.onWord(starts.findLast((start) => start <= at) ?? 0)
+      const at = ((Date.now() - startedAt) / 1000) * CHARS_PER_SECOND * utterance.rate
+      const charIndex = item.starts.findLast((start) => start <= at) ?? 0
+      if (charIndex !== state.get().charIndex) publish({ charIndex })
     })
     utterance.addEventListener('boundary', (event) => {
       if (event.name && event.name !== 'word') return
       boundaries = true
-      if (mine === token) item.onWord(event.charIndex)
+      if (mine === token) publish({ charIndex: event.charIndex })
     })
     const finished = () => {
       if (mine !== token) return
       stopWordClock?.()
-      item.onEnd()
       if (items[index + 1]) play(index + 1)
-      else publish({ playing: false })
+      else publish({ playing: false, charIndex: -1 })
     }
     utterance.addEventListener('end', finished)
     utterance.addEventListener('error', finished)
-    item.onStart()
-    publish({ index, playing: true, paused: false, startedAt })
+    publish({ index, charIndex: -1, playing: true, paused: false, startedAt })
     speechSynthesis.speak(utterance)
   }
 
@@ -90,18 +101,21 @@ export function createPlayer(options: {
     token++
     speechSynthesis.cancel()
     stopWordClock?.()
-    items[state.get().index]?.onEnd()
   }
 
   return {
     state,
     items: () => items as readonly Sentence[],
-    push(item: Sentence) {
-      if (!options.enabled()) return
-      items.push(item)
+    load(key: string, sentences: readonly Sentence[], streaming: boolean) {
+      halt()
+      items = [...sentences]
+      publish({ key, index: -1, charIndex: -1, playing: false, paused: false, streaming })
+    },
+    push(key: string, sentence: Sentence) {
+      if (!options.enabled() || state.get().key !== key) return
+      items.push(sentence)
       const now = state.get()
       if (!now.playing && !now.paused) play(items.length - 1)
-      else publish({})
     },
     play,
     streaming(on: boolean) {
@@ -120,23 +134,11 @@ export function createPlayer(options: {
     toggle() {
       const now = state.get()
       if (now.playing) this.pause()
-      else if (items.length)
-        play(
-          now.paused
-            ? Math.max(0, now.index)
-            : items.findIndex((item) => item.turn === items[Math.max(0, now.index)].turn),
-        )
+      else if (items.length) play(now.paused ? Math.max(0, now.index) : 0)
     },
     stop() {
-      const wasActive = state.get().playing || state.get().paused
       halt()
-      publish({ playing: false, paused: false })
-      return wasActive
-    },
-    clear() {
-      halt()
-      items.length = 0
-      publish({ index: -1, playing: false, paused: false })
+      publish({ playing: false, paused: false, streaming: false, charIndex: -1 })
     },
     sentence(step: number) {
       if (items.length) play(Math.min(items.length - 1, Math.max(0, state.get().index + step)))
@@ -144,9 +146,8 @@ export function createPlayer(options: {
     paragraph(step: number) {
       if (!items.length) return
       const now = state.get()
-      const key = (item: Sentence) => `${item.turn}.${item.paragraph}`
       const starts = items.flatMap((item, at) =>
-        at === 0 || key(items[at - 1]) !== key(item) ? [at] : [],
+        at === 0 || items[at - 1].paragraph !== item.paragraph ? [at] : [],
       )
       const mine = starts.findLast((at) => at <= now.index) ?? 0
       if (step > 0) {
@@ -167,8 +168,3 @@ export function createPlayer(options: {
 }
 
 export type Player = ReturnType<typeof createPlayer>
-
-export function splitSentence(pending: string, final: boolean) {
-  if (final) return pending.length
-  return pending.search(/[.!?]\s[^]*$/) + 1
-}
