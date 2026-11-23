@@ -15,11 +15,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { obj, opt, str, unknown, bool } from '@earendil-works/pi-schema'
 import { CodemodeSandbox, renderDeclarations } from '@earendil-works/pi-codemode'
 import { CodemodeStoreDoc, createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
-import type {
-  CodemodeGlobal,
-  CodemodeNestedCall,
-  CodemodeToolDetails,
-} from '@earendil-works/pi-durable/codemode'
+import type { CodemodeGlobal, CodemodeToolDetails } from '@earendil-works/pi-durable/codemode'
 import {
   AgentDoc,
   InboxDoc,
