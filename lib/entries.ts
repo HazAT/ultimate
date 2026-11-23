@@ -2,6 +2,8 @@ import type { ConversationId, EntryRecord, Tx } from '@earendil-works/pi-durable
 
 export const isInput = (entry: EntryRecord) => entry.kind === 'pi.user' || entry.input === true
 
+export const SCAN_PAGE = 200
+
 export function imagesOf(entry: EntryRecord | undefined) {
   return (entry?.model ?? []).flatMap((message) =>
     (message.role === 'user' || message.role === 'toolResult') &&
@@ -21,7 +23,7 @@ export async function latestImagesEntry(tx: Tx, conversationId: ConversationId) 
   )
   let cursor: Parameters<Tx['scanEntries']>[2]
   do {
-    const page = await tx.scanEntries({ conversationId }, 200, cursor)
+    const page = await tx.scanEntries({ conversationId }, SCAN_PAGE, cursor)
     for (const entry of page.items) {
       if (imagesOf(entry).length) return entry
       if (isInput(entry)) throw noImagesInCurrentTurn
@@ -29,4 +31,29 @@ export async function latestImagesEntry(tx: Tx, conversationId: ConversationId) 
     cursor = page.next
   } while (cursor !== undefined)
   throw noImagesInCurrentTurn
+}
+
+const HINT_PAGE_LIMIT = 3
+const HINT_IDS = 3
+
+export async function imagesHint(tx: Tx, conversationId: ConversationId) {
+  const usable: string[] = []
+  let cursor: Parameters<Tx['scanEntries']>[2]
+  let pages = 0
+  do {
+    const page = await tx.scanEntries({ conversationId }, SCAN_PAGE, cursor)
+    pages += 1
+    for (const entry of page.items) {
+      const count = imagesOf(entry).length
+      if (count) {
+        usable.push(`${entry.id} (${count})`)
+        if (usable.length === HINT_IDS)
+          return `entries with images here, newest first: ${usable.join(', ')}`
+      }
+    }
+    cursor = page.next
+  } while (cursor !== undefined && pages < HINT_PAGE_LIMIT)
+  return usable.length
+    ? `entries with images here, newest first: ${usable.join(', ')}`
+    : 'no recent entry here has images (captures made inside codemode never become entries; a direct screenshot or browser call does)'
 }

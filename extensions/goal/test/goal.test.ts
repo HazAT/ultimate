@@ -190,7 +190,7 @@ it('records decisions with the screenshots of its own conversation only', async 
       { action: 'decide', question: 'q', picked: 'p', reason: 'r', images: 10 as EntryId },
       2,
     ),
-  ).rejects.toThrow('has no images')
+  ).rejects.toThrow('has no images; entries with images here, newest first: 20 (1)')
   expect((await openGoal(tx))!.decisions).toEqual([
     { at: 1, question: 'Approve?', picked: 'Yes', reason: 'Meets 1', conversation: 7, images: 20 },
   ])
