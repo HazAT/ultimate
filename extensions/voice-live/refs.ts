@@ -53,6 +53,8 @@ export type VoiceFork = {
   transcripts?: Record<string, string>
   failed?: Record<string, string>
   handedOff?: true
+  /** The conversation on the user's screen at the latest turn, the one a handoff `to` may name. */
+  screen?: ConversationId
 }
 
 /** The open voice session on the root: the fork's id, the conversation and entry it forked from, and when. */
@@ -81,6 +83,7 @@ export const TurnAction = actionRef<
     seconds?: number
     envelope?: number[]
     hint?: string
+    screen?: ConversationId
     images?: { data: string; mimeType: string }[]
   },
   { conversation: ConversationId; route: VoiceRoute }

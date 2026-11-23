@@ -1,4 +1,4 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
 import { api, errorMessage, useConversation, useUiState } from '@/sdk/solid'
@@ -86,7 +86,9 @@ export const dock = createRoot(() => {
   }
 })
 
-const [screen, setScreen] = createRoot(() => createSignal<string>())
+const [screen, setScreen] = createRoot(() =>
+  createSignal<{ text: string; conversation?: ConversationId }>(),
+)
 export { setScreen }
 
 const waiting = new Map<
@@ -221,7 +223,7 @@ async function sendTurn(input: {
   interrupted: boolean
 }) {
   const cut = input.interrupted ? markCut() : undefined
-  const hint = [screen(), cut].filter(Boolean).join('\n\n') || undefined
+  const hint = [screen()?.text, cut].filter(Boolean).join('\n\n') || undefined
   if (input.interrupted) {
     dock.player.stop()
     await api.action(StopAction, null)
@@ -281,6 +283,7 @@ async function sendTurn(input: {
         ? { seconds: input.recorded.seconds, envelope: input.recorded.envelope }
         : {}),
       ...(hint ? { hint } : {}),
+      ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),
       images: attachments.flatMap((item) =>
         item.kind === 'image' ? [{ data: item.data, mimeType: item.mimeType }] : [],
       ),

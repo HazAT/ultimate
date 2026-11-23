@@ -14,7 +14,7 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { arr, obj, opt, str } from '@earendil-works/pi-schema'
+import { arr, num, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
@@ -23,7 +23,7 @@ import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
-import { ConversationsApi } from '../conversations/api.ts'
+import { ConversationsApi, Trees } from '../conversations/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
 import {
@@ -128,6 +128,28 @@ const transcribeEffect = (host: ExtensionHost) =>
       else fork.failed = { ...fork.failed, [audio]: outcome.error }
     },
   )
+
+async function checkBranch(
+  host: ExtensionHost,
+  id: ConversationId,
+  screen: ConversationId | undefined,
+) {
+  if (id !== screen)
+    throw new Error(
+      `#${id} is not on Daniel's screen; send to the conversation he has open, or to @ultimate`,
+    )
+  await host.harness().commit(async (tx) => {
+    const record = await tx.conversation(id)
+    const conversations = host.need(ConversationsApi)
+    if (!record) throw new Error(`#${id} does not exist`)
+    if (record.owner) throw new Error(`#${id} is a subagent; send to its branch or to @ultimate`)
+    if (await host.need(Trees).isRoot(tx, id))
+      throw new Error(`#${id} is a root; send to @ultimate`)
+    if ((await conversations.concludedIn(tx)).has(id)) throw new Error(`#${id} is concluded`)
+    const standing = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+    if (standing === id) throw new Error('That is @ultimate itself: leave out `to`')
+  }, context)
+}
 
 async function lastSettledAnswer(host: ExtensionHost, main: ConversationId) {
   let cursor: Cursor | undefined
@@ -296,13 +318,14 @@ export const actions = {
     conversation: await openSession(host),
   })),
   turn: implementAction(TurnAction, async (args, { host }) => {
-    const { key, text, audio, seconds, envelope, hint, images } = unwrap<{
+    const { key, text, audio, seconds, envelope, hint, screen, images } = unwrap<{
       key: unknown
       text: unknown
       audio: unknown
       seconds: unknown
       envelope: unknown
       hint: unknown
+      screen: unknown
       images: unknown
     }>(args)
     if (typeof key !== 'string' || !key) throw new Error('Expected a turn key')
@@ -352,6 +375,11 @@ export const actions = {
       { type: 'text' as const, text: words },
       ...pictures,
     ]
+    await host.harness().commit(async (tx) => {
+      const fork = await tx.doc(Fork, id)
+      if (typeof screen === 'number') fork.screen = screen as ConversationId
+      else delete fork.screen
+    }, context)
     const conversation = (await host.harness().conversation(id, context))!
     await conversation.submit(
       {
@@ -510,8 +538,11 @@ export default function voiceExtension(host: ExtensionHost) {
         name: 'voice_handoff',
         deferred: true,
         description:
-          'Hand the agreed outcome of this voice conversation to the main @ultimate as a message it acts on. Only after Daniel agreed. Write it the way you would brief yourself.',
+          "Hand the agreed outcome of this voice conversation to the main @ultimate as a message it acts on, or with `to` to the branch conversation on Daniel's screen (its coordinator). Write it the way you would brief yourself.",
         parameters: obj({
+          to: opt(
+            num({ description: "A branch conversation on Daniel's screen; omit for @ultimate" }),
+          ),
           title: str({ minLength: 1 }),
           outcome: str({ minLength: 1 }),
           decided: opt(arr(str())),
@@ -523,9 +554,13 @@ export default function voiceExtension(host: ExtensionHost) {
         async execute(args, api, ctx) {
           const fork = await api.snapshot(Fork, api.conversationId, ctx)
           if (fork?.of === undefined) throw new Error('voice_handoff works only in a voice session')
-          const handoff: VoiceHandoff = { ...args, from: api.conversationId }
+          const { to, ...brief } = args
+          const branch = to === undefined ? undefined : (to as ConversationId)
+          const target = branch ?? fork.of
+          if (branch !== undefined) await checkBranch(host, branch, fork.screen)
+          const handoff: VoiceHandoff = { ...brief, from: api.conversationId }
           const lines = [
-            `Handoff from voice mode (#${api.conversationId}, a fork of you where Daniel talked it through): ${args.title}`,
+            `Handoff from voice mode (#${api.conversationId}, a fork of @ultimate where Daniel talked it through): ${args.title}`,
             `Outcome: ${args.outcome}`,
             ...(args.decided?.length ? ['Decided:', ...args.decided.map((d) => `- ${d}`)] : []),
             ...(args.open?.length ? ['Open:', ...args.open.map((o) => `- ${o}`)] : []),
@@ -534,11 +569,11 @@ export default function voiceExtension(host: ExtensionHost) {
               : []),
             `Instruction: ${args.instruction}`,
           ]
-          const main = (await host.harness().conversation(fork.of, ctx))!
+          const receiver = (await host.harness().conversation(target, ctx))!
           await host.harness().commit(async (tx) => {
             ;(await tx.doc(Fork, api.conversationId)).handedOff = true
           }, ctx)
-          await main.submit(
+          await receiver.submit(
             {
               type: 'input',
               requestId: `voice:handoff:${api.taskId}`,
@@ -548,7 +583,11 @@ export default function voiceExtension(host: ExtensionHost) {
             },
             ctx,
           )
-          return { output: [{ type: 'text', text: 'Sent to @ultimate.' }] }
+          return {
+            output: [
+              { type: 'text', text: to === undefined ? 'Sent to @ultimate.' : `Sent to #${to}.` },
+            ],
+          }
         },
       }),
     ],

@@ -38,7 +38,9 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
    cut in, the running turn is stopped (`stop`), and the next turn carries a hint of what was played and what was not.
    Without speech it resumes where it paused.
 7. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
-   @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session.
+   @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With `to`, it
+   goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`); a
+   conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
 
 ## Trace and cues
 

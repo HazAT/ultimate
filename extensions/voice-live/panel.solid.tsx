@@ -354,13 +354,15 @@ export function VoicePanel() {
   createEffect(
     () => [surface(), shown(), summary()?.title] as const,
     ([on, conversation, title]) => {
-      setScreen(
-        `Daniel's screen: the ${on} surface${
-          on === 'agent' && conversation !== undefined
-            ? `, showing conversation #${conversation}${title ? ` "${title}"` : ''}`
+      const showing = on === 'agent' ? conversation : undefined
+      setScreen({
+        text: `Daniel's screen: the ${on} surface${
+          showing !== undefined
+            ? `, showing conversation #${showing}${title ? ` "${title}"` : ''}`
             : ''
         }.`,
-      )
+        ...(showing !== undefined ? { conversation: showing } : {}),
+      })
     },
   )
   onSettled(() => {

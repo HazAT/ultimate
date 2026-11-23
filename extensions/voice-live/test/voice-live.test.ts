@@ -212,3 +212,35 @@ it('only reads and hands off: other tools are blocked, voice_handoff starts @ult
   const after = await f.turn({ key: 'after', text: 'next idea' })
   expect(after.id).not.toBe(blocked.id)
 })
+
+it('voice_handoff with `to` reaches the branch on screen and refuses one that is not', async () => {
+  const f = await fixture()
+  const branch = await f.server.harness.createConversation(
+    {
+      ownership: { kind: 'ownerless' },
+      agent: { model: { provider: 'faux', modelId: 'main-faux' } },
+    },
+    context,
+  )
+  const send = (key: string, screen: number) =>
+    f.turn({
+      key,
+      screen,
+      text: `CALL ${JSON.stringify({
+        name: 'voice_handoff',
+        args: { to: branch.id, title: 'Rename', outcome: 'Clearer', instruction: 'Rename the tab' },
+      })}`,
+    })
+  await send('elsewhere', f.main)
+  expect(JSON.stringify(f.requests.at(-1)!.messages.at(-1))).toContain(
+    `#${branch.id} is not on Daniel's screen`,
+  )
+  await send('here', branch.id)
+  await until(async () =>
+    (
+      await (await f.server.harness.conversation(branch.id, context))!.context(context)
+    ).entries.some((entry) => entry.kind === 'voice.handoff'),
+  )
+  const main = await (await f.server.harness.conversation(f.main, context))!.context(context)
+  expect(main.entries.some((entry) => entry.kind === 'voice.handoff')).toBe(false)
+})
