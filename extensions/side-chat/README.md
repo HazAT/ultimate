@@ -36,7 +36,7 @@ All three actions are user-only (`userActions`); agents cannot call them. Inputs
   - **Summarize only** sends the summary without answering.
   - Discard always works, since nothing can have effects.
 - **Read-only:** `beforeTool` blocks every tool except read, bash, memory, web search and fetch, and `draft_answers`.
-  - Browser and screenshot are blocked: they load pages that can act. Codemode is blocked too, because its `ultimate.action` and `ultimate.tell` write without a tool call.
+  - Browser and screenshot are blocked: they load pages that can act. Codemode is blocked too: it is not in the read-only list, and a script reaches writing tools such as `action` and `tell`.
   - `draft_answers {answers?, note?, text?}` (deferred; the fork enables and loads it) fills in the card's durable draft (`ext.questions.cards` in the UI state) when the user says what to pick. It resolves answers with the card's own rules (`lib/question-cards.ts`), refuses what the card cannot show, and keeps a per-call receipt so a replay writes nothing. It never sends: the user reviews the draft on the pinned card and sends it.
   - Elsewhere it is reachable only through `tool_search`, and it refuses outside a question side chat.
   - Known limit: the UI state stores the cards as one value. If the user edits the card in the 150 ms before their browser saves it, that save can overwrite a fill that landed in between; the side chat's answer still says what it filled in.

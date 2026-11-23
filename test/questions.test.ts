@@ -436,7 +436,9 @@ describe('settling for the user', () => {
     expect(note.model?.[0]?.content).toContain(
       `- message ${message!.id} from #${asker}: questions 3. Land it?`,
     )
-    expect(note.model?.[0]?.content).toContain("ultimate.action('messages', 'settle'")
+    expect(note.model?.[0]?.content).toContain(
+      "tools.action({extension: 'messages', action: 'settle'",
+    )
     const log = (await f.log()).messages
     expect(log.find((m) => m.id === message!.id)?.state).toBe('answered')
     expect(log.find((m) => m.re === message!.id)).toMatchObject({

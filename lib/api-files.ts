@@ -6,10 +6,7 @@ type Folder = { name: string; path: string; enabled: boolean }
 
 const contracts = [
   ['api.ts', 'the server contract: services, extension points, documents'],
-  [
-    'refs.ts',
-    'the browser contract: documents, actions (call them with ultimate.action) and events',
-  ],
+  ['refs.ts', 'the browser contract: documents, actions (call them with tools.action) and events'],
 ] as const
 
 export function apiSummary(text: string) {

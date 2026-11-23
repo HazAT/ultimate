@@ -1,23 +1,26 @@
-import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import { offsetEntryId } from '../../lib/ids.ts'
 import type {
   ConversationId,
   Cursor,
+  HookApi,
   JsonObject,
-  NestedToolExecutionResult,
-  ToolExecutionApi,
-  ToolRegistration,
+  TaskId,
+  ToolExecutionResult,
+  ToolHookCall,
   Tx,
 } from '@earendil-works/pi-durable'
 import { withAbortSignal } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { obj, str } from '@earendil-works/pi-schema'
+import { obj, opt, str, unknown, bool } from '@earendil-works/pi-schema'
 import {
+  CODEMODE_OPTIONS_PREFIX,
   CodemodeSandbox,
   parseCodemodeSource,
   renderDeclarations,
 } from '@earendil-works/pi-codemode'
-import type { CodemodeTool, CodemodeJsonSchema } from '@earendil-works/pi-codemode'
+import { CodemodeStoreDoc, createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
+import type { CodemodeGlobal, CodemodeToolDetails } from '@earendil-works/pi-durable/codemode'
 import {
   AgentDoc,
   InboxDoc,
@@ -27,12 +30,15 @@ import {
   defineExtension,
   defineTask,
   defineTool,
+  hook,
   ROOT_CONVERSATION_ID,
   section,
+  ToolTask,
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { shortTitle } from '../../lib/title.ts'
+import { safeToRerun } from '../../lib/replay.ts'
 import { apiSource, apiSummaries } from '../../lib/api-files.ts'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { ActionContext } from '../../server/actions.ts'
@@ -48,10 +54,18 @@ import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Summarized } from './refs.ts'
 import type { CallSummary } from './refs.ts'
 import { PendingDoc, SummaryDoc } from './api.ts'
-import { fixedLine, parseSummary, SUMMARY_SYSTEM, summaryInput } from './summary.ts'
+import {
+  fixedLine,
+  parseSummary,
+  SCRIPT_FAILED,
+  SUMMARY_SYSTEM,
+  summaryCalls,
+  summaryInput,
+} from './summary.ts'
 import type { Call } from './summary.ts'
+import { MAX_MODEL_CALLS, modelCallLimits } from './models.ts'
 
-export const Store = defineDoc({
+const RetiredStore = defineDoc({
   kind: 'codemode.store',
   checkpointWhen: () => false,
   version: 1,
@@ -60,44 +74,19 @@ export const Store = defineDoc({
   history: 'rewindable',
   initial: (): JsonObject => ({}),
 })
+const StoreCopied = defineDoc({
+  kind: 'codemode.store-copied',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'rewindable',
+  fork: 'asOf',
+  initial: (): { copied: boolean } => ({ copied: false }),
+})
 const KEPT_SUMMARY_LIMIT = 1000
 export { SummaryDoc }
-export const docs = [Store, SummaryDoc, PendingDoc]
+export const docs = [CodemodeStoreDoc, SummaryDoc, PendingDoc]
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
-
-function declarations(tools: readonly ToolRegistration[]): CodemodeTool[] {
-  return tools
-    .filter(
-      (tool) =>
-        tool.name !== 'restart' && (tool.callers === undefined || tool.callers.includes('tools')),
-    )
-    .map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.parameters as CodemodeJsonSchema,
-      outputSchema: (tool.structuredOutputSchema as CodemodeJsonSchema) ?? { type: 'string' },
-      execute: () => {
-        throw new Error('Declaration only')
-      },
-    }))
-}
-
-function scriptValue(name: string, structured: boolean, result: NestedToolExecutionResult) {
-  if (structured && result.structuredOutput !== undefined) return result.structuredOutput
-  const text = structured ? '' : textOf(result.structuredOutput)
-  if (!result.isError) return text
-  const diagnostics = result.diagnostics
-    .filter((diagnostic) => diagnostic.severity === 'error')
-    .map((diagnostic) => diagnostic.message)
-    .join('\n')
-  throw new Error([text, diagnostics].filter(Boolean).join('\n') || `Tool ${name} failed`)
-}
-
-function textOf(value: unknown) {
-  if (typeof value === 'string') return value
-  if (!Array.isArray(value)) return ''
-  return value.flatMap((item) => (item?.type === 'text' ? [item.text as string] : [])).join('\n')
-}
 
 function localReads(host: ExtensionHost, context: Context) {
   const conversations = () =>
@@ -208,22 +197,23 @@ function localReads(host: ExtensionHost, context: Context) {
   } satisfies Record<Read, (args: unknown[]) => unknown>
 }
 
-function globals(
-  host: ExtensionHost,
-  conversationId: ConversationId,
-  context: Context,
-  record?: (name: string, args: unknown[]) => (status: string) => void,
-): CodemodeTool[] {
-  const reads = localReads(host, context)
+type Helper = {
+  name: string
+  description: string
+  signature: string
+  execute(args: unknown[], conversationId: ConversationId, context: Context): unknown
+}
+
+function helpers(host: ExtensionHost): Helper[] {
   const remoteMachine = (machine: unknown) => {
     if (machine !== undefined && (typeof machine !== 'string' || !machine))
       throw new Error('machine must be nonempty')
     return machine
   }
   const read =
-    (op: Read, at: number): CodemodeTool['execute'] =>
-    async (values, { signal }) => {
-      const args = [...(values as unknown[])]
+    (op: Read, at: number): Helper['execute'] =>
+    async (values, _conversation, context) => {
+      const args = [...values]
       const options = args[at]
       const project =
         options && typeof options === 'object' && 'project' in options ? options.project : undefined
@@ -243,18 +233,13 @@ function globals(
           { project, machine: remoteMachine(machine) },
           op,
           args as JsonValue[],
-          signal,
+          context.abortSignal,
         )
         if (remote) return remote.value
       }
-      return reads[op](args)
+      return localReads(host, context)[op](args)
     }
-  const helpers: {
-    name: string
-    description: string
-    signature: string
-    execute: CodemodeTool['execute']
-  }[] = [
+  return [
     {
       name: 'system',
       description: 'Current machine, process, persistence, resources and build identity.',
@@ -271,7 +256,7 @@ function globals(
       name: 'uiState',
       description: 'Durable UI state of the root conversation: what the user is looking at.',
       signature: '(): Promise<unknown>',
-      execute: () => host.uiState(context),
+      execute: (_args, _conversation, context) => host.uiState(context),
     },
     {
       name: 'extensions',
@@ -321,48 +306,6 @@ function globals(
       execute: read('traceTree', 1),
     },
     {
-      name: 'action',
-      description:
-        "Call an extension action, as the UI does, on behalf of this conversation; ultimate.extensions() lists each extension's actions, its README their args.",
-      signature: '(extension: string, action: string, args?: unknown): Promise<unknown>',
-      execute: (values) => {
-        const [extension, action, args = null] = values as [string, string, unknown?]
-        return host.invoke(
-          extension,
-          action,
-          args as JsonValue,
-          context.abortSignal!,
-          conversationId,
-        )
-      },
-    },
-    {
-      name: 'tell',
-      description:
-        "Message another project's @ultimate (only @ultimate reaches it, as a message from you, never the user), as @ultimate only; with reply (default true) its answer returns to you as a reply. machine picks one instance when the project runs on several.",
-      signature:
-        '(input: { project: string; text: string; reply?: boolean; machine?: string }): Promise<{ message: number; delivered: number }>',
-      execute: ([input], { signal }) => {
-        const { project, text, reply, machine } = (input ?? {}) as Record<string, unknown>
-        if (typeof project !== 'string' || !project) throw new Error('project must be nonempty')
-        if (typeof text !== 'string' || !text.trim()) throw new Error('text must be nonempty')
-        if (reply !== undefined && typeof reply !== 'boolean')
-          throw new Error('reply must be a boolean')
-        if (machine !== undefined && (typeof machine !== 'string' || !machine))
-          throw new Error('machine must be nonempty')
-        return host.need(MessagesApi).tell(
-          conversationId,
-          {
-            project,
-            text,
-            ...(reply === undefined ? {} : { reply }),
-            ...(machine ? { machine } : {}),
-          },
-          withAbortSignal(signal, context),
-        )
-      },
-    },
-    {
       name: 'conversations',
       description:
         'All stored conversations: id, owner, and for listed ones title, label, cwd, busy, inputAt and concluded. chapter reads another chapter read-only (not with project); cross-chapter links are written <chapter>#123.',
@@ -390,10 +333,10 @@ function globals(
       name: 'taskGraph',
       description: 'Live durable tasks and ownership graph.',
       signature: '(): Promise<unknown>',
-      execute: async () => {
+      execute: async (_args, _conversation, context) => {
         const graph = await host.harness().watchTaskGraph(context)
         await graph.stop()
-        return JSON.parse(JSON.stringify(graph.value))
+        return graph.value
       },
     },
     {
@@ -417,8 +360,7 @@ function globals(
         'Read an exported extension document or pi.agent, pi.inbox, pi.live or pi.usage by kind; defaults to this conversation, or to conversation 1 in another project.',
       signature:
         '(kind: string, conversationId?: number, options?: { project?: string; machine?: string }): Promise<unknown>',
-      execute: async (values, { signal }) => {
-        const [kind, conversation, options] = values as [unknown, unknown, unknown]
+      execute: async ([kind, conversation, options], conversationId, context) => {
         const project =
           options && typeof options === 'object' && 'project' in options
             ? options.project
@@ -427,31 +369,23 @@ function globals(
           if (typeof project !== 'string' || !project) throw new Error('project must be nonempty')
           const args = [kind, conversation ?? ROOT_CONVERSATION_ID] as JsonValue[]
           const machine = remoteMachine((options as Record<string, unknown>).machine)
-          const remote = await readProject(host, { project, machine }, 'doc', args, signal)
+          const remote = await readProject(
+            host,
+            { project, machine },
+            'doc',
+            args,
+            context.abortSignal,
+          )
           if (remote) return remote.value
         }
-        return reads.doc([kind, conversation ?? conversationId])
+        return localReads(host, context).doc([kind, conversation ?? conversationId])
       },
     },
   ]
-  return helpers.map((helper) => ({
-    ...helper,
-    name: `ultimate.${helper.name}`,
-    spread: true,
-    outputSchema: {},
-    execute: async (args, options) => {
-      const settle = record?.(`ultimate.${helper.name}`, args as unknown[])
-      try {
-        const value = await helper.execute(args, options)
-        settle?.('ok')
-        return value
-      } catch (error) {
-        settle?.(options.signal.aborted ? 'cancelled' : 'error')
-        throw error
-      }
-    },
-  }))
 }
+
+const asJson = (value: unknown) =>
+  value === undefined ? undefined : (JSON.parse(JSON.stringify(value)) as JsonValue)
 
 export const actions = {
   async read(input: JsonValue, { host, signal }: ActionContext) {
@@ -461,227 +395,155 @@ export const actions = {
     const value = await localReads(host, withAbortSignal(signal, BACKGROUND_CONTEXT))[op as Read](
       args ?? [],
     )
-    const result = JSON.parse(JSON.stringify(value ?? null)) as JsonValue
+    const result = asJson(value) ?? null
     if (Buffer.byteLength(JSON.stringify(result)) > REMOTE_BYTES)
       throw new Error('The answer is larger than 1 MiB; ask for a smaller limit')
     return result
   },
 }
 
+const DEFAULT_TIMEOUT_MS = 60_000
+export function withDefaultTimeout(code: string) {
+  let parsed: ReturnType<typeof parseCodemodeSource>
+  try {
+    parsed = parseCodemodeSource(code)
+  } catch {
+    return code
+  }
+  if (parsed.options.timeoutMs !== undefined) return code
+  const options = {
+    ...(parsed.options.maxOutputTokens === undefined
+      ? {}
+      : { max_output_tokens: parsed.options.maxOutputTokens }),
+    timeout_ms: DEFAULT_TIMEOUT_MS,
+  }
+  const line = `${CODEMODE_OPTIONS_PREFIX} ${JSON.stringify(options)}`
+  return parsed.code.startsWith('\n') ? `${line}${parsed.code}` : `${line}\n${parsed.code}`
+}
+
 export default function codemode(host: ExtensionHost) {
-  const globalDeclarations = globals(host, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT).filter(
-    (global) => global.name !== 'ultimate.tell',
-  )
-  const codemodeTool = defineTool({
-    name: 'codemode',
-    callers: ['model'],
-    replay: 'unsafe',
-    description:
-      'Run an async JavaScript function body in a QuickJS/WASM sandbox. Call tools.<name>(args), use Promise.all for parallel calls, text()/console.log() for output, return for JSON, store(key,value)/load(key) for durable conversation values (at most 256K characters of JSON per value, 1M in all). Store writes are saved only when the script finishes successfully; a yielded wait discards them. No host I/O except injected functions. Nested results stay out of model context; nested calls run tool hooks like top-level calls. Tools with structured output resolve to it: tools.bash gives {output, truncated, exitCode} and a nonzero exit does not throw, so check exitCode. Optional first line: // @options: {"timeout_ms":60000,"max_output_tokens":10000}.\n\n' +
-      renderDeclarations({ globals: globalDeclarations }),
-    parameters: obj({ code: str() }),
-    async execute({ code: source }, api, context) {
-      const calls: {
-        name: string
-        args: unknown
-        status: string
-        ms: number
-        conversationId?: ConversationId
-        background?: boolean
-      }[] = []
-      const subagentAnswers = new Set<number>()
-      const streamSettledCall = (name: string, call: (typeof calls)[number]) => {
-        if (!context.abortSignal?.aborted)
-          api.output(
-            `${call.status === 'ok' ? '✓' : '✗'} ${name} ${(JSON.stringify(call.args) ?? '').slice(0, 200)} ${call.ms}ms\n`,
-          )
-      }
-      const record = (name: string, args: unknown[]) => {
-        const started = performance.now()
-        const call: (typeof calls)[number] = { name, args, status: 'running', ms: 0 }
-        calls.push(call)
-        return (status: string) => {
-          call.status = status
-          call.ms = Math.round(performance.now() - started)
-          streamSettledCall(name, call)
-        }
-      }
-      const controller = new AbortController()
-      const terminateSandboxBeforeYield = () => controller.abort()
-      const sandboxContext = withAbortSignal(controller.signal, context)
-      let yielded = false
-      const agent = await api.agent(context)
-      const tools = declarations(agent.tools).map((declaration): CodemodeTool => ({
-        ...declaration,
-        execute: async (args, { signal }) => {
-          const name = declaration.name
-          const started = performance.now()
-          const call: (typeof calls)[number] = { name, args, status: 'running', ms: 0 }
-          calls.push(call)
-          try {
-            const result = await api.executeTool(
-              name,
-              (args ?? {}) as JsonObject,
-              withAbortSignal(signal, context),
-            )
-            signal.throwIfAborted()
-            const details =
-              result.details && typeof result.details === 'object' && !Array.isArray(result.details)
-                ? result.details
-                : undefined
-            if (name === 'subagent' && details?.yielded === true) {
-              call.status = 'yielded'
-              if (typeof details.conversationId === 'number')
-                call.conversationId = parseConversationId(details.conversationId)
-              if (typeof details.background === 'boolean') call.background = details.background
-              yielded = true
-              terminateSandboxBeforeYield()
-              return undefined
-            }
-            const structured = agent.tools.some(
-              (tool) => tool.name === name && tool.structuredOutputSchema !== undefined,
-            )
-            const value = scriptValue(name, structured, result)
-            if (name === 'subagent' && typeof details?.answerId === 'number')
-              subagentAnswers.add(details.answerId)
-            call.status = result.isError ? 'error' : 'ok'
-            return value
-          } catch (error) {
-            call.status = signal.aborted ? 'cancelled' : 'error'
-            throw error
-          } finally {
-            call.ms = Math.round(performance.now() - started)
-            streamSettledCall(`tools.${call.name}`, call)
-          }
-        },
-      }))
+  const sandbox = host.resource('codemode.sandbox', () => {
+    const created = new CodemodeSandbox({ memoryLimitBytes: 256 * 1024 * 1024 })
+    host.onClose(() => created.close())
+    return created
+  })
+  const ultimateHelpers = helpers(host)
+  const helperCallsByTask = new Map<TaskId, Call[]>()
+  const globals: CodemodeGlobal[] = ultimateHelpers.map((helper) => ({
+    name: `ultimate.${helper.name}`,
+    spread: true,
+    execute: async (args, api, context) => {
+      const values = Array.isArray(args) ? args : []
+      const record = (status: string) =>
+        helperCallsByTask
+          .get(api.taskId)
+          ?.push({ name: `ultimate.${helper.name}`, args: values, status })
       try {
-        const parsed = parseCodemodeSource(source)
-        const saved = await api.snapshot(Store, api.conversationId, context)
-        const sandbox = new CodemodeSandbox({
-          tools,
-          globals: globals(host, api.conversationId, sandboxContext, record),
-          timeoutMs: parsed.options.timeoutMs ?? 60000,
-          memoryLimitBytes: 256 * 1024 * 1024,
-        })
-        let result
-        try {
-          result = await sandbox.execute(parsed.code, {
-            signal: sandboxContext.abortSignal,
-            store: saved ?? {},
-          })
-        } finally {
-          await sandbox.close()
-        }
-        for (const call of calls) if (call.status === 'running') call.status = 'cancelled'
-        const scriptYielded = yielded && !context.abortSignal?.aborted
-        const pendingSubagents = calls
-          .filter(
-            (call) =>
-              call.name === 'subagent' &&
-              (call.status === 'yielded' || call.status === 'cancelled'),
-          )
-          .flatMap((call) => {
-            const conversationId =
-              call.conversationId ?? (call.args as { id?: number } | undefined)?.id
-            return typeof conversationId === 'number'
-              ? [
-                  {
-                    conversationId,
-                    ...(call.background === undefined ? {} : { background: call.background }),
-                  },
-                ]
-              : []
-          })
-        const content = [
-          {
-            type: 'text' as const,
-            text: scriptYielded
-              ? 'Script yielded to steering; subagents still running; remaining script not executed; prior side effects may have happened.\nPending subagents: ' +
-                JSON.stringify(pendingSubagents) +
-                '\nOutput:'
-              : result.ok
-                ? 'Script completed\nOutput:'
-                : 'Script failed\nOutput:',
-          },
-          ...result.output,
-        ]
-        if (result.ok && result.value !== undefined)
-          content.push({ type: 'text', text: JSON.stringify(result.value) })
-        const budget = (parsed.options.maxOutputTokens ?? 10000) * 4
-        let remaining = budget
-        for (const item of content.slice(1))
-          if (item.type === 'text') {
-            if (item.text.length > remaining)
-              item.text = item.text.slice(0, remaining) + '\n[Output truncated]'
-            remaining = Math.max(0, remaining - item.text.length)
-          }
-        if (scriptYielded)
-          return {
-            output: content,
-            details: { calls, yielded: true, pendingSubagents } as JsonObject,
-          }
-        await labelOnceBeforeToolSettlement(
-          api,
-          context,
-          calls,
-          result.ok ? undefined : result.error.message,
-        )
-        if (result.ok) {
-          if (result.storeWrites.delete.length || Object.keys(result.storeWrites.set).length) {
-            const storeCommitBeforeSettlement = api.commit(async (tx) => {
-              const store = await tx.doc(Store, api.conversationId)
-              for (const key of result.storeWrites.delete) delete store[key]
-              Object.assign(store, result.storeWrites.set)
-            }, context)
-            await storeCommitBeforeSettlement
-          }
-          return {
-            output: content,
-            details: {
-              calls,
-              subagentAnswers: [...subagentAnswers],
-              ...(result.value === undefined ? {} : { value: result.value }),
-            } as JsonObject,
-          }
-        }
-        const error = result.error.stack ?? `${result.error.kind}: ${result.error.message}`
-        content.push({ type: 'text', text: error })
-        return { output: content, isError: true, details: { calls, error } as JsonObject }
+        const value = asJson(await helper.execute(values, api.conversationId, context)) ?? null
+        record('ok')
+        return value
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        await labelOnceBeforeToolSettlement(api, context, calls, message)
-        return {
-          output: [{ type: 'text', text: `Script failed\n${message}` }],
-          isError: true,
-          details: { calls, error: message } as JsonObject,
-        }
+        if (!context.abortSignal?.aborted) record('error')
+        throw error
+      }
+    },
+  }))
+  const declarations = renderDeclarations({
+    globals: ultimateHelpers.map((helper) => ({
+      name: `ultimate.${helper.name}`,
+      description: helper.description,
+      signature: helper.signature,
+      spread: true,
+      execute: () => undefined,
+    })),
+  })
+  // Pi upstream: @earendil-works/pi-durable@1.6.0 src/codemode/codemode.ts — CodemodeToolOptions.globals is @internal. Drop when Pi exports host globals for code mode.
+  const pi = createCodemodeExtension({ sandbox, models: true, globals })
+  const piSection = pi.sections![0]
+  const actionTool = defineTool({
+    name: 'action',
+    description:
+      "Call an extension action, as the UI does, on behalf of this conversation; ultimate.extensions() lists each extension's actions, ultimate.api(name) their arguments.",
+    parameters: obj({ extension: str(), action: str(), args: opt(unknown()) }),
+    structuredOutputSchema: unknown(),
+    callers: ['tools'],
+    replay: 'unsafe',
+    async execute({ extension, action, args }, api, context) {
+      const value = await host.invoke(
+        extension,
+        action,
+        (args ?? null) as JsonValue,
+        context.abortSignal!,
+        api.conversationId,
+      )
+      return {
+        output: [{ type: 'text', text: JSON.stringify(value) ?? 'null' }],
+        structuredOutput: asJson(value) ?? null,
       }
     },
   })
-  const labelOnceBeforeToolSettlement = (
-    api: ToolExecutionApi,
-    context: Context,
-    calls: Call[],
-    error?: string,
-  ) =>
-    api.commit(async (tx) => {
+  const tellTool = defineTool({
+    name: 'tell',
+    description:
+      "Message another project's @ultimate (only @ultimate reaches it, as a message from you, never the user), as @ultimate only; with reply (default true) its answer returns to you as a reply. machine picks one instance when the project runs on several.",
+    parameters: obj({
+      project: str({ minLength: 1 }),
+      text: str({ minLength: 1 }),
+      reply: opt(bool()),
+      machine: opt(str({ minLength: 1 })),
+    }),
+    structuredOutputSchema: unknown(),
+    callers: ['tools'],
+    replay: 'unsafe',
+    async execute({ project, text, reply, machine }, api, context) {
+      const sent = await host.need(MessagesApi).tell(
+        api.conversationId,
+        {
+          project,
+          text,
+          ...(reply === undefined ? {} : { reply }),
+          ...(machine ? { machine } : {}),
+        },
+        context,
+      )
+      return { output: [{ type: 'text', text: JSON.stringify(sent) }], structuredOutput: sent }
+    },
+  })
+  const copyRetiredStoreOnce = (api: HookApi, context: Context) =>
+    host.harness().commit(async (tx) => {
+      const marker = await tx.doc(StoreCopied, api.conversationId)
+      if (marker.copied) return
+      marker.copied = true
+      const old = await tx.doc(RetiredStore, api.conversationId)
+      if (!Object.keys(old).length) return
+      const store = await tx.doc(CodemodeStoreDoc, api.conversationId)
+      for (const [key, value] of Object.entries(old))
+        if (!Object.hasOwn(store.values, key)) store.values[key] = value
+    }, context)
+  const summarize = async (api: HookApi, call: ToolHookCall, result: ToolExecutionResult) => {
+    const details = result.details as CodemodeToolDetails | undefined
+    const helperCalls = helperCallsByTask.get(api.taskId)
+    helperCallsByTask.delete(api.taskId)
+    const calls = [...(helperCalls ?? []), ...summaryCalls(details?.calls ?? [])]
+    const error = result.isError ? SCRIPT_FAILED : undefined
+    return host.harness().commit(async (tx) => {
       const doc = await tx.doc(SummaryDoc, api.conversationId)
       const pending = await tx.doc(PendingDoc, api.conversationId)
-      if (doc.calls[api.callId] || pending.calls.includes(api.callId)) return
-      const fixed = fixedLine(calls, error)
-      if (fixed) return recordSummaryLineAndEvent(tx, api.conversationId, api.callId, fixed)
-      pending.calls.push(api.callId)
+      if (doc.calls[call.id] || pending.calls.includes(call.id)) return
+      const fixed = fixedLine(calls, error, helperCalls === undefined)
+      if (fixed) return recordSummaryLineAndEvent(tx, api.conversationId, call.id, fixed)
+      pending.calls.push(call.id)
       await tx.createTask(
         Summary,
-        { call: api.callId, input: summaryInput(calls, error) },
+        { call: call.id, input: summaryInput(calls, error) },
         {
           ownership: { kind: 'conversation' },
           conversationId: api.conversationId,
           background: true,
         },
       )
-    }, context)
+    }, BACKGROUND_CONTEXT)
+  }
   const Summary = defineTask<{ call: string; input: string }, { phase: 'summarize' }, null>({
     name: 'codemode.summary',
     version: 1,
@@ -751,25 +613,61 @@ export default function codemode(host: ExtensionHost) {
       effect: summary.effect === true,
     })
   }
+  const topLevelCodemode = (call: ToolHookCall) => call.name === 'codemode' && !call.parent
   return defineExtension({
     name: 'codemode',
     tasks: [Summary],
-    tools: [codemodeTool],
+    tools: [
+      ...pi.tools!.map((tool) =>
+        tool.name === 'pi.codemode.models.classify'
+          ? {
+              ...tool,
+              ...safeToRerun(
+                'A classifier call only reads its input; a rerun bills one more call of a fraction of a cent.',
+              ),
+            }
+          : tool,
+      ),
+      actionTool,
+      tellTool,
+    ],
+    hooks: [
+      modelCallLimits(() => host.harness()),
+      hook(ToolTask, {
+        beforeTool: async (call, api, context) => {
+          if (!topLevelCodemode(call)) return undefined
+          helperCallsByTask.set(api.taskId, [])
+          await copyRetiredStoreOnce(api, context)
+          const code = call.arguments.code
+          return typeof code === 'string'
+            ? { arguments: { ...call.arguments, code: withDefaultTimeout(code) } }
+            : undefined
+        },
+        afterTool: async (call, result, api) => {
+          if (topLevelCodemode(call)) await summarize(api, call, result)
+          return undefined
+        },
+      }),
+    ],
     sections: [
-      section('codemode', ({ agent }) =>
-        agent.tools.some((tool) => tool.name === 'codemode')
-          ? 'Use codemode for dependent/parallel calls, filtered results or introspection; single calls use tools directly. Use edit/write outside codemode so changes show as diffs.' +
-            (agent.tools.some((tool) => tool.name === 'restart')
+      section('codemode', async (input, context) => {
+        if (!input.agent.tools.some((tool) => tool.name === 'codemode')) return undefined
+        const tools = await piSection.render(input, context)
+        return [
+          'Use codemode for dependent/parallel calls, filtered results or introspection; single calls use tools directly. Use edit/write outside codemode so changes show as diffs.' +
+            (input.agent.tools.some((tool) => tool.name === 'restart')
               ? ' Call restart only at top level.'
               : '') +
-            ' Only text(), image() and return values enter context; filter to concise findings. The sandbox has no setTimeout or setInterval: wait with a bash sleep.' +
-            ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through ultimate.action. ' +
-            'tools.<name>(args) takes the top-level tool arguments and rules; a tool that declares structured output resolves to it (bash: {output, exitCode}), others to their text. Available: ' +
-            declarations(agent.tools)
-              .map((tool) => tool.name)
-              .join(', ')
-          : undefined,
-      ),
+            ' Only text(), image() and return values enter context; filter to concise findings.' +
+            ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through tools.action({extension, action, args}).' +
+            ' A subagent started from a script runs in the background; wait for it at top level.',
+          `A script makes at most ${MAX_MODEL_CALLS} models.classify/generateImages calls; its result ends with a usage line. A script resumes after a restart; keep long-run progress with store() so a later call can continue.`,
+          `Read-only introspection globals (each result is journaled):\n\`\`\`ts\n${declarations}\n\`\`\``,
+          tools,
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+      }),
     ],
   })
 }

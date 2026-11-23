@@ -419,12 +419,12 @@ describe('messages a codemode script sent', () => {
   // Identical texts from two scripts and a direct call, in different states, plus a message to a branch and one from
   // before the log recorded calls.
   const log: Message[] = [
-    { ...base, id: 1, state: 'answered', call: 'a/1' },
-    { ...base, id: 2, state: 'delivered', call: 'b/1' },
-    { ...base, id: 3, state: 'delivered', call: 'a/3', reply: false },
+    { ...base, id: 1, state: 'answered', call: 'a/c1' },
+    { ...base, id: 2, state: 'delivered', call: 'b/c1' },
+    { ...base, id: 3, state: 'delivered', call: 'a/c3', reply: false },
     { ...base, id: 4, state: 'delivered', call: 'a' },
-    { ...base, id: 5, state: 'sent', to: 4 as ConversationId, call: 'a/4' },
-    { ...base, id: 6, state: 'delivered', call: 'ab/1' },
+    { ...base, id: 5, state: 'sent', to: 4 as ConversationId, call: 'a/c4' },
+    { ...base, id: 6, state: 'delivered', call: 'ab/c1' },
     { ...base, id: 7, state: 'delivered' },
   ]
   it('binds each identical text to the call that sent it, in the order sent', () => {

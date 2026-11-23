@@ -6,7 +6,7 @@ Reel: plays the screenshots a branch and its subagents took as a short full-scre
   Inbox's reading pane) and on each landing card. It shows only with at least two frames.
 - **Which screenshots.** The `frames` action (`{ conversation, message? }`) reads the image blocks of tool results
   (`screenshot`, `browser`, any tool that returns an image) in the branch and every conversation it owns, down the
-  tree. For a message, the window runs from the branch's previous reply-expected message to you up to this one; for a
+  tree. For a message, the window runs from the branch's previous reply-expected message to you up to this one; every question a conversation asks the user, @ultimate's included, is recorded by its tool call id (a script's nested call id) in that conversation's `board.asked-calls` document, so its boundary outlives the trimmed message log; for a
   landing, the whole branch. Frames go in entry order, which is shared across conversations, so a designer's shots
   sit between its coordinator's. Identical images in a row collapse into one frame marked ×N; similar ones stay.
   The newest 40 are kept, and the chip says how many earlier ones were left out.

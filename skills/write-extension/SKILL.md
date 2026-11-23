@@ -52,7 +52,7 @@ composer renderers), `commands.md`, `documents.md`, `surfaces.md`, `actions.md`,
 
 ## 5. Verify
 
-1. Server actions first: call them with codemode `ultimate.action(extension, action, args)`.
+1. Server actions first: call them with codemode `tools.action({ extension, action, args })`.
 2. In the clone, `pnpm check` (format, lint, types, import boundaries, the dependency graph). For an extension of another
    project or a user extension, `node <clone>/scripts/check-extension.ts [folder…]` from the project (default: its
    `.ultimate/extensions/*`) type-checks it against the clone. Never copy an extension into the clone to check it: the

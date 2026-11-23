@@ -61,8 +61,8 @@ plain words (the Inbox row shows that first line as is), the link after it, then
 
 The first decision card is the only one: it always carries, next to the verdict question, a **post/skip question
 for the comment** whose "post" option has the drafted comment, in full, as its `preview`; a "merge with changes"
-option has the changes as a diff in its `preview`. Never leave the comment for a later card. Store the draft on the PR's record with codemode `ultimate.action('pr-triage', 'set', {number,
-draft})`, so the post or close the user picks sends exactly that text.
+option has the changes as a diff in its `preview`. Never leave the comment for a later card. Store the draft on the PR's record with codemode `tools.action({extension: 'pr-triage', action: 'set', args: {number,
+draft}})`, so the post or close the user picks sends exactly that text.
 
 ## 5. Merge, if it merges
 

@@ -3,7 +3,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
-import { Messages, MessageSent } from './api.ts'
+import { AskedCalls, Messages, MessageSent } from './api.ts'
 import type { Message, Question } from './api.ts'
 import type { Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
@@ -203,6 +203,8 @@ export async function send(
       ...(options.echo ? { echo: true as const } : {}),
       ...(via ? { via } : {}),
     })
+    if (to === 'user' && message.reply && typeof from === 'number' && callId !== undefined)
+      (await tx.doc(AskedCalls, from)).calls.push(callId)
     if (primaryId !== undefined) {
       const asked = to === 'user' && message.reply && from !== primaryId && typeof from === 'number'
       const answered =

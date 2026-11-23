@@ -1,6 +1,6 @@
 ---
 name: cross-project-e2e
-description: Test Ultimate end to end through another of the user's projects (another project's @ultimate, its branches and UI) with ultimate.tell and project reads. Use when a change must be proven in a project other than Ultimate itself, or when asked to have another project's @ultimate do something and watch it.
+description: Test Ultimate end to end through another of the user's projects (another project's @ultimate, its branches and UI) with tools.tell and project reads. Use when a change must be proven in a project other than Ultimate itself, or when asked to have another project's @ultimate do something and watch it.
 ---
 
 # End-to-end test through another project
@@ -10,7 +10,7 @@ Only @ultimate can `tell`; a branch asks @ultimate to run this.
 1. **Find the project and its URL**: codemode `ultimate.projects()` lists projects with their running instances and
    tailnet URLs. A project that is not running cannot be told anything; say so.
 2. **Tell it what to do**, as a user would, in one self-contained message:
-   `ultimate.tell({ project, text: 'Start a branch that …; report back when it lands.', reply: true })`, then end your
+   `tools.tell({ project, text: 'Start a branch that …; report back when it lands.', reply: true })`, then end your
    turn. The reply is the wait, and failures come back as failed replies: `extensions/messages/README.md`, "Other
    projects' Ultimates". Set no check-back of your own, even for a long job.
 3. **No progress**: if a wait stays open with nothing moving, read the other project directly (step 4); a lost

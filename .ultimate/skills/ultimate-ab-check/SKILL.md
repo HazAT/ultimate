@@ -40,7 +40,7 @@ const text = `Request from Ultimate's @ultimate (A/B before a core change lands)
   --scenario recipe-reminder: it creates a reminder automation, checks it fires and reaches the user, and scores
   unanswered and duplicate board messages (about 3 min and $0.50 a run).
 Reply with the run ids and their results when they are done.`
-await ultimate.tell({ project: 'ultimate-eval', text })
+await tools.tell({ project: 'ultimate-eval', text })
 ```
 
 Then end the turn. The reply is the wait: ultimate-eval's "started" answer arrives as a note, the sidebar shows

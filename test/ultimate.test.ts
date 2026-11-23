@@ -178,7 +178,7 @@ it('has no lineage action that starts a branch without routing its answer', asyn
   await ask(
     f.server,
     ultimate,
-    `CODE return await ultimate.action('lineage', 'branch', { from: 1, prompt: 'Via action', isolated: false })`,
+    `CODE return await tools.action({extension: 'lineage', action: 'branch', args: { from: 1, prompt: 'Via action', isolated: false }})`,
   )
   const result = (await entries(f.server, ultimate)).findLast(
     (entry) => entry.kind === 'pi.tool-result',

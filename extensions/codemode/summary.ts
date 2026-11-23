@@ -2,6 +2,19 @@ import type { CallSummary } from './refs.ts'
 
 export type Call = { name: string; args: unknown; status: string }
 
+const parsedArgs = (args: string) => {
+  try {
+    return JSON.parse(args) as unknown
+  } catch {
+    return '[arguments cut]'
+  }
+}
+
+export const summaryCalls = (
+  calls: readonly { name: string; args: string; status: string }[],
+): Call[] =>
+  calls.map((call) => ({ name: call.name, args: parsedArgs(call.args), status: call.status }))
+
 const str = (value: unknown) =>
   typeof value === 'string' || typeof value === 'number' ? String(value) : JSON.stringify(value)
 
@@ -32,13 +45,19 @@ const READ_TOOLS: Record<string, (args: Record<string, unknown>) => string> = {
 
 const argsOf = (call: Call) => (Array.isArray(call.args) ? call.args : [call.args])
 
-export function fixedLine(calls: readonly Call[], error?: string): CallSummary | undefined {
+export const SCRIPT_FAILED = 'Script failed'
+
+export function fixedLine(
+  calls: readonly Call[],
+  error?: string,
+  resumed = false,
+): CallSummary | undefined {
   if (calls.length > 1) return undefined
   const [call] = calls
   const reads = !call || call.name in READS || call.name in READ_TOOLS
   if (error !== undefined)
     return reads ? { line: `Failed: ${scrub(error).split('\n').at(-1)!.slice(0, 80)}` } : undefined
-  if (!call) return { line: 'Ran a script without tool calls' }
+  if (!call) return { line: resumed ? 'Ran a script' : 'Ran a script without tool calls' }
   const read = READS[call.name]
   if (read) return { line: read(argsOf(call)) }
   const tool = READ_TOOLS[call.name]

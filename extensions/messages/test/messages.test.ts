@@ -41,7 +41,7 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { Messages, MessageSent } from '../api.ts'
+import { AskedCalls, Messages, MessageSent } from '../api.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -1134,7 +1134,7 @@ it('has no posting action at the installed codemode boundary', async () => {
         fauxAssistantMessage(
           [
             fauxToolCall('codemode', {
-              code: `return await ultimate.action('messages', '${action}', {to:'user',text:'fake'});`,
+              code: `return await tools.action({extension: 'messages', action: '${action}', args: {to:'user',text:'fake'}});`,
             }),
           ],
           { stopReason: 'toolUse' },
@@ -1198,16 +1198,20 @@ it('keeps sequential and parallel message calls distinct within one codemode scr
     expect(new Set(log?.messages.map((m) => m.id)).size).toBe(5)
     // Each message records the call that sent it: the script's nested call, or the direct call's own id.
     expect(log?.messages.slice(0, 2).map((m) => [m.text, m.call])).toEqual([
-      ['Sequential 1', 'script/1'],
-      ['Sequential 2', 'script/2'],
+      ['Sequential 1', 'script/c1'],
+      ['Sequential 2', 'script/c2'],
     ])
     expect(
       log?.messages
         .slice(2, 4)
         .map((m) => m.call)
         .toSorted(),
-    ).toEqual(['script/3', 'script/4'])
+    ).toEqual(['script/c3', 'script/c4'])
     expect(log?.messages.at(-1)).toMatchObject({ text: 'Direct', call: 'm' })
+    // @ultimate's own questions are recorded by call too, so the reel finds them once the log is trimmed.
+    expect(
+      (await server.harness.snapshot(AskedCalls, server.root.id, context))?.calls.toSorted(),
+    ).toEqual(['m', 'script/c1', 'script/c2', 'script/c3', 'script/c4'])
     // The script's nested messages could not end the run; the direct message did, before 'Complete'.
     const view = await server.root.context(context)
     expect(view.entries.at(-1)?.kind).toBe('pi.tool-result')

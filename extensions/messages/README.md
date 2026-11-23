@@ -98,7 +98,7 @@ with `questions` in its own conversation. Reports that need no answer use `reply
 One @ultimate can message another project's @ultimate, on this machine or over the tailnet; nothing else crosses, and the
 message is never the user's.
 
-- **Sender:** codemode `ultimate.tell({ project, text, reply? })` (@ultimate only) posts the target's `messages.remote`
+- **Sender:** codemode `tools.tell({ project, text, reply? })` (@ultimate only) posts the target's `messages.remote`
   action, located as codemode's `{ project }` reads are (`lib/remote.ts`). A failed post throws a sentence naming the
   project and machine. Telling an Ultimate whose question to you is still open is refused: answer it instead.
 - **Target:** `messages.remote { key, text, reply, from: { project, machine } }` delivers to its own primary agent only,
