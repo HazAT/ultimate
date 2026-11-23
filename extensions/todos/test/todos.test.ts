@@ -111,8 +111,12 @@ it("keeps the todo tool to @ultimate and the note to @ultimate's inputs", async 
     output: [{ type: 'text', text: "The user's:\n- 1: Ship it" }],
   })
   const hooks = extension.hooks![0].handlers as GenerationHooks
-  const before = (conversationId: number) =>
-    hooks.beforeInput({} as never, { tx, conversationId } as never, BACKGROUND_CONTEXT)
-  expect(await before(9)).toBeUndefined()
+  const before = (conversationId: ConversationId) =>
+    hooks.beforeInput(
+      {} as never,
+      { tx, conversationId, agent: () => Promise.reject(new Error('Unused')) },
+      BACKGROUND_CONTEXT,
+    )
+  expect(await before(9 as ConversationId)).toBeUndefined()
   expect(await before(ULTIMATE)).toBeDefined()
 })

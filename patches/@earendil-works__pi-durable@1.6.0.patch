@@ -124,7 +124,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..68a2539dfd4c7dd7182c59d134a7c7ab
              await addTools(tx, conversationId, added);
          const live = await tx.doc(LiveDoc, conversationId);
 diff --git a/dist/harness/harness.js b/dist/harness/harness.js
-index e51d731d2a64d725a1e33b575f2c5658ff8b250b..273fdef396ddd2fa0f8430c1c72b0a33569aa46f 100644
+index e51d731d2a64d725a1e33b575f2c5658ff8b250b..6953f19b7ddd7e812521353642a9ffe15eef05ae 100644
 --- a/dist/harness/harness.js
 +++ b/dist/harness/harness.js
 @@ -6,7 +6,7 @@ import { ResetEntry } from "../entries.js";
@@ -136,23 +136,29 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..273fdef396ddd2fa0f8430c1c72b0a33
  import { createCompaction } from "./compaction.js";
  import { readContext } from "./context.js";
  import { InboxDoc, withdrawAbortedInputs } from "./inbox.js";
-@@ -161,6 +161,15 @@ class HarnessImpl extends SessionImpl {
+@@ -161,6 +161,21 @@ class HarnessImpl extends SessionImpl {
              create: (target, createOptions, context) => this.#create(target, createOptions, context),
          };
      }
 +    async beforeInput(tx, conversationId, input, context) {
-+        const agent = resolveAgent(await tx.doc(AgentDoc, conversationId), this.#options.registry.snapshot(), resolveSettings(this.#hostSettings()), (error, extension) => this.#report(error, { kind: "extension_error", conversationId, extension }, context));
++        const snapshot = this.#options.registry.snapshot();
++        const settings = resolveSettings(this.#hostSettings());
++        const resolve = async (id) => resolveAgent(await tx.doc(AgentDoc, id), snapshot, settings, (error, extension) => this.#report(error, { kind: "extension_error", conversationId: id, extension }, context));
 +        const entries = [];
-+        for (const { handlers } of agentHooks(agent, "pi.generation")) {
-+            const result = await handlers.beforeInput?.(input, { conversationId, tx }, context);
-+            entries.push(...(result?.entries ?? []));
++        const ran = new Set();
++        for (let hooks; (hooks = agentHooks(await resolve(conversationId), "pi.generation").filter(({ handlers }) => !ran.has(handlers))).length > 0;) {
++            for (const { handlers } of hooks) {
++                ran.add(handlers);
++                const result = await handlers.beforeInput?.(input, { conversationId, tx, agent: resolve }, context);
++                entries.push(...(result?.entries ?? []));
++            }
 +        }
 +        return entries;
 +    }
      /** Resolve a conversation's committed `pi.agent` against `snapshot`, or the current one, and the current settings. */
      async resolveAgent(id, snapshot, context) {
          const registry = snapshot ?? this.#options.registry.snapshot();
-@@ -183,6 +192,12 @@ class HarnessImpl extends SessionImpl {
+@@ -183,6 +198,12 @@ class HarnessImpl extends SessionImpl {
          this.assertUsable();
          this.#tasks.resume();
      }
@@ -351,7 +357,7 @@ index 908492f520c857c8198355820ad9de96fc6ff713..1d249913ddd6d85856c08149d213f401
      const input = { ...fields, type: "input", status: "placed", entry: entry.id };
      const { id } = await tx.createSubmission(input);
 diff --git a/dist/harness/types.d.ts b/dist/harness/types.d.ts
-index 7ba2571ffb2594913c2dea1cc809f70da912b947..f73ec506b6d279bb05e488893cf78908ba18c71a 100644
+index 7ba2571ffb2594913c2dea1cc809f70da912b947..d204d4ef04e530053fd4522e3546e93b3abe03e7 100644
 --- a/dist/harness/types.d.ts
 +++ b/dist/harness/types.d.ts
 @@ -926,6 +926,9 @@ export interface Harness extends Session {
@@ -369,7 +375,7 @@ index 7ba2571ffb2594913c2dea1cc809f70da912b947..f73ec506b6d279bb05e488893cf78908
  /** Hooks of the built-in generation task. */
  export interface GenerationHooks {
 +    /** Before a new run’s first input is placed. Use only tx for storage access; effects commit with the input. */
-+    beforeInput(input: EntryDraft, api: { readonly conversationId: ConversationId; readonly tx: Tx }, context: Context): HookResult<{ readonly entries?: readonly EntryDraft[] }>;
++    beforeInput(input: EntryDraft, api: { readonly conversationId: ConversationId; readonly tx: Tx; /** A conversation's agent as `tx` stores it, resolved against the current registry. */ readonly agent: (id: ConversationId) => Promise<Agent> }, context: Context): HookResult<{ readonly entries?: readonly EntryDraft[] }>;
      /** Before every request attempt, including recovery; the result is used for that request only. */
      beforeRequest(request: {
          readonly messages: readonly Message[];
