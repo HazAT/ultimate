@@ -70,7 +70,7 @@ export function createReads(api: Api, store: Store) {
     const listeners = new Set<() => void>()
     const readers = new Set<Reader>()
     let fetching = false
-    let inFlight: Promise<void> | undefined
+    let running: Promise<unknown> | undefined
     let queued: Promise<unknown> | undefined
     let answered = false
     let lastAnswer: string | undefined
@@ -116,9 +116,18 @@ export function createReads(api: Api, store: Store) {
       watching?.stop()
       watching = { every: wanted, stop: store.watchRead(spec, wanted, (event) => answer(event)) }
     }
-    async function run() {
+    function start(onError: Reader['onError']) {
+      const request = Promise.withResolvers<unknown>()
+      running = request.promise
+      const release = () => {
+        if (running === request.promise) running = undefined
+      }
+      request.promise.then(release, release)
+      request.resolve(run(onError))
+      return request.promise
+    }
+    async function run(onError: Reader['onError']) {
       fetching = true
-      const onError = errorHandler()
       set({ loading: true })
       try {
         const data = await api.action(
@@ -167,15 +176,12 @@ export function createReads(api: Api, store: Store) {
         }
       },
       refetch() {
-        queued ??= (inFlight ?? Promise.resolve()).then(() => {
+        const onError = errorHandler()
+        const go = () => {
           queued = undefined
-          const request = run()
-          const settled: Promise<void> = request.then(() => {
-            if (inFlight === settled) inFlight = undefined
-          })
-          inFlight = settled
-          return request
-        })
+          return start(onError)
+        }
+        queued ??= (running ?? Promise.resolve()).then(go, go)
         return queued
       },
       repoll,
