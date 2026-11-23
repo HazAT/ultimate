@@ -19,7 +19,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
 import {
@@ -148,23 +147,25 @@ function ConfirmedLink(props: {
         {props.children}
       </Button>
       <Dialog onOpenChange={setOpen} open={open()}>
-        <DialogContent class="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle class="flex items-center gap-2 text-base">
+        <DialogContent class="gap-0 overflow-hidden p-0 sm:max-w-md">
+          <div class="px-5 pt-5 pb-4">
+            <DialogTitle class="flex items-center gap-2 text-[14px] font-medium">
               <ExternalLink aria-hidden="true" class="size-4" />
               Open external link?
             </DialogTitle>
-            <DialogDescription>You're about to visit an external website.</DialogDescription>
-          </DialogHeader>
-          <div class="max-h-32 overflow-y-auto rounded-md bg-muted p-3 font-mono text-sm break-all">
-            {props.href}
+            <DialogDescription class="mt-2 text-[13px] leading-relaxed">
+              You're about to visit an external website.
+            </DialogDescription>
+            <div class="mt-3 max-h-32 overflow-y-auto rounded-md bg-muted px-3 py-2 font-mono text-[12px] break-all">
+              {props.href}
+            </div>
           </div>
-          <div class="flex gap-2">
-            <Button class="flex-1" onClick={() => copy(props.href)} variant="outline">
+          <div class="flex justify-end gap-2 border-t border-border/70 bg-sidebar px-5 py-3">
+            <Button onClick={() => copy(props.href)} size="sm" variant="ghost">
               {copied() ? 'Copied' : 'Copy link'}
             </Button>
             <Button
-              class="flex-1"
+              size="sm"
               onClick={() => {
                 window.open(props.href, '_blank', 'noreferrer')
                 setOpen(false)
