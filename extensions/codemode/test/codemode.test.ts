@@ -6,7 +6,7 @@ import {
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
 import { num, obj } from '@earendil-works/pi-schema'
-import { defineExtension, defineTool, hook, ToolTask } from '@earendil-works/pi-durable'
+import { AgentDoc, defineExtension, defineTool, hook, ToolTask } from '@earendil-works/pi-durable'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
@@ -957,4 +957,22 @@ it('sends a failed script to the summary model as a fixed label, never its print
   expect(inputs).toHaveLength(1)
   expect(inputs[0]).toContain('Script failed')
   expect(inputs[0]).not.toContain('secret line')
+})
+
+it('gives a conversation with a stored tool list its script-only tools before each run', async () => {
+  const { server } = await fixture()
+  await server.harness.commit(async (tx) => {
+    ;(await tx.doc(AgentDoc, server.root.id)).tools = ['read', 'codemode']
+  }, context)
+  expect(
+    (await run(server, `return await tools.tell({project: 'nope', text: 'hi'})`)).text,
+  ).not.toContain('Tool tell is not available')
+  expect((await server.harness.snapshot(AgentDoc, server.root.id, context))?.tools).toEqual([
+    'read',
+    'codemode',
+    'pi.codemode.models.classify',
+    'pi.codemode.models.generateImages',
+    'action',
+    'tell',
+  ])
 })

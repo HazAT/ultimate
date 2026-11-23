@@ -29,6 +29,7 @@ import {
   ROOT_CONVERSATION_ID,
   section,
   ToolTask,
+  GenerationTask,
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
@@ -76,15 +77,6 @@ const StoreCopied = defineDoc({
   history: 'rewindable',
   fork: 'asOf',
   initial: (): { copied: boolean } => ({ copied: false }),
-})
-const ScriptToolsSwept = defineDoc({
-  kind: 'codemode.script-tools-swept',
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: (): { done: boolean } => ({ done: false }),
 })
 const KEPT_SUMMARY_LIMIT = 1000
 export { SummaryDoc }
@@ -601,31 +593,21 @@ export default function codemode(host: ExtensionHost) {
   const scriptOnly = [...pi.tools!, actionTool, tellTool]
     .filter((tool) => tool.callers?.includes('model') === false)
     .map((tool) => tool.name)
-  host.onOpen(() =>
-    host.harness().commit(async (tx) => {
-      const swept = await tx.doc(ScriptToolsSwept, ROOT_CONVERSATION_ID)
-      if (swept.done) return
-      swept.done = true
-      const ids: ConversationId[] = []
-      let cursor: Cursor | undefined
-      do {
-        const page = await tx.scanConversations({}, 256, cursor)
-        ids.push(...page.items.map((record) => record.id))
-        cursor = page.next
-      } while (cursor)
-      for (const conversation of ids) {
-        const agent = await tx.doc(AgentDoc, conversation)
-        if (!Array.isArray(agent.tools) || !agent.tools.includes('codemode')) continue
-        for (const name of scriptOnly) if (!agent.tools.includes(name)) agent.tools.push(name)
-      }
-    }, BACKGROUND_CONTEXT),
-  )
   return defineExtension({
     name: 'codemode',
     tasks: [Summary],
     tools: [...pi.tools!, actionTool, tellTool],
     hooks: [
       modelCallLimits(() => host.harness()),
+      hook(GenerationTask, {
+        // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
+        beforeInput: async (_input, { tx, conversationId }) => {
+          const agent = await tx.doc(AgentDoc, conversationId)
+          if (!Array.isArray(agent.tools) || !agent.tools.includes('codemode')) return undefined
+          for (const name of scriptOnly) if (!agent.tools.includes(name)) agent.tools.push(name)
+          return undefined
+        },
+      }),
       hook(ToolTask, {
         beforeTool: async (call, api, context) => {
           if (!topLevelCodemode(call)) return undefined
