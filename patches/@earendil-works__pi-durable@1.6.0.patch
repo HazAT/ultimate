@@ -124,7 +124,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..68a2539dfd4c7dd7182c59d134a7c7ab
              await addTools(tx, conversationId, added);
          const live = await tx.doc(LiveDoc, conversationId);
 diff --git a/dist/harness/harness.js b/dist/harness/harness.js
-index e51d731d2a64d725a1e33b575f2c5658ff8b250b..739041bf7b85b1343ade07cc358e8e1eb7b60055 100644
+index e51d731d2a64d725a1e33b575f2c5658ff8b250b..6953f19b7ddd7e812521353642a9ffe15eef05ae 100644
 --- a/dist/harness/harness.js
 +++ b/dist/harness/harness.js
 @@ -6,7 +6,7 @@ import { ResetEntry } from "../entries.js";
@@ -136,7 +136,7 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..739041bf7b85b1343ade07cc358e8e1e
  import { createCompaction } from "./compaction.js";
  import { readContext } from "./context.js";
  import { InboxDoc, withdrawAbortedInputs } from "./inbox.js";
-@@ -161,6 +161,18 @@ class HarnessImpl extends SessionImpl {
+@@ -161,6 +161,21 @@ class HarnessImpl extends SessionImpl {
              create: (target, createOptions, context) => this.#create(target, createOptions, context),
          };
      }
@@ -144,18 +144,21 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..739041bf7b85b1343ade07cc358e8e1e
 +        const snapshot = this.#options.registry.snapshot();
 +        const settings = resolveSettings(this.#hostSettings());
 +        const resolve = async (id) => resolveAgent(await tx.doc(AgentDoc, id), snapshot, settings, (error, extension) => this.#report(error, { kind: "extension_error", conversationId: id, extension }, context));
-+        const agent = await resolve(conversationId);
 +        const entries = [];
-+        for (const { handlers } of agentHooks(agent, "pi.generation")) {
-+            const result = await handlers.beforeInput?.(input, { conversationId, tx, agent: resolve }, context);
-+            entries.push(...(result?.entries ?? []));
++        const ran = new Set();
++        for (let hooks; (hooks = agentHooks(await resolve(conversationId), "pi.generation").filter(({ handlers }) => !ran.has(handlers))).length > 0;) {
++            for (const { handlers } of hooks) {
++                ran.add(handlers);
++                const result = await handlers.beforeInput?.(input, { conversationId, tx, agent: resolve }, context);
++                entries.push(...(result?.entries ?? []));
++            }
 +        }
 +        return entries;
 +    }
      /** Resolve a conversation's committed `pi.agent` against `snapshot`, or the current one, and the current settings. */
      async resolveAgent(id, snapshot, context) {
          const registry = snapshot ?? this.#options.registry.snapshot();
-@@ -183,6 +195,12 @@ class HarnessImpl extends SessionImpl {
+@@ -183,6 +198,12 @@ class HarnessImpl extends SessionImpl {
          this.assertUsable();
          this.#tasks.resume();
      }

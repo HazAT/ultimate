@@ -747,8 +747,7 @@ export default function subagents(
   ) => {
     const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
     const name = Object.keys(index).find((candidate) => index[candidate] === id)
-    const placementMayContinueALiveRun = (await tx.doc(LiveDoc, id)).run !== undefined
-    if (name === undefined || placementMayContinueALiveRun) return
+    if (name === undefined) return
     const { definitions, errors } = await discoverAgents(
       host.ultimateRoot,
       host.projectRoot,
@@ -758,12 +757,12 @@ export default function subagents(
     const definition = definitions.find((item) => item.name === name && item.resident === true)
     const brokenFileMayHoldItsDenies = errors.length > 0
     if (!definition || brokenFileMayHoldItsDenies) return
-    const { tools, modelTools, extensions, instructions } = definitionAgent(
+    const { tools, modelTools, extensions } = definitionAgent(
       definition,
       await agent(ROOT_CONVERSATION_ID),
       host.modelRuntime,
     )
-    await configure(tx, id, { tools, modelTools, extensions, instructions })
+    await configure(tx, id, { tools, modelTools, extensions })
   }
   const spawnDefinition = async (
     args: {

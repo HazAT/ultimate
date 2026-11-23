@@ -11,6 +11,8 @@ import {
   configure,
   defineExtension,
   defineTool,
+  GenerationTask,
+  hook,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
@@ -401,17 +403,42 @@ it("rebuilds a standing agent's tools from its definition before its next run, k
       ...(callers ? { callers } : {}),
       execute: async () => ({ output: [] }),
     })
+  const placedBefore: number[] = []
   prepared.registry.install(
     defineExtension({
       name: 'landed',
       tools: [landed('codemode'), landed('action', ['tools']), landed('denied', ['tools'])],
+      hooks: [
+        hook(GenerationTask, {
+          beforeInput: (_input, api) => void placedBefore.push(api.conversationId),
+        }),
+      ],
     }),
   )
   expect(await callable()).not.toContain('action')
   prepared.faux!.setResponses([fauxAssistantMessage('Done')])
   await (await conversation.submit({ type: 'input', content: 'Hello' }, ctx)).wait(ctx)
+  expect(placedBefore).toEqual([id])
   expect(await callable()).toEqual(expect.arrayContaining(['codemode', 'action']))
   expect(await callable()).not.toContain('denied')
+
+  // A follow-up queued behind a run starts its own run on the definition as it is when that run starts.
+  prepared.faux!.setResponses([
+    async () => {
+      await writeFile(
+        file,
+        definition('Original', 'denyTools: [denied, action]\n').replace('tools: [read, t]\n', ''),
+      )
+      return fauxAssistantMessage('First')
+    },
+    fauxAssistantMessage('Second'),
+  ])
+  const first = await conversation.submit({ type: 'input', content: 'First' }, ctx)
+  const queued = await conversation.submit({ type: 'input', content: 'Second' }, ctx)
+  expect(await queued.status(ctx)).toMatchObject({ status: 'queued' })
+  await first.wait(ctx)
+  await queued.wait(ctx)
+  expect(await callable()).not.toContain('action')
 })
 
 // solidcraft #6254: a chat created from a definition kept its old tools after the definition gained `message`.
