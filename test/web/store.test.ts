@@ -637,12 +637,38 @@ describe('web replica store', () => {
       store.getState().notices.filter((n) => n.message.includes('Subscription too large')),
     ).toHaveLength(2)
 
-    // Navigating to another conversation attempts the refused shown-doc watch on the new target.
+    // Explicit root (1) stays quiet; navigating to a non-root conversation (7) attempts the watch; returning to root stays quiet.
+    const beforeExplicitRoot = fetch.mock.calls.length
     store.show(1 as ConversationId)
     await tick()
-    expect(server.of(1, false)?.docs).toEqual(['a:doc:b'])
+    const explicitRootDocs = fetch.mock.calls
+      .slice(beforeExplicitRoot)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .flatMap(
+        ([, init]) =>
+          (JSON.parse(init?.body as string) as SubscriptionsRequest).subscribe as {
+            docs?: string[]
+          }[],
+      )
+    expect(explicitRootDocs.some((spec) => spec.docs?.includes('a:doc:b'))).toBe(false)
+
+    store.show(7 as ConversationId)
+    await tick()
+    expect(server.of(7, false)?.docs).toEqual(['a:doc:b'])
+
+    const beforeBackToRoot = fetch.mock.calls.length
     store.show(undefined)
     await tick()
+    const backToRootDocs = fetch.mock.calls
+      .slice(beforeBackToRoot)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+      .flatMap(
+        ([, init]) =>
+          (JSON.parse(init?.body as string) as SubscriptionsRequest).subscribe as {
+            docs?: string[]
+          }[],
+      )
+    expect(backToRootDocs.some((spec) => spec.docs?.includes('a:doc:b'))).toBe(false)
 
     // Releasing and reacquiring 'a:doc:b' on root clears the refusal and opens a fresh subscription.
     releaseCompound()

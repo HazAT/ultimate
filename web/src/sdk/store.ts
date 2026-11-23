@@ -72,6 +72,7 @@ export interface StoreOptions {
   ui?: Partial<UiState>
 }
 
+const ROOT = parseConversationId(1)
 const EVENT_SOURCE_CLOSED_NO_RETRY = 2
 const STREAM_GONE_RECONNECT_RESUBSCRIBES = 410
 const utf8Bytes = new TextEncoder()
@@ -117,13 +118,13 @@ interface ReadWatch {
 }
 interface DocWatch {
   count: number
-  refused?: Set<ConversationId | 'root'>
+  refused?: Set<ConversationId>
 }
 interface Wanted {
   spec: Spec
   handler: Handler
   readWatch?: ReadWatch
-  docWatch?: { watch: DocWatch; target: ConversationId | 'root' }
+  docWatch?: { watch: DocWatch; target: ConversationId }
 }
 
 function applyDoc(docs: Docs, event: DocChange): Docs {
@@ -497,7 +498,7 @@ export function createStore(options: StoreOptions = {}) {
       handler: (name, raw) =>
         name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
     })
-    const shownTarget = state.requested ?? 'root'
+    const shownTarget = state.requested ?? ROOT
     for (const [kind, watch] of docKinds) {
       if (watch.refused?.has(shownTarget)) continue
       result.set(`${shown}:doc:${kind}`, {
@@ -555,7 +556,7 @@ export function createStore(options: StoreOptions = {}) {
     sub: number,
     status: number,
     readWatch?: ReadWatch,
-    docWatch?: { watch: DocWatch; target: ConversationId | 'root' },
+    docWatch?: { watch: DocWatch; target: ConversationId },
   ) {
     if (live.get(key)?.sub !== sub) return
     live.delete(key)
