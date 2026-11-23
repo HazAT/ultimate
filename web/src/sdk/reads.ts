@@ -69,8 +69,9 @@ export function createReads(api: Api, store: Store) {
     let state: ReadState = { loading: false, settled: false }
     const listeners = new Set<() => void>()
     const readers = new Set<Reader>()
-    let controller: AbortController | undefined
-    let sameTickRequest: Promise<unknown> | undefined
+    let fetching = false
+    let running: Promise<unknown> | undefined
+    let queued: Promise<unknown> | undefined
     let answered = false
     let lastAnswer: string | undefined
     let watching: { every: number | undefined; stop: () => void } | undefined
@@ -89,16 +90,16 @@ export function createReads(api: Api, store: Store) {
       answered = true
       const json = JSON.stringify(event)
       if (json === lastAnswer) {
-        if (!state.settled || state.loading) set({ settled: true, loading: !!controller })
+        if (!state.settled || state.loading) set({ settled: true, loading: fetching })
         return
       }
       lastAnswer = json
       if ('result' in event) {
-        set({ data: event.result, error: undefined, settled: true, loading: !!controller })
+        set({ data: event.result, error: undefined, settled: true, loading: fetching })
         return
       }
       const failure = new ActionError(extension, name, event.status, event.error)
-      set({ error: failure, settled: true, loading: !!controller })
+      set({ error: failure, settled: true, loading: fetching })
       if (onError) onError(failure)
       else store.notify({ level: 'error', message: actionMessage(failure) })
     }
@@ -115,41 +116,41 @@ export function createReads(api: Api, store: Store) {
       watching?.stop()
       watching = { every: wanted, stop: store.watchRead(spec, wanted, (event) => answer(event)) }
     }
-    async function run() {
-      controller?.abort()
-      const own = new AbortController()
-      controller = own
-      const onError = errorHandler()
+    function start(onError: Reader['onError']) {
+      const request = Promise.withResolvers<unknown>()
+      running = request.promise
+      const release = () => {
+        if (running === request.promise) running = undefined
+      }
+      request.promise.then(release, release)
+      request.resolve(run(onError))
+      return request.promise
+    }
+    async function run(onError: Reader['onError']) {
+      fetching = true
       set({ loading: true })
       try {
         const data = await api.action(
           actionRef<unknown, unknown>(extension, name),
-          ...([args, { signal: own.signal, conversationId }] as ActionArgs<unknown, ActionOptions>),
+          ...([args, { conversationId }] as ActionArgs<unknown, ActionOptions>),
         )
-        if (own.signal.aborted) return undefined
-        settleAttempt(own, { result: (data ?? null) as JsonValue }, onError)
+        settleAttempt({ result: (data ?? null) as JsonValue }, onError)
         return data
       } catch (error) {
-        if (own.signal.aborted) return undefined
         const failure = error as ActionError
         settleAttempt(
-          own,
           failure.status === 0 ? undefined : { error: failure.message, status: failure.status },
           onError,
         )
         return undefined
       }
     }
-    function settleAttempt(
-      own: AbortController,
-      event: ReadEvent | undefined,
-      onError: Reader['onError'],
-    ) {
-      if (controller === own) controller = undefined
+    function settleAttempt(event: ReadEvent | undefined, onError: Reader['onError']) {
+      fetching = false
       const streamWritesTheSharedAnswer = watching !== undefined
       if (event && !streamWritesTheSharedAnswer) return answer(event, onError)
       if (!streamWritesTheSharedAnswer) answered = true
-      set({ loading: !!controller })
+      set({ loading: fetching })
     }
     const read = {
       readers,
@@ -175,11 +176,13 @@ export function createReads(api: Api, store: Store) {
         }
       },
       refetch() {
-        sameTickRequest ??= Promise.resolve().then(() => {
-          sameTickRequest = undefined
-          return run()
-        })
-        return sameTickRequest
+        const onError = errorHandler()
+        const go = () => {
+          queued = undefined
+          return start(onError)
+        }
+        queued ??= (running ?? Promise.resolve()).then(go, go)
+        return queued
       },
       repoll,
     }
