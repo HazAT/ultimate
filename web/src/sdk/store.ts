@@ -117,13 +117,13 @@ interface ReadWatch {
 }
 interface DocWatch {
   count: number
-  refused?: boolean
+  refused?: Set<ConversationId | 'root'>
 }
 interface Wanted {
   spec: Spec
   handler: Handler
   readWatch?: ReadWatch
-  docWatch?: DocWatch
+  docWatch?: { watch: DocWatch; target: ConversationId | 'root' }
 }
 
 function applyDoc(docs: Docs, event: DocChange): Docs {
@@ -298,10 +298,9 @@ export function createStore(options: StoreOptions = {}) {
     return sub
   }
   function retire(sub: number) {
-    if (!handlers.delete(sub) || streamId === undefined) return false
-    if (opening.delete(sub)) return false
+    if (!handlers.delete(sub) || streamId === undefined) return
+    if (opening.delete(sub)) return
     closing.add(sub)
-    return true
   }
   function scheduleFlush() {
     if (flushQueued) return
@@ -498,11 +497,12 @@ export function createStore(options: StoreOptions = {}) {
       handler: (name, raw) =>
         name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
     })
-    for (const [kind, docWatch] of docKinds) {
-      if (docWatch.refused) continue
+    const shownTarget = state.requested ?? 'root'
+    for (const [kind, watch] of docKinds) {
+      if (watch.refused?.has(shownTarget)) continue
       result.set(`${shown}:doc:${kind}`, {
         ...docSubscription(state.requested, kind, (change) => handle('doc', change)),
-        docWatch,
+        docWatch: { watch, target: shownTarget },
       })
     }
     for (const conversation of watchedViews.keys())
@@ -519,15 +519,15 @@ export function createStore(options: StoreOptions = {}) {
         },
       })
     for (const [conversation, kinds] of docWatchCountsByConversation)
-      for (const [kind, docWatch] of kinds) {
-        if (docWatch.refused) continue
+      for (const [kind, watch] of kinds) {
+        if (watch.refused?.has(conversation)) continue
         result.set(`${conversation}:doc:${kind}`, {
           ...docSubscription(conversation, kind, (change) => {
             const docs = state.docsOf[conversation] ?? {}
             const next = applyDoc(docs, change)
             if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
           }),
-          docWatch,
+          docWatch: { watch, target: conversation },
         })
       }
     for (const [key, readWatch] of watchedReads) {
@@ -555,14 +555,15 @@ export function createStore(options: StoreOptions = {}) {
     sub: number,
     status: number,
     readWatch?: ReadWatch,
-    docWatch?: DocWatch,
+    docWatch?: { watch: DocWatch; target: ConversationId | 'root' },
   ) {
     if (live.get(key)?.sub !== sub) return
     live.delete(key)
     if (docWatch && status === 413) {
-      if (docWatch.count > 0) {
-        if (!docWatch.refused) {
-          docWatch.refused = true
+      if (docWatch.watch.count > 0) {
+        docWatch.watch.refused ??= new Set()
+        if (!docWatch.watch.refused.has(docWatch.target)) {
+          docWatch.watch.refused.add(docWatch.target)
           handle('notice', {
             level: 'error',
             message: `Subscription too large: ${key.slice(0, 120)}`,

@@ -588,8 +588,8 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('keeps document 413 refusals across reconnect without affecting sibling kinds, and clears on release', async () => {
-    const { store, fetch, latest } = setup(5)
+  it('keeps document 413 refusals scoped to their target across reconnect, clears on release, and retries on another conversation', async () => {
+    const { store, server, fetch, latest } = setup(5)
     latest().open()
     await tick()
 
@@ -616,7 +616,7 @@ describe('web replica store', () => {
       store.getState().notices.filter((n) => n.message.includes('Subscription too large')),
     ).toHaveLength(2)
 
-    // Reconnect: neither refused doc is POSTed again and no second notice is emitted.
+    // Reconnect on the same target: neither refused doc is POSTed again and no second notice is emitted.
     const beforeReconnect = fetch.mock.calls.length
     latest().drop()
     latest().open()
@@ -637,8 +637,26 @@ describe('web replica store', () => {
       store.getState().notices.filter((n) => n.message.includes('Subscription too large')),
     ).toHaveLength(2)
 
-    releaseHuge()
+    // Navigating to another conversation attempts the refused shown-doc watch on the new target.
+    store.show(1 as ConversationId)
+    await tick()
+    expect(server.of(1, false)?.docs).toEqual(['a:doc:b'])
+    store.show(undefined)
+    await tick()
+
+    // Releasing and reacquiring 'a:doc:b' on root clears the refusal and opens a fresh subscription.
     releaseCompound()
+    await tick()
+    const releaseRecovered = store.watchDoc('a:doc:b')
+    await tick()
+    expect(
+      server.subscriptions.some(
+        (item) => !item.closed && item.conversation === undefined && item.docs.includes('a:doc:b'),
+      ),
+    ).toBe(true)
+
+    releaseHuge()
+    releaseRecovered()
     store.stop()
   })
 
