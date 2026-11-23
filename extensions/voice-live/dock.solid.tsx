@@ -410,6 +410,7 @@ export function replyOf(turn: TurnView) {
     text: messages.map(textOf).filter(Boolean).join('\n\n'),
     thought: messages.map(thoughtOf).filter(Boolean).join('\n\n'),
     tokens: turn.replies.reduce((sum, message) => sum + (message.usage?.reasoning ?? 0), 0),
+    calls: messages.some((message) => message.content.some((part) => part.type === 'toolCall')),
   }
 }
 

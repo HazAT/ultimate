@@ -100,6 +100,7 @@ export {
   formatBytes,
   formatDuration,
   formatKeys,
+  pageAgent,
   formatTime,
   formatTokens,
   isMac,

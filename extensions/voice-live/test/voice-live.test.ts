@@ -11,7 +11,7 @@ import type { Message } from '@earendil-works/pi-ai'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { context } from '../../../server/harness.ts'
-import { Fork, Session } from '../server.ts'
+import { Fork, Session, Ui } from '../server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
 import { writeSecret } from '../../secrets/store.ts'
 
@@ -191,6 +191,31 @@ it('a recording whose transcript is empty is never sent to the model', async () 
   expect(f.requests).toHaveLength(asked)
 })
 
+it('ui waits for the page: the request lands on voice.ui and the page answer is the result', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  const calls = () => f.server.harness.snapshot(Ui, first.id, context)
+  const sent = f.action('turn', {
+    key: 'look',
+    text: `CALL ${JSON.stringify({ name: 'ui', args: { op: 'query', text: 'Secrets' } })}`,
+  })
+  await until(async () => ((await calls())?.calls.length ?? 0) > 0)
+  const call = (await calls())!.calls[0]
+  expect(call).toMatchObject({ op: 'query', input: { text: 'Secrets' } })
+  await sent
+  const answered = await f.action('ui-answer', {
+    id: call.id,
+    result: [{ ref: 'c7', label: 'Secrets' }],
+  })
+  expect(answered.status).toBe(200)
+  await (await f.server.harness.conversation(first.id, context))!.waitForIdle(context)
+  const result = f.requests.at(-1)!.messages.at(-1)!
+  expect(result.role === 'toolResult' && result.content).toEqual([
+    { type: 'text', text: '[{"ref":"c7","label":"Secrets"}]' },
+  ])
+  expect((await calls())!.calls).toEqual([])
+})
+
 it('a model picked in the fork itself carries over to the next session', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })
@@ -203,7 +228,7 @@ it('a model picked in the fork itself carries over to the next session', async (
   expect(f.requests.at(-1)!.model).toBe('main-faux')
 })
 
-it('only reads and hands off: other tools are blocked, voice_handoff starts @ultimate with a card and the next turn forks afresh', async () => {
+it('other tools are blocked, voice_handoff starts @ultimate with a card and the next turn forks afresh', async () => {
   const f = await fixture()
   const blocked = await f.turn({
     key: 'blocked',
@@ -211,7 +236,7 @@ it('only reads and hands off: other tools are blocked, voice_handoff starts @ult
   })
   const blockedResult = f.requests.at(-1)!.messages.at(-1)!
   expect(blockedResult.role).toBe('toolResult')
-  expect(JSON.stringify(blockedResult)).toContain('Voice mode only reads and hands off')
+  expect(JSON.stringify(blockedResult)).toContain('Voice mode reads, drives the UI and hands off')
 
   const handoff = {
     title: 'Sidebar filter',

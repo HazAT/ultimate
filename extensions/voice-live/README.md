@@ -37,7 +37,13 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
    A press while it speaks pauses at once. With real speech it cuts: the reply is marked where you
    cut in, the running turn is stopped (`stop`), and the next turn carries a hint of what was played and what was not.
    Without speech it resumes where it paused.
-7. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
+7. **The UI and codemode**: voice may use `codemode` (its scripts reach `tools.action`) and a `ui` tool that drives the
+   user's own page. `ui {op: query | act | snapshot}` records the request on the fork's `voice.ui` document and parks
+   durably; the voice panel in the user's page runs it on the page's ui-sdk bridge (`pageAgent()` from `@/sdk/solid`)
+   and answers with `ui-answer`, which signals the parked call with the result. With no answer within 15 s the call
+   fails with a clear message. The prompt has voice say each action in one short line before it runs it, and the reply
+   lists every tool call it made, each with a checkmark.
+8. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
    @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With `to`, it
    goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`); a
    conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.

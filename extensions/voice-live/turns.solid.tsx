@@ -11,7 +11,17 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import { cn, column, MessageActions, useDocOf, useExternal, UserText } from '@/sdk/solid'
+import {
+  api,
+  cn,
+  column,
+  errorMessage,
+  MessageActions,
+  pageAgent,
+  useDocOf,
+  useExternal,
+  UserText,
+} from '@/sdk/solid'
 import { every, nextTurn } from '../../lib/timers.ts'
 import {
   dock,
@@ -23,8 +33,8 @@ import {
 } from './dock.solid.tsx'
 import type { TurnView } from './dock.solid.tsx'
 import { drawWave } from './recorder.ts'
-import { VoiceForkDoc } from './refs.ts'
-import type { VoiceFork } from './refs.ts'
+import { UiAnswerAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
+import type { VoiceFork, VoiceUiCall } from './refs.ts'
 import { splitReply } from './speech.ts'
 import type { Sentence } from './speech.ts'
 import type { Stage, Trace } from './trace.ts'
@@ -286,6 +296,55 @@ function Thought(props: { turn: TurnView; text: string; streaming: boolean; fini
   )
 }
 
+function actionLine(name: string, args: Record<string, unknown>) {
+  if (name === 'ui') {
+    if (args.op === 'act')
+      return (args.steps as { ref: string; action: string; args?: unknown[] }[])
+        .map(
+          (step) =>
+            `${step.action} ${step.ref}${step.args?.length ? ` ${JSON.stringify(step.args)}` : ''}`,
+        )
+        .join(' → ')
+    if (args.op === 'query') return `find ${JSON.stringify(args.text ?? args.within ?? '')}`
+    return 'look at the page'
+  }
+  if (name === 'voice_handoff')
+    return `hand off: ${typeof args.title === 'string' ? args.title : ''}`
+  if (name === 'codemode') return 'run a script'
+  const first = Object.values(args).find((value) => typeof value === 'string')
+  return first ? first.split('\n')[0].slice(0, 80) : ''
+}
+
+function Actions(props: { turn: TurnView }) {
+  const calls = createMemo(() =>
+    [...props.turn.replies, ...(props.turn.live ? [props.turn.live] : [])].flatMap((message) =>
+      message.content.flatMap((part) =>
+        part.type === 'toolCall'
+          ? [{ id: part.id, name: part.name, line: actionLine(part.name, part.arguments) }]
+          : [],
+      ),
+    ),
+  )
+  return (
+    <Show when={calls().length}>
+      <ul
+        class="flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground"
+        data-voice-actions
+      >
+        <For each={calls()}>
+          {(call) => (
+            <li class="flex min-w-0 items-center gap-1.5">
+              <Check class="size-3 shrink-0 text-success" />
+              <span class="shrink-0 text-foreground/80">{call.name}</span>
+              <span class="truncate">{call.line}</span>
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  )
+}
+
 function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
   const reply = createMemo(() => replyOf(props.turn))
   const streaming = () => props.busy && props.last
@@ -321,7 +380,7 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
   }
   const thinkingNow = () => streaming() && !reply().text.trim()
   return (
-    <Show when={reply().thought.trim() || reply().text.trim()}>
+    <Show when={reply().thought.trim() || reply().text.trim() || reply().calls}>
       <Message class="group/message gap-3" data-voice-reply={props.turn.key} from="assistant">
         <Show when={reply().thought.trim()}>
           <Thought
@@ -410,6 +469,7 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
             </Show>
           </div>
         </Show>
+        <Actions turn={props.turn} />
         <Show when={finished() && (sentences().sentences.length || props.turn.answer)}>
           <div class="flex min-w-0 items-center gap-2">
             <Show when={sentences().sentences.length}>
@@ -441,9 +501,41 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
   )
 }
 
+const running = new Set<string>()
+
+async function runUi(call: VoiceUiCall) {
+  const agent = pageAgent()
+  const input = (call.input ?? {}) as Record<string, unknown>
+  try {
+    if (call.op === 'snapshot') return agent.snapshot()
+    if (call.op === 'query') return await agent.query(input)
+    return await agent.act(input as Parameters<typeof agent.act>[0])
+  } catch (failure) {
+    return { error: errorMessage(failure) }
+  }
+}
+
 export function Voicing(props: { fork: ConversationId }) {
   const fork = useDocOf(() => props.fork, VoiceForkDoc)
+  const ui = useDocOf(() => props.fork, VoiceUiDoc)
   createEffect(fork, (doc) => settleTranscripts(doc, props.fork))
+  createEffect(
+    () => (ui()?.calls ?? []).map((call) => ({ ...call })),
+    (calls) => {
+      for (const call of calls) {
+        if (running.has(call.id)) continue
+        running.add(call.id)
+        void runUi(call)
+          .then((result) =>
+            api.action(UiAnswerAction, {
+              id: call.id,
+              result: JSON.parse(JSON.stringify(result ?? null)),
+            }),
+          )
+          .finally(() => running.delete(call.id))
+      }
+    },
+  )
   useSpeaking(useTurns())
   return null
 }

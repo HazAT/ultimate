@@ -7,6 +7,7 @@ import {
   AgentDoc,
   defineDoc,
   defineExtension,
+  defineSignal,
   defineTool,
   GenerationTask,
   hook,
@@ -14,7 +15,7 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { arr, num, obj, opt, str } from '@earendil-works/pi-schema'
+import { arr, lit, num, obj, opt, str, union, unknown } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
@@ -34,17 +35,36 @@ import {
   StatusAction,
   StopAction,
   TurnAction,
+  UiAnswerAction,
 } from './refs.ts'
-import type { VoiceFork, VoiceHandoff, VoiceRoute, VoiceSession, VoiceTurn } from './refs.ts'
+import type {
+  VoiceFork,
+  VoiceHandoff,
+  VoiceRoute,
+  VoiceSession,
+  VoiceTurn,
+  VoiceUi,
+} from './refs.ts'
 import { voicePrompt } from './prompt.ts'
 
 const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const PLACEHOLDER = '(no transcript yet)'
 const TRANSCRIBE_TIMEOUT_MS = 65_000
-const READ_TOOLS = ['read', 'bash', 'memory', 'web_search', 'web_fetch', 'voice_handoff']
+const VOICE_TOOLS = [
+  'read',
+  'bash',
+  'memory',
+  'web_search',
+  'web_fetch',
+  'codemode',
+  'action',
+  'ui',
+  'voice_handoff',
+]
+const UI_TIMEOUT_MS = 15_000
 
-export const userActions = ['open', 'record', 'turn', 'model', 'stop', 'end']
+export const userActions = ['open', 'record', 'turn', 'model', 'stop', 'end', 'ui-answer']
 
 export const Session = defineDoc<VoiceSession>({
   kind: 'voice.session',
@@ -66,7 +86,19 @@ export const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; e
   initial: () => ({}),
 })
 
-export const docs = [Session, Fork]
+export const Ui = defineDoc<VoiceUi>({
+  kind: 'voice.ui',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ calls: [] }),
+})
+
+const UiAnswered = defineSignal({ name: 'voice-live.ui-answered', version: 1, schema: unknown() })
+
+export const docs = [Session, Fork, Ui]
 
 export const hearsAudio = (model: { provider: string; modelId: string }) =>
   /gemini/i.test(model.modelId)
@@ -244,12 +276,14 @@ async function openSession(host: ExtensionHost) {
     const agent = await tx.doc(AgentDoc, fork.id)
     agent.model = model
     agent.thinkingLevel = 'low'
-    if (Array.isArray(agent.tools) && !agent.tools.includes('voice_handoff'))
-      agent.tools = [...agent.tools, 'voice_handoff']
+    const own = ['ui', 'voice_handoff']
+    const tools = agent.tools
+    if (Array.isArray(tools))
+      agent.tools = [...tools, ...own.filter((name) => !tools.includes(name))]
     const loaded = agent.modelTools
     agent.modelTools = Array.isArray(loaded)
-      ? [...loaded, 'voice_handoff']
-      : { ...loaded, add: [...(loaded?.add ?? []), 'voice_handoff'] }
+      ? [...loaded, ...own]
+      : { ...loaded, add: [...(loaded?.add ?? []), ...own] }
     Object.assign(await tx.doc(host.metadata, fork.id), { title: 'Voice', label: 'voice' })
     await host.need(ConversationsApi).setAutomaticSummaries(tx, fork.id, false)
     Object.assign(session, { id: fork.id, of: main, at, startedAt: Date.now() })
@@ -431,6 +465,20 @@ export const actions = {
     }, context)
     return {}
   }),
+  'ui-answer': implementAction(UiAnswerAction, async (args, { host }) => {
+    const { id, result } = unwrap<{ id: unknown; result: unknown }>(args)
+    if (typeof id !== 'string') throw new Error('Expected { id, result }')
+    const session = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+    if (session === undefined) return {}
+    await host.harness().commit(async (tx) => {
+      const ui = await tx.doc(Ui, session)
+      const call = ui.calls.find((each) => each.id === id)
+      if (!call) return
+      await tx.signal(call.task, UiAnswered, id, result ?? null)
+    }, context)
+    host.harness().resume()
+    return {}
+  }),
   stop: implementAction(StopAction, async (_args, { host }) => {
     const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
     if (id !== undefined) await (await host.harness().conversation(id, context))?.abort(context)
@@ -550,14 +598,71 @@ export default function voiceExtension(host: ExtensionHost) {
           const fork = await api.snapshot(Fork, api.conversationId, ctx)
           if (fork?.of === undefined) return undefined
           if (fork.ended) return { block: 'This voice session has ended' }
-          if (READ_TOOLS.includes(call.name)) return undefined
+          if (VOICE_TOOLS.includes(call.name)) return undefined
           return {
-            block: `Voice mode only reads and hands off: ${call.name} is blocked. Use voice_handoff to ask @ultimate to do it.`,
+            block: `Voice mode reads, drives the UI and hands off: ${call.name} is blocked. Use voice_handoff to ask @ultimate to do it.`,
           }
         },
       }),
     ],
     tools: [
+      defineTool({
+        name: 'ui',
+        description:
+          "Drive Daniel's own Ultimate page through its ui-sdk agent bridge: `snapshot` lists the controls on screen with their state, `query` finds controls by label or row text (`text`, optional `within` a list, `kind`), `act` runs steps in order as the agent ([{ref, action, args?}], ref is a label or a ref from query, like {ref: 'System', action: 'press'} to switch surface). Each change is recorded as made by an agent. Say in one short line what you are about to do before calling it.",
+        parameters: union([
+          obj({ op: lit('snapshot') }),
+          obj({ op: lit('query'), text: opt(str()), within: opt(str()), kind: opt(str()) }),
+          obj({
+            op: lit('act'),
+            steps: arr(
+              obj({
+                ref: str({ minLength: 1 }),
+                action: str({ minLength: 1 }),
+                args: opt(arr(unknown())),
+              }),
+            ),
+          }),
+        ]),
+        ...safeToRerun(
+          'The request is recorded once per tool call; a rerun finds it or its answer.',
+        ),
+        async execute(args, api, ctx) {
+          const id = api.callId
+          const answered = await api.readSignal(UiAnswered, id, ctx)
+          if (answered && 'value' in answered) {
+            await api.commit(async (tx) => {
+              const ui = await tx.doc(Ui, api.conversationId)
+              ui.calls = ui.calls.filter((call) => call.id !== id)
+            }, ctx)
+            return { output: [{ type: 'text', text: JSON.stringify(answered.value) }] }
+          }
+          if (answered || api.wake?.reason === 'time') {
+            await api.commit(async (tx) => {
+              const ui = await tx.doc(Ui, api.conversationId)
+              ui.calls = ui.calls.filter((call) => call.id !== id)
+            }, ctx)
+            return {
+              isError: true,
+              output: [
+                {
+                  type: 'text',
+                  text: "Daniel's page did not answer: the voice panel must be open in his browser.",
+                },
+              ],
+            }
+          }
+          const { op, ...input } = args as { op: 'snapshot' | 'query' | 'act' }
+          await api.commit(async (tx) => {
+            const ui = await tx.doc(Ui, api.conversationId)
+            if (!ui.calls.some((call) => call.id === id))
+              ui.calls = [...ui.calls, { id, task: api.taskId, op, input, at: api.now() }]
+          }, ctx)
+          return {
+            sleep: { until: api.now() + UI_TIMEOUT_MS, signals: [UiAnswered.key(id)] },
+          }
+        },
+      }),
       defineTool({
         name: 'voice_handoff',
         deferred: true,

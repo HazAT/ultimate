@@ -1,5 +1,6 @@
 /** Voice mode: a push-to-talk fork of @ultimate, its actions, session document and handoff entry. Browser-safe. */
-import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
+import type { JsonValue } from '@earendil-works/chord/json'
+import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /** How one turn reached the model: the recording itself (`audio`) or its transcript (`text`). */
@@ -110,3 +111,24 @@ export const StatusAction = actionRef<
   null,
   { model: string; route: VoiceRoute; transcribes: boolean; reason?: string }
 >('voice-live', 'status')
+
+/** One UI request the voice model made: ui-sdk `query`, `act` or `snapshot` input, run on the user's own page. */
+export type VoiceUiCall = {
+  id: string
+  task: TaskId
+  op: 'query' | 'act' | 'snapshot'
+  input?: JsonValue
+  at: number
+}
+
+/** The UI requests waiting for the user's page, on the voice fork; the voice panel runs each and answers it. */
+export type VoiceUi = { calls: VoiceUiCall[] }
+
+/** `voice.ui` on the voice fork: see `VoiceUi`. */
+export const VoiceUiDoc = docRef<VoiceUi>('voice.ui')
+
+/** `{ id, result }` → the page's result for UI request `id`, which wakes the waiting `ui` tool call. */
+export const UiAnswerAction = actionRef<{ id: string; result: JsonValue }, Record<string, never>>(
+  'voice-live',
+  'ui-answer',
+)
