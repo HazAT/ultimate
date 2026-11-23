@@ -9,7 +9,7 @@ import {
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { Message } from '@earendil-works/pi-ai'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { context } from '../../../server/harness.ts'
 import { Fork, Session } from '../server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
@@ -144,7 +144,9 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   ).toHaveLength(1)
 
   await f.action('end', null)
-  expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({})
+  expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({
+    model: 'faux/gemini-faux',
+  })
   expect(await f.action('status', null)).toMatchObject({
     data: { result: { model: 'faux/gemini-faux', route: 'audio' } },
   })
@@ -170,6 +172,18 @@ it('switching to a model that does not hear audio sends it the transcript instea
   expect(request.model).toBe('main-faux')
   expect(JSON.stringify(request.messages)).toContain('(transcribed): what about the sidebar')
   expect(JSON.stringify(request.messages)).not.toContain('audio/webm')
+})
+
+it('a model picked in the fork itself carries over to the next session', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(AgentDoc, first.id)).model = { provider: 'faux', modelId: 'main-faux' }
+  }, context)
+  await f.action('end', null)
+  const next = await f.turn({ key: 'two', text: 'fresh' })
+  expect(next.id).not.toBe(first.id)
+  expect(f.requests.at(-1)!.model).toBe('main-faux')
 })
 
 it('only reads and hands off: other tools are blocked, voice_handoff starts @ultimate with a card and the next turn forks afresh', async () => {

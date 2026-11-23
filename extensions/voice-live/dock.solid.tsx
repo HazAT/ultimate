@@ -95,10 +95,15 @@ const waiting = new Map<
   string,
   { resolve: (text: string) => void; reject: (error: Error) => void }
 >()
+const forks = new Map<ConversationId, VoiceFork>()
 const settled = (audio: string) =>
-  new Promise<string>((resolve, reject) => waiting.set(audio, { resolve, reject }))
+  new Promise<string>((resolve, reject) => {
+    waiting.set(audio, { resolve, reject })
+    for (const fork of forks.values()) settleTranscripts(fork)
+  })
 
-export function settleTranscripts(fork: VoiceFork | null | undefined) {
+export function settleTranscripts(fork: VoiceFork | null | undefined, id?: ConversationId) {
+  if (fork && id !== undefined) forks.set(id, fork)
   for (const [audio, wait] of waiting) {
     const text = fork?.transcripts?.[audio]
     const failed = fork?.failed?.[audio]

@@ -204,9 +204,17 @@ async function concludeHandedOff(host: ExtensionHost) {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
     if (session.id !== id) return
     ;(await tx.doc(Fork, id)).ended = true
+    keepModel(session, await tx.doc(AgentDoc, id))
     delete session.id
     await host.need(ConversationsApi).concludeIn(tx, [id], 'user')
   }, context)
+}
+
+function keepModel(
+  session: VoiceSession,
+  agent: { model?: { provider: string; modelId: string } },
+) {
+  if (agent.model) session.model = `${agent.model.provider}/${agent.model.modelId}`
 }
 
 async function openSession(host: ExtensionHost) {
@@ -420,6 +428,7 @@ export const actions = {
     await host.harness().commit(async (tx) => {
       ;(await tx.doc(Fork, id)).ended = true
       const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+      keepModel(session, await tx.doc(AgentDoc, id))
       delete session.id
       delete session.of
       delete session.at

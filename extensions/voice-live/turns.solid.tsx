@@ -443,7 +443,7 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
 
 export function Voicing(props: { fork: ConversationId }) {
   const fork = useDocOf(() => props.fork, VoiceForkDoc)
-  createEffect(fork, (doc) => settleTranscripts(doc))
+  createEffect(fork, (doc) => settleTranscripts(doc, props.fork))
   useSpeaking(useTurns())
   return null
 }
