@@ -329,12 +329,7 @@ function Bottom(props: { fork: ConversationId | undefined }) {
         <PlaybackStrip />
         <TalkBar />
       </div>
-      <Show
-        when={props.fork}
-        fallback={
-          <div class="pb-3" />
-        }
-      >
+      <Show when={props.fork} fallback={<div class="pb-3" />}>
         {(fork) => (
           <ScopedConversation id={fork()}>
             <ComposerRedirect value={target}>
