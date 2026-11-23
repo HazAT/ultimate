@@ -50,6 +50,7 @@ import {
 import { branchTool } from './branch.ts'
 import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { namedConversations } from '../../lib/named-conversations.ts'
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages, Started, Serving]
 
@@ -368,6 +369,7 @@ export default function messages(host: ExtensionHost) {
           const from = toUserWithoutBorrowedPrivilege
             ? api.conversationId
             : await actingAs(host, api.conversationId, ctx)
+          const named = await namedConversations(host, input.text, ctx)
           const id =
             (await api.memo<number>('message-id', ctx)) ??
             (await api.memo(
@@ -400,7 +402,7 @@ export default function messages(host: ExtensionHost) {
               output: [
                 {
                   type: 'text',
-                  text: `Sent as your answer to message ${sent.re}.`,
+                  text: `Sent as your answer to message ${sent.re}.${named}`,
                 },
               ],
               control: { terminate: true as const },
@@ -418,7 +420,7 @@ export default function messages(host: ExtensionHost) {
               )
           }
           if (input.to !== 'user')
-            return { output: [{ type: 'text', text: `Message ${id} sent.` }] }
+            return { output: [{ type: 'text', text: `Message ${id} sent.${named}` }] }
 
           const inputs =
             (await host.harness().snapshot(LiveDoc, api.conversationId, ctx))?.run?.inputs ?? []
@@ -444,7 +446,7 @@ export default function messages(host: ExtensionHost) {
               ctx,
             )
           return {
-            output: [{ type: 'text', text: `Message ${id} sent.` }],
+            output: [{ type: 'text', text: `Message ${id} sent.${named}` }],
             ...(hasPendingReplies ? {} : { control: { terminate: true as const } }),
           }
         },

@@ -86,6 +86,7 @@ import { hasLogin, hostDefault } from '../../lib/agents.ts'
 import { admitCompaction } from '../../lib/compaction.ts'
 import { githubRepo } from '../../lib/project-identity.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { namedConversations } from '../../lib/named-conversations.ts'
 
 export type BranchImage = { data: string; mimeType: string }
 
@@ -1335,13 +1336,14 @@ export default function lineageExtension(host: ExtensionHost) {
         }),
         async execute({ to, text }, api, ctx) {
           const from = await actingAs(host, api.conversationId, ctx)
+          const named = await namedConversations(host, text, ctx)
           const target = await leaveNote(
             host,
             typeof to === 'number' ? parseConversationId(to) : to,
             text,
             { from },
           )
-          return { output: [{ type: 'text', text: `Left a note in #${target}.` }] }
+          return { output: [{ type: 'text', text: `Left a note in #${target}.${named}` }] }
         },
       }),
       defineTool({
