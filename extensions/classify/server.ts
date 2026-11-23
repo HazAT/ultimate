@@ -1,4 +1,13 @@
-import { defineExtension, hook, section, ToolTask } from '@earendil-works/pi-durable'
+import { createHash } from 'node:crypto'
+import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
+import {
+  defineDoc,
+  defineExtension,
+  hook,
+  ROOT_CONVERSATION_ID,
+  section,
+  ToolTask,
+} from '@earendil-works/pi-durable'
 import { typesafeProvider } from '@earendil-works/pi-ai/providers/typesafe'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { readSecret } from '../../lib/secrets.ts'
@@ -23,6 +32,18 @@ const modelId = 'jev-1.14.0'
 const inputCost = 0.042
 const classifyToolName = 'pi.codemode.models.classify'
 
+type Pause = { keyId: string; until: number; error: string }
+const PauseDoc = defineDoc<{ pause?: Pause }>({
+  kind: 'classify.pause',
+  scope: 'conversation',
+  version: 1,
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+  checkpointWhen: () => false,
+})
+const keyId = (key: string) => createHash('sha256').update(key).digest('hex').slice(0, 16)
+
 export const cooldownMs = 15 * 60_000
 const rejected: Record<number, string> = {
   401: 'API key rejected',
@@ -31,15 +52,27 @@ const rejected: Record<number, string> = {
 }
 
 export default function classify(host: ExtensionHost) {
-  let billingOrAuthPause: { key: string; until: number; error: string } | undefined
+  let billingOrAuthPause: Pause | undefined
+  host.onOpen(async () => {
+    billingOrAuthPause ??= (
+      await host.harness().snapshot(PauseDoc, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT)
+    )?.pause
+  })
   const pausedError = (key: string | undefined) =>
-    billingOrAuthPause && billingOrAuthPause.key === key && Date.now() < billingOrAuthPause.until
+    billingOrAuthPause &&
+    key !== undefined &&
+    billingOrAuthPause.keyId === keyId(key) &&
+    Date.now() < billingOrAuthPause.until
       ? billingOrAuthPause.error
       : undefined
-  const pause = (key: string, status: number, error: string) => {
+  const pause = async (key: string, status: number, error: string) => {
     const reason = rejected[status]
     if (!reason || pausedError(key)) return
-    billingOrAuthPause = { key, until: Date.now() + cooldownMs, error }
+    const paused = { keyId: keyId(key), until: Date.now() + cooldownMs, error }
+    billingOrAuthPause = paused
+    await host.harness().commit(async (tx) => {
+      ;(await tx.doc(PauseDoc, ROOT_CONVERSATION_ID)).pause = paused
+    }, BACKGROUND_CONTEXT)
     host.notice(`TypeSafe: ${reason}; classification paused for ${cooldownMs / 60_000} minutes`)
   }
 
@@ -77,7 +110,11 @@ export default function classify(host: ExtensionHost) {
           if (blocked) throw new Error(blocked)
           const response = await requestFetch(input, init)
           if (key && rejected[response.status]) {
-            pause(key, response.status, `TypeSafe ${response.status}: ${rejected[response.status]}`)
+            await pause(
+              key,
+              response.status,
+              `TypeSafe ${response.status}: ${rejected[response.status]}`,
+            )
           }
           return response
         },
@@ -113,7 +150,7 @@ export default function classify(host: ExtensionHost) {
       })
       if (!response.ok) {
         const error = `TypeSafe ${response.status}: ${(await response.text()).slice(0, 1000)}`
-        pause(key, response.status, error)
+        await pause(key, response.status, error)
         throw new Error(error)
       }
       const body: unknown = await response.json()

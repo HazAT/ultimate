@@ -7,7 +7,15 @@ import {
   fauxToolCall,
 } from '@earendil-works/pi-ai/providers/faux'
 import { InlineCodemodeSandbox, loadQuickJSWasm } from '@earendil-works/pi-codemode'
-import { createRegistry, Harness, MemoryStorage } from '@earendil-works/pi-durable'
+import {
+  createRegistry,
+  Harness,
+  MemoryStorage,
+  ROOT_CONVERSATION_ID,
+} from '@earendil-works/pi-durable'
+import { defineDoc } from '@earendil-works/pi-durable'
+import type { JsonObject, Storage } from '@earendil-works/pi-durable'
+import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
 import { modelCallLimits } from '../../codemode/models.ts'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -29,9 +37,16 @@ afterEach(async () => {
   for (const root of cleanup.splice(0)) await removeTemp(root)
 })
 
-async function fixture(key = true, models?: unknown, harness?: () => Harness) {
+async function fixture(
+  key = true,
+  models?: unknown,
+  harness?: () => Harness,
+  storage: () => Promise<Storage> = async () => new MemoryStorage(),
+) {
   const root = await temp()
   cleanup.push(root)
+  let own: Harness | undefined
+  const opened = harness ?? (() => own!)
   if (key) await writeSecret(root, 'TYPESAFE_API_KEY', 'test-sentinel')
   vi.stubEnv('TYPESAFE_API_KEY', undefined)
   const modelsPath = join(root, 'models.json')
@@ -47,13 +62,33 @@ async function fixture(key = true, models?: unknown, harness?: () => Harness) {
     implement,
     modelRuntime,
     notice,
-    harness,
+    harness: opened,
+    onOpen: (callback: () => Promise<void>) => openers.push(callback),
     onClose: (callback: () => Promise<void>) => cleanups.push(callback),
   } as unknown as ExtensionHost)
+  if (!harness) {
+    own = await Harness.open(
+      await storage(),
+      { models: modelRuntime, registry: createRegistry() },
+      context,
+    )
+    await own.root(context)
+    const closing = own
+    cleanups.push(() => closing.close(context))
+    for (const open of openers.splice(0)) await open()
+  }
   expect(extension.name).toBe('classify')
   expect(implement.mock.calls[0][0]).toBe(ClassifyApi)
-  return { root, notice, service: implement.mock.calls[0][1], extension, modelRuntime }
+  return {
+    root,
+    notice,
+    service: implement.mock.calls[0][1],
+    extension,
+    modelRuntime,
+    openers,
+  }
 }
+const openers: (() => Promise<void>)[] = []
 
 const request = {
   state: { message: 'Tests passed' },
@@ -99,6 +134,7 @@ async function codemodeFixture() {
   registry.install({ ...codemode, hooks: [modelCallLimits(() => harness)] })
   registry.install(f.extension)
   harness = await Harness.open(new MemoryStorage(), { models: f.modelRuntime, registry }, context)
+  for (const open of openers.splice(0)) await open()
   cleanups.push(async () => {
     await harness.close(context)
     await sandbox.close()
@@ -290,4 +326,47 @@ it('names the pinned Jev model in the prompt only for agents with codemode', asy
     )
   expect(await render(['codemode'])).toContain("id: 'jev-1.14.0'")
   expect(await render(['read'])).toBeUndefined()
+})
+
+it('keeps a 402 pause across a restart, storing only a fingerprint of the key', async () => {
+  const dir = await temp()
+  cleanup.push(dir)
+  const file = join(dir, 'state.sqlite')
+  const sqlite = () => openNodeSqliteStorage(file)
+  const first = await fixture(true, undefined, undefined, sqlite)
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(new Response('billing_error', { status: 402 }))
+    .mockImplementation(async () => Response.json(body))
+  vi.stubGlobal('fetch', fetch)
+  const signal = new AbortController().signal
+  await expect(first.service.ask(request, signal)).rejects.toThrow('TypeSafe 402')
+  for (const close of cleanups.splice(0).toReversed()) await close()
+  const second = await fixture(true, undefined, undefined, sqlite)
+  await expect(second.service.ask(request, signal)).rejects.toThrow('TypeSafe 402')
+  expect(fetch).toHaveBeenCalledTimes(1)
+  for (const close of cleanups.splice(0).toReversed()) await close()
+  const reopened = await Harness.open(
+    await sqlite(),
+    { models: second.modelRuntime, registry: createRegistry() },
+    context,
+  )
+  cleanups.push(() => reopened.close(context))
+  const stored = JSON.stringify(
+    await reopened.snapshot(
+      defineDoc<JsonObject>({
+        kind: 'classify.pause',
+        scope: 'conversation',
+        version: 1,
+        history: 'latest',
+        fork: 'initial',
+        initial: () => ({}),
+        checkpointWhen: () => false,
+      }),
+      ROOT_CONVERSATION_ID,
+      context,
+    ),
+  )
+  expect(stored).toMatch(/"keyId":"[0-9a-f]{16}"/)
+  expect(stored).not.toContain('test-sentinel')
 })

@@ -18,7 +18,7 @@ Pi's `typesafe` provider configures both, through `~/.pi/agent/models.json` like
 
 Call `models.classify({ provider: 'typesafe', id: 'jev-1.14.0' }, { state, questions })` in codemode and branch on the answer's choice or probabilities. The `classify` prompt section, shown to agents with codemode, says so. Pi runs up to four model calls at once. Codemode caps a script at 1,000 `models.*` calls, whatever the provider and including after a restart, and ends its result with a usage line (completed calls, input tokens, estimated cost); see `extensions/codemode/README.md`.
 
-A 401 (rejected key), 402 (out of credits) or 403 (forbidden) pauses both script and service calls for that key for 15 minutes. Calls during the pause fail without sending a request. Changing the key lets requests proceed immediately.
+A 401 (rejected key), 402 (out of credits) or 403 (forbidden) pauses both script and service calls for that key for 15 minutes. The pause survives a restart: the root conversation's `classify.pause` document keeps `{ keyId, until, error }`, where `keyId` is the first 16 hex characters of the key's SHA-256, never the key. Calls during the pause fail without sending a request. Changing the key lets requests proceed immediately.
 
 ## Service contract
 
