@@ -73,6 +73,11 @@ export function createMic(frame: (fn: () => void) => () => void) {
     )
     active.stop()
     await stopped
+    if (matchMedia('(pointer: coarse)').matches) {
+      stream?.getTracks().forEach((track) => track.stop())
+      stream = undefined
+      analyser = undefined
+    }
     const seconds = (performance.now() - started) / 1000
     const type = (active.mimeType || 'audio/webm').split(';')[0]
     return {

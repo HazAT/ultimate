@@ -15,7 +15,7 @@ import {
 } from '@lucide/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
-import { createEffect, createMemo, createSignal, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
@@ -127,6 +127,49 @@ function holdHandlers() {
 
 const holdTitle = () => `Hold to talk, or hold ${holdKeys()} anywhere · ${keys()} hides Voice`
 
+function SpokenLine() {
+  const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
+  const sentence = () => dock.player.items()[state().index]
+  let line: HTMLSpanElement | undefined
+  createEffect(
+    () => state().charIndex,
+    (at) => {
+      const word = line?.querySelector<HTMLElement>(`[data-at="${at}"]`)
+      if (line && word)
+        line.scrollTo({ left: Math.max(0, word.offsetLeft - 32), behavior: 'smooth' })
+      else line?.scrollTo({ left: 0 })
+    },
+  )
+  return (
+    <span
+      class="min-w-0 flex-1 overflow-hidden text-left font-sans text-[13px] whitespace-nowrap text-muted-foreground [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)]"
+      data-voice-spoken
+      ref={line}
+    >
+      <span class="inline-block px-6">
+        <For each={sentence()?.words ?? []}>
+          {(word, at) => {
+            const start = () => sentence().starts[at()]
+            const said = () => state().charIndex >= start()
+            return (
+              <span
+                class={cn(
+                  'transition-colors duration-150',
+                  said() && 'text-foreground',
+                  state().charIndex === start() && 'text-brand',
+                )}
+                data-at={start()}
+              >
+                {word}{' '}
+              </span>
+            )
+          }}
+        </For>
+      </span>
+    </span>
+  )
+}
+
 function TalkBar() {
   return (
     <Button
@@ -143,7 +186,14 @@ function TalkBar() {
       {...holdHandlers()}
     >
       <Mic class={cn('size-3.5 shrink-0', recording() && 'text-error')} />
-      <Show when={recording()} fallback={<Status class="flex-1" />}>
+      <Show
+        when={recording()}
+        fallback={
+          <Show when={dock.phase() === 'speaking'} fallback={<Status class="flex-1" />}>
+            <SpokenLine />
+          </Show>
+        }
+      >
         <Status class="shrink-0" />
         <Waveform class="h-5 min-w-0 flex-1 text-error" live />
       </Show>
