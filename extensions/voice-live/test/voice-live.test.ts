@@ -242,6 +242,17 @@ it('collected recordings wait in the draft and go out together as one turn', asy
   expect(userParts(said).filter((part) => part.type === 'image')).toHaveLength(2)
 })
 
+it('the status lists the setup: ready pieces and what is missing', async () => {
+  const f = await fixture()
+  const { setup } = (await f.action('status', null)).data.result
+  expect(setup.model.ready).toBe(true)
+  expect(setup.transcription.ready).toBe(true)
+  expect(setup.handsFree).toMatchObject({
+    ready: false,
+    fix: expect.stringContaining('TYPESAFE_API_KEY'),
+  })
+})
+
 it('a model picked in the fork itself carries over to the next session', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })

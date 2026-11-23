@@ -120,10 +120,22 @@ export const StopAction = actionRef<null, Record<string, never>>('voice-live', '
 /** End the session: the fork is concluded and the next turn forks @ultimate again. */
 export const EndAction = actionRef<null, Record<string, never>>('voice-live', 'end')
 
-/** The voice model and whether it hears audio, for the dock's header. */
+/** One piece of voice mode's setup: whether it is ready, and what to do when it is not. */
+export type VoiceSetupItem = { ready: boolean; detail: string; fix?: string }
+
+/**
+ * The voice model and whether it hears audio, for the dock's header, and the setup checklist for its empty state: the
+ * voice model's login, OpenAI transcription (required), and Jev for spoken send in collect mode (optional).
+ */
 export const StatusAction = actionRef<
   null,
-  { model: string; route: VoiceRoute; transcribes: boolean; reason?: string }
+  {
+    model: string
+    route: VoiceRoute
+    transcribes: boolean
+    reason?: string
+    setup: { model: VoiceSetupItem; transcription: VoiceSetupItem; handsFree: VoiceSetupItem }
+  }
 >('voice-live', 'status')
 
 /** One UI request the voice model made: ui-sdk `query`, `act` or `snapshot` input, run on the user's own page. */

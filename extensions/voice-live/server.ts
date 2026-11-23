@@ -20,6 +20,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { openaiSecretOrNonOAuthKey, openaiTranscribe } from '../../lib/openai.ts'
+import { readSecret } from '../../lib/secrets.ts'
 import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
@@ -357,11 +358,49 @@ export const actions = {
     const available = host.modelRuntime
       .getAvailableSnapshot()
       .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
+    const name = `${model.provider}/${model.modelId}`
+    const transcribes = !!(await openaiSecretOrNonOAuthKey(host))
+    const classifies =
+      !!host.want(ClassifyApi) && !!(await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
     return {
-      model: `${model.provider}/${model.modelId}`,
+      model: name,
       route: hearsAudio(model) ? ('audio' as const) : ('text' as const),
-      transcribes: true,
-      ...(available ? {} : { reason: `${model.provider}/${model.modelId} has no login` }),
+      transcribes,
+      ...(available ? {} : { reason: `${name} has no login` }),
+      setup: {
+        model: available
+          ? {
+              ready: true,
+              detail: hearsAudio(model)
+                ? `${name}: hears your voice directly`
+                : `${name}: reads the transcript (Gemini Neon hears your voice directly)`,
+            }
+          : {
+              ready: false,
+              detail: `${name} has no login`,
+              fix:
+                model.provider === 'antigravity'
+                  ? 'Recommended: Gemini 4 Neon through Antigravity. Sign in with `agy` on this machine, or pick another model in the voice settings.'
+                  : 'Log in to its provider, or pick another model in the voice settings.',
+            },
+        transcription: transcribes
+          ? {
+              ready: true,
+              detail: 'OpenAI transcription: your words show as text and reach any model',
+            }
+          : {
+              ready: false,
+              detail: 'OpenAI transcription is missing',
+              fix: 'Required: add OPENAI_API_KEY in ⌘K → Secrets.',
+            },
+        handsFree: classifies
+          ? { ready: true, detail: 'Jev: "send it" sends a collected message hands-free' }
+          : {
+              ready: false,
+              detail: 'Hands-free send is off',
+              fix: 'Optional: turn on classify and add TYPESAFE_API_KEY in ⌘K → Secrets, so "send it" sends a collected message. Enter works without it.',
+            },
+      },
     }
   }),
   record: implementAction(RecordAction, async (args, { host }) => {

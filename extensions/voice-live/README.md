@@ -6,6 +6,10 @@ It is off by default. Enable it with `"extensions": { "enable": ["voice-live"] }
 `antigravity/gemini-4-neon-low`) and an OpenAI API key for transcription (`OPENAI_API_KEY` in ⌘K → Secrets, the key
 dictation uses). Pick another model with `"voice": { "model": "provider/model" }` in `~/.ultimate/settings.json`.
 
+The empty voice panel shows this setup as a checklist from `status`: the voice model's login (Gemini 4 Neon through
+Antigravity recommended, since it hears the recording), OpenAI transcription (required) and Jev for hands-free send in
+collect mode (optional), each with what to do when it is missing.
+
 ## Flow
 
 1. **Open** Voice from the title bar's `voice` button or `Ctrl/⌘+Shift+V`, on any surface. The panel floats over the

@@ -1,5 +1,7 @@
 import {
   AudioLines,
+  Check,
+  CircleDashed,
   ChevronLeft,
   ChevronRight,
   Maximize2,
@@ -495,6 +497,50 @@ function Collected(props: { fork: ConversationId | undefined }) {
   )
 }
 
+function SetupList() {
+  const status = useAction(StatusAction, null, { conversation: ROOT })
+  const items = () => {
+    const setup = status.data()?.setup
+    return setup
+      ? [
+          { label: 'Voice model', ...setup.model },
+          { label: 'Transcription', ...setup.transcription },
+          { label: 'Hands-free send', ...setup.handsFree },
+        ]
+      : []
+  }
+  return (
+    <Show when={items().length}>
+      <ul
+        class="mt-4 flex w-full max-w-sm flex-col gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left"
+        data-voice-setup
+      >
+        <For each={items()}>
+          {(item) => (
+            <li class="flex items-start gap-2 text-[12.5px] leading-snug">
+              <Show
+                when={item.ready}
+                fallback={<CircleDashed class="mt-0.5 size-3.5 shrink-0 text-warning" />}
+              >
+                <Check class="mt-0.5 size-3.5 shrink-0 text-success" />
+              </Show>
+              <span class="flex min-w-0 flex-col gap-0.5">
+                <span class="font-mono text-[11px] text-muted-foreground">{item.label}</span>
+                <span class={cn(item.ready ? 'text-foreground/90' : 'text-foreground')}>
+                  {item.detail}
+                </span>
+                <Show when={item.fix}>
+                  <span class="text-muted-foreground">{item.fix}</span>
+                </Show>
+              </span>
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  )
+}
+
 function Bottom(props: { fork: ConversationId | undefined }) {
   const target = (): ComposerTarget => ({
     placeholder: `Type, paste a screenshot, or hold ${holdKeys()} to talk…`,
@@ -747,6 +793,7 @@ export function VoicePanel() {
                   @ultimate with everything it knows, talks it through with you, and hands the
                   result back when you agree; then the next talk starts fresh.
                 </p>
+                <SetupList />
               </div>
             }
           >
