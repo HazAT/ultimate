@@ -506,6 +506,35 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('bounds subscription batches by serialized byte size and refuses an individually oversized read locally', async () => {
+    const { store, server, fetch, latest } = setup(5)
+    latest().open()
+    await tick()
+    const before = fetch.mock.calls.length
+    const chunk = 'a'.repeat(450_000)
+    const oversizedEvents: unknown[] = []
+    for (let i = 0; i < 10; i++)
+      store.watchRead({ extension: 'test', action: `valid-${i}`, args: chunk }, undefined, () => {})
+    store.watchRead(
+      { extension: 'test', action: 'too-big', args: 'b'.repeat(1_100_000) },
+      undefined,
+      (event) => void oversizedEvents.push(event),
+    )
+    await tick()
+    await tick()
+    const posts = fetch.mock.calls
+      .slice(before)
+      .filter(([path]) => (path as string).startsWith('/api/events/'))
+    expect(posts.length).toBeGreaterThanOrEqual(5)
+    for (const [, init] of posts)
+      expect(new TextEncoder().encode(init?.body as string).byteLength).toBeLessThanOrEqual(
+        1024 * 1024,
+      )
+    expect(oversizedEvents).toEqual([{ error: 'The server refused this read', status: 413 }])
+    expect(server.reads.filter((item) => !item.closed)).toHaveLength(10)
+    store.stop()
+  })
+
   it('sends the closes and opens of a switch in one request', async () => {
     const { store, server, latest, fetch } = setup()
     latest().open()

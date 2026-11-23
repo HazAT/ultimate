@@ -73,6 +73,10 @@ export interface StoreOptions {
 
 const EVENT_SOURCE_CLOSED_NO_RETRY = 2
 const STREAM_GONE_RECONNECT_RESUBSCRIBES = 410
+const MAX_SUBSCRIPTION_BATCH_BYTES = 1024 * 1024
+const BATCH_ENVELOPE_BYTES = 64
+const utf8Bytes = new TextEncoder()
+const jsonBytes = (value: unknown) => utf8Bytes.encode(JSON.stringify(value)).byteLength
 const names = [
   'stream',
   'system',
@@ -323,28 +327,51 @@ export function createStore(options: StoreOptions = {}) {
   function takeBatch() {
     const opens = new Map<number, { spec: Spec; failed: Refused }>()
     const closes: number[] = []
+    const locallyRefused: [number, Refused][] = []
     let remaining = maxBatchSize
+    let bytes = BATCH_ENVELOPE_BYTES
     for (const [sub, entry] of opening) {
       if (remaining <= 0) break
+      const itemBytes = jsonBytes({ sub, ...entry.spec }) + 1
+      if (BATCH_ENVELOPE_BYTES + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES && 'read' in entry.spec) {
+        opening.delete(sub)
+        locallyRefused.push([sub, entry.failed])
+        continue
+      }
+      if (opens.size > 0 && bytes + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES) break
       opens.set(sub, entry)
       opening.delete(sub)
+      bytes += itemBytes
       remaining--
     }
     for (const sub of closing) {
       if (remaining <= 0) break
+      const itemBytes = String(sub).length + 1
+      if ((opens.size > 0 || closes.length > 0) && bytes + itemBytes > MAX_SUBSCRIPTION_BATCH_BYTES)
+        break
       closes.push(sub)
       closing.delete(sub)
+      bytes += itemBytes
       remaining--
     }
-    return { opens, closes }
+    return { opens, closes, locallyRefused }
   }
   function flush() {
     if (!flushQueued || flushing) return
     flushQueued = false
     const stream = streamId
     if (stream === undefined || (!opening.size && !closing.size)) return
+    const { opens, closes, locallyRefused } = takeBatch()
+    for (const [sub, failed] of locallyRefused) {
+      handlers.delete(sub)
+      closing.delete(sub)
+      failed(413)
+    }
+    if (!opens.size && !closes.length) {
+      if (opening.size || closing.size) scheduleFlush()
+      return
+    }
     flushing = true
-    const { opens, closes } = takeBatch()
     const batchSize = opens.size + closes.length
     const batch: SubscriptionsRequest = {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
