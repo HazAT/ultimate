@@ -93,11 +93,13 @@ export async function locate(host: ExtensionHost, project: string, machine?: str
       key: project.includes('/') && item.root ? (await projectIdentity(item.root))?.key : undefined,
     })),
   )
-  const here = machine === undefined ? undefined : machine === (await machineName(host))
+  const self = machine === undefined ? undefined : await machineName(host)
+  const here = machine === undefined ? undefined : machine === self
   const runsHere = local.some((item) => naming(project)(item) && (item.current || item.running))
   if (here !== false && runsHere) return resolveProject(project, local, undefined)
+  const remotes = here === true ? [] : await userConfiguredRemotes(host)
   if (here !== true) {
-    const named = (await userConfiguredRemotes(host)).filter(
+    const named = remotes.filter(
       (item) => naming(project)(item) && (machine === undefined || item.machine === machine),
     )
     if (named.length > 1)
@@ -115,6 +117,21 @@ export async function locate(host: ExtensionHost, project: string, machine?: str
   }
   const cloud = here === true ? undefined : await cloudConfig(host)
   const requiredCloudRegister = cloud ? await fetchRegister(cloud) : undefined
+  const knownMachines = [
+    ...remotes.map((item) => item.machine),
+    ...(requiredCloudRegister?.machines ?? []).map((item) => item.machine),
+  ]
+  if (here === false && !knownMachines.includes(machine!)) {
+    const entry = requiredCloudRegister?.projects.find(naming(project))
+    const places = new Set([
+      ...(runsHere ? [self] : []),
+      ...remotes.filter(naming(project)).map((item) => item.machine),
+      ...(requiredCloudRegister?.machines ?? [])
+        .filter((item) => entry && item.projects[entry.hash])
+        .map((item) => item.machine),
+    ])
+    if (places.size === 1) return locate(host, project)
+  }
   return resolveProject(
     project,
     local,

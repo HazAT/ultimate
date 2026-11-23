@@ -120,7 +120,9 @@ message is never the user's.
   `remotes` or the cloud register), so the sender's `tell` fails at once instead of waiting for an answer that cannot
   arrive.
 - **One hop back:** with `reply`, the answer posts to the sender's
-  `messages.remoteReply { key, text, failed, stopped?, interim? }` as a reply that expects none.
+  `messages.remoteReply { key, text, failed, stopped?, interim? }` as a reply that expects none. The sender's machine
+  name can go stale (a laptop's hostname follows its network); a name that matches no known machine is dropped when
+  exactly one place (this machine, a remote, the register) has the sender's project.
 - **The reply is the wait.** `board.serving` records one owner per request. An answer that hands a remote request on
   arrives as an interim note and doesn't wake the asker. The current owner's final result closes the request and
   wakes the asker. A reply-expected `tell` can own a branch's relay request; the remote result returns to that branch.
