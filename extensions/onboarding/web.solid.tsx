@@ -6,7 +6,7 @@ import {
   LoaderCircleIcon,
 } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
-import { createEffect, createMemo, createSignal, Match, Show, Switch } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
@@ -17,6 +17,7 @@ import {
   attention,
   defineWebExtension,
   errorMessage,
+  events,
   openPanel,
   ROOT,
   showSurface,
@@ -35,6 +36,7 @@ import {
   type EntryRecord,
   type SolidToolProps,
 } from '@/sdk/solid'
+import { ListAction } from '../secrets/refs.ts'
 import { IsolationAction } from '../workspaces/refs.ts'
 import { settledChoice } from './choices.ts'
 import { firstRunDialog, gitDialog, projectDialog } from './dialogs.ts'
@@ -260,6 +262,9 @@ function SetupCall(props: SolidToolProps) {
               <CheckIcon class="size-4 shrink-0 text-brand" />
               <span>Chosen: {settled()}</span>
             </p>
+            <Show when={entry()?.data.missing?.length}>
+              <MissingKeys names={entry()!.data.missing!} id={call().id} />
+            </Show>
           </Match>
           <Match when={call().status !== 'done'}>
             <p class="p-4 text-xs text-muted-foreground">
@@ -282,6 +287,43 @@ function SetupCall(props: SolidToolProps) {
         </Switch>
       </Card>
     </Show>
+  )
+}
+
+function MissingKeys(props: { names: readonly string[]; id: string }) {
+  const secrets = useAction(ListAction)
+  useEvent('secrets:changed', () => void secrets.refetch())
+  const isSet = (name: string) =>
+    secrets.data()?.some((secret) => secret.name === name && (secret.set || secret.via))
+  return (
+    <ul class="space-y-1.5 border-t border-border/70 px-4 py-3">
+      <For each={props.names} keyed={(name) => name}>
+        {(name) => (
+          <li class="flex items-center gap-2 text-xs">
+            <span class="min-w-0 flex-1 truncate font-mono text-foreground/85">{name()}</span>
+            <Show
+              when={isSet(name())}
+              fallback={
+                <>
+                  <span class="text-warning">missing</span>
+                  <Button
+                    aria-label={`Add secret ${name()} (setup ${props.id})`}
+                    class="h-6 px-2 text-[11px]"
+                    onClick={() => events.emit('secrets:open', { name: name() })}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Add
+                  </Button>
+                </>
+              }
+            >
+              <span class="text-muted-foreground">set</span>
+            </Show>
+          </li>
+        )}
+      </For>
+    </ul>
   )
 }
 

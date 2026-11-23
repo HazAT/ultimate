@@ -53,7 +53,7 @@ import {
   usePicks,
 } from '../models/ui.solid.tsx'
 import type { Isolation } from '../workspaces/refs.ts'
-import { extensionOptions, offered } from './choices.ts'
+import { extensionChoices, extensionOptions, offeredNames } from './choices.ts'
 import { Line, useDescribed } from './parts.solid.tsx'
 import { FirstRunDoneAction } from './refs.ts'
 import type { OnboardingStatus as Status } from './refs.ts'
@@ -295,27 +295,16 @@ export function Recommended(props: {
   )
   const runningExtensions = createMemo(() =>
     (system()?.extensions ?? [])
-      .filter((info) => info.enabled && !offered.some((entry) => entry.name === info.name))
+      .filter((info) => info.enabled && !offeredNames.includes(info.name))
       .toSorted((a, b) => a.name.localeCompare(b.name)),
   )
-  const checked = () =>
-    Object.fromEntries(options().map(({ name, checked: value }) => [name, value]))
-  const check = (name: string, enabled: boolean) => {
-    const next = { ...checked(), [name]: enabled }
-    for (const entry of offered) {
-      if (enabled && entry.name === name && entry.needs) next[entry.needs] = true
-      if (!enabled && entry.needs === name) next[entry.name] = false
-    }
-    setChanged(next)
-  }
+  const check = (key: string, enabled: boolean) =>
+    setChanged((current) => ({ ...current, [key]: enabled }))
   const apply = async () => {
     if (busy() || !props.status) return
     setBusy(true)
     try {
-      const extensions = checked()
-      for (const entry of offered)
-        if (entry.needs && extensions[entry.name]) extensions[entry.needs] = true
-      await props.onDone({ extensions })
+      await props.onDone({ extensions: extensionChoices(options()) })
     } catch (failure) {
       setError(errorMessage(failure))
       setBusy(false)
@@ -328,23 +317,36 @@ export function Recommended(props: {
         continue. You can change them any time under ⌘K → Extensions.
       </p>
       <ul class="divide-y divide-border/70 rounded-md border border-border/70">
-        <For each={options()} keyed={(entry) => entry.name}>
+        <For each={options()} keyed={(entry) => entry.key}>
           {(entry) => (
             <li>
               <label class="flex items-start gap-3 px-3 py-2.5 hover:bg-accent/40">
                 <Checkbox
                   class="mt-0.5"
-                  aria-label={`Enable ${entry().name} (setup ${props.id})`}
+                  aria-label={`Enable ${entry().key} (setup ${props.id})`}
                   disabled={busy() || !props.status}
                   checked={entry().checked}
-                  onCheckedChange={(value) => check(entry().name, value === true)}
+                  onCheckedChange={(value) => check(entry().key, value === true)}
                 />
                 <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <Line class="text-sm" text={line(entry().name) || entry().name} />
+                  <Show
+                    when={entry().title}
+                    fallback={<Line class="text-sm" text={line(entry().key) || entry().key} />}
+                  >
+                    <span class="flex items-baseline gap-2 text-sm">
+                      {entry().title}
+                      <Show when={entry().recommended}>
+                        <span class="text-[11px] text-brand">recommended</span>
+                      </Show>
+                    </span>
+                    <Line class="text-xs text-muted-foreground" text={entry().text ?? ''} />
+                  </Show>
                   <span class="font-mono text-[11px] text-muted-foreground/70">
-                    {entry().name}
-                    {entry().needs && ` · turns on ${entry().needs} too`}
+                    {entry().names.join(' · ')}
                   </span>
+                  <Show when={entry().aside}>
+                    <span class="text-xs text-muted-foreground/80 italic">{entry().aside}</span>
+                  </Show>
                 </span>
               </label>
             </li>
