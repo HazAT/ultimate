@@ -131,30 +131,33 @@ function holdHandlers() {
 
 const holdTitle = () => `Hold to talk, or hold ${holdKeys()} anywhere · ${keys()} hides Voice`
 
-function SpokenLine() {
+function SpokenParagraph() {
   const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
-  const sentence = () => dock.player.items()[state().index]
-  const heard = createMemo(() => {
-    const current = sentence()
+  const paragraph = createMemo(() => {
+    const items = dock.player.items()
+    const current = items[state().index]
     if (!current) return []
-    const at = state().charIndex
-    return current.words.filter((_, index) => current.starts[index] <= at)
+    return items
+      .map((sentence, index) => ({ sentence, index }))
+      .filter(({ sentence }) => sentence.paragraph === current.paragraph)
   })
   return (
     <span
-      class="flex min-w-0 flex-1 justify-end overflow-hidden font-sans text-[13px] whitespace-nowrap text-foreground [mask-image:linear-gradient(to_right,transparent,black_2.5rem)]"
+      class="min-w-0 flex-1 py-1.5 text-left font-sans text-[13px] leading-snug whitespace-normal text-muted-foreground"
       data-voice-spoken
     >
-      <span class="shrink-0">
-        <For each={heard()}>
-          {(word, at) => (
-            <span class={cn(at() === heard().length - 1 && 'text-brand')}>
-              {word}
-              {at() < heard().length - 1 ? ' ' : ''}
-            </span>
-          )}
-        </For>
-      </span>
+      <For each={paragraph()}>
+        {({ sentence, index }) => (
+          <span
+            class={cn(
+              'rounded-sm transition-colors duration-300 [box-decoration-break:clone]',
+              index === state().index && 'bg-brand/15 text-foreground',
+            )}
+          >
+            {sentence.text}{' '}
+          </span>
+        )}
+      </For>
     </span>
   )
 }
@@ -164,7 +167,7 @@ function TalkBar(props: { words?: boolean }) {
     <Button
       aria-label="Hold to talk"
       class={cn(
-        'relative flex h-9 w-full touch-none items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-3 font-normal text-muted-foreground transition-colors select-none hover:border-ring/50 hover:bg-muted/50',
+        'relative flex h-auto min-h-9 w-full touch-none items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-3 font-normal text-muted-foreground transition-colors select-none hover:border-ring/50 hover:bg-muted/50',
         recording() && 'border-error/40 bg-error/5 hover:border-error/40 hover:bg-error/5',
         audible() && 'border-brand/40',
       )}
@@ -178,10 +181,10 @@ function TalkBar(props: { words?: boolean }) {
         when={recording()}
         fallback={
           <Show
-            when={props.words && dock.phase() === 'speaking'}
+            when={props.words && (playerState().playing || playerState().paused)}
             fallback={<Status class="flex-1" />}
           >
-            <SpokenLine />
+            <SpokenParagraph />
           </Show>
         }
       >

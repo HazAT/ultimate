@@ -377,6 +377,8 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
     playerState().key === props.turn.key && playerState().index === index && playerState().playing
   const played = (index: number) =>
     playerState().key === props.turn.key && playerState().index > index
+  const pausedAt = (index: number) =>
+    playerState().key === props.turn.key && playerState().index === index && playerState().paused
   const loadAndPlay = (index: number) => {
     if (playerState().key !== props.turn.key)
       dock.player.load(props.turn.key, sentences().sentences, false)
@@ -412,8 +414,9 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
                           <Button
                             aria-label={`Play from sentence ${index + 1} of turn ${short(props.turn.key)}`}
                             class={cn(
-                              'inline h-auto rounded-sm p-0 text-left align-baseline text-[length:inherit] leading-[inherit] font-normal whitespace-normal text-inherit transition-colors hover:bg-accent/60',
+                              'inline h-auto rounded-sm p-0 text-left align-baseline text-[length:inherit] leading-[inherit] font-normal whitespace-normal text-inherit transition-colors duration-300 [box-decoration-break:clone] hover:bg-accent/60',
                               played(index) && 'text-foreground/70',
+                              (playing(index) || pausedAt(index)) && 'bg-brand/15 text-foreground',
                             )}
                             onClick={() => loadAndPlay(index)}
                             size={null}
@@ -423,18 +426,12 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
                             <For each={sentence.words}>
                               {(word, wordAt) => {
                                 const start = () => sentence.starts[wordAt()]
-                                const lit = () =>
-                                  playing(index) &&
-                                  playerState().charIndex >= start() &&
-                                  playerState().charIndex < start() + word.length + 1
                                 const gone = () =>
                                   unheardFrom() !== Infinity && start() > unheardFrom()
                                 return (
                                   <>
                                     <span
                                       class={cn(
-                                        'rounded-sm transition-colors',
-                                        lit() && 'bg-brand/25 text-foreground',
                                         gone() &&
                                           'text-muted-foreground/60 line-through decoration-muted-foreground/40',
                                       )}

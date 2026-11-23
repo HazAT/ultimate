@@ -29,8 +29,9 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
    conversation are on screen. The session stays hot until it hands off or End: after a handoff the next turn
    concludes it and forks @ultimate afresh; End concludes it and deletes the session's recordings.
 5. **Replies** stream from the fork's live partial. Each finished sentence is spoken by the browser's
-   `speechSynthesis` at the chosen speed and highlighted word by word (word events, or an estimate when the voice sends
-   none). The playback bar shows the paragraph, sentence and time left, and skips by sentence or paragraph; any
+   `speechSynthesis` at the chosen speed, and the sentence being read is highlighted: word timing from the browser's
+   voices is too unreliable to follow word by word. Folded, the talk bar shows the whole paragraph being read with that
+   sentence highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips by sentence or paragraph; any
    sentence plays on click and each reply has replay. Thinking shows open while the model thinks, with a token count
    in the trace, and folds once the reply has played.
 6. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
