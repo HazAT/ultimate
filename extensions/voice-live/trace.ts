@@ -54,6 +54,8 @@ export function createTrace(keys: StageKey[], labels: Partial<Record<StageKey, s
       })
     },
     skip(key: StageKey, detail: string) {
+      const running = current()
+      if (running && running.key !== key) this.done(running.key)
       update(key, (stage) => ({ ...stage, status: 'skipped', detail }))
     },
     fail(detail: string) {
@@ -61,6 +63,8 @@ export function createTrace(keys: StageKey[], labels: Partial<Record<StageKey, s
       if (running) update(running.key, (stage) => ({ ...stage, status: 'failed', detail }))
     },
     finish(text: string) {
+      const running = current()
+      if (running) this.done(running.key)
       total.set(text)
     },
     label(key: StageKey, label: string) {

@@ -28,6 +28,7 @@ import {
   EndAction,
   RecordAction,
   ModelAction,
+  OpenAction,
   StatusAction,
   StopAction,
   TranscriptAction,
@@ -41,7 +42,7 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const PLACEHOLDER = '(no transcript yet)'
 const READ_TOOLS = ['read', 'bash', 'memory', 'web_search', 'web_fetch', 'voice_handoff']
 
-export const userActions = ['record', 'turn', 'transcript', 'model', 'stop', 'end']
+export const userActions = ['open', 'record', 'turn', 'transcript', 'model', 'stop', 'end']
 
 export const Session = defineDoc<VoiceSession>({
   kind: 'voice.session',
@@ -199,7 +200,12 @@ const unwrap = <T extends object>(args: unknown) =>
 
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host }) => {
-    const model = await voiceModel(host)
+    const open = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+    const model =
+      (open === undefined
+        ? undefined
+        : (await host.harness().snapshot(AgentDoc, open, context))?.model) ??
+      (await voiceModel(host))
     const available = host.modelRuntime
       .getAvailableSnapshot()
       .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
@@ -228,6 +234,9 @@ export const actions = {
     })
     return { audio: id }
   }),
+  open: implementAction(OpenAction, async (_args, { host }) => ({
+    conversation: await openSession(host),
+  })),
   turn: implementAction(TurnAction, async (args, { host }) => {
     const { key, text, audio, seconds, envelope, hint, images } = unwrap<{
       key: unknown

@@ -89,6 +89,9 @@ export const ModelAction = actionRef<{ model: string }, Record<string, never>>(
   'model',
 )
 
+/** Open the session without a turn yet: forks @ultimate unless a session is open. Returns its conversation. */
+export const OpenAction = actionRef<null, { conversation: ConversationId }>('voice-live', 'open')
+
 /** Stop the session's current reply, for an interruption. */
 export const StopAction = actionRef<null, Record<string, never>>('voice-live', 'stop')
 

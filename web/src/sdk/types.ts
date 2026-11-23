@@ -146,7 +146,9 @@ export type ComposerRenderer = Component<SolidComposerProps>
 /** Where a `ComposerRedirect` sends what the composer inside it submits, and what its empty composer says. */
 export interface ComposerTarget {
   placeholder: string
-  send: (text: string) => Promise<unknown>
+  /** `images` are the pasted ones, given only to a target with `images: true`; any other refuses them. */
+  send: (text: string, images: readonly { data: string; mimeType: string }[]) => Promise<unknown>
+  images?: true
 }
 
 /** What a document renderer receives: the shown conversation's document of its kind, live. */

@@ -331,7 +331,7 @@ function ComposerEditor(props: { dock?: boolean }) {
     )
       return
     const submitted = current.get()
-    if (redirect && submitted.images.length) {
+    if (redirect && !redirect.images && submitted.images.length) {
       setError('Images stay here: remove them to send elsewhere')
       return
     }
@@ -344,7 +344,13 @@ function ComposerEditor(props: { dock?: boolean }) {
     }
     let withdrawnSteerToRestoreOnFailure: typeof input | undefined
     try {
-      if (redirect) await writingAs(who, () => redirect.send(input.text))
+      if (redirect)
+        await writingAs(who, () =>
+          redirect.send(
+            input.text,
+            input.images.map(({ data, mimeType }) => ({ data, mimeType })),
+          ),
+        )
       else {
         withdrawnSteerToRestoreOnFailure =
           mode === 'steer' ? await withdrawQueuedSteer(api, conversationId, inbox()) : undefined

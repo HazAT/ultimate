@@ -1,7 +1,6 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
-import { fitImage } from '@/components/image-resize.ts'
 import { api, errorMessage, useConversation, useUiState } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
 import { TranscribeAction } from '../voice/refs.ts'
@@ -51,7 +50,6 @@ export const dock = createRoot(() => {
   const [phase, setPhase] = createSignal<Phase>('idle')
   const [status, setStatus] = createSignal('Hold to talk')
   const [local, setLocal] = createSignal<Record<string, Local>>({})
-  const [pasted, setPasted] = createSignal<Pasted[]>([])
   const [cuts, setCuts] = createSignal<Cut[]>([])
   const [error, setError] = createSignal<string | undefined>()
   const [pending, setPending] = createSignal<string | undefined>()
@@ -75,8 +73,6 @@ export const dock = createRoot(() => {
     setStatus,
     local,
     setLocal,
-    pasted,
-    setPasted,
     cuts,
     setCuts,
     error,
@@ -190,22 +186,30 @@ export async function release() {
   await sendTurn({ recorded, interrupted: !!held?.busy })
 }
 
-export async function sendTyped(text: string) {
-  if (!text.trim() && !dock.pasted().length) return
+export async function sendTyped(
+  text: string,
+  images: readonly { data: string; mimeType: string }[] = [],
+) {
+  const pasted: Pasted[] = images.map((image) => ({ kind: 'image' as const, ...image }))
+  if (!text.trim() && !pasted.length) return
   const interrupted =
     playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
   dock.player.pause()
-  await sendTurn({ typed: text.trim(), interrupted })
+  await sendTurn({ typed: text.trim(), pasted, interrupted })
 }
 
-async function sendTurn(input: { recorded?: Recorded; typed?: string; interrupted: boolean }) {
+async function sendTurn(input: {
+  recorded?: Recorded
+  typed?: string
+  pasted?: Pasted[]
+  interrupted: boolean
+}) {
   const hint = input.interrupted ? markCut() : undefined
   if (input.interrupted) {
     dock.player.stop()
     await api.action(StopAction, null)
   }
-  const attachments = dock.pasted()
-  dock.setPasted([])
+  const attachments = input.pasted ?? []
   const key = crypto.randomUUID()
   const trace = createTrace(
     input.recorded
@@ -299,19 +303,6 @@ async function sendTurn(input: { recorded?: Recorded; typed?: string; interrupte
   }
 }
 
-export async function attach(files: File[]) {
-  const added: Pasted[] = []
-  for (const file of files) {
-    if (file.type.startsWith('image/')) {
-      const { blob } = await fitImage(file)
-      added.push({ kind: 'image', data: await base64(blob), mimeType: blob.type })
-    } else if (file.type.startsWith('text/')) added.push({ kind: 'text', text: await file.text() })
-  }
-  if (!added.length) return
-  dock.setPasted((items) => [...items, ...added])
-  dock.cues.press()
-}
-
 const textOf = (message: AssistantMessage | undefined) =>
   message?.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('') ?? ''
 const thoughtOf = (message: AssistantMessage | undefined) =>
@@ -387,6 +378,7 @@ export function replyOf(turn: TurnView) {
 
 export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
   let spoken: { key: string; count: number } | undefined
+  const started = new Set<string>()
   createEffect(
     () => {
       const { turns, busy } = view()
@@ -400,6 +392,8 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         thought: reply.thought,
         tokens: reply.tokens,
         busy,
+        answered: turn.replies.length > 0,
+        stored: !turn.optimistic,
         local: dock.local()[turn.key],
       }
     },
@@ -416,8 +410,21 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
       const { sentences } = splitReply(
         latest.busy ? latest.parts : latest.parts.map((part) => ({ ...part, final: true })),
       )
+      if (latest.busy && latest.stored) started.add(latest.key)
+      if (
+        !latest.busy &&
+        !latest.answered &&
+        started.has(latest.key) &&
+        dock.pending() === latest.key &&
+        !dock.mic.recording()
+      ) {
+        trace.fail('stopped')
+        dock.pulse(false)
+        dock.setPhase('done')
+        dock.setStatus('Stopped · your turn')
+      }
+      if (!sentences.length && (latest.busy || !latest.answered)) return
       if (spoken?.key !== latest.key) {
-        if (!sentences.length && latest.busy) return
         spoken = { key: latest.key, count: 0 }
         dock.player.load(latest.key, [], latest.busy)
         if (sentences.length) {

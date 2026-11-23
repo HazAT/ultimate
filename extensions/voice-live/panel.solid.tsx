@@ -1,5 +1,4 @@
 import {
-  ArrowUp,
   AudioLines,
   ChevronLeft,
   ChevronRight,
@@ -12,44 +11,33 @@ import {
   SquareArrowOutUpRight,
   X,
 } from '@lucide/solid'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  Match,
-  onSettled,
-  Show,
-  Switch,
-} from 'solid-js'
+import { createEffect, createMemo, createSignal, onSettled, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
-import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Form } from '@/components/ui/form.solid.tsx'
-import { Textarea } from '@/components/ui/input.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
-import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Slider } from '@/components/ui/slider.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
   api,
   cn,
+  Composer,
+  ComposerRedirect,
   formatKeys,
   ROOT,
   ScopedConversation,
   switchConversation,
   useAction,
   useDocOf,
-  useExtensionUiState,
   useExternal,
   useViewport,
 } from '@/sdk/solid'
+import type { ComposerTarget } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
-  attach,
   dock,
   endSession,
   KEYS,
@@ -62,9 +50,6 @@ import {
 import { ModelAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { estimate } from './speech.ts'
 import { Session, Waveform } from './turns.solid.tsx'
-
-const variants = ['a', 'b', 'c'] as const
-type Variant = (typeof variants)[number]
 
 const toolbarButton =
   'flex h-7 max-w-56 min-w-0 shrink items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground'
@@ -128,47 +113,6 @@ function holdHandlers() {
 }
 
 const holdTitle = () => `Hold to talk · or hold Space outside a text field · ${keys()} hides Voice`
-
-function MicButton() {
-  return (
-    <Button
-      aria-label="Hold to talk"
-      class={cn(
-        iconButton,
-        'touch-none select-none',
-        recording() && 'bg-error/15 text-error hover:bg-error/15 hover:text-error',
-        dock.phase() === 'speaking' && 'text-brand',
-      )}
-      size={null}
-      title={holdTitle()}
-      variant={null}
-      {...holdHandlers()}
-    >
-      <Mic class="size-4" />
-    </Button>
-  )
-}
-
-function HoldPill() {
-  return (
-    <Button
-      aria-label="Hold to talk"
-      class={cn(
-        'flex h-7 shrink-0 touch-none items-center gap-1.5 rounded-full border border-border/80 bg-background px-2.5 font-mono text-[11.5px] font-normal text-muted-foreground transition-colors select-none hover:border-ring/70 hover:text-foreground',
-        recording() &&
-          'border-error/50 bg-error/10 text-error hover:border-error/50 hover:text-error',
-        dock.phase() === 'speaking' && 'border-brand/40 text-brand',
-      )}
-      size={null}
-      title={holdTitle()}
-      variant={null}
-      {...holdHandlers()}
-    >
-      <Mic class="size-3.5" />
-      {recording() ? 'release' : dock.phase() === 'speaking' ? 'interrupt' : 'hold'}
-    </Button>
-  )
-}
 
 function TalkBar() {
   return (
@@ -242,156 +186,6 @@ function Settings(props: { model?: boolean }) {
         </div>
       </PopoverContent>
     </Popover>
-  )
-}
-
-function Pasted() {
-  return (
-    <Show when={dock.pasted().length}>
-      <div class="flex flex-wrap gap-2 px-3 pt-3">
-        <For each={dock.pasted()}>
-          {(item, index) => (
-            <div class="relative w-32 rounded-md border border-border/80 bg-terminal p-1">
-              <Show
-                when={item.kind === 'image' ? item : undefined}
-                fallback={
-                  <p class="line-clamp-4 h-16 overflow-hidden px-1 font-mono text-[11px] text-muted-foreground">
-                    {item.kind === 'text' ? item.text : ''}
-                  </p>
-                }
-              >
-                {(image) => (
-                  <ToolImage
-                    alt={`Pasted image ${index() + 1}`}
-                    class="flex h-16 w-full items-center justify-center border-0 [&_img]:max-h-16"
-                    image={image()}
-                  />
-                )}
-              </Show>
-              <Button
-                aria-label={`Remove attachment ${index() + 1}`}
-                class="absolute -top-2 -right-2 size-5 rounded-full border bg-background p-0 text-foreground hover:bg-accent"
-                onClick={() => {
-                  const removed = index()
-                  dock.setPasted((items) => items.filter((_, at) => at !== removed))
-                }}
-                size={null}
-                variant={null}
-              >
-                <X class="size-3" />
-              </Button>
-            </div>
-          )}
-        </For>
-      </div>
-    </Show>
-  )
-}
-
-function PromptBox(props: {
-  inline?: boolean
-  start?: JSX.Element
-  tools?: JSX.Element
-  end?: JSX.Element
-  waveform?: boolean
-}) {
-  const [draft, setDraft] = createSignal('')
-  const files = (list: FileList | undefined | null) => Array.from(list ?? [])
-  const field = () => (
-    <Textarea
-      aria-label="Type or paste to voice"
-      autoResize
-      class={cn(
-        'block max-h-40 min-h-0 w-full resize-none rounded-none border-0 bg-transparent font-sans text-[14px] leading-relaxed outline-none focus-visible:border-0 focus-visible:ring-0',
-        props.inline ? 'px-1 py-1' : 'px-3.5 pt-3 pb-1',
-      )}
-      onDrop={(event: DragEvent) => {
-        const dropped = files(event.dataTransfer?.files)
-        if (!dropped.length) return
-        event.preventDefault()
-        void attach(dropped)
-      }}
-      onPaste={(event: ClipboardEvent) => {
-        const pasted = files(event.clipboardData?.files)
-        if (!pasted.length) return
-        event.preventDefault()
-        void attach(pasted)
-      }}
-      onValueChange={setDraft}
-      placeholder={
-        props.inline
-          ? dock.phase() === 'idle' && !dock.error()
-            ? 'Hold to talk, or type…'
-            : `${dock.error() ?? dock.status()} · type to add`
-          : 'Type, paste a screenshot, or hold to talk…'
-      }
-      rows={1}
-      submitShortcut="enter"
-      value={draft()}
-    />
-  )
-  const send = () => (
-    <Button
-      aria-label="Send to voice"
-      class="size-7 shrink-0 rounded-lg pointer-coarse:size-9"
-      disabled={!draft().trim() && !dock.pasted().length}
-      onClick={() => {
-        const text = draft()
-        setDraft('')
-        return sendTyped(text)
-      }}
-      size="icon"
-      title="Send (Enter)"
-      type="submit"
-    >
-      <ArrowUp class="size-4" />
-    </Button>
-  )
-  return (
-    <Form
-      class={cn(
-        'flex w-full flex-col rounded-xl border border-input/80 bg-card shadow-sm transition-colors focus-within:border-ring/70',
-        recording() && 'border-error/40 focus-within:border-error/50',
-      )}
-      data-voice-prompt
-    >
-      <Pasted />
-      <Show
-        when={props.inline}
-        fallback={
-          <>
-            <Show when={props.waveform && recording()} fallback={field()}>
-              <div class="flex h-[38px] items-center px-3.5 pt-3 pb-1">
-                <Waveform class="h-6 w-full text-error" live />
-              </div>
-            </Show>
-            <div class="@container flex items-center justify-between gap-2 px-2 pt-1 pb-2">
-              <div class="flex min-w-0 items-center gap-1 overflow-hidden">{props.tools}</div>
-              <div class="flex min-w-0 shrink-0 items-center gap-1.5">
-                {props.end}
-                {send()}
-              </div>
-            </div>
-          </>
-        }
-      >
-        <div class="flex items-end gap-1.5 p-1.5">
-          <div class="flex h-7 shrink-0 items-center">{props.start}</div>
-          <div class="min-w-0 flex-1">
-            <Show when={recording()} fallback={field()}>
-              <div class="flex h-[30px] min-w-0 items-center gap-2 px-1">
-                <Status class="shrink-0" />
-                <Waveform class="h-5 min-w-0 flex-1 text-error" live />
-              </div>
-            </Show>
-          </div>
-          <div class="flex shrink-0 items-center gap-1">
-            {props.end}
-            {send()}
-          </div>
-        </div>
-      </Show>
-    </Form>
   )
 }
 
@@ -470,65 +264,35 @@ function PlaybackStrip() {
   )
 }
 
-function Bottom(props: { variant: Variant }) {
+function Bottom(props: { fork: ConversationId | undefined }) {
+  const target = (): ComposerTarget => ({
+    placeholder: 'Type, paste a screenshot, or hold Space to talk…',
+    images: true,
+    send: (text, images) => sendTyped(text, images),
+  })
   return (
-    <footer
-      class="flex shrink-0 flex-col gap-1.5 px-4 pt-1 pb-3"
-      data-voice-variant={props.variant}
-    >
-      <PlaybackStrip />
-      <Switch>
-        <Match when={props.variant === 'a'}>
-          <PromptBox
-            end={<MicButton />}
-            tools={
-              <>
-                <VoiceModel class={toolbarButton} />
-                <Settings />
-              </>
-            }
-            waveform
-          />
-          <div class="flex min-w-0 items-center gap-3 pt-0.5">
-            <Status class="flex-1" />
-            <span class="shrink-0 font-mono text-[11px] text-muted-foreground/70 pointer-coarse:hidden">
-              hold <Kbd>Space</Kbd> to talk
-            </span>
+    <footer class="flex shrink-0 flex-col gap-1.5 pt-1" data-voice-bottom>
+      <div class="flex flex-col gap-1.5 px-4">
+        <PlaybackStrip />
+        <TalkBar />
+      </div>
+      <Show
+        when={props.fork}
+        fallback={
+          <div class="flex items-center gap-2 px-4 pb-3 font-mono text-[11px] text-muted-foreground">
+            <Shimmer>forking @ultimate…</Shimmer>
           </div>
-        </Match>
-        <Match when={props.variant === 'b'}>
-          <TalkBar />
-          <PromptBox end={<Settings />} tools={<VoiceModel class={toolbarButton} />} />
-        </Match>
-        <Match when={props.variant === 'c'}>
-          <PromptBox end={<Settings model />} inline start={<HoldPill />} />
-        </Match>
-      </Switch>
-    </footer>
-  )
-}
-
-function VariantSwitch(props: { bind: readonly [() => Variant, (value: Variant) => void] }) {
-  return (
-    <span
-      class="flex shrink-0 items-center gap-1.5 font-mono text-[10.5px] text-muted-foreground/60"
-      title="Temporary: compare the three bottom layouts, then this switch goes away"
-    >
-      variant
-      <SegmentedControl
-        aria-label="Bottom area variant (temporary)"
-        bind={props.bind}
-        class="border-dashed p-px"
+        }
       >
-        <For each={variants}>
-          {(option) => (
-            <SegmentedControlItem class="h-5 px-1.5 text-[10.5px]" value={option}>
-              {option.toUpperCase()}
-            </SegmentedControlItem>
-          )}
-        </For>
-      </SegmentedControl>
-    </span>
+        {(fork) => (
+          <ScopedConversation id={fork()}>
+            <ComposerRedirect value={target}>
+              <Composer dock />
+            </ComposerRedirect>
+          </ScopedConversation>
+        )}
+      </Show>
+    </footer>
   )
 }
 
@@ -536,8 +300,6 @@ export function VoicePanel() {
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
   const fork = useDocOf(() => session()?.id, VoiceForkDoc)
   const viewport = useViewport()
-  const [stored, setVariant] = useExtensionUiState('variant', 'a')
-  const variant = (): Variant => variants.find((option) => option === stored()) ?? 'a'
   const id = () => session()?.id
   onSettled(() => {
     const down = (event: KeyboardEvent) => {
@@ -584,7 +346,7 @@ export function VoicePanel() {
               : 'forks @ultimate on your first turn'}
           </span>
           <span class="ml-auto flex shrink-0 items-center gap-1">
-            <VariantSwitch bind={[variant, setVariant]} />
+            <Settings model />
             <Show when={id()}>
               <Button
                 aria-label="Open the voice conversation"
@@ -638,7 +400,7 @@ export function VoicePanel() {
             </ScopedConversation>
           )}
         </Show>
-        <Bottom variant={variant()} />
+        <Bottom fork={id()} />
       </section>
     </Show>
   )
