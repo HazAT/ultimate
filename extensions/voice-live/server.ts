@@ -289,8 +289,8 @@ async function openSession(host: ExtensionHost) {
   const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
   if (main === undefined) throw new Error('@ultimate is not available')
   const answer = await lastSettledAnswer(host, main)
-  const model = await voiceModel(host)
   await concludeHandedOff(host)
+  const model = await voiceModel(host)
   return host.harness().commit(async (tx) => {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
     if (session.id !== undefined && !(await tx.doc(Fork, session.id)).ended) return session.id

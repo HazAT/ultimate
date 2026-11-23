@@ -120,14 +120,22 @@ function Status(props: { class?: string }) {
   )
 }
 
+let pointerHolds = false
+
 function holdHandlers() {
+  const letGo = () => {
+    if (!pointerHolds) return
+    pointerHolds = false
+    void release()
+  }
   return {
     onPointerDown: (event: PointerEvent) => {
       event.preventDefault()
+      pointerHolds = true
       void press()
     },
-    onPointerLeave: () => void release(),
-    onPointerUp: () => void release(),
+    onPointerLeave: letGo,
+    onPointerUp: letGo,
   }
 }
 

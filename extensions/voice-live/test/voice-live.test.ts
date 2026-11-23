@@ -263,6 +263,21 @@ it('a model picked in the fork itself carries over to the next session', async (
   const next = await f.turn({ key: 'two', text: 'fresh' })
   expect(next.id).not.toBe(first.id)
   expect(f.requests.at(-1)!.model).toBe('main-faux')
+
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(AgentDoc, next.id)).model = { provider: 'faux', modelId: 'gemini-faux' }
+  }, context)
+  await f.turn({
+    key: 'handoff',
+    text: `CALL ${JSON.stringify({ name: 'voice_handoff', args: { title: 'T', outcome: 'O', instruction: 'I' } })}`,
+  })
+  const after = await f.turn({ key: 'after', text: 'after the handoff' })
+  expect(after.id).not.toBe(next.id)
+  expect(
+    f.requests.findLast((request) =>
+      JSON.stringify(request.messages).includes('after the handoff'),
+    )!.model,
+  ).toBe('gemini-faux')
 })
 
 it('other tools are blocked, voice_handoff starts @ultimate with a card and the next turn forks afresh', async () => {
