@@ -34,7 +34,7 @@ import { MessagesApi } from '../messages/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
-import { AutomationsApi } from './api.ts'
+import { AutomationsApi, Hold } from './api.ts'
 import {
   CreateAction,
   DeleteAction,
@@ -844,6 +844,7 @@ export default function automations(host: ExtensionHost) {
   host.need(SubagentsApi)
   host.need(MessagesApi)
   host.need(WorkspacesApi)
+  host.want(Hold)
   host.need(ConversationsApi)
   const api = backend(host)
   host.implement(AutomationsApi, {

@@ -41,6 +41,10 @@ Each automation has one or both:
   `prompt`, subscribers are woken when each run ends instead, with an `automations.finished` input whose text is the
   run's answer (or `Run failed: …`); an aborted run wakes no one.
 
+The owner of an automation can hold its fires through the `automations.hold` extension point: a held fire is dropped
+before it starts a run, wakes a subscriber or emits `automations.fired` (a condition still counts the crossing). Dream
+provides it to hold its built-ins once the chapter has dreamed.
+
 Without either, create subscribes the caller; nothing may leave an automation with neither. To be reminded, subscribe:
 a prompt run costs a whole agent turn per fire. The seventh fire within an hour pauses the automation instead,
 escalating with `Fired more than 6 times in an hour; paused`. Only fires that start a run or wake a subscriber count:

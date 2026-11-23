@@ -25,5 +25,17 @@ export type AutomationsService = {
 }
 /** The automations service. */
 export const AutomationsApi = defineApi<AutomationsService>()('automations')
+export type HoldService = {
+  /**
+   * Whether automation `id` is held now, read inside `tx`: a held fire is dropped before it runs, wakes its subscribers
+   * or emits `automations.fired`; a condition counts the crossing as fired and re-arms below its threshold as usual.
+   */
+  held(tx: Tx, id: string): Promise<boolean>
+}
+/**
+ * The extension point through which the owner of an automation holds its fires while its own state makes them moot.
+ * Dream provides it: no automatic dream in a chapter that already dreamed.
+ */
+export const Hold = defineApi<HoldService>()('automations.hold')
 export const tier = 'core'
 export { Fired, Started, Exited, Done, Escalated } from './refs.ts'
