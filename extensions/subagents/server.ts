@@ -10,7 +10,9 @@ import type {
   ToolExecutionApi,
   ToolTaskInput,
   SubmissionRecord,
+  TaskRuntime,
 } from '@earendil-works/pi-durable'
+import { settledSubmission, submitAndSleep } from '../../lib/settled.ts'
 import { existsSync } from 'node:fs'
 import { onCommit } from '../../lib/commits.ts'
 import { readFile } from 'node:fs/promises'
@@ -33,6 +35,7 @@ import {
   LiveDoc,
   InboxDoc,
   GenerationTask,
+  ToolTask,
   hook,
   ROOT_CONVERSATION_ID,
   section,
@@ -146,18 +149,39 @@ const replyText = (id: ConversationId, message: AssistantMessage | undefined) =>
   hasCompletedTextAnswer(message)
     ? answerText(message)
     : `Subagent ${id} ${unanswered(message)}. Message it to continue.`
+type ReporterInput = {
+  conversationId: ConversationId
+  text: string
+  steer: boolean
+  sourceEntry?: EntryId
+  answer?: EntryId
+}
+type ReporterCheckpoint =
+  | { phase: 'deliver' }
+  | { phase: 'settled' }
+  | { phase: 'report'; report?: string; answer?: EntryId }
+async function reportFailure(
+  reporter: TaskId,
+  runtime: TaskRuntime<ReporterInput, ReporterCheckpoint, null, object>,
+  error: unknown,
+  context: Context,
+) {
+  if (runtime.signal.aborted) throw error
+  await runtime.commit(async (tx) => {
+    const state = await tx.doc(Subagents, runtime.conversationId)
+    Object.values(state.actions).find((candidate) => candidate.reporter === reporter)!.status =
+      'failed'
+    return {
+      status: 'running',
+      checkpoint: {
+        phase: 'report',
+        report: error instanceof Error ? error.message : String(error),
+      },
+    }
+  }, context)
+}
 function createReporter(failures: () => ChildFailuresService | undefined) {
-  return defineTask<
-    {
-      conversationId: ConversationId
-      text: string
-      steer: boolean
-      sourceEntry?: EntryId
-      answer?: EntryId
-    },
-    { phase: 'deliver' } | { phase: 'report'; report?: string; answer?: EntryId },
-    null
-  >({
+  return defineTask<ReporterInput, ReporterCheckpoint, null>({
     name: 'ultimate.subagent-reporter',
     version: 1,
     initial: (input) =>
@@ -169,35 +193,44 @@ function createReporter(failures: () => ChildFailuresService | undefined) {
         try {
           const child = (await runtime.conversation(task.input.conversationId, context))!
           const content = task.input.text
-          const settled = await (
-            await child.submit(
-              {
-                type: 'input',
-                content,
-                entry: {
-                  kind: 'subagents.instruction',
-                  data: {
-                    sender: runtime.conversationId,
-                    kind: 'instruction',
-                    agent: (await runtime.snapshot(Subagents, runtime.conversationId, context))!
-                      .agents[String(child.id)].agent,
-                    body: content,
-                    ...(task.input.sourceEntry ? { entry: task.input.sourceEntry } : {}),
-                  },
+          await submitAndSleep(
+            runtime,
+            child,
+            {
+              type: 'input',
+              content,
+              entry: {
+                kind: 'subagents.instruction',
+                data: {
+                  sender: runtime.conversationId,
+                  kind: 'instruction',
+                  agent: (await runtime.snapshot(Subagents, runtime.conversationId, context))!
+                    .agents[String(child.id)].agent,
+                  body: content,
+                  ...(task.input.sourceEntry ? { entry: task.input.sourceEntry } : {}),
                 },
-                whenBusy: task.input.steer ? 'steer' : 'followUp',
-                requestId: `subagent:${task.id}`,
               },
-              context,
-            )
-          ).wait(context)
+              whenBusy: task.input.steer ? 'steer' : 'followUp',
+              requestId: `subagent:${task.id}`,
+            },
+            { phase: 'settled' },
+            context,
+          )
+        } catch (error) {
+          await reportFailure(task.id, runtime, error, context)
+        }
+      },
+      settled: async (task, runtime, context) => {
+        try {
+          const settled = await settledSubmission(runtime, context)
+          const child = task.input.conversationId
           await runtime.commit(async (tx) => {
             const state = await tx.doc(Subagents, runtime.conversationId)
             const action = Object.values(state.actions).find(
               (candidate) => candidate.reporter === task.id,
             )!
             action.status = settled.status
-            const agent = state.agents[String(child.id)]
+            const agent = state.agents[String(child)]
             if (settled.status === 'done' && settled.type === 'input') {
               action.answer = settled.answer
               if (agent.reported.includes(settled.answer))
@@ -210,7 +243,7 @@ function createReporter(failures: () => ChildFailuresService | undefined) {
                 status: 'running',
                 checkpoint: {
                   phase: 'report',
-                  report: reportText(child.id, agent.agent, answer),
+                  report: reportText(child, agent.agent, answer),
                   answer: settled.answer,
                 },
               }
@@ -231,22 +264,7 @@ function createReporter(failures: () => ChildFailuresService | undefined) {
             return { status: 'running', checkpoint: { phase: 'report' } }
           }, context)
         } catch (error) {
-          if (runtime.signal.aborted) throw error
-          const message = error instanceof Error ? error.message : String(error)
-          await runtime.commit(async (tx) => {
-            const state = await tx.doc(Subagents, runtime.conversationId)
-            const action = Object.values(state.actions).find(
-              (candidate) => candidate.reporter === task.id,
-            )!
-            action.status = 'failed'
-            return {
-              status: 'running',
-              checkpoint: {
-                phase: 'report',
-                report: message,
-              },
-            }
-          }, context)
+          await reportFailure(task.id, runtime, error, context)
         }
       },
       report: async (task, runtime, context) => {
@@ -927,13 +945,9 @@ export default function subagents(
             for (const id of results) {
               const message = (await tx.entry(ToolResultEntry, id))?.model?.[0]
               if (message?.role !== 'toolResult' || message.isError) continue
-              const info = message.details as
-                | { answerId?: EntryId; subagentAnswers?: EntryId[] }
-                | undefined
+              const info = message.details as { answerId?: EntryId } | undefined
               if (message.toolName === 'subagent' && info?.answerId !== undefined)
                 answers.add(info.answerId)
-              if (message.toolName === 'codemode')
-                for (const answer of info?.subagentAnswers ?? []) answers.add(answer)
             }
             if (!answers.size) return
             const submissions = []
@@ -970,6 +984,20 @@ export default function subagents(
         },
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: (_input, { tx, conversationId }) => stateNote(tx, conversationId, Date.now()),
+      }),
+      hook(ToolTask, {
+        beforeTool: (call) => {
+          if (call.name !== 'subagent' || !call.parent) return undefined
+          const { action, background } = call.arguments
+          if (action === 'wait' || background === false)
+            return {
+              block:
+                'A script starts and messages subagents in the background only: wait at top level',
+            }
+          if (action === 'start' || action === 'message')
+            return { arguments: { ...call.arguments, background: true } }
+          return undefined
+        },
       }),
     ],
     sections: [
@@ -1199,7 +1227,8 @@ export default function subagents(
               ? `\nIsolate: ${isolate.path}\nBranch: ${isolate.branch}${warning}`
               : ''
             const background =
-              index.agents[String(action.conversationId)]?.background ?? args.background === true
+              args.background === true ||
+              (index.agents[String(action.conversationId)]?.background ?? false)
             const info = details(action.conversationId, background)
             await api.details(info, context)
             if (background)

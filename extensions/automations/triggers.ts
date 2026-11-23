@@ -3,8 +3,8 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
-import { every, type Cancel } from '../../lib/timers.ts'
-import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { settled } from '../../lib/errors.ts'
+import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { defineEvent, UserInputEvent } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
@@ -80,10 +80,12 @@ export function describeTrigger(a: Automation): string {
   return a.script!.state
 }
 
-export const IDLE_TICK = 60_000
-
-function crossingCooldownElapsed(condition: NonNullable<Automation['condition']>, now: number) {
-  return condition.firedAt === undefined || now - condition.firedAt >= condition.cooldownMs
+export const IDLE_WAKER = 'ultimate.automation-idle'
+const RETRY_MS = 60_000
+const onRoot = {
+  ownership: { kind: 'conversation' as const },
+  conversationId: ROOT_CONVERSATION_ID,
+  background: true,
 }
 function summary(event: EventRecord): string {
   const data = event.data as Record<string, unknown>
@@ -110,6 +112,50 @@ export function triggers(
     if (/^#[1-9]\d*$/.test(of)) return parseConversationId(Number(of.slice(1)))
     return undefined
   }
+  async function residents(): Promise<Set<string> | undefined> {
+    try {
+      return new Set(
+        (await host.need(SubagentsApi).residents(BACKGROUND_CONTEXT)).map(({ name }) => name),
+      )
+    } catch (error) {
+      host.notice(`Automation context trigger: ${String(error)}`)
+      return undefined
+    }
+  }
+  async function recorded(
+    tx: Tx,
+    of: string,
+    standing: Set<string> | undefined,
+  ): Promise<ConversationId | undefined> {
+    if (STANDING.test(of))
+      return standing?.has(of.slice(1))
+        ? (await tx.doc(Standing, ROOT_CONVERSATION_ID))[of.slice(1)]
+        : undefined
+    return /^#[1-9]\d*$/.test(of) ? parseConversationId(Number(of.slice(1))) : undefined
+  }
+  async function retryUnconfirmed(tx: Tx, a: Automation) {
+    if (a.enabled && a.condition?.idleFor) await sleepUntil(tx, a, Date.now() + RETRY_MS)
+  }
+  function firesAt(a: Automation) {
+    const condition = a.condition!
+    return Math.max(
+      condition.firedAt === undefined ? 0 : condition.firedAt + condition.cooldownMs,
+      condition.idleFor ? (condition.inputAt ?? a.createdAt) + condition.idleFor : 0,
+    )
+  }
+  async function sleepUntil(tx: Tx, a: Automation, until: number) {
+    const condition = a.condition!
+    const sleeper = condition.waker === undefined ? undefined : await tx.task(condition.waker)
+    const sleepsUntil =
+      sleeper && sleeper.state.status !== 'terminal'
+        ? (sleeper.input as { until: number }).until
+        : undefined
+    if (!(sleepsUntil! <= until))
+      condition.waker = await tx.createTask(IdleWaker, { id: a.id, until }, onRoot)
+  }
+  async function schedule(tx: Tx, a: Automation) {
+    if (a.enabled && a.condition?.idleFor) await sleepUntil(tx, a, Date.now())
+  }
   async function evaluate(tx: Tx, a: Automation, id?: ConversationId, measured?: ContextUsage) {
     if (!a.enabled || !a.condition || !id) return
     const usage = measured ?? (await tx.doc(ContextUsageDoc, id))
@@ -120,37 +166,88 @@ export function triggers(
     if (usage.percent < rearmBelowPercent) condition.armed = true
     const now = Date.now()
     const paused = condition.idleFor ? now - (condition.inputAt ?? a.createdAt) : undefined
-    if (
-      usage.percent >= condition.above &&
-      condition.armed &&
-      (paused === undefined || paused >= condition.idleFor!) &&
-      crossingCooldownElapsed(condition, now)
-    ) {
-      const count = (n: number) =>
-        Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
-      await fire(
-        tx,
-        a,
-        now,
-        `${condition.of} context ${Math.round(usage.percent)}%${usage.tokens !== undefined && usage.window !== undefined ? ` (${count(usage.tokens)}/${count(usage.window)})` : ''}${paused === undefined ? '' : ` after ${formatDuration(paused)} without the user's input`}`,
-      )
-      condition.armed = false
-      condition.firedAt = now
+    const due = firesAt(a)
+    if (usage.percent < condition.above || !condition.armed) return
+    if (due > now) {
+      if (condition.idleFor) await sleepUntil(tx, a, due)
+      return
     }
+    const count = (n: number) =>
+      Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+    await fire(
+      tx,
+      a,
+      now,
+      `${condition.of} context ${Math.round(usage.percent)}%${usage.tokens !== undefined && usage.window !== undefined ? ` (${count(usage.tokens)}/${count(usage.window)})` : ''}${paused === undefined ? '' : ` after ${formatDuration(paused)} without the user's input`}`,
+    )
+    condition.armed = false
+    condition.firedAt = now
   }
+  const IdleWaker = defineTask<
+    { id: string; until: number },
+    { phase: 'sleep' } | { phase: 'evaluate' } | { phase: 'retry' },
+    null
+  >({
+    name: IDLE_WAKER,
+    version: 1,
+    initial: () => ({ phase: 'sleep' }),
+    phases: {
+      sleep: (task, runtime, ctx) =>
+        runtime.sleepUntil(task.input.until, { phase: 'evaluate' }, ctx),
+      retry: (_task, runtime, ctx) =>
+        runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'evaluate' } }), ctx),
+      evaluate: async (task, runtime, ctx) => {
+        const inMeasurementOrder = measurementsInCommitOrder.then(async () => {
+          const of = (await runtime.snapshot(Automations, ctx))?.automations[task.input.id]
+            ?.condition?.of
+          const standing = of && STANDING.test(of) ? await residents() : undefined
+          await runtime.commit(async (tx) => {
+            const a = (await tx.doc(Automations)).automations[task.input.id]
+            if (a?.condition?.waker !== task.id)
+              return { status: 'terminal', outcome: { status: 'completed', result: null } }
+            const target = await recorded(tx, a.condition.of, standing)
+            if (target === undefined && a.enabled)
+              return {
+                status: 'sleeping',
+                until: runtime.now() + RETRY_MS,
+                checkpoint: { phase: 'retry' },
+              }
+            delete a.condition.waker
+            await evaluate(tx, a, target)
+            return { status: 'terminal', outcome: { status: 'completed', result: null } }
+          }, ctx)
+        })
+        measurementsInCommitOrder = settled(inMeasurementOrder)
+        await inMeasurementOrder
+      },
+    },
+    abort: (task, runtime, ctx) =>
+      runtime.commit(async (tx) => {
+        const condition = (await tx.doc(Automations)).automations[task.input.id]?.condition
+        if (condition?.waker === task.id) delete condition.waker
+        return { status: 'terminal', outcome: { status: 'aborted' } }
+      }, ctx),
+  })
   let stop: (() => void) | undefined
   let measurementsInCommitOrder = Promise.resolve()
   let closed = false
-  async function check(changed?: Map<ConversationId, ContextUsage>, idle = false) {
+  async function check(changed?: Map<ConversationId, ContextUsage>) {
     const state = await host.harness().snapshot(Automations, BACKGROUND_CONTEXT)
-    for (const a of Object.values(state?.automations ?? {})) {
-      if (closed || !a.enabled || !a.condition || (idle && !a.condition.idleFor)) continue
-      const target = await resolve(a.condition.of)
-      if (!target || (changed && !changed.has(target))) continue
+    const conditions = Object.values(state?.automations ?? {}).filter(
+      (a) => a.enabled && a.condition,
+    )
+    const standing = conditions.some((a) => STANDING.test(a.condition!.of))
+      ? await residents()
+      : undefined
+    for (const a of conditions) {
+      if (closed) continue
       await host.harness().commit(async (tx) => {
         const current = (await tx.doc(Automations)).automations[a.id]
-        if (current?.condition?.of === a.condition!.of)
-          await evaluate(tx, current, target, changed?.get(target))
+        if (current?.condition?.of !== a.condition!.of) return
+        const target = await recorded(tx, current.condition.of, standing)
+        if (target === undefined) return retryUnconfirmed(tx, current)
+        if (changed && !changed.has(target)) return
+        await evaluate(tx, current, target, changed?.get(target))
       }, BACKGROUND_CONTEXT)
     }
   }
@@ -173,14 +270,6 @@ export function triggers(
         return true
     }
     return false
-  }
-  const idleTick = () => {
-    measurementsInCommitOrder = measurementsInCommitOrder
-      .then(() => check(undefined, true))
-      .catch((error: unknown) => {
-        host.notice(`Automation idle trigger: ${String(error)}`)
-      })
-    return measurementsInCommitOrder
   }
   function install() {
     host.react(
@@ -250,19 +339,12 @@ export function triggers(
           })
     })
     await check()
-    const closedDuringInitialCheck = closed
-    if (closedDuringInitialCheck) return
-    stopPolling?.()
-    stopPolling = every(IDLE_TICK, idleTick)
   }
-  let stopPolling: Cancel | undefined
   async function close() {
     closed = true
     stop?.()
     stop = undefined
-    stopPolling?.()
-    stopPolling = undefined
     await measurementsInCommitOrder
   }
-  return { resolve, evaluate, install, open, close, idleTick }
+  return { resolve, evaluate, schedule, install, open, close, IdleWaker }
 }

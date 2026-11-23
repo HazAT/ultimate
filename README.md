@@ -171,7 +171,7 @@ The building blocks that make it possible:
   `{ "<machine>": { "<project>": "<url>" } }` ([Discovery and settings](docs/settings.md)).
 - **Reading:** codemode's `ultimate.conversations`, `entries`, `search`, `trace` and `doc` take `{ project }` and
   read another running instance read-only ([Codemode](extensions/codemode/README.md#other-projects)).
-- **Messaging:** `ultimate.tell({ project, text })` messages another project's @ultimate, and its answer comes back
+- **Messaging:** `tools.tell({ project, text })` messages another project's @ultimate, and its answer comes back
   as a reply ([Messages](extensions/messages/README.md#other-projects-ultimates)).
 - **Watching:** the `status` action reports an instance's health, failures and extensions in one cheap call
   ([Status](extensions/status/README.md)).

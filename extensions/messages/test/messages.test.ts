@@ -26,6 +26,7 @@ import {
   InboxDoc,
   LiveDoc,
   ROOT_CONVERSATION_ID,
+  SubmissionSettled,
 } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -40,7 +41,7 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { Messages, MessageSent } from '../api.ts'
+import { AskedCalls, Messages, MessageSent } from '../api.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -63,15 +64,22 @@ afterEach(async () => {
   for (const host of closing) await host.close()
   for (const home of taken) await removeTemp(home)
 })
-/** Stands in for a subagent's report on its way to the branch: live until the test releases it. */
-const pendingReport = Promise.withResolvers<void>()
-const reporter = defineTask<{ delivered: boolean }, { phase: 'deliver' }, null>({
+/** Stands in for a subagent's report on its way to the branch: asleep on its child's answer, as the real one is. */
+const reporter = defineTask<{ delivered: boolean }, { phase: 'deliver' | 'report' }, null>({
   name: 'ultimate.subagent-reporter',
   version: 1,
-  initial: () => ({ phase: 'deliver' }),
+  initial: (input) => ({ phase: input.delivered ? 'report' : 'deliver' }),
   phases: {
-    deliver: async (task, runtime, caller) => {
-      if (!task.input.delivered) await awaitWithContext(pendingReport.promise, caller)
+    deliver: (_task, runtime, caller) =>
+      runtime.commit(
+        () => ({
+          status: 'sleeping',
+          signals: [SubmissionSettled.key('settled')],
+          checkpoint: { phase: 'report' },
+        }),
+        caller,
+      ),
+    report: async (_task, runtime, caller) => {
       await runtime.commit(
         () => ({ status: 'terminal', outcome: { status: 'completed', result: null } }),
         caller,
@@ -1126,7 +1134,7 @@ it('has no posting action at the installed codemode boundary', async () => {
         fauxAssistantMessage(
           [
             fauxToolCall('codemode', {
-              code: `return await ultimate.action('messages', '${action}', {to:'user',text:'fake'});`,
+              code: `return await tools.action({extension: 'messages', action: '${action}', args: {to:'user',text:'fake'}});`,
             }),
           ],
           { stopReason: 'toolUse' },
@@ -1190,16 +1198,20 @@ it('keeps sequential and parallel message calls distinct within one codemode scr
     expect(new Set(log?.messages.map((m) => m.id)).size).toBe(5)
     // Each message records the call that sent it: the script's nested call, or the direct call's own id.
     expect(log?.messages.slice(0, 2).map((m) => [m.text, m.call])).toEqual([
-      ['Sequential 1', 'script/1'],
-      ['Sequential 2', 'script/2'],
+      ['Sequential 1', 'script/c1'],
+      ['Sequential 2', 'script/c2'],
     ])
     expect(
       log?.messages
         .slice(2, 4)
         .map((m) => m.call)
         .toSorted(),
-    ).toEqual(['script/3', 'script/4'])
+    ).toEqual(['script/c3', 'script/c4'])
     expect(log?.messages.at(-1)).toMatchObject({ text: 'Direct', call: 'm' })
+    // @ultimate's own questions are recorded by call too, so the reel finds them once the log is trimmed.
+    expect(
+      (await server.harness.snapshot(AskedCalls, server.root.id, context))?.calls.toSorted(),
+    ).toEqual(['m', 'script/c1', 'script/c2', 'script/c3', 'script/c4'])
     // The script's nested messages could not end the run; the direct message did, before 'Complete'.
     const view = await server.root.context(context)
     expect(view.entries.at(-1)?.kind).toBe('pi.tool-result')
@@ -1460,7 +1472,12 @@ async function branched(f: Awaited<ReturnType<typeof fixture>>, prompt = 'Explor
     )
   }
   const later = async (content: string) => {
-    await (await branch.submit({ type: 'input', content }, context)).wait(context)
+    await (
+      await branch.submit(
+        { type: 'input', content, entry: { kind: 'test.wake', data: {} } },
+        context,
+      )
+    ).wait(context)
     await settled()
   }
   await settled()
@@ -1514,11 +1531,16 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   expect(f.observed).toContainEqual(
     expect.stringContaining(`Message from user:\nAnswer to message ${question.id}:\n${text}`),
   )
-  // The user's answer is input, so the branch's final result still reports to its starter.
-  expect((await b.from()).find((m) => m.report)).toMatchObject({
-    to: 1,
-    text: expect.stringContaining('A: Yes'),
-  })
+  // The user read the branch's answer where they gave theirs, so its starter gets it only as a note.
+  const toStarter = (await b.from()).find((m) => m.to === 1 && m.text.includes('A: Yes'))!
+  expect(toStarter.report).toBeUndefined()
+  const note = (await entries('board.message')).find(
+    (e) => (e.data as { id?: number }).id === toStarter.id,
+  )
+  expect([note?.data, note?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note' }),
+    undefined,
+  ])
   expect(await entries('board.asked')).toHaveLength(1)
   expect(await entries('board.answered')).toHaveLength(1)
 })
@@ -1621,7 +1643,7 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
   const b = await branched(f)
   // The child answered, but its report is not yet an input of the branch (#431701's gap), and it is older than
   // 120 reports that finished since (#433005).
-  await f.opened.harness.commit(
+  const pending = await f.opened.harness.commit(
     (tx) =>
       tx.createTask(
         reporter,
@@ -1646,19 +1668,42 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
         },
       )
   }, context)
-  // Only the undelivered report stays live.
-  await until(
-    async () =>
-      (await f.opened.harness.inspect(context)).tasks.filter(
-        ({ record }) => record.kind === reporter.definition.name,
-      ).length === 1,
-  )
-  await (
-    await b.branch.submit({ type: 'input', content: 'Waiting on the scout' }, context)
-  ).wait(context)
+  // Only the undelivered report stays live, asleep.
+  await until(async () => {
+    const live = (await f.opened.harness.inspect(context)).tasks.filter(
+      ({ record }) => record.kind === reporter.definition.name,
+    )
+    return live.length === 1 && live[0].state.kind === 'sleeping'
+  })
+  await b.later('Waiting on the scout')
   await until(async () => (await b.from()).length === 2)
   expect((await b.from())[1].report).toBeUndefined()
-  pendingReport.resolve()
+  await f.opened.harness.abortTask(pending, context)
+})
+it("leaves a branch's answer to the user's own input as a note that does not wake @ultimate", async () => {
+  // The user talked with a branch in its conversation; each answer woke @ultimate for a turn that did nothing.
+  const f = await fixture()
+  const b = await branched(f)
+  const generations = async () =>
+    (await f.opened.root.context(context)).entries.filter((e) => e.kind === 'pi.assistant').length
+  const before = await generations()
+  await (
+    await b.branch.submit({ type: 'input', content: 'What does + Legacy mean?' }, context)
+  ).wait(context)
+  await b.settled()
+  const toStarter = (await b.from()).filter((m) => m.to === 1)
+  expect(toStarter.slice(1)).toEqual([
+    expect.objectContaining({ text: 'Answer: What does + Legacy mean?', reply: false }),
+  ])
+  expect(toStarter[1].report).toBeUndefined()
+  const note = (await f.opened.root.context(context)).entries.find(
+    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === toStarter[1].id,
+  )
+  expect([note?.data, note?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note' }),
+    undefined,
+  ])
+  expect(await generations()).toBe(before)
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()
@@ -2081,12 +2126,13 @@ it('reaches Paused · safe while a delivery waits for its held recipient to answ
   const pausing = await pause('pause')
   expect(pausing.running.map((task) => task.what)).toEqual(['hold'])
   f.hold.release()
-  // The tool ends; the recipient's next step is held, so its delivery waits on a receipt that settles on Play.
+  // The tool ends; the recipient's next step is held, so its delivery sleeps until the input settles on Play.
   await until(async () => (await pause('state')).running.length === 0)
-  const delivery = (await f.opened.harness.inspect(context)).tasks.find(
-    ({ record }) => record.kind === 'board.delivery',
+  await until(async () =>
+    (await f.opened.harness.inspect(context)).tasks.some(
+      ({ record, state }) => record.kind === 'board.delivery' && state.kind === 'sleeping',
+    ),
   )
-  expect(delivery?.state.kind).toBe('running')
   expect((await f.log())!.messages[0].state).toBe('delivered')
   await pause('play')
   await f.recipient.waitForIdle(context)

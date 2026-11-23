@@ -7,7 +7,6 @@ import {
   ToolImages,
   ToolSection,
 } from '@/components/ai/tool.solid.tsx'
-import { JsonTree } from '@/components/json-tree.solid.tsx'
 import { HighlightedCode } from '@/components/markdown/markdown.solid.tsx'
 import {
   Collapsible,
@@ -15,6 +14,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import {
+  useConversation,
   useToolDuration,
   cn,
   plural,
@@ -29,28 +29,25 @@ interface NestedCall {
   name: string
   args: unknown
   status: string
-  ms?: number
+  durationMs?: number
 }
 interface Details {
   calls?: NestedCall[]
-  value?: unknown
-  error?: string
 }
 
-function streamedCalls(output: string): NestedCall[] {
-  return output.split('\n').flatMap((line) => {
-    const match = /^([✓✗]) (?:tools\.)?(\S+) (.*) (\d+)ms$/.exec(line)
-    return match
-      ? [
-          {
-            name: match[2],
-            args: match[3],
-            status: match[1] === '✓' ? 'ok' : 'error',
-            ms: Number(match[4]),
-          },
-        ]
-      : []
-  })
+function useLiveCalls(call: () => ToolCallView) {
+  const conversation = useConversation()
+  return createMemo((): NestedCall[] =>
+    (conversation().live.nestedTools ?? [])
+      .filter((slot) => slot.parentCallId === call().id)
+      .map((slot) => ({
+        name: slot.name.replace(/^pi\.codemode\./, ''),
+        args: slot.arguments,
+        status:
+          slot.status !== 'done' ? 'running' : slot.summary?.isError === true ? 'error' : 'ok',
+        ...(slot.summary?.durationMs === undefined ? {} : { durationMs: slot.summary.durationMs }),
+      })),
+  )
 }
 
 const argsPreview = (args: unknown) =>
@@ -80,9 +77,9 @@ function NestedCallRow(props: { call: NestedCall }) {
       <span class="min-w-0 flex-1 truncate text-muted-foreground" title={args()}>
         {args()}
       </span>
-      <Show when={props.call.ms !== undefined}>
+      <Show when={props.call.durationMs !== undefined}>
         <span class="shrink-0 text-[11px] text-muted-foreground/70 tabular-nums">
-          {props.call.ms}ms
+          {props.call.durationMs}ms
         </span>
       </Show>
     </div>
@@ -109,16 +106,13 @@ function CallLog(props: { calls: readonly NestedCall[]; running: boolean }) {
   )
 }
 
-function outputOf(call: ToolCallView, details: Details) {
+function outputOf(call: ToolCallView) {
   if (call.status !== 'done' && call.status !== 'error') return ''
   const texts = (call.result?.content ?? []).flatMap((block) =>
     block.type === 'text' ? [block.text] : [],
   )
-  const body = texts.slice(1)
-  if (call.status === 'done' && details.value !== undefined) body.pop()
-  if (call.status === 'error' && details.error !== undefined && body.at(-1) === details.error)
-    body.pop()
-  return body.join('\n').trim()
+  const pisHeader = /^Script (completed|failed)\nWall time /.test(texts[0] ?? '')
+  return (pisHeader ? texts.slice(1) : texts).join('\n').trim()
 }
 
 const codeOf = (call: ToolCallView) => (typeof call.args.code === 'string' ? call.args.code : '')
@@ -192,11 +186,12 @@ export function CodemodeCall(props: SolidToolProps) {
   const summary = () => summaries()?.calls[props.call.id]
   const code = () => codeOf(props.call)
   const details = () => props.call.details as Details | undefined
-  const calls = createMemo(() => details()?.calls ?? streamedCalls(props.call.output))
+  const live = useLiveCalls(() => props.call)
+  const calls = createMemo(() => details()?.calls ?? live())
   const failures = createMemo(
     () => calls().filter((call) => call.status !== 'ok' && call.status !== 'running').length,
   )
-  const output = createMemo(() => outputOf(props.call, details() ?? {}))
+  const output = createMemo(() => outputOf(props.call))
   return (
     <Tool defaultOpen={props.call.status !== 'done' || props.call.images.length > 0}>
       <ToolHeader
@@ -240,22 +235,6 @@ export function CodemodeCall(props: SolidToolProps) {
           </ToolSection>
         </Show>
         <ToolImages images={props.call.images} />
-        <Show when={props.call.status === 'done' && details()?.value !== undefined}>
-          <ToolSection label="Returned">
-            <JsonTree
-              class="max-h-80 overflow-auto rounded-sm bg-terminal px-1.5 py-1.5"
-              name={`Returned value of call ${props.call.id.slice(-8)}`}
-              value={details()?.value}
-            />
-          </ToolSection>
-        </Show>
-        <Show when={props.call.status === 'error'}>
-          <ToolSection label="Error">
-            <pre class="max-h-64 overflow-auto rounded-sm bg-terminal px-2.5 py-2 leading-[1.55] whitespace-pre-wrap text-error">
-              {details()?.error ?? props.call.output}
-            </pre>
-          </ToolSection>
-        </Show>
         <Show when={props.call.status === 'interrupted'}>
           <ToolSection class="text-warning">
             Interrupted: nested calls may have run; their side effects are not rolled back.

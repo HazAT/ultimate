@@ -3,9 +3,10 @@ import { JsonTree } from '@/components/json-tree.solid.tsx'
 import type { DocumentProps } from '@/sdk/solid'
 
 export function StoreDocument(props: DocumentProps) {
+  const values = () => (props.value.values ?? {}) as Record<string, unknown>
   return (
     <Show
-      when={Object.keys(props.value).length > 0}
+      when={Object.keys(values()).length > 0}
       fallback={
         <p class="px-3 font-sans text-[12px] leading-relaxed text-muted-foreground/70">
           Empty. Codemode scripts keep values across runs with{' '}
@@ -14,7 +15,7 @@ export function StoreDocument(props: DocumentProps) {
         </p>
       }
     >
-      <JsonTree class="px-2" name="codemode store" open={1} value={props.value} />
+      <JsonTree class="px-2" name="codemode store" open={1} value={values()} />
     </Show>
   )
 }

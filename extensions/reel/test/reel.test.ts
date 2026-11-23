@@ -58,20 +58,9 @@ const ask = (id: number, callId: string, args: Record<string, unknown> = {}, sen
   call(BRANCH, id, callId, 'message', { to: 'user', text: 'Preview?', ...args }),
 ]
 
-const script = (id: number, callId: string, asks: number, failed = false, helper = false) => [
+const script = (id: number, callId: string, failed = false) => [
   result(BRANCH, id + 1, callId, 'codemode', [{ type: 'text', text: 'done' }], {
     isError: failed,
-    details: {
-      calls: [
-        ...(helper ? [{ name: 'ultimate.entries', args: [1], status: 'ok', ms: 1 }] : []),
-        ...Array.from({ length: asks }, (_, n) => ({
-          name: 'message',
-          args: { to: 'user', text: `Q${n + 1}` },
-          status: 'ok',
-          ms: 1,
-        })),
-      ],
-    },
   }),
   call(BRANCH, id, callId, 'codemode', { code: '…' }),
 ]
@@ -101,7 +90,7 @@ const both = (id: number, first: string, second: string) => [
   ]),
 ]
 
-function fixture(branch: EntryRecord[], log: Message[]) {
+function fixture(branch: EntryRecord[], log: Message[], asked: string[] = []) {
   const own = new Map<ConversationId, EntryRecord[]>([
     [BRANCH, branch],
     [
@@ -114,12 +103,24 @@ function fixture(branch: EntryRecord[], log: Message[]) {
     ],
   ])
   const harness = {
-    snapshot: async () => ({ messages: log, next: 100 }),
+    snapshot: async (token: { definition: { kind: string } }) =>
+      token.definition.kind === 'board.asked-calls'
+        ? { calls: asked }
+        : { messages: log, next: 100 },
     conversation: async (id: ConversationId) => ({
-      entries: async ({ maxEntryId }: { maxEntryId?: number }) => ({
+      entries: async ({
+        maxEntryId,
+        minEntryId,
+        order,
+      }: {
+        maxEntryId?: number
+        minEntryId?: number
+        order?: string
+      }) => ({
         items: (own.get(id) ?? [])
           .filter((item) => maxEntryId === undefined || item.id <= maxEntryId)
-          .toSorted((a, b) => b.id - a.id),
+          .filter((item) => minEntryId === undefined || item.id >= minEntryId)
+          .toSorted((a, b) => (order === 'ascending' ? a.id - b.id : b.id - a.id)),
       }),
     }),
   }
@@ -201,38 +202,36 @@ it('a failed send is no round boundary', async () => {
 
 it('a question asked from a script starts after the one before it', async () => {
   const branch = [
-    ...script(60, 'run', 2),
+    ...script(60, 'run'),
     ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
-    ...script(20, 'older', 1),
+    ...script(20, 'older'),
   ]
-  const { ctx } = fixture(branch, [question(3, 'run/1'), question(4, 'run/2')])
+  const asked = ['older/c2', 'run/c1', 'run/c3']
+  const { ctx } = fixture(branch, [question(3, 'run/c1'), question(4, 'run/c3')], asked)
   const first = await actions.frames({ conversation: BRANCH, message: 3 }, ctx)
   const second = await actions.frames({ conversation: BRANCH, message: 4 }, ctx)
   expect(first.frames.map((frame) => frame.entry)).toEqual([41, 51])
   expect(second.frames).toEqual([])
-
-  const trimmed = fixture(branch, [question(4, 'run/2')]).ctx
-  expect((await actions.frames({ conversation: BRANCH, message: 4 }, trimmed)).frames).toEqual([])
 })
 
-it('an ultimate.* helper takes no nested call id, so a trimmed log keeps questions apart', async () => {
+it('keeps a scripted question apart once the log no longer holds the one before it, @ultimate’s too', async () => {
   const branch = [
-    ...script(60, 'run', 2, false, true),
+    ...script(60, 'run'),
     ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
-    ...script(20, 'older', 1),
+    ...script(20, 'older'),
   ]
-  const { ctx } = fixture(branch, [question(4, 'run/2')])
-  expect((await actions.frames({ conversation: BRANCH, message: 4 }, ctx)).frames).toEqual([])
+  const trimmed = fixture(branch, [question(4, 'run/c3')], ['older/c2', 'run/c1', 'run/c3']).ctx
+  expect((await actions.frames({ conversation: BRANCH, message: 4 }, trimmed)).frames).toEqual([])
 })
 
 it('a script that asked and then failed still ends its round', async () => {
   const branch = [
     ...ask(60, 'ask2'),
     ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
-    ...script(40, 'failing', 1, true),
+    ...script(40, 'failing', true),
     ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
   ]
-  const { ctx } = fixture(branch, [question(2, 'ask2')])
+  const { ctx } = fixture(branch, [question(2, 'ask2')], ['failing/c1'])
   const reel = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
   expect(reel.frames.map((frame) => frame.entry)).toEqual([41, 51])
 })

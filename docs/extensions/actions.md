@@ -90,7 +90,7 @@ Call actions from the UI in one of two ways:
 </Button>
 ```
 
-Agents call actions in codemode with `await ultimate.action('todos', 'list', args)`, returning the result directly
+Agents call actions in codemode with `await tools.action({extension: 'todos', action: 'list', args})`, returning the result directly
 or throwing the action's error. Calls run in-process on behalf of the calling conversation, with the sandbox abort
 signal; omitted args become null. `ultimate.extensions()` lists actions; document their args in your README.
 
@@ -113,4 +113,4 @@ and service calls they make; a failure, a model call or a tool call under one is
 This is an explicit opt-out from agent action dispatch, not a security sandbox against arbitrary agent code.
 
 The HTTP endpoint remains browser-only: requests require `Sec-Fetch-Site: same-origin` or a loopback `Origin`
-matching the server's port. A plain agent `curl` receives 403; use `ultimate.action` instead of forging browser headers.
+matching the server's port. A plain agent `curl` receives 403; use `tools.action` instead of forging browser headers.

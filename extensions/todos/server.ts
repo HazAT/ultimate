@@ -191,7 +191,7 @@ export default function todosExtension(host: ExtensionHost) {
         name: 'todo',
         deferred: true,
         description:
-          "The project's to-dos, owned by you ('ultimate') or the user ('user'): add {text, owner}, done {id}, list. Keep open loops here, not in codemode store; the user sees and ticks them in the To-dos panel, and their open questions already show there, so never add a to-do for a question. Other projects read this list with ultimate.doc('todos', 1, {project}) and ask you to add through ultimate.tell.",
+          "The project's to-dos, owned by you ('ultimate') or the user ('user'): add {text, owner}, done {id}, list. Keep open loops here, not in codemode store; the user sees and ticks them in the To-dos panel, and their open questions already show there, so never add a to-do for a question. Other projects read this list with ultimate.doc('todos', 1, {project}) and ask you to add through tools.tell.",
         parameters: obj({
           action: strEnum(['add', 'done', 'list']),
           text: opt(str()),

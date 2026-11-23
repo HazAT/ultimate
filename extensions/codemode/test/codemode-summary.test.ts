@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { fixedLine, parseSummary, scrub, summaryInput } from '../summary.ts'
+import { fixedLine, parseSummary, scrub, summaryCalls, summaryInput } from '../summary.ts'
 
 it('labels a script with no call or one read-only call without the model', () => {
   expect(fixedLine([])).toEqual({ line: 'Ran a script without tool calls' })
@@ -30,7 +30,11 @@ it('labels a failed read-only or empty script without the model, and asks it whe
 })
 
 it('asks the model for actions, writes, commands and several calls', () => {
-  const action = { name: 'ultimate.action', args: ['conversations', 'conclude', {}], status: 'ok' }
+  const action = {
+    name: 'action',
+    args: { extension: 'conversations', action: 'conclude', args: {} },
+    status: 'ok',
+  }
   expect(fixedLine([action])).toBeUndefined()
   expect(fixedLine([{ name: 'bash', args: { command: 'ls' }, status: 'ok' }])).toBeUndefined()
   expect(fixedLine([{ name: 'write', args: { path: 'a' }, status: 'ok' }])).toBeUndefined()
@@ -40,13 +44,17 @@ it('asks the model for actions, writes, commands and several calls', () => {
 
 it('sends only the calls and a failure, never the script or a result', () => {
   const conclude = {
-    name: 'ultimate.action',
-    args: ['conversations', 'conclude', { ids: [1] }],
+    name: 'action',
+    args: { extension: 'conversations', action: 'conclude', args: { ids: [1] } },
     status: 'ok',
   }
   expect(JSON.parse(summaryInput([conclude]))).toEqual({
     calls: [
-      { name: 'ultimate.action', status: 'ok', args: '["conversations","conclude",{"ids":[1]}]' },
+      {
+        name: 'action',
+        status: 'ok',
+        args: '{"extension":"conversations","action":"conclude","args":{"ids":[1]}}',
+      },
     ],
   })
   expect(JSON.parse(summaryInput([], 'Error: no such conversation'))).toEqual({
@@ -59,8 +67,12 @@ it('removes credentials from arguments and errors before they reach the summary 
   const input = summaryInput(
     [
       {
-        name: 'ultimate.action',
-        args: ['secrets', 'set', { name: 'GH', value: 'v', apiKey: 'sk-live-1' }],
+        name: 'action',
+        args: {
+          extension: 'secrets',
+          action: 'set',
+          args: { name: 'GH', value: 'v', apiKey: 'sk-live-1' },
+        },
         status: 'ok',
       },
       {
@@ -120,8 +132,12 @@ it('drops the word after a credential name, and unsafe object keys, through summ
       status: 'ok',
     },
     {
-      name: 'ultimate.action',
-      args: ['secrets', 'set', { nested: { ghp_abcdefghij1234567890: 'v', session: 's3ss10n' } }],
+      name: 'action',
+      args: {
+        extension: 'secrets',
+        action: 'set',
+        args: { nested: { ghp_abcdefghij1234567890: 'v', session: 's3ss10n' } },
+      },
       status: 'ok',
     },
     {
@@ -163,4 +179,16 @@ it('parses the line and effect, and rejects anything else', () => {
   })
   expect(() => parseSummary('{"effect":true}')).toThrow('No summary object')
   expect(() => parseSummary('Concluded things')).toThrow('No summary object')
+})
+
+it('never sends a cut argument preview, which reads as prose once its JSON is broken', () => {
+  const cut = '{"command":"mysql --password correct horse battery staple -e \\"select'
+  const calls = summaryCalls([{ name: 'bash', args: cut, status: 'ok' }])
+  expect(calls).toEqual([{ name: 'bash', args: '[arguments cut]', status: 'ok' }])
+  const input = summaryInput(calls)
+  for (const word of ['correct', 'horse', 'battery', 'staple']) expect(input).not.toContain(word)
+})
+
+it('labels a script resumed after a restart neutrally, since its replayed reads went unrecorded', () => {
+  expect(fixedLine([], undefined, true)).toEqual({ line: 'Ran a script' })
 })

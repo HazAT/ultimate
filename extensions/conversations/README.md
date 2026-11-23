@@ -56,7 +56,7 @@ prompt cache (on the Claude Code path a full rewrite of the context), and a list
 conclude and retitle. Concluded ids live in UI state `ext.conversations.concluded`.
 
 Actions are callable from the browser with `api.action` or by agents with
-`await ultimate.action('conversations', 'conclude', {ids: [N]})` in codemode. The browser never rewrites the concluded
+`await tools.action({extension: 'conversations', action: 'conclude', args: {ids: [N]}})` in codemode. The browser never rewrites the concluded
 list. No state-key migration runs automatically.
 
 - `conclude {ids:number[]}`: validates top-level conversations (unknown ids, subagents, listed roots and standing agents

@@ -29,6 +29,7 @@ import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
 import { EarlyReplies, remoteLabel, sameOwner, Serving, servesLine } from './addresses.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
+import { asleepUntilSettled, notify, settledSubmission, signalSettled } from '../../lib/settled.ts'
 
 const questionLinkOutsideLog = (message: Pick<Message, 're'>): Pick<Message, 're'> =>
   message.re !== undefined ? { re: message.re } : {}
@@ -59,6 +60,7 @@ export function delivery(host: ExtensionHost) {
       reply?: { message: Message; failed: boolean; stopped?: boolean }
     },
     | { phase: 'deliver'; submission?: SubmissionId }
+    | { phase: 'settled' }
     | {
         phase: 'reply'
         message: Message
@@ -122,6 +124,7 @@ export function delivery(host: ExtensionHost) {
               whenBusy: task.input.steer ? 'steer' : 'followUp',
               entry,
               content,
+              notify: notify(task.id),
             }
         const place = async () => {
           let submission = task.state.checkpoint.submission
@@ -179,6 +182,7 @@ export function delivery(host: ExtensionHost) {
           }
         }
         const placement = await receipt.status(ctx)
+        const notified = placement.notify?.taskId === task.id
         await runtime.commit(async (tx) => {
           const stored = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages.find(
             (item) => item.id === m.id,
@@ -196,23 +200,34 @@ export function delivery(host: ExtensionHost) {
               stored.entry = placement.entry
           }
           if (task.input.note) return terminal
-          return undefined
+          return notified ? asleepUntilSettled({ phase: 'settled' as const }) : undefined
         }, ctx)
-        if (task.input.note) return
-        const settled = await receipt.wait(ctx)
+        if (task.input.note || notified) return
+        const admittedBeforeNotify = await receipt.wait(ctx)
+        await runtime.commit(async (tx) => {
+          await signalSettled(tx, task.id, admittedBeforeNotify)
+          return asleepUntilSettled({ phase: 'settled' as const })
+        }, ctx)
+      },
+      settled: async (task, runtime, ctx) => {
+        const m = task.input.message
+        const settled = await settledSubmission(runtime, ctx)
         const answer =
           settled.status === 'done' && settled.type === 'input' ? settled.answer : undefined
-        if (
-          answer !== undefined &&
-          m.reply &&
-          (await host.harness().snapshot(EarlyReplies, ROOT_CONVERSATION_ID, ctx))?.pending[m.id]
-        ) {
-          for (const route of await host
-            .harness()
-            .commit((tx) => routesForInput(tx, recipient.id, receipt.id), ctx))
-            await runtime.waitForTask(route, ctx)
-        }
         await runtime.commit(async (tx) => {
+          const routes =
+            answer !== undefined &&
+            m.reply &&
+            (await tx.doc(EarlyReplies, ROOT_CONVERSATION_ID)).pending[m.id]
+              ? await routesForInput(tx, settled.conversationId, settled.id)
+              : []
+          if (routes.length)
+            return {
+              status: 'waiting',
+              checkpoint: { phase: 'settled' },
+              on: routes,
+              policy: 'allSettled',
+            }
           const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
           const original = messages.find((item) => item.id === m.id)
           if (!m.reply) {
@@ -351,7 +366,7 @@ export function delivery(host: ExtensionHost) {
                     remote: m.remote!,
                   },
                 },
-                content: `${error}\nIt answered its message ${m.re}${m.interim ? ' (your interim answer)' : ''}:\n${m.text}\n\nFind out why it is unreachable, then pass the answer on with ultimate.tell once it can take it, or tell the user if it needs them.`,
+                content: `${error}\nIt answered its message ${m.re}${m.interim ? ' (your interim answer)' : ''}:\n${m.text}\n\nFind out why it is unreachable, then pass the answer on with tools.tell once it can take it, or tell the user if it needs them.`,
               },
               ctx,
             )
@@ -465,7 +480,7 @@ export function delivery(host: ExtensionHost) {
     },
     abort: (task, runtime, ctx) =>
       runtime.commit(async (tx) => {
-        if (task.state.checkpoint.phase === 'deliver' && task.input.message.reply)
+        if (task.state.checkpoint.phase !== 'reply' && task.input.message.reply)
           delete (await tx.doc(EarlyReplies, ROOT_CONVERSATION_ID)).pending[task.input.message.id]
         return { status: 'terminal', outcome: { status: 'aborted' } }
       }, ctx),

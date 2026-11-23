@@ -53,7 +53,7 @@ it('finds the response that asked a question however far back the history goes',
 })
 
 it('finds a nested codemode call by the response that ran its script', async () => {
-  expect(await caller({ conversation: 44, call: 'script/3' })).toEqual({ entry: 650 })
+  expect(await caller({ conversation: 44, call: 'script/c3' })).toEqual({ entry: 650 })
 })
 
 it('names no entry when the history has no such call', async () => {

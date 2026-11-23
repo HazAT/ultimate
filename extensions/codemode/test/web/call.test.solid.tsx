@@ -37,30 +37,28 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 const agent = createAgent()
 
-it('shows the finished run and lets an agent open its returned value', async () => {
+it('shows the finished run with its calls and output', async () => {
   const call: ToolCallView = {
     id: 'call-1',
     name: 'codemode',
     args: { code: 'text("Loaded two notes"); return { total: 2 }' },
     status: 'done',
-    output: '2 calls\nLoaded two notes\n{"total":2}',
+    output: 'Script completed\nLoaded two notes\n{"total":2}',
     images: [],
     diagnostics: [],
     details: {
       calls: [
-        { name: 'ultimate.entries', args: [42], status: 'ok', ms: 7 },
-        { name: 'ultimate.search', args: ['notes'], status: 'ok', ms: 11 },
+        { id: 1, name: 'read', args: '{"path":"a.md"}', status: 'ok', durationMs: 7 },
+        { id: 2, name: 'bash', args: '{"command":"ls"}', status: 'error', durationMs: 11 },
       ],
-      value: { total: 2 },
     },
     result: {
       role: 'toolResult',
       toolCallId: 'call-1',
       toolName: 'codemode',
       content: [
-        { type: 'text', text: '2 calls' },
-        { type: 'text', text: 'Loaded two notes' },
-        { type: 'text', text: '{"total":2}' },
+        { type: 'text', text: 'Script completed\nWall time 0.1 seconds\nOutput:\n' },
+        { type: 'text', text: 'Loaded two notes\n{"total":2}' },
       ],
       isError: false,
       timestamp: 100,
@@ -69,34 +67,46 @@ it('shows the finished run and lets an agent open its returned value', async () 
   const container = renderSolid(() => <CodemodeCall call={call} core={null} />)
   await settle()
 
-  const setOpen = async (label: RegExp, open: boolean) => {
-    const control = agent
-      .snapshot()
-      .find((entry) => !entry.offPage && label.test(entry.label ?? ''))
-    if (!control) throw new Error(`Missing control: ${label}`)
-    expect(
-      (await agent.act({ steps: [{ ref: control.ref, action: 'setOpen', args: [open] }] })).ok,
-    ).toBe(true)
-    flush()
-    await settle()
-  }
-
   expect(container.textContent).toContain('2 calls')
-  await setOpen(/^Codemode #call-1:/, true)
+  expect(container.textContent).toContain('1 failed')
+  const control = agent
+    .snapshot()
+    .find((entry) => !entry.offPage && (entry.label ?? '').startsWith('Codemode #call-1:'))
+  if (!control) throw new Error('Missing control: Codemode #call-1')
+  expect(
+    (await agent.act({ steps: [{ ref: control.ref, action: 'setOpen', args: [true] }] })).ok,
+  ).toBe(true)
+  flush()
+  await settle()
   expect(container.textContent).toContain('Calls · 2')
-  expect(container.textContent).toContain('ultimate.entries')
-  expect(container.textContent).toContain('ultimate.search')
+  expect(container.textContent).toContain('7ms')
   expect([...container.querySelectorAll('pre')].map((pre) => pre.textContent)).toContain(
-    'Loaded two notes',
+    'Loaded two notes\n{"total":2}',
   )
   await expectDistinctAgentNames(agent)
+})
 
-  const tree = container.querySelector('button[aria-label^="Inspect Returned value of call "]')
-  const returned = () => document.getElementById(tree?.getAttribute('aria-controls') ?? '')
-  await setOpen(/^Inspect Returned value of call /, false)
-  expect(tree?.getAttribute('aria-expanded')).toBe('false')
-  expect(returned()).toBeNull()
-  await setOpen(/^Inspect Returned value of call /, true)
-  expect(tree?.getAttribute('aria-expanded')).toBe('true')
-  expect(returned()?.textContent).toContain('total: 2')
+it('keeps an error result that has no script header, such as a resume refused after a restart', async () => {
+  const error = 'The script cannot resume: the sandbox changed since it started (a -> b).'
+  const call: ToolCallView = {
+    id: 'call-2',
+    name: 'codemode',
+    args: { code: 'await tools.read({path: "a"})' },
+    status: 'error',
+    output: error,
+    images: [],
+    diagnostics: [],
+    details: { calls: [] },
+    result: {
+      role: 'toolResult',
+      toolCallId: 'call-2',
+      toolName: 'codemode',
+      content: [{ type: 'text', text: error }],
+      isError: true,
+      timestamp: 100,
+    },
+  }
+  const container = renderSolid(() => <CodemodeCall call={call} core={null} />)
+  await settle()
+  expect([...container.querySelectorAll('pre')].map((pre) => pre.textContent)).toContain(error)
 })

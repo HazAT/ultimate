@@ -190,9 +190,7 @@ async function fixture(
       onClose: () => {},
       onLoadError: () => {},
       onBeforeLoad: () => {},
-      harness: () => {
-        throw new Error('Not used')
-      },
+      harness: () => opened!.harness,
       system: () => {
         throw new Error('Not used')
       },
@@ -1261,6 +1259,12 @@ describe('subagents', () => {
     await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
     const [child] = await children(f.opened)
     await until(async () => f.holding.has(child.conversationId))
+    await until(async () =>
+      (await f.opened.harness.inspect(context)).tasks.some(
+        ({ record, state }) =>
+          record.kind === 'ultimate.subagent-reporter' && state.kind === 'sleeping',
+      ),
+    )
     await call(f.opened, { action: 'list' })
     await call(f.opened, { action: 'list' })
     f.childGate.release()
@@ -1674,6 +1678,27 @@ describe('subagents', () => {
       ),
     )!
     expect(JSON.stringify(nested.messages)).toContain('Remember the parent secret: violet')
+  })
+  it('starts a script’s subagents in the background and refuses a wait inside a script', async () => {
+    const { opened } = await fixture()
+    await (
+      await opened.root.submit(
+        {
+          type: 'input',
+          content: `CODE const started = await tools.subagent({action:'start',agent:'scout',task:'look'}); try { await tools.subagent({action:'wait',id:JSON.parse(await tools.subagent({action:'list'}))[0].conversationId}); } catch (error) { text(started + ' ' + error.message); }`,
+        },
+        context,
+      )
+    ).wait(context)
+    const [child] = await children(opened)
+    expect(child.background).toBe(true)
+    expect(await latestResult(opened)).toMatchObject({
+      toolName: 'codemode',
+      content: expect.arrayContaining([
+        expect.objectContaining({ text: expect.stringContaining('wait at top level') }),
+      ]),
+    })
+    await until(async () => (await reports(opened)).length === 1)
   })
   it('keeps nested parallel starts distinct and delivers a subsequent nested message', async () => {
     const { opened } = await fixture()

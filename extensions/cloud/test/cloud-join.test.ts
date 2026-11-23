@@ -232,7 +232,7 @@ it.concurrent('runs cloud.join for the UI and refuses it to agents', async () =>
       fauxAssistantMessage(
         [
           fauxToolCall('codemode', {
-            code: `return await ultimate.action('cloud', 'join', ${args});`,
+            code: `return await tools.action({extension: 'cloud', action: 'join', args: ${args}});`,
           }),
         ],
         { stopReason: 'toolUse' },

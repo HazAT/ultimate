@@ -130,7 +130,7 @@ it('sends one review input to a conversation, refuses bad reviews, and is user-o
         : fauxAssistantMessage(
             [
               fauxToolCall('codemode', {
-                code: `return await ultimate.action('review', 'send', ${JSON.stringify({ conversation: target, spec: 'x', comments: [comment()] })});`,
+                code: `return await tools.action({extension: 'review', action: 'send', args: ${JSON.stringify({ conversation: target, spec: 'x', comments: [comment()] })}});`,
               }),
             ],
             { stopReason: 'toolUse' },

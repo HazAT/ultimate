@@ -7,7 +7,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { parseConversationId } from '../../lib/ids.ts'
-import { Messages } from '../messages/api.ts'
+import { AskedCalls, Messages } from '../messages/api.ts'
 import { FramesAction } from './refs.ts'
 import type { Frame } from './refs.ts'
 
@@ -126,8 +126,6 @@ const asksTheUser = (args: Readonly<Record<string, unknown>> | undefined) =>
 const SENT = /^Message \d+ sent\.$/m
 
 type ToolResult = Extract<PiMessage, { role: 'toolResult' }>
-type NestedCall = { name?: string; args?: unknown; status?: string }
-
 function questionsOf(
   call: { id: string; name: string; arguments: Readonly<Record<string, unknown>> },
   result: ToolResult | undefined,
@@ -141,17 +139,10 @@ function questionsOf(
         result.content.some((block) => block.type === 'text' && SENT.test(block.text)))
       ? [call.id]
       : []
-  const nested = ((result?.details as { calls?: NestedCall[] } | undefined)?.calls ?? [])
-    .filter((item) => !item.name?.startsWith('ultimate.'))
-    .flatMap((item, index) =>
-      item.name === 'message' &&
-      item.status === 'ok' &&
-      asksTheUser(item.args as Readonly<Record<string, unknown>>)
-        ? [`${call.id}/${index + 1}`]
-        : [],
-    )
-  const live = [...logged].filter((id) => id.startsWith(`${call.id}/`) && !nested.includes(id))
-  return [...nested, ...live].toSorted((a, b) => Number(a.split('/')[1]) - Number(b.split('/')[1]))
+  const position = (id: string) => Number(id.split('/')[1].replace(/^c/, ''))
+  return [...logged]
+    .filter((id) => id.startsWith(`${call.id}/`))
+    .toSorted((a, b) => position(a) - position(b))
 }
 
 async function windowOf(host: ExtensionHost, branch: ConversationId, message: number) {
@@ -160,11 +151,12 @@ async function windowOf(host: ExtensionHost, branch: ConversationId, message: nu
   const asked = log.find((item) => item.id === message)
   if (!asked || asked.from !== branch || !asked.call)
     throw new Error(`#${branch} sent no message ${message}`)
-  const logged = new Set(
-    log.flatMap((item) =>
+  const logged = new Set([
+    ...log.flatMap((item) =>
       item.from === branch && item.to === 'user' && item.reply && item.call ? [item.call] : [],
     ),
-  )
+    ...((await host.harness().snapshot(AskedCalls, branch, context))?.calls ?? []),
+  ])
   const results = new Map<string, ToolResult>()
   let to: number | undefined
   for await (const entry of ownEntries(host, branch)()) {

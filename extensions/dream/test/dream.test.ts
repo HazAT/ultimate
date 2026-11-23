@@ -65,6 +65,7 @@ async function fixture() {
       [
         'subagents',
         {
+          residents: async () => [{ name: 'ultimate', description: '' }],
           standing: async () =>
             (await opened.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate,
         },
