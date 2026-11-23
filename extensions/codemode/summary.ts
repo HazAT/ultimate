@@ -2,6 +2,19 @@ import type { CallSummary } from './refs.ts'
 
 export type Call = { name: string; args: unknown; status: string }
 
+const parsedArgs = (args: string) => {
+  try {
+    return JSON.parse(args) as unknown
+  } catch {
+    return '[arguments cut]'
+  }
+}
+
+export const summaryCalls = (
+  calls: readonly { name: string; args: string; status: string }[],
+): Call[] =>
+  calls.map((call) => ({ name: call.name, args: parsedArgs(call.args), status: call.status }))
+
 const str = (value: unknown) =>
   typeof value === 'string' || typeof value === 'number' ? String(value) : JSON.stringify(value)
 

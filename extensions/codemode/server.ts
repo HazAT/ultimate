@@ -51,7 +51,7 @@ import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Summarized } from './refs.ts'
 import type { CallSummary } from './refs.ts'
 import { PendingDoc, SummaryDoc } from './api.ts'
-import { fixedLine, parseSummary, SUMMARY_SYSTEM, summaryInput } from './summary.ts'
+import { fixedLine, parseSummary, SUMMARY_SYSTEM, summaryCalls, summaryInput } from './summary.ts'
 import type { Call } from './summary.ts'
 
 const RetiredStore = defineDoc({
@@ -398,15 +398,6 @@ export const actions = {
   },
 }
 
-const summaryCalls = (calls: readonly CodemodeNestedCall[]): Call[] =>
-  calls.map((call) => ({ name: call.name, args: parsedArgs(call.args), status: call.status }))
-const parsedArgs = (args: string) => {
-  try {
-    return JSON.parse(args) as unknown
-  } catch {
-    return args
-  }
-}
 const textOf = (result: ToolExecutionResult) =>
   (result.output ?? []).flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 const scriptError = (result: ToolExecutionResult) =>
