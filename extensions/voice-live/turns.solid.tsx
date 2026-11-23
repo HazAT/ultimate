@@ -1,6 +1,6 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { Check, ChevronRight, CornerDownRight, Mic, Play, Scissors } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
@@ -305,6 +305,7 @@ function Thought(props: { turn: TurnView; text: string; streaming: boolean; fini
 
 function actionLine(name: string, args: Record<string, unknown>) {
   if (name === 'ui') {
+    if (args.op === 'act' && !Array.isArray(args.steps)) return ''
     if (args.op === 'act')
       return (args.steps as { ref: string; action: string; args?: unknown[] }[])
         .map(
@@ -564,7 +565,7 @@ export function Voicing(props: { fork: ConversationId }) {
     () => {
       const busy = conversation().busy
       const slots = conversation().live.tools ?? []
-      const turn = turns().turns.at(-1)
+      const turn = turns().turns.findLast((each) => !each.optimistic)
       const calls = [...(turn?.replies ?? []), ...(turn?.live ? [turn.live] : [])].flatMap(
         (message) =>
           message.content.flatMap((part) =>
@@ -575,8 +576,15 @@ export function Voicing(props: { fork: ConversationId }) {
       )
       const running = slots.find((slot) => slot.status !== 'done')
       const shown = running ? calls.find((call) => call.id === running.callId) : calls.at(-1)
+      const results = new Set(
+        conversation().entries.flatMap((entry) =>
+          (entry.model ?? []).flatMap((message) =>
+            message.role === 'toolResult' ? [message.toolCallId] : [],
+          ),
+        ),
+      )
       return {
-        done: calls.length - (running ? 1 : 0),
+        done: calls.filter((call) => results.has(call.id)).length,
         current:
           busy && shown
             ? `${running ? '' : 'after '}${shown.name} ${actionLine(shown.name, shown.args)}`.trim()
@@ -587,6 +595,7 @@ export function Voicing(props: { fork: ConversationId }) {
       setActivity({ ...next })
     },
   )
+  onCleanup(() => setActivity({ done: 0 }))
   useSpeaking(turns)
   return null
 }

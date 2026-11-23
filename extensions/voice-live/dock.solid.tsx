@@ -280,7 +280,11 @@ export async function sendDraft(
   fromComposer = false,
 ) {
   if (!clips.length && !typed.trim()) return
-  const busy = playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
+  const busy =
+    playerState().playing ||
+    playerState().paused ||
+    dock.phase() === 'thinking' ||
+    dock.phase() === 'sending'
   const interrupted = busy && delivery === 'steer'
   if (interrupted) dock.player.pause()
   else if (playerState().paused) dock.player.resume()
