@@ -1774,7 +1774,10 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
   const go = (await sent('go'))!
   const hold = (await sent('hold'))!
   expect([go.report, hold.report, go.id < hold.id]).toEqual([true, true, true])
-  // Answering another conversation's question later does not promote the superseded note into a report.
+  // A note the judge chose is never promoted into a report when the branch later answers another's question.
+  verdict = async () => 0.1
+  await say('chat')
+  verdict = async () => 0.9
   await sendMessage(
     f.host,
     f.recipient.id,
@@ -1782,10 +1785,14 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
     context,
   )
   await until(async () =>
-    (await f.log())!.messages.some((m) => m.from === b.id && m.to === f.recipient.id),
+    (await f.log())!.messages.some(
+      (m) => m.from === b.id && m.to === f.recipient.id && m.text.includes('Which port?'),
+    ),
   )
   await b.settled()
-  expect((await b.from()).filter((m) => m.text === 'Answer: go')).toHaveLength(1)
+  expect((await b.from()).filter((m) => m.text === 'Answer: chat')).toEqual([
+    expect.objectContaining({ judged: expect.objectContaining({ report: 0.1 }) }),
+  ])
 
   // A reply that only answers a sibling's question while the judge weighs a result leaves that result a report.
   let releaseResult: ((p: number) => void) | undefined
@@ -1868,7 +1875,9 @@ it("judges and sends a branch's answers in answer order, and a report judged whi
   f.hold.release()
   await b.settled()
   const toStarter = (await b.from()).filter((m) => m.to === 1)
-  expect(toStarter.filter((m) => m.text === 'Answer: late result' && m.report)).toHaveLength(1)
+  expect(toStarter.filter((m) => m.text === 'Answer: late result' && m.report)).toEqual([
+    expect.objectContaining({ judged: expect.objectContaining({ report: 0.9 }) }),
+  ])
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()

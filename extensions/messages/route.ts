@@ -420,7 +420,7 @@ export function route(host: ExtensionHost) {
                   (last.judged && 'report' in last.judged && last.judged.report < 0.5)
                 )
                   return []
-                return routeToStarter(last.text, {})
+                return routeToStarter(last.text, last.judged ? { judged: last.judged } : {})
               }
               const last = log.messages.findLast(
                 (m) => (m.from === id && m.to === by) || (m.from === by && m.to === id),

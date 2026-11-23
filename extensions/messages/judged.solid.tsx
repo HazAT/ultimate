@@ -14,15 +14,15 @@ export function JudgedChip(props: { judged: Judged }) {
       return {
         woke: true,
         text: 'report · no verdict',
-        title: `No verdict from Jev (${judged.error}), so it counts as a report.`,
+        title: `No verdict from Jev (${judged.error}), so it recommends a report.`,
       }
     const woke = judged.report >= 0.5
     return {
       woke,
       text: `${woke ? 'report' : 'note'} · ${percent(woke ? judged.report : 1 - judged.report)}`,
       title: woke
-        ? `Jev judged that the starter must act on or know this answer (${percent(judged.report)}).`
-        : `Jev judged this back-and-forth with the user (${percent(1 - judged.report)}): the starter reads it as a note, without waking.`,
+        ? `Jev recommends a report: the starter must act on or know this answer (${percent(judged.report)}).`
+        : `Jev recommends a note: back-and-forth with the user (${percent(1 - judged.report)}), read later without waking.`,
     }
   }
   return (
