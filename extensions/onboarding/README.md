@@ -68,15 +68,17 @@ the agent should wait for an `onboarding.choice` input before continuing.
 
 The tool renderer shows a quiet, transcript-width card:
 
-- **Extensions:** recommended extensions as checkboxes, initially checked unless the user's settings disable them.
-  The default-off built-ins (`cloud`, `parallel`, `tailscale`, `health`, `classify`, `phase`, `sounds`;
-  see [settings](../../docs/settings.md)) start unchecked unless the user's settings enable them, each with one line
-  on what it needs (a key, a service, a Worker).
-  Core-tier extensions (`ExtensionInfo.core`, such as `subagents`, `messages`, `lineage`, `onboarding` and `documents`)
-  stay checked and disabled with "core, always on": the server keeps them enabled whatever the settings say. Dependencies are checked with their extension (`phase` needs
-  `classify`).
+- **Extensions:** optional extras as checkboxes (`choices.ts`). Two recommended rows start checked unless the user's
+  settings disable one of their extensions: **Jev (TypeSafe)** turns on `classify`, `phase` and `recall` together,
+  and **Web search (Parallel)** turns on `parallel`, with a line that Ultimate can build its own web search tool
+  instead. Each says what it powers, which key it needs, what it costs and what leaves the machine. The other
+  default-off built-ins (`sounds`, `tailscale`, `health`, `cloud`; see [settings](../../docs/settings.md)) start
+  unchecked unless the user's settings enable them, each with its README line. Extensions already on are listed
+  behind "N more are on already".
   Continue applies user-global choices with `applyFirstRun`. Both checked and unchecked choices are saved explicitly;
-  project settings can still override user settings.
+  project settings can still override user settings. The choice input lists the keys (`secrets` declared by a
+  chosen extension) that are still missing, and the settled card shows each with an **Add** button that opens the
+  Secrets panel at it, turning to "set" once saved; @ultimate asks the user to add them.
 - **Project:** "Use this project's setup?", chips showing its extensions, settings, agents and skills, and its
   `.ultimate/README.md` behind "What's in it". Use it / Keep global remembers the decision through `decide`.
   The tool refuses this card when there is no project setup or it is already decided.
