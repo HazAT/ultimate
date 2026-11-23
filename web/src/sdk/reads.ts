@@ -97,11 +97,12 @@ export function createReads(api: Api | ReadAction, store: Store) {
       for (const listener of changed) listener()
     }
     function answer(event: ReadPayload & { rev?: number }) {
-      if (event.rev !== undefined && lastRev !== undefined && event.rev < lastRev) {
+      const rev = Number.isSafeInteger(event.rev) ? event.rev : undefined
+      if (rev !== undefined && lastRev !== undefined && rev < lastRev) {
         if (state.loading !== fetching) set({ loading: fetching })
         return
       }
-      if (event.rev !== undefined) lastRev = event.rev
+      if (rev !== undefined) lastRev = rev
       const wasAnswered = answered
       answered = true
       const payload =
@@ -117,7 +118,7 @@ export function createReads(api: Api | ReadAction, store: Store) {
         set({ data: event.result, error: undefined, settled: true, loading: fetching })
         return
       }
-      const failure = new ActionError(extension, name, event.status, event.error, event.rev)
+      const failure = new ActionError(extension, name, event.status, event.error, rev)
       set({ error: failure, settled: true, loading: fetching })
       const onError = errorHandler()
       if (onError) onError(failure)

@@ -9,7 +9,6 @@ import type {
   ConversationSummary,
   ModelsResponse,
   Notice,
-  ReadEvent,
   ReadPayload,
   ReadSpec,
   ServerEvents,
@@ -487,8 +486,13 @@ export function createStore(options: StoreOptions = {}) {
         spec: every === undefined ? { read } : { read, every },
         watch,
         handler: (name, raw) => {
-          if (name === 'read' && watchedReads.get(key) === watch)
-            watch.onEvent(JSON.parse(raw) as ReadEvent)
+          if (name !== 'read' || watchedReads.get(key) !== watch) return
+          const parsed = JSON.parse(raw) as ReadNotice
+          watch.onEvent(
+            parsed.rev === undefined || Number.isSafeInteger(parsed.rev)
+              ? parsed
+              : { ...parsed, rev: undefined },
+          )
         },
       })
     }

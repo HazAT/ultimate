@@ -844,3 +844,28 @@ it('gives a read the server refused as too large its error, instead of retrying 
   await vi.advanceTimersByTimeAsync(1000)
   expect(fetch.mock.calls.length).toBe(posts)
 })
+
+it('recovers from a raw SSE read frame with a non-safe-integer revision without reconnecting', async () => {
+  const { store, server, sources, latest } = setup()
+  const { createReads } = await import('../../web/src/sdk/reads.ts')
+  const readAction = vi.fn<() => Promise<{ result: unknown; rev?: number }>>()
+  const reads = createReads(readAction as never, store)
+  latest().open()
+  await tick()
+  const onError = vi.fn<(error: unknown) => void>()
+  const read = reads.get('test', 'status', null)
+  read.use({ onError })
+  await tick()
+  const sub = server.reads.at(-1)!.sub
+  latest().dispatchEvent(
+    new MessageEvent('read', {
+      data: `${sub}\n{"error":"temporary","status":500,"rev":1e400}`,
+    }),
+  )
+  expect(read.get().error).toMatchObject({ status: 500, message: 'temporary', rev: undefined })
+  expect(onError).toHaveBeenCalledTimes(1)
+  latest().send('read', { result: 'recovered', rev: 2 }, sub)
+  expect(read.get()).toMatchObject({ data: 'recovered', error: undefined, settled: true })
+  expect(sources).toHaveLength(1)
+  store.stop()
+})
