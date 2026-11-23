@@ -355,3 +355,43 @@ it('moves the phone status into the status line when both mount together', async
   )
   await registry.setLoaders({})
 })
+
+it('walks sent prompts with ↑ and ↓ like a shell, filtered by what was typed, and ends on the draft', async () => {
+  await show(12)
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  const editor = container.querySelector<HTMLTextAreaElement>('#composer-input')!
+  const send = async (text: string) => {
+    await act([
+      { ref: 'Prompt for conversation #12', action: 'setValue', args: [text] },
+      { ref: 'Send prompt to conversation #12', action: 'press' },
+    ])
+  }
+  const key = async (name: 'ArrowUp' | 'ArrowDown') => {
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }),
+    )
+    await settle()
+    flush()
+    return editor.value
+  }
+  await send('git status')
+  await send('fix the flaky test')
+  await send('git push')
+  expect(editor.value).toBe('')
+
+  expect(await key('ArrowUp')).toBe('git push')
+  expect(await key('ArrowUp')).toBe('fix the flaky test')
+  expect(await key('ArrowUp')).toBe('git status')
+  expect(await key('ArrowUp')).toBe('git status')
+  expect(await key('ArrowDown')).toBe('fix the flaky test')
+  expect(await key('ArrowDown')).toBe('git push')
+  expect(await key('ArrowDown')).toBe('')
+
+  await act([{ ref: 'Prompt for conversation #12', action: 'setValue', args: ['git'] }])
+  expect(await key('ArrowUp')).toBe('git push')
+  expect(await key('ArrowUp')).toBe('git status')
+  expect(await key('ArrowDown')).toBe('git push')
+  expect(await key('ArrowDown')).toBe('git')
+})

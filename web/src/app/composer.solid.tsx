@@ -65,6 +65,8 @@ import type { DraftFile, PastedImage } from './attachments.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
 import { clearDraft, getDraft } from './drafts.ts'
 import type { Draft } from './drafts.ts'
+import { atLastLine, newer, older, readHistory, rememberPrompt } from './prompt-history.ts'
+import type { Browse } from './prompt-history.ts'
 import {
   atFirstLine,
   mergedSteer,
@@ -360,6 +362,8 @@ function ComposerEditor(props: { dock?: boolean }) {
           ),
         )
       }
+      rememberPrompt(submitted.text)
+      browse = undefined
       clearDraft(current, submitted)
       if (current.get().images === submitted.images) current.set({ images: [] })
       if (current.get().files === submitted.files) current.set({ files: [] })
@@ -396,6 +400,34 @@ function ComposerEditor(props: { dock?: boolean }) {
     }
   }
 
+  let browse: Browse | undefined
+  const showHistory = (next: Browse | undefined, element: HTMLTextAreaElement) => {
+    if (!next) return
+    browse = next.at < readHistory().length ? next : undefined
+    update(next.shown)
+    requestAnimationFrame(() => element.setSelectionRange(next.shown.length, next.shown.length))
+  }
+  function browseHistory(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return false
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return false
+    if (loading() || sending()) return false
+    const { value: typed, selectionStart, selectionEnd } = event.currentTarget
+    const browsing = browse !== undefined && typed === browse.shown
+    if (!browsing) browse = undefined
+    if (event.key === 'ArrowDown') {
+      if (!browse || (!browsing && !atLastLine(typed, selectionEnd))) return false
+      event.preventDefault()
+      showHistory(newer(readHistory(), browse, typed), event.currentTarget)
+      return true
+    }
+    if (!browsing && !atFirstLine(typed, selectionStart)) return false
+    const next = older(readHistory(), browse, typed)
+    if (!next) return false
+    event.preventDefault()
+    showHistory(next, event.currentTarget)
+    return true
+  }
+
   function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
     if (event.isComposing) return
     if (event.key === 'ArrowUp' && !target() && queued().length > 0) {
@@ -405,6 +437,7 @@ function ComposerEditor(props: { dock?: boolean }) {
       void recall()
       return
     }
+    if (browseHistory(event)) return
     if (event.key !== 'Enter' || event.shiftKey) return
     const touchReturnInsertsNewline = touchKeyboard() && !event.metaKey && !event.ctrlKey
     if (touchReturnInsertsNewline) return
