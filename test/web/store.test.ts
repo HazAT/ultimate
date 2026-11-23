@@ -362,56 +362,52 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('retires an open whose answer was lost, and keeps its close until the server confirms it', async () => {
-    const { store, server, latest, fetch } = setup(1000)
-    latest().open()
-    await tick()
-    const batches: { subscribe: { sub: number }[]; unsubscribe: number[] }[] = []
-    const answer = (
-      kind: 'lost after the server handled it' | 'lost before the server saw it' | 'not json',
-    ) =>
+  it('replaces the stream after an ambiguous batch failure so no watch can be orphaned', async () => {
+    for (const failure of [
+      'lost after the server handled it',
+      'lost before the server saw it',
+      'not json',
+      'bad shape',
+      'bad status',
+      'hex key',
+      'endpoint 404',
+    ] as const) {
+      const { store, server, sources, latest, fetch, onFallback } = setup(1000)
+      latest().open()
+      await tick()
+      const firstStream = latest()
       fetch.mockImplementationOnce(async (path, init) => {
-        batches.push(JSON.parse(init?.body as string))
-        if (kind === 'lost before the server saw it') throw new Error('offline')
+        const { subscribe } = JSON.parse(init?.body as string) as SubscriptionsRequest
+        const sub = subscribe[0]?.sub
+        if (failure === 'lost before the server saw it') throw new Error('offline')
+        if (failure === 'endpoint 404')
+          return Response.json({ error: 'Unknown endpoint' }, { status: 404 })
         server.handle(path as string, init)
-        if (kind === 'not json') return new Response('not json')
+        if (failure === 'not json') return new Response('not json')
+        if (failure === 'bad shape') return Response.json({ ok: true, refused: [] })
+        if (failure === 'bad status') return Response.json({ ok: true, refused: { [sub]: 200 } })
+        if (failure === 'hex key')
+          return Response.json({ ok: true, refused: { [`0x${sub.toString(16)}`]: 404 } })
         throw new Error('connection reset')
       })
-    fetch.mockImplementation(async (path, init) => {
-      if ((path as string).startsWith('/api/events/'))
-        batches.push(JSON.parse(init?.body as string))
-      return server.handle(path as string, init) ?? Response.json({ providers: [], models: [] })
-    })
-    const live = () => server.subscriptions.filter((item) => !item.closed && item.docs.length)
-
-    // The open reaches the server but its answer is lost; the close sent at once never reaches it.
-    answer('lost after the server handled it')
-    answer('lost before the server saw it')
-    store.watchDoc('test.counter')
-    await tick()
-    const [first] = batches[0].subscribe
-    expect(batches[1]).toEqual({ subscribe: [], unsubscribe: [first.sub] })
-    expect(live().map((item) => item.sub)).toEqual([first.sub])
-
-    // The retry carries that close again; the server handles it, but its answer cannot be read, so the retried open
-    // is closed in turn and opened once more.
-    answer('not json')
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(batches[2].unsubscribe).toEqual([first.sub])
-    const second = batches[2].subscribe[0].sub
-    expect(batches[3]).toEqual({ subscribe: [], unsubscribe: [first.sub, second] })
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(batches.at(-1)!.subscribe).toHaveLength(1)
-    await vi.advanceTimersByTimeAsync(5000)
-    const settled = batches.length
-    await vi.advanceTimersByTimeAsync(5000)
-    expect(batches).toHaveLength(settled)
-    expect(live()).toHaveLength(1)
-    const [only] = live()
-    expect(only.sub).toBeGreaterThan(second)
-    only.send('doc', { kind: 'test.counter', value: { count: 1 } })
-    expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
-    store.stop()
+      store.watchDoc('test.counter')
+      await tick()
+      expect(firstStream.closed).toBe(true)
+      expect(store.getState().connection.status).toBe('reconnecting')
+      expect(server.subscriptions.filter((item) => !item.closed)).toEqual([])
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(sources).toHaveLength(2)
+      latest().open()
+      await tick()
+      expect(onFallback).not.toHaveBeenCalled()
+      const counters = server.subscriptions.filter(
+        (item) => !item.closed && item.docs.includes('test.counter'),
+      )
+      expect(counters).toHaveLength(1)
+      counters[0].send('doc', { kind: 'test.counter', value: { count: 1 } })
+      expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
+      store.stop()
+    }
   })
 
   it('sends the closes and opens of a switch in one request', async () => {
@@ -431,8 +427,8 @@ describe('web replica store', () => {
     store.stop()
   })
 
-  it('sends a lost close again by itself, also after an answer of the wrong shape', async () => {
-    const { store, server, latest, fetch } = setup(1000)
+  it('replaces the stream when a close POST fails ambiguously, closing the old watch cleanly', async () => {
+    const { store, server, sources, latest, fetch } = setup(1000)
     latest().open()
     const release = store.watchDoc('test.counter')
     await tick()
@@ -440,79 +436,14 @@ describe('web replica store', () => {
     fetch.mockImplementationOnce(async () => {
       throw new Error('offline')
     })
-    fetch.mockImplementationOnce(async () => Response.json({}))
     release()
     await tick()
-    expect(counter.closed).toBe(false)
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(counter.closed).toBe(false)
-    await vi.advanceTimersByTimeAsync(1000)
     expect(counter.closed).toBe(true)
-    store.stop()
-  })
-
-  it('takes an answer that does not match its request for a lost one, and leaves other subscriptions alone', async () => {
-    for (const refused of [[], 'shown view'] as const) {
-      const { store, server, latest, fetch } = setup(1000)
-      latest().open()
-      const counter = store.watchDoc('test.counter')
-      await tick()
-      const shown = server.of(undefined, true)!
-      const doc = server.of(undefined, false)!
-      // The close never reaches the server, and the answer that comes back does not fit the request.
-      fetch.mockImplementationOnce(async () =>
-        Response.json({
-          ok: true,
-          refused: refused === 'shown view' ? { [shown.sub]: 404 } : refused,
-        }),
-      )
-      counter()
-      await tick()
-      expect(doc.closed).toBe(false)
-      await vi.advanceTimersByTimeAsync(1000)
-      expect(doc.closed).toBe(true)
-      shown.send('view', view([user(1, 'still shown')]))
-      expect(store.getState().view?.entries.map((entry) => entry.id)).toEqual([1])
-      store.stop()
-    }
-  })
-
-  it('takes a refusal of its own open with a bad key or status for a lost answer, and closes what may have opened', async () => {
-    for (const bad of ['status 200', 'hex key'] as const) {
-      const { store, server, latest, fetch } = setup(1000)
-      latest().open()
-      await tick()
-      fetch.mockImplementationOnce(async (path, init) => {
-        server.handle(path as string, init)
-        const [{ sub }] = (JSON.parse(init?.body as string) as { subscribe: { sub: number }[] })
-          .subscribe
-        return Response.json({
-          ok: true,
-          refused: bad === 'status 200' ? { [sub]: 200 } : { [`0x${sub.toString(16)}`]: 404 },
-        })
-      })
-      store.watchDoc('test.counter')
-      await tick()
-      await vi.advanceTimersByTimeAsync(1000)
-      const counters = server.subscriptions.filter((item) => item.docs.includes('test.counter'))
-      expect(counters.map((item) => item.closed)).toEqual([true, false])
-      store.stop()
-    }
-  })
-
-  it('retries a request the endpoint answered 404 without leaving the conversation', async () => {
-    const { store, server, latest, fetch, onFallback } = setup()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sources).toHaveLength(2)
     latest().open()
     await tick()
-    fetch.mockImplementationOnce(async () =>
-      Response.json({ error: 'Unknown endpoint' }, { status: 404 }),
-    )
-    store.show(7 as ConversationId)
-    await tick()
-    await tick()
-    expect(onFallback).not.toHaveBeenCalled()
-    expect(store.getState().requested).toBe(7)
-    expect(server.of(7, true)).toBeDefined()
+    expect(server.subscriptions.filter((item) => !item.closed && item.docs.length)).toEqual([])
     store.stop()
   })
 
@@ -723,8 +654,8 @@ describe('web replica store', () => {
   })
 })
 
-it('retries a read after an unconfirmed batch-level 403', async () => {
-  const { store, fetch, server, latest } = setup()
+it('retries a read by reconnecting after an unconfirmed batch-level 403', async () => {
+  const { store, fetch, server, sources, latest } = setup()
   latest().open()
   await tick()
   fetch.mockResolvedValueOnce(Response.json({ error: 'Forbidden' }, { status: 403 }))
@@ -732,6 +663,9 @@ it('retries a read after an unconfirmed batch-level 403', async () => {
   store.watchRead({ extension: 'test', action: 'read', args: null }, undefined, onEvent)
   await tick()
   expect(onEvent).not.toHaveBeenCalled()
+  expect(sources).toHaveLength(2)
+  latest().open()
+  await tick()
   const reopened = server.reads.at(-1)!
   expect(reopened.closed).toBe(false)
   latest().send('read', { result: 'available', rev: 1 }, reopened.sub)

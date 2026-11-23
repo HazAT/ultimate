@@ -157,14 +157,14 @@ export function createReads(api: Api | ReadAction, store: Store) {
           args,
           { conversationId },
         ).then(
-          ({ result, rev }) => ({
+          ({ result, rev, superseded }) => ({
             data: result,
-            event: { result: (result ?? null) as JsonValue, rev },
+            event: superseded ? undefined : { result: (result ?? null) as JsonValue, rev },
           }),
           (failure: ActionError) => ({
             data: undefined,
             event:
-              failure.status === 0
+              failure.status === 0 || failure.superseded
                 ? undefined
                 : { error: failure.message, status: failure.status, rev: failure.rev },
           }),
@@ -172,6 +172,7 @@ export function createReads(api: Api | ReadAction, store: Store) {
         fetching = false
         if (
           event &&
+          (event.rev !== undefined || lastRev === undefined) &&
           readerGeneration === readersAtStart &&
           connectionGeneration === connectionAtStart
         )

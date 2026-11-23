@@ -1328,31 +1328,33 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(stopped).toHaveBeenCalledOnce()
     await stream.close()
   })
-  it('corrects a stale HTTP refetch with the authoritative revision when an unchanged poll superseded it, and stamps AbortError 500s', async () => {
+  it('marks superseded HTTP results and failures and pushes the authoritative revision after an unchanged poll, and stamps AbortError 500s', async () => {
     const { server } = await fixture(false, {
       race: `import { defineExtension } from '@earendil-works/pi-durable'
 
 let releaseStale
-let armed = false
-let stalled = false
-let completedPolls = 0
+let httpStalled = false
+let failStale = false
+let pollsAfterStall = 0
 export default defineExtension({ name: 'race' })
 export const actions = {
-  arm: async () => {
-    armed = true
+  mode: async (args) => {
+    failStale = Boolean(args?.fail)
+    httpStalled = false
+    pollsAfterStall = 0
     return true
   },
-  value: async () => {
-    if (armed) {
-      armed = false
-      stalled = true
+  value: async (_args, ctx) => {
+    if (ctx.device !== undefined) {
+      httpStalled = true
       await new Promise((resolve) => { releaseStale = resolve })
+      if (failStale) throw new Error('stale-failure')
       return 'stale-http'
     }
-    completedPolls++
+    if (httpStalled) pollsAfterStall++
     return 'A'
   },
-  status: async () => ({ stalled, completedPolls }),
+  status: async () => ({ httpStalled, pollsAfterStall }),
   release: async () => {
     releaseStale?.()
     return true
@@ -1380,25 +1382,40 @@ export const actions = {
     await until(() => answers().length === 1)
     expect(answers()[0]).toEqual({ result: 'A', rev: expect.any(Number) })
 
-    const beforePolls = (
-      (await post(server, '/api/extensions/race/actions/status', { args: null })).data.result as {
-        completedPolls: number
-      }
-    ).completedPolls
-    await post(server, '/api/extensions/race/actions/arm', { args: null })
-    const staleHttp = post(server, '/api/extensions/race/actions/value', { args: null })
+    await post(server, '/api/extensions/race/actions/mode', { args: { fail: false } })
+    const staleOk = post(server, '/api/extensions/race/actions/value', { args: null })
     await until(async () => {
       const state = (await post(server, '/api/extensions/race/actions/status', { args: null })).data
-        .result as { stalled: boolean; completedPolls: number }
-      return state.stalled && state.completedPolls > beforePolls
+        .result as { httpStalled: boolean; pollsAfterStall: number }
+      return state.httpStalled && state.pollsAfterStall >= 1
     })
     expect(answers()).toHaveLength(1)
     await post(server, '/api/extensions/race/actions/release', { args: null })
-    const httpReply = await staleHttp
-    expect(httpReply.status).toBe(200)
+    const okReply = await staleOk
+    expect(okReply).toEqual({
+      status: 200,
+      data: { result: 'stale-http', rev: expect.any(Number), superseded: true },
+    })
     await until(() => answers().length === 2)
     expect(answers()[1].result).toBe('A')
-    expect(answers()[1].rev).toBeGreaterThan(httpReply.data.rev as number)
+    expect(answers()[1].rev).toBeGreaterThan(okReply.data.rev as number)
+
+    await post(server, '/api/extensions/race/actions/mode', { args: { fail: true } })
+    const staleFail = post(server, '/api/extensions/race/actions/value', { args: null })
+    await until(async () => {
+      const state = (await post(server, '/api/extensions/race/actions/status', { args: null })).data
+        .result as { httpStalled: boolean; pollsAfterStall: number }
+      return state.httpStalled && state.pollsAfterStall >= 1
+    })
+    await post(server, '/api/extensions/race/actions/release', { args: null })
+    const failReply = await staleFail
+    expect(failReply).toEqual({
+      status: 500,
+      data: { error: 'stale-failure', rev: expect.any(Number), superseded: true },
+    })
+    await until(() => answers().length === 3)
+    expect(answers()[2].result).toBe('A')
+    expect(answers()[2].rev).toBeGreaterThan(failReply.data.rev as number)
 
     const aborted = await post(server, '/api/extensions/race/actions/abortError', { args: null })
     expect(aborted).toEqual({

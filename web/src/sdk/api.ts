@@ -42,13 +42,22 @@ export class ActionError extends Error {
   /** HTTP status: 404 for an unknown action, 500 when it threw. */
   readonly status: number
   readonly rev?: number
-  constructor(extension: string, action: string, status: number, message: string, rev?: number) {
+  readonly superseded?: boolean
+  constructor(
+    extension: string,
+    action: string,
+    status: number,
+    message: string,
+    rev?: number,
+    superseded?: boolean,
+  ) {
     super(message)
     this.name = 'ActionError'
     this.extension = extension
     this.action = action
     this.status = status
     this.rev = rev
+    this.superseded = superseded
   }
 }
 
@@ -58,10 +67,12 @@ export const actionMessage = (error: ActionError) =>
 export class HttpError extends Error {
   readonly status: number
   readonly rev?: number
-  constructor(status: number, message: string, rev?: number) {
+  readonly superseded?: boolean
+  constructor(status: number, message: string, rev?: number, superseded?: boolean) {
     super(message)
     this.status = status
     this.rev = rev
+    this.superseded = superseded
   }
 }
 
@@ -86,8 +97,8 @@ async function postJson<T>(
     keepalive,
     signal,
   })
-  const data: unknown = await response.json().catch(() => ({}))
   if (!response.ok) {
+    const data: unknown = await response.json().catch(() => ({}))
     const error =
       data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
         ? data.error
@@ -96,8 +107,14 @@ async function postJson<T>(
       data && typeof data === 'object' && 'rev' in data && typeof data.rev === 'number'
         ? data.rev
         : undefined
-    throw new HttpError(response.status, error, rev)
+    const superseded =
+      data && typeof data === 'object' && 'superseded' in data && data.superseded === true
+        ? true
+        : undefined
+    throw new HttpError(response.status, error, rev, superseded)
   }
+  const data: unknown = await response.json()
+  if (!data || typeof data !== 'object') throw new Error('Invalid response JSON')
   return data as T
 }
 
@@ -106,19 +123,31 @@ async function runExtensionAction<Args, Result>(
   { extension, name }: ActionRef<Args, Result>,
   args: Args | undefined,
   { conversationId, signal, keepalive }: ActionOptions,
-): Promise<{ result: Result; rev?: number }> {
+): Promise<{ result: Result; rev?: number; superseded?: true }> {
   const path = `/api/extensions/${encodeURIComponent(extension)}/actions/${encodeURIComponent(name)}`
   const body: ExtensionActionRequest = { args: args ?? null, conversationId }
   try {
-    const { result, rev } = await postJson<ExtensionActionResponse>(request, path, body, {
-      signal,
-      keepalive,
-    })
-    return { result: result as Result, rev }
+    const { result, rev, superseded } = await postJson<ExtensionActionResponse>(
+      request,
+      path,
+      body,
+      {
+        signal,
+        keepalive,
+      },
+    )
+    return { result: result as Result, rev, superseded }
   } catch (error) {
     if (signal?.aborted) throw error
     const http = error instanceof HttpError ? error : undefined
-    throw new ActionError(extension, name, http?.status ?? 0, errorMessage(error), http?.rev)
+    throw new ActionError(
+      extension,
+      name,
+      http?.status ?? 0,
+      errorMessage(error),
+      http?.rev,
+      http?.superseded,
+    )
   }
 }
 
@@ -126,16 +155,11 @@ export type ReadAction = <Args, Result>(
   ref: ActionRef<Args, Result>,
   args?: Args,
   options?: ActionOptions,
-) => Promise<{ result: Result; rev?: number }>
+) => Promise<{ result: Result; rev?: number; superseded?: true }>
 
 const readActions = new WeakMap<Api, ReadAction>()
 
 export const readActionOf = (api: Api): ReadAction => readActions.get(api)!
-
-export function createReadAction(options: { fetch?: typeof fetch } = {}): ReadAction {
-  const request = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))
-  return (ref, args, call = {}) => runExtensionAction(request, ref, args, call)
-}
 
 export function createApi(store: Store, options: { fetch?: typeof fetch } = {}) {
   const request = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args))

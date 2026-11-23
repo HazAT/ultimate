@@ -25,7 +25,7 @@ function setup(status = 'open') {
     connection = next
     for (const listener of listeners) listener()
   }
-  const action = vi.fn<() => Promise<{ result: unknown; rev?: number }>>()
+  const action = vi.fn<() => Promise<{ result: unknown; rev?: number; superseded?: true }>>()
   return {
     watched,
     store,
@@ -220,6 +220,39 @@ it('does not mark a mounted read settled after a status-0 network failure before
   watched[0].send({ result: 'from sse', rev: 1 })
   await done
   expect(settled).toBe(true)
+})
+
+it('does not let an unversioned HTTP error overwrite an authoritative sequenced answer', async () => {
+  const { watched, reads, action, store } = setup()
+  const onError = vi.fn<(error: ActionError) => void>()
+  const read = reads.get('test', 'status', null)
+  read.use({ onError })
+  watched[0].send({ result: 'good', rev: 5 })
+  action.mockRejectedValueOnce(new ActionError('test', 'status', 503, 'Bad gateway'))
+  await read.refetch()
+  expect(read.get()).toMatchObject({
+    data: 'good',
+    error: undefined,
+    loading: false,
+    settled: true,
+  })
+  expect(onError).not.toHaveBeenCalled()
+  expect(store.notify).not.toHaveBeenCalled()
+})
+
+it('ignores a superseded HTTP failure even when HTTP arrives before the corrective SSE frame', async () => {
+  const { watched, reads, action, store } = setup()
+  const onError = vi.fn<(error: ActionError) => void>()
+  const read = reads.get('test', 'status', null)
+  read.use({ onError })
+  watched[0].send({ result: 'A', rev: 1 })
+  action.mockRejectedValueOnce(new ActionError('test', 'status', 500, 'stale failure', 2, true))
+  await read.refetch()
+  expect(read.get()).toMatchObject({ data: 'A', error: undefined, loading: false, settled: true })
+  expect(onError).not.toHaveBeenCalled()
+  expect(store.notify).not.toHaveBeenCalled()
+  watched[0].send({ result: 'A', rev: 3 })
+  expect(read.get()).toMatchObject({ data: 'A', error: undefined, loading: false, settled: true })
 })
 
 it('answers a refetch of an unwatched read itself, and stays quiet when its request never reached the server', async () => {

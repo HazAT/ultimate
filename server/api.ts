@@ -182,11 +182,22 @@ async function runAction(
   [, name, key]: RegExpExecArray,
   data: Record<string, unknown>,
 ) {
-  if (!browserRequest(request))
-    throw new HttpError(403, 'Extension actions require a browser request')
-  if (!extensions.action(name, key)) throw new HttpError(404, 'Unknown extension action')
+  if (!browserRequest(request)) {
+    const { error, rev } = reads.refused(403, 'Extension actions require a browser request')
+    reply(response, 403, { error, rev })
+    return
+  }
+  if (!extensions.action(name, key)) {
+    const { error, rev } = reads.refused(404, 'Unknown extension action')
+    reply(response, 404, { error, rev })
+    return
+  }
   const id = data.conversationId as number | undefined
-  if (!validConversationId(id)) throw new HttpError(400, 'Invalid conversation id')
+  if (!validConversationId(id)) {
+    const { error, rev } = reads.refused(400, 'Invalid conversation id')
+    reply(response, 400, { error, rev })
+    return
+  }
   const args = argsOf(data)
   const { rev, publish } = reads.answering({
     extension: name,
@@ -210,8 +221,8 @@ async function runAction(
       deviceOf(request.headers),
       sourceOf(request.headers),
     )
-    publish({ result: result ?? null })
-    reply(response, 200, { result, rev })
+    const current = publish({ result: result ?? null })
+    reply(response, 200, { result, rev, ...(current ? {} : { superseded: true }) })
   } catch (error) {
     const clientLeft = controller.signal.aborted
     const aborted = clientLeft || (error as Error)?.name === 'AbortError'
@@ -220,8 +231,12 @@ async function runAction(
       0,
       500,
     )
-    if (!clientLeft) publish({ error: userFacingActionError, status: 500 })
-    reply(response, 500, { error: userFacingActionError, rev })
+    const current = clientLeft ? true : publish({ error: userFacingActionError, status: 500 })
+    reply(response, 500, {
+      error: userFacingActionError,
+      rev,
+      ...(current ? {} : { superseded: true }),
+    })
   } finally {
     response.off('close', cancel)
   }

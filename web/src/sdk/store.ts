@@ -156,12 +156,10 @@ export function createStore(options: StoreOptions = {}) {
   const live = new Map<string, { sub: number; watch?: ReadWatch }>()
   const opening = new Map<number, { spec: Spec; failed: Refused }>()
   const closing = new Set<number>()
-  const retryingCloses = new Set<number>()
   let opened = false
   let cancelRetry: Cancel | undefined
   let cancelReconcile: Cancel | undefined
   let cancelResubscribe: Cancel | undefined
-  let cancelCloseRetry: Cancel | undefined
   let flushQueued = false
   let flushing = false
   let noticeId = 0
@@ -301,10 +299,19 @@ export function createStore(options: StoreOptions = {}) {
     flushQueued = true
     queueMicrotask(flush)
   }
-  function clearCloseRetry() {
-    cancelCloseRetry?.()
-    cancelCloseRetry = undefined
-    retryingCloses.clear()
+  function reconnectAfterRetry() {
+    cancelRetry?.()
+    multiplexedEventSource?.close()
+    multiplexedEventSource = undefined
+    streamId = undefined
+    flushing = false
+    flushQueued = false
+    handlers.clear()
+    opening.clear()
+    closing.clear()
+    live.clear()
+    if (state.connection.status === 'open') setConnection('reconnecting')
+    cancelRetry = retryAfter(options.retryMs ?? 1000, connect)
   }
   function flush() {
     if (!flushQueued || flushing) return
@@ -313,20 +320,13 @@ export function createStore(options: StoreOptions = {}) {
     if (stream === undefined || (!opening.size && !closing.size)) return
     flushing = true
     const opens = new Map(opening)
-    const closes = [...new Set([...retryingCloses, ...closing])]
+    const closes = [...closing]
     opening.clear()
     closing.clear()
-    clearCloseRetry()
     const batch: SubscriptionsRequest = {
       subscribe: [...opens].map(([sub, { spec }]) => ({ sub, ...spec })),
       unsubscribe: closes,
     }
-    const unanswered = (status = 0) => ({
-      refused: Object.fromEntries(
-        [...opens].map(([sub, { spec }]) => [sub, 'read' in spec ? status : 0]),
-      ),
-      confirmed: false,
-    })
     void request(`/api/events/${stream}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -334,32 +334,35 @@ export function createStore(options: StoreOptions = {}) {
     })
       .then(async (response) => {
         if (response.status === STREAM_GONE_RECONNECT_RESUBSCRIBES) return 'gone' as const
-        if (!response.ok) return unanswered(response.status === 413 ? 413 : 0)
+        if (response.status === 413) {
+          const readRefusals = Object.fromEntries(
+            [...opens].filter(([, { spec }]) => 'read' in spec).map(([sub]) => [sub, 413]),
+          )
+          const hasOther =
+            closes.length > 0 || [...opens.values()].some(({ spec }) => !('read' in spec))
+          return Object.keys(readRefusals).length
+            ? { refused: readRefusals, reconnect: hasOther }
+            : ('ambiguous' as const)
+        }
+        if (!response.ok) return 'ambiguous' as const
         const answer = (await response.json()) as Partial<SubscriptionsAnswer>
         return answeredFor(opens, answer)
-          ? { refused: answer.refused, confirmed: true }
-          : unanswered()
+          ? { refused: answer.refused, reconnect: false }
+          : ('ambiguous' as const)
       })
-      .catch(() => unanswered())
+      .catch(() => 'ambiguous' as const)
       .then((result) => {
         if (streamId !== stream) return
         if (result === 'gone') return connect()
-        const { refused, confirmed } = result
-        for (const [id, status] of Object.entries(refused))
-          if (confirmed || status === 413) {
-            const sub = Number(id)
-            handlers.delete(sub)
-            closing.delete(sub)
-          }
-        if (!confirmed && closes.length) {
-          for (const sub of closes) retryingCloses.add(sub)
-          cancelCloseRetry = retryAfter(options.retryMs ?? 1000, () => {
-            for (const sub of retryingCloses) closing.add(sub)
-            clearCloseRetry()
-            scheduleFlush()
-          })
+        if (result === 'ambiguous') return reconnectAfterRetry()
+        for (const id of Object.keys(result.refused)) {
+          const sub = Number(id)
+          handlers.delete(sub)
+          closing.delete(sub)
         }
-        for (const [sub, status] of Object.entries(refused)) opens.get(Number(sub))?.failed(status)
+        for (const [sub, status] of Object.entries(result.refused))
+          opens.get(Number(sub))?.failed(status)
+        if (result.reconnect) reconnectAfterRetry()
       })
       .finally(() => {
         if (streamId !== stream) return
@@ -575,7 +578,6 @@ export function createStore(options: StoreOptions = {}) {
           handlers.clear()
           opening.clear()
           closing.clear()
-          clearCloseRetry()
           live.clear()
           reconcile()
           flush()
@@ -618,7 +620,6 @@ export function createStore(options: StoreOptions = {}) {
       cancelReconcile = undefined
       cancelResubscribe?.()
       cancelResubscribe = undefined
-      clearCloseRetry()
 
       streamId = undefined
       flushing = false

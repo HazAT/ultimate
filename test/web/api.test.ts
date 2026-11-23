@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
-import { ActionError, createApi, createReadAction } from '../../web/src/sdk/api.ts'
+import { ActionError, createApi, readActionOf } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
 import { createUiState } from '../../web/src/sdk/ui-state.ts'
 import { actionRef } from '../../shared/extension-api.ts'
@@ -10,7 +10,7 @@ function setup(respond: (url: string, init: RequestInit) => Response | Promise<R
     respond(input as string, init!),
   )
   const api = createApi(createStore(), { fetch })
-  const readAction = createReadAction({ fetch })
+  const readAction = readActionOf(api)
   return { api, readAction, fetch }
 }
 const ref = (extension: string, name: string) => actionRef<unknown, unknown>(extension, name)
@@ -58,6 +58,22 @@ describe('extension actions', () => {
     })
     const missing = setup(() => json(404, { error: 'Unknown extension action' }))
     await expect(missing.api.action(ref('notes', 'nope'))).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('treats a truncated or non-JSON 200 body as a status-0 transport failure rather than a null result', async () => {
+    const { api, readAction } = setup(
+      () =>
+        new Response('{truncated', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    )
+    await expect(readAction(ref('notes', 'list'))).rejects.toMatchObject({
+      status: 0,
+      extension: 'notes',
+      action: 'list',
+    })
+    await expect(api.action(ref('notes', 'list'))).rejects.toMatchObject({ status: 0 })
   })
 
   it('fails a 503 like any other server error', async () => {

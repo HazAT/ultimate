@@ -77,6 +77,7 @@ export interface ExtensionActionRequest {
 export interface ExtensionActionResponse {
   result: JsonValue
   rev?: number
+  superseded?: true
 }
 type AlwaysEnabledCore = true
 export interface ExtensionInfo {

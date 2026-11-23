@@ -11,7 +11,6 @@ interface Entry {
   spec: ReadSpec
   subscribers: Map<symbol, { every?: number; send: Send }>
   sent?: string
-  sentRev?: number
   broadcastRev?: number
   answeredAt: number
   running?: AbortController
@@ -24,7 +23,7 @@ let nextRev = 0
 export const readKey = ({ extension, action, args, conversation }: ReadSpec) =>
   JSON.stringify([extension, action, args ?? null, conversation ?? null])
 
-const failure = (error: unknown, status?: number): ReadPayload => ({
+const failure = (error: unknown, status?: number) => ({
   error: (error instanceof Error ? error.message : String(error)).slice(0, 500),
   status: status ?? (error as { status?: number } | undefined)?.status ?? 500,
 })
@@ -34,19 +33,15 @@ export function createReads(run: Run, now = () => Date.now()) {
 
   function publish(entry: Entry, startedAt: number, event: ReadPayload) {
     if (startedAt < entry.shown) {
-      if (
-        entry.sent !== undefined &&
-        entry.sentRev !== undefined &&
-        entry.broadcastRev !== entry.sentRev
-      ) {
-        entry.broadcastRev = entry.sentRev
+      if (entry.sent !== undefined && entry.broadcastRev !== entry.shown) {
+        entry.broadcastRev = entry.shown
         const authoritative: ReadEvent = {
           ...(JSON.parse(entry.sent) as ReadPayload),
-          rev: entry.sentRev,
+          rev: entry.shown,
         }
         for (const { send } of entry.subscribers.values()) send(authoritative)
       }
-      return
+      return false
     }
     entry.shown = startedAt
     entry.answeredAt = now()
@@ -55,18 +50,15 @@ export function createReads(run: Run, now = () => Date.now()) {
     const temporary = 'error' in event && event.status >= 500
     if (temporary) {
       entry.sent = undefined
-      entry.sentRev = undefined
       entry.broadcastRev = startedAt
       for (const { send } of entry.subscribers.values()) send(stamped)
     } else if (json !== entry.sent) {
       entry.sent = json
-      entry.sentRev = startedAt
       entry.broadcastRev = startedAt
       for (const { send } of entry.subscribers.values()) send(stamped)
-    } else {
-      entry.sentRev = startedAt
     }
     schedule(entry)
+    return true
   }
 
   function schedule(entry: Entry) {
@@ -117,7 +109,7 @@ export function createReads(run: Run, now = () => Date.now()) {
       own.subscribers.set(id, { every, send })
       if (own.sent === undefined) runOnce(own)
       else {
-        send({ ...(JSON.parse(own.sent) as ReadPayload), rev: own.sentRev! })
+        send({ ...(JSON.parse(own.sent) as ReadPayload), rev: own.shown })
         schedule(own)
       }
       return () => {
@@ -134,12 +126,11 @@ export function createReads(run: Run, now = () => Date.now()) {
       const entry = entries.get(key)
       return {
         rev,
-        publish: (event: ReadPayload) => {
-          if (entry && entries.get(key) === entry) publish(entry, rev, event)
-        },
+        publish: (event: ReadPayload) =>
+          entry && entries.get(key) === entry ? publish(entry, rev, event) : true,
       }
     },
-    refused: (status: number, message: string): ReadEvent => ({
+    refused: (status: number, message: string) => ({
       ...failure(message, status),
       rev: ++nextRev,
     }),
