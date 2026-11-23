@@ -1134,7 +1134,7 @@ it('has no posting action at the installed codemode boundary', async () => {
         fauxAssistantMessage(
           [
             fauxToolCall('codemode', {
-              code: `return await ultimate.action('messages', '${action}', {to:'user',text:'fake'});`,
+              code: `return await tools.action({extension: 'messages', action: '${action}', args: {to:'user',text:'fake'}});`,
             }),
           ],
           { stopReason: 'toolUse' },
@@ -1198,15 +1198,15 @@ it('keeps sequential and parallel message calls distinct within one codemode scr
     expect(new Set(log?.messages.map((m) => m.id)).size).toBe(5)
     // Each message records the call that sent it: the script's nested call, or the direct call's own id.
     expect(log?.messages.slice(0, 2).map((m) => [m.text, m.call])).toEqual([
-      ['Sequential 1', 'script/1'],
-      ['Sequential 2', 'script/2'],
+      ['Sequential 1', 'script/c1'],
+      ['Sequential 2', 'script/c2'],
     ])
     expect(
       log?.messages
         .slice(2, 4)
         .map((m) => m.call)
         .toSorted(),
-    ).toEqual(['script/3', 'script/4'])
+    ).toEqual(['script/c3', 'script/c4'])
     expect(log?.messages.at(-1)).toMatchObject({ text: 'Direct', call: 'm' })
     // The script's nested messages could not end the run; the direct message did, before 'Complete'.
     const view = await server.root.context(context)

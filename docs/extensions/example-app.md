@@ -171,7 +171,7 @@ For a request such as "build a triage surface for this repo's GitHub issues":
 3. **Write `server.ts`**: `defineExtension({ name })` and `actions` that wrap those commands with `ctx.exec`, validate
    their args, and return small JSON shaped for the UI. Return setup states (missing tool, no login, no repository)
    as data, so the UI can say what to do.
-4. **Check each action with codemode `ultimate.action`** (see [actions](actions.md)) before any UI exists.
+4. **Check each action with codemode `tools.action`** (see [actions](actions.md)) before any UI exists.
 5. **Write `web.solid.tsx`** from the Commits example: a typed ref per action; keep `Header`, `Dock`
    with `Conversation variant="dock"`, and `StatusLine`; replace the list and the detail. Read with `useAction`, act with `api.action` then `refetch`, keep
    the selection and filters in `useExtensionUiState`, and hand work to the agent with `api.submit(text, 'followUp')`,

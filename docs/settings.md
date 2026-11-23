@@ -37,7 +37,7 @@ cgroup (`Delegate=yes`, `DelegateSubgroup=core`, as `pnpm setup:machine` writes 
 cgroup under `work/`, which the kernel kills as a whole when `work/` runs out, so the core keeps running. Read at start.
 `remotes` (user settings only, `{ "<machine>": { "<project>": "<url>" } }`) names other machines' Ultimate instances,
 for example `{ "laptop": { "my-app": "https://laptop.tail1234.ts.net:4747" } }`: codemode's `{ project }` reads and
-`ultimate.tell` reach a project on another machine at that URL (its Tailscale Serve address; the caller's tailnet login
+`tools.tell` reach a project on another machine at that URL (its Tailscale Serve address; the caller's tailnet login
 must be in its `tailscale.allow`). A project running on this machine answers here first unless another machine is
 named; a project listed on several machines needs a `machine`. Cloud backups' register is asked only for projects
 `remotes` does not name (`lib/remote.ts`).

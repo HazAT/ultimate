@@ -15,7 +15,7 @@ Each page request says who caused it, in headers the server reads with `sourceOf
 
 - `x-ultimate-source: agent` when a kit control's change handler ran for an agent's `act` (ui-sdk's `details.source === 'agent'`); the kit wraps its handlers in `writingAs(details.source, …)` from `@/sdk/solid`, and every write the handler starts synchronously carries it. `app` inside `writingAs('app', …)`. Otherwise `person`, or `agent` on a page an agent opened (the browser tool marks it `ultimate.driven`).
 
-The server adds the device (`deviceOf`). An agent's own server-side action call (`ultimate.action`) is `agent` without asking the page. The page's claim is an attribution label for the log, not a permission: any page could send any value, and nothing is allowed or refused because of it.
+The server adds the device (`deviceOf`). An agent's own server-side action call (`tools.action`) is `agent` without asking the page. The page's claim is an attribution label for the log, not a permission: any page could send any value, and nothing is allowed or refused because of it.
 
 ## Event
 

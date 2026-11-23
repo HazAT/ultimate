@@ -119,7 +119,7 @@ contributions, secrets, prompt sections and hooks, and its folder. Empty groups 
 ## Actions
 
 This default-on built-in exports browser actions. Settings choices and completion actions are user-only: agents
-cannot apply them through codemode `ultimate.action`.
+cannot apply them through codemode `tools.action`.
 
 - `start { root?, instructions? }`: starts the flow above once per root, returning `{ id }`; user-only.
 - `walkthrough`: has @ultimate run the walkthrough again, without setup, returning `{ id }`; user-only.

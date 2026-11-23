@@ -13,7 +13,7 @@ export default defineWebExtension({
   toolLines: { codemode: CodemodeLine },
   documents: [
     {
-      kind: 'codemode.store',
+      kind: 'pi.codemode.store',
       title: 'Store',
       icon: DatabaseIcon,
       component: StoreDocument,

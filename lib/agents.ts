@@ -176,17 +176,23 @@ export function definitionAgent(
     ...new Map([...parent.tools, ...parent.deferred].map((tool) => [tool.name, tool])).values(),
   ]
   const named = [...(definition?.tools ?? []), ...(definition?.addTools ?? [])]
+  const offered = tools.filter(
+    (tool) =>
+      !excludeTools.includes(tool.name) &&
+      (!definition?.tools || definition.tools.includes(tool.name)),
+  )
+  const scriptOnly = offered.some((tool) => tool.name === 'codemode')
+    ? parent.callable.filter(
+        (tool) => tool.callers?.includes('model') === false && !excludeTools.includes(tool.name),
+      )
+    : []
   return {
     modelTools: {
       add: tools.filter(
         (tool) => tool.deferred && !excludeTools.includes(tool.name) && named.includes(tool.name),
       ),
     },
-    tools: tools.filter(
-      (tool) =>
-        !excludeTools.includes(tool.name) &&
-        (!definition?.tools || definition.tools.includes(tool.name)),
-    ),
+    tools: [...offered, ...scriptOnly],
     extensions: parent.extensions.filter(
       (extension) => !excludeExtensions.includes(extension.name),
     ),

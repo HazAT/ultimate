@@ -64,7 +64,7 @@ whose documents or actions the browser uses describes them in `refs.ts`: `docRef
 `shared/extension-api.ts`, the extension's event tokens (`defineEvent`), and the entry kinds other extensions read
 (`defineEntry<D>(kind)` from Pi Durable, so a renderer narrows with `Token.is(entry)` instead of casting `entry.data`).
 `api-file-shape` holds it to the same documentation as `api.ts`: every action ref names its arguments and result,
-since agents read it before `ultimate.action`. It stays browser-safe: runtime imports of `shared/` and Pi Durable's
+since agents read it before `tools.action`. It stays browser-safe: runtime imports of `shared/` and Pi Durable's
 `defineEntry` only, types only from packages, `shared/` and
 extensions' `refs.ts` or `types.ts`, and `tsconfig.web.json` type-checks it with the web.
 
