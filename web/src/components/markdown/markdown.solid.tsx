@@ -148,19 +148,19 @@ function ConfirmedLink(props: {
       </Button>
       <Dialog onOpenChange={setOpen} open={open()}>
         <DialogContent class="gap-0 overflow-hidden p-0 sm:max-w-md">
-          <div class="px-5 pt-5 pb-4">
+          <div class="px-4 pt-4 pb-3">
             <DialogTitle class="flex items-center gap-2 text-[14px] font-medium">
               <ExternalLink aria-hidden="true" class="size-4" />
               Open external link?
             </DialogTitle>
-            <DialogDescription class="mt-2 text-[13px] leading-relaxed">
+            <DialogDescription class="mt-1 text-[13px]">
               You're about to visit an external website.
             </DialogDescription>
-            <div class="mt-3 max-h-32 overflow-y-auto rounded-md bg-muted px-3 py-2 font-mono text-[12px] break-all">
+            <div class="mt-2 max-h-32 overflow-y-auto rounded-md bg-muted px-2.5 py-1.5 font-mono text-[12px] break-all">
               {props.href}
             </div>
           </div>
-          <div class="flex justify-end gap-2 border-t border-border/70 bg-sidebar px-5 py-3">
+          <div class="flex justify-end gap-2 border-t border-border/70 bg-sidebar px-4 py-2">
             <Button onClick={() => copy(props.href)} size="sm" variant="ghost">
               {copied() ? 'Copied' : 'Copy link'}
             </Button>
