@@ -41,7 +41,7 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { Messages, MessageSent } from '../api.ts'
+import { AskedCalls, Messages, MessageSent } from '../api.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -1208,6 +1208,10 @@ it('keeps sequential and parallel message calls distinct within one codemode scr
         .toSorted(),
     ).toEqual(['script/c3', 'script/c4'])
     expect(log?.messages.at(-1)).toMatchObject({ text: 'Direct', call: 'm' })
+    // @ultimate's own questions are recorded by call too, so the reel finds them once the log is trimmed.
+    expect(
+      (await server.harness.snapshot(AskedCalls, server.root.id, context))?.calls.toSorted(),
+    ).toEqual(['m', 'script/c1', 'script/c2', 'script/c3', 'script/c4'])
     // The script's nested messages could not end the run; the direct message did, before 'Complete'.
     const view = await server.root.context(context)
     expect(view.entries.at(-1)?.kind).toBe('pi.tool-result')

@@ -65,14 +65,6 @@ const script = (id: number, callId: string, failed = false) => [
   call(BRANCH, id, callId, 'codemode', { code: '…' }),
 ]
 
-const PRIMARY = 1 as ConversationId
-const asked = (id: number, callId: string, text = 'Q') =>
-  ({
-    ...entry(PRIMARY, id, []),
-    kind: 'board.asked',
-    data: { message: id, from: BRANCH, call: callId, summary: `asks you · ${text}` },
-  }) as EntryRecord
-
 const both = (id: number, first: string, second: string) => [
   entry(
     BRANCH,
@@ -98,10 +90,9 @@ const both = (id: number, first: string, second: string) => [
   ]),
 ]
 
-function fixture(branch: EntryRecord[], log: Message[], notices: EntryRecord[] = []) {
+function fixture(branch: EntryRecord[], log: Message[], asked: string[] = []) {
   const own = new Map<ConversationId, EntryRecord[]>([
     [BRANCH, branch],
-    [PRIMARY, notices],
     [
       DESIGNER,
       [
@@ -113,8 +104,8 @@ function fixture(branch: EntryRecord[], log: Message[], notices: EntryRecord[] =
   ])
   const harness = {
     snapshot: async (token: { definition: { kind: string } }) =>
-      token.definition.kind === 'ultimate.standing-agents'
-        ? { ultimate: PRIMARY }
+      token.definition.kind === 'board.asked-calls'
+        ? { calls: asked }
         : { messages: log, next: 100 },
     conversation: async (id: ConversationId) => ({
       entries: async ({
@@ -215,23 +206,21 @@ it('a question asked from a script starts after the one before it', async () => 
     ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
     ...script(20, 'older'),
   ]
-  const notices = [asked(70, 'run/c1'), asked(71, 'run/c3'), asked(30, 'older/c2')]
-  const { ctx } = fixture(branch, [question(3, 'run/c1'), question(4, 'run/c3')], notices)
+  const asked = ['older/c2', 'run/c1', 'run/c3']
+  const { ctx } = fixture(branch, [question(3, 'run/c1'), question(4, 'run/c3')], asked)
   const first = await actions.frames({ conversation: BRANCH, message: 3 }, ctx)
   const second = await actions.frames({ conversation: BRANCH, message: 4 }, ctx)
   expect(first.frames.map((frame) => frame.entry)).toEqual([41, 51])
   expect(second.frames).toEqual([])
 })
 
-it('keeps a long scripted question apart once the log no longer holds the one before it', async () => {
+it('keeps a scripted question apart once the log no longer holds the one before it, @ultimate’s too', async () => {
   const branch = [
     ...script(60, 'run'),
     ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
     ...script(20, 'older'),
   ]
-  const long = `Which layout? ${'Option detail. '.repeat(40)}`
-  const notices = [asked(70, 'run/c1', long), asked(71, 'run/c3', long), asked(30, 'older/c2')]
-  const trimmed = fixture(branch, [question(4, 'run/c3')], notices).ctx
+  const trimmed = fixture(branch, [question(4, 'run/c3')], ['older/c2', 'run/c1', 'run/c3']).ctx
   expect((await actions.frames({ conversation: BRANCH, message: 4 }, trimmed)).frames).toEqual([])
 })
 
@@ -242,7 +231,7 @@ it('a script that asked and then failed still ends its round', async () => {
     ...script(40, 'failing', true),
     ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
   ]
-  const { ctx } = fixture(branch, [question(2, 'ask2')], [asked(45, 'failing/c1')])
+  const { ctx } = fixture(branch, [question(2, 'ask2')], ['failing/c1'])
   const reel = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
   expect(reel.frames.map((frame) => frame.entry)).toEqual([41, 51])
 })

@@ -7,9 +7,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { parseConversationId } from '../../lib/ids.ts'
-import { Messages } from '../messages/api.ts'
-import type { QuestionNotice } from '../messages/refs.ts'
-import { Standing } from '../subagents/api.ts'
+import { AskedCalls, Messages } from '../messages/api.ts'
 import { FramesAction } from './refs.ts'
 import type { Frame } from './refs.ts'
 
@@ -147,29 +145,6 @@ function questionsOf(
     .toSorted((a, b) => position(a) - position(b))
 }
 
-async function askedCalls(host: ExtensionHost, branch: ConversationId) {
-  const primary = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
-  const handle = primary && (await host.harness().conversation(primary, context))
-  const first = (
-    await (
-      await host.harness().conversation(branch, context)
-    )?.entries({ order: 'ascending' }, 1, undefined, context)
-  )?.items[0]?.id
-  if (!handle || first === undefined) return []
-  const calls: string[] = []
-  let cursor: Cursor | undefined
-  do {
-    const page = await handle.entries({ minEntryId: first }, PAGE, cursor, context)
-    for (const entry of page.items) {
-      const notice = entry.data as QuestionNotice | undefined
-      if (entry.kind === 'board.asked' && notice?.from === branch && notice.call)
-        calls.push(notice.call)
-    }
-    cursor = page.next
-  } while (cursor !== undefined)
-  return calls
-}
-
 async function windowOf(host: ExtensionHost, branch: ConversationId, message: number) {
   const log =
     (await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, context))?.messages ?? []
@@ -180,7 +155,7 @@ async function windowOf(host: ExtensionHost, branch: ConversationId, message: nu
     ...log.flatMap((item) =>
       item.from === branch && item.to === 'user' && item.reply && item.call ? [item.call] : [],
     ),
-    ...(await askedCalls(host, branch)),
+    ...((await host.harness().snapshot(AskedCalls, branch, context))?.calls ?? []),
   ])
   const results = new Map<string, ToolResult>()
   let to: number | undefined

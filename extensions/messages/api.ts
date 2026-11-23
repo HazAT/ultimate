@@ -53,6 +53,19 @@ export type Message = {
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
   via?: Via
 }
+/**
+ * The tool call ids of every reply-expected question a conversation asked the user, oldest first, on that
+ * conversation. Unlike the message log it is never trimmed, so a call keeps marking where its question was asked.
+ */
+export const AskedCalls = defineDoc<{ calls: string[] }>({
+  kind: 'board.asked-calls',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ calls: [] }),
+})
 /** Every message between conversations and the user, on the root conversation. */
 export const Messages = defineDoc<{ messages: Message[]; next: number }>({
   kind: MessagesDoc.kind,
