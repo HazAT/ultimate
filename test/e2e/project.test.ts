@@ -32,6 +32,23 @@ export const actions = { hello: async (args, ctx) => ({ args, value: '${value}',
   )
 }
 
+it('prints usage for --help and exits 0', async () => {
+  const child = spawn(
+    process.execPath,
+    [join(import.meta.dirname, '../../bin/ultimate.ts'), '--help'],
+    { env: cleanEnv({}), stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  children.push(child)
+  let output = ''
+  child.stdout.on('data', (chunk) => {
+    output += chunk
+  })
+  const [code] = await once(child, 'exit')
+  expect(code).toBe(0)
+  expect(output).toMatch(/^Usage: ultimate \[dir\]/)
+  for (const option of ['--port', '--no-open', '--help']) expect(output).toContain(option)
+})
+
 it('prints a single-line error for a missing project', async () => {
   const userHome = await temp()
   const ultimateRoot = await sourceCopy(userHome)
