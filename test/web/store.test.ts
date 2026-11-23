@@ -866,6 +866,13 @@ it('recovers from a raw SSE read frame with a non-safe-integer revision without 
   expect(onError).toHaveBeenCalledTimes(1)
   latest().send('read', { result: 'recovered', rev: 2 }, sub)
   expect(read.get()).toMatchObject({ data: 'recovered', error: undefined, settled: true })
+  latest().dispatchEvent(
+    new MessageEvent('read', {
+      data: `${sub}\n{"error":"late malformed","status":500,"rev":1e400}`,
+    }),
+  )
+  expect(read.get()).toMatchObject({ data: 'recovered', error: undefined, settled: true })
+  expect(onError).toHaveBeenCalledTimes(1)
   expect(sources).toHaveLength(1)
   store.stop()
 })

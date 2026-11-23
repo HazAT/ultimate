@@ -98,7 +98,7 @@ export function createReads(api: Api | ReadAction, store: Store) {
     }
     function answer(event: ReadPayload & { rev?: number }) {
       const rev = Number.isSafeInteger(event.rev) ? event.rev : undefined
-      if (rev !== undefined && lastRev !== undefined && rev < lastRev) {
+      if (lastRev !== undefined && (rev === undefined || rev < lastRev)) {
         if (state.loading !== fetching) set({ loading: fetching })
         return
       }
@@ -173,7 +173,6 @@ export function createReads(api: Api | ReadAction, store: Store) {
         fetching = false
         if (
           event &&
-          (event.rev !== undefined || lastRev === undefined) &&
           readerGeneration === readersAtStart &&
           connectionGeneration === connectionAtStart
         )

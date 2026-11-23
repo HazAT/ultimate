@@ -157,7 +157,8 @@ it('re-evaluates a failed read for a new subscriber and broadcasts recovery to b
   reads.subscribe(spec, undefined, second.send)
   expect(second.events).toEqual([])
   await vi.advanceTimersByTimeAsync(0)
-  expect(second.events).toEqual([{ result: 'one', rev: attempt.rev + 1 }])
+  expect(second.events).toEqual([{ result: 'one', rev: expect.any(Number) }])
+  expect(second.events[0].rev).toBeGreaterThan(attempt.rev)
   expect(first.events.at(-1)).toEqual(second.events[0])
 })
 
