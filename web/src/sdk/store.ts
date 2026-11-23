@@ -151,6 +151,7 @@ export function createStore(options: StoreOptions = {}) {
   const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
   const watchedViews = new Map<ConversationId, number>()
   const watchedReads = new Map<string, ReadWatch>()
+  const refusedDocs = new Set<string>()
 
   let multiplexedEventSource: EventSourceLike | undefined
 
@@ -357,14 +358,15 @@ export function createStore(options: StoreOptions = {}) {
     }
     return { opens, closes, locallyRefused }
   }
-  function notifyLocallyRefused(locallyRefused: [number, Refused][]) {
+  function deliverRefusals(refusals: [number, number, Refused | undefined][]) {
     let firstError: unknown
     let failed = false
-    for (const [sub, refuse] of locallyRefused) {
+    for (const [sub, status, refuse] of refusals) {
       handlers.delete(sub)
       closing.delete(sub)
+      if (!refuse) continue
       try {
-        refuse(413)
+        refuse(status)
       } catch (error) {
         if (!failed) {
           failed = true
@@ -380,9 +382,12 @@ export function createStore(options: StoreOptions = {}) {
     const stream = streamId
     if (stream === undefined || (!opening.size && !closing.size)) return
     const { opens, closes, locallyRefused } = takeBatch()
+    const localRefusals: [number, number, Refused | undefined][] = locallyRefused.map(
+      ([sub, refuse]) => [sub, 413, refuse],
+    )
     if (!opens.size && !closes.length) {
       if (opening.size || closing.size) scheduleFlush()
-      notifyLocallyRefused(locallyRefused)
+      deliverRefusals(localRefusals)
       return
     }
     flushing = true
@@ -424,13 +429,12 @@ export function createStore(options: StoreOptions = {}) {
         if (activeFlush !== controller || streamId !== stream) return
         if (result === 'gone') return connect()
         if (result === 'ambiguous') return reconnectAfterRetry()
-        for (const id of Object.keys(result.refused)) {
-          const sub = Number(id)
-          handlers.delete(sub)
-          closing.delete(sub)
-        }
-        for (const [sub, status] of Object.entries(result.refused))
-          opens.get(Number(sub))?.failed(status)
+        deliverRefusals(
+          Object.entries(result.refused).map(([id, status]) => {
+            const sub = Number(id)
+            return [sub, status, opens.get(sub)?.failed]
+          }),
+        )
         if (!opening.size && !closing.size) maxBatchSize = Infinity
       })
       .finally(() => {
@@ -443,7 +447,7 @@ export function createStore(options: StoreOptions = {}) {
         flushQueued = false
         if (opening.size || closing.size) scheduleFlush()
       })
-    notifyLocallyRefused(locallyRefused)
+    deliverRefusals(localRefusals)
   }
 
   function answeredFor(
@@ -490,11 +494,14 @@ export function createStore(options: StoreOptions = {}) {
       handler: (name, raw) =>
         name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
     })
-    for (const kind of docKinds.keys())
-      result.set(
-        `${shown}:doc:${kind}`,
-        docSubscription(state.requested, kind, (change) => handle('doc', change)),
-      )
+    for (const kind of docKinds.keys()) {
+      const key = `${shown}:doc:${kind}`
+      if (!refusedDocs.has(key))
+        result.set(
+          key,
+          docSubscription(state.requested, kind, (change) => handle('doc', change)),
+        )
+    }
     for (const conversation of watchedViews.keys())
       result.set(`${conversation}:view`, {
         spec: { conversation, docs: [], view: true },
@@ -509,15 +516,18 @@ export function createStore(options: StoreOptions = {}) {
         },
       })
     for (const [conversation, kinds] of docWatchCountsByConversation)
-      for (const kind of kinds.keys())
-        result.set(
-          `${conversation}:doc:${kind}`,
-          docSubscription(conversation, kind, (change) => {
-            const docs = state.docsOf[conversation] ?? {}
-            const next = applyDoc(docs, change)
-            if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
-          }),
-        )
+      for (const kind of kinds.keys()) {
+        const key = `${conversation}:doc:${kind}`
+        if (!refusedDocs.has(key))
+          result.set(
+            key,
+            docSubscription(conversation, kind, (change) => {
+              const docs = state.docsOf[conversation] ?? {}
+              const next = applyDoc(docs, change)
+              if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
+            }),
+          )
+      }
     for (const [key, watch] of watchedReads) {
       if (watch.refused) continue
       const { read, every } = watch
@@ -540,11 +550,17 @@ export function createStore(options: StoreOptions = {}) {
 
   function refusedOpen(key: string, sub: number, status: number, watch?: ReadWatch) {
     if (live.get(key)?.sub !== sub) return
+    live.delete(key)
     if (!watch && status === 413) {
-      handle('notice', { level: 'error', message: `Subscription too large: ${key}` })
+      if (!refusedDocs.has(key)) {
+        refusedDocs.add(key)
+        handle('notice', {
+          level: 'error',
+          message: `Subscription too large: ${key.slice(0, 120)}`,
+        })
+      }
       return
     }
-    live.delete(key)
     if (watch && status >= 400 && status < 500) {
       if (watchedReads.get(key.slice(5)) === watch) {
         watch.refused = true
@@ -752,7 +768,11 @@ export function createStore(options: StoreOptions = {}) {
       return () => {
         const left = (docKinds.get(kind) ?? 1) - 1
         if (left > 0) docKinds.set(kind, left)
-        else docKinds.delete(kind)
+        else {
+          docKinds.delete(kind)
+          for (const key of refusedDocs)
+            if (key.startsWith('shown:') && key.endsWith(`:doc:${kind}`)) refusedDocs.delete(key)
+        }
         scheduleReconcile()
       }
     },
@@ -765,7 +785,10 @@ export function createStore(options: StoreOptions = {}) {
       return () => {
         const left = (kinds.get(kind) ?? 1) - 1
         if (left > 0) kinds.set(kind, left)
-        else kinds.delete(kind)
+        else {
+          kinds.delete(kind)
+          refusedDocs.delete(`${conversation}:doc:${kind}`)
+        }
         if (!kinds.size) docWatchCountsByConversation.delete(conversation)
         scheduleReconcile()
       }

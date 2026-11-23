@@ -67,6 +67,7 @@ export class Events {
 async function body(
   request: IncomingMessage,
   limit = 1024 * 1024,
+  drainLimit = limit,
 ): Promise<Record<string, unknown>> {
   let data = ''
   let bytes = 0
@@ -78,7 +79,7 @@ async function body(
     if (bytes > limit) {
       tooLarge = true
       data = ''
-      if (bytes > limit * 4) throw new HttpError(413, 'Request too large')
+      if (bytes > drainLimit) throw new HttpError(413, 'Request too large')
     } else data += piece
   }
   if (tooLarge) throw new HttpError(413, 'Request too large')
@@ -574,6 +575,7 @@ export async function createApi(
           const data: Partial<Record<keyof SubscriptionsRequest, unknown>> = await body(
             request,
             MAX_SUBSCRIPTION_BATCH_BYTES,
+            MAX_SUBSCRIPTION_BATCH_BYTES * 4,
           )
           const opens = data.subscribe ?? []
           const closes = data.unsubscribe ?? []
