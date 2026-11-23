@@ -2,7 +2,7 @@ import { LoaderCircleIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For, Show } from 'solid-js'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
-import { cn, useAction, useSystem } from '@/sdk/solid'
+import { ROOT, cn, useAction, useSystem } from '@/sdk/solid'
 import type { ExtensionInfo, SystemInfo } from '../../shared/protocol.ts'
 import { ExtensionsAction } from './refs.ts'
 
@@ -15,6 +15,7 @@ export const sources: Record<ExtensionInfo['source'], string> = {
 export function useDescribed() {
   const system = useSystem()
   const described = useAction(ExtensionsAction, null, {
+    conversation: ROOT,
     on: () => system()?.extensions.map((extension) => extension.path),
   })
   const entry = (name: string) => described.data()?.find((candidate) => candidate.name === name)

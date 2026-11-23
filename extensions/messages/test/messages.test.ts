@@ -41,7 +41,8 @@ import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
 import { Serving } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
-import { AskedCalls, Messages, MessageSent } from '../api.ts'
+import { AskedCalls, Judge, Judgements, Messages, MessageSent } from '../api.ts'
+import type { JudgeService, JudgeState } from '../api.ts'
 import { send as sendMessage } from '../send.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
@@ -1723,30 +1724,190 @@ it("leaves a branch's answer as a note while a subagent's report is still on its
   expect((await b.from())[1].report).toBeUndefined()
   await f.opened.harness.abortTask(pending, context)
 })
-it("leaves a branch's answer to the user's own input as a note that does not wake @ultimate", async () => {
+it("lets the judge leave a branch's back-and-forth with the user as a note, and reports when it cannot judge", async () => {
   // The user talked with a branch in its conversation; each answer woke @ultimate for a turn that did nothing.
   const f = await fixture()
   const b = await branched(f)
+  const asked: JudgeState[] = []
+  let verdict: () => Promise<number> = async () => 0.2
+  f.provided.set(Judge.name, {
+    report: async (state) => {
+      asked.push(state)
+      return verdict()
+    },
+  } satisfies JudgeService)
+  const delivered = async (id: number) =>
+    (await f.opened.root.context(context)).entries.find(
+      (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === id,
+    )
+  const judgements = async () =>
+    (await f.opened.harness.snapshot(Judgements, b.id as ConversationId, context))?.answers
+  const say = async (content: string) => {
+    await (await b.branch.submit({ type: 'input', content }, context)).wait(context)
+    await b.settled()
+    const message = (await b.from()).findLast((m) => m.to === 1)!
+    const answer = (await b.branch.context(context)).entries.findLast(
+      (e) => e.kind === 'pi.assistant',
+    )!.id
+    return { message, answer, entry: await delivered(message.id) }
+  }
   const generations = async () =>
     (await f.opened.root.context(context)).entries.filter((e) => e.kind === 'pi.assistant').length
   const before = await generations()
-  await (
-    await b.branch.submit({ type: 'input', content: 'What does + Legacy mean?' }, context)
-  ).wait(context)
-  await b.settled()
-  const toStarter = (await b.from()).filter((m) => m.to === 1)
-  expect(toStarter.slice(1)).toEqual([
-    expect.objectContaining({ text: 'Answer: What does + Legacy mean?', reply: false }),
-  ])
-  expect(toStarter[1].report).toBeUndefined()
-  const note = (await f.opened.root.context(context)).entries.find(
-    (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === toStarter[1].id,
-  )
-  expect([note?.data, note?.input]).toEqual([
-    expect.objectContaining({ delivery: 'note' }),
+
+  const note = await say('What does + Legacy mean?')
+  expect(note.message).toMatchObject({
+    text: 'Answer: What does + Legacy mean?',
+    reply: false,
+    judged: { answer: note.answer, report: 0.2 },
+  })
+  expect(note.message.report).toBeUndefined()
+  expect(asked.at(-1)).toEqual({
+    branch_said_before: expect.stringMatching(/^Answer: Message from #1 \(@ultimate\):\nExplore/),
+    inputs: [{ from: 'user typed in the branch', text: 'What does + Legacy mean?' }],
+    final_answer: 'Answer: What does + Legacy mean?',
+  })
+  expect([note.entry?.data, note.entry?.input]).toEqual([
+    expect.objectContaining({ delivery: 'note', judged: note.message.judged }),
     undefined,
   ])
   expect(await generations()).toBe(before)
+
+  // A failed or malformed verdict (no key, a 402 pause, a bad score) must not swallow an answer the starter needed,
+  // and a provider's error body stays out of the transcript.
+  const wakes = async (content: string, error: string) => {
+    const { message, answer, entry } = await say(content)
+    expect(message).toMatchObject({ report: true, judged: { answer, error } })
+    expect([entry?.data, entry?.input]).toEqual([
+      expect.objectContaining({ delivery: 'followUp' }),
+      true,
+    ])
+    expect((await judgements())?.[answer]).toEqual(message.judged)
+  }
+  verdict = async () => {
+    throw new Error('TypeSafe 402')
+  }
+  await wakes('1a 2b, go', 'TypeSafe 402')
+  verdict = async () => -1
+  await wakes('ship it', 'invalid verdict')
+
+  // A verdict that comes late holds back the branch's newer answer: both reach the starter in answer order.
+  let releaseGo: ((p: number) => void) | undefined
+  verdict = async () => new Promise<number>((done) => (releaseGo = done))
+  await (await b.branch.submit({ type: 'input', content: 'go' }, context)).wait(context)
+  await until(async () => releaseGo !== undefined)
+  verdict = async () => 0.9
+  await (await b.branch.submit({ type: 'input', content: 'hold' }, context)).wait(context)
+  const sent = async (text: string) => (await b.from()).find((m) => m.text === `Answer: ${text}`)
+  releaseGo!(0.95)
+  await b.settled()
+  const go = (await sent('go'))!
+  const hold = (await sent('hold'))!
+  expect([go.report, hold.report, go.id < hold.id]).toEqual([true, true, true])
+  // A note the judge chose is never promoted into a report when the branch later answers another's question.
+  verdict = async () => 0.1
+  await say('chat')
+  verdict = async () => 0.9
+  await sendMessage(
+    f.host,
+    f.recipient.id,
+    { to: `#${b.id}`, text: 'Which port?', reply: true },
+    context,
+  )
+  await until(async () =>
+    (await f.log())!.messages.some(
+      (m) => m.from === b.id && m.to === f.recipient.id && m.text.includes('Which port?'),
+    ),
+  )
+  await b.settled()
+  expect((await b.from()).filter((m) => m.text === 'Answer: chat')).toEqual([
+    expect.objectContaining({ judged: expect.objectContaining({ report: 0.1 }) }),
+  ])
+
+  // A reply that only answers a sibling's question while the judge weighs a result leaves that result a report.
+  let releaseResult: ((p: number) => void) | undefined
+  verdict = async () => new Promise<number>((done) => (releaseResult = done))
+  await (await b.branch.submit({ type: 'input', content: 'result' }, context)).wait(context)
+  await until(async () => releaseResult !== undefined)
+  await sendMessage(
+    f.host,
+    f.recipient.id,
+    { to: `#${b.id}`, text: 'Which host?', reply: true },
+    context,
+  )
+  await until(async () =>
+    (await f.log())!.messages.some(
+      (m) => m.from === b.id && m.to === f.recipient.id && m.text.includes('Which host?'),
+    ),
+  )
+  releaseResult!(0.9)
+  await b.settled()
+  expect((await sent('result'))!).toMatchObject({ report: true, judged: { report: 0.9 } })
+
+  // A crash while Jev answers never asks it again: the restarted route reports without a verdict.
+  const calls = asked.length
+  let hung!: () => void
+  const hanging = new Promise<void>((done) => (hung = done))
+  verdict = async () => {
+    hung()
+    return new Promise<number>(() => {})
+  }
+  await b.branch.submit({ type: 'input', content: 'all done?' }, context)
+  await hanging
+  await f.opened.close()
+  verdict = async () => 0
+  await f.open()
+  await until(async () => (await b.from()).at(-1)?.text === 'Answer: all done?')
+  await f.opened.harness.waitForIdle(context)
+  expect(asked).toHaveLength(calls + 1)
+  expect((await b.from()).at(-1)).toMatchObject({ report: true, judged: { error: 'interrupted' } })
+})
+it("judges and sends a branch's answers in answer order, and a report judged while it is busy waits for its next report", async () => {
+  const f = await fixture()
+  const b = await branched(f)
+  const pending: ((p: number) => void)[] = []
+  f.provided.set(Judge.name, {
+    report: async () => new Promise<number>((done) => pending.push(done)),
+  } satisfies JudgeService)
+  const say = async (content: string) =>
+    (await b.branch.submit({ type: 'input', content }, context)).wait(context)
+  const sent = async (text: string) => (await b.from()).find((m) => m.text === `Answer: ${text}`)
+
+  // The newer answer is not judged until the older one is sent, so verdicts cannot come back out of order.
+  await say('nice')
+  await until(async () => pending.length === 1)
+  await say('result')
+  const waitsOnOlderRoute = async () =>
+    (await f.opened.harness.inspect(context)).tasks.some(
+      (t) =>
+        t.record.kind === 'board.route' &&
+        t.record.conversationId === b.id &&
+        t.record.state.status === 'waiting' &&
+        t.record.state.on.length === 2,
+    )
+  await until(async () => pending.length === 2 || (await waitsOnOlderRoute()))
+  expect(pending).toHaveLength(1)
+  pending[0](0.1)
+  await until(async () => pending.length === 2)
+  pending[1](0.9)
+  await b.settled()
+  const [nice, newer] = [(await sent('nice'))!, (await sent('result'))!]
+  expect([nice.report, newer.report, nice.id < newer.id]).toEqual([undefined, true, true])
+
+  // A result judged while the branch answers a sibling goes as a note, and is promoted once that reply is sent.
+  await say('late result')
+  await until(async () => pending.length === 3)
+  await sendMessage(f.host, f.recipient.id, { to: `#${b.id}`, text: 'HOLD', reply: true }, context)
+  await until(f.holding)
+  pending[2](0.9)
+  await until(async () => (await sent('late result')) !== undefined)
+  expect((await sent('late result'))!.report).toBeUndefined()
+  f.hold.release()
+  await b.settled()
+  const toStarter = (await b.from()).filter((m) => m.to === 1)
+  expect(toStarter.filter((m) => m.text === 'Answer: late result' && m.report)).toEqual([
+    expect.objectContaining({ judged: expect.objectContaining({ report: 0.9 }) }),
+  ])
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()

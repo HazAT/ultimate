@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
-import { ActionError, createApi } from '../../web/src/sdk/api.ts'
+import { ActionError, createApi, readActionOf } from '../../web/src/sdk/api.ts'
 import { createStore } from '../../web/src/sdk/store.ts'
 import { createUiState } from '../../web/src/sdk/ui-state.ts'
 import { actionRef } from '../../shared/extension-api.ts'
@@ -10,7 +10,8 @@ function setup(respond: (url: string, init: RequestInit) => Response | Promise<R
     respond(input as string, init!),
   )
   const api = createApi(createStore(), { fetch })
-  return { api, fetch }
+  const readAction = readActionOf(api)
+  return { api, readAction, fetch }
 }
 const ref = (extension: string, name: string) => actionRef<unknown, unknown>(extension, name)
 const json = (status: number, body: unknown) =>
@@ -36,18 +37,69 @@ describe('extension actions', () => {
     })
   })
 
+  it('returns revisions for read actions while ordinary actions still return only the result', async () => {
+    const { api, readAction, fetch } = setup(() => json(200, { result: ['draft'], rev: 42 }))
+    const read = ref('notes', 'list')
+    await expect(readAction(read)).resolves.toEqual({ result: ['draft'], rev: 42 })
+    expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toEqual({ args: null })
+    await expect(api.action(read)).resolves.toEqual(['draft'])
+  })
+
   it('rejects with an ActionError naming the extension, action, status, and message', async () => {
-    const { api } = setup(() => json(500, { error: 'Extension action failed' }))
-    const error = await api.action(ref('notes', 'save'), 'x').catch((failure: unknown) => failure)
+    const { readAction } = setup(() => json(500, { error: 'Extension action failed', rev: 23 }))
+    const error = await readAction(ref('notes', 'save'), 'x').catch((failure: unknown) => failure)
     expect(error).toBeInstanceOf(ActionError)
     expect(error).toMatchObject({
       extension: 'notes',
       action: 'save',
       status: 500,
       message: 'Extension action failed',
+      rev: 23,
     })
     const missing = setup(() => json(404, { error: 'Unknown extension action' }))
     await expect(missing.api.action(ref('notes', 'nope'))).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('treats truncated or malformed 200 bodies as status-0 transport failures while keeping null and stamped no-value answers', async () => {
+    for (const body of ['{truncated', '[]', '{"ok":true}', '{"result":"x","rev":"bad"}']) {
+      const { api, readAction } = setup(
+        () =>
+          new Response(body, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      )
+      await expect(readAction(ref('notes', 'list'))).rejects.toMatchObject({
+        status: 0,
+        extension: 'notes',
+        action: 'list',
+      })
+      await expect(api.action(ref('notes', 'list'))).rejects.toMatchObject({ status: 0 })
+    }
+    const explicitNull = setup(() => json(200, { result: null, rev: 7 }))
+    await expect(explicitNull.readAction(ref('notes', 'list'))).resolves.toEqual({
+      result: null,
+      rev: 7,
+      superseded: undefined,
+    })
+    const stampedNoValue = setup(() => json(200, { rev: 8 }))
+    await expect(stampedNoValue.readAction(ref('notes', 'list'))).resolves.toEqual({
+      result: undefined,
+      rev: 8,
+      superseded: undefined,
+    })
+    const badErrorRev = setup(
+      () =>
+        new Response('{"error":"temporary","rev":1e400}', {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    )
+    const err = await badErrorRev
+      .readAction(ref('notes', 'list'))
+      .catch((failure: unknown) => failure)
+    expect(err).toBeInstanceOf(ActionError)
+    expect(err).toMatchObject({ status: 500, message: 'temporary', rev: undefined })
   })
 
   it('fails a 503 like any other server error', async () => {

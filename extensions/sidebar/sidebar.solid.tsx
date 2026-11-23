@@ -131,7 +131,12 @@ function Tree() {
   const agents = createMemo(() =>
     data
       .topLevel()
-      .filter((c) => standingAgent(c) && c.id !== ultimate())
+      .filter(
+        (c) =>
+          standingAgent(c) &&
+          c.id !== ultimate() &&
+          (data.standingIds() !== undefined || c.label === 'lander'),
+      )
       .toSorted(
         (a, b) => Number(b.label === 'lander') - Number(a.label === 'lander') || a.id - b.id,
       ),

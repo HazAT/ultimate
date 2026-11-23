@@ -1,4 +1,4 @@
-import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
+import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 // Harness tests use the faux provider without token pacing.
 import { eventHost, idleNeed, openers, temp, removeTemp } from '../../../test/helpers.ts'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -11,6 +11,8 @@ import {
   configure,
   defineExtension,
   defineTool,
+  GenerationTask,
+  hook,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
@@ -383,6 +385,62 @@ it('offers deferred tools only when named by the definition, and removes them on
   expect((await conversation.agent(ctx)).tools.map((tool) => tool.name)).toEqual(['read'])
 })
 
+// #873487/931975: after a landing added script tools, @ultimate's stored tool list kept them out of its scripts.
+it("rebuilds a standing agent's tools from its definition before its next run, keeping denies", async () => {
+  const { service, host, prepared, file } = await fixture()
+  await writeFile(
+    file,
+    definition('Original', 'denyTools: [denied]\n').replace('tools: [read, t]\n', ''),
+  )
+  const id = await service.standing('x', ctx)
+  const conversation = (await host.harness.conversation(id, ctx))!
+  const callable = async () => (await conversation.agent(ctx)).callable.map((tool) => tool.name)
+  const landed = (name: string, callers?: ['tools']) =>
+    defineTool({
+      name,
+      description: name,
+      parameters: obj({}),
+      ...(callers ? { callers } : {}),
+      execute: async () => ({ output: [] }),
+    })
+  const placedBefore: number[] = []
+  prepared.registry.install(
+    defineExtension({
+      name: 'landed',
+      tools: [landed('codemode'), landed('action', ['tools']), landed('denied', ['tools'])],
+      hooks: [
+        hook(GenerationTask, {
+          beforeInput: (_input, api) => void placedBefore.push(api.conversationId),
+        }),
+      ],
+    }),
+  )
+  expect(await callable()).not.toContain('action')
+  prepared.faux!.setResponses([fauxAssistantMessage('Done')])
+  await (await conversation.submit({ type: 'input', content: 'Hello' }, ctx)).wait(ctx)
+  expect(placedBefore).toEqual([id])
+  expect(await callable()).toEqual(expect.arrayContaining(['codemode', 'action']))
+  expect(await callable()).not.toContain('denied')
+
+  // A follow-up queued behind a run starts its own run on the definition as it is when that run starts.
+  prepared.faux!.setResponses([
+    async () => {
+      await writeFile(
+        file,
+        definition('Original', 'denyTools: [denied, action]\n').replace('tools: [read, t]\n', ''),
+      )
+      return fauxAssistantMessage('First')
+    },
+    fauxAssistantMessage('Second'),
+  ])
+  const first = await conversation.submit({ type: 'input', content: 'First' }, ctx)
+  const queued = await conversation.submit({ type: 'input', content: 'Second' }, ctx)
+  expect(await queued.status(ctx)).toMatchObject({ status: 'queued' })
+  await first.wait(ctx)
+  await queued.wait(ctx)
+  expect(await callable()).not.toContain('action')
+})
+
 // solidcraft #6254: a chat created from a definition kept its old tools after the definition gained `message`.
 it('reconfigures a child from its current definition, keeping its chosen model', async () => {
   const { service, host, prepared, path, file } = await fixture()
@@ -422,4 +480,16 @@ it('reconfigures a child from its current definition, keeping its chosen model',
   const agent = await conversation.agent(ctx)
   expect(agent.tools.map((tool) => tool.name)).toEqual(['read', 't'])
   expect(agent.model).toEqual({ provider: 'faux', modelId: 'faux-pinned' })
+})
+
+it('keeps a standing agent’s tools while agent discovery has errors', async () => {
+  const { service, host, path } = await fixture()
+  const id = await service.standing('x', ctx)
+  const tools = async () =>
+    (await (await host.harness.conversation(id, ctx))!.agent(ctx)).tools.map((tool) => tool.name)
+  const before = await tools()
+  await writeFile(join(path, 'agents/deny.md'), 'not: [valid')
+  await writeFile(join(path, 'agents/x.md'), definition('Original').replace('[read, t]', '[read]'))
+  expect(await service.standing('x', ctx)).toBe(id)
+  expect(await tools()).toEqual(before)
 })

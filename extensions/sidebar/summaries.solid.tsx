@@ -3,7 +3,7 @@ import type { JSX } from '@solidjs/web'
 import { createSignal, For, Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card.solid.tsx'
-import { cn, formatAgo, formatTime, keepLast, useAction } from '@/sdk/solid'
+import { ROOT, cn, formatAgo, formatTime, keepLast, useAction } from '@/sdk/solid'
 import { SummariesAction } from '../conversations/refs.ts'
 
 export function SummaryHistory(props: {
@@ -78,7 +78,7 @@ function History(props: { id: ConversationId; list: (element: HTMLOListElement) 
         return props.id
       },
     },
-    { onError: keepLast },
+    { conversation: ROOT, onError: keepLast },
   )
   const now = Date.now()
   return (

@@ -1,5 +1,6 @@
 import { parseConversationId } from '../../lib/ids.ts'
 import type {
+  Agent,
   ConversationId,
   ConversationRecord,
   Cursor,
@@ -44,6 +45,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Source } from '../../lib/project-paths.ts'
 import {
   agentRoots,
+  definitionAgent,
   deleteDefinition,
   discoverAgents,
   hasLogin,
@@ -56,6 +58,7 @@ import type { AgentDefinition, DefinitionFields } from '../../lib/agents.ts'
 import { createChild, reconfigure, started } from './children.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { exec } from '../../lib/exec.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
@@ -707,13 +710,27 @@ export default function subagents(
       const result = await host
         .harness()
         .commit(async (tx): Promise<{ id: ConversationId } | { missing: string[] }> => {
-          const definitions = await residentDefinitions()
+          const discovered = await discoverAgents(
+            host.ultimateRoot,
+            host.projectRoot,
+            host.userHome,
+            host.modelRuntime,
+          )
+          const definitions = discovered.definitions.filter((item) => item.resident === true)
           const definition = definitions.find((item) => item.name === name)
           if (!definition) return { missing: definitions.map((item) => `@${item.name}`) }
           const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
-          let id = Object.hasOwn(index, name) ? index[name] : undefined
+          const stored = Object.hasOwn(index, name) ? index[name] : undefined
+          let id = stored !== undefined && (await tx.conversation(stored)) ? stored : undefined
+          const unreadFileMayHoldItsDenies = discovered.errors.length > 0
+          if (unreadFileMayHoldItsDenies) {
+            if (id !== undefined) return { id }
+            throw new Error(
+              `Cannot configure @${name} while agent discovery has errors: ${discovered.errors.map((error) => `${error.path}: ${error.error}`).join('; ')}`,
+            )
+          }
           let created: ConversationRecord | undefined
-          if (id === undefined || !(await tx.conversation(id))) {
+          if (id === undefined) {
             created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
             id = created.id
             index[name] = id
@@ -738,6 +755,32 @@ export default function subagents(
     },
   }
   host.implement(SubagentsApi, service)
+  const refreshStanding = async (
+    tx: Tx,
+    id: ConversationId,
+    agent: (id: ConversationId) => Promise<Agent>,
+  ) => {
+    const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
+    const name = Object.keys(index).find((candidate) => index[candidate] === id)
+    if (name === undefined) return
+    const discovered = await discoverAgents(
+      host.ultimateRoot,
+      host.projectRoot,
+      host.userHome,
+      host.modelRuntime,
+    ).catch(meansNone)
+    const definition = discovered?.definitions.find(
+      (item) => item.name === name && item.resident === true,
+    )
+    const unreadFileMayHoldItsDenies = !discovered || discovered.errors.length > 0
+    if (!definition || unreadFileMayHoldItsDenies) return
+    const { tools, modelTools, extensions } = definitionAgent(
+      definition,
+      await agent(ROOT_CONVERSATION_ID),
+      host.modelRuntime,
+    )
+    await configure(tx, id, { tools, modelTools, extensions })
+  }
   const spawnDefinition = async (
     args: {
       agent?: string
@@ -983,7 +1026,10 @@ export default function subagents(
           }, context)
         },
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
-        beforeInput: (_input, { tx, conversationId }) => stateNote(tx, conversationId, Date.now()),
+        beforeInput: async (_input, { tx, conversationId, agent }) => {
+          await refreshStanding(tx, conversationId, agent)
+          return stateNote(tx, conversationId, Date.now())
+        },
       }),
       hook(ToolTask, {
         beforeTool: (call) => {

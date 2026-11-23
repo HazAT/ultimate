@@ -1,6 +1,6 @@
 // Load the faux provider's token-pacing mock before server modules.
 import { fauxServer, sourceCopy, temp } from '../../../test/helpers.ts'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
@@ -113,4 +113,31 @@ it('denies instance to children with inherited or explicit tools without changin
   } finally {
     await server.close()
   }
+})
+
+it('reports an enabled extension link whose target is missing as a discovery error', async () => {
+  const root = await temp('ultimate-deny-dangling-')
+  await mkdir(join(root, 'agents'))
+  await writeFile(join(root, 'agents/restricted.md'), definition('denyTools: [instance]'))
+  await mkdir(join(root, '.ultimate/extensions'), { recursive: true })
+  await symlink(join(root, 'gone'), join(root, '.ultimate/extensions/linked'))
+  const discovered = await discoverAgents(root, root, root, await ModelRuntime.create())
+  expect(discovered.errors).toMatchObject([
+    { name: 'linked', source: 'user', error: expect.stringContaining('ENOENT') },
+  ])
+})
+
+it('reports a trust decision it cannot read as a discovery error, not as untrusted', async () => {
+  const root = await temp('ultimate-deny-trust-')
+  const project = join(root, 'project')
+  await mkdir(join(project, '.ultimate/agents'), { recursive: true })
+  await writeFile(join(project, '.git'), 'not a gitdir link')
+  await writeFile(
+    join(project, '.ultimate/agents/restricted.md'),
+    definition('denyTools: [instance]'),
+  )
+  const discovered = await discoverAgents(root, project, root, await ModelRuntime.create())
+  expect(discovered.errors).toMatchObject([
+    { path: join(project, '.ultimate/agents'), source: 'project', error: expect.any(String) },
+  ])
 })

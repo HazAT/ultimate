@@ -145,14 +145,18 @@ function Criteria(props: { items: Goal['criteria'] }) {
 }
 
 function Screenshots(props: { goal: number; entry: EntryId; label: string }) {
-  const { data } = useAction(ImagesAction, {
-    get goal() {
-      return props.goal
+  const { data } = useAction(
+    ImagesAction,
+    {
+      get goal() {
+        return props.goal
+      },
+      get entry() {
+        return props.entry
+      },
     },
-    get entry() {
-      return props.entry
-    },
-  })
+    { conversation: ROOT },
+  )
   return (
     <Show when={data()?.length}>
       <div class="flex flex-wrap gap-2 pt-1">

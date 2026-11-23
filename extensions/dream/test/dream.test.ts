@@ -19,6 +19,7 @@ import { Standing } from '../../subagents/api.ts'
 import { ContextUsageDoc } from '../../conversations/api.ts'
 import { SubmitAfter, submitAfter } from '../../conversations/submit.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
+import { Hold } from '../../automations/api.ts'
 import dream, { actions, branched, Next, toolStats, userActions } from '../server.ts'
 import { buildSeed } from '../seed.ts'
 import {
@@ -274,6 +275,25 @@ it("asks @ultimate to dream on a built-in's fire, beside the fire's own wake-up,
   await f.usage(75)
   await until(async () => (await f.record(id)).condition?.value === 75)
   expect(await f.requests()).toHaveLength(1)
+})
+
+it('dreams once per chapter: neither built-in fires after a dream ran in it', async () => {
+  const f = await fixture()
+  const id = (await f.own())!
+  const pause = (await f.ownPause())!
+  f.host.harness().resume()
+  // A dream branch ran in this chapter and was concluded; nothing is prepared yet.
+  await f.harness.commit(async (tx) => {
+    const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+    doc.dream = { branch: 9 as ConversationId, requested: 1 as EntryId, at: Date.now() }
+  }, context)
+  await f.usage(71)
+  await until(async () => (await f.record(id)).condition?.value === 71)
+  await f.settle()
+  // The crossing counts (it re-arms below 60 as usual) but fires nothing: no wake-up, no dream ask.
+  expect(await f.record(id)).toMatchObject({ fires: 0, condition: { armed: false } })
+  expect(await f.requests()).toEqual([])
+  expect(await f.harness.commit((tx) => f.host.need(Hold).held(tx, pause), context)).toBe(true)
 })
 
 it("asks @ultimate to dream on the user's Dream, prepares the next chapter, and replaces it", async () => {

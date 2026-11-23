@@ -24,6 +24,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import classify, { cooldownMs, retryHeaders } from '../server.ts'
 import { ClassifyApi } from '../api.ts'
 import type { ClassifyService } from '../api.ts'
+import { Judge } from '../../messages/api.ts'
+import type { JudgeService } from '../../messages/api.ts'
 import { writeSecret } from '../../secrets/store.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { context } from '../../../server/harness.ts'
@@ -57,7 +59,8 @@ async function fixture(
     modelsPath: models ? modelsPath : null,
     authPath: join(root, 'auth.json'),
   })
-  const implement = vi.fn<(api: typeof ClassifyApi, service: ClassifyService) => void>()
+  const implemented = new Map<string, unknown>()
+  const implement = (api: { name: string }, service: unknown) => implemented.set(api.name, service)
   const notice = vi.fn<(message: string) => void>()
   const extension = classify({
     userHome: root,
@@ -80,11 +83,11 @@ async function fixture(
     for (const open of openers.splice(0)) await open()
   }
   expect(extension.name).toBe('classify')
-  expect(implement.mock.calls[0][0]).toBe(ClassifyApi)
   return {
     root,
     notice,
-    service: implement.mock.calls[0][1],
+    service: implemented.get(ClassifyApi.name) as ClassifyService,
+    judge: implemented.get(Judge.name) as JudgeService,
     extension,
     modelRuntime,
     openers,
@@ -293,6 +296,21 @@ it('includes the HTTP status and truncated response body without retrying', asyn
     `TypeSafe 429: ${'x'.repeat(1000)}`,
   )
   expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+it("keeps a provider's response body out of the branch judge's errors, also when cancelled", async () => {
+  const { judge } = await fixture()
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(async () => new Response('echo-sentinel', { status: 429 })),
+  )
+  const state = { branch_said_before: '', inputs: [], final_answer: 'Done' }
+  await expect(judge.report(state, new AbortController().signal)).rejects.toThrow(/^TypeSafe 429$/)
+  const cancelled = new AbortController()
+  cancelled.abort()
+  await expect(judge.report(state, cancelled.signal)).rejects.toThrow(/^cancelled$/)
 })
 
 it('stops sending after a 402 until the cooldown ends', async () => {

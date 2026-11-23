@@ -33,7 +33,10 @@ thresholds are edited there, pausing one stops its dreams, deleting one is remem
 and a new chapter makes them again as the seed carried them (`builtIn`, `builtInPause`: paused stays paused, and an
 edited threshold, pause or cooldown stays edited; a seed without a condition gets the defaults above). A lost
 create's receipt is found by name and trigger target, never by threshold or subscribers, so none is made twice. As
-any condition, each fires once, re-arms 10 points below its threshold and waits an hour between fires.
+any condition, each fires once, re-arms 10 points below its threshold and waits an hour between fires. A chapter
+dreams automatically once: after a dream branch was marked or a chapter prepared (`dream.next.dream` or `prepared`),
+dream holds both through the `automations.hold` extension point, so a crossing neither wakes @ultimate nor asks for a
+dream. The Dream button still does; the next chapter starts with an empty `dream.next`.
 
 A fire's own input wakes @ultimate; reactor `dream/requested` adds a passive `dream.requested` entry beside it (request
 id `dream.requested:<automation>:<fire>`), which says what a dream is and where its workflow lives, so the fire costs

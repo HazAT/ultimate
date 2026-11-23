@@ -67,7 +67,8 @@ Call actions from the UI in one of two ways:
   stream: the server runs the read once for every tab and device reading the same action, args (compared as JSON)
   and conversation, again `every` ms after its last answer while anyone reads it, and pushes an answer only when it
   changed; a reconnect or restart brings the values back. `on()` changing (a document, an event id, a busy flag),
-  window focus with `focus`, and `refetch()` ask again at once, and that answer reaches every reader. It follows the
+  window focus with `focus`, and `refetch()` ask again at once, and that answer reaches every reader; asked while a
+  request runs, it lets that request finish, and every refetch asked meanwhile shares one request after it. It follows the
   scoped or shown conversation unless `conversation` is set. A remount shows the last answer at once. Never poll with
   a timer of your own that calls `api.action` or `refetch`: lint rejects it (`no-raw-stream`), since it runs once per
   page instead of once for all. It returns `{ data, error, loading, refetch }`: the first three are accessors, and

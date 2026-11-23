@@ -18,6 +18,7 @@ import type { DeliveredMessage } from '../entries/refs.ts'
 import { accentOf } from './accent.ts'
 import { callerOf } from './caller.ts'
 import { Body, Navigate, useAccentOf } from './card-parts.solid.tsx'
+import { JudgedChip } from './judged.solid.tsx'
 import { InputImages } from './message-images.solid.tsx'
 import { MessagesDoc } from './refs.ts'
 import { Address } from './ui.solid.tsx'
@@ -79,6 +80,7 @@ function Incoming(props: { entry: EntryRecord; message: DeliveredMessage }) {
           <Show when={delivery() === 'note'}>
             <span class="shrink-0 text-muted-foreground/60">· note</span>
           </Show>
+          <Show when={props.message.judged}>{(judged) => <JudgedChip judged={judged()} />}</Show>
         </>
       }
     >
@@ -103,6 +105,7 @@ function Incoming(props: { entry: EntryRecord; message: DeliveredMessage }) {
           <Show when={state()}>
             <span class={failureClass()}>{state()}</span>
           </Show>
+          <Show when={props.message.judged}>{(judged) => <JudgedChip judged={judged()} />}</Show>
           <Show when={typeof props.message.from === 'number'}>
             <Navigate
               aria-label={`Source conversation #${props.message.from} for message ${props.message.id}`}

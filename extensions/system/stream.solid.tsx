@@ -19,6 +19,7 @@ import {
   keepLast,
   showSurface,
   switchConversation,
+  ROOT,
   useAction,
   writingAs,
 } from '@/sdk/solid'
@@ -101,7 +102,7 @@ function useStream(filter: Accessor<SystemFilter>, live: Accessor<boolean>) {
   const newest = useAction(
     StreamAction,
     { ...untrack(filter), limit: pageSize },
-    { onError: keepLast, every: () => (live() ? pollMs : undefined) },
+    { conversation: ROOT, onError: keepLast, every: () => (live() ? pollMs : undefined) },
   )
   createEffect(
     () => newest.data(),

@@ -15,6 +15,7 @@ import { RUN_TASK } from './types.ts'
 import { settledSubmission, submitAndSleep } from '../../lib/settled.ts'
 import type { Automations as Ledger } from './server.ts'
 import { Escalated, Fired } from './refs.ts'
+import { Hold } from './api.ts'
 import { RunLabel } from './types.ts'
 const MAX_FIRES_PER_HOUR = 6
 const FIRE_WINDOW_MS = 3600000
@@ -174,6 +175,7 @@ export function scheduler(
     delete a.branches
   }
   async function fire(tx: Tx, a: Automation, firedAt: number, text = '') {
+    if (await host.want(Hold)?.held(tx, a.id)) return { id: a.id }
     const skip =
       !!a.prompt &&
       (a.runs.some((r) => r.status === 'running') || (await scanRunsBeforeWrites(tx)).has(a.id))
