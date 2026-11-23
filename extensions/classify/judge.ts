@@ -15,10 +15,17 @@ export const reportQuestion = {
 export function judge(classify: ClassifyService): JudgeService {
   return {
     async report(state, signal) {
-      const { answers } = await classify.ask(
-        { state, questions: { route: reportQuestion } },
-        signal,
-      )
+      const answers = await classify
+        .ask({ state, questions: { route: reportQuestion } }, signal)
+        .then(
+          (result) => result.answers,
+          (error: unknown) => {
+            if (signal.aborted) throw error
+            const message = error instanceof Error ? error.message : ''
+            const status = /^TypeSafe (\d{3})\b/.exec(message)?.[1]
+            throw new Error(status ? `TypeSafe ${status}` : 'TypeSafe request failed')
+          },
+        )
       const answer = answers.route
       if (answer.type !== 'choice') throw new Error(`classify answered ${answer.type}, not choice`)
       const p = answer.probabilities.report

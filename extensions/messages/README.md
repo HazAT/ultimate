@@ -43,8 +43,10 @@ report.**
   verdict goes on the message and in the branch's `board.judged` document by answer entry (`{ answer, report }`, the
   probability it reports; below 0.5 it is a note). Without classify, after 10 s, on any error or a score outside [0, 1]
   the answer reports, with `{ answer, error }` naming only the cause (an HTTP status, `timed out`, `interrupted`): a
-  wrong wake costs one turn, a lost answer stalls a flow. The structural checks run again with the verdict, so a branch
-  that started work meanwhile still sends a note. The message card and the branch's final answer show the verdict as a
+  wrong wake costs one turn, a lost answer stalls a flow. With the verdict the checks run again: when the branch has answered again, got busy or
+  concluded meanwhile, the answer goes as a note (`movedOn`), so an older decision never overtakes a newer one. The
+  judge's error message is a short cause (classify keeps only `TypeSafe <status>`); a provider's response body never
+  crosses it. The message card and the branch's final answer show the verdict as a
   chip. A landing concludes the branch and wakes the starter itself, asking through
   the `workspaces.branches` point this extension provides (`starter`, `underway`).
 - **Answers back down.** The primary agent's final answer goes to each branch whose reply or report was an input of

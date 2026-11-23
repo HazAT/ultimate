@@ -1186,6 +1186,21 @@ function AssistantView(props: {
       .join('\n\n'),
   )
   const shown = (index: number) => !props.blocks || props.blocks.includes(index)
+  const answerLabels = (entry: EntryRecord) => (
+    <For each={labels()} keyed={(item) => item.key}>
+      {(item) => (
+        <Contribution
+          fallback={(extension, error) => (
+            <ContributionError error={error} extension={extension} inline />
+          )}
+          item={item()}
+          props={{ entry }}
+        />
+      )}
+    </For>
+  )
+  const cutOff = () =>
+    !streaming() && props.message.stopReason === 'length' && ownsNoticeAndActions()
   return (
     <Message
       class={cn(
@@ -1200,22 +1215,15 @@ function AssistantView(props: {
           <span class="inline-flex items-center gap-1.5">
             <Check aria-hidden="true" class="size-3.5" /> Final answer
           </span>
-          <Show when={props.entry}>
-            {(entry) => (
-              <For each={labels()} keyed={(item) => item.key}>
-                {(item) => (
-                  <Contribution
-                    fallback={(extension, error) => (
-                      <ContributionError error={error} extension={extension} inline />
-                    )}
-                    item={item()}
-                    props={{ entry: entry() }}
-                  />
-                )}
-              </For>
-            )}
-          </Show>
+          <Show when={props.entry}>{(entry) => answerLabels(entry())}</Show>
         </div>
+      </Show>
+      <Show when={cutOff() ? props.entry : undefined}>
+        {(entry) => (
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] empty:hidden">
+            {answerLabels(entry())}
+          </div>
+        )}
       </Show>
       <For each={props.message.content} keyed={false}>
         {(block, index) => (

@@ -76,7 +76,7 @@ async function judge(
   signal: AbortSignal,
 ): Promise<{ report: number } | { error: string }> {
   const service = host.want(Judge)
-  if (!service) return { error: 'classify is off' }
+  if (!service) return { error: 'no judge' }
   const stop = new AbortController()
   try {
     const cancelled = new Promise<never>((_resolve, reject) =>
@@ -93,11 +93,18 @@ async function judge(
   } catch (error) {
     if (signal.aborted) throw error
     if (error instanceof JudgeTimeout) return { error: 'timed out' }
-    const status = /^TypeSafe (\d{3})\b/.exec(error instanceof Error ? error.message : '')?.[1]
-    return { error: status ? `TypeSafe ${status}` : 'judge failed' }
+    return { error: error instanceof Error ? error.message.slice(0, 80) : 'judge failed' }
   } finally {
     stop.abort()
   }
+}
+
+async function answeredAgain(tx: Tx, id: ConversationId, answer: EntryId) {
+  const later = await tx.scanEntries(
+    { conversationId: id, minEntryId: (answer + 1) as EntryId, order: 'ascending' },
+    256,
+  )
+  return later.items.some((entry) => entry.model?.[0]?.role === 'assistant')
 }
 
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
@@ -456,10 +463,11 @@ export function route(host: ExtensionHost) {
         }
         const verdict = judged
         await runtime.commit(async (tx) => {
-          ;(await tx.doc(Judgements, id)).answers[answer] = verdict
-          const report =
-            (!('report' in verdict) || verdict.report >= 0.5) &&
-            !(await concludedOrWorkUnderway(host, tx, id))
+          const movedOn =
+            (await answeredAgain(tx, id, answer)) || (await concludedOrWorkUnderway(host, tx, id))
+          const effective: Judged = movedOn ? { ...verdict, movedOn: true } : verdict
+          ;(await tx.doc(Judgements, id)).answers[answer] = effective
+          const report = !movedOn && (!('report' in verdict) || verdict.report >= 0.5)
           return {
             status: 'running',
             checkpoint: {
@@ -467,7 +475,7 @@ export function route(host: ExtensionHost) {
               routes: [
                 {
                   ...toStarter,
-                  options: { ...toStarter.options, note: !report, report, judged: verdict },
+                  options: { ...toStarter.options, note: !report, report, judged: effective },
                 },
               ],
             },

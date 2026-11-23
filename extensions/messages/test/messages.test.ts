@@ -1755,11 +1755,29 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
     expect((await judgements())?.[answer]).toEqual(message.judged)
   }
   verdict = async () => {
-    throw new Error('TypeSafe 402: {"secret":"upstream body"}')
+    throw new Error('TypeSafe 402')
   }
   await wakes('1a 2b, go', 'TypeSafe 402')
   verdict = async () => -1
   await wakes('ship it', 'invalid verdict')
+
+  // An older answer whose verdict comes late never overtakes a newer one: it goes as a note.
+  let releaseGo: ((p: number) => void) | undefined
+  verdict = async () => new Promise<number>((done) => (releaseGo = done))
+  await (await b.branch.submit({ type: 'input', content: 'go' }, context)).wait(context)
+  await until(async () => releaseGo !== undefined)
+  verdict = async () => 0.9
+  await (await b.branch.submit({ type: 'input', content: 'hold' }, context)).wait(context)
+  const sent = async (text: string) => (await b.from()).find((m) => m.text === `Answer: ${text}`)
+  await until(async () => (await sent('hold')) !== undefined)
+  releaseGo!(0.95)
+  await b.settled()
+  expect((await sent('hold'))!).toMatchObject({ report: true, judged: { report: 0.9 } })
+  const go = (await sent('go'))!
+  expect([go.report, go.judged]).toEqual([
+    undefined,
+    { answer: expect.any(Number), report: 0.95, movedOn: true },
+  ])
 
   // A crash while Jev answers never asks it again: the restarted route reports without a verdict.
   const calls = asked.length

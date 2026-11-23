@@ -85,9 +85,10 @@ export type DeliveredMessage = {
 
 /**
  * The judge's verdict on a branch's final answer `answer` (its entry in the branch): `report`, the probability that it
- * wakes the starter, or `error`, why no verdict came (it then reports).
+ * wakes the starter, or `error`, why no verdict came (it then reports). `movedOn`: the branch ran again or got busy or
+ * concluded while the judge ran, so the answer went as a note whatever the verdict.
  */
-export type Judged = { answer: EntryId } & ({ report: number } | { error: string })
+export type Judged = { answer: EntryId; movedOn?: true } & ({ report: number } | { error: string })
 
 /** Message delivered as a conversation input. */
 export const MessageEntry = defineEntry<DeliveredMessage>('board.message')

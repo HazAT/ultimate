@@ -164,7 +164,8 @@ export type JudgeState = {
 export type JudgeService = {
   /**
    * The probability that the branch's final answer is something its starter must act on or know now, rather than
-   * back-and-forth with the user; throws when it cannot judge. Messages reports on anything outside [0, 1].
+   * back-and-forth with the user. It throws an Error whose message is a short cause safe to show the user (never a
+   * provider's response body) when it cannot judge. Messages reports on a throw or anything outside [0, 1].
    */
   report(state: JudgeState, signal: AbortSignal): Promise<number>
 }
