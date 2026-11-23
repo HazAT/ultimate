@@ -10,7 +10,7 @@ Codemode is Pi Durable's code mode tool (`createCodemodeExtension` from `@earend
 
 **Models.** `models: true` gives scripts Pi's `models.*`: the catalog, `models.classify(model, {state, questions})` and `models.generateImages()`, at most 4 at once. `models.ts` caps a script at 1,000 `pi.codemode.models.*` calls of any provider (admissions counted durably per script, so the cap holds across a restart), records each completed call's input tokens and cost from its own afterTool hook, and appends a usage line summed from those records (it never opens the nested results, which can hold images) to the script's result: `models: <calls>, <input tokens>, ≈$<cost from Pi's usage>`. The TypeSafe key, the pinned Jev model, its prompt section and the billing pause live in `extensions/classify`.
 
-Final details are Pi's `CodemodeToolDetails`: `{ calls: [{ id, name, args, status, durationMs?, error? }], fullOutputPath? }`, the tool calls in call order (globals are not listed). The first line may be `// @options: {"timeout_ms":30000,"max_output_tokens":2000}`.
+Final details are Pi's `CodemodeToolDetails`: `{ calls: [{ id, name, args, status, durationMs?, error? }], fullOutputPath? }`, the tool calls in call order (globals are not listed). The first line may be `// @options: {"timeout_ms":30000,"max_output_tokens":2000}`. A script without `timeout_ms` gets 60 seconds: a `beforeTool` hook adds it to the options line, so the deadline is recorded with the call and a resumed script keeps it.
 
 ## Introspection and actions
 

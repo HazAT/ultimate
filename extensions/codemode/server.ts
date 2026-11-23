@@ -13,7 +13,12 @@ import { withAbortSignal } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { obj, opt, str, unknown, bool } from '@earendil-works/pi-schema'
-import { CodemodeSandbox, renderDeclarations } from '@earendil-works/pi-codemode'
+import {
+  CODEMODE_OPTIONS_PREFIX,
+  CodemodeSandbox,
+  parseCodemodeSource,
+  renderDeclarations,
+} from '@earendil-works/pi-codemode'
 import { CodemodeStoreDoc, createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
 import type { CodemodeGlobal, CodemodeToolDetails } from '@earendil-works/pi-durable/codemode'
 import {
@@ -397,6 +402,25 @@ export const actions = {
   },
 }
 
+const DEFAULT_TIMEOUT_MS = 60_000
+export function withDefaultTimeout(code: string) {
+  let parsed: ReturnType<typeof parseCodemodeSource>
+  try {
+    parsed = parseCodemodeSource(code)
+  } catch {
+    return code
+  }
+  if (parsed.options.timeoutMs !== undefined) return code
+  const options = {
+    ...(parsed.options.maxOutputTokens === undefined
+      ? {}
+      : { max_output_tokens: parsed.options.maxOutputTokens }),
+    timeout_ms: DEFAULT_TIMEOUT_MS,
+  }
+  const line = `${CODEMODE_OPTIONS_PREFIX} ${JSON.stringify(options)}`
+  return parsed.code.startsWith('\n') ? `${line}${parsed.code}` : `${line}\n${parsed.code}`
+}
+
 export default function codemode(host: ExtensionHost) {
   const sandbox = host.resource('codemode.sandbox', () => {
     const created = new CodemodeSandbox({ memoryLimitBytes: 256 * 1024 * 1024 })
@@ -613,7 +637,10 @@ export default function codemode(host: ExtensionHost) {
           if (!topLevelCodemode(call)) return undefined
           helperCallsByTask.set(api.taskId, [])
           await copyRetiredStoreOnce(api, context)
-          return undefined
+          const code = call.arguments.code
+          return typeof code === 'string'
+            ? { arguments: { ...call.arguments, code: withDefaultTimeout(code) } }
+            : undefined
         },
         afterTool: async (call, result, api) => {
           if (topLevelCodemode(call)) await summarize(api, call, result)

@@ -22,7 +22,7 @@ import {
 } from '../../../test/helpers.ts'
 import { context } from '../../../server/harness.ts'
 import { FIRST_CHAPTER, requestChapter } from '../../../lib/chapters.ts'
-import { SummaryDoc } from '../server.ts'
+import { SummaryDoc, withDefaultTimeout } from '../server.ts'
 import { CodemodeStoreDoc } from '@earendil-works/pi-durable/codemode'
 import { Summarized } from '../refs.ts'
 import planExtension from '../../plan/server.ts'
@@ -975,4 +975,20 @@ it('gives a conversation with a stored tool list its script-only tools before ea
     'action',
     'tell',
   ])
+})
+
+it('gives a script without timeout_ms a 60 s deadline, which stops a spinning script', async () => {
+  const { server } = await fixture()
+  const spun = await run(
+    server,
+    '// @options: {"timeout_ms":300}\nconst start = Date.now(); while (Date.now() < start + 1e9) {}',
+  )
+  expect(spun.data.isError).toBe(true)
+  expect(spun.output).toContain('Script timed out')
+  expect(withDefaultTimeout('return 1')).toBe('// @options: {"timeout_ms":60000}\nreturn 1')
+  expect(withDefaultTimeout('// @options: {"max_output_tokens":10}\nreturn 1')).toBe(
+    '// @options: {"max_output_tokens":10,"timeout_ms":60000}\nreturn 1',
+  )
+  const explicit = '// @options: {"timeout_ms":5}\nreturn 1'
+  expect(withDefaultTimeout(explicit)).toBe(explicit)
 })
