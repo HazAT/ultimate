@@ -73,7 +73,8 @@ export const RecordAction = actionRef<{ audio: string; mimeType: string }, { aud
 
 /**
  * A turn: the transcript (or typed text), the recording it came from, images, and a hint about an interrupted reply.
- * Opens the session on its first turn. Returns the session's conversation and the route the turn takes.
+ * Opens the session on its first turn. Returns the session's conversation and the route the turn takes; `dropped`
+ * when its recording's transcript came back empty, so nothing was sent (a turn already sent is stopped instead).
  */
 export const TurnAction = actionRef<
   {
@@ -86,7 +87,7 @@ export const TurnAction = actionRef<
     screen?: ConversationId
     images?: { data: string; mimeType: string }[]
   },
-  { conversation: ConversationId; route: VoiceRoute }
+  { conversation: ConversationId; route: VoiceRoute; dropped?: true }
 >('voice-live', 'turn')
 
 /** `{ model: 'provider/model' }` → the voice model from now on, the open session's included. */

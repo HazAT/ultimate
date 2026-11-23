@@ -107,7 +107,7 @@ const transcribe = (host: ExtensionHost) => {
 const transcribeEffect = (host: ExtensionHost) =>
   defineEffect<{ session: ConversationId; audio: string }, string>(
     'voice-live.transcribe',
-    async ({ audio }, { signal }) => {
+    async ({ session, audio }, { signal }) => {
       const key = await openaiSecretOrNonOAuthKey(host, signal)
       if (!key) throw new Error('Transcription needs an OpenAI API key in ⌘K → Secrets')
       const { data, mimeType } = await readRecording(host, audio)
@@ -120,7 +120,9 @@ const transcribeEffect = (host: ExtensionHost) =>
         throw new Error(
           `Transcription failed (HTTP ${answer.status})${answer.detail ? `: ${answer.detail}` : ''}`,
         )
-      return answer.text.trim()
+      const heard = answer.text.trim()
+      if (!heard) await dropSilentTurn(host, session, audio)
+      return heard
     },
     async (tx, { session, audio }, outcome) => {
       const fork = await tx.doc(Fork, session)
@@ -128,6 +130,16 @@ const transcribeEffect = (host: ExtensionHost) =>
       else fork.failed = { ...fork.failed, [audio]: outcome.error }
     },
   )
+
+async function dropSilentTurn(host: ExtensionHost, session: ConversationId, audio: string) {
+  const conversation = await host.harness().conversation(session, context)
+  if (!conversation) return
+  const { entries } = await conversation.context(context)
+  const turn = entries.findLast((entry) => entry.kind === VoiceTurnEntry.kind)
+  const data = turn?.data as VoiceTurn | undefined
+  if (data?.audio !== audio || data.text || data.images) return
+  await conversation.abort(context)
+}
 
 async function checkBranch(
   host: ExtensionHost,
@@ -383,11 +395,14 @@ export const actions = {
       { type: 'text' as const, text: words },
       ...pictures,
     ]
-    await host.harness().commit(async (tx) => {
+    const silent = await host.harness().commit(async (tx) => {
       const fork = await tx.doc(Fork, id)
       if (typeof screen === 'number') fork.screen = screen as ConversationId
       else delete fork.screen
+      return typeof audio === 'string' && fork.transcripts?.[audio] === ''
     }, context)
+    if (silent && !data.text && !pictures.length)
+      return { conversation: id, route, dropped: true as const }
     const conversation = (await host.harness().conversation(id, context))!
     await conversation.submit(
       {

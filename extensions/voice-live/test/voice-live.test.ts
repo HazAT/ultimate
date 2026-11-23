@@ -174,6 +174,23 @@ it('switching to a model that does not hear audio sends it the transcript instea
   expect(JSON.stringify(request.messages)).not.toContain('audio/webm')
 })
 
+it('a recording whose transcript is empty is never sent to the model', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  const asked = f.requests.length
+  f.transcribed.push('')
+  const kept = (await f.action('record', { audio, mimeType: 'audio/webm' })).data.result
+    .audio as string
+  await until(async () => (await f.forkOf(first.id))?.transcripts?.[kept] !== undefined)
+  const dropped = await f.action('turn', { key: 'silent', text: '', audio: kept })
+  expect(dropped.data.result).toMatchObject({ conversation: first.id, dropped: true })
+  const turns = (
+    await (await f.server.harness.conversation(first.id, context))!.context(context)
+  ).entries.filter((entry) => entry.kind === 'voice.turn')
+  expect(turns).toHaveLength(1)
+  expect(f.requests).toHaveLength(asked)
+})
+
 it('a model picked in the fork itself carries over to the next session', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })

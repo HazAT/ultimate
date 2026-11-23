@@ -221,6 +221,16 @@ export async function sendTyped(
   await sendTurn({ typed: text.trim(), pasted, interrupted })
 }
 
+function heardNothing(key: string, trace: Trace) {
+  dock.player.stop()
+  dock.pulse(false)
+  trace.fail('no words')
+  dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
+  dock.setPending(undefined)
+  dock.setPhase('idle')
+  dock.setStatus('No words heard · nothing sent')
+}
+
 async function sendTurn(input: {
   recorded?: Recorded
   typed?: string
@@ -273,6 +283,10 @@ async function sendTurn(input: {
       trace.start('transcribe')
       text = await settled(kept)
       trace.done('transcribe')
+      if (!text.trim() && !attachments.length) {
+        heardNothing(key, trace)
+        return
+      }
     } else if (kept) trace.drop('transcribe')
     const typedText = attachments.flatMap((item) => (item.kind === 'text' ? [item.text] : []))
     if (typedText.length)
@@ -294,6 +308,18 @@ async function sendTurn(input: {
       ),
     })
     patchLocal(key, { conversation: sent.conversation })
+    if (sent.dropped) {
+      heardNothing(key, trace)
+      return
+    }
+    if (kept && status.route !== 'text')
+      void settled(kept).then(
+        (heard) => {
+          if (!heard.trim() && !attachments.length && dock.pending() === key)
+            heardNothing(key, trace)
+        },
+        () => undefined,
+      )
     trace.done('send')
     trace.start('model')
     dock.setPhase('thinking')
