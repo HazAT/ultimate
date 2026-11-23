@@ -62,11 +62,10 @@ const TurnRow = renderEntry(VoiceTurnEntry, function TurnRow(props) {
   const data = () => props.entry.data
   const fork = useDocOf(() => props.entry.conversationId, VoiceForkDoc)
   const said = () => {
+    if (data().route !== 'audio') return data().text
     const clips = data().clips ?? (data().audio ? [data().audio!] : [])
     const heard = clips.map((clip) => fork()?.transcripts?.[clip]).filter(Boolean)
-    return [heard.join(' '), data().route === 'audio' ? data().text : '']
-      .filter(Boolean)
-      .join('\n\n')
+    return [heard.join(' '), data().text].filter(Boolean).join('\n\n')
   }
   const text = () => said() || data().text || '(no transcript)'
   return (

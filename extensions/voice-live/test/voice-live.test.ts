@@ -264,19 +264,24 @@ it('the status lists the setup: ready pieces and what is missing', async () => {
 it('a send keeps the draft unless it is admitted, and accepts a screenshot alone', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })
-  f.transcribed.push('kept part')
-  const kept = (
-    await f.action('record', { audio, mimeType: 'audio/webm', collect: { seconds: 1 } })
-  ).data.result.audio as string
-  await until(async () => (await f.forkOf(first.id))?.transcripts?.[kept] !== undefined)
+  f.transcribed.push('sent part', 'kept part')
+  const collect = async () =>
+    (await f.action('record', { audio, mimeType: 'audio/webm', collect: { seconds: 1 } })).data
+      .result.audio as string
+  const sentClip = await collect()
+  const kept = await collect()
+  await until(async () => Object.keys((await f.forkOf(first.id))?.transcripts ?? {}).length === 2)
+  await f.turn({ key: 'first send', text: '', audio: sentClip, clips: [sentClip] })
+  const asked = f.requests.length
   const stale = await f.action('turn', {
     key: 'stale',
     text: '',
     audio: kept,
-    clips: [kept, '00000000-0000-0000-0000-000000000000'],
+    clips: [kept, sentClip],
   })
   expect(stale.status).not.toBe(200)
   expect((await f.forkOf(first.id))?.draft?.map((clip) => clip.audio)).toEqual([kept])
+  expect(f.requests).toHaveLength(asked)
 
   const picture = (
     await f.action('turn', {

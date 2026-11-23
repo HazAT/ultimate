@@ -263,13 +263,10 @@ async function collectClip(recorded: Recorded) {
     const intent = await api.action(IntentAction, { audio: kept })
     if (intent.send && intent.clips) {
       const chosen = new Set(intent.clips)
-      await sendDraft(
-        intent.send,
-        '',
-        true,
-        draftOf().filter((clip) => chosen.has(clip.audio)),
-      )
-    }
+      const clips = draftOf().filter((clip) => chosen.has(clip.audio))
+      if (clips.length === chosen.size) await sendDraft(intent.send, '', true, clips)
+      else dock.setStatus('The collected clips changed · press Enter to send')
+    } else if (playerState().paused) dock.player.resume()
   } catch (failure) {
     dock.setError(errorMessage(failure))
   }
@@ -286,6 +283,7 @@ export async function sendDraft(
   const busy = playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
   const interrupted = busy && delivery === 'steer'
   if (interrupted) dock.player.pause()
+  else if (playerState().paused) dock.player.resume()
   await sendTurn({
     clips: [...clips],
     typed: typed.trim(),
@@ -418,14 +416,17 @@ async function sendTurn(input: {
       heardNothing(key, trace)
       return
     }
-    if (kept && status.route !== 'text')
-      void settled(kept).then(
+    if (kept && status.route !== 'text') {
+      const group = clips.length ? clips.map((clip) => clip.audio) : [kept]
+      void Promise.all(group.map(settled)).then(
         (heard) => {
-          if (!heard.trim() && !attachments.length && dock.pending() === key)
+          const silent = heard.every((part) => !part.trim())
+          if (silent && !input.typed?.trim() && !attachments.length && dock.pending() === key)
             heardNothing(key, trace)
         },
         () => undefined,
       )
+    }
     trace.done('send')
     trace.start('model')
     dock.setPhase('thinking')

@@ -204,7 +204,7 @@ async function dropSilentTurn(host: ExtensionHost, session: ConversationId, empt
       running?.inputs.length === 1 &&
       running.inputs[0] === turn.id
     )
-      await (await host.harness().conversation(session, context))?.abort(context)
+      await host.harness().abortTask(running.taskId, context)
   }
 }
 
@@ -464,7 +464,7 @@ export const actions = {
       key,
       text: text.trim(),
       route,
-      ...(typeof audio === 'string' ? { audio } : {}),
+      ...(collected ? { audio: collected[0] } : typeof audio === 'string' ? { audio } : {}),
       ...(collected && collected.length > 1 ? { clips: collected } : {}),
       ...(delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
       ...(typeof seconds === 'number' && Number.isFinite(seconds) ? { seconds } : {}),
@@ -503,7 +503,8 @@ export const actions = {
       if (typeof screen === 'number') fork.screen = screen as ConversationId
       else delete fork.screen
       if (silent) return 'dropped' as const
-      fork.pending = { ...fork.pending, [key]: group }
+      if (group.length && !data.text && !pictures.length)
+        fork.pending = { ...fork.pending, [key]: group }
       await conversation.submit(tx, {
         type: 'input',
         requestId: `voice:turn:${key}`,
@@ -547,7 +548,7 @@ export const actions = {
     if (id === undefined) return {}
     const fork = await host.harness().snapshot(Fork, id, context)
     const said = fork?.transcripts?.[audio]
-    if (said === undefined) return {}
+    if (said === undefined || !fork?.draft?.some((clip) => clip.audio === audio)) return {}
     const classify = host.want(ClassifyApi)
     if (!classify) return { unavailable: 'Spoken send needs the classify extension and its key' }
     const before = (fork?.draft ?? [])
@@ -871,16 +872,17 @@ export default function voiceExtension(host: ExtensionHost) {
           const receiver = await host.harness().conversation(target, ctx)
           if (!receiver) throw new Error(`#${target} does not exist`)
           await host.harness().commit(async (tx) => {
-            if (branch !== undefined) await checkBranch(host, tx, branch, fork.screen)
             const requestId = `voice:handoff:${api.taskId}`
-            if (!(await tx.submissionByRequest(target, requestId)))
-              await receiver.submit(tx, {
-                type: 'input',
-                requestId,
-                whenBusy: 'followUp',
-                entry: { kind: VoiceHandoffEntry.kind, data: handoff },
-                content: lines.join('\n'),
-              })
+            if (await tx.submissionByRequest(target, requestId)) return
+            if (branch !== undefined)
+              await checkBranch(host, tx, branch, (await tx.doc(Fork, api.conversationId)).screen)
+            await receiver.submit(tx, {
+              type: 'input',
+              requestId,
+              whenBusy: 'followUp',
+              entry: { kind: VoiceHandoffEntry.kind, data: handoff },
+              content: lines.join('\n'),
+            })
             ;(await tx.doc(Fork, api.conversationId)).handedOff = true
           }, ctx)
           host.harness().resume()
