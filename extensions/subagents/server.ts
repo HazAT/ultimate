@@ -45,6 +45,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Source } from '../../lib/project-paths.ts'
 import {
   agentRoots,
+  definitionAgent,
   deleteDefinition,
   discoverAgents,
   hasLogin,
@@ -746,11 +747,23 @@ export default function subagents(
   ) => {
     const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
     const name = Object.keys(index).find((candidate) => index[candidate] === id)
-    if (name === undefined) return
-    const definition = (await residentDefinitions()).find((item) => item.name === name)
-    if (!definition) return
-    const base = { ...(await agent(ROOT_CONVERSATION_ID)), ...(await hostDefault(host)) }
-    await reconfigure(tx, id, definition, base, host.modelRuntime)
+    const placementMayContinueALiveRun = (await tx.doc(LiveDoc, id)).run !== undefined
+    if (name === undefined || placementMayContinueALiveRun) return
+    const { definitions, errors } = await discoverAgents(
+      host.ultimateRoot,
+      host.projectRoot,
+      host.userHome,
+      host.modelRuntime,
+    )
+    const definition = definitions.find((item) => item.name === name && item.resident === true)
+    const brokenFileMayHoldItsDenies = errors.length > 0
+    if (!definition || brokenFileMayHoldItsDenies) return
+    const { tools, modelTools, extensions, instructions } = definitionAgent(
+      definition,
+      await agent(ROOT_CONVERSATION_ID),
+      host.modelRuntime,
+    )
+    await configure(tx, id, { tools, modelTools, extensions, instructions })
   }
   const spawnDefinition = async (
     args: {

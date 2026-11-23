@@ -392,22 +392,26 @@ it("rebuilds a standing agent's tools from its definition before its next run, k
   )
   const id = await service.standing('x', ctx)
   const conversation = (await host.harness.conversation(id, ctx))!
-  const names = async () => (await conversation.agent(ctx)).tools.map((tool) => tool.name)
-  const landed = (name: string) =>
+  const callable = async () => (await conversation.agent(ctx)).callable.map((tool) => tool.name)
+  const landed = (name: string, callers?: ['tools']) =>
     defineTool({
       name,
       description: name,
       parameters: obj({}),
+      ...(callers ? { callers } : {}),
       execute: async () => ({ output: [] }),
     })
   prepared.registry.install(
-    defineExtension({ name: 'landed', tools: [landed('fresh'), landed('denied')] }),
+    defineExtension({
+      name: 'landed',
+      tools: [landed('codemode'), landed('action', ['tools']), landed('denied', ['tools'])],
+    }),
   )
-  expect(await names()).not.toContain('fresh')
+  expect(await callable()).not.toContain('action')
   prepared.faux!.setResponses([fauxAssistantMessage('Done')])
   await (await conversation.submit({ type: 'input', content: 'Hello' }, ctx)).wait(ctx)
-  expect(await names()).toContain('fresh')
-  expect(await names()).not.toContain('denied')
+  expect(await callable()).toEqual(expect.arrayContaining(['codemode', 'action']))
+  expect(await callable()).not.toContain('denied')
 })
 
 // solidcraft #6254: a chat created from a definition kept its old tools after the definition gained `message`.

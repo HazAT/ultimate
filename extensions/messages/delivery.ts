@@ -1,3 +1,4 @@
+import type { Context } from '@earendil-works/chord/context'
 import { awaitWithContext } from '@earendil-works/chord/context'
 import {
   AssistantEntry,
@@ -20,7 +21,7 @@ import { scanNonterminalTasks } from './tasks.ts'
 import { isOpen } from '../../lib/message-state.ts'
 import type { LandingOutput, Owner, Serves } from './addresses.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { Standing } from '../subagents/api.ts'
+import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { locate, postAction } from '../../lib/remote.ts'
 import { Messages, MessageSent } from './api.ts'
 import type { Message } from './api.ts'
@@ -38,6 +39,17 @@ function retainOneWayAnswer(message: Message | undefined, answer: Message['answe
 }
 
 export function delivery(host: ExtensionHost) {
+  const refreshActiveStandingDefinition = async (id: number, ctx: Context) => {
+    const index = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
+    const name = Object.keys(index ?? {}).find((candidate) => index![candidate] === id)
+    if (name === undefined) return
+    const service = host.need(SubagentsApi)
+
+    const standingDefinitionStillExists = (await service.residents(ctx)).some(
+      (agent) => agent.name === name,
+    )
+    if (standingDefinitionStillExists) await service.standing(name, ctx)
+  }
   return defineTask<
     {
       message: Message
@@ -65,6 +77,7 @@ export function delivery(host: ExtensionHost) {
       deliver: async (task, runtime, ctx) => {
         const m = task.input.message
         if (typeof m.to !== 'number') throw new Error('Only conversations take a delivery')
+        await refreshActiveStandingDefinition(m.to, ctx)
         const recipient = await host.harness().conversation(m.to, ctx)
         if (!recipient) throw new Error(`Unknown conversation #${m.to}`)
 
@@ -376,6 +389,7 @@ export function delivery(host: ExtensionHost) {
           return
         }
         if (m.to !== 'user') {
+          await refreshActiveStandingDefinition(m.to, ctx)
           const sender = await runtime.conversation(m.to, ctx)
 
           const replayStableImages = m.images
