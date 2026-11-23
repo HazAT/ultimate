@@ -73,7 +73,7 @@ export const branchTool = (host: ExtensionHost) =>
           { ...inheritedRootAgent, ...(await hostDefault(host)) },
           host.modelRuntime,
         )
-        const { model, thinkingLevel, modelTools } = authenticatedOrDefaultAgent
+        const { model, thinkingLevel, modelTools, tools } = authenticatedOrDefaultAgent
         const branch = await lineage.branch(
           {
             from: root,
@@ -93,6 +93,7 @@ export const branchTool = (host: ExtensionHost) =>
           await configure(tx, branch.id, {
             instructions: coordinator.instructions,
             ...(modelTools && 'add' in modelTools && modelTools.add?.length ? { modelTools } : {}),
+            ...(coordinator.tools || coordinator.denyTools?.length ? { tools } : {}),
           })
           ;(await tx.doc(host.metadata, branch.id)).label = 'coordinator'
           ;(await tx.doc(Family, branch.id)).name = definitionFamily(
