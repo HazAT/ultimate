@@ -44,6 +44,21 @@ const PauseDoc = defineDoc<{ pause?: Pause }>({
 })
 const keyId = (key: string) => createHash('sha256').update(key).digest('hex').slice(0, 16)
 
+const NUMBER = /^\d+(\.\d+)?$/
+const HTTP_DATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/
+const validRetryHeader: Record<string, (value: string) => boolean> = {
+  'retry-after': (value) => NUMBER.test(value) || HTTP_DATE.test(value),
+  'retry-after-ms': (value) => NUMBER.test(value),
+  'x-should-retry': (value) => value === 'true' || value === 'false',
+}
+export const retryHeaders = (headers: Headers) =>
+  Object.fromEntries(
+    Object.entries(validRetryHeader).flatMap(([name, valid]) => {
+      const value = headers.get(name)?.trim()
+      return value !== undefined && valid(value) ? [[name, value]] : []
+    }),
+  )
+
 export const cooldownMs = 15 * 60_000
 const rejected: Record<number, string> = {
   401: 'API key rejected',
@@ -113,8 +128,8 @@ export default function classify(host: ExtensionHost) {
           const reason = rejected[response.status]
           if (reason && key) await pause(key, response.status)
           return Response.json(
-            { error: `TypeSafe ${response.status}: ${reason ?? response.statusText}` },
-            { status: response.status },
+            { error: `TypeSafe ${response.status}: ${reason ?? 'request failed'}` },
+            { status: response.status, headers: retryHeaders(response.headers) },
           )
         },
       })

@@ -21,7 +21,7 @@ import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite
 import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
 import { modelCallLimits } from '../../codemode/models.ts'
 import { afterEach, expect, it, vi } from 'vitest'
-import classify, { cooldownMs } from '../server.ts'
+import classify, { cooldownMs, retryHeaders } from '../server.ts'
 import { ClassifyApi } from '../api.ts'
 import type { ClassifyService } from '../api.ts'
 import { writeSecret } from '../../secrets/store.ts'
@@ -397,10 +397,46 @@ it.each([
     'fetch',
     vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(new Response('bad key echo-sentinel', { status })),
+      .mockResolvedValue(
+        new Response('bad key echo-sentinel', { status, statusText: 'status-sentinel' }),
+      ),
   )
   const output = await run(`text((await ${scriptCall}).errorMessage)`)
   expect(output).toContain(shown)
   expect(nestedResults.length).toBeGreaterThan(0)
   expect(JSON.stringify([output, nestedResults])).not.toContain('echo-sentinel')
+  expect(JSON.stringify([output, nestedResults])).not.toContain('status-sentinel')
+})
+
+it('passes only valid retry headers on to Pi with the fixed error body', () => {
+  expect(
+    retryHeaders(
+      new Headers({
+        'retry-after': '7',
+        'retry-after-ms': 'header-sentinel',
+        'x-should-retry': 'true',
+        'x-echo': 'header-sentinel',
+      }),
+    ),
+  ).toEqual({ 'retry-after': '7', 'x-should-retry': 'true' })
+  expect(
+    retryHeaders(
+      new Headers({ 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT', 'retry-after-ms': '1500' }),
+    ),
+  ).toEqual({ 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT', 'retry-after-ms': '1500' })
+  expect(retryHeaders(new Headers({ 'retry-after': '2026 header-sentinel' }))).toEqual({})
+})
+
+it('keeps a 429 retry-after for Pi and drops other upstream headers', async () => {
+  const { run, nestedResults } = await codemodeFixture()
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    new Response('busy', {
+      status: 429,
+      headers: { 'retry-after': '0', 'x-echo': 'header-sentinel' },
+    }),
+  )
+  vi.stubGlobal('fetch', fetch)
+  const output = await run(`text((await ${scriptCall}).errorMessage)`)
+  expect(output).toContain('TypeSafe 429: request failed')
+  expect(JSON.stringify([output, nestedResults])).not.toContain('header-sentinel')
 })
