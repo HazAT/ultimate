@@ -1575,6 +1575,35 @@ it('forwards images into a new branch with its prompt', async () => {
   const entry = await placed(f, message.to as number, message.id)
   expect(imagesIn(entry)).toEqual([png(0)])
 })
+it('creates nothing when a branch call fails on its images', async () => {
+  const f = await fixture()
+  await enableBranch(f)
+  await (
+    await f.opened.root.submit(
+      {
+        type: 'input',
+        content:
+          'BRANCH ' + JSON.stringify({ prompt: 'Fix this card', isolated: false, images: 'latest' }),
+      },
+      context,
+    )
+  ).wait(context)
+  await f.opened.root.waitForIdle(context)
+  const view = await f.opened.root.context(context)
+  expect(JSON.stringify(view.entries.findLast((e) => e.kind === 'pi.tool-result'))).toContain(
+    'found no images in this turn',
+  )
+  expect(view.entries.filter((e) => e.kind === 'lineage.branched')).toEqual([])
+  const conversations = await f.opened.harness.commit(
+    (tx) => tx.scanConversations({}, 100),
+    context,
+  )
+  for (const conversation of conversations.items)
+    expect(
+      (await f.opened.harness.snapshot(Branch, conversation.id, context))?.branch,
+    ).toBeUndefined()
+  expect((await f.log())?.messages ?? []).toEqual([])
+})
 it("routes a branch's later final answer to its starter once, waking it when the branch stopped idle", async () => {
   const f = await fixture()
   const b = await branched(f)
