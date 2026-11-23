@@ -710,13 +710,27 @@ export default function subagents(
       const result = await host
         .harness()
         .commit(async (tx): Promise<{ id: ConversationId } | { missing: string[] }> => {
-          const definitions = await residentDefinitions()
+          const discovered = await discoverAgents(
+            host.ultimateRoot,
+            host.projectRoot,
+            host.userHome,
+            host.modelRuntime,
+          )
+          const definitions = discovered.definitions.filter((item) => item.resident === true)
           const definition = definitions.find((item) => item.name === name)
           if (!definition) return { missing: definitions.map((item) => `@${item.name}`) }
           const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
-          let id = Object.hasOwn(index, name) ? index[name] : undefined
+          const stored = Object.hasOwn(index, name) ? index[name] : undefined
+          let id = stored !== undefined && (await tx.conversation(stored)) ? stored : undefined
+          const unreadFileMayHoldItsDenies = discovered.errors.length > 0
+          if (unreadFileMayHoldItsDenies) {
+            if (id !== undefined) return { id }
+            throw new Error(
+              `Cannot configure @${name} while agent discovery has errors: ${discovered.errors.map((error) => `${error.path}: ${error.error}`).join('; ')}`,
+            )
+          }
           let created: ConversationRecord | undefined
-          if (id === undefined || !(await tx.conversation(id))) {
+          if (id === undefined) {
             created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
             id = created.id
             index[name] = id

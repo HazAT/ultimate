@@ -481,3 +481,15 @@ it('reconfigures a child from its current definition, keeping its chosen model',
   expect(agent.tools.map((tool) => tool.name)).toEqual(['read', 't'])
   expect(agent.model).toEqual({ provider: 'faux', modelId: 'faux-pinned' })
 })
+
+it('keeps a standing agent’s tools while agent discovery has errors', async () => {
+  const { service, host, path } = await fixture()
+  const id = await service.standing('x', ctx)
+  const tools = async () =>
+    (await (await host.harness.conversation(id, ctx))!.agent(ctx)).tools.map((tool) => tool.name)
+  const before = await tools()
+  await writeFile(join(path, 'agents/deny.md'), 'not: [valid')
+  await writeFile(join(path, 'agents/x.md'), definition('Original').replace('[read, t]', '[read]'))
+  expect(await service.standing('x', ctx)).toBe(id)
+  expect(await tools()).toEqual(before)
+})
