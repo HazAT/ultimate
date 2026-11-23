@@ -124,8 +124,7 @@ function holdHandlers() {
   }
 }
 
-const holdTitle = () =>
-  `Hold to talk · or hold Space outside a text field, ${holdKeys()} anywhere · ${keys()} hides Voice`
+const holdTitle = () => `Hold to talk, or hold ${holdKeys()} anywhere · ${keys()} hides Voice`
 
 function TalkBar() {
   return (
@@ -148,9 +147,7 @@ function TalkBar() {
       </Show>
       <Show when={!recording()}>
         <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-muted-foreground/70 pointer-coarse:hidden">
-          <Kbd>Space</Kbd>
-          <span class="text-muted-foreground/40">/</span>
-          <Kbd>{holdKeys()}</Kbd>
+          hold <Kbd>{holdKeys()}</Kbd>
         </span>
       </Show>
     </Button>
@@ -322,7 +319,7 @@ function PlaybackStrip() {
 
 function Bottom(props: { fork: ConversationId | undefined }) {
   const target = (): ComposerTarget => ({
-    placeholder: 'Type, paste a screenshot, or hold Space to talk…',
+    placeholder: `Type, paste a screenshot, or hold ${holdKeys()} to talk…`,
     images: true,
     send: (text, images) => sendTyped(text, images),
   })
@@ -335,9 +332,7 @@ function Bottom(props: { fork: ConversationId | undefined }) {
       <Show
         when={props.fork}
         fallback={
-          <div class="flex items-center gap-2 px-4 pb-3 font-mono text-[11px] text-muted-foreground">
-            <Shimmer>forking @ultimate…</Shimmer>
-          </div>
+          <div class="pb-3" />
         }
       >
         {(fork) => (
@@ -383,17 +378,8 @@ export function VoicePanel() {
         return
       }
       if (event.repeat) return
-      const field =
-        event.target instanceof Element
-          ? event.target.closest<HTMLElement>('input, textarea, select, [contenteditable="true"]')
-          : null
-      const emptyVoiceBox =
-        field instanceof HTMLTextAreaElement &&
-        !!field.closest('[data-voice-panel]') &&
-        !field.value.trim()
       const chord = keyChord(event)
-      const space = chord === 'space' && voiceOpen() && (!field || emptyVoiceBox)
-      if (!space && chord !== parseHold()) return
+      if (chord !== parseHold()) return
       event.preventDefault()
       event.stopPropagation()
       holding = event.code
@@ -563,8 +549,8 @@ export function VoicePanel() {
                 <AudioLines class="mb-1 size-5 text-brand" />
                 <p class="text-[14px] text-foreground">Think out loud with @ultimate</p>
                 <p class="max-w-sm text-[13px] text-muted-foreground">
-                  Hold <Kbd>Space</Kbd> here, or <Kbd>{holdKeys()}</Kbd> anywhere, and talk. Voice
-                  forks @ultimate with everything it knows, talks it through with you, and hands the
+                  Hold <Kbd>{holdKeys()}</Kbd> anywhere, or the talk bar, and speak. Voice forks
+                  @ultimate with everything it knows, talks it through with you, and hands the
                   result back when you agree; then the next talk starts fresh.
                 </p>
               </div>

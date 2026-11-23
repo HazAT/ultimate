@@ -26,6 +26,7 @@ type Pasted = { kind: 'image'; data: string; mimeType: string } | { kind: 'text'
 export type Phase = 'idle' | 'recording' | 'sending' | 'thinking' | 'speaking' | 'done' | 'error'
 type Local = {
   trace: Trace
+  conversation?: number
   audio?: string
   failed?: string
   optimistic?: VoiceTurn
@@ -272,7 +273,7 @@ async function sendTurn(input: {
         .filter(Boolean)
         .join('\n\n')
     trace.start('send')
-    await api.action(TurnAction, {
+    const sent = await api.action(TurnAction, {
       key,
       text,
       ...(kept ? { audio: kept } : {}),
@@ -284,6 +285,7 @@ async function sendTurn(input: {
         item.kind === 'image' ? [{ data: item.data, mimeType: item.mimeType }] : [],
       ),
     })
+    patchLocal(key, { conversation: sent.conversation })
     trace.done('send')
     trace.start('model')
     dock.setPhase('thinking')
@@ -336,8 +338,13 @@ export function useTurns() {
     const last = turns.at(-1)
     if (last && state().busy && partial()) last.live = partial()
     const stored = new Set(turns.map((turn) => turn.key))
+    const here = state().id
     for (const [key, local] of Object.entries(dock.local()))
-      if (local.optimistic && !stored.has(key))
+      if (
+        local.optimistic &&
+        !stored.has(key) &&
+        (local.conversation === undefined || local.conversation === here)
+      )
         turns.push({
           key,
           data: local.optimistic,
