@@ -43,9 +43,11 @@ report.**
   verdict goes on the message and in the branch's `board.judged` document by answer entry (`{ answer, report }`, the
   probability it reports; below 0.5 it is a note). Without classify, after 10 s, on any error or a score outside [0, 1]
   the answer reports, with `{ answer, error }` naming only the cause (an HTTP status, `timed out`, `interrupted`): a
-  wrong wake costs one turn, a lost answer stalls a flow. In the transaction that sends it the checks run again: when the branch has sent its starter
-  a newer message, got busy or concluded meanwhile, the answer goes as a note (`movedOn`), so an older decision never overtakes a newer one; a reply that only answers another
-  asker does not count, and a judged note is never promoted to a report later. The
+  wrong wake costs one turn, a lost answer stalls a flow. In the transaction that sends it the checks run again. A newer judged report (or, for unjudged
+  messages, any newer message) the branch already sent its starter supersedes it: it goes as a note marked `movedOn`
+  and is never promoted, so an older decision never overtakes a newer one, while an older answer judged a note never
+  suppresses a newer report. A branch that is busy or concluded at that moment sends it as a note marked `busy`, which
+  its next report promotes like any work update. A reply that only answers another asker counts for neither. The
   judge's error message is a short cause (classify keeps only `TypeSafe <status>`); a provider's response body never
   crosses it. The message card and the branch's final answer show the verdict as a
   chip. A landing concludes the branch and wakes the starter itself, asking through

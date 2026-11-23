@@ -103,9 +103,23 @@ async function judge(
   }
 }
 
-async function supersededSince(tx: Tx, from: ConversationId, to: ConversationId, since: number) {
+const judgedNote = (judged: Judged) =>
+  judged.movedOn === true || ('report' in judged && judged.report < 0.5)
+
+async function supersededSince(
+  tx: Tx,
+  from: ConversationId,
+  to: ConversationId,
+  since: number,
+  answer: EntryId,
+) {
   const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-  return messages.some((m) => m.from === from && m.to === to && m.id >= since)
+  return messages.some(
+    (m) =>
+      m.from === from &&
+      m.to === to &&
+      (m.judged ? m.judged.answer > answer && !judgedNote(m.judged) : m.id >= since),
+  )
 }
 
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
@@ -422,7 +436,7 @@ export function route(host: ExtensionHost) {
                   last.reply ||
                   last.report ||
                   last.re !== undefined ||
-                  last.judged
+                  (last.judged && judgedNote(last.judged))
                 )
                   return []
                 return routeToStarter(last.text, {})
@@ -497,9 +511,11 @@ export function route(host: ExtensionHost) {
             ...(since === undefined
               ? {}
               : {
-                  stillReports: async (tx: Tx) =>
-                    !(await supersededSince(tx, id, to, since)) &&
-                    !(await concludedOrWorkUnderway(host, tx, id)),
+                  stillReports: async (tx: Tx) => {
+                    if (await supersededSince(tx, id, to, since, options.judged!.answer))
+                      return 'superseded'
+                    return (await concludedOrWorkUnderway(host, tx, id)) ? 'busy' : 'reports'
+                  },
                 }),
           })
         }

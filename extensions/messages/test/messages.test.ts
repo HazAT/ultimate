@@ -1802,10 +1802,10 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
     { to: `#${b.id}`, text: 'Which host?', reply: true },
     context,
   )
-  await until(
-    async () =>
-      (await f.log())!.messages.filter((m) => m.from === b.id && m.to === f.recipient.id)
-        .length === 2,
+  await until(async () =>
+    (await f.log())!.messages.some(
+      (m) => m.from === b.id && m.to === f.recipient.id && m.text.includes('Which host?'),
+    ),
   )
   releaseResult!(0.9)
   await b.settled()
@@ -1828,6 +1828,42 @@ it("lets the judge leave a branch's back-and-forth with the user as a note, and 
   await f.opened.harness.waitForIdle(context)
   expect(asked).toHaveLength(calls + 1)
   expect((await b.from()).at(-1)).toMatchObject({ report: true, judged: { error: 'interrupted' } })
+})
+it('keeps the newest judged report of a branch when verdicts come back out of order or while it is busy', async () => {
+  const f = await fixture()
+  const b = await branched(f)
+  const pending: ((p: number) => void)[] = []
+  f.provided.set(Judge.name, {
+    report: async () => new Promise<number>((done) => pending.push(done)),
+  } satisfies JudgeService)
+  const ask = async (content: string) => {
+    const before = pending.length
+    await (await b.branch.submit({ type: 'input', content }, context)).wait(context)
+    await until(async () => pending.length === before + 1)
+    return pending[before]
+  }
+  const sent = async (text: string) => (await b.from()).find((m) => m.text === `Answer: ${text}`)
+
+  // An older answer judged a note, settling after a newer result is weighed, does not swallow that result.
+  const chat = await ask('nice')
+  const weighResult = await ask('result')
+  chat(0.1)
+  await until(async () => (await sent('nice')) !== undefined)
+  weighResult(0.9)
+  await b.settled()
+  expect((await sent('result'))!).toMatchObject({ report: true, judged: { report: 0.9 } })
+
+  // A result judged while the branch answers a sibling goes as a note, and is promoted once that reply is sent.
+  const late = await ask('late result')
+  await sendMessage(f.host, f.recipient.id, { to: `#${b.id}`, text: 'HOLD', reply: true }, context)
+  await until(f.holding)
+  late(0.9)
+  await until(async () => (await sent('late result')) !== undefined)
+  expect((await sent('late result'))!).toMatchObject({ judged: { busy: true } })
+  f.hold.release()
+  await b.settled()
+  const toStarter = (await b.from()).filter((m) => m.to === 1)
+  expect(toStarter.filter((m) => m.text === 'Answer: late result' && m.report)).toHaveLength(1)
 })
 it("places a branch's one-way message to its starter as a note", async () => {
   const f = await fixture()

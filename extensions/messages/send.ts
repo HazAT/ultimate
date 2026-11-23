@@ -77,7 +77,7 @@ export async function send(
     routed?: EntryId
     echo?: boolean
     judged?: Judged
-    stillReports?: (tx: Tx) => Promise<boolean>
+    stillReports?: (tx: Tx) => Promise<'reports' | 'busy' | 'superseded'>
     serveBranch?: true
   } = {},
 ) {
@@ -191,10 +191,12 @@ export async function send(
     if (options.serveBranch && typeof from === 'number' && typeof to === 'number')
       await serve(host, tx, from, { kind: 'branch', id: to })
     let { report, note, judged } = options
-    if (report && options.stillReports && !(await options.stillReports(tx))) {
+    const still = report && options.stillReports ? await options.stillReports(tx) : 'reports'
+    if (still !== 'reports') {
       report = false
       note = true
-      if (judged) judged = { ...judged, movedOn: true }
+      if (judged)
+        judged = { ...judged, ...(still === 'superseded' ? { movedOn: true } : { busy: true }) }
       if (judged && typeof from === 'number')
         (await tx.doc(Judgements, from)).answers[judged.answer] = judged
     }
