@@ -1,6 +1,6 @@
 // Load the faux provider's token-pacing mock before server modules.
 import { fauxServer, sourceCopy, temp } from '../../../test/helpers.ts'
-import { chmod, mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
@@ -50,23 +50,6 @@ it('adds overlay denials to the base list, preserving it through an empty overla
   expect(discovered.definitions).toMatchObject([
     { name: 'restricted', denyTools: ['instance', 'unknown-tool'] },
   ])
-})
-
-it('reports an enabled extension it cannot read, since its agents folder may hold denials', async () => {
-  const root = await temp('ultimate-deny-unread-')
-  const unreadable = join(root, 'extensions/locked')
-  await mkdir(join(unreadable, 'agents'), { recursive: true })
-  await writeFile(
-    join(unreadable, 'agents/restricted.md'),
-    definition('addTools: []\ndenyTools: [instance]'),
-  )
-  await chmod(unreadable, 0)
-  try {
-    const discovered = await discoverAgents(root, root, root, await ModelRuntime.create())
-    expect(discovered.errors).toMatchObject([{ path: join(unreadable, 'agents') }])
-  } finally {
-    await chmod(unreadable, 0o755)
-  }
 })
 
 it('denies instance to children with inherited or explicit tools without changing the parent', async () => {

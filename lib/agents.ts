@@ -397,11 +397,7 @@ export async function agentRoots(ultimateRoot: string, projectRoot: string, user
   return [
     { source: 'builtin' as const, path: join(ultimateRoot, 'agents') },
     ...extensions
-      .filter(
-        (extension) =>
-          extension.enabled &&
-          (extension.files.includes('agents') || extension.error !== undefined),
-      )
+      .filter((extension) => extension.enabled && extension.files.includes('agents'))
       .map((extension) => ({ source: 'builtin' as const, path: join(extension.path, 'agents') })),
     { source: 'user' as const, path: join(userHome, '.ultimate/agents') },
     ...(useProjectSetup(projectRoot, userHome)
