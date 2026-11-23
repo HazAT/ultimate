@@ -218,11 +218,15 @@ it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep i
     want: () => undefined,
   } as unknown as ExtensionHost)
   const hooks = extension.hooks![0].handlers as GenerationHooks
-  const before = (conversationId: number, kind = 'pi.user') =>
-    hooks.beforeInput({ kind }, { tx, conversationId } as never, BACKGROUND_CONTEXT)
+  const before = (conversationId: ConversationId, kind = 'pi.user') =>
+    hooks.beforeInput(
+      { kind },
+      { tx, conversationId, agent: () => Promise.reject(new Error('Unused')) },
+      BACKGROUND_CONTEXT,
+    )
   expect(await before(ULTIMATE)).toBeUndefined()
   await start(tx, 'Make it fast', 0)
-  expect(await before(9)).toBeUndefined()
+  expect(await before(9 as ConversationId)).toBeUndefined()
   const note = (await before(ULTIMATE))!.entries![0]
   expect(note.kind).toBe('goal.note')
   expect(note.model![0].content).toContain(

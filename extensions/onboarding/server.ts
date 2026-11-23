@@ -226,6 +226,7 @@ export const actions: Record<string, ExtensionAction> = {
       String(root)
     ]
     if (existing !== undefined) {
+      await host.need(SubagentsApi).standing('ultimate', context)
       const conversation = (await harness.conversation(existing, context))!
       await harness.commit(async (tx) => {
         const sent = await tx.submissionByRequest(conversation.id, requestId)

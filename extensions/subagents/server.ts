@@ -58,6 +58,7 @@ import type { AgentDefinition, DefinitionFields } from '../../lib/agents.ts'
 import { createChild, reconfigure, started } from './children.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { exec } from '../../lib/exec.ts'
+import { meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
@@ -748,15 +749,17 @@ export default function subagents(
     const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
     const name = Object.keys(index).find((candidate) => index[candidate] === id)
     if (name === undefined) return
-    const { definitions, errors } = await discoverAgents(
+    const discovered = await discoverAgents(
       host.ultimateRoot,
       host.projectRoot,
       host.userHome,
       host.modelRuntime,
+    ).catch(meansNone)
+    const definition = discovered?.definitions.find(
+      (item) => item.name === name && item.resident === true,
     )
-    const definition = definitions.find((item) => item.name === name && item.resident === true)
-    const brokenFileMayHoldItsDenies = errors.length > 0
-    if (!definition || brokenFileMayHoldItsDenies) return
+    const unreadFileMayHoldItsDenies = !discovered || discovered.errors.length > 0
+    if (!definition || unreadFileMayHoldItsDenies) return
     const { tools, modelTools, extensions } = definitionAgent(
       definition,
       await agent(ROOT_CONVERSATION_ID),
