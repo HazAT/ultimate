@@ -11,6 +11,7 @@ import {
   putNote,
   readDrafts,
   saveWriting,
+  sendDrafts,
   sendProblem,
   typed,
   withoutSent,
@@ -176,6 +177,27 @@ it('clears only what was sent once a send lands, keeping edits made meanwhile', 
   })
   withoutSent(readDrafts(shared, PREFIX))(shared, PREFIX)
   expect(shared.length).toBe(0)
+})
+
+it('clears the file it sent from when another file is opened while the send is delivered', async () => {
+  const shared = storage()
+  const other = draftsKey('/work/app/docs/notes.md')
+  putComment(draft('same'))(shared, PREFIX)
+  putComment(draft('same'))(shared, other)
+  let delivered = (_to: number) => {}
+  const sending = sendDrafts(
+    shared,
+    PREFIX,
+    () => new Promise<number>((resolve) => (delivered = resolve)),
+  )
+  putNote('written on the other file meanwhile')(shared, other)
+  delivered(80)
+  expect(await sending).toEqual({ to: 80, cleared: true })
+  expect(readDrafts(shared, PREFIX)).toEqual({ comments: [], note: '' })
+  expect(readDrafts(shared, other)).toEqual({
+    comments: [draft('same')],
+    note: 'written on the other file meanwhile',
+  })
 })
 
 it("says why Send cannot go: no comment yet, or over Review's limits", () => {

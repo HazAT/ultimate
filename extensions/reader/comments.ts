@@ -166,6 +166,18 @@ export const withoutSent =
     return ok
   }
 
+export async function sendDrafts<T>(
+  storage: DraftStorage,
+  prefix: string,
+  deliver: (drafts: Drafts) => Promise<T>,
+) {
+  const drafts = readDrafts(storage, prefix)
+  const problem = sendProblem(drafts)
+  if (problem) throw new Error(problem)
+  const to = await deliver(drafts)
+  return { to, cleared: withoutSent(drafts)(storage, prefix) }
+}
+
 export type Writing = {
   start: number
   end: number

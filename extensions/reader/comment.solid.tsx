@@ -118,6 +118,7 @@ export function DraftCard(props: {
   text: string
   changed?: boolean
   editBlocked?: string
+  deleteRefused?: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -178,6 +179,11 @@ export function DraftCard(props: {
       <div class="px-3 pt-1 pb-2 break-words whitespace-pre-wrap text-foreground/90">
         {props.text}
       </div>
+      <Show when={props.deleteRefused}>
+        <p class="px-3 pb-2 font-mono text-[11px] text-error" data-reader-unsaved="" role="alert">
+          Not deleted: this browser's storage refused it
+        </p>
+      </Show>
     </div>
   )
 }

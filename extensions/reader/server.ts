@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -9,7 +9,7 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { checkoutRoots, gitCommonDir, MARKDOWN, resolveMarkdown } from './paths.ts'
+import { checkoutRoots, gitCommonDir, MARKDOWN, readResolved, resolveMarkdown } from './paths.ts'
 import { FilesAction, ReadAction, ThreadAction, ThreadsDoc } from './refs.ts'
 import type { Thread } from './refs.ts'
 import { threadFor } from './threads.ts'
@@ -68,12 +68,16 @@ export const userActions = ['read', 'files', 'thread']
 
 export const actions = {
   read: implementAction(ReadAction, async (args, { host }) => {
-    const file = await resolveMarkdown(
-      fieldOf(args, 'path'),
-      await rootsOf(host, conversationOf(args)),
+    const file = await readResolved(
+      await resolveMarkdown(fieldOf(args, 'path'), await rootsOf(host, conversationOf(args))),
     )
-    const text = await readFile(file.absolute, 'utf8')
-    return { path: file.path, absolute: file.absolute, root: file.root, text, mtime: file.mtime }
+    return {
+      path: file.path,
+      absolute: file.absolute,
+      root: file.root,
+      text: file.text,
+      mtime: file.mtime,
+    }
   }),
   files: implementAction(FilesAction, async (args, ctx) => {
     const [cwd] = (await rootsOf(ctx.host, conversationOf(args))) as [string]

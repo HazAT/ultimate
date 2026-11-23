@@ -1,9 +1,9 @@
-import { mkdir, realpath, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, realpath, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { git } from '../../../lib/git.ts'
 import { temp } from '../../../test/helpers.ts'
-import { checkoutRoots, gitCommonDir, resolveMarkdown } from '../paths.ts'
+import { checkoutRoots, gitCommonDir, MAX_BYTES, readResolved, resolveMarkdown } from '../paths.ts'
 
 async function fixture() {
   const base = await realpath(await temp('reader-'))
@@ -47,6 +47,15 @@ it('refuses paths that leave the roots: .., symlinks out, absolute paths elsewhe
     /outside the project/,
   )
   await expect(resolveMarkdown('~/secret.md', roots)).rejects.toThrow(/Home paths/)
+})
+
+it('refuses a file that grew past 2 MB after it was checked, and reads one that stayed under', async () => {
+  const { project, roots } = await fixture()
+  await writeFile(join(project, 'big.md'), 'x'.repeat(MAX_BYTES - 1))
+  const checked = await resolveMarkdown('big.md', roots)
+  expect((await readResolved(checked)).text).toHaveLength(MAX_BYTES - 1)
+  await appendFile(join(project, 'big.md'), 'xx')
+  await expect(readResolved(checked)).rejects.toThrow(/larger than 2 MB/)
 })
 
 it('opens only markdown files that exist', async () => {

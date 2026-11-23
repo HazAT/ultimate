@@ -57,9 +57,11 @@ Drafts live in this browser's local storage, one key per comment and one for the
 conversation shows it, since the file has one thread. No write reads and rewrites a shared value, so two tabs only
 write the same key when they edit the same comment; other tabs refresh on the `storage` event. The comment being
 written is saved on every change under `…:<absolute path>:writing:<tab>` (one slot per tab, its id kept in session
-storage), so it comes back after a surface switch or a reload and two tabs never type over each other's. A write the
-browser refuses (storage full) keeps the text in its composer or note box, marked not saved, and held in this tab's
-memory until a later write of the same key succeeds.
+storage), so it comes back after a surface switch or a reload and two tabs never type over each other's. Each tab
+holds a Web Lock named after its id for its life; a duplicated tab, which inherits the id with session storage, finds
+it held and takes a new one. A write the browser refuses (storage full) keeps the text in its composer or note box,
+marked not saved, and held in this tab's memory until a later write of the same key succeeds. A Delete or Discard the
+browser refuses says so where it was pressed.
 
 The file is known by its real absolute path once read: re-reads, reopening and draft keys use it, so the same relative
 path in the conversation's worktree never swaps in another file. The relative path is shown, and is the `file` the
@@ -72,7 +74,8 @@ The footer reads `N comments · + note · Discard · Send to #<id>` and shows wh
 comment as `{ file: <relative path>, side: "new", start, end, excerpt, text }`, sorted by line, plus the optional note.
 Send stays disabled, with the reason, while there is no comment, the note or a comment is over Review's 4,000
 characters, or there are more than 50 comments (`sendProblem`). When it lands, only drafts still exactly as sent are
-cleared (`withoutSent`). The thread gets it as one `review.comments` input, which this extension renders as a card
+cleared, under the key of the file Send started from even if another file is shown by then (`sendDrafts`); if the
+browser refuses to clear them, the bar reads `Sent to #<id>, but its drafts could not be cleared`. The thread gets it as one `review.comments` input, which this extension renders as a card
 (`card.solid.tsx`) for `read:` specs only; every other review keeps Review's card.
 
 ## Server (`server.ts`)
@@ -83,7 +86,9 @@ User-only actions (`refs.ts`), so codemode cannot call them:
   A relative path resolves in the conversation's worktree, then the project root; an absolute one must be inside those
   roots. The worktree counts only while the workspaces index has it ready and its Git common dir is the project's
   (`paths.ts` `checkoutRoots`); an agent's cwd never does, since it can be any folder. Roots and target are compared
-  after `realpath`, so `..`, `~` and symlinks pointing out are refused.
+  after `realpath`, so `..`, `~` and symlinks pointing out are refused. The file is then read through one handle
+  opened without following a final symlink, whose real path must still be inside the root and the same file (device
+  and inode), at most 2 MB plus one byte, so a swap or growth after the check is refused (`paths.ts` `readResolved`).
 - `files { conversation? }` → `{ files: [{ path, mtime }], truncated }`: `git ls-files -co --exclude-standard`
   markdown in the checkout, newest first, at most 2,000.
 - `thread { path, conversation }` → `{ id, from, path, started }`: the file's thread, the file resolved as `read` does

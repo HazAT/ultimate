@@ -64,19 +64,20 @@ import {
   putComment,
   putNote,
   saveWriting,
+  sendDrafts,
   sendProblem,
   typed,
   withoutSent,
   writingSlot,
 } from './comments.ts'
 import type { Change, Draft, Drafts, Writing } from './comments.ts'
-import { tab, useDrafts } from './drafts.solid.tsx'
+import { notifyDrafts, tabId, useDrafts } from './drafts.solid.tsx'
 import { InReadFile, reachedLine, useLineTarget, usePath } from './link.solid.tsx'
 import { pickerDialog } from './picker.solid.tsx'
 import { ReadAction, ThreadAction, ThreadsDoc } from './refs.ts'
 import type { ReadFile, Thread } from './refs.ts'
 
-type SendOutcome = { conversation: ConversationId } | { error: string }
+type SendOutcome = { conversation: ConversationId; cleared: boolean } | { error: string }
 type Sent = { file: string; outcome: SendOutcome }
 
 const splitBlocks = (markdown: string) => blockSplitterKeepingFinishedBlocks()(markdown)
@@ -255,45 +256,54 @@ function Opened(props: ReaderProps & { phone: boolean }) {
   }
   const sentTo = () => {
     const result = outcome()
-    return result && 'conversation' in result ? result.conversation : undefined
+    return result && 'conversation' in result ? result : undefined
   }
   const sendError = () => {
     const result = outcome()
     return result && 'error' in result ? result.error : undefined
   }
 
+  const [discardRefused, setDiscardRefused] = createSignal(false)
+
+  const deliver = async (sent: ReadFile, from: ConversationId, snapshot: Drafts) => {
+    const lines = sent.text.replace(/\r\n?/g, '\n').split('\n')
+    const thread = await api.action(ThreadAction, { path: sent.absolute, conversation: from })
+    const result = await api.action(SendAction, {
+      conversation: thread.id,
+      spec: readSpec(sent.absolute),
+      comments: snapshot.comments
+        .map((draft) => {
+          const at = place(draft, lines)
+          return {
+            file: sent.path,
+            side: 'new' as const,
+            start: at.start,
+            end: at.end,
+            excerpt: draft.excerpt,
+            text: draft.text,
+          }
+        })
+        .toSorted((a, b) => a.start - b.start || a.end - b.end),
+      ...(snapshot.note.trim() && { note: snapshot.note }),
+    })
+    return result.conversation
+  }
+
   const send = async () => {
     const shownFile = data()
     const from = props.origin
-    const snapshot = drafts()
-    if (!shownFile || from === undefined || sendProblem(snapshot)) return
-    const lines = shownFile.text.replace(/\r\n?/g, '\n').split('\n')
+    const key = storeKey()
+    if (!shownFile || from === undefined) return
     const report = (result: SendOutcome) =>
       props.setSent({ file: shownFile.absolute, outcome: result })
     props.setSending(true)
     props.setSent(undefined)
     try {
-      const to = await api.action(ThreadAction, { path: shownFile.absolute, conversation: from })
-      const result = await api.action(SendAction, {
-        conversation: to.id,
-        spec: readSpec(shownFile.absolute),
-        comments: snapshot.comments
-          .map((draft) => {
-            const at = place(draft, lines)
-            return {
-              file: shownFile.path,
-              side: 'new' as const,
-              start: at.start,
-              end: at.end,
-              excerpt: draft.excerpt,
-              text: draft.text,
-            }
-          })
-          .toSorted((a, b) => a.start - b.start || a.end - b.end),
-        ...(snapshot.note.trim() && { note: snapshot.note }),
-      })
-      update(withoutSent(snapshot))
-      report({ conversation: result.conversation })
+      const { to, cleared } = await sendDrafts(localStorage, key, (snapshot) =>
+        deliver(shownFile, from, snapshot),
+      )
+      notifyDrafts()
+      report({ conversation: to, cleared })
     } catch (failure) {
       report({ error: errorMessage(failure) })
     } finally {
@@ -328,26 +338,31 @@ function Opened(props: ReaderProps & { phone: boolean }) {
         </Show>
       }
       footer={
-        <Show
-          when={drafts().comments.length > 0 || drafts().note}
-          fallback={
-            <Show when={sentTo()}>
-              {(to) => <SentBar onClose={() => props.setSent(undefined)} to={to()} />}
-            </Show>
-          }
-        >
-          <Footer
-            drafts={drafts()}
-            error={sendError()}
-            noteUnsaved={noteUnsaved()}
-            onDiscard={() => update(withoutSent(drafts()))}
-            onNote={(note) => update(putNote(note))}
-            onSend={send}
-            origin={props.origin}
-            sending={props.sending}
-            thread={props.thread?.id}
-          />
-        </Show>
+        <>
+          <Show when={sentTo()}>
+            {(sent) => (
+              <SentBar
+                cleared={sent().cleared}
+                onClose={() => props.setSent(undefined)}
+                to={sent().conversation}
+              />
+            )}
+          </Show>
+          <Show when={drafts().comments.length > 0 || drafts().note}>
+            <Footer
+              discardRefused={discardRefused()}
+              drafts={drafts()}
+              error={sendError()}
+              noteUnsaved={noteUnsaved()}
+              onDiscard={() => setDiscardRefused(!update(withoutSent(drafts())))}
+              onNote={(note) => update(putNote(note))}
+              onSend={send}
+              origin={props.origin}
+              sending={props.sending}
+              thread={props.thread?.id}
+            />
+          </Show>
+        </>
       }
       header={
         <>
@@ -469,18 +484,19 @@ function Document(props: {
   )
   let article: HTMLElement | undefined
   const [pick, setPick] = createSignal<Pick>()
-  const stored = createMemo(() => loadWriting(localStorage, props.storeKey, lines(), tab))
+  const stored = createMemo(() => loadWriting(localStorage, props.storeKey, lines(), tabId()))
   const [own, setOwn] = createSignal<{ writing?: Writing }>()
   const writing = createMemo(() => {
     const set = own()
     return set ? set.writing : stored()
   })
+  const [deleteRefused, setDeleteRefused] = createSignal<string>()
   const [unsaved, setUnsaved] = createSignal(() =>
-    isUnsaved(localStorage, props.storeKey, writingSlot(tab)),
+    isUnsaved(localStorage, props.storeKey, writingSlot(tabId())),
   )
   const write = (next: Writing | undefined) => {
     setOwn({ writing: next })
-    setUnsaved(!props.update(saveWriting(next, tab)))
+    setUnsaved(!props.update(saveWriting(next, tabId())))
   }
 
   onSettled(() => {
@@ -590,7 +606,14 @@ function Document(props: {
                         excerpt={item().draft.excerpt}
                         id={item().draft.id}
                         lines={item().at}
-                        onDelete={() => props.update(dropComment(item().draft.id))}
+                        deleteRefused={deleteRefused() === item().draft.id}
+                        onDelete={() =>
+                          setDeleteRefused(
+                            props.update(dropComment(item().draft.id))
+                              ? undefined
+                              : item().draft.id,
+                          )
+                        }
                         onEdit={() =>
                           write({
                             start: item().at.start,
@@ -697,6 +720,7 @@ function ReaderBlock(props: { block: Block; index: number; marked?: boolean; aft
 function Footer(props: {
   drafts: Drafts
   noteUnsaved: boolean
+  discardRefused: boolean
   onNote: (note: string) => void
   onDiscard: () => void
   thread?: ConversationId
@@ -738,6 +762,11 @@ function Footer(props: {
         <p class="mb-2 font-mono text-[11.5px] text-error" data-reader-unsaved="" role="alert">
           Not saved: this browser's storage is full. The note stays here until you send or shorten
           it
+        </p>
+      </Show>
+      <Show when={props.discardRefused}>
+        <p class="mb-2 font-mono text-[11.5px] text-error" data-reader-unsaved="" role="alert">
+          Not discarded: this browser's storage refused it. The comments stay until you try again
         </p>
       </Show>
       <Show when={props.error}>
@@ -806,26 +835,38 @@ function Footer(props: {
   )
 }
 
-function SentBar(props: { to: ConversationId; onClose: () => void }) {
+function SentBar(props: { to: ConversationId; cleared: boolean; onClose: () => void }) {
   return (
     <output
       class="flex shrink-0 items-center gap-2 border-t border-border/70 bg-sidebar px-3 py-2 font-mono text-[11.5px] md:px-4"
       data-reader-sent=""
     >
-      <CheckIcon class="size-3.5 shrink-0 text-success" />
-      <span class="text-muted-foreground">Sent to</span>
-      <Button
-        aria-label={`Open thread #${props.to}`}
-        class="font-normal text-foreground/90 hover:underline"
-        onClick={() => {
-          switchConversation(props.to)
-          showSurface('agent')
-        }}
-        size={null}
-        variant={null}
+      <Show
+        when={props.cleared}
+        fallback={<CircleAlertIcon class="size-3.5 shrink-0 text-warning" />}
       >
-        #{props.to}
-      </Button>
+        <CheckIcon class="size-3.5 shrink-0 text-success" />
+      </Show>
+      <span class="min-w-0">
+        <span class="text-muted-foreground">Sent to </span>
+        <Button
+          aria-label={`Open thread #${props.to}`}
+          class="inline font-normal text-foreground/90 hover:underline"
+          onClick={() => {
+            switchConversation(props.to)
+            showSurface('agent')
+          }}
+          size={null}
+          variant={null}
+        >
+          #{props.to}
+        </Button>
+        <Show when={!props.cleared}>
+          <span class="text-warning" data-reader-uncleared="" role="alert">
+            , but its drafts could not be cleared
+          </span>
+        </Show>
+      </span>
       <span class="flex-1" />
       <Button
         aria-label="Dismiss send result"

@@ -1,6 +1,7 @@
-import { realpath, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { open, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
-import { ignoring, isMissing, meansNone } from '../../lib/errors.ts'
+import { errnoCode, ignoring, isMissing, meansNone } from '../../lib/errors.ts'
 import { git } from '../../lib/git.ts'
 
 export const MAX_BYTES = 2 * 1024 * 1024
@@ -23,6 +24,9 @@ const inside = (root: string, target: string) => {
 }
 
 const real = (path: string) => realpath(path).catch(ignoring(isMissing))
+
+const tooLarge = (path: string) => new Error(`${path} is larger than ${MAX_BYTES / 1024 / 1024} MB`)
+const changed = (path: string) => new Error(`${path} changed while it was read: open it again`)
 
 export async function gitCommonDir(cwd: string) {
   const dir = await git(
@@ -70,8 +74,7 @@ export async function resolveMarkdown(input: unknown, roots: readonly string[]):
       throw new Error('Only markdown files (.md, .markdown) can be read here')
     const info = await stat(target)
     if (!info.isFile()) throw new Error(`${path} is not a file`)
-    if (info.size > MAX_BYTES)
-      throw new Error(`${path} is larger than ${MAX_BYTES / 1024 / 1024} MB`)
+    if (info.size > MAX_BYTES) throw tooLarge(path)
     return {
       path: relative(root, target),
       absolute: target,
@@ -81,4 +84,41 @@ export async function resolveMarkdown(input: unknown, roots: readonly string[]):
     }
   }
   throw new Error(outside ? `${path} is outside the project` : `No such file: ${path}`)
+}
+
+export async function readResolved(file: Resolved) {
+  const handle = await open(file.absolute, constants.O_RDONLY | constants.O_NOFOLLOW).catch(
+    (error: unknown) => {
+      throw errnoCode(error) === 'ELOOP' ? changed(file.path) : error
+    },
+  )
+  try {
+    const opened = await handle.stat()
+    const now = await real(file.absolute)
+    const there = now === undefined ? undefined : await stat(now).catch(ignoring(isMissing))
+    if (
+      !opened.isFile() ||
+      !now ||
+      !inside(file.root, now) ||
+      there?.dev !== opened.dev ||
+      there.ino !== opened.ino
+    )
+      throw changed(file.path)
+    const buffer = Buffer.alloc(MAX_BYTES + 1)
+    let length = 0
+    while (length < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length)
+      if (bytesRead === 0) break
+      length += bytesRead
+    }
+    if (length > MAX_BYTES) throw tooLarge(file.path)
+    return {
+      ...file,
+      size: length,
+      mtime: opened.mtimeMs,
+      text: buffer.toString('utf8', 0, length),
+    }
+  } finally {
+    await handle.close()
+  }
 }
