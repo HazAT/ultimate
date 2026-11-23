@@ -78,6 +78,24 @@ it("keeps the stream's newer answer when an older refetch answers last", async (
   expect(read.get()).toMatchObject({ data: 'newer', loading: false, settled: true })
 })
 
+it('lets a running refetch finish and runs once more after it, however often it is asked meanwhile', async () => {
+  const { reads, action } = setup()
+  const read = reads.get('test', 'status', null)
+  const first = Promise.withResolvers<unknown>()
+  action.mockReturnValueOnce(first.promise).mockResolvedValueOnce('second')
+  const running = read.refetch()
+  await Promise.resolve()
+  const again = [read.refetch(), read.refetch(), read.refetch()]
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(action).toHaveBeenCalledTimes(1)
+  first.resolve('first')
+  expect(await running).toBe('first')
+  expect(await Promise.all(again)).toEqual(['second', 'second', 'second'])
+  expect(action).toHaveBeenCalledTimes(2)
+  expect(read.get()).toMatchObject({ data: 'second', loading: false })
+})
+
 it('keeps ui steps waiting for the stream even when a refetch answers first', async () => {
   const { watched, reads, action } = setup()
   const read = reads.get('test', 'status', null)
