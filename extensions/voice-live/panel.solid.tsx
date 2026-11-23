@@ -158,7 +158,7 @@ function SpokenLine() {
   )
 }
 
-function TalkBar() {
+function TalkBar(props: { words?: boolean }) {
   return (
     <Button
       aria-label="Hold to talk"
@@ -177,7 +177,10 @@ function TalkBar() {
       <Show
         when={recording()}
         fallback={
-          <Show when={dock.phase() === 'speaking'} fallback={<Status class="flex-1" />}>
+          <Show
+            when={props.words && dock.phase() === 'speaking'}
+            fallback={<Status class="flex-1" />}
+          >
             <SpokenLine />
           </Show>
         }
@@ -712,7 +715,7 @@ export function VoicePanel() {
               when={phone()}
               fallback={
                 <div class="px-2 pb-2">
-                  <TalkBar />
+                  <TalkBar words />
                 </div>
               }
             >
