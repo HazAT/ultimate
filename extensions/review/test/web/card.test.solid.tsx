@@ -144,7 +144,7 @@ it('leaves a review whose spec another extension owns to that extension’s card
   // on top and must hand those back.
   const NotesCard = (props: SolidEntryProps) => (
     <Show
-      when={(props.entry.data as ReviewComments).spec.startsWith('notes:')}
+      when={(props.entry.data as ReviewComments).spec.startsWith('notes2:')}
       fallback={props.core}
     >
       <div data-notes-card={props.entry.id} />
@@ -164,7 +164,7 @@ it('leaves a review whose spec another extension owns to that extension’s card
       },
     }) as unknown as EntryRecord
   const container = renderSolid(() => (
-    <For each={[sent(11, 'notes:/project/notes.md'), sent(12, 'branch:feature')]}>
+    <For each={[sent(11, 'notes2:/project/notes.md'), sent(12, 'branch:feature')]}>
       {(entry) => (
         <Contributed
           core={() => null}

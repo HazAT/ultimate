@@ -8,7 +8,7 @@ import { ReviewCommentsEntry } from './entries.ts'
 import type { ReviewComment, ReviewComments } from './types.ts'
 
 const ownScheme = (spec: string) => {
-  const scheme = /^([a-z][a-z-]*):/.exec(spec)?.[1]
+  const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(spec)?.[1]
   return scheme === undefined || scheme === 'uncommitted' || scheme === 'branch'
 }
 
