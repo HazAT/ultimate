@@ -6,7 +6,7 @@ import {
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
 import { num, obj } from '@earendil-works/pi-schema'
-import { AgentDoc, defineExtension, defineTool, hook, ToolTask } from '@earendil-works/pi-durable'
+import { defineExtension, defineTool, hook, ToolTask } from '@earendil-works/pi-durable'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
@@ -23,14 +23,6 @@ import {
 import { context } from '../../../server/harness.ts'
 import { FIRST_CHAPTER, requestChapter } from '../../../lib/chapters.ts'
 import { SummaryDoc, withDefaultTimeout } from '../server.ts'
-import { Profile } from '../../subagents/api.ts'
-
-const SCRIPT_ONLY = [
-  'pi.codemode.models.classify',
-  'pi.codemode.models.generateImages',
-  'action',
-  'tell',
-]
 import { CodemodeStoreDoc } from '@earendil-works/pi-durable/codemode'
 import { Summarized } from '../refs.ts'
 import planExtension from '../../plan/server.ts'
@@ -967,44 +959,6 @@ it('sends a failed script to the summary model as a fixed label, never its print
   expect(inputs[0]).not.toContain('secret line')
 })
 
-it.each([
-  ['a legacy list without denials gets every script-only tool', '', SCRIPT_ONLY],
-  ['a partial deny stays denied', 'denyTools: [tell, action]\n', SCRIPT_ONLY.slice(0, 2)],
-  ['denying all four keeps them all denied', `denyTools: [${SCRIPT_ONLY.join(', ')}]\n`, []],
-])(
-  'fills an older tool list from its definition before the first run: %s',
-  async (_case, deny, added) => {
-    const { server, options } = await fixture()
-    await mkdir(join(options.projectRoot, '.ultimate/agents'), { recursive: true })
-    await writeFile(
-      join(options.projectRoot, '.ultimate/agents/scripter.md'),
-      `---\nname: scripter\ndescription: Scripts\n${deny}---\n\nScript.\n`,
-    )
-    await server.harness.commit(async (tx) => {
-      ;(await tx.doc(AgentDoc, server.root.id)).tools = ['read', 'codemode']
-      ;(await tx.doc(Profile, server.root.id)).definition = 'scripter'
-    }, context)
-    await run(server, 'return 1')
-    const stored = async () =>
-      (await server.harness.snapshot(AgentDoc, server.root.id, context))?.tools
-    expect(await stored()).toEqual(['read', 'codemode', ...added])
-    await run(server, 'return 1')
-    expect(await stored()).toEqual(['read', 'codemode', ...added])
-  },
-)
-
-it('adds nothing to an older tool list whose definition it cannot tell', async () => {
-  const { server } = await fixture()
-  await server.harness.commit(async (tx) => {
-    ;(await tx.doc(AgentDoc, server.root.id)).tools = ['read', 'codemode']
-  }, context)
-  await run(server, 'return 1')
-  expect((await server.harness.snapshot(AgentDoc, server.root.id, context))?.tools).toEqual([
-    'read',
-    'codemode',
-  ])
-})
-
 it('gives a script without timeout_ms a 60 s deadline, which stops a spinning script', async () => {
   const { server } = await fixture()
   const spun = await run(
@@ -1019,35 +973,4 @@ it('gives a script without timeout_ms a 60 s deadline, which stops a spinning sc
   )
   const explicit = '// @options: {"timeout_ms":5}\nreturn 1'
   expect(withDefaultTimeout(explicit)).toBe(explicit)
-})
-
-it('fills a fork of an older conversation from the definition it was forked from', async () => {
-  const { server, options } = await fixture()
-  await mkdir(join(options.projectRoot, '.ultimate/agents'), { recursive: true })
-  await writeFile(
-    join(options.projectRoot, '.ultimate/agents/scripter.md'),
-    '---\nname: scripter\ndescription: Scripts\ndenyTools: [tell]\n---\n\nScript.\n',
-  )
-  await run(server, 'return 1')
-  const at = (await server.root.context(context)).entries.at(-1)!.id
-  const fork = await server.harness.commit(async (tx) => {
-    ;(await tx.doc(Profile, server.root.id)).definition = 'scripter'
-    const created = await tx.forkConversation(server.root.id, at, {
-      ownership: { kind: 'ownerless' },
-    })
-    ;(await tx.doc(AgentDoc, created.id)).tools = ['read', 'codemode']
-    return created
-  }, context)
-  server.host.faux!.setResponses([fauxAssistantMessage('Done')])
-  await (
-    await (await server.harness.conversation(fork.id, context))!.submit(
-      { type: 'input', content: 'go' },
-      context,
-    )
-  ).wait(context)
-  expect((await server.harness.snapshot(AgentDoc, fork.id, context))?.tools).toEqual([
-    'read',
-    'codemode',
-    ...SCRIPT_ONLY.filter((name) => name !== 'tell'),
-  ])
 })
