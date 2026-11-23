@@ -10,6 +10,8 @@ import { InlineCodemodeSandbox, loadQuickJSWasm } from '@earendil-works/pi-codem
 import {
   createRegistry,
   Harness,
+  hook,
+  ToolTask,
   MemoryStorage,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
@@ -131,7 +133,19 @@ async function codemodeFixture() {
   f.modelRuntime.registerNativeProvider(faux.provider)
   const sandbox = new InlineCodemodeSandbox({ wasm: loadQuickJSWasm() })
   const codemode = createCodemodeExtension({ sandbox, models: true })
-  registry.install({ ...codemode, hooks: [modelCallLimits(() => harness)] })
+  const nestedResults: string[] = []
+  registry.install({
+    ...codemode,
+    hooks: [
+      modelCallLimits(() => harness),
+      hook(ToolTask, {
+        afterTool: (call, result) => {
+          if (call.parent) nestedResults.push(JSON.stringify(result))
+          return undefined
+        },
+      }),
+    ],
+  })
   registry.install(f.extension)
   harness = await Harness.open(new MemoryStorage(), { models: f.modelRuntime, registry }, context)
   for (const open of openers.splice(0)) await open()
@@ -145,6 +159,7 @@ async function codemodeFixture() {
   harness.resume()
   return {
     ...f,
+    nestedResults,
     run: async (code: string) => {
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall('codemode', { code }), { stopReason: 'toolUse' }),
@@ -172,7 +187,7 @@ it('shares a codemode 402 with the service and bills only the completed requests
     (await modelRuntime.getAvailableOfType('classifier', 'typesafe')).map((m) => m.id),
   ).toEqual(['jev-latest', 'jev-1.14.0'])
   const paused = await run(`text((await ${scriptCall}).errorMessage); await ${scriptCall};`)
-  expect(paused).toContain('System One API error (402): billing_error')
+  expect(paused).toContain('System One API error (402): {"error":"TypeSafe 402: out of credits"}')
   expect(paused).toContain('Tool call blocked: TypeSafe 402: out of credits')
   expect(paused).toContain('models: 1 call, 0 input tokens, ≈$0')
   await expect(service.ask(request, new AbortController().signal)).rejects.toThrow(
@@ -371,4 +386,18 @@ it('keeps a 402 pause across a restart, storing only a key fingerprint and the s
   expect(stored).toMatch(/"status":402/)
   expect(stored).not.toContain('test-sentinel')
   expect(stored).not.toContain('echo-sentinel')
+})
+
+it('keeps an echoed rejection body out of the script and its nested results', async () => {
+  const { run, nestedResults } = await codemodeFixture()
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(new Response('bad key echo-sentinel', { status: 402 })),
+  )
+  const output = await run(`text((await ${scriptCall}).errorMessage)`)
+  expect(output).toContain('TypeSafe 402: out of credits')
+  expect(nestedResults.length).toBeGreaterThan(0)
+  expect(JSON.stringify([output, nestedResults])).not.toContain('echo-sentinel')
 })
