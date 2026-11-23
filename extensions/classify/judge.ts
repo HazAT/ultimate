@@ -8,7 +8,7 @@ const reportQuestion = {
   criteria: {
     report:
       "@ultimate must act on or know it now: the user made or confirmed a decision (picks, approvals, 'go', 'follow your picks'), work finished, was submitted or is blocked, an assessment or decisions for @ultimate, or a question or request for @ultimate that the branch has not already sent it.",
-    note: "Back-and-forth the user drives in the branch: answering the user's questions or ideas, an iteration or preview round, filling in a card the user has not sent yet, a progress update while work continues, a question left open for the user, telling the user it already messaged @ultimate, or acknowledging a message that needs no action. @ultimate can read it later.",
+    note: "Back-and-forth the user drives in the branch: answering the user's questions or ideas, an iteration or preview round, filling in a card the user has not sent yet, a progress update while work continues, a question left open for the user, telling the user it already messaged @ultimate, or acknowledging a message that needs no action. An answer that hands the user a preview link to try and waits on their feedback is most likely this back-and-forth, unless the user just made a decision. @ultimate can read it later.",
   },
 } satisfies ClassifyQuestion
 
