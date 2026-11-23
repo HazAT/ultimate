@@ -141,7 +141,7 @@ function stateLabel(state: VoiceMode) {
 function StartButton() {
   const id = useConversationId()
   const { main } = useIds()
-  const status = useAction(StatusAction)
+  const status = useAction(StatusAction, null, { conversation: ROOT })
   useEvent('secrets:changed', () => void status.refetch())
   createEffect(status.data, (data) => {
     if (data) live.rememberStatus(data)

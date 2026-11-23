@@ -41,7 +41,7 @@ function StartHere(props: { dock?: boolean }) {
   const starts = useDocOf(() => ROOT, StartsDoc)
   const memories = useDocOf(() => root() ?? ROOT, MemoryDoc)
   const system = useSystem()
-  const status = useAction(StatusAction)
+  const status = useAction(StatusAction, null, { conversation: ROOT })
   const models = useModels()
   const agent = useAgent()
   const [, openGetReady] = useDialog(firstRunDialog)

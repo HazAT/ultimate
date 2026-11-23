@@ -9,7 +9,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
-import { cn, keepLast, useAction } from '@/sdk/solid'
+import { ROOT, cn, keepLast, useAction } from '@/sdk/solid'
 import { DefinitionsAction } from '../subagents/refs.ts'
 
 export function Picker(props: {
@@ -55,7 +55,10 @@ export function AgentPicker(props: {
   onChange: (name: string) => void
   onConfigure: (name: string, source: string, refresh: () => void) => void
 }) {
-  const { data, refetch } = useAction(DefinitionsAction, null, { onError: keepLast })
+  const { data, refetch } = useAction(DefinitionsAction, null, {
+    conversation: ROOT,
+    onError: keepLast,
+  })
   const chosen = () => data()?.definitions.find((definition) => definition.name === props.value)
   const main = () => model(data()?.main, "the main conversation's model")
   const inherits = () => `inherits · ${data()?.main?.model?.modelId ?? 'main'}`

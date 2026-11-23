@@ -1,6 +1,6 @@
 import { LoaderCircle, X } from '@lucide/solid'
 import { createEffect, createSignal, For, Show } from 'solid-js'
-import { formatTime, keepLast, useAction, useNow } from '@/sdk/solid'
+import { ROOT, formatTime, keepLast, useAction, useNow } from '@/sdk/solid'
 import { retryAfter } from '../../lib/timers.ts'
 import { clock, countdown } from './looks.ts'
 import { DescribeAction } from './refs.ts'
@@ -55,7 +55,7 @@ function Description(props: { schedule: string }) {
         return props.schedule
       },
     },
-    { onError: keepLast },
+    { conversation: ROOT, onError: keepLast },
   )
   const now = useNow(1000)
   const perDay = () => {

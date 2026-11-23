@@ -2,7 +2,7 @@ import { ListTreeIcon } from '@lucide/solid'
 import type { TaskId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'
 import { createMemo } from 'solid-js'
-import { defineWebExtension, provide, RunStart, useAction } from '@/sdk/solid'
+import { ROOT, defineWebExtension, provide, RunStart, useAction } from '@/sdk/solid'
 import { TasksPanel } from './panel.solid.tsx'
 import { StartedAction } from './refs.ts'
 
@@ -10,7 +10,7 @@ function runStart(task: Accessor<TaskId | undefined>) {
   const read = createMemo(() => {
     const id = task()
     if (id === undefined) return () => undefined
-    const { data } = useAction(StartedAction, { ids: [id] })
+    const { data } = useAction(StartedAction, { ids: [id] }, { conversation: ROOT })
     return () => data()?.[id]
   })
   return () => read()()

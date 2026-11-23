@@ -10,6 +10,7 @@ import {
   formatDuration,
   keepLast,
   shortenPath,
+  ROOT,
   useAction,
   useExtensionUiState,
   useSystem,
@@ -85,7 +86,7 @@ function Script(props: Detail & { act: ReturnType<typeof useAct>['act'] }) {
       },
       lines: 200,
     },
-    { every: () => (props.live ? 2000 : undefined), onError: keepLast },
+    { conversation: ROOT, every: () => (props.live ? 2000 : undefined), onError: keepLast },
   )
   const source = useAction(
     ScriptAction,
@@ -94,7 +95,11 @@ function Script(props: Detail & { act: ReturnType<typeof useAct>['act'] }) {
         return props.automation.id
       },
     },
-    { every: () => (props.live && pane[0]() === 'script' ? 2000 : undefined), onError: keepLast },
+    {
+      conversation: ROOT,
+      every: () => (props.live && pane[0]() === 'script' ? 2000 : undefined),
+      onError: keepLast,
+    },
   )
   const output = () => log.data()?.text ?? ''
   const path = () => source.data()?.path

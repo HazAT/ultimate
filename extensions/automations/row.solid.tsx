@@ -31,6 +31,7 @@ import {
   formatTime,
   keepLast,
   switchConversation,
+  ROOT,
   useAction,
   useConversationId,
   useConversations,
@@ -121,7 +122,7 @@ function ScheduleLine(props: { schedule: Schedule; now: number }) {
         return props.schedule
       },
     },
-    { onError: keepLast },
+    { conversation: ROOT, onError: keepLast },
   )
   return (
     <TriggerLine

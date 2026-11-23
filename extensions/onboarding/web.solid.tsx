@@ -60,7 +60,7 @@ function useIsolation() {
   createEffect(busy, (working, wasWorking) => {
     if (wasWorking && !working) setEnded((count) => count + 1)
   })
-  const isolation = useAction(IsolationAction, null, { on: ended })
+  const isolation = useAction(IsolationAction, null, { conversation: ROOT, on: ended })
   useEvent('onboarding:git', () => void isolation.refetch())
   return isolation.data
 }
@@ -97,7 +97,7 @@ async function askUltimate(card: 'project' | 'git') {
 }
 
 function Onboarding() {
-  const status = useAction(StatusAction)
+  const status = useAction(StatusAction, null, { conversation: ROOT })
   const [finished, setFinished] = createSignal(false)
   const [projectOpen, setProjectOpen] = useDialog(projectDialog)
   const [gitOpen, setGitOpen] = useDialog(gitDialog)
@@ -186,7 +186,7 @@ const useDismissed = () => {
   return () => starts()?.dismissed === true
 }
 const useOff = () => {
-  const status = useAction(StatusAction)
+  const status = useAction(StatusAction, null, { conversation: ROOT })
   return () => status.data()?.off === true
 }
 function Undecided() {
@@ -206,7 +206,7 @@ function Undecided() {
 function SetupCall(props: SolidToolProps) {
   const transcript = useTranscript()
   const conversationId = useConversationId()
-  const status = useAction(StatusAction)
+  const status = useAction(StatusAction, null, { conversation: ROOT })
   const workspaces = useWorkspaces()
   const system = useSystem()
   const call = () => props.call
@@ -291,7 +291,7 @@ function SetupCall(props: SolidToolProps) {
 }
 
 function MissingKeys(props: { names: readonly string[]; id: string }) {
-  const secrets = useAction(ListAction)
+  const secrets = useAction(ListAction, null, { conversation: ROOT })
   useEvent('secrets:changed', () => void secrets.refetch())
   const isSet = (name: string) =>
     secrets.data()?.some((secret) => secret.name === name && (secret.set || secret.via))

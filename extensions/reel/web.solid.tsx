@@ -5,6 +5,7 @@ import { For, Show, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Provided,
+  ROOT,
   cn,
   defineWebExtension,
   provide,
@@ -53,7 +54,7 @@ function RoundChip(props: { conversation: ConversationId; message: Message }) {
         return props.message.id
       },
     },
-    { onError: meansNone },
+    { conversation: ROOT, onError: meansNone },
   )
   return (
     <Show when={(data()?.frames.length ?? 0) > 1 && data()}>
@@ -142,7 +143,7 @@ function BranchWatch(props: {
         return props.conversation
       },
     },
-    { onError: meansNone },
+    { conversation: ROOT, onError: meansNone },
   )
   const enough = () => (data()?.frames.length ?? 0) > 1
   return (

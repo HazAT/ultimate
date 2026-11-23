@@ -94,6 +94,7 @@ function Checkout(props: {
       },
     },
     {
+      conversation: ROOT,
       onError: keepLast,
       on: () => [props.recorded.state, props.recorded.landed, props.busy],
       focus: true,
@@ -214,8 +215,8 @@ const parts = (entries: [number, string][]) =>
 function Stats(props: { records?: WorkspaceIndex['items'] }) {
   const states = () =>
     Object.entries(props.records ?? {}).map(([id, record]) => [id, record.state, record.landed])
-  const stats = useAction(StatsAction, null, { on: states, focus: true })
-  const disk = useAction(DiskAction, null, { focus: true })
+  const stats = useAction(StatsAction, null, { conversation: ROOT, on: states, focus: true })
+  const disk = useAction(DiskAction, null, { conversation: ROOT, focus: true })
   return (
     <Show
       when={!stats.error()}

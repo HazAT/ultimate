@@ -43,7 +43,7 @@ export const CHAPTER_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/
 export const chaptersDialog = 'dream.chapters'
 
 export function useChapters() {
-  return useAction(ChaptersAction, null, { onError: keepLast }).data
+  return useAction(ChaptersAction, null, { conversation: ROOT, onError: keepLast }).data
 }
 
 export function useBusyElsewhere() {

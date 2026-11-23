@@ -124,7 +124,7 @@ function useLanes(currentRange: () => number, isLive: () => boolean) {
         return currentRange()
       },
     },
-    { onError: keepLast, every: () => (isLive() ? 2000 : undefined) },
+    { conversation: ROOT, onError: keepLast, every: () => (isLive() ? 2000 : undefined) },
   )
   return createMemo<{ range: number; data?: LanesResult; error?: unknown }>((previous) => {
     const range = currentRange()

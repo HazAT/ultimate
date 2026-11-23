@@ -1,7 +1,7 @@
 import { CircleX, MousePointerClick, Plug, Sparkles, Workflow, Wrench, Zap } from '@lucide/solid'
 import { Dynamic } from '@solidjs/web'
 import { createMemo, For, Show } from 'solid-js'
-import { cn, formatDuration, formatTime, useAction } from '@/sdk/solid'
+import { ROOT, cn, formatDuration, formatTime, useAction } from '@/sdk/solid'
 import { TreeAction } from './refs.ts'
 import type { SystemCall } from './refs.ts'
 
@@ -61,11 +61,15 @@ function Node(props: { call: SystemCall; depth: number }) {
 }
 
 export function TraceTree(props: { trace: string }) {
-  const tree = useAction(TreeAction, {
-    get trace() {
-      return props.trace
+  const tree = useAction(
+    TreeAction,
+    {
+      get trace() {
+        return props.trace
+      },
     },
-  })
+    { conversation: ROOT },
+  )
   return (
     <div
       class="ml-4 border-l border-border/70 py-1 pr-1 pl-2 font-mono text-[10.5px] leading-[18px] text-muted-foreground"

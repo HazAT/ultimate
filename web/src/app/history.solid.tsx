@@ -1,5 +1,5 @@
 import type { EntryRecord, ConversationId, EntryId } from '@earendil-works/pi-durable'
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js'
 import type { Accessor } from 'solid-js'
 import { api } from '../sdk/hooks.ts'
 import { reachedFork } from './fork.ts'
@@ -9,12 +9,13 @@ async function read(
   id: ConversationId,
   upTo: EntryId,
   after: EntryId | undefined,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ) {
   const rows: EntryRecord[] = []
   let next: EntryId | undefined = upTo
   do {
     const page = await api.history(id, next, signal, after)
+    signal.throwIfAborted()
     rows.push(...page.entries)
     next = page.before
     if (after === undefined) return { rows, before: next }
@@ -38,25 +39,34 @@ export function createHistory(
   let previousActive: readonly EntryRecord[] = []
   let previousOlder: EntryId | undefined
   let paging: AbortController | null = null
+  const fills = new Set<AbortController>()
   const requestedGaps = new Set<string>()
   const gapsAwaitingRetry: [after: EntryId, upTo: EntryId][] = []
-  onCleanup(() => paging?.abort())
+  onCleanup(() => {
+    paging?.abort()
+    for (const controller of fills) controller.abort()
+  })
 
   const fill = (after: EntryId, upTo: EntryId) => {
     const key = `${after}:${upTo}`
     if (id === undefined || requestedGaps.has(key)) return
+    const controller = new AbortController()
+    fills.add(controller)
     requestedGaps.add(key)
     setFilling((count) => count + 1)
     void (async () => {
       try {
-        const { rows } = await read(id, upTo, after)
+        const { rows } = await read(id, upTo, after, controller.signal)
+        if (controller.signal.aborted) return
         setHistory((previous) => mergeRows(previous, rows))
       } catch (failure) {
+        if (controller.signal.aborted) return
         requestedGaps.delete(key)
         gapsAwaitingRetry.push([after, upTo])
         setError(message(failure))
       } finally {
-        setFilling((count) => count - 1)
+        fills.delete(controller)
+        if (!controller.signal.aborted) setFilling((count) => count - 1)
       }
     })()
   }
@@ -70,7 +80,7 @@ export function createHistory(
       const dropped = previousActive.filter((entry) => !current.has(entry.id))
       if (dropped.length) setHistory((previous) => mergeRows(previous, dropped))
       if (window !== undefined && window !== previousOlder) {
-        const after = gapAfter([...history(), ...dropped], window)
+        const after = gapAfter([...untrack(history), ...dropped], window)
         if (after !== undefined) fill(after, window)
       }
       previousOlder = window

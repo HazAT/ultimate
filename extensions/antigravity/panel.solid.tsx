@@ -1,7 +1,7 @@
 import { RefreshCw } from '@lucide/solid'
 import { createEffect, createMemo, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { keepLast, refreshModels, useAction } from '@/sdk/solid'
+import { ROOT, keepLast, refreshModels, useAction } from '@/sdk/solid'
 import { StatusAction } from './refs.ts'
 import type { AntigravityStatus } from './refs.ts'
 
@@ -13,7 +13,7 @@ function title(status: AntigravityStatus | undefined, failed: boolean) {
 }
 
 export function AntigravityPanel() {
-  const status = useAction(StatusAction, null, { onError: keepLast })
+  const status = useAction(StatusAction, null, { conversation: ROOT, onError: keepLast })
   const answer = createMemo(status.data)
   createEffect(answer, (data) => void (data && refreshModels()))
   return (

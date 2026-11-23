@@ -17,6 +17,7 @@ import {
   formatTokens,
   keepLast,
   plural,
+  ROOT,
   useAction,
   useAgent,
   useConversationId,
@@ -308,7 +309,7 @@ function Definition(props: { name: string; breakdown: Breakdown; label: string }
         return props.name
       },
     },
-    { onError: keepLast },
+    { conversation: ROOT, onError: keepLast },
   )
   const path = () => {
     const definition = data()

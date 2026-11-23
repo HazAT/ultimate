@@ -82,6 +82,7 @@ function ProjectsRail() {
   const showCount = createMemo<number>((previous) => (previous ?? 0) + Number(visible()))
   const whileVisible = (ms: number) => () => (visible() ? ms : undefined)
   const list = useAction(ListAction, null, {
+    conversation: ROOT,
     on: showCount,
     onError: keepLast,
     every: whileVisible(VISIBLE_PROJECTS_POLL_MS),

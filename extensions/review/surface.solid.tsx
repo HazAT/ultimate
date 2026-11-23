@@ -35,6 +35,7 @@ import {
   keepLast,
   showSurface,
   switchConversation,
+  ROOT,
   useAction,
   useConversationId,
   useExtensionUiState,
@@ -441,10 +442,10 @@ function ReviewScope(props: {
       return props.scope.conversation
     },
   }
-  const diff = useAction(DiffAction, args, { onError: keepLast })
+  const diff = useAction(DiffAction, args, { conversation: ROOT, onError: keepLast })
   const github = useGithubRepo()
   const [drafts, update] = useDrafts(() => draftsKey(props.scope.spec, props.scope.conversation))
-  const suggested = useAction(RecipientAction, args, { onError: keepLast })
+  const suggested = useAction(RecipientAction, args, { conversation: ROOT, onError: keepLast })
   const to = () => drafts().to ?? suggested.data()?.conversation
   const data = createMemo(() => (diff.data()?.spec === props.scope.spec ? diff.data() : undefined))
   const setSpec = (spec: string) => props.setSpec(spec)
