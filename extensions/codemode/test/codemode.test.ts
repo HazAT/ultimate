@@ -977,6 +977,21 @@ it('gives a conversation with a stored tool list its script-only tools before ea
   ])
 })
 
+it('leaves a tool list that already names a script-only tool as it is, so a denied tool stays denied', async () => {
+  const { server } = await fixture()
+  await server.harness.commit(async (tx) => {
+    ;(await tx.doc(AgentDoc, server.root.id)).tools = ['read', 'codemode', 'tell']
+  }, context)
+  expect(
+    (await run(server, `return await tools.action({extension: 'x', action: 'y'})`)).text,
+  ).toContain('tools.action does not exist. Available: read, tell.')
+  expect((await server.harness.snapshot(AgentDoc, server.root.id, context))?.tools).toEqual([
+    'read',
+    'codemode',
+    'tell',
+  ])
+})
+
 it('gives a script without timeout_ms a 60 s deadline, which stops a spinning script', async () => {
   const { server } = await fixture()
   const spun = await run(

@@ -109,11 +109,11 @@ export default function classify(host: ExtensionHost) {
           const blocked = pausedError(key)
           if (blocked) throw new Error(blocked)
           const response = await requestFetch(input, init)
+          if (response.ok) return response
           const reason = rejected[response.status]
-          if (!reason) return response
-          if (key) await pause(key, response.status)
+          if (reason && key) await pause(key, response.status)
           return Response.json(
-            { error: `TypeSafe ${response.status}: ${reason}` },
+            { error: `TypeSafe ${response.status}: ${reason ?? response.statusText}` },
             { status: response.status },
           )
         },

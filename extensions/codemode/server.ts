@@ -627,8 +627,12 @@ export default function codemode(host: ExtensionHost) {
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: async (_input, { tx, conversationId }) => {
           const agent = await tx.doc(AgentDoc, conversationId)
-          if (!Array.isArray(agent.tools) || !agent.tools.includes('codemode')) return undefined
-          for (const name of scriptOnly) if (!agent.tools.includes(name)) agent.tools.push(name)
+          const tools = agent.tools
+          const legacyToolList =
+            Array.isArray(tools) &&
+            tools.includes('codemode') &&
+            !scriptOnly.some((name) => tools.includes(name))
+          if (legacyToolList) tools.push(...scriptOnly)
           return undefined
         },
       }),

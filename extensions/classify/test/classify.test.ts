@@ -388,16 +388,19 @@ it('keeps a 402 pause across a restart, storing only a key fingerprint and the s
   expect(stored).not.toContain('echo-sentinel')
 })
 
-it('keeps an echoed rejection body out of the script and its nested results', async () => {
+it.each([
+  [402, 'TypeSafe 402: out of credits'],
+  [400, 'TypeSafe 400'],
+])('keeps an echoed %i body out of the script and its nested results', async (status, shown) => {
   const { run, nestedResults } = await codemodeFixture()
   vi.stubGlobal(
     'fetch',
     vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(new Response('bad key echo-sentinel', { status: 402 })),
+      .mockResolvedValue(new Response('bad key echo-sentinel', { status })),
   )
   const output = await run(`text((await ${scriptCall}).errorMessage)`)
-  expect(output).toContain('TypeSafe 402: out of credits')
+  expect(output).toContain(shown)
   expect(nestedResults.length).toBeGreaterThan(0)
   expect(JSON.stringify([output, nestedResults])).not.toContain('echo-sentinel')
 })
