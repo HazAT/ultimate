@@ -97,6 +97,11 @@ export const dock = createRoot(() => {
   }
 })
 
+const [activity, setActivity] = createRoot(() =>
+  createSignal<{ done: number; current?: string }>({ done: 0 }),
+)
+export { activity, setActivity }
+
 const [screen, setScreen] = createRoot(() =>
   createSignal<{ text: string; conversation?: ConversationId }>(),
 )

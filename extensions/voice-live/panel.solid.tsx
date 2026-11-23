@@ -1,6 +1,7 @@
 import {
   AudioLines,
   Check,
+  LoaderCircle,
   CircleDashed,
   ChevronLeft,
   ChevronRight,
@@ -47,6 +48,7 @@ import type { ComposerTarget } from '@/sdk/solid'
 import { deadline, every } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
+  activity,
   discardDraft,
   dock,
   playerState,
@@ -172,6 +174,21 @@ function SpokenParagraph() {
   )
 }
 
+function Working() {
+  return (
+    <span
+      class="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[11px] text-muted-foreground"
+      data-voice-working
+    >
+      <LoaderCircle class="size-3 shrink-0 text-brand motion-safe:animate-spin" />
+      <span class="min-w-0 truncate text-foreground/85">{activity().current}</span>
+      <Show when={activity().done}>
+        <span class="shrink-0 text-muted-foreground/70">· {activity().done} done</span>
+      </Show>
+    </span>
+  )
+}
+
 function TalkBar(props: { words?: boolean }) {
   return (
     <Button
@@ -192,7 +209,11 @@ function TalkBar(props: { words?: boolean }) {
         fallback={
           <Show
             when={props.words && (playerState().playing || playerState().paused)}
-            fallback={<Status class="flex-1" />}
+            fallback={
+              <Show when={activity().current} fallback={<Status class="flex-1" />}>
+                <Working />
+              </Show>
+            }
           >
             <SpokenParagraph />
           </Show>

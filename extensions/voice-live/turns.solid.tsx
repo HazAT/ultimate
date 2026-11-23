@@ -18,6 +18,7 @@ import {
   errorMessage,
   MessageActions,
   pageAgent,
+  useConversation,
   useDocOf,
   useExternal,
   UserText,
@@ -27,6 +28,7 @@ import {
   dock,
   playerState,
   replyOf,
+  setActivity,
   settleTranscripts,
   useSpeaking,
   useTurns,
@@ -556,7 +558,36 @@ export function Voicing(props: { fork: ConversationId }) {
       }
     },
   )
-  useSpeaking(useTurns())
+  const turns = useTurns()
+  const conversation = useConversation()
+  createEffect(
+    () => {
+      const busy = conversation().busy
+      const slots = conversation().live.tools ?? []
+      const turn = turns().turns.at(-1)
+      const calls = [...(turn?.replies ?? []), ...(turn?.live ? [turn.live] : [])].flatMap(
+        (message) =>
+          message.content.flatMap((part) =>
+            part.type === 'toolCall'
+              ? [{ id: part.id, name: part.name, args: part.arguments }]
+              : [],
+          ),
+      )
+      const running = slots.find((slot) => slot.status !== 'done')
+      const shown = running ? calls.find((call) => call.id === running.callId) : calls.at(-1)
+      return {
+        done: calls.length - (running ? 1 : 0),
+        current:
+          busy && shown
+            ? `${running ? '' : 'after '}${shown.name} ${actionLine(shown.name, shown.args)}`.trim()
+            : undefined,
+      }
+    },
+    (next) => {
+      setActivity({ ...next })
+    },
+  )
+  useSpeaking(turns)
   return null
 }
 
