@@ -1,9 +1,19 @@
-import { AudioLinesIcon, SquareArrowOutUpRightIcon } from '@lucide/solid'
+import { AudioLinesIcon, Mic, SquareArrowOutUpRightIcon } from '@lucide/solid'
 import { For, Show } from 'solid-js'
+import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Card, defineWebExtension, renderEntry, switchConversation } from '@/sdk/solid'
+import {
+  Card,
+  defineWebExtension,
+  MessageActions,
+  renderEntry,
+  switchConversation,
+  UserText,
+} from '@/sdk/solid'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
-import { KEYS, setVoiceOpen, voiceOpen, VoicePanel, VoiceToggle } from './dock.solid.tsx'
+import { KEYS, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
+import { VoicePanel, VoiceToggle } from './panel.solid.tsx'
+import { timeOf } from './turns.solid.tsx'
 
 const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
   const data = () => props.entry.data
@@ -49,12 +59,23 @@ const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
 const TurnRow = renderEntry(VoiceTurnEntry, function TurnRow(props) {
   const data = () => props.entry.data
   return (
-    <div class="ml-auto max-w-[85%] rounded-xl border border-brand/15 bg-brand/5 px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap">
-      <span class="mr-1.5 font-mono text-[11px] text-muted-foreground">
-        {data().audio ? `🎙 ${data().seconds?.toFixed(1) ?? ''} s` : '⌨'}
-      </span>
-      {data().text || '(no transcript)'}
-    </div>
+    <Message class="group/message mt-3 first:mt-0" from="user">
+      <MessageContent>
+        <Show when={data().audio}>
+          <span class="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground tabular-nums">
+            <Mic class="size-3" />
+            {data().seconds?.toFixed(1)} s
+          </span>
+        </Show>
+        <UserText text={data().text || '(no transcript)'} />
+      </MessageContent>
+      <MessageActions
+        class="-mt-1 justify-end"
+        entry={props.entry}
+        text={data().text}
+        timestamp={timeOf(props.entry)}
+      />
+    </Message>
   )
 })
 
