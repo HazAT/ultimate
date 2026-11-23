@@ -7,7 +7,15 @@ import {
 } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createEffect, createMemo, createRenderEffect, createSignal, For, Show } from 'solid-js'
+import {
+  createEffect,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+} from 'solid-js'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +48,7 @@ import { IconButton, inlineFailure } from './header.solid.tsx'
 import { setStatusTarget } from './status-target.ts'
 import { Transcript } from './transcript.solid.tsx'
 
-export const [sidebarWidth, sidebarWidthBeyondPhone] = ['w-72', 'md:w-72'] as const
+export const sidebarWidthBeyondPhone = 'md:w-(--sidebar-width,18rem)'
 
 export function StatusLine() {
   const viewport = useViewport()
@@ -182,26 +190,66 @@ function Overlay(props: {
   )
 }
 
+const MIN_CONVERSATION_WIDTH = 360
+const regionWidths = {
+  sidebar: { key: shellKeys.sidebarWidth, initial: 288, min: 224, edge: 'right' },
+  panels: { key: shellKeys.panelWidth, initial: 352, min: 280, edge: 'left' },
+} as const
+
+function createRegionWidth(region: 'sidebar' | 'panels') {
+  const other = region === 'sidebar' ? 'panels' : 'sidebar'
+  const { key, initial, min, edge } = regionWidths[region]
+  const [saved, save] = useUiState<number>(key, initial)
+  const [otherWidth] = useUiState<number>(regionWidths[other].key, regionWidths[other].initial)
+  const otherOpen = useRegionOpen(other)
+  const viewport = useViewport()
+  const otherDocked = () => otherOpen() && !overlays(other, viewport())
+  return createResize({
+    saved,
+    initial,
+    min,
+    max: (windowWidth) => windowWidth - MIN_CONVERSATION_WIDTH - (otherDocked() ? otherWidth() : 0),
+    edge: () => edge,
+    save,
+  })
+}
+
 export function Sidebar() {
   mountRegionBeforePaint('sidebar')
   const open = useRegionOpen('sidebar')
   const viewport = useViewport()
   const extensions = useExtensions()
+  const resize = createRegionWidth('sidebar')
+  createRenderEffect(resize.width, (width) => {
+    document.documentElement.style.setProperty('--sidebar-width', `${width}px`)
+    return () => document.documentElement.style.removeProperty('--sidebar-width')
+  })
   const empty = () => slotItems(extensions(), 'sidebar').length === 0
-  const look = 'overflow-y-auto border-sidebar-border bg-sidebar text-sidebar-foreground'
+  const look = 'border-sidebar-border bg-sidebar text-sidebar-foreground'
   return (
     <Show when={!empty()}>
       <Show
         when={overlays('sidebar', viewport())}
         fallback={
           <Show when={open()}>
-            <aside class={cn('flex shrink-0 flex-col border-r', sidebarWidth, look)}>
-              <Slot fallback={reportedFailure} name="sidebar" />
+            <aside
+              class={cn('relative flex shrink-0 flex-col border-r', look)}
+              style={{ width: `${resize.width()}px` }}
+            >
+              <ResizeHandle label="Resize sidebar" resize={resize} />
+              <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <Slot fallback={reportedFailure} name="sidebar" />
+              </div>
             </aside>
           </Show>
         }
       >
-        <Overlay class={look} onClose={actions.toggleSidebar} open={open()} side="left">
+        <Overlay
+          class={cn('overflow-y-auto', look)}
+          onClose={actions.toggleSidebar}
+          open={open()}
+          side="left"
+        >
           <Slot fallback={reportedFailure} name="sidebar" />
         </Overlay>
       </Show>
@@ -380,6 +428,7 @@ export function Panels() {
   mountRegionBeforePaint('panels')
   const { open, active, tabs } = usePanels()
   const viewport = useViewport()
+  const resize = createRegionWidth('panels')
   const overlay = () => overlays('panels', viewport())
   const content = (panel: () => PanelItem) => (
     <Tabs bind={[() => panel().id, openPanel]} class="flex min-h-0 flex-1 flex-col">
@@ -403,7 +452,11 @@ export function Panels() {
           when={overlay()}
           fallback={
             <Show when={open()}>
-              <aside class="flex w-[22rem] shrink-0 flex-col border-l border-border/70 bg-sidebar">
+              <aside
+                class="relative flex shrink-0 flex-col border-l border-border/70 bg-sidebar"
+                style={{ width: `${resize.width()}px` }}
+              >
+                <ResizeHandle label="Resize panel" resize={resize} />
                 {content(panel)}
               </aside>
             </Show>
@@ -423,11 +476,76 @@ export function Panels() {
   )
 }
 
+type Resize = ReturnType<typeof createResize>
+
+function createResize(options: {
+  saved: () => number
+  initial: number
+  min: number
+  max: (windowWidth: number) => number
+  edge: () => 'left' | 'right'
+  save: (width: number) => void
+}) {
+  const [dragging, setDragging] = createSignal<number>()
+  const [windowWidth, setWindowWidth] = createSignal(window.innerWidth)
+  const followWindow = () => setWindowWidth(window.innerWidth)
+  window.addEventListener('resize', followWindow)
+  onCleanup(() => window.removeEventListener('resize', followWindow))
+  const max = () => Math.max(options.min, options.max(windowWidth()))
+  const clamp = (next: number) => Math.round(Math.min(Math.max(next, options.min), max()))
+  const width = () => clamp(dragging() ?? options.saved())
+  const outwards = () => (options.edge() === 'left' ? -1 : 1)
+
+  const start = (event: PointerEvent & { currentTarget: HTMLDivElement }) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const handle = event.currentTarget
+    const from = width()
+    const startX = event.clientX
+    let live: number | undefined
+    handle.setPointerCapture(event.pointerId)
+    const move = (next: PointerEvent) => {
+      live = clamp(from + (next.clientX - startX) * outwards())
+      setDragging(live)
+    }
+    const up = () => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+      if (live !== undefined) options.save(live)
+      setDragging(undefined)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
+
+  return {
+    width,
+    edge: options.edge,
+    dragging: () => dragging() !== undefined,
+    start,
+    reset: () => options.save(options.initial),
+  }
+}
+
+function ResizeHandle(props: { label: string; resize: Resize }) {
+  return (
+    <div
+      aria-hidden="true"
+      class={cn(
+        'absolute inset-y-0 z-10 w-2 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-brand/60 after:opacity-0 after:transition-opacity hover:after:opacity-100',
+        props.resize.edge() === 'left' ? '-left-1' : '-right-1',
+        props.resize.dragging() && 'after:opacity-100',
+      )}
+      onDblClick={() => props.resize.reset()}
+      onPointerDown={(event) => props.resize.start(event)}
+      title={props.label}
+    />
+  )
+}
+
 const DOCK_WIDTH = 416
-const MIN_WIDTH = 280
-const MIN_SURFACE_WIDTH_BESIDE_DOCK_PX = 360
-const maxWidth = () => Math.max(MIN_WIDTH, window.innerWidth - MIN_SURFACE_WIDTH_BESIDE_DOCK_PX)
-const clamp = (width: number) => Math.round(Math.min(Math.max(width, MIN_WIDTH), maxWidth()))
 
 export function Dock(props: { title?: string; side?: 'left' | 'right'; children?: JSX.Element }) {
   const title = () => props.title ?? 'conversation'
@@ -438,39 +556,20 @@ export function Dock(props: { title?: string; side?: 'left' | 'right'; children?
     { open: true, width: DOCK_WIDTH },
   )
   const open = () => stored().open !== false
-  const [dragging, setDragging] = createSignal<number>()
   const conversation = useConversation()
-  const width = () => {
-    const saved = stored().width
-    return clamp(dragging() ?? (typeof saved === 'number' ? saved : DOCK_WIDTH))
-  }
+  const resize = createResize({
+    saved: () => {
+      const saved = stored().width
+      return typeof saved === 'number' ? saved : DOCK_WIDTH
+    },
+    initial: DOCK_WIDTH,
+    min: 280,
+    max: (windowWidth) => windowWidth - MIN_CONVERSATION_WIDTH,
+    edge: () => (side() === 'right' ? 'left' : 'right'),
+    save: (width) => setStored({ open: true, width }),
+  })
   const border = () => (side() === 'right' ? 'border-l' : 'border-r')
-  const setOpen = (next: boolean) => setStored({ open: next, width: width() })
-
-  const resize = (event: PointerEvent & { currentTarget: HTMLDivElement }) => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    const handle = event.currentTarget
-    const start = event.clientX
-    const from = width()
-    const towardsSurface = side() === 'right' ? -1 : 1
-    let live: number | undefined
-    handle.setPointerCapture(event.pointerId)
-    const move = (next: PointerEvent) => {
-      live = clamp(from + (next.clientX - start) * towardsSurface)
-      setDragging(live)
-    }
-    const up = () => {
-      handle.removeEventListener('pointermove', move)
-      handle.removeEventListener('pointerup', up)
-      handle.removeEventListener('pointercancel', up)
-      if (live !== undefined) setStored({ open: true, width: live })
-      setDragging(undefined)
-    }
-    handle.addEventListener('pointermove', move)
-    handle.addEventListener('pointerup', up)
-    handle.addEventListener('pointercancel', up)
-  }
+  const setOpen = (next: boolean) => setStored({ open: next, width: resize.width() })
 
   return (
     <Show
@@ -498,19 +597,9 @@ export function Dock(props: { title?: string; side?: 'left' | 'right'; children?
     >
       <aside
         class={cn('relative flex shrink-0 flex-col border-border/70', border())}
-        style={{ width: `${width()}px` }}
+        style={{ width: `${resize.width()}px` }}
       >
-        <div
-          aria-hidden="true"
-          class={cn(
-            'absolute inset-y-0 z-10 w-2 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-brand/60 after:opacity-0 after:transition-opacity hover:after:opacity-100',
-            side() === 'right' ? '-left-1' : '-right-1',
-            dragging() !== undefined && 'after:opacity-100',
-          )}
-          onDblClick={() => setStored({ open: true, width: DOCK_WIDTH })}
-          onPointerDown={resize}
-          title={`Resize ${title()}`}
-        />
+        <ResizeHandle label={`Resize ${title()}`} resize={resize} />
         <div class="flex h-9 shrink-0 items-center justify-between border-b border-border/70 pr-1 pl-3 font-mono text-[11.5px] text-muted-foreground">
           {title()}
           <IconButton label={`Hide ${title()}`} onClick={() => setOpen(false)}>
