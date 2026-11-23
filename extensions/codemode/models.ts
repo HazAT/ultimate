@@ -1,15 +1,18 @@
-import { defineDoc, hook, NestedCallDoc, ToolTask } from '@earendil-works/pi-durable'
+import { defineDoc, hook, ToolTask } from '@earendil-works/pi-durable'
 import type { Harness } from '@earendil-works/pi-durable'
 import { CODEMODE_TOOL_NAME } from '@earendil-works/pi-durable/codemode'
 
 export const MAX_MODEL_CALLS = 1_000
 const MODEL_TOOL_PREFIX = 'pi.codemode.models.'
 
-const Admissions = defineDoc<{ keys: string[] }>({
-  kind: 'codemode.model-admissions',
+const Admissions = defineDoc<{
+  keys: string[]
+  usage: Record<string, { input: number; cost: number }>
+}>({
+  kind: 'codemode.model-calls',
   scope: 'task',
   version: 1,
-  initial: () => ({ keys: [] }),
+  initial: () => ({ keys: [], usage: {} }),
   checkpointWhen: () => false,
 })
 
@@ -43,20 +46,23 @@ export const modelCallLimits = (harness: () => Harness) =>
         : { block: `models: at most ${MAX_MODEL_CALLS} classify/generateImages calls per script` }
     },
     async afterTool(call, result, api, context) {
-      if (call.name !== CODEMODE_TOOL_NAME || call.parent) return undefined
-      const admitted = await api.snapshot(Admissions, api.taskId, context)
-      if (!admitted?.keys.length) return undefined
-      let calls = 0
-      let tokens = 0
-      let cost = 0
-      for (const key of admitted.keys) {
-        const entry = await api.snapshot(NestedCallDoc, api.taskId, key, context)
-        if (entry?.result?.structuredOutput === undefined) continue
-        calls++
-        tokens += entry.result.usage?.input ?? 0
-        cost += entry.result.usage?.cost?.total ?? 0
+      if (call.name.startsWith(MODEL_TOOL_PREFIX) && call.parent) {
+        if (result.structuredOutput === undefined) return undefined
+        const parent = call.parent.taskId
+        const usage = { input: result.usage?.input ?? 0, cost: result.usage?.cost?.total ?? 0 }
+        await harness().commit(async (tx) => {
+          ;(await tx.doc(Admissions, parent)).usage[call.id] = usage
+        }, context)
+        return undefined
       }
-      if (!calls) return undefined
+      if (call.name !== CODEMODE_TOOL_NAME || call.parent) return undefined
+      const usage = Object.values(
+        (await api.snapshot(Admissions, api.taskId, context))?.usage ?? {},
+      )
+      if (!usage.length) return undefined
+      const calls = usage.length
+      const tokens = usage.reduce((sum, item) => sum + item.input, 0)
+      const cost = usage.reduce((sum, item) => sum + item.cost, 0)
       const text = `models: ${calls} ${calls === 1 ? 'call' : 'calls'}, ${compact.format(tokens).toLowerCase()} input tokens, ≈${dollars.format(cost)}`
       return { ...result, output: [...(result.output ?? []), { type: 'text', text }] }
     },
