@@ -46,13 +46,11 @@ export const modelCallLimits = (harness: () => Harness) =>
       if (call.name !== CODEMODE_TOOL_NAME || call.parent) return undefined
       const admitted = await api.snapshot(Admissions, api.taskId, context)
       if (!admitted?.keys.length) return undefined
-      const nested = await Promise.all(
-        admitted.keys.map((key) => api.snapshot(NestedCallDoc, api.taskId, key, context)),
-      )
       let calls = 0
       let tokens = 0
       let cost = 0
-      for (const entry of nested) {
+      for (const key of admitted.keys) {
+        const entry = await api.snapshot(NestedCallDoc, api.taskId, key, context)
         if (entry?.result?.structuredOutput === undefined) continue
         calls++
         tokens += entry.result.usage?.input ?? 0
