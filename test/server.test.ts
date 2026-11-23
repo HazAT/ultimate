@@ -1525,6 +1525,45 @@ export const actions = {
     })
     await stream.close()
   })
+  it('delivers a readable 413 on an oversized subscription batch and keeps the stream usable for smaller follow-up batches', async () => {
+    const { server } = await fixture(false, {
+      probe: `import { defineExtension } from '@earendil-works/pi-durable'
+export default defineExtension({ name: 'probe' })
+export const actions = { value: async () => 'ok' }`,
+    })
+    const stream = await attach(server, { view: false })
+    await until(() => stream.events.some((event) => event.name === 'stream'))
+    const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
+    const oversized = await fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscribe: [
+          { sub: 1, read: { extension: 'probe', action: 'value', args: null } },
+          { sub: 2, read: { extension: 'probe', action: 'value', args: 'x'.repeat(1_200_000) } },
+        ],
+        unsubscribe: [],
+      }),
+    })
+    expect(oversized.status).toBe(413)
+    expect(await oversized.json()).toEqual({ error: 'Request too large' })
+
+    const small = await fetch(`${server.url}/api/events/${id}`, {
+      method: 'POST',
+      headers: { Origin: server.url, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscribe: [{ sub: 3, read: { extension: 'probe', action: 'value', args: null } }],
+        unsubscribe: [],
+      }),
+    })
+    expect(small.status).toBe(200)
+    await until(() => stream.events.some((event) => event.name === 'read' && event.sub === 3))
+    expect(stream.events.find((event) => event.name === 'read' && event.sub === 3)!.data).toEqual({
+      result: 'ok',
+      rev: expect.any(Number),
+    })
+    await stream.close()
+  })
   it('runs logins in the models extension: prompt, answer, cancel, no credential leak, dead flows cancelled', async () => {
     const { server, options } = await fixture(false, {
       models: `export { default, actions, docs, userActions } from ${JSON.stringify(resolvePath('extensions/models/server.ts'))}`,

@@ -63,11 +63,19 @@ async function body(
   limit = 1024 * 1024,
 ): Promise<Record<string, unknown>> {
   let data = ''
+  let bytes = 0
+  let tooLarge = false
   request.setEncoding('utf8')
   for await (const chunk of request) {
-    data += chunk.toString()
-    if (Buffer.byteLength(data) > limit) throw new HttpError(413, 'Request too large')
+    const piece = chunk.toString()
+    bytes += Buffer.byteLength(piece)
+    if (bytes > limit) {
+      tooLarge = true
+      data = ''
+      if (bytes > limit * 4) throw new HttpError(413, 'Request too large')
+    } else data += piece
   }
+  if (tooLarge) throw new HttpError(413, 'Request too large')
   try {
     const value = JSON.parse(data || '{}')
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error()

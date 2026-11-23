@@ -294,9 +294,6 @@ export function createStore(options: StoreOptions = {}) {
     closing.add(sub)
     return true
   }
-  function unsubscribe(sub: number) {
-    if (retire(sub)) scheduleFlush()
-  }
   function scheduleFlush() {
     if (flushQueued) return
     flushQueued = true
@@ -502,7 +499,6 @@ export function createStore(options: StoreOptions = {}) {
   function refusedOpen(key: string, sub: number, status: number, watch?: ReadWatch) {
     if (live.get(key)?.sub !== sub) return
     live.delete(key)
-    unsubscribe(sub)
     if (watch && status >= 400 && status < 500) {
       if (watchedReads.get(key.slice(5)) === watch) {
         watch.refused = true
