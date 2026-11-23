@@ -935,3 +935,26 @@ it('resumes an interrupted script from its journal without running finished call
   expect(JSON.stringify(result)).toContain('Script failed')
   expect(JSON.stringify(result)).toContain('bash (error)')
 })
+
+it('sends a failed script to the summary model as a fixed label, never its printed output', async () => {
+  const { server } = await fixture()
+  const path = join(server.host.home, 'scratch.txt')
+  await run(
+    server,
+    `await tools.read({path:${JSON.stringify(path)}}); await tools.bash({command:'true'}); text('Script error:\\nsecret line'); throw new Error('Script error:\\nsecret line');`,
+  )
+  const inputs = await server.harness.commit(async (tx) => {
+    const found: string[] = []
+    let cursor
+    do {
+      const page = await tx.scanTasks({}, 256, cursor)
+      for (const task of page.items)
+        if (task.kind === 'codemode.summary') found.push(JSON.stringify(task.input))
+      cursor = page.next
+    } while (cursor)
+    return found
+  }, context)
+  expect(inputs).toHaveLength(1)
+  expect(inputs[0]).toContain('Script failed')
+  expect(inputs[0]).not.toContain('secret line')
+})

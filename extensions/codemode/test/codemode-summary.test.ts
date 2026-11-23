@@ -188,3 +188,7 @@ it('never sends a cut argument preview, which reads as prose once its JSON is br
   const input = summaryInput(calls)
   for (const word of ['correct', 'horse', 'battery', 'staple']) expect(input).not.toContain(word)
 })
+
+it('labels a script resumed after a restart neutrally, since its replayed reads went unrecorded', () => {
+  expect(fixedLine([], undefined, true)).toEqual({ line: 'Ran a script' })
+})

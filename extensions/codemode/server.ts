@@ -48,7 +48,14 @@ import type { SummaryModel } from '../conversations/summary-model.ts'
 import { Summarized } from './refs.ts'
 import type { CallSummary } from './refs.ts'
 import { PendingDoc, SummaryDoc } from './api.ts'
-import { fixedLine, parseSummary, SUMMARY_SYSTEM, summaryCalls, summaryInput } from './summary.ts'
+import {
+  fixedLine,
+  parseSummary,
+  SCRIPT_FAILED,
+  SUMMARY_SYSTEM,
+  summaryCalls,
+  summaryInput,
+} from './summary.ts'
 import type { Call } from './summary.ts'
 import { MAX_MODEL_CALLS, modelCallLimits } from './models.ts'
 
@@ -398,13 +405,6 @@ export const actions = {
   },
 }
 
-const textOf = (result: ToolExecutionResult) =>
-  (result.output ?? []).flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
-const scriptError = (result: ToolExecutionResult) =>
-  result.isError
-    ? (textOf(result).split('Script error:\n')[1] ?? textOf(result)).split('\n')[0]
-    : undefined
-
 export default function codemode(host: ExtensionHost) {
   const sandbox = host.resource('codemode.sandbox', () => {
     const created = new CodemodeSandbox({ memoryLimitBytes: 256 * 1024 * 1024 })
@@ -418,11 +418,10 @@ export default function codemode(host: ExtensionHost) {
     spread: true,
     execute: async (args, api, context) => {
       const values = Array.isArray(args) ? args : []
-      const record = (status: string) => {
-        const calls = helperCallsByTask.get(api.taskId) ?? []
-        calls.push({ name: `ultimate.${helper.name}`, args: values, status })
-        helperCallsByTask.set(api.taskId, calls)
-      }
+      const record = (status: string) =>
+        helperCallsByTask
+          .get(api.taskId)
+          ?.push({ name: `ultimate.${helper.name}`, args: values, status })
       try {
         const value = asJson(await helper.execute(values, api.conversationId, context)) ?? null
         record('ok')
@@ -507,15 +506,15 @@ export default function codemode(host: ExtensionHost) {
     }, context)
   const summarize = async (api: HookApi, call: ToolHookCall, result: ToolExecutionResult) => {
     const details = result.details as CodemodeToolDetails | undefined
-    const helperCalls = helperCallsByTask.get(api.taskId) ?? []
+    const helperCalls = helperCallsByTask.get(api.taskId)
     helperCallsByTask.delete(api.taskId)
-    const calls = [...helperCalls, ...summaryCalls(details?.calls ?? [])]
-    const error = scriptError(result)
+    const calls = [...(helperCalls ?? []), ...summaryCalls(details?.calls ?? [])]
+    const error = result.isError ? SCRIPT_FAILED : undefined
     return host.harness().commit(async (tx) => {
       const doc = await tx.doc(SummaryDoc, api.conversationId)
       const pending = await tx.doc(PendingDoc, api.conversationId)
       if (doc.calls[call.id] || pending.calls.includes(call.id)) return
-      const fixed = fixedLine(calls, error)
+      const fixed = fixedLine(calls, error, helperCalls === undefined)
       if (fixed) return recordSummaryLineAndEvent(tx, api.conversationId, call.id, fixed)
       pending.calls.push(call.id)
       await tx.createTask(
@@ -629,7 +628,9 @@ export default function codemode(host: ExtensionHost) {
       modelCallLimits(() => host.harness()),
       hook(ToolTask, {
         beforeTool: async (call, api, context) => {
-          if (topLevelCodemode(call)) await copyRetiredStoreOnce(api, context)
+          if (!topLevelCodemode(call)) return undefined
+          helperCallsByTask.set(api.taskId, [])
+          await copyRetiredStoreOnce(api, context)
           return undefined
         },
         afterTool: async (call, result, api) => {
