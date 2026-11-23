@@ -115,10 +115,15 @@ interface ReadWatch {
   onEvent: (event: ReadNotice) => void
   refused?: boolean
 }
+interface DocWatch {
+  count: number
+  refused?: boolean
+}
 interface Wanted {
   spec: Spec
   handler: Handler
-  watch?: ReadWatch
+  readWatch?: ReadWatch
+  docWatch?: DocWatch
 }
 
 function applyDoc(docs: Docs, event: DocChange): Docs {
@@ -146,19 +151,18 @@ export function createStore(options: StoreOptions = {}) {
     },
   }
   const listeners = new Set<() => void>()
-  const docKinds = new Map<string, number>()
+  const docKinds = new Map<string, DocWatch>()
 
-  const docWatchCountsByConversation = new Map<ConversationId, Map<string, number>>()
+  const docWatchCountsByConversation = new Map<ConversationId, Map<string, DocWatch>>()
   const watchedViews = new Map<ConversationId, number>()
   const watchedReads = new Map<string, ReadWatch>()
-  const refusedDocs = new Set<string>()
 
   let multiplexedEventSource: EventSourceLike | undefined
 
   let streamId: string | undefined
   const handlers = new Map<number, Handler>()
   let nextSub = 0
-  const live = new Map<string, { sub: number; watch?: ReadWatch }>()
+  const live = new Map<string, { sub: number; readWatch?: ReadWatch }>()
   const opening = new Map<number, { spec: Spec; failed: Refused }>()
   const closing = new Set<number>()
   let opened = false
@@ -414,8 +418,8 @@ export function createStore(options: StoreOptions = {}) {
         if (response.status === 413) {
           const singleOpen = opens.size === 1 && closes.length === 0
           if (singleOpen) {
-            const [[sub]] = opens
-            return { refused: { [sub]: 413 } }
+            const [[sub, { spec }]] = opens
+            if ('read' in spec || !spec.view) return { refused: { [sub]: 413 } }
           }
           if (batchSize > 1) maxBatchSize = Math.max(1, Math.floor(batchSize / 2))
           return 'ambiguous' as const
@@ -494,13 +498,12 @@ export function createStore(options: StoreOptions = {}) {
       handler: (name, raw) =>
         name === 'view' ? replaceViewFromFreshSnapshot(raw) : handle(name, JSON.parse(raw)),
     })
-    for (const kind of docKinds.keys()) {
-      const key = `${shown}:doc:${kind}`
-      if (!refusedDocs.has(key))
-        result.set(
-          key,
-          docSubscription(state.requested, kind, (change) => handle('doc', change)),
-        )
+    for (const [kind, docWatch] of docKinds) {
+      if (docWatch.refused) continue
+      result.set(`${shown}:doc:${kind}`, {
+        ...docSubscription(state.requested, kind, (change) => handle('doc', change)),
+        docWatch,
+      })
     }
     for (const conversation of watchedViews.keys())
       result.set(`${conversation}:view`, {
@@ -516,28 +519,27 @@ export function createStore(options: StoreOptions = {}) {
         },
       })
     for (const [conversation, kinds] of docWatchCountsByConversation)
-      for (const kind of kinds.keys()) {
-        const key = `${conversation}:doc:${kind}`
-        if (!refusedDocs.has(key))
-          result.set(
-            key,
-            docSubscription(conversation, kind, (change) => {
-              const docs = state.docsOf[conversation] ?? {}
-              const next = applyDoc(docs, change)
-              if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
-            }),
-          )
+      for (const [kind, docWatch] of kinds) {
+        if (docWatch.refused) continue
+        result.set(`${conversation}:doc:${kind}`, {
+          ...docSubscription(conversation, kind, (change) => {
+            const docs = state.docsOf[conversation] ?? {}
+            const next = applyDoc(docs, change)
+            if (next !== docs) set({ docsOf: { ...state.docsOf, [conversation]: next } })
+          }),
+          docWatch,
+        })
       }
-    for (const [key, watch] of watchedReads) {
-      if (watch.refused) continue
-      const { read, every } = watch
+    for (const [key, readWatch] of watchedReads) {
+      if (readWatch.refused) continue
+      const { read, every } = readWatch
       result.set(`read:${key}`, {
         spec: every === undefined ? { read } : { read, every },
-        watch,
+        readWatch,
         handler: (name, raw) => {
-          if (name !== 'read' || watchedReads.get(key) !== watch) return
+          if (name !== 'read' || watchedReads.get(key) !== readWatch) return
           const parsed = JSON.parse(raw) as ReadNotice
-          watch.onEvent(
+          readWatch.onEvent(
             parsed.rev === undefined || Number.isSafeInteger(parsed.rev)
               ? parsed
               : { ...parsed, rev: undefined },
@@ -548,23 +550,31 @@ export function createStore(options: StoreOptions = {}) {
     return result
   }
 
-  function refusedOpen(key: string, sub: number, status: number, watch?: ReadWatch) {
+  function refusedOpen(
+    key: string,
+    sub: number,
+    status: number,
+    readWatch?: ReadWatch,
+    docWatch?: DocWatch,
+  ) {
     if (live.get(key)?.sub !== sub) return
     live.delete(key)
-    if (!watch && status === 413) {
-      if (!refusedDocs.has(key)) {
-        refusedDocs.add(key)
-        handle('notice', {
-          level: 'error',
-          message: `Subscription too large: ${key.slice(0, 120)}`,
-        })
-      }
+    if (docWatch && status === 413) {
+      if (docWatch.count > 0) {
+        if (!docWatch.refused) {
+          docWatch.refused = true
+          handle('notice', {
+            level: 'error',
+            message: `Subscription too large: ${key.slice(0, 120)}`,
+          })
+        }
+      } else scheduleReconcile()
       return
     }
-    if (watch && status >= 400 && status < 500) {
-      if (watchedReads.get(key.slice(5)) === watch) {
-        watch.refused = true
-        watch.onEvent({ error: 'The server refused this read', status })
+    if (readWatch && status >= 400 && status < 500) {
+      if (watchedReads.get(key.slice(5)) === readWatch) {
+        readWatch.refused = true
+        readWatch.onEvent({ error: 'The server refused this read', status })
       } else scheduleReconcile()
       return
     }
@@ -599,20 +609,20 @@ export function createStore(options: StoreOptions = {}) {
     cancelReconcile = undefined
     if (stopped) return
     const want = wanted()
-    for (const [key, { sub, watch }] of live) {
+    for (const [key, { sub, readWatch }] of live) {
       const next = want.get(key)
-      if (next && next.watch === watch) continue
+      if (next && next.readWatch === readWatch) continue
       live.delete(key)
       retire(sub)
     }
     if (closing.size) scheduleFlush()
     if (streamId !== undefined)
-      for (const [key, { spec, handler, watch }] of want)
+      for (const [key, { spec, handler, readWatch, docWatch }] of want)
         if (!live.has(key)) {
           const sub: number = subscribe(spec, handler, (status) =>
-            refusedOpen(key, sub, status, watch),
+            refusedOpen(key, sub, status, readWatch, docWatch),
           )
-          live.set(key, { sub, watch })
+          live.set(key, { sub, readWatch })
         }
     const keep = <T>(record: Readonly<Record<string, T>>, has: (key: string) => boolean) =>
       Object.keys(record).every(has)
@@ -763,32 +773,25 @@ export function createStore(options: StoreOptions = {}) {
     },
 
     watchDoc(kind: string) {
-      docKinds.set(kind, (docKinds.get(kind) ?? 0) + 1)
+      const watch = docKinds.get(kind) ?? { count: 0 }
+      watch.count++
+      docKinds.set(kind, watch)
       scheduleReconcile()
       return () => {
-        const left = (docKinds.get(kind) ?? 1) - 1
-        if (left > 0) docKinds.set(kind, left)
-        else {
-          docKinds.delete(kind)
-          for (const key of refusedDocs)
-            if (key.startsWith('shown:') && key.endsWith(`:doc:${kind}`)) refusedDocs.delete(key)
-        }
+        if (--watch.count === 0 && docKinds.get(kind) === watch) docKinds.delete(kind)
         scheduleReconcile()
       }
     },
 
     watchDocOf(conversation: ConversationId, kind: string) {
-      const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, number>()
+      const kinds = docWatchCountsByConversation.get(conversation) ?? new Map<string, DocWatch>()
       docWatchCountsByConversation.set(conversation, kinds)
-      kinds.set(kind, (kinds.get(kind) ?? 0) + 1)
+      const watch = kinds.get(kind) ?? { count: 0 }
+      watch.count++
+      kinds.set(kind, watch)
       scheduleReconcile()
       return () => {
-        const left = (kinds.get(kind) ?? 1) - 1
-        if (left > 0) kinds.set(kind, left)
-        else {
-          kinds.delete(kind)
-          refusedDocs.delete(`${conversation}:doc:${kind}`)
-        }
+        if (--watch.count === 0 && kinds.get(kind) === watch) kinds.delete(kind)
         if (!kinds.size) docWatchCountsByConversation.delete(conversation)
         scheduleReconcile()
       }
