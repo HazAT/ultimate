@@ -661,7 +661,7 @@ export default function codemode(host: ExtensionHost) {
             ' Only text(), image() and return values enter context; filter to concise findings.' +
             ' Discover extension contracts with ultimate.apis() and read one with ultimate.api(name); act on them through tools.action({extension, action, args}).' +
             ' A subagent started from a script runs in the background; wait for it at top level.',
-          `A script makes at most ${MAX_MODEL_CALLS} models.classify/generateImages calls; its result ends with a usage line. A script resumes after a restart; keep long-run progress with store() so a later call can continue.`,
+          `A script makes at most ${MAX_MODEL_CALLS} models.classify/generateImages calls; its result ends with a usage line. A script resumes after a restart; keep long-run progress with store() so a later call can continue. A script stops after 60 s unless its first line sets more (\`// @options: {"timeout_ms": 300000}\`); calls it made before the timeout keep their effects (a message stays sent), so check what happened before rerunning it.`,
           `Read-only introspection globals (each result is journaled):\n\`\`\`ts\n${declarations}\n\`\`\``,
           tools,
         ]
