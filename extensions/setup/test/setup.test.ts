@@ -70,6 +70,7 @@ async function checkHost(options: { logins: string[]; oauth?: string[] }) {
   const userHome = await temp('ultimate-setup-check-')
   const projectRoot = join(userHome, 'project')
   await mkdir(join(userHome, '.ultimate/agents'), { recursive: true })
+  await mkdir(projectRoot)
   await writeFile(
     join(userHome, '.ultimate/agents/scout.md'),
     '---\nname: scout\ndescription: Scouts\nmodel: openai-codex/gpt-6.1-sol\n---\nScout.\n',
@@ -277,7 +278,6 @@ it('has no agent warning once the pinned provider has a login', async () => {
 
 it('warns about a missing worktree setup until one is configured', async () => {
   const host = await checkHost({ logins: ['openrouter', 'openai-codex'] })
-  await mkdir(host.projectRoot)
   await writeFile(join(host.projectRoot, 'composer.json'), '{}')
   await git(host.projectRoot, 'init', '-q', '-b', 'main')
   await git(
