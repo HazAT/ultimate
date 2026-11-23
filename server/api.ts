@@ -187,11 +187,6 @@ async function runAction(
     reply(response, 403, { error, rev })
     return
   }
-  if (!extensions.action(name, key)) {
-    const { error, rev } = reads.refused(404, 'Unknown extension action')
-    reply(response, 404, { error, rev })
-    return
-  }
   const id = data.conversationId as number | undefined
   if (!validConversationId(id)) {
     const { error, rev } = reads.refused(400, 'Invalid conversation id')
@@ -205,6 +200,15 @@ async function runAction(
     args,
     ...(id === undefined ? {} : { conversation: id }),
   })
+  if (!extensions.action(name, key)) {
+    const current = publish({ error: 'Unknown extension action', status: 404 })
+    reply(response, 404, {
+      error: 'Unknown extension action',
+      rev,
+      ...(current ? {} : { superseded: true }),
+    })
+    return
+  }
   const controller = new AbortController()
   const cancel = () => {
     if (!response.writableEnded) controller.abort()

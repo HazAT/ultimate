@@ -77,19 +77,28 @@ it("counts an action's own answer as the read's, and drops an older one that ans
   expect(run).toHaveBeenCalledTimes(1)
 })
 
-it('pushes the authoritative revision when an older action finishes after an unchanged poll', async () => {
+it('marks an older action superseded after an unchanged poll without sending redundant SSE frames', async () => {
   const { reads, page } = setup()
   const reader = page()
   reads.subscribe(spec, 1000, reader.send)
   await vi.advanceTimersByTimeAsync(0)
-  const initialRev = reader.events[0].rev
   const stale = reads.answering(spec)
   await vi.advanceTimersByTimeAsync(1000)
   expect(reader.events).toHaveLength(1)
-  stale.publish({ result: 'stale-value' })
-  expect(reader.events).toHaveLength(2)
-  expect(reader.events[1]).toEqual({ result: 'one', rev: stale.rev + 1 })
-  expect(reader.events[1].rev).toBeGreaterThan(initialRev)
+  expect(stale.publish({ result: 'stale-value' })).toBe(false)
+  expect(reader.events).toHaveLength(1)
+})
+
+it('marks an HTTP action started before a watch opens as superseded once the new watch publishes', async () => {
+  const { reads, page } = setup()
+  const earlyHttp = reads.answering(spec)
+  const reader = page()
+  reads.subscribe(spec, undefined, reader.send)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(reader.events).toHaveLength(1)
+  expect(reader.events[0].rev).toBeGreaterThan(earlyHttp.rev)
+  expect(earlyHttp.publish({ error: 'stale failure', status: 500 })).toBe(false)
+  expect(reader.events).toHaveLength(1)
 })
 
 it('runs fresh after an obsolete non-polling attempt exits following a 5xx so a late subscriber never hangs', async () => {

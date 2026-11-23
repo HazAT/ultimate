@@ -6,7 +6,11 @@ import type { ReadPayload, ServerEvents, SubscriptionsRequest } from '../../shar
 
 import { FakeSource, fakeSubscriptions } from './fake-source.ts'
 
-function setup(retryMs = 5, answerRead?: Parameters<typeof fakeSubscriptions>[1]) {
+function setup(
+  retryMs = 5,
+  answerRead?: Parameters<typeof fakeSubscriptions>[1],
+  flushTimeoutMs?: number,
+) {
   const sources: FakeSource[] = []
   const server = fakeSubscriptions(sources, answerRead)
   const fetch = vi.fn<typeof globalThis.fetch>(
@@ -22,6 +26,7 @@ function setup(retryMs = 5, answerRead?: Parameters<typeof fakeSubscriptions>[1]
     },
     fetch,
     retryMs,
+    flushTimeoutMs,
     onFallback,
   })
   store.start()
@@ -371,6 +376,7 @@ describe('web replica store', () => {
       'bad status',
       'hex key',
       'endpoint 404',
+      'status 202',
     ] as const) {
       const { store, server, sources, latest, fetch, onFallback } = setup(1000)
       latest().open()
@@ -382,6 +388,8 @@ describe('web replica store', () => {
         if (failure === 'lost before the server saw it') throw new Error('offline')
         if (failure === 'endpoint 404')
           return Response.json({ error: 'Unknown endpoint' }, { status: 404 })
+        if (failure === 'status 202')
+          return Response.json({ ok: true, refused: {} }, { status: 202 })
         server.handle(path as string, init)
         if (failure === 'not json') return new Response('not json')
         if (failure === 'bad shape') return Response.json({ ok: true, refused: [] })
@@ -408,6 +416,72 @@ describe('web replica store', () => {
       expect(store.getState().docs['test.counter']).toEqual({ count: 1 })
       store.stop()
     }
+  })
+
+  it('aborts a stalled subscription POST at its deadline and replaces the stream so later changes proceed', async () => {
+    const { store, server, sources, fetch, latest } = setup(50, undefined, 200)
+    latest().open()
+    await tick()
+    let aborted = false
+    fetch.mockImplementationOnce(
+      (_path, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true
+            reject(init.signal?.reason)
+          })
+        }),
+    )
+    const first = latest()
+    store.show(7 as ConversationId)
+    await tick()
+    store.watchDoc('test.counter')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(aborted).toBe(true)
+    expect(first.closed).toBe(true)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(sources).toHaveLength(2)
+    latest().open()
+    await tick()
+    expect(server.of(7, true)).toBeDefined()
+    expect(server.of(7, false)?.docs).toEqual(['test.counter'])
+    store.stop()
+  })
+
+  it('splits a multi-item 413 batch so valid reads still open and only an individually oversized read is refused', async () => {
+    const { store, server, sources, fetch, latest } = setup(5)
+    latest().open()
+    await tick()
+    fetch.mockImplementation(async (path, init) => {
+      if ((path as string).startsWith('/api/events/')) {
+        const body = init?.body as string
+        if (body.length > 200) return Response.json({ error: 'Request too large' }, { status: 413 })
+      }
+      return server.handle(path as string, init) ?? Response.json({ providers: [], models: [] })
+    })
+    const smallEvents: unknown[] = []
+    const bigEvents: unknown[] = []
+    store.watchRead(
+      { extension: 'test', action: 'small', args: null },
+      undefined,
+      (event) => void smallEvents.push(event),
+    )
+    store.watchRead(
+      { extension: 'test', action: 'big', args: 'x'.repeat(250) },
+      undefined,
+      (event) => void bigEvents.push(event),
+    )
+    await tick()
+    expect(sources).toHaveLength(2)
+    latest().open()
+    await tick()
+    await tick()
+    expect(bigEvents).toEqual([{ error: 'The server refused this read', status: 413 }])
+    const small = server.reads.find((item) => !item.closed && item.read.action === 'small')!
+    expect(small).toBeDefined()
+    latest().send('read', { result: 'ok', rev: 1 }, small.sub)
+    expect(smallEvents).toEqual([{ result: 'ok', rev: 1 }])
+    store.stop()
   })
 
   it('sends the closes and opens of a switch in one request', async () => {

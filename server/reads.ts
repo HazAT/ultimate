@@ -11,7 +11,6 @@ interface Entry {
   spec: ReadSpec
   subscribers: Map<symbol, { every?: number; send: Send }>
   sent?: string
-  broadcastRev?: number
   answeredAt: number
   running?: AbortController
   again?: Cancel
@@ -32,29 +31,14 @@ export function createReads(run: Run, now = () => Date.now()) {
   const entries = new Map<string, Entry>()
 
   function publish(entry: Entry, startedAt: number, event: ReadPayload) {
-    if (startedAt < entry.shown) {
-      if (entry.sent !== undefined && entry.broadcastRev !== entry.shown) {
-        entry.broadcastRev = entry.shown
-        const authoritative: ReadEvent = {
-          ...(JSON.parse(entry.sent) as ReadPayload),
-          rev: entry.shown,
-        }
-        for (const { send } of entry.subscribers.values()) send(authoritative)
-      }
-      return false
-    }
+    if (startedAt < entry.shown) return false
     entry.shown = startedAt
     entry.answeredAt = now()
     const stamped: ReadEvent = { ...event, rev: startedAt }
     const json = JSON.stringify(event)
     const temporary = 'error' in event && event.status >= 500
-    if (temporary) {
-      entry.sent = undefined
-      entry.broadcastRev = startedAt
-      for (const { send } of entry.subscribers.values()) send(stamped)
-    } else if (json !== entry.sent) {
-      entry.sent = json
-      entry.broadcastRev = startedAt
+    if (temporary || json !== entry.sent) {
+      entry.sent = temporary ? undefined : json
       for (const { send } of entry.subscribers.values()) send(stamped)
     }
     schedule(entry)
@@ -126,8 +110,11 @@ export function createReads(run: Run, now = () => Date.now()) {
       const entry = entries.get(key)
       return {
         rev,
-        publish: (event: ReadPayload) =>
-          entry && entries.get(key) === entry ? publish(entry, rev, event) : true,
+        publish: (event: ReadPayload) => {
+          const current = entries.get(key)
+          if (current && current === entry) return publish(current, rev, event)
+          return !(current && rev < current.shown)
+        },
       }
     },
     refused: (status: number, message: string) => ({

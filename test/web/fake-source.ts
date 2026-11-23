@@ -89,14 +89,20 @@ export function answerReadsWith(
       result?: ReadSpec['args']
       error?: string
     }
-    for (const { publish } of done)
-      publish(
+    let superseded = false
+    for (const { publish } of done) {
+      const current = publish(
         response.ok
           ? { result: data.result ?? null }
           : { error: data.error ?? `${response.status}`, status: response.status },
       )
+      if (!current) superseded = true
+    }
     const { status, statusText, headers } = response
-    return Response.json({ ...data, rev: done.at(-1)!.rev }, { status, statusText, headers })
+    return Response.json(
+      { ...data, rev: done.at(-1)!.rev, ...(superseded ? { superseded: true } : {}) },
+      { status, statusText, headers },
+    )
   }
 }
 

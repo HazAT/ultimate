@@ -1328,7 +1328,7 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(stopped).toHaveBeenCalledOnce()
     await stream.close()
   })
-  it('marks superseded HTTP results and failures and pushes the authoritative revision after an unchanged poll, and stamps AbortError 500s', async () => {
+  it('marks superseded HTTP results and failures (including HTTP started before watch), recovers after HTTP 404, and stamps AbortError 500s', async () => {
     const { server } = await fixture(false, {
       race: `import { defineExtension } from '@earendil-works/pi-durable'
 
@@ -1373,7 +1373,23 @@ export const actions = {
     const answers = () =>
       stream.events
         .filter((event) => event.name === 'read' && event.sub === 1)
-        .map((event) => event.data as { result?: unknown; rev: number })
+        .map(
+          (event) =>
+            event.data as { result?: unknown; error?: string; status?: number; rev: number },
+        )
+
+    // 1. HTTP starts BEFORE watch opens; watch opens and publishes 'A'; late HTTP failure is marked superseded.
+    await post(server, '/api/extensions/race/actions/mode', { args: { fail: true } })
+    const earlyFail = post(server, '/api/extensions/race/actions/value', { args: null })
+    await until(
+      async () =>
+        (
+          (await post(server, '/api/extensions/race/actions/status', { args: null })).data
+            .result as {
+            httpStalled: boolean
+          }
+        ).httpStalled,
+    )
     await fetch(`${server.url}/api/events/${id}`, {
       method: 'POST',
       headers: { Origin: server.url },
@@ -1381,41 +1397,65 @@ export const actions = {
     })
     await until(() => answers().length === 1)
     expect(answers()[0]).toEqual({ result: 'A', rev: expect.any(Number) })
-
-    await post(server, '/api/extensions/race/actions/mode', { args: { fail: false } })
-    const staleOk = post(server, '/api/extensions/race/actions/value', { args: null })
-    await until(async () => {
-      const state = (await post(server, '/api/extensions/race/actions/status', { args: null })).data
-        .result as { httpStalled: boolean; pollsAfterStall: number }
-      return state.httpStalled && state.pollsAfterStall >= 1
-    })
-    expect(answers()).toHaveLength(1)
     await post(server, '/api/extensions/race/actions/release', { args: null })
-    const okReply = await staleOk
-    expect(okReply).toEqual({
-      status: 200,
-      data: { result: 'stale-http', rev: expect.any(Number), superseded: true },
-    })
-    await until(() => answers().length === 2)
-    expect(answers()[1].result).toBe('A')
-    expect(answers()[1].rev).toBeGreaterThan(okReply.data.rev as number)
-
-    await post(server, '/api/extensions/race/actions/mode', { args: { fail: true } })
-    const staleFail = post(server, '/api/extensions/race/actions/value', { args: null })
-    await until(async () => {
-      const state = (await post(server, '/api/extensions/race/actions/status', { args: null })).data
-        .result as { httpStalled: boolean; pollsAfterStall: number }
-      return state.httpStalled && state.pollsAfterStall >= 1
-    })
-    await post(server, '/api/extensions/race/actions/release', { args: null })
-    const failReply = await staleFail
-    expect(failReply).toEqual({
+    const earlyReply = await earlyFail
+    expect(earlyReply).toEqual({
       status: 500,
       data: { error: 'stale-failure', rev: expect.any(Number), superseded: true },
     })
+    expect(answers()).toHaveLength(1)
+
+    // 2. Stale HTTP 200 and stale HTTP 500 superseded by unchanged polls while watch is open.
+    for (const { fail, expected } of [
+      {
+        fail: false,
+        expected: {
+          status: 200,
+          data: { result: 'stale-http', rev: expect.any(Number), superseded: true },
+        },
+      },
+      {
+        fail: true,
+        expected: {
+          status: 500,
+          data: { error: 'stale-failure', rev: expect.any(Number), superseded: true },
+        },
+      },
+    ]) {
+      await post(server, '/api/extensions/race/actions/mode', { args: { fail } })
+      const stale = post(server, '/api/extensions/race/actions/value', { args: null })
+      await until(async () => {
+        const state = (await post(server, '/api/extensions/race/actions/status', { args: null }))
+          .data.result as { httpStalled: boolean; pollsAfterStall: number }
+        return state.httpStalled && state.pollsAfterStall >= 1
+      })
+      await post(server, '/api/extensions/race/actions/release', { args: null })
+      expect(await stale).toEqual(expected)
+      expect(answers()).toHaveLength(1)
+    }
+
+    // 3. Stamped HTTP 404 updates the shared read entry so recovery to the same value 'A' broadcasts over SSE.
+    const lookup = server.extensions.action.bind(server.extensions)
+    const spy = vi
+      .spyOn(server.extensions, 'action')
+      .mockImplementation((ext, key) =>
+        ext === 'race' && key === 'value' ? undefined : lookup(ext, key),
+      )
+    const missing = await post(server, '/api/extensions/race/actions/value', { args: null })
+    expect(missing).toEqual({
+      status: 404,
+      data: { error: 'Unknown extension action', rev: expect.any(Number) },
+    })
+    await until(() => answers().length === 2)
+    expect(answers()[1]).toEqual({
+      error: 'Unknown extension action',
+      status: 404,
+      rev: missing.data.rev,
+    })
+    spy.mockRestore()
     await until(() => answers().length === 3)
     expect(answers()[2].result).toBe('A')
-    expect(answers()[2].rev).toBeGreaterThan(failReply.data.rev as number)
+    expect(answers()[2].rev).toBeGreaterThan(missing.data.rev as number)
 
     const aborted = await post(server, '/api/extensions/race/actions/abortError', { args: null })
     expect(aborted).toEqual({
