@@ -33,7 +33,8 @@ dictation uses). Pick another model with `"voice": { "model": "provider/model" }
    none). The playback bar shows the paragraph, sentence and time left, and skips by sentence or paragraph; any
    sentence plays on click and each reply has replay. Thinking shows open while the model thinks, with a token count
    in the trace, and folds once the reply has played.
-6. **Interrupting**: a press while it speaks pauses at once. With real speech it cuts: the reply is marked where you
+6. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
+   A press while it speaks pauses at once. With real speech it cuts: the reply is marked where you
    cut in, the running turn is stopped (`stop`), and the next turn carries a hint of what was played and what was not.
    Without speech it resumes where it paused.
 7. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to

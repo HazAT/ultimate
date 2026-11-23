@@ -48,7 +48,7 @@ export const dock = createRoot(() => {
   const [pending, setPending] = createSignal<string | undefined>()
   const cues = createCues(cuesOn)
   const mic = createMic(frame)
-  const player: Player = createPlayer({ rate, enabled: speak, frame })
+  const player: Player = createPlayer({ rate, enabled: speak, listening: mic.recording, frame })
   let held: { busy: boolean } | undefined
   let stopPulse: (() => void) | undefined
   return {
@@ -81,7 +81,7 @@ export const dock = createRoot(() => {
     hold: (value: typeof held) => (held = value),
     pulse(on: boolean) {
       stopPulse?.()
-      stopPulse = on ? every(1600, cues.thinking) : undefined
+      stopPulse = on ? every(1600, () => !mic.recording() && cues.thinking()) : undefined
     },
   }
 })
@@ -432,7 +432,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         dock.player.load(latest.key, [], latest.busy)
         if (sentences.length) {
           dock.pulse(false)
-          dock.cues.firstWord()
+          if (!dock.mic.recording()) dock.cues.firstWord()
           trace.start('voice')
         }
       }

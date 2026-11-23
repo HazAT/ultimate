@@ -70,6 +70,7 @@ export function splitSentences(text: string, final: boolean) {
 export function createPlayer(options: {
   rate: () => number
   enabled: () => boolean
+  listening: () => boolean
   frame: (fn: () => void) => () => void
 }) {
   let items: Sentence[] = []
@@ -96,6 +97,11 @@ export function createPlayer(options: {
   function play(index: number) {
     const item = items[index]
     if (!item) return
+    if (options.listening()) {
+      speechSynthesis.cancel()
+      publish({ index, charIndex: -1, playing: false, paused: true })
+      return
+    }
     const mine = ++token
     speechSynthesis.cancel()
     stopWordClock?.()
