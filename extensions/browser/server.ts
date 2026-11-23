@@ -357,7 +357,14 @@ export default function browserExtension(host: ExtensionHost) {
                                   within: uiStep.within,
                                   kind: uiStep.kind,
                                 })
-                              : ui.act({ steps: uiStep.steps })
+                              : ui.act({ steps: uiStep.steps }).then((result) => {
+                                  if (result.ok) return result
+                                  const failed = result.error?.step ?? 0
+                                  const { ref, action } = uiStep.steps[failed] ?? {}
+                                  throw new Error(
+                                    `act step ${failed + 1} (${ref} ${action}) failed: ${result.error?.message ?? 'no reason given'}`,
+                                  )
+                                })
                         return work.then(
                           (result: unknown) => ({ result }),
                           (error: unknown) => ({ error: String(error) }),
