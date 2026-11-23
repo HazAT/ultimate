@@ -42,7 +42,7 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
-import { every } from '../../lib/timers.ts'
+import { every, unlessRepeated } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   dock,
@@ -67,6 +67,7 @@ const rowButton =
   'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
 const keys = () => formatKeys(KEYS)[0].join('+')
 const holdKeys = () => formatKeys(dock.holdKeys())[0].join('+')
+const AUTO_REPEAT_GAP_MS = 120
 const parseHold = () => dock.holdKeys().trim().toLowerCase()
 const keyChord = (event: KeyboardEvent) =>
   event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
@@ -364,19 +365,21 @@ export function VoicePanel() {
   )
   onSettled(() => {
     let holding: string | undefined
-    const down = (event: KeyboardEvent) => {
-      if (holding !== undefined) {
-        if (event.code === holding || event.repeat) {
-          event.preventDefault()
-          event.stopPropagation()
-        }
-        return
-      }
-      if (event.repeat) return
-      const chord = keyChord(event)
-      if (chord !== parseHold()) return
+    let letGo: (() => void) | undefined
+    const swallow = (event: KeyboardEvent) => {
       event.preventDefault()
       event.stopPropagation()
+    }
+    const down = (event: KeyboardEvent) => {
+      if (holding !== undefined) {
+        if (event.code !== holding && !event.repeat) return
+        swallow(event)
+        letGo?.()
+        letGo = undefined
+        return
+      }
+      if (event.repeat || keyChord(event) !== parseHold()) return
+      swallow(event)
       holding = event.code
       if (!voiceOpen()) setVoiceOpen(true)
       void press().then(() => {
@@ -387,10 +390,13 @@ export function VoicePanel() {
       if (holding === undefined) return
       const modifier = ['Meta', 'Control', 'Shift', 'Alt'].includes(event.key)
       if (event.code !== holding && !modifier) return
-      event.preventDefault()
-      event.stopPropagation()
-      holding = undefined
-      void release()
+      swallow(event)
+      letGo?.()
+      letGo = unlessRepeated(AUTO_REPEAT_GAP_MS, () => {
+        letGo = undefined
+        holding = undefined
+        void release()
+      })
     }
     window.addEventListener('keydown', down, { capture: true })
     window.addEventListener('keyup', up, { capture: true })
