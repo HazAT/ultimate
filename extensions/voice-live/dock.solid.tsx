@@ -242,19 +242,19 @@ async function collectClip(recorded: Recorded) {
     })
     await settled(kept)
     const intent = await api.action(IntentAction, { audio: kept })
-    if (intent.send) await sendDraft(intent.send)
+    if (intent.send) await sendDraft(intent.send, '', true)
   } catch (failure) {
     dock.setError(errorMessage(failure))
   }
 }
 
-export async function sendDraft(delivery: VoiceDelivery = 'steer', typed = '') {
+export async function sendDraft(delivery: VoiceDelivery = 'steer', typed = '', spoken = false) {
   const clips = draftOf()
   if (!clips.length && !typed.trim()) return
   const interrupted =
     playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
   dock.player.pause()
-  await sendTurn({ clips, typed: typed.trim(), delivery, interrupted })
+  await sendTurn({ clips, typed: typed.trim(), delivery, interrupted, spokenSend: spoken })
 }
 
 export const discardDraft = () => api.action(DiscardAction, null)
@@ -289,9 +289,13 @@ async function sendTurn(input: {
   clips?: VoiceClip[]
   delivery?: VoiceDelivery
   interrupted: boolean
+  spokenSend?: boolean
 }) {
   const cut = input.interrupted ? markCut() : undefined
-  const hint = [screen()?.text, cut].filter(Boolean).join('\n\n') || undefined
+  const sentBySaying = input.spokenSend
+    ? '(The user ended this message by saying a send command such as "send it": that sent it to you, it is not a request to hand off.)'
+    : undefined
+  const hint = [screen()?.text, cut, sentBySaying].filter(Boolean).join('\n\n') || undefined
   if (input.interrupted) {
     dock.player.stop()
     await api.action(StopAction, null)

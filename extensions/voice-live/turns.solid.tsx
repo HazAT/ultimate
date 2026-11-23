@@ -162,6 +162,7 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
   const data = () => props.turn.data
   const local = () => dock.local()[props.turn.key]
   const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
+  const cutIn = () => data().hint?.includes('(Hint:') ?? false
   const said = () => {
     const recording = audio()
     if (!data().audio) return data().text
@@ -178,9 +179,9 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
   return (
     <Message class="group/message mt-3 first:mt-0" data-voice-turn={props.turn.key} from="user">
       <MessageContent>
-        <Show when={data().audio || data().hint}>
+        <Show when={data().audio || cutIn()}>
           <div class="flex min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
-            <Show when={data().hint}>
+            <Show when={cutIn()}>
               <span class="inline-flex items-center gap-1 text-brand">
                 <CornerDownRight class="size-3" /> cut in
               </span>
