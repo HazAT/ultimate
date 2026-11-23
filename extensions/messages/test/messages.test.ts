@@ -1583,7 +1583,8 @@ it('creates nothing when a branch call fails on its images', async () => {
       {
         type: 'input',
         content:
-          'BRANCH ' + JSON.stringify({ prompt: 'Fix this card', isolated: false, images: 'latest' }),
+          'BRANCH ' +
+          JSON.stringify({ prompt: 'Fix this card', isolated: false, images: 'latest' }),
       },
       context,
     )
