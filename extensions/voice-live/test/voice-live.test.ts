@@ -120,9 +120,30 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
 
   await f.action('end', null)
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({})
+  expect(await f.action('status', null)).toMatchObject({
+    data: { result: { model: 'faux/gemini-faux', route: 'audio' } },
+  })
   expect(await readdir(join(f.home, 'voice')).catch(() => [])).toEqual([])
   const next = await f.turn({ key: 'three', text: 'new session' })
   expect(next.id).not.toBe(first.id)
+})
+
+it('switching to a model that does not hear audio sends it the transcript instead', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  const switched = await f.action('model', { model: 'faux/main-faux' })
+  expect([switched.status, switched.data.error]).toEqual([200, undefined])
+  const recorded = await f.action('record', { audio, mimeType: 'audio/webm' })
+  const second = await f.turn({
+    key: 'two',
+    text: 'what about the sidebar',
+    audio: recorded.data.result.audio,
+  })
+  expect([second.id, second.route]).toEqual([first.id, 'text'])
+  const request = f.requests.at(-1)!
+  expect(request.model).toBe('main-faux')
+  expect(JSON.stringify(request.messages)).toContain('(transcribed): what about the sidebar')
+  expect(JSON.stringify(request.messages)).not.toContain('audio/webm')
 })
 
 it('only reads and hands off: other tools are blocked, voice_handoff starts @ultimate with a card', async () => {

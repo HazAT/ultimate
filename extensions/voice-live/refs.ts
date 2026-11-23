@@ -11,6 +11,8 @@ export type VoiceSession = {
   of?: ConversationId
   at?: EntryId
   startedAt?: number
+  /** The model voice uses, `provider/model`, picked in the panel; unset, the default. */
+  model?: string
 }
 
 /**
@@ -79,6 +81,12 @@ export const TurnAction = actionRef<
 export const TranscriptAction = actionRef<{ audio: string; text: string }, Record<string, never>>(
   'voice-live',
   'transcript',
+)
+
+/** `{ model: 'provider/model' }` → the voice model from now on, the open session's included. */
+export const ModelAction = actionRef<{ model: string }, Record<string, never>>(
+  'voice-live',
+  'model',
 )
 
 /** Stop the session's current reply, for an interruption. */

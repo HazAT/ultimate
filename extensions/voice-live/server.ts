@@ -27,6 +27,7 @@ import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
 import {
   EndAction,
   RecordAction,
+  ModelAction,
   StatusAction,
   StopAction,
   TranscriptAction,
@@ -40,7 +41,7 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const PLACEHOLDER = '(no transcript yet)'
 const READ_TOOLS = ['read', 'bash', 'memory', 'web_search', 'web_fetch', 'voice_handoff']
 
-export const userActions = ['record', 'turn', 'transcript', 'stop', 'end']
+export const userActions = ['record', 'turn', 'transcript', 'model', 'stop', 'end']
 
 export const Session = defineDoc<VoiceSession>({
   kind: 'voice.session',
@@ -68,8 +69,9 @@ export const hearsAudio = (model: { provider: string; modelId: string }) =>
   /gemini/i.test(model.modelId)
 
 async function voiceModel(host: ExtensionHost) {
+  const picked = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.model
   const settings = await readSettings(userSettingsPath(host.userHome))
-  const configured = (settings.voice as { model?: unknown } | undefined)?.model
+  const configured = picked ?? (settings.voice as { model?: unknown } | undefined)?.model
   if (typeof configured === 'string' && configured.includes('/')) {
     const [provider, ...rest] = configured.split('/')
     return { provider, modelId: rest.join('/') }
@@ -305,6 +307,21 @@ export const actions = {
     await host.harness().commit(async (tx) => {
       const fork = await tx.doc(Fork, id)
       fork.transcripts = { ...fork.transcripts, [audio]: text.trim() }
+    }, context)
+    return {}
+  }),
+  model: implementAction(ModelAction, async (args, { host }) => {
+    const { model } = unwrap<{ model: unknown }>(args)
+    if (typeof model !== 'string' || !/^[^/\s]+\/\S+$/.test(model))
+      throw new Error('Expected { model: "provider/model" }')
+    const [provider, ...rest] = model.split('/')
+    const ref = { provider, modelId: rest.join('/') }
+    if (!host.modelRuntime.getModel(ref.provider, ref.modelId))
+      throw new Error(`Unknown model ${model}`)
+    await host.harness().commit(async (tx) => {
+      const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+      session.model = model
+      if (session.id !== undefined) (await tx.doc(AgentDoc, session.id)).model = ref
     }, context)
     return {}
   }),

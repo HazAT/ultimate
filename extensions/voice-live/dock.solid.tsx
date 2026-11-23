@@ -26,6 +26,7 @@ import {
   ROOT,
   ScopedConversation,
   switchConversation,
+  useAction,
   useConversation,
   useDocOf,
   useExternal,
@@ -33,12 +34,14 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import { every, nextTurn } from '../../lib/timers.ts'
+import { ModelSelect } from '../models/ui.solid.tsx'
 import { TranscribeAction } from '../voice/refs.ts'
 import { createCues } from './cues.ts'
 import { base64, createMic, drawWave, unsupported } from './recorder.ts'
 import type { Recorded } from './recorder.ts'
 import {
   EndAction,
+  ModelAction,
   RecordAction,
   StatusAction,
   StopAction,
@@ -48,12 +51,12 @@ import {
   VoiceSessionDoc,
 } from './refs.ts'
 import type { VoiceTurn } from './refs.ts'
-import { createPlayer, estimate, splitSentences } from './speech.ts'
+import { createPlayer, estimate, splitReply, splitSentences } from './speech.ts'
 import type { Player, Sentence } from './speech.ts'
 import { createTrace } from './trace.ts'
 import type { Stage, Trace } from './trace.ts'
 
-export const KEYS = 'alt+space'
+export const KEYS = 'mod+shift+v'
 const frame = (fn: () => void) => {
   let handle = requestAnimationFrame(function tick() {
     fn()
@@ -64,7 +67,14 @@ const frame = (fn: () => void) => {
 
 type Pasted = { kind: 'image'; data: string; mimeType: string } | { kind: 'text'; text: string }
 type Phase = 'idle' | 'recording' | 'sending' | 'thinking' | 'speaking' | 'done' | 'error'
-type Local = { trace: Trace; transcribing?: boolean; transcript?: string; failed?: string }
+type Local = {
+  trace: Trace
+  transcribing?: boolean
+  transcript?: string
+  failed?: string
+  optimistic?: VoiceTurn
+  images?: { data: string; mimeType: string }[]
+}
 type Cut = { key: string; sentence: number; charIndex: number }
 
 const dock = createRoot(() => {
@@ -236,7 +246,22 @@ async function sendTurn(input: { recorded?: Recorded; typed?: string; interrupte
       ? ['mic', 'transcribe', 'send', 'model', 'thinking', 'voice']
       : ['send', 'model', 'thinking', 'voice'],
   )
-  patchLocal(key, { trace, ...(input.recorded ? { transcribing: true } : {}) })
+  patchLocal(key, {
+    trace,
+    ...(input.recorded ? { transcribing: true } : {}),
+    optimistic: {
+      key,
+      text: input.typed ?? '',
+      route: 'text',
+      ...(input.recorded
+        ? { audio: 'pending', seconds: input.recorded.seconds, envelope: input.recorded.envelope }
+        : {}),
+      ...(hint ? { hint } : {}),
+    },
+    images: attachments.flatMap((item) =>
+      item.kind === 'image' ? [{ data: item.data, mimeType: item.mimeType }] : [],
+    ),
+  })
   dock.setPending(key)
   dock.setPhase('sending')
   dock.setStatus(input.recorded ? 'Sending your voice…' : 'Sending…')
@@ -300,6 +325,7 @@ async function sendTurn(input: { recorded?: Recorded; typed?: string; interrupte
     dock.pulse(true)
   } catch (failure) {
     trace.fail('error')
+    patchLocal(key, { failed: errorMessage(failure) })
     dock.pulse(false)
     dock.cues.error()
     dock.setPhase('error')
@@ -328,9 +354,11 @@ const thoughtOf = (message: AssistantMessage | undefined) =>
 
 type TurnView = {
   key: string
-  entry: EntryRecord & { data: VoiceTurn }
+  data: VoiceTurn
+  images: { data: string; mimeType: string }[]
   replies: AssistantMessage[]
   live?: AssistantMessage
+  optimistic?: true
 }
 
 function useTurns() {
@@ -341,7 +369,7 @@ function useTurns() {
     for (const entry of state().entries) {
       if (entry.kind === 'voice.turn') {
         const data = entry.data as VoiceTurn
-        turns.push({ key: data.key, entry: entry as TurnView['entry'], replies: [] })
+        turns.push({ key: data.key, data, images: imagesOf(entry), replies: [] })
       } else if (entry.kind === 'pi.assistant' && turns.length) {
         const message = entry.model?.[0]
         if (message?.role === 'assistant') turns.at(-1)!.replies.push(message)
@@ -349,13 +377,37 @@ function useTurns() {
     }
     const last = turns.at(-1)
     if (last && state().busy && partial()) last.live = partial()
+    const stored = new Set(turns.map((turn) => turn.key))
+    for (const [key, local] of Object.entries(dock.local()))
+      if (local.optimistic && !stored.has(key))
+        turns.push({
+          key,
+          data: local.optimistic,
+          images: local.images ?? [],
+          replies: [],
+          optimistic: true,
+        })
     return { turns, busy: state().busy }
   })
 }
 
+function imagesOf(entry: EntryRecord) {
+  const message = entry.model?.[0]
+  return message?.role === 'user' && Array.isArray(message.content)
+    ? message.content.flatMap((part) =>
+        part.type === 'image' ? [{ data: part.data, mimeType: part.mimeType }] : [],
+      )
+    : []
+}
+
 function replyOf(turn: TurnView) {
   const messages = [...turn.replies, ...(turn.live ? [turn.live] : [])]
+  const parts = [
+    ...turn.replies.map((message) => ({ text: textOf(message), final: true })),
+    ...(turn.live ? [{ text: textOf(turn.live), final: false }] : []),
+  ]
   return {
+    parts,
     text: messages.map(textOf).filter(Boolean).join('\n\n'),
     thought: messages.map(thoughtOf).filter(Boolean).join('\n\n'),
     tokens: turn.replies.reduce((sum, message) => sum + (message.usage?.reasoning ?? 0), 0),
@@ -372,6 +424,7 @@ function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
       const reply = replyOf(turn)
       return {
         key: turn.key,
+        parts: reply.parts,
         text: reply.text,
         thought: reply.thought,
         tokens: reply.tokens,
@@ -389,7 +442,9 @@ function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         if (model?.status === 'running') trace.start('thinking')
         trace.detail('thinking', `${latest.tokens || Math.round(latest.thought.length / 4)} tok`)
       }
-      const { sentences } = splitSentences(latest.text, !latest.busy)
+      const { sentences } = splitReply(
+        latest.busy ? latest.parts : latest.parts.map((part) => ({ ...part, final: true })),
+      )
       if (spoken?.key !== latest.key) {
         if (!sentences.length && latest.busy) return
         spoken = { key: latest.key, count: 0 }
@@ -523,14 +578,9 @@ function TraceRow(props: { trace: Trace }) {
 }
 
 function YourTurn(props: { turn: TurnView; transcripts: Readonly<Record<string, string>> }) {
-  const data = () => props.turn.entry.data
+  const data = () => props.turn.data
   const local = () => dock.local()[props.turn.key]
-  const images = () =>
-    (props.turn.entry.model?.[0]?.role === 'user' &&
-    Array.isArray(props.turn.entry.model[0].content)
-      ? props.turn.entry.model[0].content
-      : []
-    ).flatMap((part) => (part.type === 'image' ? [part] : []))
+  const images = () => props.turn.images
   const said = () =>
     data().audio
       ? (local()?.transcript ?? props.transcripts[data().audio!] ?? (data().text || undefined))
@@ -583,7 +633,13 @@ function YourTurn(props: { turn: TurnView; transcripts: Readonly<Record<string, 
 
 function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
   const reply = createMemo(() => replyOf(props.turn))
-  const sentences = createMemo(() => splitSentences(reply().text, !(props.busy && props.last)))
+  const sentences = createMemo(() =>
+    splitReply(
+      props.busy && props.last
+        ? reply().parts
+        : reply().parts.map((part) => ({ ...part, final: true })),
+    ),
+  )
   const [open, setOpen] = createSignal(true)
   const [touched, setTouched] = createSignal(false)
   const finished = createMemo(
@@ -1073,6 +1129,7 @@ export function VoicePanel() {
           <TalkButton />
           <Prompt />
           <div class="flex w-full items-center justify-between gap-3 font-mono text-[10.5px] text-muted-foreground">
+            <VoiceModel />
             <label class="flex items-center gap-1.5">
               <Switch aria-label="Speak replies" bind={[dock.speak, dock.setSpeak]} />
               speak
@@ -1097,6 +1154,21 @@ export function VoicePanel() {
         </footer>
       </section>
     </Show>
+  )
+}
+
+export function VoiceModel() {
+  const status = useAction(StatusAction, null, { conversation: ROOT })
+  return (
+    <ModelSelect
+      compact
+      name="Voice model"
+      onChange={(model) => {
+        if (!model) return undefined
+        return api.action(ModelAction, { model }).then(() => status.refetch())
+      }}
+      value={status.data()?.model}
+    />
   )
 }
 

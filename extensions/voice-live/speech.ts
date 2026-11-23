@@ -16,6 +16,22 @@ export type PlayerState = {
 
 export const estimate = (text: string, rate: number) => text.length / (CHARS_PER_SECOND * rate)
 
+export function splitReply(parts: readonly { text: string; final: boolean }[]) {
+  const sentences: Sentence[] = []
+  let pending = ''
+  let paragraph = 0
+  for (const part of parts) {
+    if (!part.text.trim()) continue
+    const split = splitSentences(part.text, part.final)
+    if (sentences.length) paragraph++
+    for (const sentence of split.sentences)
+      sentences.push({ ...sentence, paragraph: paragraph + sentence.paragraph })
+    paragraph += split.sentences.at(-1)?.paragraph ?? 0
+    pending = split.pending
+  }
+  return { sentences, pending }
+}
+
 export function splitSentences(text: string, final: boolean) {
   const sentences: Sentence[] = []
   let rest = text
