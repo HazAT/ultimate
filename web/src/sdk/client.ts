@@ -75,6 +75,25 @@ export const bundle = document.querySelector<HTMLMetaElement>('meta[name=ultimat
 
 const reloadNoticeMs = 600
 let switching = false
+let reloadHolds = 0
+let reloadWaits = false
+
+function reloadUnlessHeld() {
+  if (reloadHolds) reloadWaits = true
+  else location.reload()
+}
+
+/** Keeps the page from switching to a new bundle until the returned release runs (a recording in progress). */
+export function holdReload() {
+  reloadHolds++
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    reloadHolds--
+    if (!reloadHolds && reloadWaits) location.reload()
+  }
+}
 
 const switchKey = 'ultimate.web-switch'
 export const switched = ((): { at: number; changed: string[] } | undefined => {
@@ -109,7 +128,7 @@ store.subscribe(() => {
       switchKey,
       JSON.stringify({ at: Date.now(), changed: system.web.changed }),
     )
-    deadline(reloadNoticeMs, () => location.reload())
+    deadline(reloadNoticeMs, reloadUnlessHeld)
     return
   }
 

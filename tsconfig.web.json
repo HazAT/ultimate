@@ -104,6 +104,7 @@
     "extensions/tasks/tree.ts",
     "extensions/sidebar/listed.ts",
     "extensions/side-chat/logic.ts",
+    "extensions/screen-recorder/capture.ts",
     "extensions/voice-live/cues.ts",
     "extensions/voice-live/recorder.ts",
     "extensions/voice-live/speech.ts",

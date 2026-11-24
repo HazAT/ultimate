@@ -46,6 +46,7 @@ example, `const doc = useDoc(MyDoc)` and `<span>{doc()?.title}</span>` update th
 | `switchConversation`, `showSurface`, `runCommand`, `openPanel`, `closePanel`, `focusComposer`, `notify` | Shell navigation, commands and notices.                                                                                                                                                       |
 | `fillComposer`, `insertIntoComposer`, `composerDraft`                                                   | Replace or insert into a conversation's composer draft; read (and clear once sent) the text and images in it.                                                                                 |
 | `bundle`, `switched`                                                                                    | The web bundle this page runs and whether this load switched to it.                                                                                                                           |
+| `holdReload()`                                                                                          | Holds the switch to a new bundle until the returned release runs (`screen-recorder` holds it while recording).                                                                                |
 
 `api` sends commands: `submit(text, whenBusy?)`, `abort()`, `configure({ model, thinkingLevel })`, `compact()`,
 `createConversation()`, `restart()`, and `action(ref, args?)`. Conversation commands default to the shown conversation.

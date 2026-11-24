@@ -502,12 +502,16 @@ async function sendTurn(input: {
       : session === undefined
         ? undefined
         : composerDraft(session)
-  const takes = !!box && (box.images.length > 0 || (fromCold && !!box.text.trim()))
+  const takes =
+    !!box &&
+    (box.images.length > 0 || box.attachments.length > 0 || (fromCold && !!box.text.trim()))
   const releaseBox = takes ? box.reserve() : undefined
   const pasted = releaseBox ? box : undefined
   const carried = fromCold ? pasted : undefined
   const images = [...(input.images ?? pasted?.images ?? [])]
-  const typed = [input.typed, carried?.text.trim()].filter(Boolean).join('\n\n')
+  const typed = [input.typed, carried?.text.trim(), pasted?.attachments.join('\n')]
+    .filter(Boolean)
+    .join('\n\n')
   let delivered = false
   const key = crypto.randomUUID()
   const clips = input.clips ?? []
