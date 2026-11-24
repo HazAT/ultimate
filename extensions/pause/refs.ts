@@ -25,8 +25,11 @@ export type PauseDocState = {
   limit?: RateLimit
   /** The user pressed Pause during this pause: it never plays by itself. */
   manual?: boolean
-  /** The user's setting: minutes after a rate-limit pause began that Ultimate presses Play by itself; unset is off. */
-  autoPlay?: number
+  /**
+   * The user's setting: minutes after a rate-limit pause began that Ultimate presses Play by itself; `false` when the
+   * user turned it off; unset is the default, 30 minutes.
+   */
+  autoPlay?: number | false
 }
 
 /** A task still running while paused: it finishes on its own, nothing new starts after it. */
@@ -46,7 +49,7 @@ export type PauseState = {
   since?: number
   /** The rate limit that paused Ultimate, if one did. */
   limit?: RateLimit
-  /** Minutes after a rate-limit pause began that Play is pressed by itself; unset is off. */
+  /** Minutes after a rate-limit pause began that Play is pressed by itself (30 unless the user changed it); unset is off. */
   autoPlay?: number
   /** When this pause plays by itself (ms): a rate-limit pause the user did not also pause, with the setting on. */
   autoPlayAt?: number
@@ -67,7 +70,8 @@ export const PauseAction = actionRef<null, PauseState>('pause', 'pause')
 export const PlayAction = actionRef<null, PauseState>('pause', 'play')
 /**
  * User-only `{ minutes }`: play by itself that many minutes (1 to 1440) after a rate limit paused Ultimate, once per
- * pause; `null` turns it off. A pause the user pressed never plays by itself. Returns the state.
+ * pause; `null` turns it off. On until the user turns it off, 30 minutes by default. A pause the user pressed never
+ * plays by itself. Returns the state.
  */
 export const AutoPlayAction = actionRef<{ minutes: number | null }, PauseState>('pause', 'autoPlay')
 

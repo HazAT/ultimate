@@ -556,7 +556,7 @@ it('records a limit into a pause the user started, so it still shows', async () 
   expect((await submission.wait(context)).status).toBe('done')
 })
 
-it('plays a rate-limit pause by itself once, N minutes in, only when the user switched it on', async () => {
+it('plays a rate-limit pause by itself once, 30 minutes in, with no setting recorded', async () => {
   const f = await fixture()
   let responses = 0
   f.prepared.faux!.setResponses([
@@ -577,14 +577,7 @@ it('plays a rate-limit pause by itself once, N minutes in, only when the user sw
   const submission = await root.submit({ type: 'input', content: 'go' }, context)
   await until(async () => (await f.action('state')).limit !== undefined)
   const { since } = await f.action('state')
-  // Off by default: no time ever plays it.
-  expect((await f.action('state')).autoPlay).toBeUndefined()
-  expect(await f.autoPlay(since! + 365 * 86_400_000)).toBe(false)
-  expect(f.paused()).toBe(true)
-
-  const set = await f.setAutoPlay(30)
-  expect(set).toMatchObject({ autoPlay: 30, autoPlayAt: since! + 30 * 60_000 })
-  // Not yet due.
+  expect(await f.action('state')).toMatchObject({ autoPlay: 30, autoPlayAt: since! + 30 * 60_000 })
   expect(await f.autoPlay(since! + 29 * 60_000)).toBe(false)
   expect(f.paused()).toBe(true)
   expect(await f.autoPlay(since! + 30 * 60_000)).toBe(true)
@@ -601,8 +594,24 @@ it('plays a rate-limit pause by itself once, N minutes in, only when the user sw
   const notes = (await root.context(context)).entries.filter((entry) => entry.kind === 'pause.note')
   expect(notes[0].data).toMatchObject({ auto: true })
   expect(notes[0].model?.[0]?.content).toMatch(/continued after Ultimate played by itself\.$/)
-  // The setting stays for the next limit.
-  expect((await f.action('state')).autoPlay).toBe(30)
+})
+
+it('holds a rate-limit pause until Play once the user turned playing by itself off', async () => {
+  const f = await fixture()
+  f.prepared.faux!.setResponses([
+    () => fauxAssistantMessage('', { stopReason: 'error', errorMessage: limit }),
+    () => fauxAssistantMessage([fauxText('done')]),
+  ])
+  const { root } = await f.open()
+  expect((await f.setAutoPlay(null)).autoPlay).toBeUndefined()
+  const submission = await root.submit({ type: 'input', content: 'go' }, context)
+  await until(async () => (await f.action('state')).limit !== undefined)
+  const { since, autoPlayAt } = await f.action('state')
+  expect(autoPlayAt).toBeUndefined()
+  expect(await f.autoPlay(since! + 365 * 86_400_000)).toBe(false)
+  expect(f.paused()).toBe(true)
+  await f.action('play')
+  expect((await submission.wait(context)).status).toBe('done')
 })
 
 it('never plays a pause the user pressed, also when a rate limit joins it', async () => {

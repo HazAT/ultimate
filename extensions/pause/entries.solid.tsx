@@ -14,6 +14,7 @@ import {
   type EntryRecord,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
+import { autoPlayMinutes } from './autoplay.ts'
 import { unwrappedProviderError } from './provider-error.ts'
 import { PauseDoc } from './refs.ts'
 import type { AutoPlayed, HeldNote, PauseNote, RateLimit } from './refs.ts'
@@ -99,7 +100,7 @@ export function Limit(props: { entry: EntryRecord }) {
   const doc = useDocOf(() => ROOT, PauseDoc)
   const holding = createMemo(() => doc()?.paused === true && doc()?.limit?.at === limit().at)
   const now = useNow(1000, holding)
-  const autoPlay = () => (holding() && !doc()?.manual ? doc()?.autoPlay : undefined)
+  const autoPlay = () => (holding() && !doc()?.manual ? autoPlayMinutes(doc()!) : undefined)
   return (
     <Show when={limit().error !== undefined && limit().conversationId !== undefined}>
       <Card attention={holding()} class="border-l-warning/60" data-pause-limit>

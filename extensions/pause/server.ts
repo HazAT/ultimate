@@ -12,6 +12,7 @@ import { rateLimited } from '../../lib/rate-limit.ts'
 import { Standing } from '../subagents/api.ts'
 import { PauseApi } from './api.ts'
 import { formatDuration } from '../../lib/format.ts'
+import { autoPlayMinutes } from './autoplay.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type {
   AutoPlayed,
@@ -116,7 +117,7 @@ async function state(host: Host): Promise<PauseState> {
     paused: doc.paused,
     ...(doc.since === undefined ? {} : { since: doc.since }),
     ...(doc.limit === undefined ? {} : { limit: doc.limit }),
-    ...(doc.autoPlay === undefined ? {} : { autoPlay: doc.autoPlay }),
+    ...(autoPlayMinutes(doc) === undefined ? {} : { autoPlay: autoPlayMinutes(doc) }),
     ...(autoPlayAt(doc) === undefined ? {} : { autoPlayAt: autoPlayAt(doc) }),
     running: await activeTasks(host),
   }
@@ -165,8 +166,8 @@ async function pause(host: Host) {
 }
 
 const autoPlayAt = (doc: PauseDocState) =>
-  doc.paused && doc.limit && !doc.manual && doc.autoPlay && doc.since !== undefined
-    ? doc.since + doc.autoPlay * 60_000
+  doc.paused && doc.limit && !doc.manual && autoPlayMinutes(doc) && doc.since !== undefined
+    ? doc.since + autoPlayMinutes(doc)! * 60_000
     : undefined
 
 const outsideSchedulerTimer = (host: Pick<ExtensionHost, 'resource'>) =>
@@ -197,7 +198,7 @@ export async function autoPlay(host: Host, now = Date.now()) {
     const doc = await read(host)
     const at = autoPlayAt(doc)
     if (at === undefined || now < at) return false
-    const data: AutoPlayed = { since: doc.since!, at: now, minutes: doc.autoPlay! }
+    const data: AutoPlayed = { since: doc.since!, at: now, minutes: autoPlayMinutes(doc)! }
     const autoPlayOncePerPause = `pause.autoplay:${data.since}`
     const harness = host.harness()
     const ultimate = (await harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
@@ -214,7 +215,7 @@ export async function autoPlay(host: Host, now = Date.now()) {
             model: [
               {
                 role: 'user',
-                content: `Ultimate played by itself ${formatDuration(now - data.since)} after the rate limit paused it (the user's setting: ${data.minutes} min).`,
+                content: `Ultimate played by itself ${formatDuration(now - data.since)} after the rate limit paused it (Play by itself after ${data.minutes} min).`,
                 timestamp: now,
               },
             ],
@@ -235,8 +236,7 @@ async function setAutoPlay(host: Host, minutes: unknown) {
     throw new Error('minutes must be a whole number from 1 to 1440, or null to turn it off')
   await host.harness().commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
-    if (minutes === null) delete doc.autoPlay
-    else doc.autoPlay = minutes
+    doc.autoPlay = minutes ?? false
   }, context)
   rearmAutoPlay(host, await read(host))
   return state(host)

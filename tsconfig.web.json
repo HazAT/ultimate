@@ -89,6 +89,7 @@
     "extensions/update/item.ts",
     "extensions/attachments/limits.ts",
     "extensions/pause/provider-error.ts",
+    "extensions/pause/autoplay.ts",
     "extensions/pause/parked.ts",
     "extensions/sidebar/work.ts",
     "extensions/sidebar/landings.ts",

@@ -21,6 +21,7 @@ import {
   useTasks,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
+import { defaultAutoPlayMinutes } from './autoplay.ts'
 import { unwrappedProviderError } from './provider-error.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type { PauseState, RunningTask } from './refs.ts'
@@ -84,7 +85,7 @@ function AutoPlay(props: { minutes?: number }) {
           <Checkbox
             bind={[
               () => props.minutes !== undefined,
-              (on) => void save(on ? (draft() ?? props.minutes ?? 30) : null),
+              (on) => void save(on ? (draft() ?? props.minutes ?? defaultAutoPlayMinutes) : null),
             ]}
           />
           Play by itself after
@@ -92,7 +93,7 @@ function AutoPlay(props: { minutes?: number }) {
         <NumberInput
           aria-label="Auto-play delay in minutes"
           class="w-12 text-right"
-          defaultValue={props.minutes ?? 30}
+          defaultValue={props.minutes ?? defaultAutoPlayMinutes}
           format={{ useGrouping: false }}
           max={1440}
           min={1}
