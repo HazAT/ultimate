@@ -116,10 +116,11 @@ export type ToolLineRenderer = Component<{ call: ToolCallView }>
 export type LinkRenderer = Component<{ href: string; children: JSX.Element; core: JSX.Element }>
 
 /**
- * An inline code span in Markdown (messages, reports): its text as `code`, and `core`, the
- * rendering so far, starting with the default `<code>`. Return `core` for spans you leave alone.
+ * An inline code span in Markdown (messages, reports): its text as `code`, `inLink` when it sits inside a link (which
+ * is already a control: add no button there), and `core`, the rendering so far, starting with the default `<code>`.
+ * Return `core` for spans you leave alone.
  */
-export type InlineCodeRenderer = Component<{ code: string; core: JSX.Element }>
+export type InlineCodeRenderer = Component<{ code: string; inLink: boolean; core: JSX.Element }>
 
 /**
  * A fenced code block in Markdown by its language: `code`, `language`, `incomplete` while the

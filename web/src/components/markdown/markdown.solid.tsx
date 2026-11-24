@@ -183,12 +183,12 @@ function ConfirmedLink(props: {
 const omitHref = (attributes: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(attributes).filter(([name]) => name !== 'href'))
 
-function InlineCode(props: { code: string; attributes: Record<string, unknown> }) {
+function InlineCode(props: { code: string; inLink: boolean; attributes: Record<string, unknown> }) {
   const renderers = createMemo(() => inlineCodeRenderers(useExtensions()()) as Rendered[])
   return (
     <Contributed<Parameters<InlineCodeRenderer>[0]>
       core={() => <code {...props.attributes}>{props.code}</code>}
-      props={{ code: props.code }}
+      props={{ code: props.code, inLink: props.inLink }}
       renderers={renderers()}
     />
   )
@@ -297,12 +297,17 @@ function attributesOf(node: Element) {
   return attributes
 }
 
-type Context = { openFences: readonly number[]; without?: readonly string[]; place: string }
+type Context = {
+  openFences: readonly number[]
+  without?: readonly string[]
+  place: string
+  inLink?: boolean
+}
 
 const fenceIncomplete = (node: Element, context: Context) =>
   context.openFences.includes(node.position?.start.offset ?? -1)
 
-function Nodes(props: { nodes: ElementContent[]; context: Context }) {
+function Nodes(props: { nodes: ElementContent[]; context: Context; inLink?: boolean }) {
   return (
     <For each={props.nodes} keyed={false}>
       {(node, index) => (
@@ -316,6 +321,9 @@ function Nodes(props: { nodes: ElementContent[]; context: Context }) {
             },
             get place() {
               return `${props.context.place}.${index}`
+            },
+            get inLink() {
+              return props.inLink || props.context.inLink
             },
           }}
           node={node()}
@@ -366,7 +374,9 @@ function fencedCode(node: Element) {
 function ElementNode(props: { node: Element; context: Context }): JSX.Element {
   const attributes = createMemo(() => attributesOf(props.node))
   const Tag = dynamic(() => props.node.tagName)
-  const children = () => <Nodes context={props.context} nodes={props.node.children} />
+  const children = (inLink?: boolean) => (
+    <Nodes context={props.context} inLink={inLink} nodes={props.node.children} />
+  )
   return (
     <Switch fallback={<Tag {...attributes()}>{children()}</Tag>}>
       <Match when={fencedCode(props.node)}>
@@ -386,11 +396,15 @@ function ElementNode(props: { node: Element; context: Context }): JSX.Element {
           href={hrefOf(props.node)}
           text={textOf(props.node)}
         >
-          {children()}
+          {children(true)}
         </Anchor>
       </Match>
       <Match when={props.node.tagName === 'code'}>
-        <InlineCode attributes={attributes()} code={textOf(props.node)} />
+        <InlineCode
+          attributes={attributes()}
+          code={textOf(props.node)}
+          inLink={!!props.context.inLink}
+        />
       </Match>
       <Match when={props.node.tagName === 'table'}>
         <div class="table">

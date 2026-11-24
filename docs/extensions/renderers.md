@@ -66,12 +66,13 @@ export const DocsLink: LinkRenderer = (props) => (
 ## Inline code renderers
 
 `inlineCode` renders the inline code spans in Markdown; fenced blocks never reach it. It
-receives `{ code, core }`, where `code` is the span's text and `core` starts as the default `<code>`. They compose like
-link renderers: return `core` for spans you leave alone. To make paths clickable, use the kit `Button`:
+receives `{ code, inLink, core }`, where `code` is the span's text, `inLink` is true when the span sits inside a link,
+and `core` starts as the default `<code>`. They compose like link renderers: return `core` for spans you leave alone.
+To make paths clickable, use the kit `Button`, but not inside a link, which is already a control:
 
 ```tsx
 export const PathCode: InlineCodeRenderer = (props) => (
-  <Show when={props.code.startsWith('src/')} fallback={props.core}>
+  <Show when={!props.inLink && props.code.startsWith('src/')} fallback={props.core}>
     <Button
       aria-label={`Open ${props.code}`}
       class="inline font-normal"
