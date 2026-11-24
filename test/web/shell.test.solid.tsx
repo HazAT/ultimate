@@ -1,7 +1,7 @@
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
 import type { JSX } from '@solidjs/web'
-import { flush } from 'solid-js'
+import { createEffect, createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 
 vi.mock('../../web/src/sdk/client.ts', async () => {
@@ -26,12 +26,14 @@ vi.stubGlobal('matchMedia', () => ({
 import { App } from '../../web/src/app/App.solid.tsx'
 import { ReportedErrorCard } from '../../web/src/app/error-stack.solid.tsx'
 import { IconButton } from '../../web/src/app/header.solid.tsx'
+import { PageBoundary } from '../../web/src/app/page-failure.solid.tsx'
 import { CommandPalette } from '../../web/src/app/palette.solid.tsx'
 import { Panels } from '../../web/src/app/shell.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
 import { RenderedPoint } from '../../web/src/sdk/contribution.solid.tsx'
 import { definePoint, ErrorReport, provide } from '../../web/src/sdk/types.ts'
 import { writerNow } from '../../web/src/sdk/writer.ts'
+import { expectDistinctAgentNames } from './agent-names.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 const agent = createAgent()
@@ -260,4 +262,38 @@ it('reports a throwing overlay with its JavaScript frames', async () => {
   expect(sent.mock.calls[0][0]).toMatch(/at BrokenOverlay \(.*shell\.test\.solid\.tsx/)
   expect(sent.mock.calls[0][0]).toContain('overlay broke')
   await registry.setLoaders({})
+})
+
+it('shows a reload card instead of halting when core page code throws', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const reported = vi.fn<(error: unknown) => void>()
+  vi.stubGlobal('reportError', reported)
+  const [broken, setBroken] = createSignal(false)
+  const [count, setCount] = createSignal(0)
+  function Core() {
+    createEffect(broken, (now) => {
+      if (now) throw new Error('core broke')
+    })
+    return <p>core running</p>
+  }
+  const container = renderSolid(() => (
+    <>
+      <PageBoundary>
+        <Core />
+      </PageBoundary>
+      <output>{count()}</output>
+    </>
+  ))
+  flush()
+  setBroken(true)
+  flush()
+  await settle()
+  expect(container.textContent).toContain('The page stopped updating')
+  expect(container.textContent).toContain('core broke')
+  expect(reported).toHaveBeenCalledWith(expect.objectContaining({ message: 'core broke' }))
+  setCount(1)
+  flush()
+  expect(container.querySelector('output')?.textContent).toBe('1')
+  expect(agent.snapshot().some((entry) => entry.label === 'Reload page')).toBe(true)
+  await expectDistinctAgentNames(agent)
 })

@@ -1,6 +1,7 @@
 import './index.css'
 import { render } from '@solidjs/web'
 import { App } from './app/App.solid.tsx'
+import { PageBoundary } from './app/page-failure.solid.tsx'
 import { loadExtensions } from './extensions.ts'
 import { store, uiAgent } from './sdk/client.ts'
 
@@ -18,4 +19,11 @@ function preventDroppedFileNavigation(event: DragEvent) {
 for (const name of ['dragover', 'drop'] as const)
   document.addEventListener(name, preventDroppedFileNavigation)
 void loadExtensions()
-render(() => <App />, document.getElementById('app')!)
+render(
+  () => (
+    <PageBoundary>
+      <App />
+    </PageBoundary>
+  ),
+  document.getElementById('app')!,
+)

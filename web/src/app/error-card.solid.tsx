@@ -1,6 +1,7 @@
 import { MessageSquareShare, TriangleAlert } from '@lucide/solid'
 import { cn } from 'cn'
 import { Show } from 'solid-js'
+import type { JSX } from '@solidjs/web'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { useSystem, writerNow, writingAs } from '../sdk/hooks.ts'
 import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
@@ -10,6 +11,7 @@ export type Report = { title: string; send: (report: string) => void }
 
 export type ErrorCardProps = {
   extension: string
+  title?: JSX.Element
   error: string
   context?: string
   stack?: string
@@ -73,7 +75,11 @@ function BlockErrorCard(props: ErrorCardProps) {
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 text-error">
           <span class="min-w-0 flex-1">
-            extension <span class="font-semibold">{props.extension}</span> failed
+            {props.title ?? (
+              <>
+                extension <span class="font-semibold">{props.extension}</span> failed
+              </>
+            )}
           </span>
           <Show when={props.report}>
             {(report) => (
