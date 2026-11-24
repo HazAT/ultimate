@@ -57,6 +57,7 @@ it('reads a streaming reply sentence by sentence, fetching the next one while th
 
   player.push('turn', streamed.sentences[0])
   player.push('turn', streamed.sentences[1])
+  await flush()
   expect(requests.map((item) => item.text)).toEqual(['First one.', ' Second one.'])
 
   request('First one.').resolve('data:first')
@@ -71,9 +72,40 @@ it('reads a streaming reply sentence by sentence, fetching the next one while th
   clips[0].listeners.get('ended')!()
   await flush()
   await flush()
+  await flush()
   expect(clips.map((clip) => clip.src)).toEqual(['data:first', 'data:second'])
   expect(requests.map((item) => item.text)).toEqual(['First one.', ' Second one.', ' Third.'])
   expect(requests.filter((item) => item.signal.aborted)).toEqual([])
+})
+
+it('a long sentence starts with its first clause while the rest is still being read', async () => {
+  const { player, requests, request, clips } = fakeVoice()
+  const long =
+    'Your starter is ready when it doubles within a few hours of feeding, smells pleasantly tangy and shows bubbles all through the jar. '
+  player.load('turn', splitReply([{ text: long, final: true }]).sentences, false)
+  player.play(0)
+  await flush()
+  expect(requests.map((item) => item.text)).toEqual([
+    'Your starter is ready when it doubles within a few hours of feeding,',
+  ])
+  requests[0].resolve('data:first')
+  await flush()
+  await flush()
+  expect(clips.map((clip) => clip.src)).toEqual(['data:first'])
+  expect(requests.map((item) => item.text)).toEqual([
+    'Your starter is ready when it doubles within a few hours of feeding,',
+    ' smells pleasantly tangy and shows bubbles all through the jar.',
+  ])
+  request(' smells pleasantly tangy and shows bubbles all through the jar.').resolve('data:rest')
+  clips[0].listeners.get('ended')!()
+  await flush()
+  await flush()
+  expect(clips.map((clip) => clip.src)).toEqual(['data:first', 'data:rest'])
+  expect(player.state.get()).toMatchObject({ index: 0, playing: true })
+  clips[1].listeners.get('ended')!()
+  await flush()
+  await flush()
+  expect(player.state.get()).toMatchObject({ playing: false })
 })
 
 it('cutting in stops playback at once and aborts the queued and prefetching requests', async () => {
@@ -81,6 +113,7 @@ it('cutting in stops playback at once and aborts the queued and prefetching requ
   player.load('turn', [], true)
   for (const sentence of splitReply([{ text: 'One. Two. Three. ', final: false }]).sentences)
     player.push('turn', sentence)
+  await flush()
   request('One.').resolve('data:one')
   await flush()
   await flush()

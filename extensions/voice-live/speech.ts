@@ -107,21 +107,42 @@ export type AudioLike = {
   addEventListener: (type: 'playing' | 'ended' | 'error', listener: () => void) => void
 }
 
+export function clauses(text: string) {
+  const parts: string[] = []
+  let rest = text
+  for (;;) {
+    const least = parts.length ? 40 : 20
+    const cut = [...rest.matchAll(/[,;:—]\s/g)].find(
+      (match) => match.index >= least && rest.length - match.index > 40,
+    )
+    if (!cut) break
+    parts.push(rest.slice(0, cut.index + 1))
+    rest = rest.slice(cut.index + 1)
+  }
+  return [...parts, rest]
+}
+
 export function fetchedVoice(options: {
   load: (text: string, signal: AbortSignal) => Promise<string>
   audio: () => AudioLike
   failed: (error: unknown) => void
 }): SpeechEngine {
-  const fetched = new Map<string, { controller: AbortController; src: Promise<string> }>()
+  const fetched = new Map<string, { controller: AbortController; parts: Promise<string>[] }>()
   let playing: AudioLike | undefined
   let turn = 0
   const request = (text: string) => {
     const known = fetched.get(text)
-    if (known) return known.src
+    if (known) return known.parts
     const controller = new AbortController()
-    const src = options.load(text, controller.signal)
-    fetched.set(text, { controller, src })
-    return src
+    const parts: Promise<string>[] = []
+    for (const part of clauses(text))
+      parts.push(
+        (parts.at(-1) ?? Promise.resolve('')).then(() => options.load(part, controller.signal)),
+      )
+    for (const part of parts)
+      inProcess('speech fetched for this open page only', part.catch(overshadowed))
+    fetched.set(text, { controller, parts })
+    return parts
   }
   const drop = (text: string) => {
     const known = fetched.get(text)
@@ -134,23 +155,33 @@ export function fetchedVoice(options: {
     playing?.pause()
     playing = undefined
   }
-  async function play(text: string, rate: number, events: SpeechEvents, mine: number) {
-    const pending = request(text)
-    try {
-      const src = await pending
-      if (fetched.get(text)?.src === pending) fetched.delete(text)
-      if (mine !== turn) return
+  const clip = (src: string, rate: number, started: (audio: AudioLike) => void) =>
+    new Promise<void>((resolve, reject) => {
       const audio = (playing = options.audio())
       audio.src = src
       audio.playbackRate = rate
-      audio.addEventListener('playing', () => {
-        if (mine === turn) events.start(audio.duration / rate)
-      })
-      audio.addEventListener('ended', () => mine === turn && events.end())
-      audio.addEventListener('error', () => mine === turn && events.end())
-      await audio.play()
+      audio.addEventListener('playing', () => started(audio))
+      audio.addEventListener('ended', resolve)
+      audio.addEventListener('error', () => reject(new Error('The audio could not play')))
+      inProcess('audio plays on this open page only', audio.play().catch(reject))
+    })
+  async function play(text: string, rate: number, events: SpeechEvents, mine: number) {
+    const parts = request(text)
+    const first = clauses(text)[0]
+    try {
+      for (const [at, part] of parts.entries()) {
+        const src = await part
+        if (mine !== turn) return
+        await clip(src, rate, (audio) => {
+          if (at === 0 && mine === turn)
+            events.start(((audio.duration / rate) * text.length) / first.length)
+        })
+        if (mine !== turn) return
+      }
+      if (fetched.get(text)?.parts === parts) fetched.delete(text)
+      events.end()
     } catch (error) {
-      if (fetched.get(text)?.src === pending) fetched.delete(text)
+      if (fetched.get(text)?.parts === parts) fetched.delete(text)
       if (mine !== turn) return
       options.failed(error)
       events.end()
@@ -162,9 +193,7 @@ export function fetchedVoice(options: {
       for (const other of fetched.keys()) if (other !== text) drop(other)
       inProcess('a sentence plays only on this open page', play(text, rate, events, turn))
     },
-    prefetch: (text) => {
-      inProcess('a prefetch serves only this open page', request(text).catch(overshadowed))
-    },
+    prefetch: (text) => void request(text),
     halt,
     reset() {
       halt()
