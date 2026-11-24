@@ -64,8 +64,9 @@ fire in UTC and from now (`next: 2026-11-20T13:00:00Z, in 18h`), so a wrong day 
 - `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
   scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.
   New ids are `A<n>`; project scripts use slugs.
-- `update {id, …}` may switch between schedule, event and condition; a script stays a script. `subscribers` replaces
-  the whole list; `subscribe` / `unsubscribe` change one.
+- `update {id, …}` may switch between schedule, event and condition; a script stays a script. Changing a script's `ask`
+  or `once` resets it: it stops the process and the watcher's turn, clears its failures and `$AUTOMATION_STATE`,
+  re-enables it and briefs the watcher to write it again. `subscribers` replaces the whole list; `subscribe` / `unsubscribe` change one.
 - `pause` / `resume`; `run` fires now, or relaunches a script; `runs {id}`; `abort {id, runId}`; `log {id, lines?}`
   (default 50, at most 2000); `subscribe` / `unsubscribe {id, to?}` (default the caller); `escalate {id, reason}`;
   `delete` keeps files and conversations.

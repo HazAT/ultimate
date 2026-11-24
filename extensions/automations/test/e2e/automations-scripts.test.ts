@@ -6,7 +6,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { LiveDoc } from '@earendil-works/pi-durable'
+import { InboxDoc, LiveDoc } from '@earendil-works/pi-durable'
 import { Messages } from '../../../messages/api.ts'
 import { launchHandshake, Automations } from '../../server.ts'
 import { Done, Exited } from '../../refs.ts'
@@ -927,4 +927,73 @@ it('closes during a pending start without spawning a process after cleanup', asy
     resume.resolve()
     snapshot.mockRestore()
   }
+})
+
+it('resets a script when an update changes its ask or once: re-enabled, no old failures, fresh state', async () => {
+  // Regression (PR #327): after an update a finished one-shot stayed disabled, old failures counted toward
+  // escalation, $AUTOMATION_STATE kept the old script's memory so it never fired again, and changing once alone
+  // left the watcher without a brief.
+  const { app, folder } = sharedFixture()
+  const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
+  const invoke = (action: string, args: JsonValue) =>
+    app.extensions.invoke('automations', action, args, new AbortController().signal, caller.id)
+  const get = async (id: string) =>
+    (await app.harness.snapshot(Automations, context))!.automations[id]
+  const entries = async (id: number, kind: string) => {
+    const conversation = (await app.harness.conversation(id as ConversationId, context))!
+    return (await conversation.context(context)).entries.filter(
+      (e) => e.conversationId === id && e.kind === kind,
+    )
+  }
+  const sub = (await invoke('create', { name: 'Watch', ask: 'Watch branch 1' })) as Automation
+  const watcher = sub.script!.conversationId
+  const update = async (args: { ask?: string; once?: boolean }, brief: string) => {
+    const updated = (await invoke('update', { id: sub.id, ...args })) as Automation
+    await until(async () =>
+      JSON.stringify([
+        await entries(watcher, 'automations.writing'),
+        await app.harness.snapshot(InboxDoc, watcher, context),
+      ]).includes(brief),
+    )
+    return updated
+  }
+  const firesOnce = (text: string) =>
+    `if [ -f "$AUTOMATION_STATE/fired" ]; then exit 0; fi; touch "$AUTOMATION_STATE/fired"; echo FIRE ${text}`
+  await failed(app, watcher)
+
+  await writeRun(folder(sub.id), 'exit 1')
+  await invoke('resume', { id: sub.id })
+  await until(async () => (await get(sub.id)).script!.failures === 1)
+  expect(await update({ ask: 'Watch branch 2' }, 'Ask: Watch branch 2')).toMatchObject({
+    enabled: true,
+    script: { state: 'writing', ask: 'Watch branch 2' },
+  })
+  expect((await get(sub.id)).script!.failures).toBeUndefined()
+
+  await writeRun(folder(sub.id), firesOnce('branch 2'))
+  await invoke('resume', { id: sub.id })
+  await until(async () => (await get(sub.id)).script!.state === 'done')
+  expect(await get(sub.id)).toMatchObject({ enabled: false, script: { state: 'done' } })
+
+  await update({ ask: 'Watch branch 3' }, 'Ask: Watch branch 3')
+  expect(await get(sub.id)).toMatchObject({ enabled: true, script: { state: 'writing' } })
+  await expect(readFile(join(folder(sub.id), 'state/fired'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  })
+  await writeRun(folder(sub.id), firesOnce('branch 3'))
+  await invoke('resume', { id: sub.id })
+  await until(async () => (await entries(caller.id, 'automations.fired')).length === 2)
+  expect(
+    (await entries(caller.id, 'automations.fired')).map((e) => (e.data as { text: string }).text),
+  ).toEqual(['branch 2', 'branch 3'])
+
+  await writeRun(folder(sub.id), "trap 'exit 0' TERM; echo ready; while :; do sleep 1; done")
+  const running = (await invoke('resume', { id: sub.id })) as Automation
+  const switched = await update({ once: false }, 'Mode: recurring')
+  expect(switched).toMatchObject({ enabled: true, script: { state: 'writing', once: false } })
+  expect(switched.script!.pid).toBeUndefined()
+  expect(() => process.kill(-running.script!.pid!, 0)).toThrow(
+    expect.objectContaining({ code: 'ESRCH' }),
+  )
+  expect(await entries(watcher, 'automations.failed')).toHaveLength(1)
 })

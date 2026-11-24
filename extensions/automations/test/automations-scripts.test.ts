@@ -131,6 +131,67 @@ it('stops a paused or deleted automation’s watcher, which cannot resume it', a
   })
 })
 
+it('aborts the watcher’s turn when an update changes the ask, and briefs it again without escalating', async () => {
+  // Regression (PR #327): the watcher kept working on the old ask after an update.
+  const home = await temp('ultimate-automations-reset-watcher-')
+  homes.push(home)
+  const definitions = join(home, '.ultimate/agents')
+  await mkdir(definitions, { recursive: true })
+  await mkdir(join(home, 'project'))
+  await writeFile(
+    join(definitions, 'watcher.md'),
+    '---\nname: watcher\ndescription: Test\nmodel: faux/faux-1\ntools: [automation]\n---\nShort.\n',
+  )
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot: join(home, 'project'),
+    userHome: home,
+    home: join(home, 'state'),
+  })
+  servers.push(server)
+  let firstBriefStarted = false
+  let firstBriefAborted = false
+  let secondBriefSeen = false
+  const watcherTurn: FauxResponseFactory = (transcript, options, state, model) => {
+    server.host.faux!.appendResponses([watcherTurn])
+    const last = transcript.messages.at(-1)!
+    const text = typeof last.content === 'string' ? last.content : JSON.stringify(last.content)
+    if (text.includes('Watch target 2')) {
+      secondBriefSeen = true
+      return held(transcript, options, state, model)
+    }
+    firstBriefStarted = true
+    return new Promise((_answer, fail) =>
+      options?.signal?.addEventListener('abort', () => {
+        firstBriefAborted = true
+        fail(new Error('aborted'))
+      }),
+    )
+  }
+  server.host.faux!.setResponses([watcherTurn])
+  const caller = await server.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const invoke = (action: string, args: JsonValue) =>
+    server.extensions.invoke('automations', action, args, new AbortController().signal, caller.id)
+  const created = (await invoke('create', { name: 'Watch', ask: 'Watch target 1' })) as Automation
+  const watcher = created.script!.conversationId
+  await until(() => firstBriefStarted)
+
+  await invoke('update', { id: created.id, ask: 'Watch target 2' })
+  await until(() => secondBriefSeen)
+  expect(firstBriefAborted).toBe(true)
+  expect(
+    (await server.harness.snapshot(Automations, context))!.automations[created.id],
+  ).toMatchObject({ enabled: true, script: { ask: 'Watch target 2', state: 'writing' } })
+  const watcherEntries = (
+    await (await server.harness.conversation(watcher, context))!.context(context)
+  ).entries.filter((e) => e.conversationId === watcher)
+  expect(watcherEntries.filter((e) => e.kind === 'automations.writing')).toHaveLength(2)
+  expect(watcherEntries.filter((e) => e.kind === 'automations.escalated')).toHaveLength(0)
+})
+
 // A project extension outside the clone cannot import api.ts; the token is its name, which is all `want` needs.
 const consumer = `
 import { defineExtension } from '@earendil-works/pi-durable'
