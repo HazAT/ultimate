@@ -68,6 +68,8 @@ const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const PLACEHOLDER = '(no transcript yet)'
 const TRANSCRIBE_TIMEOUT_MS = 65_000
+const MAX_WORDS = 6_000
+const UNHEARD = '(still being transcribed)'
 const VOICE_TOOLS = [
   'read',
   'memory',
@@ -328,6 +330,36 @@ async function sinceFork(tx: Tx, main: ConversationId, after: EntryId) {
     cursor = page.next
   } while (cursor && lines.length < 40)
   return lines.slice(-12)
+}
+
+function spoken(turn: VoiceTurn, fork: VoiceFork) {
+  if (turn.route === 'text') return turn.text
+  const clips = turn.clips ?? (turn.audio ? [turn.audio] : [])
+  const heard = clips.map((clip) =>
+    fork.failed?.[clip] !== undefined ? '' : (fork.transcripts?.[clip] ?? UNHEARD),
+  )
+  return [...heard, turn.text].filter(Boolean).join(' ')
+}
+
+async function wordsOf(tx: Tx, session: ConversationId, fork: VoiceFork) {
+  const turns: string[] = []
+  let cursor: Cursor | undefined
+  do {
+    const page = await tx.scanEntries(
+      { conversationId: session, minEntryId: offsetEntryId(fork.at!, 1), order: 'ascending' },
+      200,
+      cursor,
+    )
+    for (const entry of page.items)
+      if (VoiceTurnEntry.is(entry)) turns.push(spoken(entry.data, fork))
+    cursor = page.next
+  } while (cursor)
+  const said = turns.map((turn) => turn.trim()).filter(Boolean)
+  let kept = 0
+  let size = 0
+  while (kept < said.length && (kept === 0 || size + said.at(-1 - kept)!.length <= MAX_WORDS))
+    size += said.at(-1 - kept++)!.length
+  return { words: said.slice(said.length - kept), earlier: said.length - kept }
 }
 
 const voices = new WeakMap<ExtensionHost, ReturnType<typeof createRealtimeVoice>>()
@@ -939,6 +971,11 @@ export default function voiceExtension(host: ExtensionHost) {
               : []),
             `Instruction: ${args.instruction}`,
           ]
+          const quoted = (words: string[], earlier: number) => [
+            '',
+            `Daniel's words in voice mode, oldest first${earlier ? ` (${earlier} earlier turns left out)` : ''}:`,
+            ...words.map((said) => `> ${said.replaceAll('\n', '\n> ')}`),
+          ]
           const receiver = await host.harness().conversation(target, ctx)
           if (!receiver) throw new Error(`#${target} does not exist`)
           await host.harness().commit(async (tx) => {
@@ -954,14 +991,19 @@ export default function voiceExtension(host: ExtensionHost) {
                   .toReversed()
               : []
             if (shared.length) handoff.images = shared.length
+            const session = await tx.doc(Fork, api.conversationId)
+            const { words, earlier } = await wordsOf(tx, api.conversationId, session)
+            if (words.length) handoff.words = words
+            if (earlier) handoff.earlier = earlier
+            const text = [...lines, ...(words.length ? quoted(words, earlier) : [])].join('\n')
             await receiver.submit(tx, {
               type: 'input',
               requestId,
               whenBusy: branch === undefined ? 'followUp' : 'steer',
               entry: { kind: VoiceHandoffEntry.kind, data: handoff },
-              content: [{ type: 'text', text: lines.join('\n') }, ...shared],
+              content: [{ type: 'text', text }, ...shared],
             })
-            ;(await tx.doc(Fork, api.conversationId)).handedOff = true
+            session.handedOff = true
           }, ctx)
           host.harness().resume()
           return {

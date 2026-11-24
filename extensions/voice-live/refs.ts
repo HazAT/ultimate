@@ -47,6 +47,10 @@ export type VoiceHandoff = {
   instruction: string
   attachments?: string[]
   images?: number
+  /** The user's own turns since the session started or last handed off, oldest first: the latest whole ones that fit. */
+  words?: string[]
+  /** How many earlier turns `words` leaves out. */
+  earlier?: number
   from: ConversationId
 }
 

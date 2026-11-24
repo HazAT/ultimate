@@ -1,7 +1,12 @@
-import { AudioLinesIcon, Mic, SquareArrowOutUpRightIcon } from '@lucide/solid'
+import { AudioLinesIcon, ChevronRight, Mic, SquareArrowOutUpRightIcon } from '@lucide/solid'
 import { For, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible.solid.tsx'
 import {
   Card,
   defineWebExtension,
@@ -56,6 +61,27 @@ const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
         {section('Screenshots', data().attachments)}
         <div class="mt-2 font-mono text-[11px] text-muted-foreground">Instruction</div>
         <p class="mt-0.5">{data().instruction}</p>
+        <Show when={data().words?.length}>
+          <Collapsible class="group/voice-words mt-2">
+            <CollapsibleTrigger
+              aria-label={`Your words in handoff #${props.entry.id}`}
+              class="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              <ChevronRight class="size-3 transition-transform group-data-open/voice-words:rotate-90" />
+              Your words · {data().words!.length}
+              {data().earlier ? ` (${data().earlier} earlier left out)` : ''}
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <For each={data().words}>
+                {(said) => (
+                  <blockquote class="mt-1 border-l-2 border-border pl-2 whitespace-pre-wrap text-muted-foreground">
+                    {said}
+                  </blockquote>
+                )}
+              </For>
+            </CollapsibleContent>
+          </Collapsible>
+        </Show>
       </div>
     </Card>
   )

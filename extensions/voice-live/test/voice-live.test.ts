@@ -391,7 +391,7 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   )
   const main = await (await f.server.harness.conversation(f.main, context))!.context(context)
   const card = main.entries.find((entry) => entry.kind === 'voice.handoff')!
-  expect(card.data).toEqual({ ...handoff, images: 1, from: blocked.id })
+  expect(card.data).toMatchObject({ ...handoff, images: 1, from: blocked.id })
   expect(userParts(card.model?.[0])).toContainEqual(shot)
   expect(JSON.stringify(card.model)).toContain('Instruction: Start a branch for a Needs me toggle')
   await until(() =>
@@ -406,6 +406,47 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   expect(after.id).not.toBe(blocked.id)
   const stale = await f.action('turn', { key: 'stale', text: 'late', session: blocked.id })
   expect(stale.data.error).toContain('This voice session ended')
+})
+
+it("voice_handoff carries the user's own turns of this session in order, without failed transcriptions", async () => {
+  const f = await fixture()
+  const speak = async (key: string, heard?: string) => {
+    if (heard !== undefined) f.transcribed.push(heard)
+    const clip = (await f.action('record', { audio, mimeType: 'audio/webm' })).data.result
+      .audio as string
+    const session = (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))!.id!
+    await until(async () => {
+      const fork = await f.forkOf(session)
+      return fork?.transcripts?.[clip] !== undefined || fork?.failed?.[clip] !== undefined
+    })
+    return f.turn({ key, text: '', audio: clip })
+  }
+  const call = (title: string) =>
+    `CALL ${JSON.stringify({ name: 'voice_handoff', args: { title, outcome: 'O', instruction: 'I' } })}`
+  const cards = async () =>
+    (await (await f.server.harness.conversation(f.main, context))!.context(context)).entries.filter(
+      (entry) => entry.kind === 'voice.handoff',
+    )
+
+  const first = await speak('one', 'make the sidebar quieter')
+  await speak('lost')
+  await f.turn({ key: 'typed', text: 'and keep the badges' })
+  await speak('two', 'ship it today')
+  await f.turn({ key: 'handoff', text: call('First') })
+  await until(async () => (await cards()).length === 1)
+  const [card] = await cards()
+  expect(card.data).toMatchObject({
+    words: ['make the sidebar quieter', 'and keep the badges', 'ship it today', call('First')],
+  })
+  expect(JSON.stringify(card.model)).toContain(
+    "Daniel's words in voice mode, oldest first:\\n> make the sidebar quieter\\n> and keep the badges",
+  )
+
+  const next = await f.turn({ key: 'fresh', text: 'a new thought', session: first.id })
+  expect(next.id).not.toBe(first.id)
+  await f.turn({ key: 'again', text: call('Second') })
+  await until(async () => (await cards()).length === 2)
+  expect((await cards())[1].data).toMatchObject({ words: ['a new thought', call('Second')] })
 })
 
 it('a request for a session that handed off and was then ended is refused and opens nothing', async () => {
