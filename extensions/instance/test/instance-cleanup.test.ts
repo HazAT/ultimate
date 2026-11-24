@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -59,6 +59,31 @@ it('sweeps dead homes, their nested worktrees and branches but preserves neighbo
       .join('\n'),
   )
   expect(await readFile(join(project, 'base'), 'utf8')).toBe('base')
+})
+it('cleans the Git checkout under an aliased preview home without changing its branch identity', async () => {
+  const { root, source, home } = await fixture()
+  const alias = join(root, 'alias')
+  await symlink(root, alias)
+  const aliasedHome = join(alias, 'ultimate-instance-dead')
+  const physicalHome = await realpath(home)
+  const owned = `ultimate/${createHash('sha256').update(aliasedHome).digest('hex').slice(0, 6)}-1`
+  const foreign = `ultimate/${createHash('sha256').update(physicalHome).digest('hex').slice(0, 6)}-other`
+  const sibling = physicalHome + '-sibling'
+  await git(source, 'worktree', 'add', '-b', owned, join(aliasedHome, 'worktrees', '1'))
+  await git(source, 'worktree', 'add', '-b', foreign, sibling)
+  const worktrees = () => git(source, 'worktree', 'list', '--porcelain')
+  const worker = join(physicalHome, 'worktrees', '1')
+  expect(await worktrees()).toContain(`worktree ${worker}\n`)
+  expect(await worktrees()).not.toContain(`worktree ${join(aliasedHome, 'worktrees', '1')}\n`)
+
+  expect(await cleanPreview(aliasedHome)).toBe(true)
+
+  await expect(stat(home)).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(await worktrees()).not.toContain(`worktree ${worker}\n`)
+  expect(await git(source, 'branch', '--list', owned)).toBe('')
+  expect(await worktrees()).toContain(`worktree ${sibling}\n`)
+  expect(await git(sibling, 'branch', '--show-current')).toBe(foreign)
+  expect(await readFile(join(sibling, 'base'), 'utf8')).toBe('base')
 })
 // Stopping a preview while its own release was removing a checkout left it registered without `.git`, which
 // `git worktree remove` refuses, so the stop failed and kept the preview's branches.

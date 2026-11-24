@@ -4,6 +4,7 @@ import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 import { join, resolve as resolvePath } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
@@ -19,6 +20,7 @@ import { saveDefinition } from '../../../lib/agents.ts'
 import { writeFamilies } from '../../../lib/families-settings.ts'
 import { writeJson } from '../../../lib/json-file.ts'
 import { at, label } from '../links.ts'
+import type { PreviewsService } from '../../conversations/api.ts'
 
 const homes: string[] = []
 afterEach(async () => {
@@ -215,6 +217,51 @@ it('refuses a home that is not absolute before creating anything', async () => {
   expect(result.isError).toBe(true)
   expect(JSON.stringify(result.output)).toContain('absolute path')
   expect(existsSync(resolvePath('~', name))).toBe(false)
+})
+
+it('keeps a preview tracked and allows retry when stop cannot clean its home', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ultimate-preview-stop-'))
+  homes.push(home)
+  const host = hostOver(home)
+  const item = {
+    ...preview(40000),
+    home: join(home, 'preview'),
+    temporary: true,
+    child: { exitCode: 0, signalCode: null },
+    output: 'preview output',
+  }
+  await mkdir(item.home)
+  host.resource('instance', () => new Map([[item.id, item]]))
+  let previews!: PreviewsService
+  const extension = instance({
+    ...host,
+    want: () => undefined,
+    need: () => ({}),
+    implement: (_token: unknown, service: PreviewsService) => {
+      previews = service
+    },
+    onClose: () => {},
+    onOpen: () => {},
+  } as never)
+  const logs = () =>
+    extension.tools![0].execute({ action: 'logs', id: item.id }, {} as never, BACKGROUND_CONTEXT)
+  const stop = () => previews.stop([item.conversationId], BACKGROUND_CONTEXT)
+
+  const storage = new DatabaseSync(join(item.home, 'storage.lock.db'))
+  try {
+    storage.exec('BEGIN EXCLUSIVE')
+    await expect(stop()).rejects.toThrow('not cleaned')
+    expect(existsSync(item.home)).toBe(true)
+    expect(stopped(host).size).toBe(0)
+    expect((await logs()).output).toEqual([{ type: 'text', text: '"preview output"' }])
+  } finally {
+    storage.close()
+  }
+
+  expect(await stop()).toEqual([item.id])
+  expect(existsSync(item.home)).toBe(false)
+  expect((await logs()).isError).toBe(true)
+  expect([...stopped(hostOver(home)).values()]).toEqual([preview(40000)])
 })
 
 it('remembers stopped previews across restarts, one per port, the last 50', async () => {
