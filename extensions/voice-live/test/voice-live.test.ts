@@ -424,6 +424,38 @@ it('a request for a session that handed off and was then ended is refused and op
   ).toBeUndefined()
 })
 
+it('End racing a rollover leaves voice cold, and a stale request never touches the current session', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Fork, first.id)).handedOff = true
+  }, context)
+  const [rolled, ended] = await Promise.all([
+    f.action('turn', { key: 'roll', text: 'next', session: first.id }),
+    f.action('end', null),
+  ])
+  expect(ended.status).toBe(200)
+  const after = (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+  const successor = rolled.status === 200 ? rolled.data.result.conversation : undefined
+  expect([undefined, successor]).toContain(after)
+  expect(after === undefined || !(await f.forkOf(after))?.ended).toBe(true)
+  const late = await f.action('turn', { key: 'late', text: 'late', session: first.id })
+  expect(late.data.error).toContain('This voice session ended')
+  expect((await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id).toBe(after)
+
+  const current = await f.turn({ key: 'current', text: 'now' })
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Fork, current.id)).handedOff = true
+  }, context)
+  const stale = await f.action('turn', { key: 'stale', text: 'old', session: first.id })
+  expect(stale.data.error).toContain('This voice session ended')
+  expect(await f.forkOf(current.id)).toMatchObject({ handedOff: true })
+  expect((await f.forkOf(current.id))?.ended).toBeUndefined()
+  expect((await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id).toBe(
+    current.id,
+  )
+})
+
 it('voice_handoff with `to` reaches a real branch on screen and refuses one off screen or not a branch', async () => {
   const f = await fixture()
   const conversation = () =>

@@ -241,20 +241,6 @@ async function checkBranch(
     throw new Error(`#${id} is concluded`)
 }
 
-async function concludeHandedOff(host: ExtensionHost) {
-  const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-  if (id === undefined || !(await host.harness().snapshot(Fork, id, context))?.handedOff) return
-  await host.harness().commit(async (tx) => {
-    const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
-    if (session.id !== id) return
-    ;(await tx.doc(Fork, id)).ended = true
-    session.rolledFrom = id
-    keepModel(session, await tx.doc(AgentDoc, id))
-    delete session.id
-    await host.need(ConversationsApi).concludeIn(tx, [id], 'user')
-  }, context)
-}
-
 function keepModel(
   session: VoiceSession,
   agent: { model?: { provider: string; modelId: string } },
@@ -272,16 +258,23 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
   const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
   if (main === undefined) throw new Error('@ultimate is not available')
   const answer = await lastSettledInputAnswer(host, main, context)
-  await concludeHandedOff(host)
-  const model = await voiceModel(host)
+  const configured = await voiceModel(host)
   return host.harness().commit(async (tx) => {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
-    const open = session.id !== undefined && !(await tx.doc(Fork, session.id)).ended
-    const rolling = !open && expected !== undefined && session.rolledFrom === expected
-    if (expected !== undefined && !rolling && (!open || session.id !== expected))
+    const current = session.id === undefined ? undefined : await tx.doc(Fork, session.id)
+    const open = current !== undefined && !current.ended
+    if (expected !== undefined && (!open || session.id !== expected))
       throw new Error('This voice session ended; send again')
-    if (open) return session.id!
+    let model = configured
+    if (open && !current.handedOff) return session.id!
     const at = await answerIncludingClosingToolResults(tx, main, answer)
+    if (open) {
+      current.ended = true
+      const handedOff = await tx.doc(AgentDoc, session.id!)
+      keepModel(session, handedOff)
+      model = handedOff.model ?? configured
+      await host.need(ConversationsApi).concludeIn(tx, [session.id!], 'user')
+    }
     const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
     Object.assign(await tx.doc(Fork, fork.id), { of: main, at, seen: at })
     const agent = await tx.doc(AgentDoc, fork.id)
@@ -297,7 +290,6 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
       : { ...loaded, add: [...(loaded?.add ?? []), ...own] }
     Object.assign(await tx.doc(host.metadata, fork.id), { title: 'Voice', label: 'voice' })
     await host.need(ConversationsApi).setAutomaticSummaries(tx, fork.id, false)
-    delete session.rolledFrom
     Object.assign(session, {
       id: fork.id,
       of: main,
@@ -708,30 +700,24 @@ export const actions = {
     return {}
   }),
   end: implementAction(EndAction, async (_args, { host }) => {
-    const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-    if (id === undefined) {
-      await host.harness().commit(async (tx) => {
-        delete (await tx.doc(Session, ROOT_CONVERSATION_ID)).rolledFrom
-      }, context)
-      return {}
-    }
-    await (await host.harness().conversation(id, context))?.abort(context, { background: true })
-    const ended = await host.harness().commit(async (tx) => {
+    const id = await host.harness().commit(async (tx) => {
       const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
-      if (session.id !== id) return false
-      const fork = await tx.doc(Fork, id)
+      const ending = session.id
+      if (ending === undefined) return undefined
+      const fork = await tx.doc(Fork, ending)
       fork.ended = true
       delete fork.draft
-      delete session.rolledFrom
-      keepModel(session, await tx.doc(AgentDoc, id))
+      keepModel(session, await tx.doc(AgentDoc, ending))
       delete session.id
       delete session.of
       delete session.at
       delete session.startedAt
-      await host.need(ConversationsApi).concludeIn(tx, [id], 'user')
-      return true
+      await host.need(ConversationsApi).concludeIn(tx, [ending], 'user')
+      return ending
     }, context)
-    if (ended) await rm(recordings(host, id), { recursive: true, force: true })
+    if (id === undefined) return {}
+    await (await host.harness().conversation(id, context))?.abort(context, { background: true })
+    await rm(recordings(host, id), { recursive: true, force: true })
     return {}
   }),
 }
