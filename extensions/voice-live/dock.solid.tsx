@@ -340,6 +340,8 @@ async function sendTurn(input: {
   const hint = [screen()?.text, cut, sentBySaying].filter(Boolean).join('\n\n') || undefined
   if (input.interrupted) {
     dock.player.stop()
+    for (const local of Object.values(dock.local())) local.trace.fail('cut in')
+    dock.setPending(undefined)
     await api.action(StopAction, null)
   }
   const attachments = input.pasted ?? []
@@ -416,6 +418,10 @@ async function sendTurn(input: {
       ),
     })
     patchLocal(key, { conversation: sent.conversation })
+    if (dock.pending() !== key) {
+      if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
+      return
+    }
     if (sent.dropped) {
       heardNothing(key, trace)
       return
