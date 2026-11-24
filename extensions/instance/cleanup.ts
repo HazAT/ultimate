@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { existsSync } from 'node:fs'
-import { chmod, lstat, readdir, rm, stat } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { chmod, lstat, readdir, realpath, rm, stat } from 'node:fs/promises'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { alive as storageOwnerAlive, readOwner as readStorageOwner } from '../../lib/lock.ts'
 import { git } from '../../lib/git.ts'
 import { sqliteCode } from '../../lib/errors.ts'
@@ -59,6 +59,7 @@ export async function cleanPreview(home: string) {
         if (common) previewCheckoutRepositories.add(common)
       }
     }
+    const physicalHome = await realpath(home)
     const branchPrefix = `ultimate/${createHash('sha256').update(home).digest('hex').slice(0, 6)}-`
     for (const common of previewCheckoutRepositories) {
       const records = (
@@ -68,7 +69,7 @@ export async function cleanPreview(home: string) {
         const fields = record.split('\0')
         const previewCheckoutPath = fields.find((field) => field.startsWith('worktree '))?.slice(9)
         if (!previewCheckoutPath) continue
-        const inside = relative(resolve(home), previewCheckoutPath)
+        const inside = relative(physicalHome, previewCheckoutPath)
         const outsidePreviewHome =
           !inside || inside === '..' || inside.startsWith('..' + sep) || isAbsolute(inside)
         if (outsidePreviewHome) continue
