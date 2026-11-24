@@ -16,7 +16,9 @@ collect mode (optional), each with what to do when it is missing.
    page: drag it by its header, fold it to a one-line talk bar; it says whether the session is hot or cold.
 2. **Hold** the talk bar, or the talk shortcut (`Ctrl/⌘+Shift+Space`, set in Voice settings) from anywhere. It is the
    only key that talks, so Space always types. The page records Opus with a live waveform; a press cue confirms it
-   hears you. Release sends. A press shorter than 0.6 s or without voice sends nothing.
+   hears you. Release sends. A press shorter than 0.6 s or without voice sends nothing. With Talk set to **Tap** in
+   Voice settings (for VR controllers and phones), one tap of the bar or the shortcut starts recording and the next
+   tap sends; the bar says "tap to stop" while it records, and a held key's autorepeat never counts as a second tap.
 3. **The turn**: the recording goes to the server (`record`), which keeps it for the session under
    `<home>/voice/` and starts a durable `voice-live.transcribe` task. Its result lands in the fork's `voice.fork`
    document (`transcripts`, or `failed` with the error), so a reload or restart shows the real state.

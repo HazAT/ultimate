@@ -47,7 +47,7 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
-import { deadline, every } from '../../lib/timers.ts'
+import { every } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   activity,
@@ -63,8 +63,10 @@ import {
   sendTyped,
   setScreen,
   setVoiceOpen,
+  talking,
   voiceOpen,
 } from './dock.solid.tsx'
+import { createTalk } from './talk.ts'
 import { ModelAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { VOICES } from './voices.ts'
 import { estimate } from './speech.ts'
@@ -79,7 +81,9 @@ const rowButton =
   'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
 const keys = () => formatKeys(KEYS)[0].join('+')
 const holdKeys = () => formatKeys(dock.holdKeys())[0].join('+')
-const AUTO_REPEAT_GAP_MS = 120
+const tap = () => dock.talkMode() === 'tap'
+const talkVerb = () => (tap() ? 'tap' : 'hold')
+const talkLabel = () => (tap() ? 'Tap to talk' : 'Hold to talk')
 const parseHold = () => dock.holdKeys().trim().toLowerCase()
 const keyChord = (event: KeyboardEvent) =>
   event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
@@ -104,7 +108,7 @@ export function VoiceModel(props: { class?: string }) {
 }
 
 function Status(props: { class?: string }) {
-  const text = () => dock.error() ?? dock.status()
+  const text = () => dock.error() ?? dock.status() ?? talkLabel()
   return (
     <output
       class={cn(
@@ -126,26 +130,21 @@ function Status(props: { class?: string }) {
   )
 }
 
-let pointerHolds = false
+const talk = createTalk({
+  tap,
+  talking,
+  press,
+  release,
+  matches: (event) => keyChord(event) === parseHold(),
+  wake: () => {
+    if (!voiceOpen()) setVoiceOpen(true)
+  },
+})
 
-function holdHandlers() {
-  const letGo = () => {
-    if (!pointerHolds) return
-    pointerHolds = false
-    void release()
-  }
-  return {
-    onPointerDown: (event: PointerEvent) => {
-      event.preventDefault()
-      pointerHolds = true
-      void press()
-    },
-    onPointerLeave: letGo,
-    onPointerUp: letGo,
-  }
-}
-
-const holdTitle = () => `Hold to talk, or hold ${holdKeys()} anywhere · ${keys()} hides Voice`
+const talkTitle = () =>
+  recording() && tap()
+    ? `Tap, or press ${holdKeys()}, to stop and send`
+    : `${talkLabel()}, or ${talkVerb()} ${holdKeys()} anywhere · ${keys()} hides Voice`
 
 function SpokenParagraph() {
   const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
@@ -196,16 +195,16 @@ function Working() {
 function TalkBar(props: { words?: boolean }) {
   return (
     <Button
-      aria-label="Hold to talk"
+      aria-label="Talk bar"
       class={cn(
         'relative flex h-auto min-h-9 w-full touch-none items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-3 font-normal text-muted-foreground transition-colors select-none hover:border-ring/50 hover:bg-muted/50',
         recording() && 'border-error/40 bg-error/5 hover:border-error/40 hover:bg-error/5',
         audible() && 'border-brand/40',
       )}
       size={null}
-      title={holdTitle()}
+      title={talkTitle()}
       variant={null}
-      {...holdHandlers()}
+      {...talk.pointer}
     >
       <Mic class={cn('size-3.5 shrink-0', recording() && 'text-error')} />
       <Show
@@ -225,6 +224,11 @@ function TalkBar(props: { words?: boolean }) {
       >
         <Status class="shrink-0" />
         <Waveform class="h-5 min-w-0 flex-1 text-error" live />
+        <Show when={tap()}>
+          <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-error/80">
+            tap to stop
+          </span>
+        </Show>
       </Show>
       <Show when={!recording() && draftOf().length}>
         <span class="flex shrink-0 items-center gap-1 rounded-full bg-brand/15 px-1.5 font-mono text-[10.5px] text-brand">
@@ -234,7 +238,7 @@ function TalkBar(props: { words?: boolean }) {
       </Show>
       <Show when={!recording()}>
         <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-muted-foreground/70 pointer-coarse:hidden">
-          hold <Kbd>{holdKeys()}</Kbd>
+          {talkVerb()} <Kbd>{holdKeys()}</Kbd>
         </span>
       </Show>
     </Button>
@@ -265,7 +269,7 @@ function TalkButton(props: { unfold: () => void }) {
         <Status class="text-[11.5px]" />
       </Button>
       <Button
-        aria-label="Hold to talk"
+        aria-label="Talk button"
         class={cn(
           'relative flex size-16 shrink-0 touch-none items-center justify-center rounded-full border border-border bg-card text-foreground shadow-xl shadow-black/40 transition-colors select-none',
           recording() && 'border-error/60 bg-error/15 text-error',
@@ -275,8 +279,9 @@ function TalkButton(props: { unfold: () => void }) {
           (dock.error() || dock.phase() === 'error') && 'border-error/60 text-error',
         )}
         size={null}
+        title={talkTitle()}
         variant={null}
-        {...holdHandlers()}
+        {...talk.pointer}
       >
         <Show when={recording()}>
           <span class="absolute inset-0 animate-ping rounded-full border-2 border-error/40" />
@@ -341,6 +346,13 @@ function Settings(props: { model?: boolean }) {
               </span>
             </span>
           </label>
+          <div class="flex items-center justify-between gap-3">
+            Talk
+            <SegmentedControl aria-label="Talk mode" bind={[dock.talkMode, dock.setTalkMode]}>
+              <SegmentedControlItem value="hold">Hold</SegmentedControlItem>
+              <SegmentedControlItem value="tap">Tap</SegmentedControlItem>
+            </SegmentedControl>
+          </div>
           <div class="flex items-center justify-between gap-3">
             Talk anywhere
             <ShortcutRecorder />
@@ -617,7 +629,7 @@ function SetupList() {
 
 function Bottom(props: { fork: ConversationId | undefined }) {
   const target = (): ComposerTarget => ({
-    placeholder: `Type, paste a screenshot, or hold ${holdKeys()} to talk…`,
+    placeholder: `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`,
     images: true,
     ready: () => draftOf().length > 0,
     send: (text, images) => sendTyped(text, images),
@@ -673,39 +685,15 @@ export function VoicePanel() {
     },
   )
   onSettled(() => {
-    let holding: string | undefined
-    let letGo: (() => void) | undefined
     const swallow = (event: KeyboardEvent) => {
       event.preventDefault()
       event.stopPropagation()
     }
     const down = (event: KeyboardEvent) => {
-      if (holding !== undefined) {
-        if (event.code !== holding && !event.repeat) return
-        swallow(event)
-        letGo?.()
-        letGo = undefined
-        return
-      }
-      if (event.repeat || keyChord(event) !== parseHold()) return
-      swallow(event)
-      holding = event.code
-      if (!voiceOpen()) setVoiceOpen(true)
-      void press().then(() => {
-        if (holding === undefined) void release()
-      })
+      if (talk.keyDown(event)) swallow(event)
     }
     const up = (event: KeyboardEvent) => {
-      if (holding === undefined) return
-      const modifier = ['Meta', 'Control', 'Shift', 'Alt'].includes(event.key)
-      if (event.code !== holding && !modifier) return
-      swallow(event)
-      letGo?.()
-      letGo = deadline(AUTO_REPEAT_GAP_MS, () => {
-        letGo = undefined
-        holding = undefined
-        void release()
-      })
+      if (talk.keyUp(event)) swallow(event)
     }
     window.addEventListener('keydown', down, { capture: true })
     window.addEventListener('keyup', up, { capture: true })
@@ -872,9 +860,9 @@ export function VoicePanel() {
                 <AudioLines class="mb-1 size-5 text-brand" />
                 <p class="text-[14px] text-foreground">Think out loud with @ultimate</p>
                 <p class="max-w-sm text-[13px] text-muted-foreground">
-                  Hold <Kbd>{holdKeys()}</Kbd> anywhere, or the talk bar, and speak. Voice forks
-                  @ultimate with everything it knows, talks it through with you, and hands the
-                  result back when you agree; then the next talk starts fresh.
+                  {tap() ? 'Tap' : 'Hold'} <Kbd>{holdKeys()}</Kbd> anywhere, or the talk bar, and
+                  speak. Voice forks @ultimate with everything it knows, talks it through with you,
+                  and hands the result back when you agree; then the next talk starts fresh.
                 </p>
                 <SetupList />
               </div>
