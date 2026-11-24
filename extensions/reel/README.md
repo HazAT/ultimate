@@ -16,5 +16,7 @@ Reel: plays the screenshots a branch and its subagents took as a short full-scre
   middle to pause; swipe on a phone; ←/→ and Space on a keyboard; a filmstrip below to jump. The speed (1×, 2×, 0.5×)
   is remembered. On the last frame of a message's reel, its question card appears so you can answer without leaving.
 - **Nothing is stored.** The list is computed on each read and the images come from the transcripts one entry at a
-  time through the history API, the next two preloaded; the page keeps the last 60 in memory. Screenshots taken inside
+  time through the history API, the next two preloaded and decoded before they show; the page keeps the last 12
+  full images in memory. The filmstrip and the chip show 192 px thumbnails, shrunk once per frame with
+  `createImageBitmap` and kept as blob URLs, so paging never decodes or styles full-size screenshots in the strip. Screenshots taken inside
   codemode scripts are not tool-result images, so they are not in the reel.

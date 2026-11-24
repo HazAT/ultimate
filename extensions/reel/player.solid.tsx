@@ -10,23 +10,22 @@ import {
 } from '@/components/ui/dialog.solid.tsx'
 import { cn, useUiState } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
-import { imageOf } from './frames.solid.tsx'
+import { imageOf, thumbOf } from './frames.solid.tsx'
 import type { Frame } from './refs.ts'
 
 const FADE_MS = 300
 const SPEEDS = [1, 2, 0.5]
 const FRAME_MS = 1600
 const SWIPE_PX = 40
-const NEAR = 3
 
 type Image = { src?: string; error?: string }
 
-function useImage(current: () => Frame | undefined) {
+function useImage(current: () => Frame | undefined, load = imageOf) {
   return createMemo(() => {
     const frame = current()
     return (
       frame &&
-      imageOf(frame).then<Image, Image>(
+      load(frame).then<Image, Image>(
         (src) => ({ src }),
         (error: unknown) => ({ error: String(error) }),
       )
@@ -35,11 +34,19 @@ function useImage(current: () => Frame | undefined) {
 }
 
 function Still(props: { frame: Frame }) {
-  const image = useImage(() => props.frame)
+  const image = useImage(() => props.frame, thumbOf)
   return (
     <Loading fallback={null}>
       <Show when={image()?.src}>
-        {(src) => <img alt="" class="size-full object-cover object-top" src={src()} />}
+        {(src) => (
+          <img
+            alt=""
+            class="size-full object-cover object-top"
+            data-reel-thumb
+            decoding="async"
+            src={src()}
+          />
+        )}
       </Show>
     </Loading>
   )
@@ -53,13 +60,7 @@ export function Peek(props: { frame: Frame }) {
   )
 }
 
-function Thumb(props: {
-  frame: Frame
-  number: number
-  current: boolean
-  near: boolean
-  onClick: () => void
-}) {
+function Thumb(props: { frame: Frame; number: number; current: boolean; onClick: () => void }) {
   return (
     <Button
       size={null}
@@ -73,7 +74,7 @@ function Thumb(props: {
       onClick={() => props.onClick()}
       type="button"
     >
-      {props.near && <Still frame={props.frame} />}
+      <Still frame={props.frame} />
     </Button>
   )
 }
@@ -270,7 +271,6 @@ export function Player(props: {
                     current={index() === at()}
                     frame={item()}
                     number={index() + 1}
-                    near={Math.abs(index() - at()) <= NEAR}
                     onClick={() => go(index())}
                   />
                 </div>
