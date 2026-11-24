@@ -20,12 +20,20 @@ model call.
 - For each model call the relay starts `agy -p` with `CLOUD_CODE_URL` pointing back at itself. It passes `agy`'s setup
   calls through to Google's Code Assist endpoint (`https://daily-cloudcode-pa.googleapis.com`), takes `agy`'s first
   agent request, replaces its model and request (contents, system instruction, tools, generation config) with Pi's,
-  and sends it upstream with `agy`'s own headers. Code Assist's `{response}` stream frames are unwrapped back to the
-  Gemini API's shape.
+  and streams it upstream with `agy`'s own headers and session metadata. Code Assist's `{response}` stream frames
+  are unwrapped back to the Gemini API's shape.
 - `agy` itself gets a finished one-word answer, so it never runs a tool, then is stopped.
 - Model discovery runs `agy models` through the same relay and reads the limits Code Assist reports for each model.
 
 `PI_ANTIGRAVITY_COMMAND` selects the executable (default `agy`).
+
+## Raw Gemini requests from extensions
+
+Use `host.need(AntigravityApi).generate(model, request, signal)` to send a raw Gemini request. Pass an object for
+small requests or an `AsyncIterable<Uint8Array>` of JSON bytes to stream large inline media without buffering the
+whole request. The relay adds `agy`'s `sessionId` and `labels`; leave those fields out of the Gemini request.
+The result includes text without thoughts, the finish reason if present, and token usage. Upstream errors include
+an HTTP status and Google's message when available; 401 and 403 only show a sign-in hint, never Google's body.
 
 ## Credentials and terms
 
