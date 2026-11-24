@@ -51,6 +51,8 @@ import { every } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   activity,
+  COLD_DRAFT,
+  composeIn,
   discardDraft,
   dock,
   playerState,
@@ -641,6 +643,7 @@ function Bottom(props: { fork: ConversationId | undefined }) {
     images: true,
     ready: () => draftOf().length > 0,
     send: (text, images) => sendTyped(text, images),
+    ...(props.fork === undefined ? { draft: COLD_DRAFT } : {}),
   })
   return (
     <footer class="flex shrink-0 flex-col gap-1.5 pt-1" data-voice-bottom>
@@ -649,7 +652,14 @@ function Bottom(props: { fork: ConversationId | undefined }) {
         <Collected fork={props.fork} />
         <TalkBar />
       </div>
-      <Show when={props.fork} fallback={<div class="pb-3" />}>
+      <Show
+        when={props.fork}
+        fallback={
+          <ComposerRedirect value={target}>
+            <Composer dock />
+          </ComposerRedirect>
+        }
+      >
         {(fork) => (
           <ScopedConversation id={fork()}>
             <ComposerRedirect value={target}>
@@ -672,6 +682,9 @@ export function VoicePanel() {
   const summary = useConversationSummary(shown)
   const status = useAction(StatusAction, null, { conversation: ROOT })
   useEvent('secrets:changed', () => void status.refetch())
+  createEffect(id, (open) => {
+    composeIn(open)
+  })
   createEffect(
     () => status.data()?.transcribes,
     (known) => {

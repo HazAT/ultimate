@@ -466,10 +466,10 @@ export const { switchConversation, showSurface, runCommand, openPanel, closePane
 export { uncoveredComposer } from './actions.ts'
 /**
  * `fillComposer(id, text)` replaces conversation `id`'s composer draft, `insertIntoComposer(id, text)` inserts at its
- * cursor. `composerImages(id)` reads the images pasted into its composer, and `clear()` removes them once sent unless
- * they changed meanwhile.
+ * cursor. `composerDraft(id)` reads the text and images in its composer (`id` may be a `ComposerTarget`'s `draft` key),
+ * and `clear()` removes them once sent unless they changed meanwhile.
  */
-export { composerImages, fillComposer, insertIntoComposer } from '../app/drafts.ts'
+export { composerDraft, fillComposer, insertIntoComposer } from '../app/drafts.ts'
 
 /** The conversation `ConversationScope` gives, or the shown one once known. */
 export function useConversationId(): Accessor<ConversationId | undefined> {

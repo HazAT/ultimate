@@ -152,6 +152,11 @@ export interface ComposerTarget {
   images?: true
   /** True while the target holds something of its own to send, so Enter sends even with an empty composer. */
   ready?: () => boolean
+  /**
+   * Keeps the draft under this key instead of the scoped conversation's, for a conversation that does not exist yet (a
+   * cold voice session): the composer then shows none of the scoped conversation's run, queue, toolbar or status.
+   */
+  draft?: string
 }
 
 /** What a document renderer receives: the shown conversation's document of its kind, live. */

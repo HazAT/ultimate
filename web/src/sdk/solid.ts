@@ -21,7 +21,7 @@ export {
 } from './hooks.ts'
 export {
   closePanel,
-  composerImages,
+  composerDraft,
   covered,
   fillComposer,
   focusComposer,

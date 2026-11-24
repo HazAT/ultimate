@@ -113,20 +113,23 @@ export function Composer(props: { dock?: boolean }) {
   const mountKey = createMemo(() => conversation().id ?? scoped ?? requested())
   const extensions = useExtensions()
   const frame = createTranscriptFrame(() => conversation().entries)
+  const target = useContext(ComposerRedirect)
   return (
-    <Transcript value={frame.frame}>
-      <Contributed
-        core={() => <For each={[mountKey()]}>{() => <ComposerEditor dock={props.dock} />}</For>}
-        fallback={(extension, error, inner) => (
-          <>
-            {failed(extension, error)}
-            {inner()}
-          </>
-        )}
-        props={{ dock: props.dock }}
-        renderers={composerRenderers(extensions())}
-      />
-    </Transcript>
+    <Show when={!target()?.draft} fallback={<ComposerEditor dock={props.dock} />}>
+      <Transcript value={frame.frame}>
+        <Contributed
+          core={() => <For each={[mountKey()]}>{() => <ComposerEditor dock={props.dock} />}</For>}
+          fallback={(extension, error, inner) => (
+            <>
+              {failed(extension, error)}
+              {inner()}
+            </>
+          )}
+          props={{ dock: props.dock }}
+          renderers={composerRenderers(extensions())}
+        />
+      </Transcript>
+    </Show>
   )
 }
 
@@ -239,7 +242,7 @@ function QueuedRow(props: { item: InboxItem; cancel: JSX.Element }) {
   )
 }
 
-function createDraftState(id: () => number | undefined) {
+function createDraftState(id: () => number | string | undefined) {
   const draft = createMemo(() => getDraft(id()))
   const [changes, setChanges] = createSignal(0)
   const value = createMemo((): Draft => {
@@ -260,12 +263,13 @@ function ComposerEditor(props: { dock?: boolean }) {
   const conversation = useConversation()
   const scoped = useContext(ConversationScope)
   const target = useContext(ComposerRedirect)
+  const detached = () => target()?.draft
   const id = createMemo(() => conversation().id)
-  const loading = createMemo(() => conversation().loading)
-  const busy = createMemo(() => conversation().busy)
-  const inbox = createMemo(() => conversation().inbox)
+  const loading = createMemo(() => !detached() && conversation().loading)
+  const busy = createMemo(() => !detached() && conversation().busy)
+  const inbox = createMemo(() => (detached() ? [] : conversation().inbox))
   const queued = createMemo(() => inbox().filter((item) => item.mode !== 'write'))
-  const { draft, value } = createDraftState(id)
+  const { draft, value } = createDraftState(() => detached() ?? id())
   const text = () => value().text
   const images = () => value().images
   const files = () => value().files
@@ -276,7 +280,7 @@ function ComposerEditor(props: { dock?: boolean }) {
   const viewport = useViewport()
   const foldTarget = useExternal(statusTarget, subscribeStatusTarget)
   const foldStatus = createMemo(() =>
-    viewport() === 'phone' && scoped === null && !props.dock ? foldTarget() : null,
+    viewport() === 'phone' && scoped === null && !props.dock && !detached() ? foldTarget() : null,
   )
 
   const setError = (message: string | undefined) => draft().set({ error: message })
@@ -295,7 +299,8 @@ function ComposerEditor(props: { dock?: boolean }) {
     upload,
   })
   const uploading = () => files().some((file) => !file.path)
-  const blocked = () => (loading() ? undefined : blockedBy(conversation().agent, models()))
+  const blocked = () =>
+    loading() || detached() ? undefined : blockedBy(conversation().agent, models())
   const empty = () =>
     !text().trim() && images().length === 0 && files().length === 0 && !target()?.ready?.()
   const inert = () => loading() || sending() || attach.reading()
@@ -421,7 +426,7 @@ function ComposerEditor(props: { dock?: boolean }) {
 
   const [dragging, setDragging] = createSignal(false)
   onSettled(() => {
-    if (scoped !== null) return undefined
+    if (scoped !== null || detached()) return undefined
     let depth = 0
     const carriesFiles = (event: DragEvent) => !!event.dataTransfer?.types.includes('Files')
     const enter = (event: DragEvent) => {
@@ -454,16 +459,21 @@ function ComposerEditor(props: { dock?: boolean }) {
     if (!touchKeyboard()) editor?.focus()
   })
 
-  const label = () => (id() === undefined ? 'the conversation' : `conversation #${id()}`)
-  const status = () => <Slot fallback={failed} name="composer.status" />
+  const label = () =>
+    detached() ? 'voice' : id() === undefined ? 'the conversation' : `conversation #${id()}`
+  const status = () => (
+    <Show when={!detached()}>
+      <Slot fallback={failed} name="composer.status" />
+    </Show>
+  )
 
   return (
     <div
       class={cn(column(props.dock), 'pb-2')}
-      data-composer-target={scoped === null ? 'conversation' : 'scope'}
+      data-composer-target={detached() ? 'draft' : scoped === null ? 'conversation' : 'scope'}
       data-ui="composer"
     >
-      <Show when={id()} keyed>
+      <Show when={!detached() && id()} keyed>
         {(conversationId) => (
           <Placeholder busy={busy()} conversation={conversationId} report={setPlaceholder} />
         )}
@@ -488,8 +498,14 @@ function ComposerEditor(props: { dock?: boolean }) {
           aria-label={`Prompt for ${label()}`}
           autoResize
           class="block max-h-80 min-h-0 w-full resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-1 font-sans text-[14px] leading-relaxed outline-none focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed"
-          data-conversation={id()}
-          id={scoped === null ? 'composer-input' : `composer-input-${scoped}`}
+          data-conversation={detached() ? undefined : id()}
+          id={
+            detached()
+              ? `composer-input-${detached()}`
+              : scoped === null
+                ? 'composer-input'
+                : `composer-input-${scoped}`
+          }
           onDrop={(event) => void attach.drop(event)}
           onKeyDown={onKeyDown}
           onPaste={(event) => void attach.paste(event)}
@@ -509,7 +525,9 @@ function ComposerEditor(props: { dock?: boolean }) {
         />
         <div class="@container flex items-center justify-between gap-2 px-2 pt-1 pb-2">
           <div class="flex min-w-0 items-center gap-1 overflow-hidden">
-            <Slot fallback={failed} name="composer.toolbar" />
+            <Show when={!detached()}>
+              <Slot fallback={failed} name="composer.toolbar" />
+            </Show>
           </div>
           <div class="flex max-w-full min-w-0 shrink-0 items-center gap-2">
             <span

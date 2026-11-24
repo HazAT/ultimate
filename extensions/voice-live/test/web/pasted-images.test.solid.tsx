@@ -4,11 +4,21 @@ import { parseConversationId } from '../../../../lib/ids.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'
-import { dock, sendDraft, sendTyped, settleTranscripts } from '../../dock.solid.tsx'
+import {
+  COLD_DRAFT,
+  composeIn,
+  dock,
+  draftOf,
+  endSession,
+  sendDraft,
+  sendTyped,
+  settleTranscripts,
+} from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   turns: [] as Record<string, unknown>[],
+  route: 'audio',
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -20,7 +30,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
     if (path === '/api/extensions/voice-live/actions/status')
-      return Response.json({ result: { model: 'faux/voice', route: 'audio' } })
+      return Response.json({ result: { model: 'faux/voice', route: harness.route } })
     if (path === '/api/extensions/voice-live/actions/turn') {
       harness.turns.push(JSON.parse(init?.body as string).args)
       return Response.json({ result: { conversation: 40, route: 'audio' } })
@@ -47,17 +57,20 @@ const clip = { audio: 'clip-1', seconds: 2 }
 beforeEach(({ onTestFinished }) => {
   harness.sources.length = 0
   harness.turns.length = 0
+  harness.route = 'audio'
   vi.stubGlobal('speechSynthesis', { cancel: () => undefined, speak: () => undefined })
   dock.setCuesOn(false)
   clientStore.start()
   onTestFinished(() => clientStore.stop())
   harness.sources[0].open()
+  composeIn(session)
   settleTranscripts({ of: parseConversationId(1), draft: [clip] }, session)
   getDraft(session).set({ images: [shot] })
 })
 afterEach(() => {
   vi.unstubAllGlobals()
   getDraft(session).set({ images: [] })
+  getDraft(COLD_DRAFT).set({ text: '', images: [] })
 })
 
 it('a spoken "send it" takes the images pasted into the voice composer and clears them', async () => {
@@ -75,4 +88,31 @@ it('the send button and Enter send the collected clips with the pasted images', 
     expect.objectContaining({ clips: ['clip-1'], images: [shot] }),
     expect.objectContaining({ clips: ['clip-1'], images: [shot] }),
   ])
+})
+
+it('what was typed and pasted while voice was cold goes with the first voice turn', async () => {
+  composeIn(undefined)
+  getDraft(COLD_DRAFT).set({ text: 'look at this', images: [shot] })
+  await sendDraft('steer', '', false, [clip])
+  await settle()
+  expect(harness.turns).toEqual([
+    expect.objectContaining({ text: 'look at this', clips: ['clip-1'], images: [shot] }),
+  ])
+  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: '', images: [] })
+})
+
+it('End clears the collected clips and drops a transcription that settles afterwards', async () => {
+  harness.route = 'text'
+  expect(draftOf()).toEqual([clip])
+  const sending = sendDraft('steer')
+  await vi.waitFor(() => expect(dock.phase()).toBe('sending'))
+  await endSession()
+  await sending
+  expect(draftOf()).toEqual([])
+  settleTranscripts({ transcripts: { 'clip-1': 'too late' }, draft: [clip] }, session)
+  await settle()
+  expect(draftOf()).toEqual([])
+  expect(harness.turns).toEqual([])
+  expect(dock.local()).toEqual({})
+  expect(dock.phase()).toBe('idle')
 })

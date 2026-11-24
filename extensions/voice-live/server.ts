@@ -680,7 +680,9 @@ export const actions = {
     const ended = await host.harness().commit(async (tx) => {
       const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
       if (session.id !== id) return false
-      ;(await tx.doc(Fork, id)).ended = true
+      const fork = await tx.doc(Fork, id)
+      fork.ended = true
+      delete fork.draft
       keepModel(session, await tx.doc(AgentDoc, id))
       delete session.id
       delete session.of

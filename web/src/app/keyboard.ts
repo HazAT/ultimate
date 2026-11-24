@@ -27,7 +27,7 @@ export function installShortcuts() {
     const typing = editable(event.target)
     const composer =
       event.target instanceof HTMLTextAreaElement &&
-      !!event.target.closest('[data-composer-target]')
+      !!event.target.closest('[data-composer-target]:not([data-composer-target="draft"])')
     const emptyPalette =
       store.getState().ui.paletteOpen &&
       event.target instanceof HTMLInputElement &&
