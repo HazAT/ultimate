@@ -11,8 +11,7 @@ async function base64(blob: Blob) {
 }
 
 async function upload(file: File) {
-  const { path } = await api.action(UploadAction, { name: file.name, data: await base64(file) })
-  return path
+  return api.action(UploadAction, { name: file.name, data: await base64(file) })
 }
 
 const uploads = { upload, maxBytes: MAX_FILE_BYTES_FOR_12_MB_ACTION, keptMs: KEPT_MS }
