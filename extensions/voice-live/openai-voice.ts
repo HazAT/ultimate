@@ -1,4 +1,4 @@
-import { inProcess, retriedLater } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.ts'
 import { within } from '../../lib/timers.ts'
 import type { OpenAiVoice } from './refs.ts'
 
@@ -11,6 +11,7 @@ const INSTRUCTIONS =
 type Pending = { chunks: Buffer[]; resolve: (pcm: Buffer) => void; reject: (error: Error) => void }
 type Connection = {
   key: string
+  socket: WebSocket
   ready: Promise<WebSocket>
   waiting: Map<string, Pending>
   running: Map<string, Pending>
@@ -29,7 +30,7 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
 
   function connection(key: string) {
     if (current?.key === key) return current
-    void current?.ready.then((old) => old.close(), retriedLater)
+    current?.socket.close()
     current = opened(key)
     return current
   }
@@ -44,7 +45,7 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
       running.clear()
     }
     const forget = (error: Error) => {
-      if (current?.ready === ready) current = undefined
+      if (current === own) current = undefined
       failAll(error)
     }
     const ready = new Promise<WebSocket>((resolve, reject) => {
@@ -110,7 +111,8 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
         } else if (tag === undefined) failAll(error)
       }
     })
-    return { key, ready: bounded, waiting, running }
+    const own: Connection = { key, socket, ready: bounded, waiting, running }
+    return own
   }
 
   const waitFor = (ready: Promise<WebSocket>, signal: AbortSignal) =>
@@ -130,6 +132,7 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
     async speak(key: string, text: string, voice: OpenAiVoice, signal: AbortSignal) {
       const { ready, waiting, running } = connection(key)
       const ws = await waitFor(ready, signal)
+      signal.throwIfAborted()
       const tag = String(++next)
       const pcm = new Promise<Buffer>((resolve, reject) => {
         const pending: Pending = { chunks: [], resolve, reject }
@@ -163,7 +166,7 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
       return wav(await pcm)
     },
     close() {
-      void current?.ready.then((socket) => socket.close(), retriedLater)
+      current?.socket.close()
       current = undefined
     },
   }

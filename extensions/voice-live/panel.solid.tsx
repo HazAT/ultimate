@@ -45,6 +45,7 @@ import {
   ScopedConversation,
   switchConversation,
   useAction,
+  useEvent,
   useConversationId,
   useConversationSummary,
   useDocOf,
@@ -674,6 +675,7 @@ export function VoicePanel() {
   const shown = useConversationId()
   const summary = useConversationSummary(shown)
   const status = useAction(StatusAction, null, { conversation: ROOT })
+  useEvent('secrets:changed', () => void status.refetch())
   createEffect(
     () => status.data()?.transcribes,
     (known) => {

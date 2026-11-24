@@ -9,17 +9,19 @@ type Sent = {
   response?: { metadata: { tag: string }; audio: unknown }
 }
 
-function fakeRealtime() {
+function fakeRealtime({ closeLate = false } = {}) {
   const sockets: {
     sent: Sent[]
     listeners: Map<string, ((event: { data?: string }) => void)[]>
     closed: boolean
+    finishClose: () => void
   }[] = []
   const voice = createRealtimeVoice(() => {
     const own = {
       sent: [] as Sent[],
       listeners: new Map<string, ((event: { data?: string }) => void)[]>(),
       closed: false,
+      finishClose: () => emit('close'),
     }
     sockets.push(own)
     const emit = (type: string, event: { data?: string } = {}) => {
@@ -30,7 +32,7 @@ function fakeRealtime() {
       send: (data: string) => own.sent.push(JSON.parse(data)),
       close: () => {
         own.closed = true
-        emit('close')
+        if (!closeLate) emit('close')
       },
       addEventListener: (type: string, listener: (event: { data?: string }) => void) =>
         own.listeners.set(type, [...(own.listeners.get(type) ?? []), listener]),
@@ -93,11 +95,12 @@ it('an error about one request fails only that request', async () => {
   expect([...(await good).subarray(44)]).toEqual([9])
 })
 
-it('a key change retires the old socket without failing requests on the new one', async () => {
-  const { voice, sockets, event, creates } = fakeRealtime()
+it('a key change retires the old socket, and its late close fails nothing on the new one', async () => {
+  const { voice, sockets, event, creates } = fakeRealtime({ closeLate: true })
   await voice.connect('old', new AbortController().signal)
   const fresh = voice.speak('new', 'Hello.', 'cedar', new AbortController().signal)
-  await until(() => sockets[0].closed && creates(1).length === 1)
+  await until(() => creates(1).length === 1)
+  sockets[0].finishClose()
   event(
     {
       type: 'response.created',
@@ -108,6 +111,24 @@ it('a key change retires the old socket without failing requests on the new one'
   event({ type: 'response.output_audio.delta', response_id: 'r1', delta: audio([5]) }, 1)
   event({ type: 'response.done', response: { id: 'r1', status: 'completed' } }, 1)
   expect([...(await fresh).subarray(44)]).toEqual([5])
+})
+
+it('after a disconnect the same key opens a new socket', async () => {
+  const { voice, sockets, event, creates } = fakeRealtime()
+  await voice.connect('sk', new AbortController().signal)
+  sockets[0].finishClose()
+  const again = voice.speak('sk', 'Back.', 'cedar', new AbortController().signal)
+  await until(() => creates(1).length === 1)
+  event(
+    {
+      type: 'response.created',
+      response: { id: 'r1', metadata: creates(1)[0].response!.metadata },
+    },
+    1,
+  )
+  event({ type: 'response.done', response: { id: 'r1', status: 'completed' } }, 1)
+  expect((await again).length).toBe(44)
+  expect(sockets).toHaveLength(2)
 })
 
 it('a request aborted while the socket connects stops waiting at once', async () => {

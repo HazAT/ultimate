@@ -127,12 +127,12 @@ function atMost(text: string) {
   const parts: string[] = []
   let rest = text
   while (rest.length > MAX_SPOKEN) {
-    const space = rest.lastIndexOf(' ', MAX_SPOKEN)
+    const space = rest.slice(0, MAX_SPOKEN + 1).search(/\s\S*$/)
     const cut = space > 0 ? space : MAX_SPOKEN
     parts.push(rest.slice(0, cut))
     rest = rest.slice(cut)
   }
-  return rest.trim() ? [...parts, rest] : parts
+  return [...parts, rest].filter((part) => part.trim())
 }
 
 export function fetchedVoice(options: {
