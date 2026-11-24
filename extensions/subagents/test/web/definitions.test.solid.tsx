@@ -2,7 +2,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { ExtensionName } from '@/sdk/solid'
+import { events, ExtensionName } from '@/sdk/solid'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import type { ModelsResponse } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
@@ -60,7 +60,10 @@ const discovery: Discovery = {
   errors: [],
   main: {
     model: { provider: 'faux', modelId: 'atlas' },
-    tools: [{ name: 'read', description: 'Read files' }],
+    tools: [
+      { name: 'read', description: 'Read files' },
+      { name: 'bash', description: 'Run commands' },
+    ],
   },
   skills: [{ name: 'read', description: 'Read carefully' }],
   scopes: { user: '/user/agents', project: '/project/agents' },
@@ -91,6 +94,8 @@ const created: Shown = {
     path: '/project/agents/reviewer.md',
     source: 'project',
     model: { provider: 'faux', modelId: 'orion' },
+    tools: ['read', 'bash'],
+    denyTools: ['bash'],
     instructions: '# review',
   },
 }
@@ -206,4 +211,75 @@ it('edits a family through its popover, saving the chosen model as the agent', a
   expect(
     panel.querySelector('[aria-label="Edit default model family"]')?.getAttribute('aria-expanded'),
   ).toBe('false')
+})
+
+it('keeps the instructions draft when a layered overlay save is rejected', async () => {
+  const { definition } = created
+  const instructions =
+    'Base prompt.\n\n## User additions\n\nUser text.\n\n## Project additions\n\nProject text.'
+  const originalFetch = harness.fetch.getMockImplementation()!
+  harness.fetch.mockImplementation(async (url, init) => {
+    const path = url as string
+    if (path.endsWith('/definition'))
+      return Response.json({
+        result: {
+          ...created,
+          files: ['builtin', 'user', 'project'],
+          definition: {
+            ...definition,
+            name: 'layered',
+            instructions,
+            overlays: ['/user/agents/layered.md', '/project/agents/layered.md'],
+          },
+        },
+      })
+    if (path.endsWith('/saveDefinition'))
+      return Response.json({ error: 'Inherited instructions changed' }, { status: 500 })
+    return originalFetch(url, init)
+  })
+  const panel = await openPanel()
+  events.emit('subagents:open-definition', { name: 'layered' })
+  await settle()
+  flush()
+  await expectDistinctAgentNames(agent)
+  const draft = instructions.replace('Base prompt.', 'Changed base.')
+  await act('Instructions', 'setValue', draft)
+  await act('Destination scope', 'setValue', 'user')
+  const save = () => agent.snapshot().find((entry) => entry.label === 'Save agent definition')
+  expect(save()).toMatchObject({ disabled: true })
+  await act('Destination scope', 'setValue', 'project')
+  await act('Save agent definition', 'press')
+  await settle()
+  flush()
+  expect(writes('saveDefinition')).toMatchObject([
+    { args: { instructions: draft }, source: 'agent' },
+  ])
+  expect(panel.textContent).toContain('Inherited instructions changed')
+  expect(agent.snapshot().find((entry) => entry.label === 'Instructions')?.value).toBe(draft)
+})
+
+it('shows a denied tool as unchecked and preserves the denial until it is rechecked', async () => {
+  await openPanel()
+  events.emit('subagents:open-definition', { name: 'reviewer' })
+  await settle()
+  flush()
+  await expectDistinctAgentNames(agent)
+  await act('Description', 'setValue', 'Review work more')
+  const control = (label: string) => agent.snapshot().find((entry) => entry.label === label)
+  expect(control('Allow bash tool access')).toMatchObject({ component: 'checkbox', checked: false })
+  expect(control('Allow read tool access')).toMatchObject({ component: 'checkbox', checked: true })
+  await act('Save agent definition', 'press')
+  expect(writes('saveDefinition')).toMatchObject([
+    {
+      args: {
+        frontmatter: { description: 'Review work more', tools: ['read'], denyTools: ['bash'] },
+      },
+      source: 'agent',
+    },
+  ])
+  await act('Allow bash tool access', 'setChecked', true)
+  await act('Save agent definition', 'press')
+  const rechecked = writes('saveDefinition')[1].args.frontmatter
+  expect(rechecked.tools).toEqual(['read', 'bash'])
+  expect(rechecked).not.toHaveProperty('denyTools')
 })

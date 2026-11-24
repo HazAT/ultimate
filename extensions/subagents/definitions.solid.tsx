@@ -106,7 +106,7 @@ const draftOf = (definition?: Shown['definition'], name = ''): Draft => ({
   model: definition?.model ?? null,
   thinking: definition?.thinking ?? null,
   family: definition?.family ?? null,
-  tools: definition?.tools ?? null,
+  tools: definition?.tools?.filter((tool) => !definition.denyTools?.includes(tool)) ?? null,
   preservedDenyTools: definition?.denyTools ?? [],
   skills: definition?.skills ?? null,
   resident: definition?.resident ?? false,
@@ -123,19 +123,22 @@ const modelRef = (key: string | undefined) => {
   const slash = key.indexOf('/')
   return { provider: key.slice(0, slash), modelId: key.slice(slash + 1) }
 }
-const frontmatterOf = (draft: Draft): DefinitionFields => ({
-  description: draft.description,
-  ...(draft.model ? { model: modelKey(draft.model) } : {}),
-  ...(draft.thinking ? { thinking: draft.thinking } : {}),
-  ...(!draft.model && draft.family ? { family: draft.family } : {}),
-  ...(draft.tools ? { tools: [...draft.tools] } : {}),
-  ...(draft.preservedDenyTools.length ? { denyTools: [...draft.preservedDenyTools] } : {}),
-  ...(draft.skills ? { skills: [...draft.skills] } : {}),
-  resident: draft.resident,
-  ...(draft.isolate === 'worktree' ? { isolate: 'worktree' } : {}),
-  ...(draft.fast ? { fast: true } : {}),
-  ...(draft.summaries ? {} : { summaries: false }),
-})
+const frontmatterOf = (draft: Draft): DefinitionFields => {
+  const denyTools = draft.preservedDenyTools.filter((tool) => !draft.tools?.includes(tool))
+  return {
+    description: draft.description,
+    ...(draft.model ? { model: modelKey(draft.model) } : {}),
+    ...(draft.thinking ? { thinking: draft.thinking } : {}),
+    ...(!draft.model && draft.family ? { family: draft.family } : {}),
+    ...(draft.tools ? { tools: [...draft.tools] } : {}),
+    ...(denyTools.length ? { denyTools } : {}),
+    ...(draft.skills ? { skills: [...draft.skills] } : {}),
+    resident: draft.resident,
+    ...(draft.isolate === 'worktree' ? { isolate: 'worktree' } : {}),
+    ...(draft.fast ? { fast: true } : {}),
+    ...(draft.summaries ? {} : { summaries: false }),
+  }
+}
 
 function overlayScope(overlays: string[] | undefined, discovery: Discovery): Scope | undefined {
   if (!overlays?.length) return undefined
@@ -299,6 +302,10 @@ function DefinitionForm(props: {
     shortenPath(path, { cwd: system()?.project.root, home: system()?.machine.home })
   const files = () => (creating() ? [] : (props.shown?.files ?? []))
   const overrides = () => files().includes('builtin') && scope() !== 'user' && !overlays().length
+  const shadowedOverlay = () =>
+    scope() === 'user' &&
+    (overlayScope(overlays(), props.discovery) === 'project' ||
+      (overlays().length > 0 && source() === 'project'))
   const shadowed = () => scope() === 'user' && files().includes('project')
   const needsSave = createMemo(
     () =>
@@ -319,7 +326,7 @@ function DefinitionForm(props: {
     const next = afterDeletion()
     return next && sourceLabel[next]
   }
-  const canSave = () => needsSave() && !!name() && !nameError() && !pending()
+  const canSave = () => needsSave() && !!name() && !nameError() && !pending() && !shadowedOverlay()
 
   async function save(writer: string) {
     if (!canSave()) return
@@ -564,6 +571,12 @@ function DefinitionForm(props: {
         </div>
         <div class="flex min-h-[20rem] min-w-0 flex-1 flex-col gap-1.5">
           <div class="section-label">Instructions</div>
+          <Show when={overlays().length > 0 && !shadowedOverlay()}>
+            <p class="text-[11.5px] text-muted-foreground">
+              Edit the {scope()} additions or append new instructions. Leave inherited text
+              unchanged.
+            </p>
+          </Show>
           <InstructionsEditor
             file={!creating() || !props.shown?.definition ? props.shown?.raw : undefined}
             onChange={(instructions) => set({ instructions })}
@@ -608,7 +621,12 @@ function DefinitionForm(props: {
               </span>
             </Show>
             <Show when={shadowed()}>
-              <span class="text-warning"> · the project definition of this name applies</span>
+              <span class="text-warning">
+                {' '}
+                {shadowedOverlay()
+                  ? '· this overlay must be saved to project'
+                  : '· the project definition of this name applies'}
+              </span>
             </Show>
           </TooltipTrigger>
           <TooltipContent class="font-mono">{target()}</TooltipContent>
