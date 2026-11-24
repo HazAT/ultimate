@@ -26,8 +26,6 @@ minimumReleaseAgeExclude:
   - '@lucide/solid@1.76.0'
   - '@solidjs/signals@2.0.3'
   - '@solidjs/web@2.0.3'
-  - '@ui-sdk/core@0.1.0-beta.13'
-  - '@ui-sdk/solid@0.1.0-beta.13'
   - solid-js@2.0.3
 # Pi upstream: @earendil-works/chord@1.6.0 dist/output.js — sanitizeOutput keeps numeric SGR colours, which 1.6.0 strips with the other escape sequences. Drop when Pi keeps SGR.
 # Pi upstream: @earendil-works/pi-durable@1.6.0 dist/harness/inbox.js, dist/harness/harness.js — transactional beforeInput hook places entries before a new run’s first input; its api.agent(id) resolves agents within that transaction, and hooks of extensions an earlier hook enabled run too. Drop when Pi ships input-placement hooks.

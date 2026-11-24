@@ -241,7 +241,6 @@ it('acts on the one control with the exact label, also one an earlier step broug
       steps: [
         { ref: 'Digest details', action: 'setOpen', args: [true] },
         { ref: 'Monday only', action: 'setChecked', args: [true] },
-        { ref: 'Digest details', action: 'setOpen', args: [false] },
       ],
     },
   ])

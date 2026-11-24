@@ -62,11 +62,11 @@ importers:
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.5(@types/node@26.0.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       '@ui-sdk/core':
-        specifier: 0.1.0-beta.13
-        version: 0.1.0-beta.13
+        specifier: 0.1.0-beta.16
+        version: 0.1.0-beta.16
       '@ui-sdk/solid':
-        specifier: 0.1.0-beta.13
-        version: 0.1.0-beta.13(@solidjs/web@2.0.3(solid-js@2.0.3))(@ui-sdk/core@0.1.0-beta.13)(solid-js@2.0.3)
+        specifier: 0.1.0-beta.16
+        version: 0.1.0-beta.16(@solidjs/web@2.0.3(solid-js@2.0.3))(@ui-sdk/core@0.1.0-beta.16)(solid-js@2.0.3)
       ansi_up:
         specifier: 6.0.6
         version: 6.0.6
@@ -1410,14 +1410,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@ui-sdk/core@0.1.0-beta.13':
-    resolution: {integrity: sha512-URjk9hqdc/cZKDtw6Gb9NqjY48U8l0EgoP4d5ghlooa3av+GrR0iSmsav133UU4oelcuKIO1ZPJ4j7gIPMr1Vg==}
+  '@ui-sdk/core@0.1.0-beta.16':
+    resolution: {integrity: sha512-I2GMqOviLS/lYfIj2lTqKLbae0V9uSnysK+bSdbhuw2De8zNvrLZiDTc0qzsPNiZvB/bMmUZJS5UDA5Q2Pq4Ng==}
 
-  '@ui-sdk/solid@0.1.0-beta.13':
-    resolution: {integrity: sha512-/YLOk1OGHzRvgVxmMpTXc4OSOCAucTbQ7XElaVAYlvcGqn6F8ALyc39nkcNAroREqyAKzbdxkVtYTLXPOVV13g==}
+  '@ui-sdk/solid@0.1.0-beta.16':
+    resolution: {integrity: sha512-EIl/XMTVbG796Yf+b6Lgdhf/Xt1XTeVO38GJ1p0Xx/90K93s8duiEFjjQ7vSODg2N/+E/V4YyK1MJmN2kg3gIA==}
     peerDependencies:
       '@solidjs/web': ^2.0.0
-      '@ui-sdk/core': ^0.1.0-beta.13
+      '@ui-sdk/core': ^0.1.0-beta.16
       solid-js: ^2.0.0
 
   '@ungap/structured-clone@1.4.0':
@@ -3917,12 +3917,12 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@ui-sdk/core@0.1.0-beta.13': {}
+  '@ui-sdk/core@0.1.0-beta.16': {}
 
-  '@ui-sdk/solid@0.1.0-beta.13(@solidjs/web@2.0.3(solid-js@2.0.3))(@ui-sdk/core@0.1.0-beta.13)(solid-js@2.0.3)':
+  '@ui-sdk/solid@0.1.0-beta.16(@solidjs/web@2.0.3(solid-js@2.0.3))(@ui-sdk/core@0.1.0-beta.16)(solid-js@2.0.3)':
     dependencies:
       '@solidjs/web': 2.0.3(solid-js@2.0.3)
-      '@ui-sdk/core': 0.1.0-beta.13
+      '@ui-sdk/core': 0.1.0-beta.16
       solid-js: 2.0.3
 
   '@ungap/structured-clone@1.4.0': {}
