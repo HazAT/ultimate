@@ -321,7 +321,7 @@ it('sends a file attached to the note to the asker as an attachment line', async
       default: {
         provides: [
           provide(FileUpload, () => () => ({
-            upload: async (file: File) => `/tmp/attachments/${file.name}`,
+            upload: async (file: File) => ({ path: `/tmp/attachments/${file.name}` }),
             maxBytes: 1024,
             keptMs: 1000,
           })),

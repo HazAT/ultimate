@@ -5,6 +5,16 @@ Antigravity extension to be enabled (⌘K → Extensions) and signed in with `ag
 without it. The default model is `gemini-4-neon-low`. Video costs about 105 tokens per second. Follow-ups with the
 same options replay the earlier questions and answers so Google can reuse the unchanged video prefix.
 
+## In the composer
+
+The web facet claims `video/*` in the SDK's `FileUpload` point, so a pasted, dropped, picked or recorded video goes
+here and every other file to `attachments`. It uploads in 8 MB chunks (`begin`, `append`, `finish`) with a progress
+bar on the chip, then shows `Preparing · for Google` until the `Video` document turns `ready` (the chip then shows its
+length) or `failed` (the chip leaves with the error). Removing the chip while it uploads or prepares stops the upload and removes the video; removing a ready chip only
+detaches it from the draft.
+Sending appends one plain-text line per video, which the sent message shows as a chip:
+``Attached video: `demo.webm` (42 s), id `v_…`; ask about it with video_ask``.
+
 ## Document and events
 
 `VideosDoc` (`video.videos`) lives on `ROOT_CONVERSATION_ID`. It contains `{ videos: Record<string, Video>,

@@ -1,3 +1,4 @@
+import { attached } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
 
 export const maxStoredImageChars = 2_000_000
@@ -13,7 +14,7 @@ export function storedFiles(key: string): DraftFile[] {
 }
 
 export function storeFiles(key: string, files: DraftFile[]) {
-  const completedUploads = files.filter((file) => file.path)
+  const completedUploads = files.filter(attached)
   if (completedUploads.length)
     localStorage.setItem(`${key}.files`, JSON.stringify(completedUploads))
   else localStorage.removeItem(`${key}.files`)

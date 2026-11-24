@@ -124,6 +124,7 @@ export type {
   ComposerTarget,
   PromptBoxProps,
   PromptInput,
+  UploadSource,
   ConversationState,
   ConversationSummary,
   DocumentItem,

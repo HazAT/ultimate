@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
 import { Provided } from '../sdk/parts.solid.tsx'
-import type { PromptBoxProps } from '../sdk/types.ts'
+import type { PromptBoxProps, UploadSource } from '../sdk/types.ts'
 import {
   Dictation,
   errorMessage,
@@ -17,10 +17,10 @@ import {
   writerNow,
   writingAs,
 } from '../sdk/hooks.ts'
-import { useProvided } from '../sdk/contribution.solid.tsx'
+import { useAllProvided } from '../sdk/contribution.solid.tsx'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
-import { Attached, createAttach } from './attach.solid.tsx'
-import { withAttachments } from './attachments.ts'
+import { Attached, cancelUpload, createAttach } from './attach.solid.tsx'
+import { attached, withAttachments } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
 import {
   boundDraft,
@@ -74,10 +74,20 @@ export function PromptBox(props: PromptBoxProps) {
   const images = () => value().images
   const files = () => value().files
   const sending = () => value().sending
-  const upload = useProvided(FileUpload, () => null)
+  const provided = useAllProvided(FileUpload, () => null)
   const allowsFiles = () => props.accepts?.files !== false
   const allowsImages = () => props.accepts?.images !== false
-  const uploadTarget = () => (allowsFiles() ? upload() : undefined)
+  const uploads = createMemo(() =>
+    allowsFiles() ? provided().filter((upload) => upload !== undefined) : [],
+  )
+  const general = () => uploads().findLast((upload) => !upload.accepts)
+  const pickable = () =>
+    general()
+      ? undefined
+      : [
+          ...(allowsImages() ? imageMimeTypes : []),
+          ...uploads().map((upload) => `${upload.accepts}*`),
+        ].join(',')
   const [level, setLevel] = createSignal<number>()
   const [recording, setRecording] = createSignal(false)
   const [dragging, setDragging] = createSignal(false)
@@ -95,14 +105,15 @@ export function PromptBox(props: PromptBoxProps) {
     setFiles,
     setError,
     disabled: () => !!props.loading || !!props.disabled || draft().get().sending,
-    upload: uploadTarget,
+    uploads,
     inlineImages: allowsImages,
+    conversation: () => props.conversation,
   })
-  const uploading = () => files().some((file) => !file.path)
+  const uploading = () => files().some((file) => !attached(file))
   const empty = () =>
     !text().trim() && images().length === 0 && files().length === 0 && !props.ready?.()
   const inert = () => !!props.loading || !!props.disabled || sending() || attach.reading()
-  const canAttach = () => allowsImages() || !!uploadTarget()
+  const canAttach = () => allowsImages() || uploads().length > 0
 
   async function send(how?: 'followUp') {
     const current = draft()
@@ -154,7 +165,7 @@ export function PromptBox(props: PromptBoxProps) {
 
   const label = () => props.label ?? `Prompt for ${props.name}`
   const attachName = () =>
-    `${uploadTarget() ? 'Attach files' : 'Attach images'}${props.minimal ? ` to ${props.name}` : ''}`
+    `${uploads().length ? 'Attach files' : 'Attach images'}${props.minimal ? ` to ${props.name}` : ''}`
 
   let editor: HTMLTextAreaElement | undefined
   onSettled(() => {
@@ -204,14 +215,16 @@ export function PromptBox(props: PromptBoxProps) {
         aria-label={attachName()}
         class={cn(iconButton, inert() && 'pointer-events-none opacity-50 hover:bg-transparent')}
         title={
-          uploadTarget()
-            ? `Attach files: ${allowsImages() ? 'images inline, others' : 'files'} up to ${formatBytes(uploadTarget()!.maxBytes).replace('.0 ', ' ')}`
-            : 'Attach images'
+          general()
+            ? `Attach files: ${allowsImages() ? 'images inline, others' : 'files'} up to ${formatBytes(general()!.maxBytes).replace('.0 ', ' ')}`
+            : uploads().length
+              ? 'Attach files'
+              : 'Attach images'
         }
       >
         <Paperclip class="size-3.5" />
         <input
-          accept={uploadTarget() ? undefined : imageMimeTypes.join(',')}
+          accept={pickable()}
           class="sr-only"
           disabled={inert()}
           multiple
@@ -231,7 +244,8 @@ export function PromptBox(props: PromptBoxProps) {
       <Provided
         input={{
           name: props.name,
-          attach: (picked: readonly File[]) => void attach.attach(picked),
+          attach: (picked: readonly File[], source: UploadSource = 'recording') =>
+            void attach.attach(picked, source),
           recording: setRecording,
         }}
         last
@@ -346,14 +360,17 @@ export function PromptBox(props: PromptBoxProps) {
     event.preventDefault()
     void attach.drop(event)
   }
-  const attached = () => (
+  const chips = () => (
     <Attached
       disabled={inert()}
       files={files()}
       images={images()}
       name={minimal() ? props.name : undefined}
       remove={(index) => setImages((current) => current.filter((_, at) => at !== index))}
-      removeFile={(fileId) => setFiles((current) => current.filter((file) => file.id !== fileId))}
+      removeFile={(fileId) => {
+        cancelUpload(fileId)
+        setFiles((current) => current.filter((file) => file.id !== fileId))
+      }}
     />
   )
 
@@ -371,7 +388,7 @@ export function PromptBox(props: PromptBoxProps) {
             }}
             onDrop={dropped}
           >
-            {attached()}
+            {chips()}
             <div class="flex flex-wrap items-end justify-end gap-1">
               {textarea()}
               <div class="flex min-w-0 shrink-0 items-center gap-0.5 pr-1 pb-1">{controls()}</div>
@@ -389,7 +406,7 @@ export function PromptBox(props: PromptBoxProps) {
       }
     >
       <Form class={frameClass()} data-signal={signal()} data-ui="prompt-box" onDrop={dropped}>
-        {attached()}
+        {chips()}
         {textarea()}
         <div class="@container flex items-center justify-between gap-2 px-2 pt-1 pb-2">
           <div class="flex min-w-0 items-center gap-1 overflow-hidden">{props.toolbar}</div>
@@ -419,14 +436,15 @@ function Hairline(props: {
     <span
       aria-hidden="true"
       class={cn(
-        'pointer-events-none absolute inset-x-0 bottom-0 h-[2px] transition-colors',
+        'pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden transition-colors',
         props.signal === 'idle' && 'bg-brand/0 group-focus-within/keel:bg-brand/70',
-        props.signal === 'running' &&
-          'bg-[linear-gradient(90deg,transparent,var(--brand),transparent)] bg-size-[200%_100%] motion-safe:animate-sweep',
         props.signal === 'recording' && 'bg-error',
       )}
       data-ui="prompt-hairline"
     >
+      <Show when={props.signal === 'running'}>
+        <span class="absolute inset-y-0 left-0 w-2/5 bg-[linear-gradient(90deg,transparent,var(--brand),transparent)] motion-safe:animate-glide" />
+      </Show>
       <Show when={props.signal === 'listening'}>
         <span
           class="absolute inset-0 origin-center bg-brand transition-transform duration-75"

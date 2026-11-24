@@ -1,7 +1,12 @@
 import type { DraftFile, PastedImage } from './attachments.ts'
 import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
 import { spliced } from './queued.ts'
-import { splitAttachments, splitTrailingAttachments, withAttachments } from './attachments.ts'
+import {
+  attached,
+  splitAttachments,
+  splitTrailingAttachments,
+  withAttachments,
+} from './attachments.ts'
 
 export type Draft = {
   text: string
@@ -58,7 +63,7 @@ export function boundDraft(read: () => string, write: (value: string) => boolean
     const from = read()
     if (parsed?.from !== from) {
       const { text, files } = splitTrailingAttachments(from)
-      parsed = { from, text, files: files.map((file) => ({ ...file, id: file.path })) }
+      parsed = { from, text, files: files.map((file) => ({ ...file, id: file.line ?? file.path })) }
     }
     return parsed
   }
@@ -81,12 +86,9 @@ export function boundDraft(read: () => string, write: (value: string) => boolean
       if (text !== undefined || files !== undefined) {
         const now = kept()
         const all = files ?? [...now.files, ...local.uploading]
-        const next = withAttachments(
-          text ?? now.text,
-          all.filter((file) => file.path),
-        )
+        const next = withAttachments(text ?? now.text, all.filter(attached))
         accepted = next === read() || write(next) !== false
-        if (accepted) uploading = all.filter((file) => !file.path)
+        if (accepted) uploading = all.filter((file) => !attached(file))
       }
       local = { ...local, ...change, uploading }
       for (const listener of listeners) listener()

@@ -125,6 +125,7 @@ export type {
   ComposerTarget,
   PromptBoxProps,
   PromptInput,
+  UploadSource,
   SolidComposerProps,
   SolidInboxProps,
   SolidEntryProps,

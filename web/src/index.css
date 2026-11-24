@@ -140,6 +140,8 @@
   --animate-fade-in: fade-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
   /* One soft band of light crossing the whole window, off screen at both ends so the loop never shows. */
   --animate-sweep: sweep 2.4s linear infinite;
+  /* A band gliding edge to edge and back, eased at each end; transform only, so the compositor runs it while the page works. */
+  --animate-glide: glide 2.4s ease-in-out infinite alternate;
 
   @keyframes shimmer {
     from {
@@ -160,6 +162,14 @@
     }
     to {
       background-position: 0% 0;
+    }
+  }
+  @keyframes glide {
+    from {
+      transform: translateX(-50%);
+    }
+    to {
+      transform: translateX(200%);
     }
   }
   @keyframes pulse-dot {

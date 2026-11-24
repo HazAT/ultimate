@@ -1,22 +1,43 @@
-export type AttachedFile = { name: string; size: string; mimeType: string; path: string }
-export type DraftFile = AttachedFile & { id: string }
+export type AttachedFile = {
+  name: string
+  size: string
+  mimeType: string
+  path: string
+  line?: string
+}
+export type DraftFile = AttachedFile & { id: string; note?: string; progress?: number }
 export type PastedImage = { data: string; mimeType: string; note?: string }
 
 const plainTextAttachmentReference =
   /^Attached file: `([^`\n]+)` \(([^,\n]+), ([^)\n]+)\) at `([^`\n]+)`$/
+const videoReference =
+  /^Attached video: `([^`\n]+)` \(([^)\n]+)\), id `v_[a-f0-9]+`; ask about it with video_ask$/
 
 export const attachmentLine = (file: AttachedFile) =>
+  file.line ??
   `Attached file: \`${file.name}\` (${file.size}, ${file.mimeType || 'application/octet-stream'}) at \`${file.path}\``
 
-function attachmentOf(line: string): AttachedFile | undefined {
-  const match = plainTextAttachmentReference.exec(line)
-  return match ? { name: match[1], size: match[2], mimeType: match[3], path: match[4] } : undefined
+export const attached = (file: AttachedFile) => !!(file.path || file.line)
+
+export const uploadFor = <Upload extends { accepts?: string }>(
+  uploads: readonly Upload[],
+  mimeType: string,
+) =>
+  uploads.findLast((upload) => upload.accepts && mimeType.startsWith(upload.accepts)) ??
+  uploads.findLast((upload) => !upload.accepts)
+
+function parsed(entry: string): AttachedFile | undefined {
+  const file = plainTextAttachmentReference.exec(entry)
+  if (file) return { name: file[1], size: file[2], mimeType: file[3], path: file[4] }
+  const video = videoReference.exec(entry)
+  if (video) return { name: video[1], size: video[2], mimeType: 'video/', path: '', line: entry }
+  return undefined
 }
 
 export function splitAttachments(text: string): { text: string; files: AttachedFile[] } {
   const files: AttachedFile[] = []
   const rest = text.split('\n').filter((entry) => {
-    const file = attachmentOf(entry)
+    const file = parsed(entry)
     if (file) files.push(file)
     return !file
   })
@@ -26,11 +47,11 @@ export function splitAttachments(text: string): { text: string; files: AttachedF
 export function splitTrailingAttachments(value: string): { text: string; files: AttachedFile[] } {
   const lines = value.split('\n')
   let at = lines.length
-  while (at > 0 && attachmentOf(lines[at - 1])) at--
+  while (at > 0 && parsed(lines[at - 1])) at--
   if (at === lines.length || (at > 0 && lines[at - 1] !== '')) return { text: value, files: [] }
   return {
     text: at === 0 ? '' : lines.slice(0, at - 1).join('\n'),
-    files: lines.slice(at).map((line) => attachmentOf(line)!),
+    files: lines.slice(at).map((line) => parsed(line)!),
   }
 }
 
