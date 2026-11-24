@@ -38,6 +38,13 @@ export function createTalk(talk: {
       onPointerUp: letGoPointer,
     },
     keyDown(event: KeyboardEvent) {
+      if (talk.tap()) {
+        if (!talk.matches(event)) return false
+        if (event.repeat) return true
+        talk.wake()
+        start()
+        return true
+      }
       if (held !== undefined) {
         if (event.code !== held && !event.repeat) return false
         letGo?.()
@@ -47,14 +54,12 @@ export function createTalk(talk: {
       if (event.repeat || !talk.matches(event)) return false
       held = event.code
       talk.wake()
-      if (talk.tap()) start()
-      else
-        onThisPage(
-          talk.press().then(() => {
-            if (held === undefined) return talk.release()
-            return undefined
-          }),
-        )
+      onThisPage(
+        talk.press().then(() => {
+          if (held === undefined) return talk.release()
+          return undefined
+        }),
+      )
       return true
     },
     keyUp(event: KeyboardEvent) {
@@ -64,7 +69,7 @@ export function createTalk(talk: {
       letGo = deadline(AUTO_REPEAT_GAP_MS, () => {
         letGo = undefined
         held = undefined
-        stop()
+        onThisPage(talk.release())
       })
       return true
     },

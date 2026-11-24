@@ -180,7 +180,10 @@ export function settleTranscripts(
 }
 
 export const voiceOpen = () => dock.open()
-export const setVoiceOpen = (open: boolean) => dock.setOpen(open)
+export const setVoiceOpen = (open: boolean) => {
+  if (!open && talking()) void discardRecording()
+  dock.setOpen(open)
+}
 export const playerState = createRoot(() => {
   const [state, setState] = createSignal(dock.player.state.get())
   dock.player.state.subscribe(() => setState(dock.player.state.get()))
@@ -266,6 +269,16 @@ export async function press() {
     dock.held()?.busy ? 'Recording · say something to interrupt' : 'Recording · I hear you',
   )
   dock.cues.press()
+}
+
+async function discardRecording() {
+  released = pressing
+  const held = dock.held()
+  dock.hold(undefined)
+  if (!(await dock.mic.stop())) return
+  if (playerState().paused) dock.player.resume()
+  dock.setPhase(held?.busy ? 'thinking' : 'idle')
+  dock.setStatus(undefined)
 }
 
 export async function release() {
@@ -671,6 +684,8 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
 }
 
 export function endSession() {
+  released = pressing
+  dock.hold(undefined)
   dock.player.stop()
   void dock.mic.release()
   dock.setLocal({})

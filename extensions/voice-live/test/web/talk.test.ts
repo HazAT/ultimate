@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createTalk } from '../talk.ts'
+import { createTalk } from '../../talk.ts'
 
 const chord = { code: 'Space', ctrlKey: true, shiftKey: true }
 const key = (init: Partial<KeyboardEvent>) => ({ repeat: false, key: '', ...init }) as KeyboardEvent
@@ -38,9 +38,9 @@ it('tap mode: a first tap starts, a second tap stops and sends, autorepeat is ig
   await vi.runAllTimersAsync()
   expect(calls).toEqual(['press'])
 
-  talk.keyDown(key(chord))
   talk.keyUp(key({ ...chord, key: ' ' }))
-  await vi.runAllTimersAsync()
+  talk.keyDown(key(chord))
+  await Promise.resolve()
   expect(calls).toEqual(['press', 'release'])
 
   talk.pointer.onPointerDown(pointer())
