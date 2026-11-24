@@ -549,6 +549,7 @@ export const actions = {
     if (pictures.length > maxImages) throw new Error(`At most ${maxImages} images`)
     if (!text.trim() && typeof audio !== 'string' && !pictures.length)
       throw new Error('Expected text, a recording or an image')
+    if (answered === true && !collected) throw new Error('An answer sends the collected clips')
     const id = await openSession(host, sessionArg(expected))
     for (const clip of collected ?? (typeof audio === 'string' ? [audio] : []))
       await readRecording(host, id, clip).catch(() => {
@@ -664,20 +665,24 @@ export const actions = {
     const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
     if (id === undefined) return {}
     const fork = await host.harness().snapshot(Fork, id, context)
-    const said = fork?.transcripts?.[audio]
-    if (said === undefined || !fork?.draft?.some((clip) => clip.audio === audio)) return {}
+    if (
+      fork?.transcripts?.[audio] === undefined ||
+      !fork.draft?.some((clip) => clip.audio === audio)
+    )
+      return {}
     const classify = host.want(ClassifyApi)
     if (!classify) return { unavailable: 'Spoken send needs the classify extension and its key' }
-    const before = (fork?.draft ?? [])
-      .filter((clip) => clip.audio !== audio)
-      .map((clip) => fork?.transcripts?.[clip.audio] ?? '')
-      .join(' ')
-    const collected = fork.draft ?? []
+    const collected = fork.draft
     const heard = collected.map((clip) => fork.transcripts?.[clip.audio])
+    const whole = heard.every((text) => text !== undefined)
+    const latest = whole ? collected.at(-1)!.audio : audio
+    const said = fork.transcripts[latest]
+    const before = collected
+      .filter((clip) => clip.audio !== latest)
+      .map((clip) => fork.transcripts?.[clip.audio] ?? '')
+      .join(' ')
     const question =
-      heard.every((text) => text !== undefined) && fork.at !== undefined
-        ? await openQuestion(host, id, fork.at)
-        : undefined
+      whole && fork.at !== undefined ? await openQuestion(host, id, fork.at) : undefined
     const asking = classify.ask(
       {
         state: { collectedSoFar: before, latestRecording: said },
@@ -710,8 +715,8 @@ export const actions = {
               {
                 state: {
                   assistantLastReply: question,
-                  collectedSoFar: heard.slice(0, -1).join(' '),
-                  latestRecording: heard.at(-1)!,
+                  collectedSoFar: before,
+                  latestRecording: said,
                 },
                 questions: { answer: ANSWER_QUESTION },
               },
@@ -740,11 +745,9 @@ export const actions = {
       await host.harness().commit(async (tx) => {
         const draft = await tx.doc(Fork, id)
         if (draft.ended) return
-        draft.draft = (draft.draft ?? []).filter((clip) => clip.audio !== audio)
+        draft.draft = (draft.draft ?? []).filter((clip) => clip.audio !== latest)
       }, context)
-    const clips = (fork?.draft ?? [])
-      .map((clip) => clip.audio)
-      .filter((clip) => !(only && clip === audio))
+    const clips = collected.map((clip) => clip.audio).filter((clip) => !(only && clip === latest))
     return {
       send: send.choice as VoiceDelivery,
       clips,

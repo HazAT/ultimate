@@ -526,6 +526,7 @@ it('a clip that completely answers the question voice just asked sends as a stee
     'and then I think': { send: 'hold', complete: 0.3 },
     'the first': { send: 'hold', complete: 0.5 },
     'send it': { send: 'steer', only: 1, complete: 0.99 },
+    'the second one, queue it': { send: 'followUp', complete: 0.99 },
     'sounds good': { send: 'hold', complete: 0.99 },
   }
   let asked: { state: Record<string, string>; questions: string[] }[] = []
@@ -601,6 +602,9 @@ it('a clip that completely answers the question voice just asked sends as a stee
     collectedSoFar: 'the first',
     latestRecording: 'the second one',
   })
+
+  const queued = await collect('maybe the second', 'the second one, queue it')
+  expect(await intent(queued[0])).toEqual({ send: 'followUp', clips: queued })
 
   const command = await collect('maybe the second', 'send it')
   expect(await intent(command[1])).toEqual({ send: 'steer', clips: [command[0]], dropped: true })
