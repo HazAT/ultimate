@@ -57,7 +57,8 @@ const HOP_HEADERS = new Set([
 const AGY_PROMPT = 'Reply with ok.'
 const AGY_SETUP_TIMEOUT_MS = 120_000
 const DISCOVERY_TIMEOUT_MS = 60_000
-const ERROR_BODY_LIMIT = 4096
+const ERROR_BODY_LIMIT = 64 * 1024
+const ERROR_MESSAGE_LIMIT = 1000
 const ANSWER_THAT_ENDS_AGYS_TURN = {
   candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
 }
@@ -86,33 +87,40 @@ async function* signedBody(req: IncomingMessage, agent: AgentRequest['body'], mo
   const { sessionId, labels } = agent.request ?? {}
   const fields = JSON.stringify({ sessionId, labels }).slice(1, -1)
   let opened = false
-  let spliced = false
+  let hasMembers = false
+  let tail: Buffer[] = []
   for await (const value of req.iterator({ destroyOnReturn: false })) {
-    const chunk = value as Buffer
-    let start = 0
+    let chunk = value as Buffer
     if (!opened) {
       const brace = chunk.findIndex((byte) => !isJsonWhitespace(byte))
       if (brace === -1) {
         yield chunk
         continue
       }
-      if (chunk[brace] !== 0x7b) throw new Error('Expected a Gemini request object')
+      if (chunk[brace] !== 0x7b)
+        throw new RelayError(400, 'Gemini request body must start with `{`')
       opened = true
-      start = brace + 1
+      yield chunk.subarray(0, brace + 1)
+      chunk = chunk.subarray(brace + 1)
     }
-    if (!spliced) {
-      const member = chunk.subarray(start).findIndex((byte) => !isJsonWhitespace(byte))
-      if (member !== -1) {
-        const offset = start + member
-        yield chunk.subarray(0, offset)
-        if (fields) yield Buffer.from(chunk[offset] === 0x7d ? fields : `${fields},`)
-        yield chunk.subarray(offset)
-        spliced = true
-        continue
-      }
+    if (!chunk.length) continue
+    let last = chunk.length - 1
+    while (last >= 0 && isJsonWhitespace(chunk[last])) last--
+    if (last === -1) {
+      if (tail.length) tail.push(chunk)
+      else yield chunk
+      continue
     }
-    yield chunk
+    const beforeLast = chunk.subarray(0, last)
+    hasMembers ||= tail.length > 0 || beforeLast.some((byte) => !isJsonWhitespace(byte))
+    yield* tail
+    if (beforeLast.length) yield beforeLast
+    tail = [chunk.subarray(last)]
   }
+  if (!opened) throw new RelayError(400, 'Gemini request body must start with `{`')
+  if (tail[0]?.[0] !== 0x7d) throw new RelayError(400, 'Gemini request body must end with `}`')
+  if (fields) yield Buffer.from(hasMembers ? `,${fields}` : fields)
+  yield* tail
   yield Buffer.from('}')
 }
 
@@ -172,7 +180,9 @@ function upstreamFailure(status: number, detail?: unknown) {
       : `Antigravity answered HTTP ${status}`
   return new RelayError(
     status,
-    typeof detail === 'string' && detail ? `${message}: ${detail}` : message,
+    typeof detail === 'string' && detail
+      ? `${message}: ${detail.slice(0, ERROR_MESSAGE_LIMIT)}`
+      : message,
   )
 }
 
@@ -363,7 +373,10 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
           sent.headers,
           signedBody(req, sent.body, model),
           visit.signal,
-        )
+        ).catch((error: unknown) => {
+          if (error instanceof Error && error.cause instanceof RelayError) throw error.cause
+          throw error
+        })
         if (!answer.ok) {
           let detail: unknown
           if (answer.body) {
