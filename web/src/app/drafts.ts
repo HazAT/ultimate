@@ -68,11 +68,11 @@ export function insertIntoComposer(id: number, text: string) {
 
 export function composerDraft(id: number | string) {
   const draft = getDraft(id)
-  const { text, images, revision, sending } = draft.get()
+  const { text, images, files, revision } = draft.get()
   return {
     text,
     images: images.map(({ data, mimeType }) => ({ data, mimeType })),
-    sending,
+    files: files.length,
     subscribe: draft.subscribe,
     reserve: () => {
       if (draft.get().sending) return undefined

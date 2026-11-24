@@ -163,8 +163,8 @@ const sending = new Set<string>()
 const forks = new Map<ConversationId, Readonly<VoiceFork>>()
 let session: ConversationId | undefined
 export const COLD_DRAFT = 'voice-live.cold'
-export const coldHolds = (cold: { text: string; images: readonly unknown[] }) =>
-  !!cold.text.trim() || cold.images.length > 0
+export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
+  !!cold.text.trim() || cold.images.length > 0 || cold.files > 0
 export const composeIn = (id: ConversationId | undefined) => {
   if (session !== undefined && id === undefined) endLocally()
   session = id
@@ -459,14 +459,6 @@ async function sendTurn(input: {
     ? '(The user ended this message by saying a send command such as "send it": that sent it to you, it is not a request to hand off.)'
     : undefined
   const hint = [screen()?.text, cut, sentBySaying].filter(Boolean).join('\n\n') || undefined
-  if (input.interrupted) {
-    dock.player.stop()
-    for (const local of Object.values(dock.local())) local.trace.fail('cut in')
-    dock.setPending(undefined)
-    await api.action(StopAction, null, { signal }).catch((failure: unknown) => {
-      if (!signal.aborted) throw failure
-    })
-  }
   if (signal.aborted) return cancelled()
   const cold = composerDraft(COLD_DRAFT)
   const fromCold = !input.fromComposer && (session === undefined || coldHolds(cold))
@@ -486,6 +478,28 @@ async function sendTurn(input: {
   const key = crypto.randomUUID()
   const clips = input.clips ?? []
   for (const clip of clips) sending.add(clip.audio)
+  const unclaim = () => {
+    releaseBox?.(delivered ? (carried ? 'all' : 'images') : undefined)
+    for (const clip of clips) sending.delete(clip.audio)
+  }
+  if (input.interrupted) {
+    dock.player.stop()
+    for (const local of Object.values(dock.local())) local.trace.fail('cut in')
+    dock.setPending(undefined)
+    const stopped = await api.action(StopAction, null, { signal }).then(
+      () => true,
+      (failure: unknown) => {
+        unclaim()
+        if (!signal.aborted) throw failure
+        return false
+      },
+    )
+    if (!stopped) return cancelled()
+  }
+  if (signal.aborted) {
+    unclaim()
+    return cancelled()
+  }
   const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
   const envelope = input.recorded?.envelope ?? clips.flatMap((clip) => clip.envelope ?? [])
   const trace = createTrace(
@@ -597,8 +611,7 @@ async function sendTurn(input: {
     dock.setStatus(errorMessage(failure))
     if (input.fromComposer) throw failure
   } finally {
-    releaseBox?.(delivered ? (carried ? 'all' : 'images') : undefined)
-    for (const clip of clips) sending.delete(clip.audio)
+    unclaim()
   }
 }
 

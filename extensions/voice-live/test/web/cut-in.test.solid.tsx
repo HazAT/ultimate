@@ -16,7 +16,7 @@ vi.mock('@/sdk/solid', async () => {
     composerDraft: () => ({
       text: '',
       images: [],
-      sending: false,
+      files: 0,
       reserve: () => () => {},
       subscribe: () => () => {},
     }),

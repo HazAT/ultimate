@@ -1,8 +1,9 @@
 import { settle } from '@ui-sdk/core/testing'
+import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
-import { getDraft } from '../../../../web/src/app/drafts.ts'
+import { composerDraft, getDraft } from '../../../../web/src/app/drafts.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'
 import {
   COLD_DRAFT,
@@ -23,6 +24,8 @@ const harness = vi.hoisted(() => ({
   route: 'audio',
   status: undefined as Promise<void> | undefined,
   asked: 0,
+  stop: undefined as Promise<void> | undefined,
+  stops: 0,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -42,6 +45,11 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     if (path === '/api/extensions/voice-live/actions/turn') {
       harness.turns.push(JSON.parse(init?.body as string).args)
       return Response.json({ result: { conversation: 40, route: 'audio' } })
+    }
+    if (path === '/api/extensions/voice-live/actions/stop') {
+      harness.stops++
+      await harness.stop
+      return Response.json({ result: {} })
     }
     if (path === '/api/extensions/voice-live/actions/record')
       return Response.json({ result: { audio: 'rec-1', session: 41 } })
@@ -70,6 +78,8 @@ beforeEach(async ({ onTestFinished }) => {
   harness.route = 'audio'
   harness.status = undefined
   harness.asked = 0
+  harness.stop = undefined
+  harness.stops = 0
   vi.stubGlobal('speechSynthesis', { cancel: () => undefined, speak: () => undefined })
   dock.setCuesOn(false)
   clientStore.start()
@@ -83,7 +93,7 @@ beforeEach(async ({ onTestFinished }) => {
 afterEach(() => {
   vi.unstubAllGlobals()
   getDraft(session).set({ text: '', images: [], sending: false })
-  getDraft(COLD_DRAFT).set({ text: '', images: [], sending: false })
+  getDraft(COLD_DRAFT).set({ text: '', images: [], files: [], sending: false })
 })
 
 it('a spoken "send it" takes the images pasted into the voice composer and clears them', async () => {
@@ -121,7 +131,7 @@ it('what was typed and pasted while cold goes with the first turn, even when col
     expect.objectContaining({ text: 'look at this', clips: ['clip-1'], images: [shot] }),
   ])
   expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: '', images: [] })
-  expect(coldHolds(getDraft(COLD_DRAFT).get())).toBe(false)
+  expect(coldHolds(composerDraft(COLD_DRAFT))).toBe(false)
 })
 
 it('End during a send stops it before it reaches the session it ended', async () => {
@@ -176,7 +186,7 @@ it('what is typed into the cold box during the first send stays in the box the s
   await sending
   expect(harness.turns).toEqual([expect.objectContaining({ text: 'first' })])
   expect(getDraft(COLD_DRAFT).get().text).toBe('first and more')
-  expect(coldHolds(getDraft(COLD_DRAFT).get())).toBe(true)
+  expect(coldHolds(composerDraft(COLD_DRAFT))).toBe(true)
 })
 
 it('a turn after a recording that opened the session belongs to that session', async () => {
@@ -258,4 +268,30 @@ it('a spoken turn that ends without sending leaves the cold text and screenshot 
   answer()
   await spoken
   expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: false })
+})
+
+it('a cut-in holds the collected clip and the box from the start, so follow-up during its stop sends nothing', async () => {
+  let stopped = () => {}
+  harness.stop = new Promise((resolve) => (stopped = resolve))
+  dock.setPhase('thinking')
+  flush()
+  const steer = sendDraft('steer', '', true, [clip])
+  await vi.waitFor(() => expect(harness.stops).toBe(1))
+  expect(getDraft(session).get().sending).toBe(true)
+  await sendDraft('followUp')
+  stopped()
+  await steer
+  await settle()
+  expect(harness.turns).toEqual([expect.objectContaining({ clips: ['clip-1'], images: [shot] })])
+  expect(harness.turns[0].delivery).toBeUndefined()
+  expect(getDraft(session).get()).toMatchObject({ images: [], sending: false })
+})
+
+it('a file attached to the cold box keeps it in view when the session opens', async () => {
+  await endSession()
+  getDraft(COLD_DRAFT).set({
+    files: [{ id: 'f', name: 'spec.pdf', size: '1 KB', mimeType: 'application/pdf', path: '' }],
+  })
+  composeIn(session)
+  expect(coldHolds(composerDraft(COLD_DRAFT))).toBe(true)
 })
