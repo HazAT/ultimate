@@ -1,6 +1,6 @@
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { createRoot, createSignal, flush } from 'solid-js'
+import { createRoot, createSignal, flush, Show } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
@@ -37,7 +37,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       })
     const body = init?.body ? JSON.parse(init.body as string) : {}
     harness.posts.push({ path, body })
-    const action = /\/actions\/([a-z]+)$/.exec(path)?.[1]
+    const action =
+      /\/actions\/([a-z]+)$/.exec(path)?.[1] ?? (path.endsWith('/submit') ? 'submit' : undefined)
     const args = body.args as Record<string, unknown>
     if (action) await harness.hold?.(action, args)
     if (action === 'begin') return Response.json({ result: { id: `v_${'a'.repeat(32)}` } })
@@ -77,6 +78,8 @@ import { VideosDoc } from '../../refs.ts'
 import type { AskDetails, Video } from '../../refs.ts'
 import { VideoAskCall } from '../../call.solid.tsx'
 import type { ToolCallView } from '../../../../web/src/sdk/solid.ts'
+import { PromptRecorder, provide } from '../../../../web/src/sdk/solid.ts'
+import { Button } from '../../../../web/src/components/ui/button.solid.tsx'
 
 const agent = createAgent()
 const id = `v_${'a'.repeat(32)}`
@@ -339,4 +342,103 @@ it('shows a video_ask call going from asking Gemini to its answer and usage', as
   })
   flush()
   expect(container.querySelector('[data-testid="core"]')?.textContent).toBe('Unknown video')
+})
+
+it('a recording stopped while a typed prompt is sending waits for it, so the sent prompt still clears', async () => {
+  const recording = new File(['frames'], 'Screen recording.webm', { type: 'video/webm' })
+  let attached: Promise<boolean> | undefined
+  function Recorder(props: { attach: (files: readonly File[]) => Promise<boolean> }) {
+    return (
+      <Button
+        onClick={() => {
+          attached = props.attach([recording])
+        }}
+      >
+        Stop the test recording
+      </Button>
+    )
+  }
+  await registry.setLoaders({
+    '/extensions/attachments/web.solid.tsx': () => import('../../../attachments/web.solid.tsx'),
+    '/extensions/video/web.solid.tsx': () => import('../../web.solid.tsx'),
+    '/extensions/recorder/web.solid.tsx': async () => ({
+      default: { provides: [provide(PromptRecorder, Recorder)] },
+    }),
+  })
+  await show(24)
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  const submit = held('submit')
+  await agent.act({
+    steps: [{ ref: 'Prompt for conversation #24', action: 'setValue', args: ['look at this'] }],
+  })
+  container
+    .querySelector<HTMLButtonElement>('button[aria-label="Send prompt to conversation #24"]')!
+    .click()
+  await submit.reached
+  container
+    .querySelector<HTMLButtonElement>('[data-ui="prompt-box"] button:not([aria-label])')!
+    .click()
+  await settle()
+  expect(videoActions()).toEqual([])
+  submit.release()
+  await settle()
+  flush()
+  expect(getDraft(24).get().text).toBe('')
+  expect(videoActions()[0]).toBe('begin')
+  expect(harness.posts.find((post) => post.path.endsWith('/begin'))!.body.args).toMatchObject({
+    source: 'recording',
+  })
+  videoState({ state: 'ready', seconds: 3 })
+  expect(await attached!).toBe(true)
+  expect(getDraft(24).get().files).toHaveLength(1)
+})
+
+it('a recording whose box unmounts during the send it waits for is refused, not uploaded', async () => {
+  const recording = new File(['frames'], 'Screen recording.webm', { type: 'video/webm' })
+  let attached: Promise<boolean> | undefined
+  function Recorder(props: { attach: (files: readonly File[]) => Promise<boolean> }) {
+    return (
+      <Button
+        onClick={() => {
+          attached = props.attach([recording])
+        }}
+      >
+        Stop the test recording
+      </Button>
+    )
+  }
+  await registry.setLoaders({
+    '/extensions/attachments/web.solid.tsx': () => import('../../../attachments/web.solid.tsx'),
+    '/extensions/video/web.solid.tsx': () => import('../../web.solid.tsx'),
+    '/extensions/recorder/web.solid.tsx': async () => ({
+      default: { provides: [provide(PromptRecorder, Recorder)] },
+    }),
+  })
+  await show(25)
+  const [shown, setShown] = createRoot(() => createSignal(true))
+  const container = renderSolid(() => (
+    <Show when={shown()}>
+      <Composer />
+    </Show>
+  ))
+  await settle()
+  flush()
+  const submit = held('submit')
+  await agent.act({
+    steps: [{ ref: 'Prompt for conversation #25', action: 'setValue', args: ['look'] }],
+  })
+  container
+    .querySelector<HTMLButtonElement>('button[aria-label="Send prompt to conversation #25"]')!
+    .click()
+  await submit.reached
+  container
+    .querySelector<HTMLButtonElement>('[data-ui="prompt-box"] button:not([aria-label])')!
+    .click()
+  setShown(false)
+  flush()
+  submit.release()
+  expect(await attached!).toBe(false)
+  expect(videoActions()).toEqual([])
 })

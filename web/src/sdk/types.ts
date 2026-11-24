@@ -397,14 +397,17 @@ export const Dictation = definePoint<
   JSX.Element
 >('ultimate.dictation')
 /**
- * What a prompt box's record control gets, beside its attach button: `attach` adds recorded files to that box like a
- * drop (as `source`, `recording` by default), `recording` turns the box's hairline red while true. Nothing shows while
- * nothing provides it.
+ * What a prompt box's record control gets, beside its attach button: `draft` is the box's draft key (boxes showing one
+ * conversation share it), `attach` adds recorded files to that box like a drop (as `source`, `recording` by default; a
+ * recording waits for a send in flight, then attaches even to a busy box) and resolves once their uploads settle, false
+ * when the box refused them or moved to another draft meanwhile, and
+ * `recording` turns the box's hairline red while true. Nothing shows while nothing provides it.
  */
 export const PromptRecorder = definePoint<
   {
     name: string
-    attach: (files: readonly File[], source?: UploadSource) => void
+    draft: number | string | undefined
+    attach: (files: readonly File[], source?: UploadSource) => Promise<boolean>
     recording: (on: boolean) => void
   },
   JSX.Element

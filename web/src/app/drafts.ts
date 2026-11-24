@@ -3,6 +3,7 @@ import { storeFiles, storedFiles, storeImages, storedImages } from './draft-imag
 import { spliced } from './queued.ts'
 import {
   attached,
+  attachmentLine,
   splitAttachments,
   splitTrailingAttachments,
   withAttachments,
@@ -54,6 +55,7 @@ export function boundDraft(
   read: () => string,
   write: (value: string) => boolean | void,
   dropUpload: (id: string) => void,
+  pending: (busy: boolean) => void,
 ) {
   let local: Omit<Draft, 'text' | 'files'> & { uploading: DraftFile[] } = {
     images: [],
@@ -65,21 +67,32 @@ export function boundDraft(
   let parsed: { from: string; text: string; files: DraftFile[] } | undefined
   const ours = new Set<string>()
   let latest: string | undefined
+  const dropped = new Set<string>()
+  let disposed = false
+  const setUploading = (uploading: DraftFile[]) => {
+    const was = local.uploading.length > 0
+    local = { ...local, uploading }
+    if (was !== uploading.length > 0) pending(uploading.length > 0)
+  }
   const dropUploads = () => {
-    for (const file of local.uploading) dropUpload(file.id)
-    local = { ...local, uploading: [] }
+    for (const file of local.uploading) {
+      dropped.add(file.id)
+      dropUpload(file.id)
+    }
+    setUploading([])
   }
   const kept = () => {
     const from = read()
     if (parsed?.from !== from) {
-      if (parsed && !ours.has(from)) dropUploads()
-      if (from === latest) ours.clear()
+      const external = !!parsed && !ours.has(from)
+      if (external || from === latest) ours.clear()
+      if (external) dropUploads()
       const { text, files } = splitTrailingAttachments(from)
       parsed = { from, text, files: files.map((file) => ({ ...file, id: file.line ?? file.path })) }
     }
     return parsed
   }
-  return {
+  const store: DraftStore = {
     key: undefined,
     get: (): Draft => {
       const { text, files } = kept()
@@ -93,17 +106,23 @@ export function boundDraft(
       }
     },
     set: ({ text, files, ...change }: Partial<Draft>): boolean => {
+      if (disposed) return false
       let accepted = true
       let { uploading } = local
       if (text !== undefined || files !== undefined) {
         const now = kept()
-        const all = files ?? [...now.files, ...local.uploading]
+        const all = (files ?? [...now.files, ...local.uploading]).filter(
+          (file) => !dropped.has(file.id),
+        )
         const next = withAttachments(text ?? now.text, all.filter(attached))
-        ours.add(next)
-        latest = next
-        accepted = next === read() || write(next) !== false
+        if (next !== read()) {
+          ours.add(next)
+          latest = next
+          accepted = write(next) !== false
+          if (!accepted) ours.delete(next)
+        }
         const finished = all.filter(
-          (file) => attached(file) && local.uploading.some((pending) => pending.id === file.id),
+          (file) => attached(file) && local.uploading.some((waiting) => waiting.id === file.id),
         )
         uploading = all.filter((file) => !attached(file))
         if (!accepted && finished.length)
@@ -112,11 +131,17 @@ export function boundDraft(
             error: `Not attached: ${finished.map((file) => file.name).join(', ')}`,
           }
       }
-      local = { ...local, ...change, uploading }
+      local = { ...local, ...change }
+      setUploading(uploading)
       for (const listener of listeners) listener()
       return accepted
     },
-  } satisfies DraftStore
+  }
+  const dispose = () => {
+    dropUploads()
+    disposed = true
+  }
+  return { ...store, dispose }
 }
 
 export const createLocalDraft = () => createDraft(undefined)
@@ -174,21 +199,28 @@ export function insertIntoComposer(id: number, text: string) {
 export function composerDraft(id: number | string) {
   const draft = getDraft(id)
   const { text, images, files } = draft.get()
+  const finished = files.filter(attached)
   return {
     text,
     images: images.map(({ data, mimeType }) => ({ data, mimeType })),
     files: files.length,
+    attachments: finished.map(attachmentLine),
     subscribe: draft.subscribe,
     reserve: () => {
       if (draft.get().sending) return undefined
       draft.set({ sending: true })
-      return (sent?: 'all' | 'images') => {
+      return (sent?: 'all' | 'attachments') => {
         if (sent === 'all' && draft.get().text === text) {
           if (draft.key && localStorage.getItem(draft.key) === text)
             localStorage.removeItem(draft.key)
           draft.set({ text: '', revision: draft.get().revision + 1 })
         }
         if (sent && draft.get().images === images) draft.set({ images: [] })
+        if (sent && finished.length)
+          draft.set({
+            files: draft.get().files.filter((file) => !finished.includes(file)),
+            revision: draft.get().revision + 1,
+          })
         draft.set({ sending: false })
       }
     },

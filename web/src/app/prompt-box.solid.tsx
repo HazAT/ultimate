@@ -43,10 +43,13 @@ const submitClass =
 
 function createDraftState(props: PromptBoxProps) {
   const local = createLocalDraft()
-  const bound = boundDraft(readValue(props), writeValue(props), cancelUpload)
-  onCleanup(() => {
-    for (const file of bound.get().files) if (!attached(file)) cancelUpload(file.id)
-  })
+  const bound = boundDraft(
+    readValue(props),
+    writeValue(props),
+    cancelUpload,
+    reportUploading(props),
+  )
+  onCleanup(bound.dispose)
   const draft = createMemo<DraftStore>(() =>
     props.onValue ? bound : props.draft === undefined ? local : getDraft(props.draft),
   )
@@ -69,6 +72,17 @@ function createDraftState(props: PromptBoxProps) {
 
 const readValue = (props: PromptBoxProps) => () => props.value ?? ''
 const writeValue = (props: PromptBoxProps) => (next: string) => props.onValue?.(next)
+const reportUploading = (props: PromptBoxProps) => (busy: boolean) => props.onUploading?.(busy)
+function sent(target: DraftStore) {
+  return new Promise<void>((resolve) => {
+    if (!target.get().sending) return resolve()
+    const stop = target.subscribe(() => {
+      if (target.get().sending) return
+      stop()
+      resolve()
+    })
+  })
+}
 
 export function PromptBox(props: PromptBoxProps) {
   const { draft, value, bound } = createDraftState(props)
@@ -91,6 +105,10 @@ export function PromptBox(props: PromptBoxProps) {
           ...(allowsImages() ? imageMimeTypes : []),
           ...uploads().map((upload) => `${upload.accepts}*`),
         ].join(',')
+  let mounted = true
+  onCleanup(() => {
+    mounted = false
+  })
   const [level, setLevel] = createSignal<number>()
   const [recording, setRecording] = createSignal(false)
   const [dragging, setDragging] = createSignal(false)
@@ -254,8 +272,12 @@ export function PromptBox(props: PromptBoxProps) {
       <Provided
         input={{
           name: props.name,
-          attach: (picked: readonly File[], source: UploadSource = 'recording') =>
-            void attach.attach(picked, source),
+          draft: props.draft,
+          attach: async (picked: readonly File[], source: UploadSource = 'recording') => {
+            const target = draft()
+            await sent(target)
+            return mounted && draft() === target && attach.attach(picked, source)
+          },
           recording: setRecording,
         }}
         last

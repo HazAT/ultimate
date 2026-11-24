@@ -63,7 +63,7 @@ function rankModels(models: ModelInfo[], terms: string[]) {
     .slice(0, LIMIT)
 }
 
-async function selectModel(
+export async function selectModel(
   model: { provider: string; modelId: string },
   id: ConversationId | undefined,
   source: string,

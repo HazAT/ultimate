@@ -8,6 +8,7 @@ export {
   defineWebExtension,
   docRef,
   events,
+  holdReload,
   notify,
   provide,
   ROOT,
