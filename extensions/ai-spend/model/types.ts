@@ -67,3 +67,5 @@ export type SpendData = {
 }
 
 export type SnapshotArgs = { version: number; epoch: string } | null
+
+export type SnapshotAnswer = { readAt: number; delta: Snapshot | null }

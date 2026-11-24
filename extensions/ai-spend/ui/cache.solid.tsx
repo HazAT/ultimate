@@ -1,26 +1,31 @@
-import { ChevronRightIcon, ListFilterIcon } from '@lucide/solid'
+import { BotIcon, ChevronRightIcon, ListFilterIcon } from '@lucide/solid'
 import { For, Show, createMemo, createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { cn } from '@/sdk/solid'
-import { CACHE, OVERHEAD } from '../model/dimensions.ts'
+import {
+  api,
+  cn,
+  focusComposer,
+  insertIntoComposer,
+  showSurface,
+  switchConversation,
+  writerNow,
+  writingAs,
+} from '@/sdk/solid'
+import { StandingAction } from '../../subagents/refs.ts'
+import { KEEP_WARM, brief } from '../model/brief.ts'
+import type { BriefInput } from '../model/brief.ts'
+import { WHY } from '../model/cache.ts'
 import type { CacheReport } from '../model/cache.ts'
-import { count, percent, usd } from '../model/format.ts'
+import { CACHE, OVERHEAD } from '../model/dimensions.ts'
+import { count, percent, signed, usd } from '../model/format.ts'
 import { ShareBar } from './breakdown.solid.tsx'
-import { Cell, Estimate } from './parts.solid.tsx'
+import { Cell, Estimate, quiet } from './parts.solid.tsx'
 import { SortHead, sorted, useSort } from './sort.solid.tsx'
 import type { Columns } from './sort.solid.tsx'
-
-export const WHY: Record<string, string> = {
-  [CACHE.idle]: 'paused 5 min or more, the cache expired',
-  [CACHE.other]: 'first prompt, compaction or changed prefix',
-  [CACHE.miss]: 'implicit cache missed (Gemini, xAI, OpenAI)',
-}
 
 const GRID =
   'grid grid-cols-[minmax(0,1fr)_4.75rem_3rem] items-center gap-x-3 @xl:grid-cols-[minmax(0,1fr)_4.5rem_4.75rem_6.5rem]'
 
-const signed = (value: number) =>
-  Math.abs(value) < 0.00005 ? '$0' : `${value > 0 ? '+' : '−'}${usd(Math.abs(value))}`
 const toneOf = (value: number) => (value >= 0.00005 ? 'success' : 'muted')
 
 type CauseColumn = 'cause' | 'responses' | 'leaked'
@@ -70,6 +75,7 @@ export function CacheView(props: {
               <span class="block text-muted-foreground/70">
                 estimate: a ping every 4½ min reads the prompt from cache; none for pauses of 8 h+
               </span>
+              <span class="block text-muted-foreground/70">{KEEP_WARM}</span>
             </>
           }
           label={
@@ -258,6 +264,42 @@ function Cause(props: {
           </For>
         )}
       </Show>
+    </>
+  )
+}
+
+export function AskAgent(props: { input: () => BriefInput }) {
+  const [error, setError] = createSignal<string>()
+  const ask = () => {
+    const who = writerNow()
+    const text = brief(props.input())
+    void writingAs(who, () => api.action(StandingAction, { name: 'ultimate' }))
+      .then((id) =>
+        writingAs(who, () => {
+          insertIntoComposer(id, text)
+          setError(undefined)
+          showSurface('agent')
+          switchConversation(id)
+          requestAnimationFrame(focusComposer)
+        }),
+      )
+      .catch(() => setError('could not open @ultimate'))
+  }
+  return (
+    <>
+      <Show when={error()}>
+        <span class="font-mono text-[10.5px] text-error">{error()}</span>
+      </Show>
+      <Button
+        class={quiet}
+        onClick={ask}
+        size={null}
+        title="Put a brief of these cache numbers into @ultimate's message box, unsent"
+        variant={null}
+      >
+        <BotIcon class="size-3.5" />
+        Ask agent
+      </Button>
     </>
   )
 }

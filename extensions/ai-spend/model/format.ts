@@ -9,6 +9,9 @@ export function usd(value: number) {
   return `$${value.toFixed(4)}`
 }
 
+export const signed = (value: number) =>
+  Math.abs(value) < 0.00005 ? '$0' : `${value > 0 ? '+' : '−'}${usd(Math.abs(value))}`
+
 export const whole = (value: number) =>
   value >= 10 ? `$${Math.round(value).toLocaleString('en-US')}` : usd(value)
 

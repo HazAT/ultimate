@@ -231,25 +231,25 @@ it('import: every closed chapter is read on each open, replacing what the histor
   applied.length = 0
   const home = await mkdtemp(join(tmpdir(), 'spend-import-'))
   build(join(home, 'state.sqlite'))
-  await mkdir(join(home, 'chapters', 'zone-skills-and-chores'), { recursive: true })
+  await mkdir(join(home, 'chapters', 'second-chapter'), { recursive: true })
   await writeFile(
     join(home, 'chapters.json'),
     JSON.stringify({
-      active: 'zone-skills-and-chores',
-      chapters: [{ name: 'the-beginning' }, { name: 'zone-skills-and-chores' }],
+      active: 'second-chapter',
+      chapters: [{ name: 'the-beginning' }, { name: 'second-chapter' }],
     }),
   )
   // The first chapter's store is the home's own; a later one's is a directory of its own.
   expect(chapterDatabase(home, 'the-beginning')).toBe(join(home, 'state.sqlite'))
-  expect(chapterDatabase(home, 'zone-skills-and-chores')).toBe(
-    join(home, 'chapters', 'zone-skills-and-chores', 'state.sqlite'),
+  expect(chapterDatabase(home, 'second-chapter')).toBe(
+    join(home, 'chapters', 'second-chapter', 'state.sqlite'),
   )
-  expect(await chaptersToImport(home, 'zone-skills-and-chores')).toStrictEqual([
+  expect(await chaptersToImport(home, 'second-chapter')).toStrictEqual([
     { name: 'the-beginning', database: join(home, 'state.sqlite') },
   ])
   // No chapters file at all is no chapter to import.
   const bare = await mkdtemp(join(tmpdir(), 'spend-import-'))
-  expect(await chaptersToImport(bare, 'zone-skills-and-chores')).toStrictEqual([])
+  expect(await chaptersToImport(bare, 'second-chapter')).toStrictEqual([])
 
   // What the server writes into the history: the chapter's own conversations and rows, under its name.
   const imported = readChapter(join(home, 'state.sqlite'), documents)
@@ -271,12 +271,12 @@ it('import: every closed chapter is read on each open, replacing what the histor
     conversations: [
       { ...conversation(1), chapter: 'the-beginning' },
       { ...conversation(7), chapter: 'the-beginning' },
-      { ...conversation(1), chapter: 'zone-skills-and-chores' },
+      { ...conversation(1), chapter: 'second-chapter' },
     ],
     rows: [
       { ...imported.rows[0], chapter: 'the-beginning' },
       { ...imported.rows[0], conversation: 7, chapter: 'the-beginning' },
-      { ...imported.rows[0], chapter: 'zone-skills-and-chores' },
+      { ...imported.rows[0], chapter: 'second-chapter' },
     ],
   }
   const fresh = { conversations: [conversation(1), conversation(5, 1)], rows: imported.rows }
@@ -286,7 +286,7 @@ it('import: every closed chapter is read on each open, replacing what the histor
     'the store’s conversations replace their saved selves; a deleted one and another chapter’s stay',
   ).toStrictEqual([
     ['the-beginning', 7],
-    ['zone-skills-and-chores', 1],
+    ['second-chapter', 1],
     ['the-beginning', 1],
     ['the-beginning', 5],
   ])
@@ -294,7 +294,7 @@ it('import: every closed chapter is read on each open, replacing what the histor
     merged.rows.map((row) => [row.chapter, row.conversation, row.overhead === true]),
   ).toStrictEqual([
     ['the-beginning', 7, false],
-    ['zone-skills-and-chores', 1, false],
+    ['second-chapter', 1, false],
     ['the-beginning', 1, false],
     ['the-beginning', 1, false],
     ['the-beginning', 5, false],
@@ -311,7 +311,7 @@ it('import: every closed chapter is read on each open, replacing what the histor
   const history = replaceChapter(emptyHistory(), 'the-beginning', fresh)
 
   // Read back, they are an earlier chapter's: reserved ids, and `chapter#id` for their names.
-  const kept = earlier(history, 'zone-skills-and-chores', new Set([1, 5]))
+  const kept = earlier(history, 'second-chapter', new Set([1, 5]))
   expect(kept.conversations.map((item) => [item.id, item.ref, item.root, item.live])).toStrictEqual(
     [
       [-1, 'the-beginning#1', -1, false],
@@ -329,7 +329,7 @@ it('import: every closed chapter is read on each open, replacing what the histor
     conversations: kept.conversations,
     rows: (id) => kept.rows.filter((row) => row.conversation === id),
     prices: {},
-    chapter: 'zone-skills-and-chores',
+    chapter: 'second-chapter',
     origin: kept.origin,
     savedAt: 1,
   })

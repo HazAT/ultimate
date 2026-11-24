@@ -39,11 +39,12 @@ The server reads every conversation once when the harness opens, then follows th
 change of a conversation reads its new entries about 2 s later (more changes in that time wait for the same read).
 Titles, labels, busy and concluded are read when the surface asks.
 
-`snapshot({ version, epoch })` returns `null` while nothing changed since the version the surface holds; else only
-the conversations that changed after it (each conversation carries the version of its latest change), each with only
+`snapshot({ version, epoch })` answers `{ readAt, delta }`. `delta` is `null` while nothing changed since the version
+the surface holds; else only the conversations that changed after it (each conversation carries the version of its latest change), each with only
 the rows the surface lacks: `{ from, rows }`, keep the first `from` rows held and replace the rest. Responses only
 append, and each is stamped with the version it first went out in, so `from` is how many of them the surface's
-version holds; the overhead rows after them are recomputed and always come again.
+version holds; the overhead rows after them are recomputed and always come again. The surface polls it every 30 s
+while shown; `readAt` makes each answer new, so an unchanged one still reaches it and "read … ago" stays true.
 
 Versions are wall-clock, so they only mean something within one server instance: `epoch` is that instance, and a
 number from another one — the surface's version after a reload, or a reload's after a restart — says nothing about
@@ -103,7 +104,16 @@ The **idle gaps** bucket idle rewrites by the time since the previous response. 
   paid, on the models whose writes cost more than input; saved: the leak of idle rewrites under an hour, which it reads
   instead of writing, so they pay no write premium.
 
-Neither counts how a ping or a longer cache changes what the conversation does next.
+Neither counts how a ping or a longer cache changes what the conversation does next. Nor is pinging while away
+something Ultimate does: keep-warm pings only @ultimate, 55 minutes after its last cache request, on `claude-code` or
+on `anthropic` with long retention, and the card says so.
+
+**Ask agent**, on the Cache header, puts a brief of what the cache view shows into @ultimate's message box, unsent and
+at the cursor, so a draft stays: the range and filters, the leak and both what-ifs with their assumptions, the causes
+with their pauses, the five conversations and the five models that leak the most (`cacheBy`), what keep-warm really
+does, and where each setting lives (agent models and families, Pi's `compaction` with `modelOverrides`, keep-warm,
+`PI_CACHE_RETENTION`). It names no one's settings, only where they are, and asks the agent to propose changes on a
+question card and change nothing without a yes. `model/brief.ts` builds it.
 
 **Model** labels a router's model with the model that answered it (`responseModel`, kept as `served`) when all its
 responses name one: `proxy/shopify/dev → claude-opus-5-5`. Rows saved before this have no `served`.

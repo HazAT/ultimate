@@ -32,7 +32,7 @@ import {
 import type { Bucket, Budget, View } from '../model/view.ts'
 import { Breakdown, columnsOf, orderGroups } from './breakdown.solid.tsx'
 import type { BreakdownColumn, RowHandlers } from './breakdown.solid.tsx'
-import { CacheView } from './cache.solid.tsx'
+import { AskAgent, CacheView } from './cache.solid.tsx'
 import { SpendChart, TOP } from './chart.solid.tsx'
 import { BudgetButton } from './controls/budget.solid.tsx'
 import { DimensionPicker } from './controls/dimension.solid.tsx'
@@ -472,6 +472,17 @@ function Spend(props: { data: SpendData }) {
             >
               <Section
                 meta="what a warm cache would have saved, and what keeping it warm would cost"
+                right={
+                  <AskAgent
+                    input={() => ({
+                      data: props.data,
+                      filter: filter(),
+                      range: rangeLabel(win(), minute(), props.data.since),
+                      filters: activeFilters(view().filters),
+                      total: totals().usd,
+                    })}
+                  />
+                }
                 title="Cache"
               >
                 <CacheView

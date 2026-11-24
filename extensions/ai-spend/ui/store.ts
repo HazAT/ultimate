@@ -9,9 +9,9 @@ import {
   usePageVisible,
 } from '@/sdk/solid'
 import { merge } from '../model/data.ts'
-import type { Snapshot, SnapshotArgs, SpendData } from '../model/types.ts'
+import type { SnapshotAnswer, SnapshotArgs, SpendData } from '../model/types.ts'
 
-export const SnapshotAction = actionRef<SnapshotArgs, Snapshot | null>('ai-spend', 'snapshot')
+export const SnapshotAction = actionRef<SnapshotArgs, SnapshotAnswer>('ai-spend', 'snapshot')
 
 const EVERY_MS = 30_000
 
@@ -53,14 +53,13 @@ export function useSpend() {
   )
   const read = createMemo(() => reads()[0])
   const answer = createMemo(() => read().data())
-  const answered = createMemo(() => !read().loading() && read().error() === undefined)
-  createEffect(answer, (delta) => {
-    if (delta === undefined) return
+  createEffect(answer, (answered) => {
+    if (answered === undefined) return
     const { data } = held.get()
-    held.set({ data: delta ? merge(data, delta) : data, readAt: Date.now() })
-  })
-  createEffect(answered, (done) => {
-    if (done && held.get().data) held.set({ ...held.get(), readAt: Date.now() })
+    held.set({
+      data: answered.delta ? merge(data, answered.delta) : data,
+      readAt: Date.now(),
+    })
   })
   return {
     data: () => state().data,

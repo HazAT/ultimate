@@ -27,7 +27,14 @@ import type { Origin } from './history.ts'
 import { chaptersToImport, readChapter } from './import.ts'
 import { advance, createState, overheadRows, usageTotal } from './model/rows.ts'
 import type { RowState, UsageLike } from './model/rows.ts'
-import type { Conversation, Price, Row, Snapshot, SnapshotArgs } from './model/types.ts'
+import type {
+  Conversation,
+  Price,
+  Row,
+  Snapshot,
+  SnapshotAnswer,
+  SnapshotArgs,
+} from './model/types.ts'
 
 export const COALESCE_MS = 2000
 export const SAVE_MS = 60_000
@@ -58,13 +65,16 @@ type Live = {
 
 const snapshots = new WeakMap<object, (asked: SnapshotArgs) => Promise<Snapshot | null>>()
 export const actions = {
-  async snapshot(args: unknown, { host }: { host: object }): Promise<Snapshot | null> {
+  async snapshot(args: unknown, { host }: { host: object }): Promise<SnapshotAnswer> {
     const held = args as { version?: unknown; epoch?: unknown } | null
     if (held !== null && (typeof held?.version !== 'number' || typeof held?.epoch !== 'string'))
       throw new Error('the version held is { version: number, epoch: string }')
     const read = snapshots.get(host)
     if (!read) throw new Error('Spend is not open yet')
-    return read(held ? { version: held.version as number, epoch: held.epoch as string } : null)
+    const delta = await read(
+      held ? { version: held.version as number, epoch: held.epoch as string } : null,
+    )
+    return { readAt: Date.now(), delta }
   },
 }
 export const pollActions = ['snapshot']

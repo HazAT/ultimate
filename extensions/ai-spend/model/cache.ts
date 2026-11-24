@@ -1,6 +1,6 @@
 import { HOUR_MS } from './calendar.ts'
-import { CACHE, cacheClass, prompt } from './dimensions.ts'
-import type { Filter } from './dimensions.ts'
+import { CACHE, cacheClass, keyOf, prompt } from './dimensions.ts'
+import type { Dimension, Filter } from './dimensions.ts'
 import { amount, itemsIn } from './filter.ts'
 import { leak, rate } from './pricing.ts'
 import type { SpendData } from './types.ts'
@@ -12,6 +12,11 @@ export const GAP_BANDS = [
   { below: 480, key: '1–8 h' },
   { below: Infinity, key: '8 h+' },
 ] as const
+export const WHY: Record<string, string> = {
+  [CACHE.idle]: 'paused 5 min or more, the cache expired',
+  [CACHE.other]: 'first prompt, compaction or changed prefix',
+  [CACHE.miss]: 'implicit cache missed (Gemini, xAI, OpenAI)',
+}
 export const PING_MS = 270_000
 export const PING_STOP_MS = 8 * 3_600_000
 
@@ -70,4 +75,58 @@ export function cache(data: SpendData, filter: Filter): CacheReport {
     pinging,
     hourCache,
   }
+}
+
+export type CacheLine = {
+  key: string
+  responses: number
+  idle: number
+  leakUsd: number
+  underHourUsd: number
+  model: string
+}
+
+export function cacheBy(
+  data: SpendData,
+  filter: Filter,
+  dimension: Exclude<Dimension, 'kind' | 'tool'>,
+  top = 5,
+): CacheLine[] {
+  const lines = new Map<string, CacheLine & { models: Map<string, number> }>()
+  for (const item of itemsIn(data, filter)) {
+    const { row } = item
+    if (row.overhead) continue
+    const spent = amount(item, filter)
+    const lost = leak(row, data.prices) * (row.cost.total > 0 ? spent / row.cost.total : 1)
+    const key = keyOf(row, item.conversation, dimension)
+    let line = lines.get(key)
+    if (!line)
+      lines.set(
+        key,
+        (line = {
+          key,
+          responses: 0,
+          idle: 0,
+          leakUsd: 0,
+          underHourUsd: 0,
+          model: '',
+          models: new Map(),
+        }),
+      )
+    const idle = cacheClass(row) === CACHE.idle
+    line.responses += 1
+    line.leakUsd += lost
+    if (idle) line.idle += 1
+    if (idle && row.gapMs !== undefined && row.gapMs < HOUR_MS) line.underHourUsd += lost
+    const model = `${row.provider}/${row.model}`
+    line.models.set(model, (line.models.get(model) ?? 0) + lost)
+  }
+  return [...lines.values()]
+    .filter((line) => line.leakUsd > 0)
+    .toSorted((a, b) => b.leakUsd - a.leakUsd)
+    .slice(0, top)
+    .map(({ models, ...line }) => ({
+      ...line,
+      model: [...models].toSorted((a, b) => b[1] - a[1])[0][0],
+    }))
 }
