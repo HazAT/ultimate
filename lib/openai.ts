@@ -19,6 +19,14 @@ export function openaiProviderKeyUsable(
   return [base, ...models.filter(Boolean)].every((url) => URL.parse(url)?.host === 'api.openai.com')
 }
 
+export const providerKeyStandsIn = (
+  runtime: Parameters<typeof openaiProviderKeyUsable>[0],
+  provider: string,
+) =>
+  provider === 'openai'
+    ? openaiProviderKeyUsable(runtime)
+    : runtime.getProviderAuthStatus(provider).configured && !runtime.isUsingOAuth(provider)
+
 export async function openaiSecretOrNonOAuthKey(
   host: Pick<ExtensionHost, 'userHome' | 'modelRuntime'>,
   signal?: AbortSignal,
