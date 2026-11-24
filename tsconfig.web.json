@@ -107,6 +107,7 @@
     "extensions/voice-live/recorder.ts",
     "extensions/voice-live/speech.ts",
     "extensions/voice-live/trace.ts",
+    "extensions/voice-live/voices.ts",
     "extensions/system/feed.ts",
     "extensions/system/layout.ts",
     "extensions/wire/json.ts",

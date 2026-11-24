@@ -34,7 +34,11 @@ collect mode (optional), each with what to do when it is missing.
    concludes it and forks @ultimate afresh; End concludes it and deletes the session's recordings.
 5. **Replies** stream from the fork's live partial. Each finished sentence is spoken by the browser's
    `speechSynthesis` at the chosen speed, and the sentence being read is highlighted: word timing from the browser's
-   voices is too unreliable to follow word by word. Folded, the talk bar shows the whole paragraph being read with that
+   voices is too unreliable to follow word by word. Voice settings → Voice switches to OpenAI (UI state
+   `ext.voice-live.voice`, the voice in `ext.voice-live.openai-voice`, cedar by default; it needs `OPENAI_API_KEY`).
+   Then `speak` reads each sentence on the server through one Realtime connection to `gpt-realtime-2.1-mini`, which
+   the first turn opens early, and returns WAV the page plays at the chosen speed. While one sentence plays the next
+   is already being read; a cut-in pauses the audio and aborts every request in flight, which cancels its response. Folded, the talk bar shows the whole paragraph being read with that
    sentence highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips by sentence or paragraph; any
    sentence plays on click and each reply has replay. Thinking shows open while the model thinks, with a token count
    in the trace, and folds once the reply has played.

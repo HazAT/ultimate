@@ -44,11 +44,13 @@ import {
   StopAction,
   DiscardAction,
   IntentAction,
+  SpeakAction,
   TurnAction,
   UiAnswerAction,
   UiClaimAction,
 } from './refs.ts'
 import type {
+  OpenAiVoice,
   VoiceDelivery,
   VoiceFork,
   VoiceHandoff,
@@ -58,6 +60,8 @@ import type {
   VoiceUi,
 } from './refs.ts'
 import { voicePrompt } from './prompt.ts'
+import { createRealtimeVoice } from './openai-voice.ts'
+import { VOICES } from './voices.ts'
 
 const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
@@ -74,6 +78,7 @@ const VOICE_TOOLS = [
   'voice_handoff',
 ]
 const UI_TIMEOUT_MS = 15_000
+const SPEAK_TIMEOUT_MS = 20_000
 
 export const userActions = [
   'open',
@@ -86,6 +91,7 @@ export const userActions = [
   'ui-answer',
   'discard',
   'intent',
+  'speak',
 ]
 
 export const Session = defineDoc<VoiceSession>({
@@ -311,6 +317,13 @@ async function sinceFork(tx: Tx, main: ConversationId, after: EntryId) {
     cursor = page.next
   } while (cursor && lines.length < 40)
   return lines.slice(-12)
+}
+
+const voices = new WeakMap<ExtensionHost, ReturnType<typeof createRealtimeVoice>>()
+const realtimeVoice = (host: ExtensionHost) => {
+  const known = voices.get(host) ?? createRealtimeVoice()
+  voices.set(host, known)
+  return known
 }
 
 const unwrap = <T extends object>(args: unknown) =>
@@ -540,6 +553,23 @@ export const actions = {
       delete (await tx.doc(Fork, id)).draft
     }, context)
     return {}
+  }),
+  speak: implementAction(SpeakAction, async (args, { host, signal }) => {
+    const { voice, text } = unwrap<{ voice: unknown; text: unknown }>(args)
+    if (!VOICES.includes(voice as OpenAiVoice)) throw new Error(`Unknown voice: ${String(voice)}`)
+    if (text !== undefined && (typeof text !== 'string' || !text.trim() || text.length > 2000))
+      throw new Error('Expected text of at most 2000 characters')
+    const key = await openaiSecretOrNonOAuthKey(host, signal)
+    if (!key) throw new Error('OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets')
+    const realtime = realtimeVoice(host)
+    if (text === undefined) return await realtime.connect(key).then(() => ({}))
+    const wav = await realtime.speak(
+      key,
+      text,
+      voice as OpenAiVoice,
+      AbortSignal.any([signal, AbortSignal.timeout(SPEAK_TIMEOUT_MS)]),
+    )
+    return { audio: wav.toString('base64') }
   }),
   intent: implementAction(IntentAction, async (args, { host, signal }) => {
     const { audio } = unwrap<{ audio: unknown }>(args)

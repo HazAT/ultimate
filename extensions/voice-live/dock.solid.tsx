@@ -1,8 +1,9 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
-import { api, errorMessage, useConversation, useUiState } from '@/sdk/solid'
+import { api, errorMessage, ROOT, useConversation, useUiState } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
+import { inProcess, overshadowed } from '../../lib/errors.ts'
 import { createCues } from './cues.ts'
 import { base64, createMic, unsupported } from './recorder.ts'
 import type { Recorded } from './recorder.ts'
@@ -11,12 +12,13 @@ import {
   EndAction,
   IntentAction,
   RecordAction,
+  SpeakAction,
   StatusAction,
   StopAction,
   TurnAction,
 } from './refs.ts'
-import type { VoiceClip, VoiceDelivery, VoiceFork, VoiceTurn } from './refs.ts'
-import { createPlayer, splitReply, splitSentences } from './speech.ts'
+import type { OpenAiVoice, VoiceClip, VoiceDelivery, VoiceFork, VoiceTurn } from './refs.ts'
+import { createPlayer, fetchedVoice, splitReply, splitSentences, systemVoice } from './speech.ts'
 import type { Player } from './speech.ts'
 import { createTrace } from './trace.ts'
 import type { Trace } from './trace.ts'
@@ -57,7 +59,31 @@ export const dock = createRoot(() => {
   const [pending, setPending] = createSignal<string | undefined>()
   const cues = createCues(cuesOn)
   const mic = createMic(frame)
-  const player: Player = createPlayer({ rate, enabled: speak, listening: mic.recording, frame })
+  const [voice, setVoice] = useUiState<'system' | 'openai'>('ext.voice-live.voice', 'system')
+  const [openaiVoice, setOpenaiVoice] = useUiState('ext.voice-live.openai-voice', 'cedar')
+  const system = systemVoice()
+  const openai = fetchedVoice({
+    load: async (text, signal) => {
+      const { audio } = await api.action(
+        SpeakAction,
+        { voice: openaiVoice() as OpenAiVoice, text },
+        { conversationId: ROOT, signal },
+      )
+      return `data:audio/wav;base64,${audio}`
+    },
+    audio: () => new Audio(),
+    failed: (failure) => {
+      player.stop()
+      setError(`OpenAI voice: ${errorMessage(failure)}`)
+    },
+  })
+  const player: Player = createPlayer({
+    rate,
+    enabled: speak,
+    listening: mic.recording,
+    frame,
+    engine: () => (voice() === 'openai' ? openai : system),
+  })
   let held: { busy: boolean } | undefined
   let stopPulse: (() => void) | undefined
   return {
@@ -67,6 +93,10 @@ export const dock = createRoot(() => {
     setCuesOn,
     rate,
     setRate,
+    voice,
+    setVoice,
+    openaiVoice,
+    setOpenaiVoice,
     holdKeys,
     setHoldKeys,
     collect,
@@ -333,6 +363,13 @@ async function sendTurn(input: {
   spokenSend?: boolean
   fromComposer?: boolean
 }) {
+  if (dock.voice() === 'openai' && dock.speak())
+    inProcess(
+      'opening the voice connection early only saves this page time',
+      api
+        .action(SpeakAction, { voice: dock.openaiVoice() as OpenAiVoice }, { conversationId: ROOT })
+        .catch(overshadowed),
+    )
   const cut = input.interrupted ? markCut() : undefined
   const sentBySaying = input.spokenSend
     ? '(The user ended this message by saying a send command such as "send it": that sent it to you, it is not a request to hand off.)'

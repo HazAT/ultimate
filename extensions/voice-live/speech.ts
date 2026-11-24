@@ -1,4 +1,5 @@
 import { cell } from '../../lib/cell.ts'
+import { inProcess, overshadowed } from '../../lib/errors.ts'
 
 export const CHARS_PER_SECOND = 14.5
 
@@ -67,12 +68,119 @@ export function splitSentences(text: string, final: boolean) {
   return { sentences, pending: rest }
 }
 
+export type SpeechEvents = {
+  start: (seconds?: number) => void
+  boundary: (charIndex: number) => void
+  end: () => void
+}
+
+export type SpeechEngine = {
+  say: (text: string, rate: number, events: SpeechEvents) => void
+  prefetch?: (text: string) => void
+  halt: () => void
+  reset: () => void
+}
+
+export const systemVoice = (): SpeechEngine => ({
+  say(text, rate, events) {
+    speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = rate
+    utterance.addEventListener('start', () => events.start())
+    utterance.addEventListener('boundary', (event) => {
+      if (!event.name || event.name === 'word') events.boundary(event.charIndex)
+    })
+    utterance.addEventListener('end', events.end)
+    utterance.addEventListener('error', events.end)
+    speechSynthesis.speak(utterance)
+  },
+  halt: () => speechSynthesis.cancel(),
+  reset: () => speechSynthesis.cancel(),
+})
+
+export type AudioLike = {
+  src: string
+  playbackRate: number
+  readonly duration: number
+  play: () => Promise<void>
+  pause: () => void
+  addEventListener: (type: 'playing' | 'ended' | 'error', listener: () => void) => void
+}
+
+export function fetchedVoice(options: {
+  load: (text: string, signal: AbortSignal) => Promise<string>
+  audio: () => AudioLike
+  failed: (error: unknown) => void
+}): SpeechEngine {
+  const fetched = new Map<string, { controller: AbortController; src: Promise<string> }>()
+  let playing: AudioLike | undefined
+  let turn = 0
+  const request = (text: string) => {
+    const known = fetched.get(text)
+    if (known) return known.src
+    const controller = new AbortController()
+    const src = options.load(text, controller.signal)
+    fetched.set(text, { controller, src })
+    return src
+  }
+  const drop = (text: string) => {
+    const known = fetched.get(text)
+    if (!known) return
+    fetched.delete(text)
+    known.controller.abort()
+  }
+  const halt = () => {
+    turn++
+    playing?.pause()
+    playing = undefined
+  }
+  async function play(text: string, rate: number, events: SpeechEvents, mine: number) {
+    const pending = request(text)
+    try {
+      const src = await pending
+      if (fetched.get(text)?.src === pending) fetched.delete(text)
+      if (mine !== turn) return
+      const audio = (playing = options.audio())
+      audio.src = src
+      audio.playbackRate = rate
+      audio.addEventListener('playing', () => {
+        if (mine === turn) events.start(audio.duration / rate)
+      })
+      audio.addEventListener('ended', () => mine === turn && events.end())
+      audio.addEventListener('error', () => mine === turn && events.end())
+      await audio.play()
+    } catch (error) {
+      if (fetched.get(text)?.src === pending) fetched.delete(text)
+      if (mine !== turn) return
+      options.failed(error)
+      events.end()
+    }
+  }
+  return {
+    say(text, rate, events) {
+      halt()
+      for (const other of fetched.keys()) if (other !== text) drop(other)
+      inProcess('a sentence plays only on this open page', play(text, rate, events, turn))
+    },
+    prefetch: (text) => {
+      inProcess('a prefetch serves only this open page', request(text).catch(overshadowed))
+    },
+    halt,
+    reset() {
+      halt()
+      for (const text of fetched.keys()) drop(text)
+    },
+  }
+}
+
 export function createPlayer(options: {
   rate: () => number
   enabled: () => boolean
   listening: () => boolean
   frame: (fn: () => void) => () => void
+  engine: () => SpeechEngine
 }) {
+  let engine = options.engine()
   let items: Sentence[] = []
   const state = cell<PlayerState>({
     index: -1,
@@ -98,36 +206,38 @@ export function createPlayer(options: {
     const item = items[index]
     if (!item) return
     if (options.listening()) {
-      speechSynthesis.cancel()
+      engine.halt()
       publish({ index, charIndex: -1, playing: false, paused: true })
       return
     }
     const mine = ++token
-    speechSynthesis.cancel()
+    const picked = options.engine()
+    if (picked !== engine) engine.reset()
+    engine = picked
+    engine.halt()
     stopWordClock?.()
-    const utterance = new SpeechSynthesisUtterance(item.text)
-    utterance.rate = options.rate()
     let boundaries = false
     let audible: number | undefined
-    const rate = utterance.rate
+    const rate = options.rate()
     const startedAt = Date.now()
     const show = (at: number) => {
       const charIndex = item.starts.findLast((start) => start <= at) ?? 0
       if (charIndex > state.get().charIndex) publish({ charIndex })
     }
-    utterance.addEventListener('start', () => {
+    const start = (seconds?: number) => {
       if (mine !== token) return
       audible = Date.now()
+      const speed =
+        seconds && Number.isFinite(seconds) ? item.text.length / seconds : charsPerSecond(rate)
       stopWordClock = options.frame(() => {
         if (boundaries || mine !== token || audible === undefined) return
-        show(((Date.now() - audible) / 1000) * charsPerSecond(rate))
+        show(((Date.now() - audible) / 1000) * speed)
       })
-    })
-    utterance.addEventListener('boundary', (event) => {
-      if (event.name && event.name !== 'word') return
+    }
+    const boundary = (charIndex: number) => {
       boundaries = true
-      if (mine === token) show(event.charIndex)
-    })
+      if (mine === token) show(charIndex)
+    }
     const finished = () => {
       if (mine !== token) return
       stopWordClock?.()
@@ -135,23 +245,31 @@ export function createPlayer(options: {
       if (items[index + 1]) play(index + 1)
       else publish({ playing: false, charIndex: -1 })
     }
-    utterance.addEventListener('end', finished)
-    utterance.addEventListener('error', finished)
     publish({ index, charIndex: -1, playing: true, paused: false, startedAt })
-    speechSynthesis.speak(utterance)
+    engine.say(item.text, rate, { start, boundary, end: finished })
+    prefetchNext()
+  }
+
+  const prefetchNext = () => {
+    const next = items[state.get().index + 1]
+    if (next && state.get().playing) engine.prefetch?.(next.text)
   }
 
   const halt = () => {
     token++
-    speechSynthesis.cancel()
+    engine.halt()
     stopWordClock?.()
+  }
+  const drop = () => {
+    halt()
+    engine.reset()
   }
 
   return {
     state,
     items: () => items as readonly Sentence[],
     load(key: string, sentences: readonly Sentence[], streaming: boolean) {
-      halt()
+      drop()
       items = [...sentences]
       publish({ key, index: -1, charIndex: -1, playing: false, paused: false, streaming })
     },
@@ -160,6 +278,7 @@ export function createPlayer(options: {
       items.push(sentence)
       const now = state.get()
       if (!now.playing && !now.paused) play(items.length - 1)
+      else prefetchNext()
     },
     play,
     streaming(on: boolean) {
@@ -181,7 +300,7 @@ export function createPlayer(options: {
       else if (items.length) play(now.paused ? Math.max(0, now.index) : 0)
     },
     stop() {
-      halt()
+      drop()
       publish({ playing: false, paused: false, streaming: false, charIndex: -1 })
     },
     sentence(step: number) {
