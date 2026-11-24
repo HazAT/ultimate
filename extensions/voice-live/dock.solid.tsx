@@ -373,7 +373,8 @@ async function collectClip(recorded: Recorded) {
     if (intent.send && intent.clips) {
       const chosen = new Set(intent.clips)
       const clips = draftOf().filter((clip) => chosen.has(clip.audio))
-      if (clips.length === chosen.size) await sendDraft(intent.send, '', true, clips)
+      if (clips.length === chosen.size)
+        await sendDraft(intent.send, '', intent.answered ? 'answer' : true, clips)
       else dock.setStatus('The collected clips changed · press Enter to send')
     } else if (playerState().paused) dock.player.resume()
   } catch (failure) {
@@ -384,7 +385,7 @@ async function collectClip(recorded: Recorded) {
 export async function sendDraft(
   delivery: VoiceDelivery = 'steer',
   typed = '',
-  spoken = false,
+  spoken: boolean | 'answer' = false,
   clips: readonly VoiceClip[] = draftOf(),
   fromComposer = false,
   images?: readonly Image[],
@@ -439,7 +440,7 @@ async function sendTurn(input: {
   clips?: VoiceClip[]
   delivery?: VoiceDelivery
   interrupted: boolean
-  spokenSend?: boolean
+  spokenSend?: boolean | 'answer'
   fromComposer?: boolean
 }) {
   const { signal } = live
@@ -455,9 +456,10 @@ async function sendTurn(input: {
         .catch(overshadowed),
     )
   const cut = input.interrupted ? markCut() : undefined
-  const sentBySaying = input.spokenSend
-    ? '(The user ended this message by saying a send command such as "send it": that sent it to you, it is not a request to hand off.)'
-    : undefined
+  const sentBySaying =
+    input.spokenSend === true
+      ? '(The user ended this message by saying a send command such as "send it": that sent it to you, it is not a request to hand off.)'
+      : undefined
   const hint = [screen()?.text, cut, sentBySaying].filter(Boolean).join('\n\n') || undefined
   if (signal.aborted) return cancelled()
   const cold = composerDraft(COLD_DRAFT)
@@ -513,6 +515,7 @@ async function sendTurn(input: {
           ? { audio: clips[0]?.audio ?? 'pending', seconds, envelope }
           : {}),
         ...(clips.length > 1 ? { clips: clips.map((clip) => clip.audio) } : {}),
+        ...(input.spokenSend === 'answer' ? { answered: true as const } : {}),
         ...(hint ? { hint } : {}),
       },
       images,
@@ -564,6 +567,7 @@ async function sendTurn(input: {
           ...(kept ? { audio: kept } : {}),
           ...(clips.length ? { clips: clips.map((clip) => clip.audio) } : {}),
           ...(input.delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
+          ...(input.spokenSend === 'answer' ? { answered: true as const } : {}),
           ...(input.recorded || clips.length ? { seconds, envelope } : {}),
           ...(hint ? { hint } : {}),
           ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),

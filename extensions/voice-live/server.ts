@@ -301,6 +301,41 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
   }, context)
 }
 
+const ANSWER_QUESTION = {
+  type: 'choice' as const,
+  instructions:
+    "The assistant's last reply may end with a question for the user, who answers by voice in one or more recordings. Read the latest recording after what was collected before it. Where does the user's answer stand?",
+  criteria: {
+    none: "The assistant's last reply asked the user no question, or the user talks about something else.",
+    unfinished:
+      'An answer is under way but not done: it breaks off mid-sentence, trails off, says more is coming, or keeps weighing options aloud.',
+    complete:
+      'A clean, finished answer to the question the assistant just asked: the user has said what they want and the thought is settled.',
+  },
+}
+const ANSWER_THRESHOLD = 0.85
+
+async function openQuestion(host: ExtensionHost, id: ConversationId) {
+  const conversation = await host.harness().conversation(id, context)
+  const page = await conversation!.entries({}, 50, undefined, context)
+  for (const entry of page.items) {
+    if (entry.input) return undefined
+    if (entry.kind !== 'pi.assistant') continue
+    const text = (entry.model ?? [])
+      .flatMap((message) =>
+        message.role === 'assistant'
+          ? message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
+          : [],
+      )
+      .join(' ')
+      .trim()
+    if (!text) continue
+    const ending = text.split(/\n\s*\n/).at(-1)!
+    return ending.includes('?') ? ending : undefined
+  }
+  return undefined
+}
+
 async function sinceFork(tx: Tx, main: ConversationId, after: EntryId) {
   const lines: string[] = []
   let cursor: Cursor | undefined
@@ -462,6 +497,7 @@ export const actions = {
       audio,
       clips,
       delivery,
+      answered,
       seconds,
       envelope,
       hint,
@@ -475,6 +511,7 @@ export const actions = {
       audio: unknown
       clips: unknown
       delivery: unknown
+      answered: unknown
       seconds: unknown
       envelope: unknown
       hint: unknown
@@ -518,6 +555,7 @@ export const actions = {
       ...(collected ? { audio: collected[0] } : typeof audio === 'string' ? { audio } : {}),
       ...(collected && collected.length > 1 ? { clips: collected } : {}),
       ...(delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
+      ...(answered === true ? { answered: true as const } : {}),
       ...(typeof seconds === 'number' && Number.isFinite(seconds) ? { seconds } : {}),
       ...(levels?.length ? { envelope: levels } : {}),
       ...(typeof hint === 'string' && hint.trim() ? { hint: hint.trim() } : {}),
@@ -622,9 +660,14 @@ export const actions = {
       .filter((clip) => clip.audio !== audio)
       .map((clip) => fork?.transcripts?.[clip.audio] ?? '')
       .join(' ')
+    const question = await openQuestion(host, id)
     const { answers } = await classify.ask(
       {
-        state: { collectedSoFar: before, latestRecording: said },
+        state: {
+          ...(question ? { assistantLastReply: question } : {}),
+          collectedSoFar: before,
+          latestRecording: said,
+        },
         questions: {
           send: {
             type: 'choice',
@@ -643,12 +686,25 @@ export const actions = {
             instructions:
               'Is the latest recording nothing but a bare send command ("send it", "go", "follow up"), with no other content? A request to brainstorm or think something through is content, not a bare command.',
           },
+          ...(question ? { answer: ANSWER_QUESTION } : {}),
         },
       },
       signal,
     )
     const send = answers.send
-    if (send?.type !== 'choice' || send.choice === 'hold' || send.confidence < 0.6) return {}
+    const commanded = send?.type === 'choice' && send.choice !== 'hold' && send.confidence >= 0.6
+    const answer = answers.answer
+    const answered =
+      !commanded &&
+      answer?.type === 'choice' &&
+      (answer.probabilities.complete ?? 0) >= ANSWER_THRESHOLD
+    if (answered)
+      return {
+        send: 'steer' as const,
+        clips: (fork.draft ?? []).map((clip) => clip.audio),
+        answered: true as const,
+      }
+    if (!commanded) return {}
     const only = answers.only?.type === 'noul' && answers.only.noul > 0.5
     if (only)
       await host.harness().commit(async (tx) => {
