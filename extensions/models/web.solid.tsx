@@ -14,12 +14,12 @@ import { ModelPicker } from './picker.solid.tsx'
 import { RefreshCatalogAction } from './refs.ts'
 import { nextThinking, openLogin, openPicker, thinkingDialog } from './state.ts'
 import { Switched } from './switched.solid.tsx'
-import { ModelButton, ThinkingButton } from './toolbar.solid.tsx'
+import { ModelControl, VariantSwitch } from './toolbar.solid.tsx'
 
 export default defineWebExtension({
   entries: { 'pi.assistant': Switched, 'models.fallback': FellBack },
   slots: {
-    'composer.toolbar': [ModelButton, ThinkingButton],
+    'composer.toolbar': [ModelControl, VariantSwitch],
     overlay: [ModelPicker, LoginDialog],
   },
   commands: [
