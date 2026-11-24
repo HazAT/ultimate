@@ -421,6 +421,8 @@ export const actions = {
     })
     const clip = unwrap<{ seconds: unknown; envelope: unknown }>(collect)
     await host.harness().commit(async (tx) => {
+      if ((await tx.doc(Fork, session)).ended)
+        throw new Error('This voice session ended; record again')
       await tx.createTask(
         transcribe(host),
         { session, audio: id },
@@ -628,6 +630,7 @@ export const actions = {
     if (only)
       await host.harness().commit(async (tx) => {
         const draft = await tx.doc(Fork, id)
+        if (draft.ended) return
         draft.draft = (draft.draft ?? []).filter((clip) => clip.audio !== audio)
       }, context)
     const clips = (fork?.draft ?? [])

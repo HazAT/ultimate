@@ -27,7 +27,10 @@ export function installShortcuts() {
     const typing = editable(event.target)
     const composer =
       event.target instanceof HTMLTextAreaElement &&
-      !!event.target.closest('[data-composer-target]:not([data-composer-target="draft"])')
+      !!event.target.closest('[data-composer-target]')
+    const draftOnly =
+      event.target instanceof HTMLElement &&
+      !!event.target.closest('[data-composer-target="draft"]')
     const emptyPalette =
       store.getState().ui.paletteOpen &&
       event.target instanceof HTMLInputElement &&
@@ -37,6 +40,7 @@ export function installShortcuts() {
       const continuingCapturedSequence = sequence.length > 1
       if (continuingCapturedSequence) return !typing || emptyPalette
       if (/\b(mod|alt|ctrl)\+/.test(keys[0] ?? '')) return true
+      if (draftOnly) return false
       if (command.whileTyping) return !dialogOpen && (!typing || composer)
       return !typing
     }

@@ -53,6 +53,7 @@ import {
   activity,
   COLD_DRAFT,
   composeIn,
+  composerOf,
   discardDraft,
   dock,
   playerState,
@@ -638,12 +639,16 @@ function SetupList() {
 }
 
 function Bottom(props: { fork: ConversationId | undefined }) {
+  const hot = () => {
+    const composer = composerOf(props.fork)
+    return composer === COLD_DRAFT ? undefined : composer
+  }
   const target = (): ComposerTarget => ({
     placeholder: `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`,
     images: true,
     ready: () => draftOf().length > 0,
     send: (text, images) => sendTyped(text, images),
-    ...(props.fork === undefined ? { draft: COLD_DRAFT } : {}),
+    ...(hot() === undefined ? { draft: COLD_DRAFT } : {}),
   })
   return (
     <footer class="flex shrink-0 flex-col gap-1.5 pt-1" data-voice-bottom>
@@ -653,7 +658,7 @@ function Bottom(props: { fork: ConversationId | undefined }) {
         <TalkBar />
       </div>
       <Show
-        when={props.fork}
+        when={hot()}
         fallback={
           <ComposerRedirect value={target}>
             <Composer dock />
