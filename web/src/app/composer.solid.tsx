@@ -460,7 +460,11 @@ function ComposerEditor(props: { dock?: boolean }) {
   })
 
   const label = () =>
-    detached() ? 'voice' : id() === undefined ? 'the conversation' : `conversation #${id()}`
+    detached()
+      ? 'the new conversation'
+      : id() === undefined
+        ? 'the conversation'
+        : `conversation #${id()}`
   const status = () => (
     <Show when={!detached()}>
       <Slot fallback={failed} name="composer.status" />

@@ -377,11 +377,11 @@ it('a composer with its own draft key sends there, keeps the conversation draft 
   ))
   await settle()
   flush()
-  expect(container.querySelector('[aria-label="Stop the run in voice"]')).toBeNull()
+  expect(container.querySelector('[aria-label^="Stop the run"]')).toBeNull()
   expect(container.querySelector('[data-composer-target="draft"]')).not.toBeNull()
   await act([
-    { ref: 'Prompt for voice', action: 'setValue', args: ['before talking'] },
-    { ref: 'Send prompt to voice', action: 'press' },
+    { ref: 'Prompt for the new conversation', action: 'setValue', args: ['before talking'] },
+    { ref: 'Send prompt to the new conversation', action: 'press' },
   ])
   expect(sent).toEqual(['before talking'])
   expect(getDraft('cold-test').get().text).toBe('')
@@ -389,8 +389,8 @@ it('a composer with its own draft key sends there, keeps the conversation draft 
   expect(submits()).toEqual([])
   refuse = true
   await act([
-    { ref: 'Prompt for voice', action: 'setValue', args: ['kept'] },
-    { ref: 'Send prompt to voice', action: 'press' },
+    { ref: 'Prompt for the new conversation', action: 'setValue', args: ['kept'] },
+    { ref: 'Send prompt to the new conversation', action: 'press' },
   ])
   expect(getDraft('cold-test').get().text).toBe('kept')
 })

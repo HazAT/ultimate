@@ -194,7 +194,7 @@ it('a turn after a recording that opened the session belongs to that session', a
   expect(harness.turns).toEqual([expect.objectContaining({ session: 41 })])
 })
 
-it('a session another tab ended stops this tab’s send and lets the cold box send again', async () => {
+it('a session another tab ended stops this tab’s send', async () => {
   harness.route = 'text'
   const sending = sendDraft('steer')
   await vi.waitFor(() => expect(harness.asked).toBe(1))
@@ -206,7 +206,7 @@ it('a session another tab ended stops this tab’s send and lets the cold box se
   expect(dock.phase()).toBe('idle')
 })
 
-it('Enter in the cold box after the session opened sends its text once', async () => {
+it('a send from the cold box after the session opened carries its text once', async () => {
   await endSession()
   getDraft(COLD_DRAFT).set({ text: 'look at this' })
   composeIn(session)

@@ -404,6 +404,24 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
 
   const after = await f.turn({ key: 'after', text: 'next idea', session: blocked.id })
   expect(after.id).not.toBe(blocked.id)
+  const stale = await f.action('turn', { key: 'stale', text: 'late', session: blocked.id })
+  expect(stale.data.error).toContain('This voice session ended')
+})
+
+it('a request for a session that handed off and was then ended is refused and opens nothing', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Fork, first.id)).handedOff = true
+  }, context)
+  await f.action('end', null)
+  const late = await f.action('turn', { key: 'late', text: 'after end', session: first.id })
+  expect(late.data.error).toContain('This voice session ended')
+  const record = await f.action('record', { audio, mimeType: 'audio/webm', session: first.id })
+  expect(record.data.error).toContain('This voice session ended')
+  expect(
+    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id,
+  ).toBeUndefined()
 })
 
 it('voice_handoff with `to` reaches a real branch on screen and refuses one off screen or not a branch', async () => {

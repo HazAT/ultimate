@@ -16,6 +16,8 @@ export type VoiceSession = {
   forks?: ConversationId[]
   /** The model voice uses, `provider/model`, picked in the panel; unset, the default. */
   model?: string
+  /** The fork that handed off and was concluded for the next one, while that next one opens; End clears it. */
+  rolledFrom?: ConversationId
 }
 
 /**

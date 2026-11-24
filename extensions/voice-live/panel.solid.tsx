@@ -689,9 +689,12 @@ export function VoicePanel() {
   const summary = useConversationSummary(shown)
   const status = useAction(StatusAction, null, { conversation: ROOT })
   useEvent('secrets:changed', () => void status.refetch())
-  createEffect(id, (open) => {
-    composeIn(open)
-  })
+  createEffect(
+    () => [id(), session()?.rolledFrom] as const,
+    ([open, rolledFrom]) => {
+      composeIn(open, rolledFrom)
+    },
+  )
   createEffect(
     () => status.data()?.transcribes,
     (known) => {

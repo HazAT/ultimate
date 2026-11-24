@@ -166,8 +166,8 @@ let session: ConversationId | undefined
 export const COLD_DRAFT = 'voice-live.cold'
 export const coldHolds = (cold: { text: string; images: readonly unknown[] }) =>
   !!cold.text.trim() || cold.images.length > 0
-export const composeIn = (id: ConversationId | undefined) => {
-  if (session !== undefined && id === undefined && !forks.get(session)?.handedOff) endLocally()
+export const composeIn = (id: ConversationId | undefined, rolledFrom?: ConversationId) => {
+  if (session !== undefined && id === undefined && rolledFrom !== session) endLocally()
   session = id
   setDraft((id !== undefined && forks.get(id)?.draft) || [])
 }
