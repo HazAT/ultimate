@@ -156,14 +156,21 @@ export async function branchesConcluded(
   const starter = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
   if (starter === undefined) return
   const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-  const losses = Object.values(owners).flatMap(({ owner, request, assignedBy, pending }) =>
-    owner.kind === 'branch' &&
-    assignedBy < conclusion &&
-    branches.includes(owner.id) &&
-    pending.length === 0
-      ? [{ request, source: `Branch #${owner.id}` }]
-      : [],
-  )
+  const { messages } = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+  const losses = Object.values(owners).flatMap(({ owner, request, assignedBy, pending }) => {
+    if (
+      owner.kind !== 'branch' ||
+      assignedBy >= conclusion ||
+      !branches.includes(owner.id) ||
+      pending.length > 0
+    )
+      return []
+    if (messages.some((m) => m.from === owner.id && m.to === starter && m.report === true)) {
+      delete owners[request.message]
+      return []
+    }
+    return [{ request, source: `Branch #${owner.id}` }]
+  })
   await failRequests(host, tx, starter, losses, 'was concluded without reporting to @ultimate')
 }
 
