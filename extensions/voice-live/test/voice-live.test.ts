@@ -330,11 +330,15 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   expect(blockedResult.role).toBe('toolResult')
   expect(JSON.stringify(blockedResult)).toContain('Voice mode reads, drives the UI and hands off')
 
+  const shot = { type: 'image', data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }
+  await f.turn({ key: 'shot', text: 'look at this', images: [shot] })
+  expect(userParts(f.requests.at(-1)!.messages.at(-1))).toContainEqual(shot)
   const handoff = {
     title: 'Sidebar filter',
     outcome: 'See only what needs the user',
     decided: ['A quiet toggle'],
     instruction: 'Start a branch for a Needs me toggle',
+    attachments: ['The sidebar with every row lit'],
   }
   await f.turn({
     key: 'handoff',
@@ -347,7 +351,8 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   )
   const main = await (await f.server.harness.conversation(f.main, context))!.context(context)
   const card = main.entries.find((entry) => entry.kind === 'voice.handoff')!
-  expect(card.data).toEqual({ ...handoff, from: blocked.id })
+  expect(card.data).toEqual({ ...handoff, images: 1, from: blocked.id })
+  expect(userParts(card.model?.[0])).toContainEqual(shot)
   expect(JSON.stringify(card.model)).toContain('Instruction: Start a branch for a Needs me toggle')
   await until(() =>
     f.requests.some(

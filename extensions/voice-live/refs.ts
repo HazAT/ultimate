@@ -44,6 +44,7 @@ export type VoiceHandoff = {
   open?: string[]
   instruction: string
   attachments?: string[]
+  images?: number
   from: ConversationId
 }
 

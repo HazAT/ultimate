@@ -66,6 +66,17 @@ export function insertIntoComposer(id: number, text: string) {
   requestAnimationFrame(() => editor?.setSelectionRange(cursor, cursor))
 }
 
+export function composerImages(id: number) {
+  const draft = getDraft(id)
+  const { images } = draft.get()
+  return {
+    images: images.map(({ data, mimeType }) => ({ data, mimeType })),
+    clear: () => {
+      if (draft.get().images === images) draft.set({ images: [] })
+    },
+  }
+}
+
 export function clearDraft(draft: DraftStore, snapshot: { text: string; revision: number }) {
   const stored = draft.key ? (localStorage.getItem(draft.key) ?? '') : ''
   const editedAfterSubmission = draft.get().revision !== snapshot.revision

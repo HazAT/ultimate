@@ -22,6 +22,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { openaiSecretOrNonOAuthKey, openaiTranscribe } from '../../lib/openai.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { imagesOf } from '../../lib/entries.ts'
 import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import {
@@ -876,12 +877,20 @@ export default function voiceExtension(host: ExtensionHost) {
             if (await tx.submissionByRequest(target, requestId)) return
             if (branch !== undefined)
               await checkBranch(host, tx, branch, (await tx.doc(Fork, api.conversationId)).screen)
+            const shared = args.attachments?.length
+              ? (await tx.scanEntries({ conversationId: api.conversationId }, 200)).items
+                  .filter((entry) => VoiceTurnEntry.is(entry))
+                  .flatMap((entry) => imagesOf(entry).toReversed())
+                  .slice(0, maxImages)
+                  .toReversed()
+              : []
+            if (shared.length) handoff.images = shared.length
             await receiver.submit(tx, {
               type: 'input',
               requestId,
               whenBusy: 'followUp',
               entry: { kind: VoiceHandoffEntry.kind, data: handoff },
-              content: lines.join('\n'),
+              content: [{ type: 'text', text: lines.join('\n') }, ...shared],
             })
             ;(await tx.doc(Fork, api.conversationId)).handedOff = true
           }, ctx)
