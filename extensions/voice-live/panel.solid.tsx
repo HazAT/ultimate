@@ -53,6 +53,7 @@ import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   activity,
   cancelRecording,
+  CANCEL_LABEL,
   COLD_DRAFT,
   coldHolds,
   composeIn,
@@ -93,7 +94,7 @@ const parseHold = () => dock.holdKeys().trim().toLowerCase()
 const keyChord = (event: KeyboardEvent) =>
   event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
 
-const recording = () => dock.phase() === 'recording'
+const recording = () => dock.capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
 
 export function VoiceModel(props: { class?: string }) {
@@ -141,11 +142,25 @@ const talk = createTalk({
   press,
   release,
   cancel: cancelRecording,
+  overCancel: (event) =>
+    [event.relatedTarget, document.elementFromPoint(event.clientX, event.clientY)].some(
+      (target) => target instanceof Element && !!target.closest(`[aria-label="${CANCEL_LABEL}"]`),
+    ),
   matches: (event) => keyChord(event) === parseHold(),
   wake: () => {
     if (!voiceOpen()) setVoiceOpen(true)
   },
 })
+
+window.addEventListener(
+  'keydown',
+  (event) => {
+    if (event.key !== 'Escape' || !talk.cancel()) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  },
+  { capture: true },
+)
 
 const talkTitle = () =>
   recording() && tap()
@@ -156,12 +171,12 @@ function CancelRecording(props: { class?: string }) {
   return (
     <Show when={recording()}>
       <Button
-        aria-label="Cancel recording"
+        aria-label={CANCEL_LABEL}
         class={cn(
           'flex shrink-0 items-center justify-center rounded-md text-error/70 transition-colors hover:bg-error/10 hover:text-error',
           props.class,
         )}
-        onClick={() => cancelRecording()}
+        onClick={() => void talk.cancel()}
         size={null}
         title="Cancel recording · Esc"
         variant={null}
