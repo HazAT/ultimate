@@ -13,6 +13,8 @@ is no session to track. Dream's actions, called with codemode `tools.action({ext
 whole retained trace: about the last 7 days, or the newest 200,000 calls, whichever ends first. `debug trace` and
 `ultimate.trace` return at most 1000 rows per call (100 by default for `ultimate.trace`, 50 for `debug trace`, and
 `debug trace` cuts its text at about 160 rows), so pass `since`/`until` to read earlier windows across a busy project.
+Reduce trace rows and `stats` to the fields and failures you need before `store()`: it refuses values over 262,144
+characters of JSON, which 1000 raw rows exceed.
 For older failures and model errors, also read conversation entries and `watchdog.failure` cards.
 
 ## For @ultimate

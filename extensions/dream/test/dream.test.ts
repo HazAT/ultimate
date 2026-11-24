@@ -404,16 +404,37 @@ it('reads tool numbers from the trace, with unused tools and frequent errors', a
   )
   insert.run('3', 300, 5, 'tool', 'read', 1, null, null, null, null)
   insert.run('4', 50, 5, 'action', 'dream/stats', 1, null, null, null, null)
+  const cause =
+    'RangeError: store("t") value has 384250 characters of JSON, more than the limit of 262144.'
+  insert.run(
+    '5',
+    400,
+    40,
+    'tool',
+    'codemode',
+    0,
+    `Script failed\nOutput:\n${'x'.repeat(200)}\nScript error:\n${cause}`,
+    null,
+    8,
+    43,
+  )
   db.close()
   expect(toolStats(file, ['edit', 'read', 'notify'])).toEqual({
     since: 100,
-    calls: 3,
+    calls: 4,
     tools: [
       { name: 'edit', calls: 2, failed: 1, avgMs: 20 },
+      { name: 'codemode', calls: 1, failed: 1, avgMs: 40 },
       { name: 'read', calls: 1, failed: 0, avgMs: 5 },
     ],
     unused: ['notify'],
     errors: [
+      {
+        name: 'codemode',
+        error: `Script error:\n${cause}`,
+        count: 1,
+        examples: [{ at: '#8/43' }],
+      },
       {
         name: 'edit',
         error: 'Could not find the exact text',
