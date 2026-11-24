@@ -22,7 +22,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { openaiSecretOrNonOAuthKey, openaiTranscribe } from '../../lib/openai.ts'
 import { readSecret } from '../../lib/secrets.ts'
-import { imagesOf } from '../../lib/entries.ts'
+import { imagesOf, isInput } from '../../lib/entries.ts'
 import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import {
@@ -303,6 +303,50 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
   }, context)
 }
 
+const ANSWER_QUESTION = {
+  type: 'choice' as const,
+  instructions:
+    "The assistant's last reply may end with a question for the user, who answers by voice in one or more recordings. Read the latest recording after what was collected before it. Where does the user's answer stand?",
+  criteria: {
+    none: "The assistant's last reply asked the user no question, or the user talks about something else.",
+    unfinished:
+      'An answer is under way but not done: it breaks off mid-sentence, trails off, says more is coming, or keeps weighing options aloud.',
+    complete:
+      'A clean, finished answer to the question the assistant just asked: the user has said what they want and the thought is settled.',
+  },
+}
+const ANSWER_THRESHOLD = 0.85
+
+async function openQuestion(host: ExtensionHost, id: ConversationId, forkedAt: EntryId) {
+  const conversation = (await host.harness().conversation(id, context))!
+  let cursor: Cursor | undefined
+  do {
+    const page = await conversation.entries(
+      { minEntryId: offsetEntryId(forkedAt, 1) },
+      100,
+      cursor,
+      context,
+    )
+    for (const entry of page.items) {
+      if (isInput(entry)) return undefined
+      if (entry.kind !== 'pi.assistant') continue
+      const text = (entry.model ?? [])
+        .flatMap((message) =>
+          message.role === 'assistant'
+            ? message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
+            : [],
+        )
+        .join(' ')
+        .trim()
+      if (!text) continue
+      const ending = text.split(/\n\s*\n/).at(-1)!
+      return ending.includes('?') ? ending : undefined
+    }
+    cursor = page.next
+  } while (cursor)
+  return undefined
+}
+
 async function sinceFork(tx: Tx, main: ConversationId, after: EntryId) {
   const lines: string[] = []
   let cursor: Cursor | undefined
@@ -494,6 +538,7 @@ export const actions = {
       audio,
       clips,
       delivery,
+      answered,
       seconds,
       envelope,
       hint,
@@ -507,6 +552,7 @@ export const actions = {
       audio: unknown
       clips: unknown
       delivery: unknown
+      answered: unknown
       seconds: unknown
       envelope: unknown
       hint: unknown
@@ -535,6 +581,7 @@ export const actions = {
     if (pictures.length > maxImages) throw new Error(`At most ${maxImages} images`)
     if (!text.trim() && typeof audio !== 'string' && !pictures.length)
       throw new Error('Expected text, a recording or an image')
+    if (answered === true && !collected) throw new Error('An answer sends the collected clips')
     const id = await openSession(host, sessionArg(expected))
     for (const clip of collected ?? (typeof audio === 'string' ? [audio] : []))
       await readRecording(host, id, clip).catch(() => {
@@ -550,6 +597,7 @@ export const actions = {
       ...(collected ? { audio: collected[0] } : typeof audio === 'string' ? { audio } : {}),
       ...(collected && collected.length > 1 ? { clips: collected } : {}),
       ...(delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
+      ...(answered === true ? { answered: true as const } : {}),
       ...(typeof seconds === 'number' && Number.isFinite(seconds) ? { seconds } : {}),
       ...(levels?.length ? { envelope: levels } : {}),
       ...(typeof hint === 'string' && hint.trim() ? { hint: hint.trim() } : {}),
@@ -572,9 +620,12 @@ export const actions = {
       const fork = await tx.doc(Fork, id)
       if (fork.ended) throw new Error('This voice session ended; send again')
       if (collected) {
-        const held = new Set((fork.draft ?? []).map((clip) => clip.audio))
-        if (!collected.every((clip) => held.has(clip)))
-          throw new Error('The collected recordings changed; send again')
+        const held = (fork.draft ?? []).map((clip) => clip.audio)
+        const changed =
+          answered === true
+            ? held.join() !== collected.join()
+            : !collected.every((clip) => held.includes(clip))
+        if (changed) throw new Error('The collected recordings changed; send again')
       }
       const silent =
         group.length > 0 &&
@@ -646,15 +697,26 @@ export const actions = {
     const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
     if (id === undefined) return {}
     const fork = await host.harness().snapshot(Fork, id, context)
-    const said = fork?.transcripts?.[audio]
-    if (said === undefined || !fork?.draft?.some((clip) => clip.audio === audio)) return {}
+    if (
+      fork?.transcripts?.[audio] === undefined ||
+      !fork.draft?.some((clip) => clip.audio === audio)
+    )
+      return {}
     const classify = host.want(ClassifyApi)
     if (!classify) return { unavailable: 'Spoken send needs the classify extension and its key' }
-    const before = (fork?.draft ?? [])
-      .filter((clip) => clip.audio !== audio)
-      .map((clip) => fork?.transcripts?.[clip.audio] ?? '')
+    const collected = fork.draft
+    const heard = collected.map((clip) => fork.transcripts?.[clip.audio])
+    const question =
+      heard.every((text) => text !== undefined) && fork.at !== undefined
+        ? await openQuestion(host, id, fork.at)
+        : undefined
+    const latest = question ? collected.at(-1)!.audio : audio
+    const said = fork.transcripts[latest]
+    const before = collected
+      .filter((clip) => clip.audio !== latest)
+      .map((clip) => fork.transcripts?.[clip.audio] ?? '')
       .join(' ')
-    const { answers } = await classify.ask(
+    const asking = classify.ask(
       {
         state: { collectedSoFar: before, latestRecording: said },
         questions: {
@@ -679,18 +741,46 @@ export const actions = {
       },
       signal,
     )
+    const answering = Promise.allSettled(
+      question
+        ? [
+            classify.ask(
+              {
+                state: {
+                  assistantLastReply: question,
+                  collectedSoFar: before,
+                  latestRecording: said,
+                },
+                questions: { answer: ANSWER_QUESTION },
+              },
+              signal,
+            ),
+          ]
+        : [],
+    )
+    const { answers } = await asking
     const send = answers.send
-    if (send?.type !== 'choice' || send.choice === 'hold' || send.confidence < 0.6) return {}
+    const commanded = send?.type === 'choice' && send.choice !== 'hold' && send.confidence >= 0.6
+    if (!commanded) {
+      const [replied] = await answering
+      if (replied?.status === 'rejected') throw replied.reason
+      const answer = replied?.value.answers.answer
+      if (answer?.type !== 'choice' || (answer.probabilities.complete ?? 0) < ANSWER_THRESHOLD)
+        return {}
+      return {
+        send: 'steer' as const,
+        clips: collected.map((clip) => clip.audio),
+        answered: true as const,
+      }
+    }
     const only = answers.only?.type === 'noul' && answers.only.noul > 0.5
     if (only)
       await host.harness().commit(async (tx) => {
         const draft = await tx.doc(Fork, id)
         if (draft.ended) return
-        draft.draft = (draft.draft ?? []).filter((clip) => clip.audio !== audio)
+        draft.draft = (draft.draft ?? []).filter((clip) => clip.audio !== latest)
       }, context)
-    const clips = (fork?.draft ?? [])
-      .map((clip) => clip.audio)
-      .filter((clip) => !(only && clip === audio))
+    const clips = collected.map((clip) => clip.audio).filter((clip) => !(only && clip === latest))
     return {
       send: send.choice as VoiceDelivery,
       clips,

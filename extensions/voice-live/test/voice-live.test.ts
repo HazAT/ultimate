@@ -23,7 +23,7 @@ beforeAll(async () => {
   ultimateRoot = await sourceCopy(await temp())
   await writeFile(
     join(ultimateRoot, '.ultimate/settings.json'),
-    JSON.stringify({ extensions: { enable: ['voice-live'] } }),
+    JSON.stringify({ extensions: { enable: ['voice-live', 'classify'] } }),
   )
 })
 afterEach(async () => {
@@ -555,4 +555,102 @@ it('voice_handoff with `to` reaches a real branch on screen and refuses one off 
   )
   const main = await (await f.server.harness.conversation(f.main, context))!.context(context)
   expect(main.entries.some((entry) => entry.kind === 'voice.handoff')).toBe(false)
+})
+
+it('a clip that completely answers the question voice just asked sends as a steer; anything less waits', async () => {
+  const f = await fixture()
+  await writeSecret(f.home, 'TYPESAFE_API_KEY', 'test-sentinel')
+  const verdicts: Record<string, { send: string; only?: number; complete: number }> = {
+    'the second one': { send: 'hold', complete: 0.95 },
+    'maybe the second': { send: 'hold', complete: 0.6 },
+    'well first': { send: 'hold', complete: 0.1 },
+    'and then I think': { send: 'hold', complete: 0.3 },
+    'the first': { send: 'hold', complete: 0.5 },
+    'send it': { send: 'steer', only: 1, complete: 0.99 },
+    'the second one, queue it': { send: 'followUp', complete: 0.99 },
+    'sounds good': { send: 'hold', complete: 0.99 },
+  }
+  let asked: { state: Record<string, string>; questions: string[] }[] = []
+  const transcribe = globalThis.fetch
+  vi.stubGlobal('fetch', (input: string, init?: RequestInit) => {
+    if (!input.endsWith('/systemone')) return transcribe(input, init)
+    const { state, questions } = JSON.parse(init!.body as string)
+    asked.push({ state, questions: Object.keys(questions) })
+    if (questions.answer && state.latestRecording === 'send it')
+      return new Promise<Response>(() => {})
+    const { send, only = 0, complete } = verdicts[state.latestRecording]
+    const probabilities = { none: 0, unfinished: 1 - complete, complete }
+    return Promise.resolve(
+      Response.json({
+        model: 'jev',
+        usage: { input_tokens: 1 },
+        answers: questions.answer
+          ? { answer: { type: 'choice', choice: 'complete', confidence: 1, probabilities } }
+          : {
+              send: { type: 'choice', choice: send, confidence: 0.9, probabilities: {} },
+              only: { type: 'noul', noul: only },
+            },
+      }),
+    )
+  })
+  const { id } = await f.turn({ key: 'question', text: 'Which one, the first or the second?' })
+  const collect = async (...said: string[]) => {
+    await f.action('discard', null)
+    asked = []
+    f.transcribed.push(...said)
+    const clips: string[] = []
+    for (const _ of said)
+      clips.push(
+        (await f.action('record', { audio, mimeType: 'audio/webm', collect: { seconds: 1 } })).data
+          .result.audio,
+      )
+    await until(async () => {
+      const heard = (await f.forkOf(id))?.transcripts ?? {}
+      return clips.every((clip) => heard[clip] !== undefined)
+    })
+    return clips
+  }
+  const intent = async (clip: string | undefined) =>
+    (await f.action('intent', { audio: clip })).data.result
+
+  const answer = await collect('the second one')
+  expect(await intent(answer[0])).toEqual({ send: 'steer', clips: answer, answered: true })
+  const byQuestion = Object.fromEntries(asked.map((request) => [request.questions.join(), request]))
+  expect(byQuestion).toEqual({
+    'send,only': {
+      state: { collectedSoFar: '', latestRecording: 'the second one' },
+      questions: ['send', 'only'],
+    },
+    answer: {
+      state: {
+        assistantLastReply: 'echo Daniel, typed: Which one, the first or the second?',
+        collectedSoFar: '',
+        latestRecording: 'the second one',
+      },
+      questions: ['answer'],
+    },
+  })
+  expect(await intent((await collect('maybe the second'))[0])).toEqual({})
+  expect(await intent((await collect('well first', 'and then I think')).at(-1))).toEqual({})
+
+  const outOfOrder = await collect('the first', 'the second one')
+  expect(await intent(outOfOrder[0])).toEqual({
+    send: 'steer',
+    clips: outOfOrder,
+    answered: true,
+  })
+  expect(asked.find((request) => request.questions.join() === 'answer')?.state).toMatchObject({
+    collectedSoFar: 'the first',
+    latestRecording: 'the second one',
+  })
+
+  const queued = await collect('maybe the second', 'the second one, queue it')
+  expect(await intent(queued[0])).toEqual({ send: 'followUp', clips: queued })
+
+  const command = await collect('maybe the second', 'send it')
+  expect(await intent(command[1])).toEqual({ send: 'steer', clips: [command[0]], dropped: true })
+
+  await f.turn({ key: 'statement', text: 'Noted.' })
+  expect(await intent((await collect('sounds good'))[0])).toEqual({})
+  expect(asked.map((request) => request.questions.join())).toEqual(['send,only'])
 })

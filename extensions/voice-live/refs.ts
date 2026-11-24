@@ -34,6 +34,8 @@ export type VoiceTurn = {
   route: VoiceRoute
   /** `followUp` when the user asked for it; a steer otherwise. */
   delivery?: VoiceDelivery
+  /** Sent without a command, as a complete answer to the question voice just asked. */
+  answered?: true
   hint?: string
   images?: number
 }
@@ -115,6 +117,7 @@ export const TurnAction = actionRef<
     audio?: string
     clips?: string[]
     delivery?: VoiceDelivery
+    answered?: true
     seconds?: number
     envelope?: number[]
     hint?: string
@@ -217,10 +220,11 @@ export const DiscardAction = actionRef<null, Record<string, never>>('voice-live'
 /**
  * `{ audio }`, a collected recording with its transcript in → whether it ends the message with a spoken send ("send it",
  * "go", "follow up"): `send` with its delivery and the exact `clips` to send, `dropped` when the recording was only that
- * command and left the draft;
+ * command and left the draft; `answered` when it sends without a command, because the voice assistant's last reply
+ * ended with a question and the collected recordings answer it completely;
  * `unavailable` says why it cannot tell (no classifier key).
  */
 export const IntentAction = actionRef<
   { audio: string },
-  { send?: VoiceDelivery; clips?: string[]; dropped?: true; unavailable?: string }
+  { send?: VoiceDelivery; clips?: string[]; dropped?: true; answered?: true; unavailable?: string }
 >('voice-live', 'intent')

@@ -1,5 +1,13 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
-import { Check, ChevronRight, CornerDownRight, Mic, Play, Scissors } from '@lucide/solid'
+import {
+  Check,
+  ChevronRight,
+  CornerDownRight,
+  MessageCircleReply,
+  Mic,
+  Play,
+  Scissors,
+} from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
@@ -186,6 +194,11 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
             <Show when={cutIn()}>
               <span class="inline-flex items-center gap-1 text-brand">
                 <CornerDownRight class="size-3" /> cut in
+              </span>
+            </Show>
+            <Show when={data().answered}>
+              <span class="inline-flex shrink-0 items-center gap-1 text-brand">
+                <MessageCircleReply class="size-3" /> sent as your answer
               </span>
             </Show>
             <Show when={data().audio}>

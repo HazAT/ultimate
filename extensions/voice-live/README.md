@@ -70,7 +70,12 @@ sending it. `record` with `collect` appends the clip to the fork's `voice.fork` 
 reload, and each clip is transcribed as usual. After each clip, `intent` asks Jev (classify) whether the latest
 recording hands the message over: a send command ("send it", "go") or a turn to voice to act on it ("let's
 brainstorm this", "let's think it through", "what do you think?") sends it as a steer, "follow up" or "queue it" as a
-follow-up; a clip that is only a bare send command leaves the draft, a request to act stays in the message. Enter in the prompt box, or the box's send and follow-up
+follow-up; a clip that is only a bare send command leaves the draft, a request to act stays in the message.
+When voice's last reply ends with a question (its last paragraph has a `?`), a second call beside it gets that
+paragraph as `assistantLastReply` and asks whether the user has finished a clean, complete answer to it; the send
+question never sees the reply, since it made borderline command verdicts fire on unfinished clips. A probability of 0.85
+or more sends the whole draft as a steer without a command, and the turn shows "sent as your answer". The threshold
+was tuned on past voice turns, where answers cut mid-thought stayed below it. Enter in the prompt box, or the box's send and follow-up
 buttons, send it too; discard drops it. The collected clips go out as one turn (`clips`): a model that hears audio gets
 every recording, a text model their joined transcripts. The panel shows a Collecting box with the clips, their length
 and their transcripts so far; folded, the talk bar shows "N collected" and the phone button a count badge.
