@@ -1,8 +1,16 @@
 import { expect, it } from 'vitest'
-import { createPlayer, fetchedVoice, splitReply } from '../speech.ts'
+import { clauses, createPlayer, fetchedVoice, splitReply } from '../speech.ts'
+import { until } from '../../../test/helpers.ts'
 import type { AudioLike } from '../speech.ts'
 
-function fakeVoice() {
+function fakeVoice(options: { rejectPlay?: boolean } = {}) {
+  let selected: 'openai' | 'system' = 'openai'
+  const spoken: string[] = []
+  const system = {
+    say: (text: string) => spoken.push(text),
+    halt: () => {},
+    reset: () => {},
+  }
   const requests: { text: string; signal: AbortSignal; resolve: (src: string) => void }[] = []
   const clips: (AudioLike & { listeners: Map<string, () => void>; paused: boolean })[] = []
   const failures: unknown[] = []
@@ -21,6 +29,7 @@ function fakeVoice() {
         paused: true,
         listeners,
         play: async () => {
+          if (options.rejectPlay) throw new Error('autoplay blocked')
           clip.paused = false
           listeners.get('playing')?.()
         },
@@ -30,17 +39,24 @@ function fakeVoice() {
       clips.push(clip)
       return clip
     },
-    failed: (error) => failures.push(error),
+    failed: (error) => {
+      failures.push(error)
+      player.stop()
+    },
   })
   const player = createPlayer({
     rate: () => 1.25,
     enabled: () => true,
     listening: () => false,
     frame: () => () => {},
-    engine: () => engine,
+    engine: () => (selected === 'openai' ? engine : system),
   })
   const request = (text: string) => requests.find((item) => item.text === text)!
-  return { player, requests, request, clips, failures }
+  const select = (to: 'openai' | 'system') => {
+    selected = to
+    player.switched()
+  }
+  return { player, requests, request, clips, failures, select, spoken }
 }
 
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve))
@@ -131,4 +147,45 @@ it('cutting in stops playback at once and aborts the queued and prefetching requ
   expect(clips).toHaveLength(1)
   expect(requests).toHaveLength(2)
   expect(failures).toEqual([])
+})
+
+it('a clip that cannot play stops the reply and aborts the clauses and sentence still being read', async () => {
+  const { player, requests, failures } = fakeVoice({ rejectPlay: true })
+  const reply =
+    'Your starter is ready when it doubles within a few hours of feeding, smells pleasantly tangy and shows bubbles all through the jar. Then bake. '
+  player.load('turn', splitReply([{ text: reply, final: true }]).sentences, false)
+  player.play(0)
+  await until(() => requests.length === 2)
+  requests[0].resolve('data:first')
+  await until(() => failures.length === 1)
+  expect(requests.map((item) => [item.text, item.signal.aborted])).toEqual([
+    ['Your starter is ready when it doubles within a few hours of feeding,', true],
+    [' Then bake.', true],
+    [' smells pleasantly tangy and shows bubbles all through the jar.', true],
+  ])
+  expect(player.state.get()).toMatchObject({ playing: false })
+})
+
+it('switching to the system voice stops OpenAI work and reads new sentences with the system voice', async () => {
+  const { player, requests, clips, select, spoken } = fakeVoice()
+  player.load('turn', [], true)
+  for (const sentence of splitReply([{ text: 'One. Two. ', final: false }]).sentences)
+    player.push('turn', sentence)
+  await until(() => requests.length === 2)
+  requests[0].resolve('data:one')
+  await until(() => clips.length === 1)
+  select('system')
+  expect(clips[0].paused).toBe(true)
+  expect(requests.every((item) => item.signal.aborted)).toBe(true)
+  expect(spoken).toEqual(['One.'])
+  player.push('turn', splitReply([{ text: 'One. Two. Three. ', final: false }]).sentences[2])
+  expect(requests).toHaveLength(2)
+})
+
+it('a clause longer than one request allows is split at a word boundary', () => {
+  const long = `${'word '.repeat(500)}end.`
+  const parts = clauses(long)
+  expect(parts.every((part) => part.length <= 2000)).toBe(true)
+  expect(parts.join('')).toBe(long)
+  expect(parts[0].endsWith('word')).toBe(true)
 })

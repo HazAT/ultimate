@@ -368,25 +368,27 @@ function Settings(props: { model?: boolean }) {
 }
 
 function SpeechVoice() {
-  const status = useAction(StatusAction, null, { conversation: ROOT })
-  const keyed = () => status.data()?.transcribes !== false
+  const keyed = () => dock.keyed() === true
   return (
     <div class="flex flex-col gap-2">
       <div class="flex items-center justify-between gap-3">
         Voice
-        <SegmentedControl aria-label="Speech voice" bind={[dock.voice, dock.setVoice]}>
+        <SegmentedControl
+          aria-label="Speech voice"
+          bind={[() => (dock.openaiOn() ? 'openai' : 'system'), dock.setVoice]}
+        >
           <SegmentedControlItem value="system">System</SegmentedControlItem>
-          <SegmentedControlItem disabled={!keyed() && dock.voice() !== 'openai'} value="openai">
+          <SegmentedControlItem disabled={!keyed()} value="openai">
             OpenAI
           </SegmentedControlItem>
         </SegmentedControl>
       </div>
-      <Show when={!keyed()}>
+      <Show when={dock.keyed() === false}>
         <span class="text-[10.5px] leading-snug text-muted-foreground/70">
           OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets
         </span>
       </Show>
-      <Show when={keyed() && dock.voice() === 'openai'}>
+      <Show when={dock.openaiOn()}>
         <div class="flex items-center justify-between gap-3">
           OpenAI voice
           <DropdownMenu>
@@ -671,6 +673,13 @@ export function VoicePanel() {
   const surface = useSurface()
   const shown = useConversationId()
   const summary = useConversationSummary(shown)
+  const status = useAction(StatusAction, null, { conversation: ROOT })
+  createEffect(
+    () => status.data()?.transcribes,
+    (known) => {
+      if (known !== undefined) dock.setKeyed(known)
+    },
+  )
   createEffect(
     () => [surface(), shown(), summary()?.title] as const,
     ([on, conversation, title]) => {

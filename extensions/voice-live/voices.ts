@@ -12,3 +12,5 @@ export const VOICES: readonly OpenAiVoice[] = [
   'shimmer',
   'verse',
 ]
+
+export const MAX_SPOKEN = 2000

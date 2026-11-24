@@ -62,7 +62,7 @@ import type {
 } from './refs.ts'
 import { voicePrompt } from './prompt.ts'
 import { createRealtimeVoice } from './openai-voice.ts'
-import { VOICES } from './voices.ts'
+import { MAX_SPOKEN, VOICES } from './voices.ts'
 
 const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
@@ -328,9 +328,15 @@ async function sinceFork(tx: Tx, main: ConversationId, after: EntryId) {
 
 const voices = new WeakMap<ExtensionHost, ReturnType<typeof createRealtimeVoice>>()
 const realtimeVoice = (host: ExtensionHost) => {
-  const known = voices.get(host) ?? createRealtimeVoice()
-  voices.set(host, known)
-  return known
+  const known = voices.get(host)
+  if (known) return known
+  const made = createRealtimeVoice()
+  voices.set(host, made)
+  host.onClose(async () => {
+    voices.delete(host)
+    made.close()
+  })
+  return made
 }
 
 const unwrap = <T extends object>(args: unknown) =>
@@ -564,18 +570,17 @@ export const actions = {
   speak: implementAction(SpeakAction, async (args, { host, signal }) => {
     const { voice, text } = unwrap<{ voice: unknown; text: unknown }>(args)
     if (!VOICES.includes(voice as OpenAiVoice)) throw new Error(`Unknown voice: ${String(voice)}`)
-    if (text !== undefined && (typeof text !== 'string' || !text.trim() || text.length > 2000))
-      throw new Error('Expected text of at most 2000 characters')
+    if (
+      text !== undefined &&
+      (typeof text !== 'string' || !text.trim() || text.length > MAX_SPOKEN)
+    )
+      throw new Error(`Expected text of at most ${MAX_SPOKEN} characters`)
     const key = await openaiSecretOrNonOAuthKey(host, signal)
     if (!key) throw new Error('OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets')
     const realtime = realtimeVoice(host)
-    if (text === undefined) return await realtime.connect(key).then(() => ({}))
-    const wav = await realtime.speak(
-      key,
-      text,
-      voice as OpenAiVoice,
-      AbortSignal.any([signal, AbortSignal.timeout(SPEAK_TIMEOUT_MS)]),
-    )
+    const bounded = AbortSignal.any([signal, AbortSignal.timeout(SPEAK_TIMEOUT_MS)])
+    if (text === undefined) return await realtime.connect(key, bounded).then(() => ({}))
+    const wav = await realtime.speak(key, text, voice as OpenAiVoice, bounded)
     return { audio: wav.toString('base64') }
   }),
   intent: implementAction(IntentAction, async (args, { host, signal }) => {

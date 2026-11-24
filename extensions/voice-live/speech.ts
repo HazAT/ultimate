@@ -1,5 +1,6 @@
 import { cell } from '../../lib/cell.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
+import { MAX_SPOKEN } from './voices.ts'
 
 export const CHARS_PER_SECOND = 14.5
 
@@ -119,7 +120,19 @@ export function clauses(text: string) {
     parts.push(rest.slice(0, cut.index + 1))
     rest = rest.slice(cut.index + 1)
   }
-  return [...parts, rest]
+  return [...parts, rest].flatMap(atMost)
+}
+
+function atMost(text: string) {
+  const parts: string[] = []
+  let rest = text
+  while (rest.length > MAX_SPOKEN) {
+    const space = rest.lastIndexOf(' ', MAX_SPOKEN)
+    const cut = space > 0 ? space : MAX_SPOKEN
+    parts.push(rest.slice(0, cut))
+    rest = rest.slice(cut)
+  }
+  return rest.trim() ? [...parts, rest] : parts
 }
 
 export function fetchedVoice(options: {
@@ -181,7 +194,7 @@ export function fetchedVoice(options: {
       if (fetched.get(text)?.parts === parts) fetched.delete(text)
       events.end()
     } catch (error) {
-      if (fetched.get(text)?.parts === parts) fetched.delete(text)
+      if (fetched.get(text)?.parts === parts) drop(text)
       if (mine !== turn) return
       options.failed(error)
       events.end()
@@ -240,9 +253,7 @@ export function createPlayer(options: {
       return
     }
     const mine = ++token
-    const picked = options.engine()
-    if (picked !== engine) engine.reset()
-    engine = picked
+    pick()
     engine.halt()
     stopWordClock?.()
     let boundaries = false
@@ -279,9 +290,16 @@ export function createPlayer(options: {
     prefetchNext()
   }
 
+  function pick() {
+    const picked = options.engine()
+    if (picked === engine) return
+    engine.reset()
+    engine = picked
+  }
+
   const prefetchNext = () => {
     const next = items[state.get().index + 1]
-    if (next && state.get().playing) engine.prefetch?.(next.text)
+    if (next && state.get().playing && options.engine() === engine) engine.prefetch?.(next.text)
   }
 
   const halt = () => {
@@ -310,6 +328,11 @@ export function createPlayer(options: {
       else prefetchNext()
     },
     play,
+    switched() {
+      const now = state.get()
+      if (now.playing) play(Math.max(0, now.index))
+      else pick()
+    },
     streaming(on: boolean) {
       publish({ streaming: on })
     },

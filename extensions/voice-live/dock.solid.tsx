@@ -61,6 +61,8 @@ export const dock = createRoot(() => {
   const mic = createMic(frame)
   const [voice, setVoice] = useUiState<'system' | 'openai'>('ext.voice-live.voice', 'system')
   const [openaiVoice, setOpenaiVoice] = useUiState('ext.voice-live.openai-voice', 'cedar')
+  const [keyed, setKeyed] = createSignal<boolean | undefined>()
+  const openaiOn = () => voice() === 'openai' && keyed() === true
   const system = systemVoice()
   const openai = fetchedVoice({
     load: async (text, signal) => {
@@ -82,8 +84,9 @@ export const dock = createRoot(() => {
     enabled: speak,
     listening: mic.recording,
     frame,
-    engine: () => (voice() === 'openai' ? openai : system),
+    engine: () => (openaiOn() ? openai : system),
   })
+  createEffect(openaiOn, () => player.switched())
   let held: { busy: boolean } | undefined
   let stopPulse: (() => void) | undefined
   return {
@@ -95,6 +98,9 @@ export const dock = createRoot(() => {
     setRate,
     voice,
     setVoice,
+    keyed,
+    setKeyed,
+    openaiOn,
     openaiVoice,
     setOpenaiVoice,
     holdKeys,
@@ -365,7 +371,7 @@ async function sendTurn(input: {
   spokenSend?: boolean
   fromComposer?: boolean
 }) {
-  if (dock.voice() === 'openai' && dock.speak())
+  if (dock.openaiOn() && dock.speak())
     inProcess(
       'opening the voice connection early only saves this page time',
       api
@@ -416,6 +422,7 @@ async function sendTurn(input: {
   if (input.recorded || clips.length) trace.record('mic', seconds * 1000)
   try {
     const status = await api.action(StatusAction, null)
+    dock.setKeyed(status.transcribes)
     trace.label('model', status.model.split('/')[0])
     const audio = input.recorded ? await base64(input.recorded.blob) : undefined
     const mimeType = input.recorded?.blob.type ?? ''
