@@ -296,9 +296,17 @@ export async function press() {
   const mine = ++pressing
   dock.setError(undefined)
   const paused = dock.player.pause()
-  dock.hold({ busy: paused || dock.phase() === 'thinking' || dock.phase() === 'sending' })
+  dock.hold({
+    busy:
+      paused || !!dock.held()?.busy || dock.phase() === 'thinking' || dock.phase() === 'sending',
+  })
+  let started: boolean
   try {
-    await onMic(() => dock.mic.start())
+    started = await onMic(async () => {
+      if (released >= mine) return false
+      await dock.mic.start()
+      return true
+    })
   } catch (failure) {
     released = mine
     dock.hold(undefined)
@@ -307,8 +315,7 @@ export async function press() {
     return
   }
   if (released >= mine) {
-    if (pressing !== mine) return
-    await onMic(() => dock.mic.stop())
+    if (started || pressing !== mine) return
     dock.hold(undefined)
     if (paused) dock.player.resume()
     dock.setPhase('idle')
@@ -326,10 +333,11 @@ export async function press() {
 export async function cancelRecording() {
   const take = pressing
   released = take
+  dock.setCapturing(false)
+  const stopped = await onMic(() => dock.mic.stop())
+  if (!stopped || pressing !== take) return
   const held = dock.held()
   dock.hold(undefined)
-  dock.setCapturing(false)
-  if (!(await onMic(() => dock.mic.stop())) || pressing !== take) return
   if (playerState().paused) {
     dock.player.resume()
     dock.setPhase('speaking')
@@ -338,13 +346,14 @@ export async function cancelRecording() {
 }
 
 export async function release() {
-  released = pressing
+  const take = pressing
+  released = take
   const { signal } = live
   dock.setCapturing(false)
   const recorded = await onMic(() => dock.mic.stop())
   if (!recorded || signal.aborted) return
   const held = dock.held()
-  dock.hold(undefined)
+  if (pressing === take) dock.hold(undefined)
   if (!recorded.spoke) {
     if (playerState().paused) {
       dock.player.resume()
@@ -810,7 +819,7 @@ function endLocally() {
   released = pressing
   dock.hold(undefined)
   dock.player.stop()
-  void dock.mic.release()
+  void onMic(async () => dock.mic.release())
   live.abort(new Error('The voice session ended'))
   live = new AbortController()
   session = undefined

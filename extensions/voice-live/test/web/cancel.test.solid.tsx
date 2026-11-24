@@ -111,3 +111,23 @@ it('a cancel while the mic is still starting lets a fresh press record once it h
   await cancelRecording()
   expect(dock.mic.recording()).toBe(false)
 })
+
+it('a retake started while a cancel stops the mic keeps the interruption the cancelled take held', async () => {
+  await press()
+  dock.hold({ busy: true })
+  const cancelled = cancelRecording()
+  const retake = press()
+  await Promise.all([cancelled, retake])
+  expect(dock.held()).toEqual({ busy: true })
+  await cancelRecording()
+})
+
+it('End while a press waits for the mic releases it and leaves nothing recording', async () => {
+  const first = press()
+  const cancelled = cancelRecording()
+  const retake = press()
+  await Promise.all([endSession(), first, cancelled, retake])
+  expect(talking()).toBe(false)
+  expect(dock.capturing()).toBe(false)
+  expect(dock.mic.recording()).toBe(false)
+})

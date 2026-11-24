@@ -152,12 +152,22 @@ const talk = createTalk({
   },
 })
 
+let escapeCancelled = false
 window.addEventListener(
   'keydown',
   (event) => {
-    if (event.key !== 'Escape' || !talk.cancel()) return
+    if (event.key !== 'Escape') return
+    if (!event.repeat) escapeCancelled = talk.cancel()
+    if (!escapeCancelled) return
     event.preventDefault()
     event.stopImmediatePropagation()
+  },
+  { capture: true },
+)
+window.addEventListener(
+  'keyup',
+  (event) => {
+    if (event.key === 'Escape') escapeCancelled = false
   },
   { capture: true },
 )
