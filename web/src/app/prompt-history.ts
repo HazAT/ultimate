@@ -1,6 +1,4 @@
-// Shell-style prompt history for the composer, like zsh's up-line-or-beginning-search: ↑ walks back through
-// prompts sent before (across conversations), ↓ walks forward and ends on what you had typed. Text typed before the
-// first ↑ is a prefix: only prompts that start with it are offered.
+import { keepLast } from '../../../lib/errors.ts'
 
 const key = 'ultimate.prompt-history'
 const limit = 500
@@ -27,8 +25,8 @@ export function remembered(history: readonly string[], prompt: string): string[]
 export function rememberPrompt(prompt: string, storage: Storage = localStorage) {
   try {
     storage.setItem(key, JSON.stringify(remembered(readHistory(storage), prompt)))
-  } catch {
-    // Storage full or unavailable: history is a convenience, sending must not fail over it.
+  } catch (error) {
+    keepLast(error)
   }
 }
 
@@ -40,7 +38,7 @@ export function older(
   const typed = browse?.typed ?? current
   const from = browse?.at ?? history.length
   for (let at = from - 1; at >= 0; at--) {
-    const item = history[at]!
+    const item = history[at]
     if (item.startsWith(typed) && item !== current) return { typed, at, shown: item }
   }
   return undefined
@@ -52,7 +50,7 @@ export function newer(
   current: string,
 ): Browse | undefined {
   for (let at = browse.at + 1; at < history.length; at++) {
-    const item = history[at]!
+    const item = history[at]
     if (item.startsWith(browse.typed) && item !== current)
       return { typed: browse.typed, at, shown: item }
   }
