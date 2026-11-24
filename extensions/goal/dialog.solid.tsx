@@ -8,8 +8,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
-import { Textarea } from '@/components/ui/input.solid.tsx'
-import { api, errorMessage, useDialog, writingAs } from '@/sdk/solid'
+import {
+  PromptBox,
+  api,
+  errorMessage,
+  useDialog,
+  useUiState,
+  writerNow,
+  writingAs,
+} from '@/sdk/solid'
 import { openUltimate, useOpenGoal } from './chip.solid.tsx'
 import { StartAction } from './refs.ts'
 
@@ -32,7 +39,7 @@ export function GoalDialog() {
 
 function GoalForm(props: { close: () => void }) {
   const active = useOpenGoal()
-  const [text, setText] = createSignal('')
+  const [text, setText] = useUiState('ext.goal.draft', '')
   const [failure, setFailure] = createSignal<string>()
   const canStart = () => !active() && !!text().trim()
 
@@ -46,7 +53,10 @@ function GoalForm(props: { close: () => void }) {
       setFailure(errorMessage(error))
       return
     }
-    writingAs(source, close)
+    writingAs(source, () => {
+      setText('')
+      close()
+    })
     await openUltimate(source)
   }
 
@@ -65,17 +75,22 @@ function GoalForm(props: { close: () => void }) {
             after three tries, I stop and leave you a report.
           </DialogDescription>
         </div>
-        <Textarea
-          aria-label="The goal"
-          class="min-h-24 bg-transparent"
-          data-goal-text
-          disabled={!!active()}
-          onValueChange={setText}
-          placeholder="Make the sidebar load instantly with 2,000 conversations. Stop by 8:00."
-          rows={4}
-          submitShortcut="mod+enter"
-          value={text()}
-        />
+        <div data-goal-text>
+          <PromptBox
+            accepts={{ images: false }}
+            autofocus
+            disabled={!!active()}
+            draft={undefined}
+            label="The goal"
+            minimal
+            name="the goal"
+            onSubmit={() => start(writerNow())}
+            onValue={setText}
+            placeholder="Make the sidebar load instantly with 2,000 conversations. Stop by 8:00."
+            sendButton={false}
+            value={text()}
+          />
+        </div>
         <p class="text-[12px] leading-relaxed text-muted-foreground">
           Secrets, logins and force pushes stay yours. <span class="text-foreground">Pause</span> in
           the status line stops everything at once; End on the goal's card hands decisions back to

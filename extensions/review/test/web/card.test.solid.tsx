@@ -64,7 +64,13 @@ it('exposes the saved diff layout and lets the agent select the other layout', a
   expect(uiState.get('ext.review.layout')).toBe('unified')
 })
 
-it('does not discard unsent review notes on an unconfirmed agent press', async () => {
+it('does not discard unsent review notes on an unconfirmed agent press', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
   const update = vi.fn<() => boolean>(() => true)
   const send = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
   renderSolid(() => (

@@ -9,7 +9,8 @@ import type { Writing } from '../../file-diff.solid.tsx'
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
-  return { store: createStore(), uiState: createUiState(undefined) }
+  const { createRegistry } = await import('../../../../web/src/sdk/registry.ts')
+  return { store: createStore(), uiState: createUiState(undefined), registry: createRegistry() }
 })
 
 const theme = { dark: 'vitesse-dark', light: 'vitesse-light' } as const
@@ -63,6 +64,7 @@ it('saves and reopens a draft on the selected line of the native diff', async ({
       disconnect() {}
     },
   )
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
   onTestFinished(() => {
     vi.unstubAllGlobals()
   })
@@ -75,7 +77,8 @@ it('saves and reopens a draft on the selected line of the native diff', async ({
   field.setRangeText('Keep this heading.')
   field.dispatchEvent(new Event('input', { bubbles: true }))
   flush()
-  diff.querySelector<HTMLButtonElement>('button[type="submit"]')!.click()
+  diff.querySelector<HTMLButtonElement>('[aria-label="Add comment to review"]')!.click()
+  await Promise.resolve()
   flush()
   const saved = slot()?.assignedElements()[0]?.querySelector('[data-review-draft]')
   expect(saved?.textContent).toContain('Keep this heading.')

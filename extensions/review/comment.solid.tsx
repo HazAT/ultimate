@@ -1,8 +1,7 @@
 import { MessageSquareIcon, PencilIcon, Trash2Icon } from '@lucide/solid'
 import { createSignal, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Form } from '@/components/ui/form.solid.tsx'
-import { Textarea } from '@/components/ui/input.solid.tsx'
+import { PromptBox } from '@/sdk/solid'
 import { limits, location } from './comments.ts'
 import type { CommentLines } from './lines.ts'
 
@@ -24,53 +23,23 @@ export function Composer(props: {
 }) {
   const [draft, setText] = createSignal<string>()
   const text = () => draft() ?? props.initial ?? ''
-  const [refused, setRefused] = createSignal(false)
   let field: HTMLTextAreaElement | undefined
   onSettled(() => field?.focus({ preventScroll: true }))
-  const ready = () => text().trim().length > 0 && text().length <= limits.text
-  const save = () => {
-    if (ready()) setRefused(!props.onSubmit(text().trim()))
+  const save = async () => {
+    const written = text().trim()
+    if (written.length > limits.text) throw new Error(`${written.length} / ${limits.text}`)
+    if (!props.onSubmit(written))
+      throw new Error('Too long to keep as a draft: shorten it, or send the review first')
   }
   return (
-    <Form
-      class="m-2 max-w-3xl rounded-md border border-brand/40 bg-card font-sans shadow-sm"
-      data-review-composer=""
-    >
-      <div class="flex items-center gap-2 border-b border-border/60 px-3 py-1.5">
+    <div class="m-2 max-w-3xl font-sans" data-review-composer="">
+      <div class="flex items-center gap-2 px-1 pb-1.5">
         <MessageSquareIcon class="size-3.5 text-brand" />
         <span class="text-[12px] text-foreground/85">Comment on</span>
         <Lines comment={props.comment} />
-      </div>
-      <Textarea
-        aria-label="Review line comment"
-        class="block max-h-60 min-h-16 w-full resize-y rounded-none border-0 bg-transparent px-3 py-2 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/50 focus-visible:ring-0"
-        onValueChange={setText}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') props.onCancel()
-        }}
-        placeholder="What should change here?"
-        ref={field}
-        submitShortcut="mod+enter"
-        value={text()}
-      />
-      <div class="flex items-center justify-end gap-2 border-t border-border/60 px-2 py-1.5">
-        {text().length > limits.text ? (
-          <span class="mr-auto font-mono text-[11px] text-error">
-            {text().length} / {limits.text}
-          </span>
-        ) : (
-          refused() && (
-            <span
-              class="mr-auto font-mono text-[11px] text-error"
-              data-review-refused=""
-              role="alert"
-            >
-              Too long to keep as a draft: shorten it, or send the review first
-            </span>
-          )
-        )}
         <Button
           aria-label="Cancel review comment"
+          class="ml-auto"
           onClick={() => props.onCancel()}
           size="xs"
           type="button"
@@ -78,17 +47,30 @@ export function Composer(props: {
         >
           Cancel
         </Button>
-        <Button
-          aria-label={props.submit === 'Save' ? 'Save review comment' : 'Add comment to review'}
-          disabled={!ready()}
-          onClick={save}
-          size="xs"
-          type="submit"
-        >
-          {props.submit}
-        </Button>
       </div>
-    </Form>
+      <PromptBox
+        accepts={{ images: false }}
+        blocked={text().length > limits.text ? `${text().length} / ${limits.text}` : undefined}
+        draft={undefined}
+        label="Review line comment"
+        minimal
+        name="the review comment"
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return false
+          props.onCancel()
+          return true
+        }}
+        onSubmit={save}
+        onValue={setText}
+        placeholder="What should change here?"
+        ref={(element) => {
+          field = element
+        }}
+        sendLabel={props.submit === 'Save' ? 'Save review comment' : 'Add comment to review'}
+        sendTitle={`${props.submit} (Enter)`}
+        value={text()}
+      />
+    </div>
   )
 }
 

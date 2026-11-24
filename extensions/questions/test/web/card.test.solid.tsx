@@ -56,7 +56,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
+import { FileUpload, provide } from '../../../../web/src/sdk/solid.ts'
 import { MessageQuestions } from '../../card.solid.tsx'
 
 const agent = createAgent()
@@ -124,7 +125,7 @@ it('shows the saved picks, note and open question on a fresh mount', () => {
     <MessageQuestions message={message} keys={false} withActions={false} />
   ))
   expect(card.textContent).toContain('2/2')
-  expect(card.querySelector<HTMLTextAreaElement>('textarea[data-note]')?.value).toBe(
+  expect(card.querySelector<HTMLTextAreaElement>('[data-note-box] textarea')?.value).toBe(
     'Peak colour on the phone too',
   )
   expect(card.querySelector('fieldset[data-current] button[data-selected]')?.textContent).toContain(
@@ -220,7 +221,7 @@ it('keeps typed drafts without recording them, and records a person picking and 
   const card = renderSolid(() => (
     <MessageQuestions message={typed} keys={false} withActions={false} />
   ))
-  const note = card.querySelector<HTMLTextAreaElement>('textarea[data-note]')!
+  const note = card.querySelector<HTMLTextAreaElement>('[data-note-box] textarea')!
   for (const text of ['O', 'Ok', 'Ok!']) {
     note.value = text
     note.dispatchEvent(new InputEvent('input', { bubbles: true }))
@@ -312,4 +313,52 @@ it('lets an agent choose, undo a send, send again, and dismiss another card', as
     },
     { name: 'dismiss', args: { messageId: 6 }, source: 'agent' },
   ])
+})
+
+it('sends a file attached to the note to the asker as an attachment line', async () => {
+  await registry.setLoaders({
+    '/extensions/uploads/web.solid.tsx': async () => ({
+      default: {
+        provides: [
+          provide(FileUpload, () => () => ({
+            upload: async (file: File) => `/tmp/attachments/${file.name}`,
+            maxBytes: 1024,
+            keptMs: 1000,
+          })),
+        ],
+      },
+    }),
+  })
+  const card = renderSolid(() => (
+    <MessageQuestions message={{ ...message, id: 11 }} keys={false} withActions={false} />
+  ))
+  await vi.advanceTimersByTimeAsync(10)
+  flush()
+  const note = card.querySelector<HTMLTextAreaElement>('[data-note-box] textarea')!
+  note.value = 'See the log'
+  note.dispatchEvent(new InputEvent('input', { bubbles: true }))
+  const picker = card.querySelector<HTMLInputElement>(
+    '[aria-label="Attach files to the note to message 11"] input',
+  )!
+  Object.defineProperty(picker, 'files', {
+    value: [new File(['boom'], 'build.log', { type: 'text/plain' })],
+  })
+  picker.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.advanceTimersByTimeAsync(10)
+  flush()
+  expect(card.textContent).toContain('build.log')
+  await press('Send note: answer to message 11')
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(harness.actions).toEqual([
+    {
+      name: 'answer',
+      args: {
+        messageId: 11,
+        answers: [],
+        note: 'See the log\n\nAttached file: `build.log` (4 B, text/plain) at `/tmp/attachments/build.log`',
+      },
+      source: 'agent',
+    },
+  ])
+  await registry.setLoaders({})
 })

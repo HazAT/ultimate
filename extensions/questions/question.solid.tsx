@@ -3,9 +3,8 @@ import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Input } from '@/components/ui/input.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
-import { cn } from '@/sdk/solid'
+import { cn, PromptBox } from '@/sdk/solid'
 import type { Question } from '../messages/refs.ts'
 import { answerOf, choices, keyOf, position } from './state.ts'
 import type { Draft } from './state.ts'
@@ -61,36 +60,41 @@ function OptionControl(props: {
   )
 }
 
-type FieldKey = KeyboardEvent & { currentTarget: HTMLInputElement }
+type FieldKey = KeyboardEvent & { currentTarget: HTMLTextAreaElement }
 
 function Field(props: {
   value: string
-  label: string
+  name: string
   placeholder: string
   focus?: boolean
   disabled: boolean
   onChange: (value: string) => void
-  onKey: (event: FieldKey) => void
+  onKey: (event: FieldKey) => boolean
+  onSend: () => void
 }) {
-  let input!: HTMLInputElement
+  let input: HTMLTextAreaElement | undefined
   createEffect(
     () => props.focus,
     (focus) => {
-      if (focus) input.focus()
+      if (focus) input?.focus()
     },
   )
   return (
-    <Input
-      ref={input}
-      aria-label={props.label}
-      placeholder={props.placeholder}
-      value={props.value}
+    <PromptBox
+      accepts={{ images: false }}
       disabled={props.disabled}
-      onValueChange={(value) => props.onChange(value)}
+      draft={undefined}
+      label={`Your answer to ${props.name}`}
+      minimal
+      name={props.name}
       onKeyDown={(event) => props.onKey(event)}
-      autocomplete="on"
-      spellcheck
-      class="h-auto min-h-9 rounded-md border-border px-2.5 py-1.5 font-sans text-[13px] transition-colors placeholder:text-muted-foreground/70 focus-visible:border-brand/60 focus-visible:ring-0 disabled:opacity-100 max-md:min-h-11"
+      onSubmit={() => Promise.resolve(props.onSend())}
+      onValue={(value) => props.onChange(value)}
+      placeholder={props.placeholder}
+      ref={(element) => {
+        input = element
+      }}
+      value={props.value}
     />
   )
 }
@@ -106,7 +110,8 @@ export function QuestionItem(props: {
   onOpen: () => void
   onSelect: (choice: number, pressed?: boolean) => void
   onText: (text: string) => void
-  onFieldKey: (event: FieldKey) => void
+  onFieldKey: (event: FieldKey) => boolean
+  onFieldSend: () => void
 }) {
   const list = createMemo(() => choices(props.question))
   const [active, setActive] = createSignal<number>()
@@ -140,12 +145,13 @@ export function QuestionItem(props: {
   const field = (placeholder: string, focus = false) => (
     <Field
       value={props.draft?.text ?? ''}
-      label={`Your answer to ${name()}`}
+      name={name()}
       placeholder={placeholder}
       focus={focus}
       disabled={props.disabled}
       onChange={(value) => props.onText(value)}
       onKey={(event) => props.onFieldKey(event)}
+      onSend={() => props.onFieldSend()}
     />
   )
   const options = () => (

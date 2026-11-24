@@ -1,7 +1,7 @@
 import type { DraftFile, PastedImage } from './attachments.ts'
 import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
 import { spliced } from './queued.ts'
-import { splitAttachments } from './attachments.ts'
+import { splitAttachments, splitTrailingAttachments, withAttachments } from './attachments.ts'
 
 export type Draft = {
   text: string
@@ -32,17 +32,68 @@ function createDraft(id: number | string | undefined) {
         listeners.delete(listener)
       }
     },
-    set: (change: Partial<Draft>) => {
+    set: (change: Partial<Draft>): boolean => {
       const { images, files } = value
       value = { ...value, ...change }
       if (key && value.images !== images) storeImages(key, value.images)
       if (key && value.files !== files) storeFiles(key, value.files)
       for (const listener of listeners) listener()
+      return true
     },
   }
 }
 
 export type DraftStore = ReturnType<typeof createDraft>
+
+export function boundDraft(read: () => string, write: (value: string) => boolean | void) {
+  let local: Omit<Draft, 'text' | 'files'> & { uploading: DraftFile[] } = {
+    images: [],
+    uploading: [],
+    sending: false,
+    revision: 0,
+  }
+  const listeners = new Set<() => void>()
+  let parsed: { from: string; text: string; files: DraftFile[] } | undefined
+  const kept = () => {
+    const from = read()
+    if (parsed?.from !== from) {
+      const { text, files } = splitTrailingAttachments(from)
+      parsed = { from, text, files: files.map((file) => ({ ...file, id: file.path })) }
+    }
+    return parsed
+  }
+  return {
+    key: undefined,
+    get: (): Draft => {
+      const { uploading, ...rest } = local
+      const { text, files } = kept()
+      return { ...rest, text, files: [...files, ...uploading] }
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    set: ({ text, files, ...change }: Partial<Draft>): boolean => {
+      let accepted = true
+      let { uploading } = local
+      if (text !== undefined || files !== undefined) {
+        const now = kept()
+        const all = files ?? [...now.files, ...local.uploading]
+        const next = withAttachments(
+          text ?? now.text,
+          all.filter((file) => file.path),
+        )
+        accepted = next === read() || write(next) !== false
+        if (accepted) uploading = all.filter((file) => !file.path)
+      }
+      local = { ...local, ...change, uploading }
+      for (const listener of listeners) listener()
+      return accepted
+    },
+  } satisfies DraftStore
+}
 
 export const createLocalDraft = () => createDraft(undefined)
 
@@ -67,10 +118,11 @@ export function getDraft(id: number | string | undefined) {
 }
 
 export function setDraftText(draft: DraftStore, text: string) {
-  draft.set({ text, revision: draft.get().revision + 1 })
-  if (!draft.key) return
+  const accepted = draft.set({ text, revision: draft.get().revision + 1 })
+  if (!draft.key) return accepted
   if (text) localStorage.setItem(draft.key, text)
   else localStorage.removeItem(draft.key)
+  return accepted
 }
 
 export function fillComposer(id: number, text: string) {

@@ -143,7 +143,7 @@ it('answers a decisions card with letters, arrows and Enter', async () => {
     exact: true,
   })
   await send.waitFor()
-  expect(await card.locator('textarea[data-note]').inputValue()).toBe(
+  expect(await card.locator('[data-note-box] textarea').inputValue()).toBe(
     'Also rename the tab.\nAnd soon.',
   )
   expect(await selected.count()).toBe(3)

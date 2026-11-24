@@ -342,6 +342,7 @@ function ComposerEditor(props: { dock?: boolean }) {
             </Button>
           </Show>
         }
+        accepts={{ images: !target() || !!target()?.images }}
         autofocus
         blocked={blocked()}
         dictation={target()?.dictation}

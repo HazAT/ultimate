@@ -424,6 +424,8 @@ export interface PromptBoxProps {
   ready?: () => boolean
   /** Before the box's own keys; true when it handled the key. */
   onKeyDown?: (event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => boolean
+  /** The send button's label; default `Send prompt to <name>`. */
+  sendLabel?: string
   /** The send button's tooltip; default `Send (Enter)`. */
   sendTitle?: string
   /** Controls at the start of the box's row (model, thinking). */
@@ -438,6 +440,26 @@ export interface PromptBoxProps {
   autofocus?: boolean
   /** `false` hides the dictation control. */
   dictation?: false
+  /**
+   * A light box in one line, text · attach · mic · send, inside its owner's own form, with the error under it.
+   */
+  minimal?: boolean
+  /**
+   * The text the owner keeps, attachment lines included, instead of a `draft`: the box shows it, splits the
+   * attachment lines off as chips and calls `onValue` with the next text; `false` refuses that change. The owner
+   * clears it after a send.
+   */
+  value?: string
+  onValue?: (value: string) => boolean | void
+  /** The textarea's label; default `Prompt for <name>`. */
+  label?: string
+  /** Greys the box out: no typing, attaching, dictating or sending. */
+  disabled?: boolean
+  /** `false` leaves sending to the owner's own button; Enter still calls `onSubmit`. */
+  sendButton?: false
+  /** The textarea element, for the owner to focus it. */
+  ref?: (element: HTMLTextAreaElement) => void
+  class?: string
 }
 
 /** What a facet provides for a point. */

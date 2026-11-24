@@ -2,8 +2,17 @@ import { Flag, LoaderCircle } from '@lucide/solid'
 import { Show, createSignal, untrack } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
-import { Textarea } from '@/components/ui/input.solid.tsx'
-import { Card, ROOT, api, errorMessage, formatTime, useDocOf, type ToolCallView } from '@/sdk/solid'
+import {
+  Card,
+  PromptBox,
+  ROOT,
+  api,
+  errorMessage,
+  formatTime,
+  useDocOf,
+  writerNow,
+  type ToolCallView,
+} from '@/sdk/solid'
 import { openUltimate, useOpenGoal } from './chip.solid.tsx'
 import { GoalDoc, StartAction } from './refs.ts'
 
@@ -61,17 +70,21 @@ function StartForm(props: { call: string; text: string; blocked?: number }) {
   return (
     <Form>
       <div class="px-3 pt-3 pb-2">
-        <Textarea
-          aria-label={`Goal text (call ${props.call})`}
-          autoResize
-          class="max-h-80 min-h-20 bg-transparent text-[13px] leading-relaxed"
-          data-goal-proposal-text
-          disabled={props.blocked !== undefined}
-          onValueChange={setText}
-          rows={3}
-          submitShortcut="mod+enter"
-          value={text()}
-        />
+        <div data-goal-proposal-text>
+          <PromptBox
+            accepts={{ images: false }}
+            disabled={props.blocked !== undefined}
+            draft={undefined}
+            label={`Goal text (call ${props.call})`}
+            minimal
+            name={`the goal of call ${props.call}`}
+            onSubmit={() => start(writerNow())}
+            onValue={setText}
+            placeholder="What done means…"
+            sendButton={false}
+            value={text()}
+          />
+        </div>
       </div>
       <footer class="flex flex-wrap items-center gap-3 border-t border-border/60 px-4 py-2.5">
         <span class="min-w-0 flex-1 text-[12px] leading-snug text-muted-foreground">

@@ -144,6 +144,7 @@ const removeClass =
 export function Attached(props: {
   images: readonly PastedImage[]
   files: readonly DraftFile[]
+  name?: string
   disabled: boolean
   remove: (index: number) => void
   removeFile: (id: string) => void
@@ -172,7 +173,7 @@ export function Attached(props: {
                 )}
               </Show>
               <Button
-                aria-label={`Remove image ${index() + 1}`}
+                aria-label={`Remove image ${index() + 1}${props.name ? ` from ${props.name}` : ''}`}
                 class={removeClass}
                 disabled={props.disabled}
                 onClick={() => props.remove(index())}
@@ -198,7 +199,7 @@ export function Attached(props: {
               title={file().path || file().name}
             >
               <Button
-                aria-label={`Remove file ${index() + 1}: ${file().name}`}
+                aria-label={`Remove file ${index() + 1}: ${file().name}${props.name ? ` from ${props.name}` : ''}`}
                 class={removeClass}
                 disabled={props.disabled}
                 onClick={() => props.removeFile(file().id)}

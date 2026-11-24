@@ -21,6 +21,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
+  const { createRegistry } = await import('../../../../web/src/sdk/registry.ts')
   const server = fakeSubscriptions(harness.sources)
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
@@ -40,7 +41,13 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     },
     fetch,
   })
-  return { api: createApi(store, { fetch }), store, uiState: createUiState(undefined), server }
+  return {
+    api: createApi(store, { fetch }),
+    store,
+    uiState: createUiState(undefined),
+    registry: createRegistry(),
+    server,
+  }
 })
 
 import * as client from '../../../../web/src/sdk/client.ts'
@@ -66,6 +73,7 @@ const control = (name: string) =>
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: true }))
   harness.action.mockClear()
+  uiState.set('ext.goal.draft', '')
   store.setUi({ dialogs: {} })
   store.start()
   harness.sources.at(-1)!.open()
@@ -196,7 +204,7 @@ const proposedStart = 'Start this goal (call c1)'
 it('starts a proposed goal with the text the person edited', async () => {
   const view = await proposal()
   await expectDistinctAgentNames(agent)
-  const text = view.querySelector<HTMLTextAreaElement>('[data-goal-proposal-text]')!
+  const text = view.querySelector<HTMLTextAreaElement>('[data-goal-proposal-text] textarea')!
   expect(text.value).toBe(goal.text)
   text.setRangeText(' by 8:00', text.value.length, text.value.length)
   text.dispatchEvent(new Event('input', { bubbles: true }))
