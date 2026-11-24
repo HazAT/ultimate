@@ -374,6 +374,12 @@ function Settings(props: { model?: boolean }) {
 
 function SpeechVoice() {
   const keyed = () => dock.keyed() === true
+  const voiceNote = () => {
+    const needsKey = dock.keyed() === false && 'OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets'
+    if (dock.voiced()) return needsKey
+    if (needsKey) return `No system voices in this browser. ${needsKey}`
+    return keyed() && 'No system voices in this browser · speaking with OpenAI'
+  }
   return (
     <div class="flex flex-col gap-2">
       <div class="flex items-center justify-between gap-3">
@@ -382,16 +388,18 @@ function SpeechVoice() {
           aria-label="Speech voice"
           bind={[() => (dock.openaiOn() ? 'openai' : 'system'), dock.setVoice]}
         >
-          <SegmentedControlItem value="system">System</SegmentedControlItem>
+          <SegmentedControlItem disabled={!dock.voiced()} value="system">
+            System
+          </SegmentedControlItem>
           <SegmentedControlItem disabled={!keyed()} value="openai">
             OpenAI
           </SegmentedControlItem>
         </SegmentedControl>
       </div>
-      <Show when={dock.keyed() === false}>
-        <span class="text-[10.5px] leading-snug text-muted-foreground/70">
-          OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets
-        </span>
+      <Show when={voiceNote()}>
+        {(note) => (
+          <span class="text-[10.5px] leading-snug text-muted-foreground/70">{note()}</span>
+        )}
       </Show>
       <Show when={dock.openaiOn()}>
         <SegmentedControl

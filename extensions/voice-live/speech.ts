@@ -82,8 +82,17 @@ export type SpeechEngine = {
   reset: () => void
 }
 
+export const systemVoices = () => {
+  const synth = globalThis.speechSynthesis as SpeechSynthesis | undefined
+  return {
+    some: () => !!synth?.getVoices().length,
+    subscribe: (listener: () => void) => synth?.addEventListener('voiceschanged', listener),
+  }
+}
+
 export const systemVoice = (): SpeechEngine => ({
   say(text, rate, events) {
+    if (!('speechSynthesis' in globalThis)) return events.end()
     speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.rate = rate
@@ -95,8 +104,8 @@ export const systemVoice = (): SpeechEngine => ({
     utterance.addEventListener('error', events.end)
     speechSynthesis.speak(utterance)
   },
-  halt: () => speechSynthesis.cancel(),
-  reset: () => speechSynthesis.cancel(),
+  halt: () => globalThis.speechSynthesis?.cancel(),
+  reset: () => globalThis.speechSynthesis?.cancel(),
 })
 
 export type AudioLike = {
