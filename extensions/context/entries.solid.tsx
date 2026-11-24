@@ -1,4 +1,5 @@
 import { ChevronRight } from '@lucide/solid'
+import type { JSX } from '@solidjs/web'
 import { createMemo, Match, Show, Switch } from 'solid-js'
 import { setAsideIds } from '@/app/compact.ts'
 import {
@@ -10,12 +11,13 @@ import { useFold, useConversationId, useTranscript, type SolidEntryProps } from 
 import { breakdownAt, diffAt, opensContext, ownStart, removesAll, systemOf } from './breakdown.ts'
 import type { Diff } from './breakdown.ts'
 import { changeCounts, DiffBody, Header, signed } from './parts.solid.tsx'
+import { InheritedPromptStart } from './pinned.solid.tsx'
 
-function ContextAt(props: { anchor: number; label: string }) {
+function ContextAt(props: { anchor: number; label: string; fallback?: JSX.Element }) {
   const entries = useTranscript()
   const breakdown = createMemo(() => breakdownAt(entries(), props.anchor))
   return (
-    <Show when={breakdown().system}>
+    <Show fallback={props.fallback} when={breakdown().system}>
       <Header breakdown={breakdown()} label={props.label} />
     </Show>
   )
@@ -27,7 +29,11 @@ export function Start() {
   const own = createMemo(() => ownStart(entries(), id()))
   return (
     <Show when={own() >= 0}>
-      <ContextAt anchor={own()} label={`Transcript start context #${id()}`} />
+      <ContextAt
+        anchor={own()}
+        fallback={<InheritedPromptStart />}
+        label={`Transcript start context #${id()}`}
+      />
     </Show>
   )
 }
