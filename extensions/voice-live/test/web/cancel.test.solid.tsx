@@ -176,7 +176,7 @@ it('a mic start that fails after End cannot revive the retake queued behind it',
   expect(mic).toMatchObject({ acquired: 0, live: 0 })
   expect(talking()).toBe(false)
   await press()
-  expect(talking()).toBe(true)
+  expect(dock.mic.recording()).toBe(true)
   await cancelRecording()
 })
 
