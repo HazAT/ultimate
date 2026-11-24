@@ -1,6 +1,15 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { inboxItems, keyOf, selectionAfterChange, shown, UNLOADED } from '../../items.ts'
+import {
+  answeredToday,
+  inboxItems,
+  keyOf,
+  lead,
+  selectionAfterChange,
+  shown,
+  toRow,
+  UNLOADED,
+} from '../../items.ts'
 import type { Anchor, Selection } from '../../items.ts'
 import type { InboxItem } from '../../points.ts'
 import type { Message } from '../../../messages/refs.ts'
@@ -96,4 +105,31 @@ it('reads a link as a key, a plain number as a message id', () => {
   expect(keyOf(12)).toBe('message:12')
   expect(keyOf('shell:3')).toBe('shell:3')
   expect(keyOf('')).toBeUndefined()
+})
+
+it('uses inline Markdown text for rows and answered labels, without link URLs or images', () => {
+  const pr = '[PR 1784](https://example.com/pr/1784)'
+  const text = `**Remove the throttle: ${pr}**\n\nBody`
+  const message = ask(1, 1, { text })
+  expect(lead(text)).toEqual({ title: `Remove the throttle: ${pr}`, body: 'Body' })
+  expect(toRow({ key: 'message:1', at: 1, message }).title).toBe('Remove the throttle: PR 1784')
+  expect(
+    toRow({
+      key: 'shell:a',
+      at: 1,
+      item: { ...item('shell:a', 1), title: `${pr} ![image](https://example.com/image.png)` },
+    }).title,
+  ).toBe('PR 1784')
+  const now = Date.now()
+  expect(
+    answeredToday([{ ...message, state: 'answered' }, ask(2, now, { from: 'user', re: 1 })], now)[0]
+      .title,
+  ).toBe('Remove the throttle: PR 1784')
+  expect(
+    toRow({
+      key: 'message:2',
+      at: 1,
+      message: ask(2, 1, { text: `## Remove the \`throttle\` _now_: ${pr}\nBody` }),
+    }).title,
+  ).toBe('Remove the throttle now: PR 1784')
 })
