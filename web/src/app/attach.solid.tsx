@@ -20,6 +20,7 @@ export function createAttach(options: {
   setError: (message: string | undefined) => void
   disabled: () => boolean
   upload: Accessor<Upload | undefined>
+  inlineImages: Accessor<boolean>
 }) {
   const [reading, setReading] = createSignal(false)
   let pending = false
@@ -57,7 +58,11 @@ export function createAttach(options: {
   async function attach(dropped: readonly File[]) {
     if (pending || options.disabled()) return
     const upload = options.upload()
-    const files = upload ? dropped.filter((file) => imageMimeTypes.includes(file.type)) : dropped
+    const files = !options.inlineImages()
+      ? []
+      : upload
+        ? dropped.filter((file) => imageMimeTypes.includes(file.type))
+        : dropped
     const others = dropped.filter((file) => !files.includes(file))
     const supported = files.filter((file) => imageMimeTypes.includes(file.type))
     const accepted = supported.slice(0, Math.max(0, maxImages - options.images().length))
@@ -87,7 +92,8 @@ export function createAttach(options: {
     }
   }
 
-  const accepts = (file: { type: string }) => !!options.upload() || file.type.startsWith('image/')
+  const accepts = (file: { type: string }) =>
+    !!options.upload() || (options.inlineImages() && file.type.startsWith('image/'))
 
   async function paste(event: ClipboardEvent) {
     if (options.disabled()) {

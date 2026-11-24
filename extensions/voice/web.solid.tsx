@@ -1,4 +1,6 @@
-import { defineWebExtension } from '@/sdk/solid'
+import { defineWebExtension, Dictation, provide } from '@/sdk/solid'
 import { VoiceButton } from './button.solid.tsx'
 
-export default defineWebExtension({ slots: { 'composer.actions': [VoiceButton] } })
+export default defineWebExtension({
+  provides: [provide(Dictation, VoiceButton)],
+})

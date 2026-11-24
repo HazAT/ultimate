@@ -1,28 +1,28 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { LoaderCircle, Mic, Square, X } from '@lucide/solid'
-import { createEffect, createSignal, For, Show } from 'solid-js'
+import { createEffect, createSignal, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import {
   api,
   errorMessage,
   events,
-  insertIntoComposer,
   ROOT,
   useAction,
-  useConversationId,
   useEvent,
   useNow,
   writingAs,
 } from '@/sdk/solid'
+import type { Dictation } from '@/sdk/solid'
 import { meansNone } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
 const recordingMimeOrder = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
-const barShapes = [0.55, 1, 0.8, 0.45]
-const buttonSize = 'size-7 rounded-lg pointer-coarse:size-9'
+const buttonSize = 'size-7 rounded-md pointer-coarse:size-9'
 const keepEditorFocus = (event: PointerEvent) => event.preventDefault()
+
+type DictationProps = NonNullable<typeof Dictation.input>
 
 type Recording = {
   stream: MediaStream
@@ -62,48 +62,29 @@ const clock = (ms: number) => {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-function Level(props: { recording: Recording }) {
-  const bars: { element: HTMLSpanElement; shape: number }[] = []
-  createEffect(
-    () => props.recording,
-    ({ audio, stream }) => {
-      if (!audio) return undefined
-      const analyser = audio.createAnalyser()
-      analyser.fftSize = 256
-      const source = audio.createMediaStreamSource(stream)
-      source.connect(analyser)
-      const samples = new Uint8Array(analyser.fftSize)
-      let frame = requestAnimationFrame(function draw() {
-        analyser.getByteTimeDomainData(samples)
-        let sum = 0
-        for (const sample of samples) sum += ((sample - 128) / 128) ** 2
-        const level = Math.min(1, Math.sqrt(sum / samples.length) * 4)
-        for (const { element, shape } of bars)
-          element.style.transform = `scaleY(${0.2 + 0.8 * level * shape})`
-        frame = requestAnimationFrame(draw)
-      })
-      return () => {
-        cancelAnimationFrame(frame)
-        source.disconnect()
-      }
-    },
-  )
-  return (
-    <span aria-hidden="true" class="flex h-3.5 items-center gap-[2px] motion-reduce:hidden">
-      <For each={barShapes}>
-        {(shape) => (
-          <span
-            ref={(element) => void bars.push({ element, shape })}
-            class="h-full w-[2px] origin-center scale-y-[0.2] rounded-full bg-error"
-          />
-        )}
-      </For>
-    </span>
-  )
+function measure(recording: Recording, report: (level: number) => void) {
+  const { audio, stream } = recording
+  if (!audio) return undefined
+  const analyser = audio.createAnalyser()
+  analyser.fftSize = 256
+  const source = audio.createMediaStreamSource(stream)
+  source.connect(analyser)
+  const samples = new Uint8Array(analyser.fftSize)
+  let frame = requestAnimationFrame(function draw() {
+    analyser.getByteTimeDomainData(samples)
+    let sum = 0
+    for (const sample of samples) sum += ((sample - 128) / 128) ** 2
+    report(Math.min(1, Math.sqrt(sum / samples.length) * 4))
+    frame = requestAnimationFrame(draw)
+  })
+  return () => {
+    cancelAnimationFrame(frame)
+    source.disconnect()
+  }
 }
 
-export function VoiceButton() {
-  const id = useConversationId()
+export function VoiceButton(props: DictationProps) {
+  const id = () => props.conversation
   const status = useAction(StatusAction, null, { conversation: ROOT })
   useEvent('secrets:changed', () => void status.refetch())
   const unavailable = unsupported()
@@ -127,18 +108,34 @@ export function VoiceButton() {
     return cancelCapture
   })
   createEffect(recording, (active) => active && deadline(5 * 60_000, () => active.stop()))
+  createEffect(
+    () => [recording(), props.level] as const,
+    ([active, level]) => {
+      level(active ? 0 : undefined)
+      const stopMeasuring = active ? measure(active, level) : undefined
+      return () => {
+        stopMeasuring?.()
+        level(undefined)
+      }
+    },
+  )
   createEffect(error, (message) =>
     message ? deadline(8000, () => setError(undefined)) : undefined,
   )
 
-  async function transcribe(conversation: ConversationId, blob: Blob, source: string) {
+  async function transcribe(
+    conversation: ConversationId,
+    blob: Blob,
+    source: string,
+    insert: (text: string) => void,
+  ) {
     setTranscribing(true)
     try {
       const args = { audio: await base64(blob), mimeType: blob.type }
       const { text } = await writingAs(source, () =>
         api.action(TranscribeAction, args, { conversationId: conversation }),
       )
-      if (text) writingAs(source, () => insertIntoComposer(conversation, text))
+      if (text) writingAs(source, () => insert(text))
       else setError('No speech heard')
     } catch (failure) {
       setError(errorMessage(failure))
@@ -148,7 +145,8 @@ export function VoiceButton() {
   }
 
   async function start() {
-    const conversation = id()
+    const conversation = id() ?? ROOT
+    const insert = props.insert
     capture = new AbortController()
     const { signal } = capture
     setError(undefined)
@@ -178,9 +176,11 @@ export function VoiceButton() {
       const finish = () => {
         cancelCapture()
         setRecording(undefined)
-        if (conversation !== undefined && chunks.length) {
-          const blob = new Blob(chunks, { type: recorder.mimeType || type || 'audio/webm' })
-          void transcribe(conversation, blob, source)
+        if (chunks.length) {
+          const blob = new Blob(chunks, {
+            type: recorder.mimeType || type || 'audio/webm',
+          })
+          void transcribe(conversation, blob, source, insert)
         }
       }
       signal.addEventListener(
@@ -240,7 +240,7 @@ export function VoiceButton() {
               render={(trigger) => (
                 <Button
                   {...trigger}
-                  aria-label={blocked() ?? 'Voice input'}
+                  aria-label={`Dictate into ${props.name}${blocked() ? `: ${blocked()}` : ''}`}
                   class={`${buttonSize} text-muted-foreground data-[voice=blocked]:opacity-50 data-[voice=blocked]:hover:bg-transparent data-[voice=blocked]:hover:text-muted-foreground`}
                   data-voice={blocked() ? 'blocked' : transcribing() ? 'transcribing' : 'idle'}
                   disabled={status.loading() || transcribing()}
@@ -252,8 +252,8 @@ export function VoiceButton() {
                 />
               )}
             >
-              <Show when={transcribing()} fallback={<Mic class="size-4" />}>
-                <LoaderCircle class="size-4 motion-safe:animate-spin" />
+              <Show when={transcribing()} fallback={<Mic class="size-3.5" />}>
+                <LoaderCircle class="size-3.5 motion-safe:animate-spin" />
               </Show>
             </TooltipTrigger>
             <TooltipContent>
@@ -266,7 +266,7 @@ export function VoiceButton() {
       {(active) => (
         <div class="flex shrink-0 items-center gap-1">
           <Button
-            aria-label="Cancel recording"
+            aria-label={`Cancel dictation into ${props.name}`}
             class={`${buttonSize} text-muted-foreground`}
             onClick={() => {
               cancelCapture()
@@ -277,15 +277,14 @@ export function VoiceButton() {
             title="Cancel"
             variant="ghost"
           >
-            <X class="size-4" />
+            <X class="size-3.5" />
           </Button>
-          <span class="flex h-7 items-center gap-1.5 rounded-lg bg-error/10 px-2 font-mono text-[11.5px] text-error tabular-nums pointer-coarse:h-9">
+          <span class="flex h-7 items-center gap-1.5 rounded-md bg-error/10 px-2 font-mono text-[11.5px] text-error tabular-nums pointer-coarse:h-9">
             <span class="size-1.5 rounded-full bg-error motion-safe:animate-pulse" />
             {clock(now() - active().started)}
-            <Level recording={active()} />
           </span>
           <Button
-            aria-label="Stop and transcribe"
+            aria-label={`Stop and transcribe into ${props.name}`}
             class={`${buttonSize} bg-error text-white hover:bg-error/90`}
             onClick={(_event, details) => active().stop(details.source)}
             onPointerDown={keepEditorFocus}

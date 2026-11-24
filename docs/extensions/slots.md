@@ -26,7 +26,6 @@ title bar the host shows above every surface.
 | `statusline.right`     | Bottom status line, right (`<StatusLine />`); on a phone only `phone: true` items stay, the rest go behind ⋯          |
 | `composer.toolbar`     | Left of the composer's footer; a size container, condense with `@max-md:` (`<Conversation />`)                        |
 | `composer.status`      | Line under the composer; conversation-specific, monospace, one line (`<Conversation />`)                              |
-| `composer.actions`     | Composer footer, beside Send; input helpers that write into the draft with `insertIntoComposer`                       |
 | `conversation.overlay` | Over the transcript and the composer (`<Conversation />`, `[data-ui="conversation"]`); position it `absolute inset-0` |
 | `transcript.top`       | At the top of a transcript's view as it scrolls, over its rows; `useTranscript()`, `useTranscriptElements()`          |
 | `transcript.start`     | Above a transcript's first row once its whole history is loaded; `useTranscript()` inside                             |

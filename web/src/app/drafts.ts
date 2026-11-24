@@ -1,6 +1,7 @@
 import type { DraftFile, PastedImage } from './attachments.ts'
 import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
 import { spliced } from './queued.ts'
+import { splitAttachments } from './attachments.ts'
 
 export type Draft = {
   text: string
@@ -43,27 +44,55 @@ function createDraft(id: number | string | undefined) {
 
 export type DraftStore = ReturnType<typeof createDraft>
 
+export const createLocalDraft = () => createDraft(undefined)
+
+export function restoreDraft(draft: DraftStore, text: string) {
+  const { text: rest, files: back } = splitAttachments(text)
+  setDraftText(draft, rest)
+  if (!back.length) return
+  const now = draft.get()
+  draft.set({
+    files: [...back.map((file) => ({ ...file, id: crypto.randomUUID() })), ...now.files],
+    revision: now.revision + 1,
+  })
+}
+
+export function storedText(draft: DraftStore) {
+  return draft.key ? (localStorage.getItem(draft.key) ?? '') : draft.get().text
+}
+
 export function getDraft(id: number | string | undefined) {
   if (!draftsAndSubmissions.has(id)) draftsAndSubmissions.set(id, createDraft(id))
   return draftsAndSubmissions.get(id)!
 }
 
-export function fillComposer(id: number, text: string) {
-  const draft = getDraft(id)
+export function setDraftText(draft: DraftStore, text: string) {
   draft.set({ text, revision: draft.get().revision + 1 })
-  if (draft.key) localStorage.setItem(draft.key, text)
+  if (!draft.key) return
+  if (text) localStorage.setItem(draft.key, text)
+  else localStorage.removeItem(draft.key)
 }
 
-export function insertIntoComposer(id: number, text: string) {
-  const draft = getDraft(id)
+export function fillComposer(id: number, text: string) {
+  setDraftText(getDraft(id), text)
+}
+
+export function insertIntoDraft(
+  draft: DraftStore,
+  editor: HTMLTextAreaElement | null | undefined,
+  text: string,
+) {
   const current = draft.get().text
-  const editor = document.querySelector<HTMLTextAreaElement>(`textarea[data-conversation="${id}"]`)
   const start = editor?.selectionStart ?? current.length
   const end = editor?.selectionEnd ?? current.length
   const { text: next, cursor } = spliced(current, start, end, text)
-  draft.set({ text: next, revision: draft.get().revision + 1 })
-  if (draft.key) localStorage.setItem(draft.key, next)
+  setDraftText(draft, next)
   requestAnimationFrame(() => editor?.setSelectionRange(cursor, cursor))
+}
+
+export function insertIntoComposer(id: number, text: string) {
+  const editor = document.querySelector<HTMLTextAreaElement>(`textarea[data-conversation="${id}"]`)
+  insertIntoDraft(getDraft(id), editor, text)
 }
 
 export function composerDraft(id: number | string) {

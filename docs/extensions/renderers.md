@@ -191,9 +191,17 @@ Contribute a component taking `SolidComposerProps`. To send what the composer su
 elsewhere, wrap `core` in `<ComposerRedirect value={target}>` (from `@/sdk/solid`, `target` an accessor of
 `{ placeholder, send }`, inheriting the outer one with `useContext(ComposerRedirect)` while it has nothing of its own):
 while it gives a target, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
-sending states (side-chat forks @ultimate this way). A redirect also sets aside images, `composer.actions` and steer
+sending states (side-chat forks @ultimate this way). A redirect also sets aside images and steer
 and queue; to only change what the box says, provide `ComposerPlaceholder` instead:
 `provide(ComposerPlaceholder, (input) => () => (input().conversation === mine ? 'Ask the coach…' : undefined))`.
 Only the shown conversation's composer takes typing shortcuts
 (Escape, Shift+Tab); a scoped one does not.
+
+The box inside the composer is `PromptBox` (from `@/sdk/solid`), usable on its own wherever a person writes a prompt: it
+takes a `draft` key (kept through reloads), a `name` for its controls, a `placeholder`, `onSubmit(input)` (a rejection
+keeps the draft and shows the error) and `accepts` (inline `images`, uploaded `files`). It owns paste and drop,
+attachment chips, the `Dictation` control (the `voice` extension's mic, which writes into that same box), the
+`PromptRecorder` slot and the hairline along its bottom: brand while focused, a sweep while `running`, the voice level
+while dictating, red while recording. The composer adds steer and queue, stop, ↑ to recall queued input, the
+`composer.toolbar` and `composer.status` slots.
 `switchConversation(id, { replace: true })` takes the current history entry instead of adding one, as a redirect does.

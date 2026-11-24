@@ -1,14 +1,13 @@
 import { Blob as NodeBlob } from 'node:buffer'
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush } from 'solid-js'
+import { createRoot, createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import type { StreamedView } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { spliced } from '../../../../web/src/app/queued.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'
 import { events } from '@/sdk/solid'
@@ -77,6 +76,7 @@ const getUserMedia = vi.fn<typeof microphone>(microphone)
 
 beforeEach(({ onTestFinished }) => {
   harness.sources.length = 0
+  inserted.length = 0
   vi.clearAllMocks()
   getUserMedia.mockReset()
   vi.stubGlobal('isSecureContext', true)
@@ -105,10 +105,21 @@ async function showConversation(id: number) {
   flush()
 }
 
-async function mount(id: number, status: VoiceStatus) {
+const inserted: string[] = []
+
+async function mount(id: number, status: VoiceStatus, shown = () => id) {
   harness.status = status
   await showConversation(id)
-  const container = renderSolid(() => <VoiceButton />)
+  const container = renderSolid(() => (
+    <VoiceButton
+      conversation={parseConversationId(shown())}
+      insert={(text) => {
+        inserted.push(text)
+      }}
+      level={() => {}}
+      name={`conversation #${id}`}
+    />
+  ))
   await settle()
   flush()
   return container
@@ -138,9 +149,9 @@ it('opens the key’s Secrets row when the blocked mic is pressed', async ({ onT
   onTestFinished(events.on('secrets:open', opened))
   const container = await mount(7, { available: false, reason })
   const mic = container.querySelector('button[data-voice="blocked"]')
-  expect(mic?.getAttribute('aria-label')).toBe(reason)
+  expect(mic?.getAttribute('aria-label')).toBe(`Dictate into conversation #7: ${reason}`)
   expect(mic?.getAttribute('aria-disabled')).toBeNull()
-  await press(reason)
+  await press(`Dictate into conversation #7: ${reason}`)
   expect(opened).toHaveBeenCalledExactlyOnceWith({ name: 'OPENAI_API_KEY' })
   expect(getUserMedia).not.toHaveBeenCalled()
 
@@ -149,7 +160,7 @@ it('opens the key’s Secrets row when the blocked mic is pressed', async ({ onT
   await settle()
   flush()
   expect(container.querySelector('button[data-voice="idle"]')?.getAttribute('aria-label')).toBe(
-    'Voice input',
+    'Dictate into conversation #7',
   )
 })
 
@@ -160,14 +171,14 @@ it('records for an agent and transcribes into the same composer, leaving the edi
   const editor = document.body.appendChild(document.createElement('textarea'))
   onTestFinished(() => editor.remove())
   editor.focus()
-  expectPointerDownPrevented(container, 'Voice input')
-  await press('Voice input')
+  expectPointerDownPrevented(container, 'Dictate into conversation #8')
+  await press('Dictate into conversation #8')
   expect(getUserMedia).toHaveBeenCalledTimes(1)
-  expectPointerDownPrevented(container, 'Cancel recording')
-  expectPointerDownPrevented(container, 'Stop and transcribe')
+  expectPointerDownPrevented(container, 'Cancel dictation into conversation #8')
+  expectPointerDownPrevented(container, 'Stop and transcribe into conversation #8')
   expect(document.activeElement).toBe(editor)
   await expectDistinctAgentNames(agent)
-  await press('Stop and transcribe')
+  await press('Stop and transcribe into conversation #8')
   expect(document.activeElement).toBe(editor)
   expect(stopTrack).toHaveBeenCalledTimes(1)
   expect(harness.transcribe).toHaveBeenCalledExactlyOnceWith(
@@ -177,18 +188,20 @@ it('records for an agent and transcribes into the same composer, leaving the edi
     },
     'agent',
   )
-  expect(getDraft(8).get().text).toBe('hello from the mic')
+  expect(inserted).toEqual(['hello from the mic'])
 })
 
 it('releases a late microphone stream without transcribing after a conversation switch', async () => {
   const permission = Promise.withResolvers<Awaited<ReturnType<typeof microphone>>>()
   getUserMedia.mockReturnValueOnce(permission.promise)
-  const container = await mount(9, { available: true })
-  const pressed = press('Voice input')
+  const [shown, setShown] = createRoot(() => createSignal(9))
+  const container = await mount(9, { available: true }, shown)
+  const pressed = press('Dictate into conversation #9')
   await settle()
   expect(getUserMedia).toHaveBeenCalledTimes(1)
 
-  await showConversation(10)
+  setShown(10)
+  flush()
 
   const stopOtherTrack = vi.fn<() => void>()
   permission.resolve({ getTracks: () => [{ stop: stopTrack }, { stop: stopOtherTrack }] })
@@ -207,11 +220,13 @@ it('stops and transcribes automatically after five minutes', async () => {
     startedAt = Date.now()
     return microphone()
   })
-  await press('Voice input')
+  await press('Dictate into conversation #11')
 
   await vi.advanceTimersByTimeAsync(startedAt + 5 * 60_000 - Date.now() - 1)
   flush()
-  expect(container.querySelector('button[aria-label="Stop and transcribe"]')).not.toBeNull()
+  expect(
+    container.querySelector('button[aria-label="Stop and transcribe into conversation #11"]'),
+  ).not.toBeNull()
   expect(stopTrack).not.toHaveBeenCalled()
   expect(harness.transcribe).not.toHaveBeenCalled()
 
@@ -225,7 +240,7 @@ it('stops and transcribes automatically after five minutes', async () => {
     },
     'app',
   )
-  expect(getDraft(11).get().text).toBe('hello from the mic')
+  expect(inserted).toEqual(['hello from the mic'])
 })
 
 it('shows a microphone permission alert for eight seconds', async () => {
@@ -236,7 +251,7 @@ it('shows a microphone permission alert for eight seconds', async () => {
     deniedAt = Date.now()
     throw new DOMException('Permission denied', 'NotAllowedError')
   })
-  await press('Voice input')
+  await press('Dictate into conversation #12')
 
   const alert = () => container.querySelector('[role="alert"]')
   expect(alert()?.textContent).toBe(
@@ -263,12 +278,12 @@ it('tells an Android system block apart from a blocked site', async () => {
   const alert = () => container.querySelector('[role="alert"]')?.textContent
 
   deny('Permission denied by system')
-  await press('Voice input')
+  await press('Dictate into conversation #13')
   expect(alert()).toBe(
     'Android blocks the mic for Chrome: allow it in Settings → Apps → Chrome → Permissions',
   )
   deny('Permission denied')
-  await press('Voice input')
+  await press('Dictate into conversation #13')
   expect(alert()).toBe(
     'Mic blocked for this site: allow it in Chrome → Settings → Site settings → Microphone',
   )

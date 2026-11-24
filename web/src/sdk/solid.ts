@@ -70,6 +70,7 @@ export {
   ConversationKind,
   ConversationScope,
   createTranscriptFrame,
+  Dictation,
   documentItems,
   EmptyTranscript,
   entryRenderers,
@@ -82,6 +83,7 @@ export {
   messageItems,
   MessageReference,
   ParkedRuns,
+  PromptRecorder,
   provisionsOf,
   RunStart,
   toolLine,
@@ -120,6 +122,8 @@ export type {
   CompactRow,
   CompactSummaryProps,
   ComposerTarget,
+  PromptBoxProps,
+  PromptInput,
   ConversationState,
   ConversationSummary,
   DocumentItem,
@@ -214,6 +218,12 @@ export { Header } from '../app/header.solid.tsx'
 export { Conversation, Dock, Panels, Sidebar, StatusLine } from '../app/shell.solid.tsx'
 /** The prompt box of the scoped or shown conversation alone, without its transcript; wrap it in `ComposerRedirect` to send elsewhere. */
 export { Composer } from '../app/composer.solid.tsx'
+/**
+ * A prompt box on its own: text, paste and drop, attachment chips, dictation and the record slot, with Keel's hairline.
+ * `draft` keys its durable draft, `onSubmit(input)` sends it (a rejection keeps the draft and shows the error), `accepts`
+ * picks inline images and uploaded files.
+ */
+export { PromptBox } from '../app/prompt-box.solid.tsx'
 /** An extension's failure, inline or as a block with a report button, as the shell shows it. */
 export { ErrorCard } from '../app/error-card.solid.tsx'
 /** A contribution's `icon` (a panel's, a surface's) with `class`. */
