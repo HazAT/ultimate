@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/pro
 import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
 import { context } from '../../../server/harness.ts'
+import { until } from '../../../test/helpers.ts'
 import { VideoFailed, VideoReady } from '../refs.ts'
 import type { Runner } from '../prepare.ts'
 import { actions } from '../server.ts'
@@ -17,6 +18,7 @@ const succeeds: Runner = async (command, args) => {
 
 const waitForAbort = (signal: AbortSignal) =>
   new Promise<never>((_, reject) => {
+    signal.throwIfAborted()
     signal.addEventListener('abort', () => reject(signal.reason), { once: true })
   })
 
@@ -101,7 +103,7 @@ it('resumes a prepare interrupted by closing the harness and cleans its scratch 
   ).toEqual([{ name: 'video.ready', data: { id } }])
 })
 
-it('aborts preparation before removing the video and its local files', async () => {
+it('resumes removal after a crash and aborts preparation without a failure event', async () => {
   const launched = Promise.withResolvers<void>()
   const f = await fixture(async (command, args, options) => {
     if (command !== 'ffmpeg') return succeeds(command, args, options)
@@ -115,15 +117,23 @@ it('aborts preparation before removing the video and its local files', async () 
   const video = (await f.state())?.videos[id]
   expect(video).toMatchObject({ state: 'preparing', task: expect.any(Number) })
 
+  f.harness().hold()
+  const removing = actions.remove({ id }, f.action).catch((error: unknown) => error)
+  await until(async () => (await f.state())?.videos[id]?.state === 'removing')
+  await expect(actions.ask({ id, question: 'What happens?' }, f.action)).rejects.toThrow(
+    'Video is removing',
+  )
   expect(await actions.remove({ id }, f.action)).toBeNull()
-  expect((await f.state())?.videos[id]).toBeUndefined()
+  await f.close()
+  expect(await removing).toBeInstanceOf(Error)
+
+  await f.open()
+  await until(async () => !(await f.state())?.videos[id])
   await expect(stat(join(f.home, 'videos', id))).rejects.toMatchObject({ code: 'ENOENT' })
   expect(await f.harness().waitForTask(video!.task!, context)).toMatchObject({
     state: { status: 'terminal', outcome: { status: 'aborted' } },
   })
-  expect((await f.recent({ events: [VideoFailed] })).map(({ data }) => data)).toEqual([
-    { id, error: 'stopped' },
-  ])
+  expect(await f.recent({ events: [VideoFailed] })).toEqual([])
 })
 
 it('prepares videos without Antigravity and tells the caller how to enable questions', async () => {

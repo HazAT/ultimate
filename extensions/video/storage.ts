@@ -3,6 +3,8 @@ import { copyFile, mkdir, open, readdir, rm, stat, writeFile } from 'node:fs/pro
 import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { TaskId } from '@earendil-works/pi-durable'
+import { defineEffect } from '../../lib/effect.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import {
   bytesOf,
@@ -157,27 +159,63 @@ function forget(doc: Videos, id: string) {
     if (key.startsWith(threadPrefix(id))) delete doc.threads[key]
 }
 
-export async function remove(host: ExtensionHost, id: string) {
-  return serialized(host, id, async () => {
-    const harness = host.harness()
-    const video = (await snapshot(host))?.videos[id]
-    if (video?.state === 'preparing' && video.task !== undefined) {
-      await harness.abortTask(video.task, context)
-      await harness.waitForTask(video.task, context)
-    }
-    await rm(folder(host, id), { recursive: true, force: true })
-    await harness.commit(async (tx) => {
-      forget(await tx.doc(VideosState, ROOT_CONVERSATION_ID), id)
-    }, context)
-    return null
-  })
+export function removal(host: ExtensionHost) {
+  const Remove = defineEffect<{ id: string; task?: TaskId }, null>(
+    'video.remove',
+    async ({ id, task }, { context: runContext, signal }) => {
+      if (task !== undefined) {
+        const harness = host.harness()
+        await harness.abortTask(task, runContext)
+        await harness.waitForTask(task, runContext)
+      }
+      signal.throwIfAborted()
+      await rm(folder(host, id), { recursive: true, force: true })
+      return null
+    },
+    async (tx, { id }, outcome) => {
+      const doc = await tx.doc(VideosState, ROOT_CONVERSATION_ID)
+      const video = doc.videos[id]
+      if (video?.state !== 'removing') return
+      if (outcome.ok) forget(doc, id)
+      else {
+        video.state = 'failed'
+        video.error = outcome.error
+      }
+    },
+  )
+
+  const queue = (id: string) =>
+    serialized(host, id, () =>
+      host.harness().commit(async (tx) => {
+        const doc = await tx.doc(VideosState, ROOT_CONVERSATION_ID)
+        const video = doc.videos[id]
+        if (!video || video.state === 'removing') return undefined
+        const task = video.state === 'preparing' ? video.task : undefined
+        const removalTask = await tx.createTask(
+          Remove,
+          { id, ...(task === undefined ? {} : { task }) },
+          {
+            conversationId: ROOT_CONVERSATION_ID,
+            ownership: { kind: 'conversation' },
+            background: true,
+          },
+        )
+        video.state = 'removing'
+        delete video.task
+        return removalTask
+      }, context),
+    )
+  return { Remove, queue }
 }
 
-export async function sweep(host: ExtensionHost) {
+export async function sweep(
+  host: ExtensionHost,
+  queueRemoval: ReturnType<typeof removal>['queue'],
+) {
   const cutoff = Date.now() - KEPT_MS
   const videos = (await snapshot(host))?.videos ?? {}
   for (const video of Object.values(videos))
-    if (video.createdAt < cutoff) await remove(host, video.id)
+    if (video.createdAt < cutoff && video.state !== 'removing') await queueRemoval(video.id)
   const dirs = await readdir(uploads(host), { withFileTypes: true }).catch(
     (error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') return []

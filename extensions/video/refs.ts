@@ -13,7 +13,7 @@ export type Video = {
   source: 'paste' | 'drop' | 'recording' | 'file' | 'url'
   url?: string
   conversation: number
-  state: 'receiving' | 'preparing' | 'ready' | 'failed'
+  state: 'receiving' | 'preparing' | 'ready' | 'failed' | 'removing'
   task?: TaskId
   error?: string
   createdAt: number

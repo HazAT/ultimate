@@ -43,9 +43,10 @@ export async function fixture(run: Runner, generate?: AntigravityService['genera
   } as unknown as ExtensionHost
   prepared.registry.install(videoExtension(host, run))
   const open = async () => {
-    current = await prepared.open()
+    current = await prepared.open(false)
     opened.add(current)
     await lifecycle.open()
+    harness().resume()
   }
   const close = async () => {
     await lifecycle.close()

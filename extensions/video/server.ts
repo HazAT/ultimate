@@ -1,10 +1,10 @@
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import { BACKGROUND_CONTEXT as context, withAbortSignal } from '@earendil-works/chord/context'
 import { defineExtension, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { num, obj, opt, str } from '@earendil-works/pi-schema'
 import { implementAction } from '../../lib/actions.ts'
-import { defineEffect } from '../../lib/effect.ts'
+import { defineEffect, effectResult } from '../../lib/effect.ts'
 import { strEnum } from '../../lib/schema.ts'
 import { execFile } from '../../lib/spawn.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -41,7 +41,7 @@ import {
   folder,
   receive,
   receivePath,
-  remove,
+  removal,
   serialized,
   snapshot,
   sweep,
@@ -75,14 +75,21 @@ function prepare(host: ExtensionHost, run: Runner) {
   )
 }
 
-const effects = new WeakMap<ExtensionHost, ReturnType<typeof prepare>>()
+const effects = new WeakMap<
+  ExtensionHost,
+  {
+    Prepare: ReturnType<typeof prepare>
+    queueRemoval: ReturnType<typeof removal>['queue']
+  }
+>()
 
 function finish(host: ExtensionHost, id: string): Promise<Video> {
   return serialized(host, id, async () => {
     const video = (await snapshot(host))?.videos[id]
     if (!video) throw new Error('Unknown video')
     if (video.state === 'preparing' || video.state === 'ready') return video
-    if (video.state !== 'receiving') throw new Error(`Video is ${video.state}: ${video.error}`)
+    if (video.state !== 'receiving')
+      throw new Error(`Video is ${video.state}${video.error ? `: ${video.error}` : ''}`)
     const source = sourceFile(video.name, video.mimeType)
     const { size } = await stat(join(folder(host, id), source))
     if (size !== video.bytes)
@@ -90,7 +97,7 @@ function finish(host: ExtensionHost, id: string): Promise<Video> {
     const preparing = await host.harness().commit(async (tx) => {
       const doc = await tx.doc(VideosState, ROOT_CONVERSATION_ID)
       const task = await tx.createTask(
-        effects.get(host)!,
+        effects.get(host)!.Prepare,
         { id, source, mimeType: video.mimeType },
         {
           conversationId: ROOT_CONVERSATION_ID,
@@ -110,9 +117,10 @@ function finish(host: ExtensionHost, id: string): Promise<Video> {
 export default function videoExtension(host: ExtensionHost, run: Runner = execFile) {
   host.want(AntigravityApi)
   const Prepare = prepare(host, run)
-  effects.set(host, Prepare)
+  const { Remove, queue: queueRemoval } = removal(host)
+  effects.set(host, { Prepare, queueRemoval })
   host.onOpen(async () => {
-    await sweep(host).catch((error: unknown) =>
+    await sweep(host, queueRemoval).catch((error: unknown) =>
       host.notice(`Video cleanup failed: ${String(error)}`),
     )
   })
@@ -129,7 +137,7 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
   })
   return defineExtension({
     name: 'video',
-    tasks: [Prepare],
+    tasks: [Prepare, Remove],
     tools: [
       defineTool({
         name: 'video_ask',
@@ -186,5 +194,9 @@ export const actions = {
   ask: implementAction(AskAction, (args, { host, conversationId, signal }) =>
     ask(host, { ...fields(args), conversation: conversationId ?? ROOT_CONVERSATION_ID }, signal),
   ),
-  remove: implementAction(RemoveAction, (args, { host }) => remove(host, idOf(fields(args).id))),
+  remove: implementAction(RemoveAction, async (args, { host, signal }) => {
+    const harness = host.harness()
+    const task = await effects.get(host)!.queueRemoval(idOf(fields(args).id))
+    return task === undefined ? null : effectResult(harness, task, withAbortSignal(signal, context))
+  }),
 }
