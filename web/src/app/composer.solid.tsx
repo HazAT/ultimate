@@ -34,8 +34,8 @@ import { Contributed, Contribution, Slot, useAllProvided } from '../sdk/contribu
 import { useExternal } from '../sdk/page.ts'
 import { splitAttachments } from './attachments.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
-import { getDraft } from './drafts.ts'
-import { PromptBox, restoreDraft } from './prompt-box.solid.tsx'
+import { getDraft, restoreDraft, storedText } from './drafts.ts'
+import { PromptBox } from './prompt-box.solid.tsx'
 import {
   atFirstLine,
   mergedSteer,
@@ -264,6 +264,7 @@ function ComposerEditor(props: { dock?: boolean }) {
     if (conversationId === undefined) throw new Error('No conversation to send to yet')
     const who = writerNow()
     const current = draft()
+    const typedAt = current.get().revision
     const mode = busy() ? (how ?? 'steer') : undefined
     const withdrawn =
       mode === 'steer' ? await withdrawQueuedSteer(api, conversationId, inbox()) : undefined
@@ -273,7 +274,8 @@ function ComposerEditor(props: { dock?: boolean }) {
       return await writingAs(who, () => api.submit(input.text, mode, conversationId, input.images))
     } catch (failure) {
       if (withdrawn) {
-        restoreDraft(current, mergedSteer(withdrawn, { text: current.get().text, images: [] }).text)
+        const kept = current.get().revision === typedAt ? storedText(current) : current.get().text
+        restoreDraft(current, mergedSteer(withdrawn, { text: kept, images: [] }).text)
         current.set({ images: [...withdrawn.images, ...current.get().images] })
       }
       throw failure
@@ -323,7 +325,6 @@ function ComposerEditor(props: { dock?: boolean }) {
       </Show>
       <Inbox items={inbox()} />
       <PromptBox
-        accepts={{ images: !target() || !!target()!.images }}
         actions={
           <Show when={busy()}>
             <Button

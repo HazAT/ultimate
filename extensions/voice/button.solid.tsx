@@ -123,9 +123,13 @@ export function VoiceButton(props: DictationProps) {
     message ? deadline(8000, () => setError(undefined)) : undefined,
   )
 
-  async function transcribe(conversation: ConversationId, blob: Blob, source: string) {
+  async function transcribe(
+    conversation: ConversationId,
+    blob: Blob,
+    source: string,
+    insert: (text: string) => void,
+  ) {
     setTranscribing(true)
-    const insert = props.insert
     try {
       const args = { audio: await base64(blob), mimeType: blob.type }
       const { text } = await writingAs(source, () =>
@@ -142,6 +146,7 @@ export function VoiceButton(props: DictationProps) {
 
   async function start() {
     const conversation = id() ?? ROOT
+    const insert = props.insert
     capture = new AbortController()
     const { signal } = capture
     setError(undefined)
@@ -175,7 +180,7 @@ export function VoiceButton(props: DictationProps) {
           const blob = new Blob(chunks, {
             type: recorder.mimeType || type || 'audio/webm',
           })
-          void transcribe(conversation, blob, source)
+          void transcribe(conversation, blob, source, insert)
         }
       }
       signal.addEventListener(

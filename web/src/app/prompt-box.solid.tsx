@@ -20,10 +20,17 @@ import {
 import { useProvided } from '../sdk/contribution.solid.tsx'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
 import { Attached, createAttach } from './attach.solid.tsx'
-import { splitAttachments, withAttachments } from './attachments.ts'
+import { withAttachments } from './attachments.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
-import { clearDraft, getDraft, insertIntoDraft, setDraftText } from './drafts.ts'
-import type { Draft, DraftStore } from './drafts.ts'
+import {
+  clearDraft,
+  createLocalDraft,
+  getDraft,
+  insertIntoDraft,
+  setDraftText,
+  storedText,
+} from './drafts.ts'
+import type { Draft } from './drafts.ts'
 
 const androidImagePasteStyle: JSX.CSSProperties = {
   '-webkit-user-modify': 'read-write',
@@ -33,8 +40,9 @@ const iconButton =
 const submitClass =
   'size-7 rounded-md pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
 
-export function createDraftState(id: () => number | string | undefined) {
-  const draft = createMemo(() => getDraft(id()))
+function createDraftState(id: () => number | string | undefined) {
+  const local = createLocalDraft()
+  const draft = createMemo(() => (id() === undefined ? local : getDraft(id())))
   const [changes, setChanges] = createSignal(0)
   const value = createMemo((): Draft => {
     changes()
@@ -42,23 +50,12 @@ export function createDraftState(id: () => number | string | undefined) {
   })
   createEffect(draft, (current) => {
     const unsubscribe = current.subscribe(() => setChanges((n) => n + 1))
-    const stored = (current.key ? localStorage.getItem(current.key) : null) ?? ''
+    const stored = storedText(current)
     if (stored !== current.get().text)
       current.set({ text: stored, revision: current.get().revision + 1 })
     return unsubscribe
   })
   return { draft, value }
-}
-
-export function restoreDraft(draft: DraftStore, text: string) {
-  const { text: rest, files: back } = splitAttachments(text)
-  setDraftText(draft, rest)
-  if (!back.length) return
-  const now = draft.get()
-  draft.set({
-    files: [...back.map((file) => ({ ...file, id: crypto.randomUUID() })), ...now.files],
-    revision: now.revision + 1,
-  })
 }
 
 export function PromptBox(props: PromptBoxProps) {
@@ -281,7 +278,11 @@ export function PromptBox(props: PromptBoxProps) {
                 get conversation() {
                   return props.conversation
                 },
-                insert: (words: string) => insertIntoDraft(draft(), editor, words),
+                get insert() {
+                  const target = draft()
+                  return (words: string) =>
+                    insertIntoDraft(target, draft() === target ? editor : undefined, words)
+                },
                 level: setLevel,
               }}
               last
@@ -342,9 +343,9 @@ function Hairline(props: {
     >
       <Show when={props.signal === 'listening'}>
         <span
-          class="absolute inset-y-0 left-1/2 w-full origin-center -translate-x-1/2 bg-brand transition-transform duration-75"
+          class="absolute inset-0 origin-center bg-brand transition-transform duration-75"
           style={{
-            transform: `translateX(-50%) scaleX(${0.08 + 0.92 * (props.level ?? 0)})`,
+            transform: `scaleX(${0.08 + 0.92 * (props.level ?? 0)})`,
           }}
         />
       </Show>

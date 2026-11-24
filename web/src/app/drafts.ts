@@ -1,6 +1,7 @@
 import type { DraftFile, PastedImage } from './attachments.ts'
 import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
 import { spliced } from './queued.ts'
+import { splitAttachments } from './attachments.ts'
 
 export type Draft = {
   text: string
@@ -42,6 +43,23 @@ function createDraft(id: number | string | undefined) {
 }
 
 export type DraftStore = ReturnType<typeof createDraft>
+
+export const createLocalDraft = () => createDraft(undefined)
+
+export function restoreDraft(draft: DraftStore, text: string) {
+  const { text: rest, files: back } = splitAttachments(text)
+  setDraftText(draft, rest)
+  if (!back.length) return
+  const now = draft.get()
+  draft.set({
+    files: [...back.map((file) => ({ ...file, id: crypto.randomUUID() })), ...now.files],
+    revision: now.revision + 1,
+  })
+}
+
+export function storedText(draft: DraftStore) {
+  return draft.key ? (localStorage.getItem(draft.key) ?? '') : draft.get().text
+}
 
 export function getDraft(id: number | string | undefined) {
   if (!draftsAndSubmissions.has(id)) draftsAndSubmissions.set(id, createDraft(id))
