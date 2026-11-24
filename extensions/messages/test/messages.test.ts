@@ -39,7 +39,7 @@ import { Metadata } from '../../../server/metadata.ts'
 import { emit } from '../../../server/events.ts'
 import messagesExtension, { actions } from '../server.ts'
 import { sendResult } from '../delivery.ts'
-import { Serving } from '../addresses.ts'
+import { Serving, Started } from '../addresses.ts'
 import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
 import { AskedCalls, Judge, Judgements, Messages, MessageSent } from '../api.ts'
 import type { JudgeService, JudgeState } from '../api.ts'
@@ -1557,6 +1557,33 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   expect(f.observed).toContainEqual(expect.stringContaining('A: Yes'))
   expect(await entries('board.asked')).toHaveLength(1)
   expect(await entries('board.answered')).toHaveLength(1)
+})
+it('points a branch question and its answer at the standing agent that started the branch', async () => {
+  const f = await fixture()
+  const b = await branched(f)
+  const triage = f.recipient
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).triage = triage.id
+    ;(await tx.doc(Started, b.id as ConversationId)).by = triage.id
+  }, context)
+  const kinds = async (id: ConversationId) =>
+    (await (await f.opened.harness.conversation(id, context))!.context(context)).entries.map(
+      (entry) => entry.kind,
+    )
+  await b.later(
+    'SEND ' +
+      JSON.stringify({
+        to: 'user',
+        text: 'Pick one',
+        questions: [{ text: 'A?', kind: 'confirm' }],
+      }),
+  )
+  const question = (await f.log())!.messages.find((m) => m.from === b.id && m.to === 'user')!
+  await f.service().answer(question.id, 'Q: A?\nA: Yes', context)
+  await until(async () => (await kinds(triage.id)).includes('board.answered'))
+  expect(await kinds(triage.id)).toContain('board.asked')
+  expect(await kinds(ROOT_CONVERSATION_ID)).not.toContain('board.asked')
+  expect(await kinds(ROOT_CONVERSATION_ID)).not.toContain('board.answered')
 })
 it('forwards images into a new branch with its prompt', async () => {
   const f = await fixture()
