@@ -1,7 +1,7 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
-import { api, errorMessage, ROOT, useConversation, useUiState } from '@/sdk/solid'
+import { api, composerImages, errorMessage, ROOT, useConversation, useUiState } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
 import { createCues } from './cues.ts'
@@ -32,7 +32,7 @@ const frame = (fn: () => void) => {
   return () => cancelAnimationFrame(handle)
 }
 
-type Pasted = { kind: 'image'; data: string; mimeType: string } | { kind: 'text'; text: string }
+type Image = { data: string; mimeType: string }
 export type Phase = 'idle' | 'recording' | 'sending' | 'thinking' | 'speaking' | 'done' | 'error'
 type Local = {
   trace: Trace
@@ -40,7 +40,7 @@ type Local = {
   audio?: string
   failed?: string
   optimistic?: VoiceTurn
-  images?: { data: string; mimeType: string }[]
+  images?: Image[]
 }
 type Cut = { key: string; sentence: number; charIndex: number }
 
@@ -142,6 +142,7 @@ const waiting = new Map<
   { resolve: (text: string) => void; reject: (error: Error) => void }
 >()
 const forks = new Map<ConversationId, Readonly<VoiceFork>>()
+let session: ConversationId | undefined
 const [draft, setDraft] = createRoot(() => createSignal<VoiceClip[]>([]))
 export const draftOf = draft
 const settled = (audio: string) =>
@@ -155,7 +156,10 @@ export function settleTranscripts(
   id?: ConversationId,
 ) {
   if (fork && id !== undefined) forks.set(id, fork)
-  if (id !== undefined) setDraft(fork?.draft ?? [])
+  if (id !== undefined) {
+    session = id
+    setDraft(fork?.draft ?? [])
+  }
   for (const [audio, wait] of waiting) {
     const text = fork?.transcripts?.[audio]
     const failed = fork?.failed?.[audio]
@@ -308,8 +312,9 @@ export async function sendDraft(
   spoken = false,
   clips: readonly VoiceClip[] = draftOf(),
   fromComposer = false,
+  images?: readonly Image[],
 ) {
-  if (!clips.length && !typed.trim()) return
+  if (!clips.length && !typed.trim() && !images?.length) return
   const busy =
     playerState().playing ||
     playerState().paused ||
@@ -325,22 +330,19 @@ export async function sendDraft(
     interrupted,
     spokenSend: spoken,
     fromComposer,
+    ...(images ? { images } : {}),
   })
 }
 
 export const discardDraft = () => api.action(DiscardAction, null)
 
-export async function sendTyped(
-  text: string,
-  images: readonly { data: string; mimeType: string }[] = [],
-) {
-  const pasted: Pasted[] = images.map((image) => ({ kind: 'image' as const, ...image }))
-  if (draftOf().length && !pasted.length) return sendDraft('steer', text, false, draftOf(), true)
-  if (!text.trim() && !pasted.length) return
+export async function sendTyped(text: string, images: readonly Image[] = []) {
+  if (draftOf().length) return sendDraft('steer', text, false, draftOf(), true, images)
+  if (!text.trim() && !images.length) return
   const interrupted =
     playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
   dock.player.pause()
-  await sendTurn({ typed: text.trim(), pasted, interrupted, fromComposer: true })
+  await sendTurn({ typed: text.trim(), images, interrupted, fromComposer: true })
 }
 
 function heardNothing(key: string, trace: Trace) {
@@ -356,7 +358,7 @@ function heardNothing(key: string, trace: Trace) {
 async function sendTurn(input: {
   recorded?: Recorded
   typed?: string
-  pasted?: Pasted[]
+  images?: readonly Image[]
   clips?: VoiceClip[]
   delivery?: VoiceDelivery
   interrupted: boolean
@@ -377,9 +379,12 @@ async function sendTurn(input: {
   const hint = [screen()?.text, cut, sentBySaying].filter(Boolean).join('\n\n') || undefined
   if (input.interrupted) {
     dock.player.stop()
+    for (const local of Object.values(dock.local())) local.trace.fail('cut in')
+    dock.setPending(undefined)
     await api.action(StopAction, null)
   }
-  const attachments = input.pasted ?? []
+  const pasted = input.images || session === undefined ? undefined : composerImages(session)
+  const images = [...(input.images ?? pasted?.images ?? [])]
   const key = crypto.randomUUID()
   const clips = input.clips ?? []
   const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
@@ -401,9 +406,7 @@ async function sendTurn(input: {
       ...(clips.length > 1 ? { clips: clips.map((clip) => clip.audio) } : {}),
       ...(hint ? { hint } : {}),
     },
-    images: attachments.flatMap((item) =>
-      item.kind === 'image' ? [{ data: item.data, mimeType: item.mimeType }] : [],
-    ),
+    images,
   })
   dock.setPending(key)
   dock.setPhase('sending')
@@ -428,16 +431,11 @@ async function sendTurn(input: {
       )
       text = [heard.filter((part) => part.trim()).join(' '), text].filter(Boolean).join('\n\n')
       trace.done('transcribe')
-      if (!text.trim() && !attachments.length) {
+      if (!text.trim() && !images.length) {
         heardNothing(key, trace)
         return
       }
     } else if (kept) trace.drop('transcribe')
-    const typedText = attachments.flatMap((item) => (item.kind === 'text' ? [item.text] : []))
-    if (typedText.length)
-      text = [text, ...typedText.map((item) => `Pasted text:\n${item}`)]
-        .filter(Boolean)
-        .join('\n\n')
     trace.start('send')
     const sent = await api.action(TurnAction, {
       key,
@@ -448,11 +446,14 @@ async function sendTurn(input: {
       ...(input.recorded || clips.length ? { seconds, envelope } : {}),
       ...(hint ? { hint } : {}),
       ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),
-      images: attachments.flatMap((item) =>
-        item.kind === 'image' ? [{ data: item.data, mimeType: item.mimeType }] : [],
-      ),
+      images,
     })
+    pasted?.clear()
     patchLocal(key, { conversation: sent.conversation })
+    if (dock.pending() !== key) {
+      if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
+      return
+    }
     if (sent.dropped) {
       heardNothing(key, trace)
       return
@@ -462,7 +463,7 @@ async function sendTurn(input: {
       void Promise.all(group.map(settled)).then(
         (heard) => {
           const silent = heard.every((part) => !part.trim())
-          if (silent && !input.typed?.trim() && !attachments.length && dock.pending() === key)
+          if (silent && !input.typed?.trim() && !images.length && dock.pending() === key)
             heardNothing(key, trace)
         },
         () => undefined,

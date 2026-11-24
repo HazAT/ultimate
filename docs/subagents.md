@@ -11,4 +11,6 @@ Definitions live in `agents/`, `~/.ultimate/agents/`, and the project root's `.u
 
 Review goes through one `reviewer`. When any `reviewer-*` definition exists, the shipped reviewer leads them: it starts
 every one in parallel and returns one merged verdict; otherwise it reviews alone. Add a reviewer by adding a
-`reviewer-<name>.md`; here `.ultimate/agents/` has three.
+`reviewer-<name>.md`; here `.ultimate/agents/` has three. When one of them blocks and an `adversarial-reviewer`
+definition exists (here it runs on Gemini Neon), the lead starts it with the blocking findings; it checks each against
+the code and argues for downgrading nitpicks, and the lead keeps blocking only what really must block.

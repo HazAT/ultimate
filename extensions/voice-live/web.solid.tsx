@@ -6,6 +6,7 @@ import {
   Card,
   defineWebExtension,
   MessageActions,
+  provide,
   renderEntry,
   switchConversation,
   useDocOf,
@@ -15,6 +16,8 @@ import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
 import { VoiceForkDoc } from './refs.ts'
 import { KEYS, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
 import { VoicePanel, VoiceToggle } from './panel.solid.tsx'
+import { VoiceRow, voiceForks } from './row.solid.tsx'
+import { UnderUltimate, Unlisted } from '../sidebar/ui.solid.tsx'
 import { timeOf } from './turns.solid.tsx'
 
 const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
@@ -98,6 +101,7 @@ export default defineWebExtension({
     'voice.handoff': HandoffCard,
     'voice.turn': TurnRow,
   },
+  provides: [provide(UnderUltimate, VoiceRow), provide(Unlisted, voiceForks)],
   tools: { voice_handoff: () => null },
   commands: [
     {

@@ -22,6 +22,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { openaiSecretOrNonOAuthKey, openaiTranscribe } from '../../lib/openai.ts'
 import { readSecret } from '../../lib/secrets.ts'
+import { imagesOf } from '../../lib/entries.ts'
 import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import {
@@ -285,7 +286,13 @@ async function openSession(host: ExtensionHost) {
       : { ...loaded, add: [...(loaded?.add ?? []), ...own] }
     Object.assign(await tx.doc(host.metadata, fork.id), { title: 'Voice', label: 'voice' })
     await host.need(ConversationsApi).setAutomaticSummaries(tx, fork.id, false)
-    Object.assign(session, { id: fork.id, of: main, at, startedAt: Date.now() })
+    Object.assign(session, {
+      id: fork.id,
+      of: main,
+      at,
+      startedAt: Date.now(),
+      forks: [...(session.forks ?? []), fork.id],
+    })
     return fork.id
   }, context)
 }
@@ -869,7 +876,7 @@ export default function voiceExtension(host: ExtensionHost) {
         name: 'voice_handoff',
         deferred: true,
         description:
-          "Hand the agreed outcome of this voice conversation to the main @ultimate as a message it acts on, or with `to` to the branch conversation on Daniel's screen (its coordinator). Write it the way you would brief yourself.",
+          "Hand the agreed outcome of this voice conversation to the main @ultimate as a message it acts on, or with `to` to the branch conversation on Daniel's screen (its coordinator), which a busy coordinator reads after its current tool round. Write it the way you would brief yourself.",
         parameters: obj({
           to: opt(
             num({ description: "A branch conversation on Daniel's screen; omit for @ultimate" }),
@@ -906,12 +913,20 @@ export default function voiceExtension(host: ExtensionHost) {
             if (await tx.submissionByRequest(target, requestId)) return
             if (branch !== undefined)
               await checkBranch(host, tx, branch, (await tx.doc(Fork, api.conversationId)).screen)
+            const shared = args.attachments?.length
+              ? (await tx.scanEntries({ conversationId: api.conversationId }, 200)).items
+                  .filter((entry) => VoiceTurnEntry.is(entry))
+                  .flatMap((entry) => imagesOf(entry).toReversed())
+                  .slice(0, maxImages)
+                  .toReversed()
+              : []
+            if (shared.length) handoff.images = shared.length
             await receiver.submit(tx, {
               type: 'input',
               requestId,
-              whenBusy: 'followUp',
+              whenBusy: branch === undefined ? 'followUp' : 'steer',
               entry: { kind: VoiceHandoffEntry.kind, data: handoff },
-              content: lines.join('\n'),
+              content: [{ type: 'text', text: lines.join('\n') }, ...shared],
             })
             ;(await tx.doc(Fork, api.conversationId)).handedOff = true
           }, ctx)

@@ -12,6 +12,8 @@ export type VoiceSession = {
   of?: ConversationId
   at?: EntryId
   startedAt?: number
+  /** Every fork voice made, so the sidebar never lists them: voice shows as one live row while a session is open. */
+  forks?: ConversationId[]
   /** The model voice uses, `provider/model`, picked in the panel; unset, the default. */
   model?: string
 }
@@ -44,6 +46,7 @@ export type VoiceHandoff = {
   open?: string[]
   instruction: string
   attachments?: string[]
+  images?: number
   from: ConversationId
 }
 

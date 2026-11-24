@@ -26,7 +26,10 @@ collect mode (optional), each with what to do when it is missing.
    - Any other model waits for that transcript; the trace shows the transcribe stage on the critical path.
    - Typed text, pasted text and pasted or dropped screenshots go through the same `turn`, with Enter in the prompt box.
 4. **The session** is a fork of @ultimate, made on the first turn from its last finished answer, like a side chat:
-   ownerless, its automatic summaries off, out of the sidebar's lists. It keeps the fork's tools and adds
+   ownerless, its automatic summaries off. Every fork is recorded in `voice.session` `forks` and kept out of the
+   sidebar's lists (`Unlisted`); while a session is open, one live row under @ultimate (`UnderUltimate`) shows it
+   instead, with a small level that follows the mic while you talk and sways while voice speaks; clicking it shows or
+   hides the panel. It keeps the fork's tools and adds
    `voice_handoff` and `ui`; `beforeTool` lets it only read (read, memory, web search and fetch), run codemode, drive the UI and hand off: no bash, no file edits.
    Its first input carries the voice-mode prompt (`prompt.ts`) as a hidden `conversations.identity` entry; each later
    input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
@@ -53,9 +56,10 @@ collect mode (optional), each with what to do when it is missing.
    fails with a clear message. The prompt has voice say each action in one short line before it runs it, and the reply
    lists every tool call it made, each with a checkmark.
 8. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
-   @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With `to`, it
-   goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`); a
-   conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
+   @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With
+   `attachments`, the images the user pasted into the session's turns (the latest four) go along with it. With `to`, it
+   goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`), as a
+   steer a busy coordinator reads after its current tool round; a conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
 
 ## Collect until send
 
