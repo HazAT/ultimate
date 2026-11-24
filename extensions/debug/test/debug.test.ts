@@ -139,6 +139,16 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
     [...tree.slice(0, 2), `… ${tree.length - 2} more; narrow the query or raise limit`].join('\n'),
   )
   expect(await debug({ call: 'trace', trace: 'unknown' })).toBe('No calls.')
+  const allCalls = server.extensions.trace.query({ conversation: 1 as ConversationId })
+  expect(
+    await debug({
+      call: 'trace',
+      conversation: 1,
+      until: allCalls[0].at,
+      limit: 5,
+    }),
+  ).toBe('No calls.')
+  await expect(debug({ call: 'trace', until: 'not-a-time' })).rejects.toThrow('Invalid until')
 })
 
 it('lists extension contracts with summaries and returns one by name', async () => {

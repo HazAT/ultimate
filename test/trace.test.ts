@@ -551,6 +551,34 @@ it('keeps the newest rows within the cap, drops old ones, and records nothing wh
   capped.close()
 })
 
+it('queries older trace windows with since and until past newer activity', async () => {
+  const file = join(await temp(), 'trace.sqlite')
+  const trace = callTrace(file)
+  trace.open()
+  const origin = Math.floor(Date.now() / 1000) * 1000 - 10_000
+  const iso = (second: number) => new Date(origin + second * 1000).toISOString()
+  const clock = vi.spyOn(performance, 'now')
+  try {
+    for (let second = 0; second < 6; second++) {
+      clock.mockReturnValue(origin + second * 1000 - performance.timeOrigin)
+      trace.run(call(`call-${second}`), () => second)
+    }
+  } finally {
+    clock.mockRestore()
+  }
+  const names = (query?: Parameters<typeof trace.reader.query>[0]) =>
+    trace.reader.query(query).map((row) => row.name)
+  expect(names({ limit: 2 })).toEqual(['call-4', 'call-5'])
+  expect(names({ since: iso(0), limit: 2 })).toEqual(['call-1', 'call-2'])
+  expect(names({ until: iso(4), limit: 2 })).toEqual(['call-2', 'call-3'])
+  expect(names({ since: iso(0), until: iso(3), limit: 10 })).toEqual(['call-1', 'call-2'])
+  expect(names({ since: iso(0), until: iso(5), limit: 2 })).toEqual(['call-1', 'call-2'])
+  expect(() => trace.reader.query({ since: 'not-a-time' })).toThrow('Invalid since')
+  expect(() => trace.reader.query({ until: 'not-a-time' })).toThrow('Invalid until')
+  expect(() => trace.reader.query({ since: 123 as never })).toThrow('Invalid since')
+  trace.close()
+})
+
 it('summarises values: secret keys redacted, long values cut, unserializable said so', () => {
   const text = summary({
     apiKey: 'k',
