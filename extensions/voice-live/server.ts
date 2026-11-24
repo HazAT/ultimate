@@ -261,7 +261,13 @@ function keepModel(
   if (agent.model) session.model = `${agent.model.provider}/${agent.model.modelId}`
 }
 
-async function openSession(host: ExtensionHost) {
+const sessionArg = (value: unknown) => {
+  if (value === undefined) return undefined
+  if (typeof value !== 'number') throw new Error('Expected session as a conversation id')
+  return value as ConversationId
+}
+
+async function openSession(host: ExtensionHost, expected?: ConversationId) {
   const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
   if (main === undefined) throw new Error('@ultimate is not available')
   const answer = await lastSettledInputAnswer(host, main, context)
@@ -269,7 +275,10 @@ async function openSession(host: ExtensionHost) {
   const model = await voiceModel(host)
   return host.harness().commit(async (tx) => {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
-    if (session.id !== undefined && !(await tx.doc(Fork, session.id)).ended) return session.id
+    const open = session.id !== undefined && !(await tx.doc(Fork, session.id)).ended
+    if (expected !== undefined && (!open || session.id !== expected))
+      throw new Error('This voice session ended; send again')
+    if (open) return session.id!
     const at = await answerIncludingClosingToolResults(tx, main, answer)
     const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
     Object.assign(await tx.doc(Fork, fork.id), { of: main, at, seen: at })
@@ -399,10 +408,16 @@ export const actions = {
     }
   }),
   record: implementAction(RecordAction, async (args, { host }) => {
-    const { audio, mimeType, collect } = unwrap<{
+    const {
+      audio,
+      mimeType,
+      collect,
+      session: expected,
+    } = unwrap<{
       audio: unknown
       mimeType: unknown
       collect: unknown
+      session: unknown
     }>(args)
     if (
       typeof audio !== 'string' ||
@@ -414,7 +429,7 @@ export const actions = {
     if (Buffer.byteLength(audio, 'base64') > MAX_AUDIO_BYTES)
       throw new Error('The recording is too large')
     const id = randomUUID()
-    const session = await openSession(host)
+    const session = await openSession(host, sessionArg(expected))
     await mkdir(recordings(host, session), { recursive: true })
     await writeFile(recordingPath(host, session, id), JSON.stringify({ data: audio, mimeType }), {
       mode: 0o600,
@@ -446,7 +461,20 @@ export const actions = {
     conversation: await openSession(host),
   })),
   turn: implementAction(TurnAction, async (args, { host }) => {
-    const { key, text, audio, clips, delivery, seconds, envelope, hint, screen, images } = unwrap<{
+    const {
+      key,
+      text,
+      audio,
+      clips,
+      delivery,
+      seconds,
+      envelope,
+      hint,
+      screen,
+      images,
+      session: expected,
+    } = unwrap<{
+      session: unknown
       key: unknown
       text: unknown
       audio: unknown
@@ -480,7 +508,7 @@ export const actions = {
     if (pictures.length > maxImages) throw new Error(`At most ${maxImages} images`)
     if (!text.trim() && typeof audio !== 'string' && !pictures.length)
       throw new Error('Expected text, a recording or an image')
-    const id = await openSession(host)
+    const id = await openSession(host, sessionArg(expected))
     for (const clip of collected ?? (typeof audio === 'string' ? [audio] : []))
       await readRecording(host, id, clip).catch(() => {
         throw new Error('That recording belongs to an ended session; record again')

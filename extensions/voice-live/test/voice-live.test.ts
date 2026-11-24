@@ -315,6 +315,24 @@ it('a send keeps the draft unless it is admitted, and accepts a screenshot alone
   expect(picture).toBe(200)
 })
 
+it('a recording or turn sent for a session that ended is refused and opens no new one', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  await f.action('end', null)
+  const late = await f.action('record', {
+    audio,
+    mimeType: 'audio/webm',
+    collect: { seconds: 1 },
+    session: first.id,
+  })
+  expect(late.data.error).toContain('This voice session ended')
+  const turn = await f.action('turn', { key: 'late', text: 'after end', session: first.id })
+  expect(turn.data.error).toContain('This voice session ended')
+  expect(
+    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id,
+  ).toBeUndefined()
+})
+
 it('a model picked in the fork itself carries over to the next session', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })

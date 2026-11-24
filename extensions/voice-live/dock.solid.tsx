@@ -173,7 +173,8 @@ export const composerOf = (id: ConversationId | undefined) =>
   id === undefined || carrying() ? COLD_DRAFT : id
 export const composeIn = (id: ConversationId | undefined) => {
   session = id
-  if (id !== undefined && !coldHolds()) setCarrying(false)
+  if (id === undefined) setCarrying(true)
+  else if (!coldHolds()) setCarrying(false)
   setDraft((id !== undefined && forks.get(id)?.draft) || [])
 }
 let live = new AbortController()
@@ -355,6 +356,7 @@ export async function release() {
 
 async function collectClip(recorded: Recorded) {
   const { signal } = live
+  const owner = session
   dock.setPhase('idle')
   dock.setStatus('Collecting · say "send it" or press Enter')
   try {
@@ -365,6 +367,7 @@ async function collectClip(recorded: Recorded) {
         audio,
         mimeType: recorded.blob.type,
         collect: { seconds: recorded.seconds, envelope: recorded.envelope },
+        ...(owner !== undefined ? { session: owner } : {}),
       },
       { signal },
     )
@@ -441,6 +444,10 @@ async function sendTurn(input: {
   fromComposer?: boolean
 }) {
   const { signal } = live
+  const owner = session
+  const cancelled = () => {
+    if (input.fromComposer) throw signal.reason
+  }
   if (dock.openaiOn() && dock.speak())
     inProcess(
       'opening the voice connection early only saves this page time',
@@ -457,9 +464,11 @@ async function sendTurn(input: {
     dock.player.stop()
     for (const local of Object.values(dock.local())) local.trace.fail('cut in')
     dock.setPending(undefined)
-    await api.action(StopAction, null, { signal })
+    await api.action(StopAction, null, { signal }).catch((failure: unknown) => {
+      if (!signal.aborted) throw failure
+    })
   }
-  if (signal.aborted) return
+  if (signal.aborted) return cancelled()
   const composer = composerOf(session)
   const pasted = input.images ? undefined : composerDraft(composer)
   const carried = composer === COLD_DRAFT ? pasted : undefined
@@ -501,7 +510,13 @@ async function sendTurn(input: {
     const audio = input.recorded ? await base64(input.recorded.blob) : undefined
     const mimeType = input.recorded?.blob.type ?? ''
     const kept = audio
-      ? (await api.action(RecordAction, { audio, mimeType }, { signal })).audio
+      ? (
+          await api.action(
+            RecordAction,
+            { audio, mimeType, ...(owner !== undefined ? { session: owner } : {}) },
+            { signal },
+          )
+        ).audio
       : clips[0]?.audio
     if (kept) patchLocal(key, { audio: kept })
     let text = typed
@@ -523,6 +538,7 @@ async function sendTurn(input: {
     const sent = await api.action(
       TurnAction,
       {
+        ...(owner !== undefined ? { session: owner } : {}),
         key,
         text,
         ...(kept ? { audio: kept } : {}),
@@ -536,7 +552,7 @@ async function sendTurn(input: {
       { signal },
     )
     pasted?.clear(carried ? 'all' : 'images')
-    setCarrying(false)
+    if (!coldHolds()) setCarrying(false)
     patchLocal(key, { conversation: sent.conversation })
     if (dock.pending() !== key) {
       if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
@@ -562,7 +578,7 @@ async function sendTurn(input: {
     dock.setStatus('Thinking…')
     dock.pulse(true)
   } catch (failure) {
-    if (signal.aborted) return
+    if (signal.aborted) return cancelled()
     trace.fail('error')
     patchLocal(key, { failed: errorMessage(failure) })
     dock.pulse(false)

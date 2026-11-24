@@ -83,9 +83,15 @@ export const VoiceForkDoc = docRef<VoiceFork>('voice.fork')
 /**
  * `{ audio: base64, mimeType }` → `{ audio }`, the id of the recording kept for the session's next turn. Opens the
  * session and starts the recording's durable transcription, which lands in the fork's `transcripts` or `failed`.
+ * With `session`, it belongs to that session and is refused once it ended, instead of opening a new one.
  */
 export const RecordAction = actionRef<
-  { audio: string; mimeType: string; collect?: { seconds: number; envelope?: number[] } },
+  {
+    audio: string
+    mimeType: string
+    collect?: { seconds: number; envelope?: number[] }
+    session?: ConversationId
+  },
   { audio: string }
 >('voice-live', 'record')
 
@@ -93,9 +99,11 @@ export const RecordAction = actionRef<
  * A turn: the transcript (or typed text), the recording it came from, images, and a hint about an interrupted reply.
  * Opens the session on its first turn. Returns the session's conversation and the route the turn takes; `dropped`
  * when its recording's transcript came back empty, so nothing was sent (a turn already sent is stopped instead).
+ * With `session`, it belongs to that session and is refused once it ended, instead of opening a new one.
  */
 export const TurnAction = actionRef<
   {
+    session?: ConversationId
     key: string
     text: string
     audio?: string

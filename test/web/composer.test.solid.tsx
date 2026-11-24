@@ -56,7 +56,8 @@ import { getDraft } from '../../web/src/app/drafts.ts'
 import { Composer } from '../../web/src/app/composer.solid.tsx'
 import { Dock, StatusLine } from '../../web/src/app/shell.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
-import type { SolidInboxProps } from '../../web/src/sdk/solid.ts'
+import { ComposerRedirect } from '../../web/src/sdk/solid.ts'
+import type { ComposerTarget, SolidInboxProps } from '../../web/src/sdk/solid.ts'
 
 const faux = { provider: 'faux', id: 'faux-1', available: true }
 const agent = createAgent()
@@ -354,4 +355,42 @@ it('moves the phone status into the status line when both mount together', async
     'ready',
   )
   await registry.setLoaders({})
+})
+
+it('a composer with its own draft key sends there, keeps the conversation draft apart and keeps a cancelled send', async () => {
+  await show(19, { 'pi.live': { run: { taskId: 2, inputs: [], turns: 0 } } })
+  getDraft(19).set({ text: 'for @ultimate' })
+  const sent: string[] = []
+  let refuse = false
+  const target: ComposerTarget = {
+    placeholder: 'cold',
+    draft: 'cold-test',
+    send: async (text) => {
+      if (refuse) throw new Error('ended')
+      sent.push(text)
+    },
+  }
+  const container = renderSolid(() => (
+    <ComposerRedirect value={() => target}>
+      <Composer dock />
+    </ComposerRedirect>
+  ))
+  await settle()
+  flush()
+  expect(container.querySelector('[aria-label="Stop the run in voice"]')).toBeNull()
+  expect(container.querySelector('[data-composer-target="draft"]')).not.toBeNull()
+  await act([
+    { ref: 'Prompt for voice', action: 'setValue', args: ['before talking'] },
+    { ref: 'Send prompt to voice', action: 'press' },
+  ])
+  expect(sent).toEqual(['before talking'])
+  expect(getDraft('cold-test').get().text).toBe('')
+  expect(getDraft(19).get().text).toBe('for @ultimate')
+  expect(submits()).toEqual([])
+  refuse = true
+  await act([
+    { ref: 'Prompt for voice', action: 'setValue', args: ['kept'] },
+    { ref: 'Send prompt to voice', action: 'press' },
+  ])
+  expect(getDraft('cold-test').get().text).toBe('kept')
 })

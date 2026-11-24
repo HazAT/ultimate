@@ -333,7 +333,7 @@ function ComposerEditor(props: { dock?: boolean }) {
       uploading() ||
       current.get().sending ||
       attach.busy() ||
-      conversationId === undefined
+      (conversationId === undefined && !redirect)
     )
       return
     const submitted = current.get()
@@ -357,7 +357,7 @@ function ComposerEditor(props: { dock?: boolean }) {
             input.images.map(({ data, mimeType }) => ({ data, mimeType })),
           ),
         )
-      else {
+      else if (conversationId !== undefined) {
         withdrawnSteerToRestoreOnFailure =
           mode === 'steer' ? await withdrawQueuedSteer(api, conversationId, inbox()) : undefined
         if (withdrawnSteerToRestoreOnFailure)

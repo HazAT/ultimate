@@ -149,3 +149,30 @@ it('End drops the collected clips and a transcription that settles afterwards', 
   expect(dock.local()).toEqual({})
   expect(dock.phase()).toBe('idle')
 })
+
+it('End during a send from the composer rejects, so the composer keeps what was typed', async () => {
+  let answer = () => {}
+  harness.status = new Promise((resolve) => (answer = resolve))
+  const sending = sendTyped('typed before End')
+  await vi.waitFor(() => expect(harness.asked).toBe(1))
+  await endSession()
+  answer()
+  await expect(sending).rejects.toThrow('The voice session ended')
+  expect(harness.turns).toEqual([])
+})
+
+it('what is typed into the cold box during the first send stays in the box the session shows', async () => {
+  await endSession()
+  getDraft(COLD_DRAFT).set({ text: 'first', revision: 1 })
+  composeIn(session)
+  let answer = () => {}
+  harness.status = new Promise((resolve) => (answer = resolve))
+  const sending = sendDraft('steer', '', true, [clip])
+  await vi.waitFor(() => expect(harness.asked).toBe(1))
+  getDraft(COLD_DRAFT).set({ text: 'first and more', revision: 2 })
+  answer()
+  await sending
+  expect(harness.turns).toEqual([expect.objectContaining({ text: 'first' })])
+  expect(getDraft(COLD_DRAFT).get().text).toBe('first and more')
+  expect(composerOf(session)).toBe(COLD_DRAFT)
+})
