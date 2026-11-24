@@ -1,3 +1,4 @@
+import { createServer } from 'node:http'
 import { afterEach, expect, it, vi } from 'vitest'
 import { fetchAssets, sourceFrames } from '../lib/source-frames.ts'
 
@@ -61,4 +62,53 @@ it("fetches only its own origin's bundle assets", async () => {
   expect(requested).toEqual([])
   const text = 'Error\n    at x (http://[bad]/assets/x.js:1:1)'
   expect(await sourceFrames(text, read)).toBe(text)
+})
+
+it('does not follow bundle or source-map redirects to another origin', async () => {
+  let targetUrl = ''
+  let targetRequests = 0
+  const target = createServer((_request, response) => {
+    targetRequests++
+    response.end('private response')
+  })
+  const origin = createServer((request, response) => {
+    if (request.url === '/assets/ok.js') response.end(script)
+    else if (request.url === '/assets/web-1.js.map') response.end(map)
+    else if (request.url === '/assets/map-redirect.js')
+      response.end('//# sourceMappingURL=redirect.js.map\n')
+    else response.writeHead(302, { location: targetUrl }).end()
+  })
+  const servers = [target, origin]
+  try {
+    await Promise.all(
+      servers.map(
+        (server) =>
+          new Promise<void>((resolve, reject) => {
+            server.once('error', reject)
+            server.listen(0, '127.0.0.1', resolve)
+          }),
+      ),
+    )
+    const [targetOrigin, assetOrigin] = servers.map((server) => {
+      const address = server.address()
+      if (!address || typeof address === 'string') throw new Error('No fixture port')
+      return `http://127.0.0.1:${address.port}`
+    })
+    targetUrl = `${targetOrigin}/private`
+    const read = fetchAssets(assetOrigin)
+    const stack = (asset: string) => `Error\n    at Crash (${assetOrigin}/assets/${asset}:1:17)`
+    expect(await sourceFrames(stack('ok.js'), read)).toContain('/repo/extensions/a/web.tsx:3:9')
+    expect.soft(await read(`${assetOrigin}/assets/redirect.js`)).toBeUndefined()
+    expect.soft(targetRequests).toBe(0)
+    const redirectedMap = stack('map-redirect.js')
+    expect(await sourceFrames(redirectedMap, read)).toBe(redirectedMap)
+    expect(targetRequests).toBe(0)
+  } finally {
+    await Promise.all(
+      servers.map(async (server) => {
+        server.closeAllConnections()
+        await new Promise<void>((resolve) => server.close(() => resolve()))
+      }),
+    )
+  }
 })
