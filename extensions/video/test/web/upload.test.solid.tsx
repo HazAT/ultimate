@@ -15,6 +15,9 @@ const harness = vi.hoisted(() => ({
     body: { args?: Record<string, unknown> } & Record<string, unknown>
   }[],
   finished: undefined as (() => void) | undefined,
+  hold: undefined as
+    | ((action: string, args: Record<string, unknown>) => Promise<void> | undefined)
+    | undefined,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -36,6 +39,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     harness.posts.push({ path, body })
     const action = /\/actions\/([a-z]+)$/.exec(path)?.[1]
     const args = body.args as Record<string, unknown>
+    if (action) await harness.hold?.(action, args)
     if (action === 'begin') return Response.json({ result: { id: `v_${'a'.repeat(32)}` } })
     if (action === 'append')
       return Response.json({ result: { received: (args.offset as number) + 1 } })
@@ -43,6 +47,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       harness.finished?.()
       return Response.json({ result: { id: args.id, state: 'preparing' } })
     }
+    if (action === 'remove') return Response.json({ result: null })
     if (action === 'upload')
       return Response.json({ result: { path: `/home/attachments/${'1'.repeat(13)}-x/notes.pdf` } })
     return Response.json({ ok: true, submissionId: 1 })
@@ -74,9 +79,25 @@ import type { Video } from '../../refs.ts'
 const agent = createAgent()
 const id = `v_${'a'.repeat(32)}`
 
+const held = (action: string, offset?: number) => {
+  const { promise: reached, resolve: reach } = Promise.withResolvers<void>()
+  const { promise: release, resolve } = Promise.withResolvers<void>()
+  harness.hold = (name, args) => {
+    if (name !== action || (offset !== undefined && args.offset !== offset)) return undefined
+    reach()
+    return release
+  }
+  return { reached, release: resolve }
+}
+const videoActions = () =>
+  harness.posts
+    .filter((post) => post.path.startsWith('/api/extensions/video/'))
+    .map((post) => post.path.replace('/api/extensions/video/actions/', ''))
+
 beforeEach(async ({ onTestFinished }) => {
   harness.sources.length = 0
   harness.posts.length = 0
+  harness.hold = undefined
   localStorage.clear()
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -148,7 +169,16 @@ it('routes a dropped video to video in 8 MB chunks and other files to attachment
   })
   const video = new File([new Uint8Array(9 * 1024 * 1024)], 'demo.webm', { type: 'video/webm' })
   const pdf = new File(['%PDF'], 'notes.pdf', { type: 'application/pdf' })
+  const second = held('append', 8 * 1024 * 1024)
   drop(container, [video, pdf])
+  await second.reached
+  await settle()
+  flush()
+  expect(chipNotes(container)).toEqual(['Uploading 88%', '4 B · PDF'])
+  expect(
+    container.querySelector<HTMLElement>('[data-ui="file-chip"] span span')?.style.transform,
+  ).toBe('scaleX(0.888889)')
+  second.release()
   await finished
   await settle()
   flush()
@@ -229,4 +259,30 @@ it('drops the chip and shows the reason when preparation fails', async () => {
   flush()
   expect(chipNotes(container)).toEqual([])
   expect(getDraft(22).get().error).toBe('broken.mp4: ffprobe found no video stream')
+})
+
+it('removes the video when the chip goes while begin is pending or after an append fails', async () => {
+  await show(23)
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  const begin = held('begin')
+  drop(container, [new File(['x'], 'early.mp4', { type: 'video/mp4' })])
+  await begin.reached
+  await agent.act({ steps: [{ ref: 'Remove file 1: early.mp4', action: 'press' }] })
+  begin.release()
+  await settle()
+  flush()
+  expect(videoActions()).toEqual(['begin', 'remove'])
+  expect(chipNotes(container)).toEqual([])
+  expect(getDraft(23).get().error).toBeUndefined()
+
+  harness.posts.length = 0
+  harness.hold = (name) => (name === 'append' ? Promise.reject(new Error('disk full')) : undefined)
+  drop(container, [new File(['x'], 'later.mp4', { type: 'video/mp4' })])
+  await settle()
+  flush()
+  expect(videoActions()).toEqual(['begin', 'append', 'remove'])
+  expect(chipNotes(container)).toEqual([])
+  expect(getDraft(23).get().error).toContain('later.mp4:')
 })
