@@ -498,8 +498,8 @@ export function useConversationSummary(
 export function useTranscriptElements() {
   const frame = useContext(Transcript)
   return {
-    scroll: () => frame?.scroll.current ?? null,
-    content: () => frame?.content.current ?? null,
+    scroll: () => frame?.elements()?.scroll ?? null,
+    content: () => frame?.elements()?.content ?? null,
   }
 }
 

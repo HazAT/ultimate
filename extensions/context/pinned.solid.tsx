@@ -1,4 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
@@ -18,11 +19,9 @@ import type { Breakdown } from './types.ts'
 
 function useStartInView() {
   const { scroll, content } = useTranscriptElements()
-  const entries = useTranscript()
   const [inView, setInView] = createSignal(false)
   const mounted = createMemo(
     (): { column: HTMLElement; root: HTMLElement | null } | undefined => {
-      entries()
       const column = content()
       return column ? { column, root: scroll() } : undefined
     },
@@ -56,24 +55,26 @@ function useStartInView() {
   return inView
 }
 
-export function PinnedPrompt() {
+function Unowned(props: { prompt: (conversation: ConversationId) => JSX.Element }) {
   const id = useConversationId()
   const summary = useConversationSummary(id)
   return (
     <Show keyed when={summary()?.parentConversationId === undefined ? id() : undefined}>
-      {conversationPrompt}
+      {props.prompt}
     </Show>
   )
 }
 
+export const PinnedPrompt = () => <Unowned prompt={conversationPrompt} />
+
+export const InheritedPromptStart = () => <Unowned prompt={promptStart} />
+
 const sum = (items: readonly { tokens: number }[]) =>
   items.reduce((total, item) => total + item.tokens, 0)
 
-function conversationPrompt(conversation: ConversationId) {
-  const label = `Pinned prompt #${conversation}`
+function useCurrentPrompt(conversation: ConversationId) {
   const agent = useAgent()
   const entries = useTranscript()
-  const startInView = useStartInView()
   const [acknowledged, acknowledge] = useUiState<number | null>(
     `context.seen.${conversation}`,
     null,
@@ -91,12 +92,6 @@ function conversationPrompt(conversation: ConversationId) {
       on: () => entries().findLast((entry) => entry.kind === 'pi.system')?.id,
     },
   )
-  createEffect(
-    () => (acknowledged() === null ? current()?.at : undefined),
-    (at) => {
-      if (at !== undefined) writingAs('app', () => acknowledge(at))
-    },
-  )
   const breakdown = createMemo((): Breakdown | undefined => {
     const result = current()
     if (!result?.at) return undefined
@@ -111,6 +106,30 @@ function conversationPrompt(conversation: ConversationId) {
       tokens: { prompt, tools, injected: 0, total: prompt + tools },
     }
   })
+  return { acknowledged, acknowledge, current, breakdown }
+}
+
+function promptStart(conversation: ConversationId) {
+  const { breakdown } = useCurrentPrompt(conversation)
+  return (
+    <Show when={breakdown()}>
+      {(shown) => (
+        <Header breakdown={shown()} label={`Transcript start context #${conversation}`} />
+      )}
+    </Show>
+  )
+}
+
+function conversationPrompt(conversation: ConversationId) {
+  const label = `Pinned prompt #${conversation}`
+  const startInView = useStartInView()
+  const { acknowledged, acknowledge, current, breakdown } = useCurrentPrompt(conversation)
+  createEffect(
+    () => (acknowledged() === null ? current()?.at : undefined),
+    (at) => {
+      if (at !== undefined) writingAs('app', () => acknowledge(at))
+    },
+  )
   const changed = () => {
     const diff = current()?.diff
     return diff && diff.sections.length + diff.tools.length > 0 ? diff : undefined
