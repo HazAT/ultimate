@@ -374,7 +374,8 @@ async function collectClip(recorded: Recorded) {
       const chosen = new Set(intent.clips)
       const held = draftOf()
       const clips = held.filter((clip) => chosen.has(clip.audio))
-      if (intent.answered && held.length !== chosen.size) {
+      const judged = held.length === chosen.size && held.every((clip) => !sending.has(clip.audio))
+      if (intent.answered && !judged) {
         if (playerState().paused) dock.player.resume()
       } else if (clips.length === chosen.size)
         await sendDraft(intent.send, '', intent.answered ? 'answer' : true, clips)

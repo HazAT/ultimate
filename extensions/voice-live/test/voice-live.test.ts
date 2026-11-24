@@ -534,6 +534,8 @@ it('a clip that completely answers the question voice just asked sends as a stee
     if (!input.endsWith('/systemone')) return transcribe(input, init)
     const { state, questions } = JSON.parse(init!.body as string)
     asked.push({ state, questions: Object.keys(questions) })
+    if (questions.answer && state.latestRecording === 'send it')
+      return new Promise<Response>(() => {})
     const { send, only = 0, complete } = verdicts[state.latestRecording]
     const probabilities = { none: 0, unfinished: 1 - complete, complete }
     return Promise.resolve(
@@ -589,9 +591,16 @@ it('a clip that completely answers the question voice just asked sends as a stee
   expect(await intent((await collect('maybe the second'))[0])).toEqual({})
   expect(await intent((await collect('well first', 'and then I think')).at(-1))).toEqual({})
 
-  const older = await collect('the second one', 'the first')
-  expect(await intent(older[0])).toEqual({})
-  expect(asked.map((request) => request.questions.join())).toEqual(['send,only'])
+  const outOfOrder = await collect('the first', 'the second one')
+  expect(await intent(outOfOrder[0])).toEqual({
+    send: 'steer',
+    clips: outOfOrder,
+    answered: true,
+  })
+  expect(asked.find((request) => request.questions.join() === 'answer')?.state).toMatchObject({
+    collectedSoFar: 'the first',
+    latestRecording: 'the second one',
+  })
 
   const command = await collect('maybe the second', 'send it')
   expect(await intent(command[1])).toEqual({ send: 'steer', clips: [command[0]], dropped: true })

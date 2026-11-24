@@ -587,9 +587,12 @@ export const actions = {
       const fork = await tx.doc(Fork, id)
       if (fork.ended) throw new Error('This voice session ended; send again')
       if (collected) {
-        const held = new Set((fork.draft ?? []).map((clip) => clip.audio))
-        if (!collected.every((clip) => held.has(clip)))
-          throw new Error('The collected recordings changed; send again')
+        const held = (fork.draft ?? []).map((clip) => clip.audio)
+        const changed =
+          answered === true
+            ? held.join() !== collected.join()
+            : !collected.every((clip) => held.includes(clip))
+        if (changed) throw new Error('The collected recordings changed; send again')
       }
       const silent =
         group.length > 0 &&
@@ -670,15 +673,14 @@ export const actions = {
       .map((clip) => fork?.transcripts?.[clip.audio] ?? '')
       .join(' ')
     const collected = fork.draft ?? []
-    const settled =
-      collected.at(-1)?.audio === audio &&
-      collected.every((clip) => fork.transcripts?.[clip.audio] !== undefined)
+    const heard = collected.map((clip) => fork.transcripts?.[clip.audio])
     const question =
-      settled && fork.at !== undefined ? await openQuestion(host, id, fork.at) : undefined
-    const state = { collectedSoFar: before, latestRecording: said }
+      heard.every((text) => text !== undefined) && fork.at !== undefined
+        ? await openQuestion(host, id, fork.at)
+        : undefined
     const asking = classify.ask(
       {
-        state,
+        state: { collectedSoFar: before, latestRecording: said },
         questions: {
           send: {
             type: 'choice',
@@ -701,23 +703,30 @@ export const actions = {
       },
       signal,
     )
-    const answering = question
-      ? classify.ask(
-          {
-            state: { assistantLastReply: question, ...state },
-            questions: { answer: ANSWER_QUESTION },
-          },
-          signal,
-        )
-      : undefined
-    const [asked, replied] = await Promise.allSettled([asking, answering])
-    if (asked.status === 'rejected') throw asked.reason
-    const { answers } = asked.value
+    const answering = Promise.allSettled(
+      question
+        ? [
+            classify.ask(
+              {
+                state: {
+                  assistantLastReply: question,
+                  collectedSoFar: heard.slice(0, -1).join(' '),
+                  latestRecording: heard.at(-1)!,
+                },
+                questions: { answer: ANSWER_QUESTION },
+              },
+              signal,
+            ),
+          ]
+        : [],
+    )
+    const { answers } = await asking
     const send = answers.send
     const commanded = send?.type === 'choice' && send.choice !== 'hold' && send.confidence >= 0.6
     if (!commanded) {
-      if (replied.status === 'rejected') throw replied.reason
-      const answer = replied.value?.answers.answer
+      const [replied] = await answering
+      if (replied?.status === 'rejected') throw replied.reason
+      const answer = replied?.value.answers.answer
       if (answer?.type !== 'choice' || (answer.probabilities.complete ?? 0) < ANSWER_THRESHOLD)
         return {}
       return {
