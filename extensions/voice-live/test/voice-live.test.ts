@@ -9,7 +9,7 @@ import {
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { Message } from '@earendil-works/pi-ai'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { AgentDoc, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { EntryId } from '@earendil-works/pi-durable'
 import { Branch } from '../../lineage/api.ts'
 import { context } from '../../../server/harness.ts'
@@ -59,7 +59,9 @@ async function fixture() {
   const server = await fauxServer({ ultimateRoot, home, userHome: home, faux })
   servers.push(server)
   const requests: { model: string; messages: Message[] }[] = []
-  const route: FauxResponseFactory = (transcript, _options, _state, model) => {
+  const hold = Promise.withResolvers<void>()
+  let holding = false
+  const route: FauxResponseFactory = async (transcript, _options, _state, model) => {
     server.host.faux!.appendResponses([route])
     const messages = transcript.messages.filter((message) => message.role !== 'system')
     requests.push({ model: model.id, messages })
@@ -72,6 +74,10 @@ async function fixture() {
     if (call && last.role === 'user') {
       const { name, args } = JSON.parse(call[1])
       return fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: 'toolUse' })
+    }
+    if (text === 'HOLD') {
+      holding = true
+      await hold.promise
     }
     return fauxAssistantMessage(`echo ${text}`)
   }
@@ -96,7 +102,18 @@ async function fixture() {
     return { id, route: result.data.result.route as string }
   }
   const forkOf = (id: ConversationId) => server.harness.snapshot(Fork, id, context)
-  return { server, home, main, requests, action, turn, transcribed, forkOf }
+  return {
+    server,
+    home,
+    main,
+    requests,
+    action,
+    turn,
+    transcribed,
+    forkOf,
+    hold,
+    holding: () => holding,
+  }
 }
 
 const userParts = (message: Message | undefined) =>
@@ -405,7 +422,18 @@ it('voice_handoff with `to` reaches a real branch on screen and refuses one off 
   expect(JSON.stringify(f.requests.at(-1)!.messages.at(-1))).toContain(
     `#${branch.id} is not on Daniel's screen`,
   )
+  // A handoff to #964145 queued as a follow-up while it was busy; it now steers the current run.
+  const busy = await (await f.server.harness.conversation(branch.id, context))!.submit(
+    { type: 'input', content: 'HOLD' },
+    context,
+  )
+  await until(f.holding)
   await send('here', branch.id)
+  expect(
+    (await f.server.harness.snapshot(InboxDoc, branch.id, context))!.items.map((i) => i.mode),
+  ).toEqual(['steer'])
+  f.hold.resolve()
+  await busy.wait(context)
   await until(async () =>
     (
       await (await f.server.harness.conversation(branch.id, context))!.context(context)
