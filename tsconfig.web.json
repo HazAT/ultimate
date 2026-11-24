@@ -122,6 +122,8 @@
     "extensions/review/lines.ts",
     "extensions/review/link-state.ts",
     "extensions/review/sha256.ts",
+    "extensions/reader/blocks.ts",
+    "extensions/reader/comments.ts",
     "lib/format.ts",
     "lib/cell.ts",
     "lib/plural.ts",
