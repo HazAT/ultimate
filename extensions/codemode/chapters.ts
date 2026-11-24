@@ -13,9 +13,8 @@ import { shortTitle } from '../../lib/title.ts'
 
 export const limit = (value: unknown, fallback = 100) => {
   const n = value ?? fallback
-  if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > 1000)
-    throw new Error('limit must be an integer between 1 and 1000')
-  return n
+  if (typeof n !== 'number' || Number.isNaN(n)) throw new Error('limit must be a number')
+  return Math.min(Math.max(1, Math.trunc(n)), 1000)
 }
 export const id = (value: unknown): ConversationId => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1)
