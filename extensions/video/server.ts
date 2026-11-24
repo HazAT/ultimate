@@ -35,7 +35,7 @@ import {
   VideoFailed,
   VideoReady,
 } from './refs.ts'
-import type { Video } from './refs.ts'
+import type { AskedVideo, Video } from './refs.ts'
 import {
   addUrl,
   folder,
@@ -153,11 +153,15 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
           fps: opt(num({ exclusiveMinimum: 0, description: 'Frames to sample per second' })),
         }),
         async execute(args, api, ctx) {
+          let asked: AskedVideo | undefined
           const { answer, usage, model } = await ask(
             host,
             { ...args, conversation: api.conversationId },
             ctx.abortSignal ?? new AbortController().signal,
-            (stage) => api.details(stage, ctx),
+            ({ name, seconds, ...stage }) => {
+              asked = { name, ...(seconds === undefined ? {} : { seconds }) }
+              return api.details({ ...stage, ...asked }, ctx)
+            },
           )
           const format = (count: number) => count.toLocaleString('en-US')
           const cached =
@@ -167,7 +171,7 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
           const summary = `Used ${format(usage.promptTokenCount)} input tokens${cached}, ${format(usage.candidatesTokenCount)} output.`
           return {
             output: [{ type: 'text', text: `${answer}\n\n${summary}` }],
-            details: { stage: 'answered', usage, model, answer },
+            details: { stage: 'answered', usage, model, answer, ...asked },
           }
         },
       }),

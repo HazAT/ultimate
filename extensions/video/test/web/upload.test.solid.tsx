@@ -304,11 +304,13 @@ it('shows a video_ask call going from asking Gemini to its answer and usage', as
     details,
   })
   const [view, setView] = createRoot(() =>
-    createSignal(call('running', { stage: 'asking', part: 2, parts: 3 })),
+    createSignal(
+      call('running', { stage: 'asking', part: 2, parts: 3, name: 'demo.webm', seconds: 41.6 }),
+    ),
   )
-  const container = renderSolid(() => <VideoAskCall call={view()} core={null} />)
-  await settle()
-  videoState({ state: 'ready', seconds: 41.6 })
+  const container = renderSolid(() => (
+    <VideoAskCall call={view()} core={<p data-testid="core">{view().output}</p>} />
+  ))
   await settle()
   flush()
   expect(container.textContent).toContain('demo.webm · 42 s')
@@ -318,6 +320,8 @@ it('shows a video_ask call going from asking Gemini to its answer and usage', as
   setView(
     call('done', {
       stage: 'answered',
+      name: 'demo.webm',
+      seconds: 41.6,
       answer: 'It says PELICAN.',
       model: 'gemini-4-neon-low',
       usage: { promptTokenCount: 4200, candidatesTokenCount: 12, totalTokenCount: 4212 },
@@ -328,6 +332,16 @@ it('shows a video_ask call going from asking Gemini to its answer and usage', as
   expect(container.textContent).toContain('It says PELICAN.')
   expect(container.textContent).toContain('gemini-4-neon-low · 4.2k in · 12 out')
   await expectDistinctAgentNames(agent)
+
+  setView({ ...call('done', { usage: {} } as unknown as AskDetails), output: 'Earlier answer' })
+  flush()
+  expect(container.querySelector('[data-testid="core"]')?.textContent).toBe('Earlier answer')
+  setView({
+    ...call('error', { stage: 'asking', part: 1, parts: 1, name: 'demo.webm' }),
+    output: 'Unknown video',
+  })
+  flush()
+  expect(container.querySelector('[data-testid="core"]')?.textContent).toBe('Unknown video')
 })
 
 it('a recording stopped while a typed prompt is sending waits for it, so the sent prompt still clears', async ({
