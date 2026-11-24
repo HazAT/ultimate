@@ -1,7 +1,7 @@
 import { ArrowUp, LoaderCircle, Paperclip } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createEffect, createMemo, createSignal, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
@@ -89,6 +89,10 @@ export function PromptBox(props: PromptBoxProps) {
           ...(allowsImages() ? imageMimeTypes : []),
           ...uploads().map((upload) => `${upload.accepts}*`),
         ].join(',')
+  let mounted = true
+  onCleanup(() => {
+    mounted = false
+  })
   const [level, setLevel] = createSignal<number>()
   const [recording, setRecording] = createSignal(false)
   const [dragging, setDragging] = createSignal(false)
@@ -294,7 +298,7 @@ export function PromptBox(props: PromptBoxProps) {
               attach: async (picked: readonly File[], source: UploadSource = 'recording') => {
                 const target = draft()
                 await sent(target)
-                return draft() === target && attach.attach(picked, source)
+                return mounted && draft() === target && attach.attach(picked, source)
               },
               recording: setRecording,
             }}

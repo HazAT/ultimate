@@ -342,3 +342,24 @@ it('a start that failed leaves no time limit behind to stop the next recording',
     vi.useRealTimers()
   }
 })
+
+it('offers a recording again to a box that remounted while its first box refused it', async () => {
+  const { recorder } = mount({ name: 'box A', draft: 1 })
+  await press('Record the screen into box A (prompt box)')
+  const refused = Promise.withResolvers<boolean>()
+  const unmountFirst = recorder.mount({ draft: 1, attach: () => refused.promise })
+  await press('Stop and attach the screen recording to box A (prompt box)')
+  attached.length = 0
+  unmountFirst()
+  recorder.mount({
+    draft: 1,
+    attach: async (files) => (
+      attached.push({ box: 'remounted', draft: 1, files: [...files] }),
+      true
+    ),
+  })
+  refused.resolve(false)
+  await settle()
+  expect(attached.map((entry) => entry.box)).toEqual(['remounted'])
+  expect(released).toHaveBeenCalledOnce()
+})

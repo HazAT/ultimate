@@ -73,8 +73,12 @@ export function createScreenRecorder(media: Media) {
       'a recording lives in this page until its box takes it; the reload hold keeps the page',
       box.attach(files.map((held) => held.file)).then(
         (taken) => {
-          if (!taken) waiting.set(draft, [...files, ...(waiting.get(draft) ?? [])])
-          else for (const held of files) held.release()
+          if (taken) for (const held of files) held.release()
+          else {
+            waiting.set(draft, [...files, ...(waiting.get(draft) ?? [])])
+            const next = [...boxes].findLast((candidate) => candidate.draft === draft)
+            if (next && next !== box) offer(draft)
+          }
         },
         () => {
           for (const held of files) held.release()
