@@ -32,6 +32,10 @@ export type AskArgs = {
   fps?: number
 }
 
+/** The `video_ask` call's details: which part it is asking while it runs, then the answer and Google's usage. */
+export type AskingDetails = { stage: 'asking'; part: number; parts: number }
+export type AskDetails = AskingDetails | ({ stage: 'answered' } & AskResult)
+
 /** The video catalogue and per-conversation question threads on the root conversation. */
 export const VideosDoc = docRef<Videos>('video.videos')
 /** `{ name, mimeType, bytes, source? }` → `{ id }`: reserve storage for a video upload. */

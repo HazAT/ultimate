@@ -153,10 +153,11 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
           fps: opt(num({ exclusiveMinimum: 0, description: 'Frames to sample per second' })),
         }),
         async execute(args, api, ctx) {
-          const { answer, usage } = await ask(
+          const { answer, usage, model } = await ask(
             host,
             { ...args, conversation: api.conversationId },
             ctx.abortSignal ?? new AbortController().signal,
+            (stage) => api.details(stage, ctx),
           )
           const format = (count: number) => count.toLocaleString('en-US')
           const cached =
@@ -164,7 +165,10 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
               ? ''
               : ` (${format(usage.cachedContentTokenCount)} cached)`
           const summary = `Used ${format(usage.promptTokenCount)} input tokens${cached}, ${format(usage.candidatesTokenCount)} output.`
-          return { output: [{ type: 'text', text: `${answer}\n\n${summary}` }], details: { usage } }
+          return {
+            output: [{ type: 'text', text: `${answer}\n\n${summary}` }],
+            details: { stage: 'answered', usage, model, answer },
+          }
         },
       }),
     ],

@@ -1,6 +1,6 @@
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush } from 'solid-js'
+import { createRoot, createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
@@ -74,7 +74,9 @@ import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { Composer } from '../../../../web/src/app/composer.solid.tsx'
 import { registry, store } from '../../../../web/src/sdk/client.ts'
 import { VideosDoc } from '../../refs.ts'
-import type { Video } from '../../refs.ts'
+import type { AskDetails, Video } from '../../refs.ts'
+import { VideoAskCall } from '../../call.solid.tsx'
+import type { ToolCallView } from '../../../../web/src/sdk/solid.ts'
 
 const agent = createAgent()
 const id = `v_${'a'.repeat(32)}`
@@ -285,4 +287,42 @@ it('removes the video when the chip goes while begin is pending or after an appe
   expect(videoActions()).toEqual(['begin', 'append', 'remove'])
   expect(chipNotes(container)).toEqual([])
   expect(getDraft(23).get().error).toContain('later.mp4:')
+})
+
+it('shows a video_ask call going from asking Gemini to its answer and usage', async () => {
+  const call = (status: ToolCallView['status'], details: AskDetails): ToolCallView => ({
+    id: 'ask-1',
+    name: 'video_ask',
+    args: { id, question: 'What is written?' },
+    status,
+    output: '',
+    images: [],
+    diagnostics: [],
+    details,
+  })
+  const [view, setView] = createRoot(() =>
+    createSignal(call('running', { stage: 'asking', part: 2, parts: 3 })),
+  )
+  const container = renderSolid(() => <VideoAskCall call={view()} core={null} />)
+  await settle()
+  videoState({ state: 'ready', seconds: 41.6 })
+  await settle()
+  flush()
+  expect(container.textContent).toContain('demo.webm · 42 s')
+  expect(container.querySelector('.animate-shimmer')?.textContent).toBe(
+    'asking Gemini · part 2 of 3',
+  )
+  setView(
+    call('done', {
+      stage: 'answered',
+      answer: 'It says PELICAN.',
+      model: 'gemini-4-neon-low',
+      usage: { promptTokenCount: 4200, candidatesTokenCount: 12, totalTokenCount: 4212 },
+    }),
+  )
+  flush()
+  expect(container.querySelector('.animate-shimmer')).toBeNull()
+  expect(container.textContent).toContain('It says PELICAN.')
+  expect(container.textContent).toContain('gemini-4-neon-low · 4.2k in · 12 out')
+  await expectDistinctAgentNames(agent)
 })

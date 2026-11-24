@@ -2,6 +2,8 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { createEffect, createRoot } from 'solid-js'
 import { api, defineWebExtension, FileUpload, provide, ROOT, useDocOf } from '@/sdk/solid'
 import type { UploadSource } from '@/sdk/solid'
+import { StandingDoc } from '../subagents/refs.ts'
+import { VideoAskCall } from './call.solid.tsx'
 import { AppendAction, BeginAction, FinishAction, RemoveAction, VideosDoc } from './refs.ts'
 import type { Video } from './refs.ts'
 import { KEPT_MS, MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.ts'
@@ -71,7 +73,7 @@ async function upload(
       signal.throwIfAborted()
       status(
         `Uploading ${Math.floor((100 * offset) / Math.max(file.size, 1))}%`,
-        offset / file.size,
+        file.size ? offset / file.size : 0,
       )
       const data = await base64(file.slice(offset, offset + MAX_CHUNK_BYTES))
       await api.action(AppendAction, { id, offset, data }, { ...call, signal })
@@ -93,4 +95,15 @@ async function upload(
 
 const videos = { accepts: 'video/', upload, maxBytes: MAX_UPLOAD_BYTES, keptMs: KEPT_MS }
 
-export default defineWebExtension({ provides: [provide(FileUpload, () => () => videos)] })
+export default defineWebExtension({
+  provides: [provide(FileUpload, () => () => videos)],
+  tools: { video_ask: VideoAskCall },
+  compact: {
+    when: (conversation, docs) =>
+      (docs[StandingDoc.kind] as Record<string, number> | null | undefined)?.ultimate ===
+      conversation.id,
+    tools: ['video_ask'],
+    docs: [StandingDoc.kind],
+    thread: (row) => row.calls.some((call) => call.name === 'video_ask') || 'hidden',
+  },
+})
