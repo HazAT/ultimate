@@ -399,7 +399,8 @@ export const Dictation = definePoint<
 /**
  * What a prompt box's record control gets, beside its attach button: `draft` is the box's draft key (boxes showing one
  * conversation share it), `attach` adds recorded files to that box like a drop (as `source`, `recording` by default; a
- * busy box still takes a recording) and resolves once their uploads settle, false when the box refused them, and
+ * recording waits for a send in flight, then attaches even to a busy box) and resolves once their uploads settle, false
+ * when the box refused them or moved to another draft meanwhile, and
  * `recording` turns the box's hairline red while true. Nothing shows while nothing provides it.
  */
 export const PromptRecorder = definePoint<

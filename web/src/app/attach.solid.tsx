@@ -119,12 +119,12 @@ export function createAttach(options: {
       if (!alive) return true
       options.setImages((current) => [...current, ...added])
       if (failed.length) options.setError([...problems, ...failed.map(errorMessage)].join(' '))
-      await Promise.all(uploading.sent)
-      return true
     } finally {
       pending = false
       if (alive) setReading(false)
     }
+    await Promise.all(uploading.sent)
+    return true
   }
 
   const accepts = (file: { type: string }) =>

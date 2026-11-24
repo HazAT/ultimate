@@ -30,7 +30,7 @@ import {
   setDraftText,
   storedText,
 } from './drafts.ts'
-import type { Draft } from './drafts.ts'
+import type { Draft, DraftStore } from './drafts.ts'
 
 const androidImagePasteStyle: JSX.CSSProperties = {
   '-webkit-user-modify': 'read-write',
@@ -56,6 +56,17 @@ function createDraftState(id: () => number | string | undefined) {
     return unsubscribe
   })
   return { draft, value }
+}
+
+function sent(target: DraftStore) {
+  return new Promise<void>((resolve) => {
+    if (!target.get().sending) return resolve()
+    const stop = target.subscribe(() => {
+      if (target.get().sending) return
+      stop()
+      resolve()
+    })
+  })
 }
 
 export function PromptBox(props: PromptBoxProps) {
@@ -280,8 +291,11 @@ export function PromptBox(props: PromptBoxProps) {
             input={{
               name: props.name,
               draft: props.draft,
-              attach: (picked: readonly File[], source: UploadSource = 'recording') =>
-                attach.attach(picked, source),
+              attach: async (picked: readonly File[], source: UploadSource = 'recording') => {
+                const target = draft()
+                await sent(target)
+                return draft() === target && attach.attach(picked, source)
+              },
               recording: setRecording,
             }}
             last

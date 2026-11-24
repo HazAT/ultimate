@@ -39,6 +39,7 @@ class FakeRecorder extends EventTarget {
   static isTypeSupported = (type: string) => type === 'video/webm;codecs=vp9,opus'
   static last: FakeRecorder | undefined
   static failStart = false
+  static later: (() => void) | undefined
   state = 'inactive'
   readonly stream: FakeStream
   readonly options: { mimeType?: string }
@@ -57,9 +58,14 @@ class FakeRecorder extends EventTarget {
   }
   stop() {
     this.state = 'inactive'
-    this.dispatchEvent(Object.assign(new Event('dataavailable'), { data: new Blob(['frames']) }))
-    this.dispatchEvent(new Event('stop'))
+    const finish = () => {
+      this.dispatchEvent(Object.assign(new Event('dataavailable'), { data: new Blob(['frames']) }))
+      this.dispatchEvent(new Event('stop'))
+    }
+    if (FakeRecorder.async) FakeRecorder.later = finish
+    else finish()
   }
+  static async = false
 }
 class FakeAudio {
   static closed = 0
@@ -106,6 +112,8 @@ beforeEach(() => {
   FakeAudio.mixed = []
   FakeRecorder.last = undefined
   FakeRecorder.failStart = false
+  FakeRecorder.async = false
+  FakeRecorder.later = undefined
 })
 
 type Spec = { name: string; draft: number; dock?: boolean; shown?: () => boolean }
@@ -287,4 +295,50 @@ it('names the voice dock’s controls apart from the main box on the same conver
   await expectDistinctAgentNames(agent)
   await press('Stop and attach the screen recording to conversation #9 (prompt box)')
   expect(attached.map((entry) => entry.box)).toEqual(['conversation #9'])
+})
+
+it('a Stop pressed in another box keeps that box’s draft when the box unmounts before the recorder stops', async () => {
+  const [shown, setShown] = createRoot(() => createSignal(true))
+  const { recorder } = mount({ name: 'box A', draft: 1 }, { name: 'box B', draft: 2, shown })
+  await press('Record the screen into box A (prompt box)')
+  FakeRecorder.async = true
+  await press('Stop and attach the screen recording to box B (prompt box)')
+  setShown(false)
+  flush()
+  FakeRecorder.later!()
+  await settle()
+  expect(attached).toEqual([])
+  recorder.mount({
+    draft: 2,
+    attach: async (files) => (attached.push({ box: 'B again', draft: 2, files: [...files] }), true),
+  })
+  await settle()
+  expect(attached.map((entry) => entry.box)).toEqual(['B again'])
+})
+
+it('a start that failed leaves no time limit behind to stop the next recording', async () => {
+  vi.useFakeTimers()
+  try {
+    mount({ name: 'box A', draft: 1 })
+    const record = () =>
+      document
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Record the screen into box A (prompt box)"]',
+        )!
+        .click()
+    FakeRecorder.failStart = true
+    record()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(released).toHaveBeenCalledOnce()
+    FakeRecorder.failStart = false
+    screen = new FakeStream([new FakeTrack('video')])
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    record()
+    await vi.advanceTimersByTimeAsync(25 * 60_000)
+    expect(FakeRecorder.last?.state).toBe('recording')
+    await vi.advanceTimersByTimeAsync(6 * 60_000)
+    expect(attached).toHaveLength(1)
+  } finally {
+    vi.useRealTimers()
+  }
 })

@@ -1,5 +1,6 @@
 import { inProcess, meansNone } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
+import type { Cancel } from '../../lib/timers.ts'
 
 export const MAX_RECORDING_MS = 30 * 60_000
 const videoMimeOrder = [
@@ -136,17 +137,17 @@ export function createScreenRecorder(media: Media) {
       const started = media.now()
       const chunks: Blob[] = []
       let keep = true
-      let into = box
+      let into = draft
+      let stopLimit: Cancel | undefined
       recorder.addEventListener('dataavailable', ({ data }) => {
         if (data.size) chunks.push(data)
       })
       release = media.hold()
       const held = release
-      const stopLimit = deadline(MAX_RECORDING_MS, () => end?.(true))
       recorder.addEventListener(
         'stop',
         () => {
-          stopLimit()
+          stopLimit?.()
           teardown()
           end = undefined
           set({ phase: 'idle' })
@@ -156,17 +157,19 @@ export function createScreenRecorder(media: Media) {
           const file = new File(chunks, `Screen recording ${stamp(started)}.${extension}`, {
             type: mimeType,
           })
-          keepFor(boxes.has(into) ? into.draft : draft, file, held)
+          keepFor(into, file, held)
         },
         { once: true },
       )
       recorder.start(1000)
-      end = (keeping, stoppedFrom) => {
+      const stop = (keeping: boolean, stoppedFrom?: Box) => {
         if (recorder.state === 'inactive') return
         keep = keeping
-        if (stoppedFrom) into = stoppedFrom
+        if (stoppedFrom) into = stoppedFrom.draft
         recorder.stop()
       }
+      end = stop
+      stopLimit = deadline(MAX_RECORDING_MS, () => stop(true))
       set({ phase: 'recording', started, mic: !!mic })
     } catch (failure) {
       teardown()
