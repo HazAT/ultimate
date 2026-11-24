@@ -70,6 +70,15 @@ export const PlayAction = actionRef<null, PauseState>('pause', 'play')
  * pause; `null` turns it off. A pause the user pressed never plays by itself. Returns the state.
  */
 export const AutoPlayAction = actionRef<{ minutes: number | null }, PauseState>('pause', 'autoPlay')
+/**
+ * User-only `{ family }`: while a rate limit holds, move every run held on the limited provider to that family's model
+ * (and its thinking), then Play. Refuses a family without a login or on the limited provider. Returns the state and
+ * the conversations it switched.
+ */
+export const SwitchAndPlayAction = actionRef<
+  { family: string },
+  PauseState & { switched: ConversationId[] }
+>('pause', 'switchAndPlay')
 
 /**
  * The note Play leaves on a run that was mid-turn: paused from `since` to `until` (ms); `finished` when the run gave

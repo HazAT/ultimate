@@ -7,6 +7,7 @@ import {
   fauxProvider,
 } from '@earendil-works/pi-ai/providers/faux'
 import {
+  AgentDoc,
   defineExtension,
   defineTask,
   defineTool,
@@ -27,6 +28,7 @@ import { apis, openers, removeTemp, temp, until } from '../../../test/helpers.ts
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Standing } from '../../subagents/api.ts'
+import { Family } from '../../models/api.ts'
 
 const hosts: OpenHost[] = []
 const homes: string[] = []
@@ -113,6 +115,11 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
     })(),
     onOpen: lifecycle.onOpen,
     conversations: () => [],
+    userHome: home,
+    projectRoot: home,
+    projectSettings: async () => ({}),
+    settings: prepared.settings,
+    modelRuntime: prepared.modelRuntime,
   } as unknown as ExtensionHost
   prepared.registry.install(pauseExtension(host))
   /** Open as the server does: the openers settle first, then scheduling resumes. */
@@ -134,6 +141,8 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
     setAutoPlay: (minutes: number | null) =>
       actions.autoPlay({ minutes }, { host } as unknown as ActionContext),
     autoPlay: (now: number) => autoPlay(host, now),
+    switchAndPlay: (family: string) =>
+      actions.switchAndPlay({ family }, { host } as unknown as ActionContext),
     paused: () => services.want(PauseApi)!.paused(),
     get opened() {
       return opened!
@@ -428,6 +437,73 @@ it('pauses on the first rate-limited answer: the run waits in its retry, fails n
     /^Paused for \d+(ms|\.\ds) \(faux rate limited [\w-]+\); the run continued after Play\.$/,
   )
   expect(await cards()).toHaveLength(1)
+})
+
+it('moves every run held on the limited provider to the chosen family, then plays', async () => {
+  const spare = fauxProvider({ provider: 'spare', models: [{ id: 'spare-model' }] })
+  spare.setResponses([fauxAssistantMessage([fauxText('done on spare')])])
+  const other = fauxProvider({
+    provider: 'other',
+    models: [{ id: 'other-model', reasoning: true }],
+  })
+  other.setResponses([
+    fauxAssistantMessage([fauxToolCall('work', {})], { stopReason: 'toolUse' }),
+    fauxAssistantMessage([fauxText('done on other')]),
+  ])
+  const f = await fixture()
+  await mkdir(join(f.home, '.ultimate'), { recursive: true })
+  await writeFile(
+    join(f.home, '.ultimate/settings.json'),
+    JSON.stringify({
+      modelFamilies: {
+        families: {
+          backup: { model: 'spare/spare-model' },
+          same: { model: `faux/${f.prepared.faux!.getModel().id}` },
+        },
+      },
+    }),
+  )
+  for (const provider of [spare.provider, other.provider])
+    f.prepared.modelRuntime.registerNativeProvider(provider)
+  await f.prepared.modelRuntime.refresh({ allowNetwork: false })
+  f.prepared.faux!.setResponses([
+    () => fauxAssistantMessage('', { stopReason: 'error', errorMessage: limit }),
+  ])
+  const { root, harness } = await f.open()
+  // Another conversation, mid-run on another provider when the limit hits: it is held but keeps its model.
+  const bystander = await harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
+  await bystander.configure(
+    { model: { provider: 'other', modelId: 'other-model' }, thinkingLevel: 'high' },
+    context,
+  )
+  const bystanderRun = await bystander.submit({ type: 'input', content: 'work' }, context)
+  await until(() => f.finish !== undefined)
+  await root.configure({ thinkingLevel: 'high' }, context)
+  const submission = await root.submit({ type: 'input', content: 'go' }, context)
+  await until(async () => (await f.action('state')).limit !== undefined)
+  f.finish!()
+
+  await expect(f.switchAndPlay('same')).rejects.toThrow(/rate limited/)
+  await expect(f.switchAndPlay('default')).rejects.toThrow(/faux\/.*rate limited/)
+  await expect(f.switchAndPlay('missing')).rejects.toThrow(/Unknown family/)
+  expect((await f.action('state')).paused).toBe(true)
+
+  const played = await f.switchAndPlay('backup')
+  expect(played).toMatchObject({ paused: false, switched: [root.id] })
+  expect((await submission.wait(context)).status).toBe('done')
+  expect((await bystanderRun.wait(context)).status).toBe('done')
+  // The family names no thinking: the agent's level, clamped to a model without reasoning.
+  expect(await harness.snapshot(AgentDoc, root.id, context)).toMatchObject({
+    model: { provider: 'spare', modelId: 'spare-model' },
+    thinkingLevel: 'off',
+  })
+  expect(await harness.snapshot(Family, root.id, context)).toEqual({ name: 'backup' })
+  expect(await harness.snapshot(AgentDoc, bystander.id, context)).toMatchObject({
+    model: { provider: 'other', modelId: 'other-model' },
+    thinkingLevel: 'high',
+  })
+  expect((await harness.snapshot(Family, bystander.id, context))?.name ?? null).toBeNull()
+  await expect(f.switchAndPlay('backup')).rejects.toThrow(/No rate limit/)
 })
 
 it('does not pause again for the rate limit that ends its run: the failure reaches the watchdog without another Play', async () => {

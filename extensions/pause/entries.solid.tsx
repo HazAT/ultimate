@@ -1,21 +1,32 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { Pause, Play } from '@lucide/solid'
+import { ChevronDown, Pause, Play } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
-import { Show, createMemo } from 'solid-js'
+import { For, Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu.solid.tsx'
 import {
   Card,
   ROOT,
+  api,
   cn,
+  errorMessage,
   formatDuration,
+  notify,
   switchConversation,
   useDocOf,
+  useModels,
   useNow,
   type EntryRecord,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
+import { FamilyLabel, runsOn, useFamilies } from '../models/ui.solid.tsx'
 import { unwrappedProviderError } from './provider-error.ts'
-import { PauseDoc } from './refs.ts'
+import { PauseDoc, SwitchAndPlayAction } from './refs.ts'
 import type { AutoPlayed, HeldNote, PauseNote, RateLimit } from './refs.ts'
 import { playConfirmation, playPausedWork } from './status.solid.tsx'
 
@@ -125,8 +136,7 @@ export function Limit(props: { entry: EntryRecord }) {
             {autoPlay()
               ? `Plays by itself ${autoPlay()} min after the limit, or press Play`
               : 'Nothing retries until you press Play'}
-            ; held runs then continue where they stopped. A model you switch meanwhile applies on
-            Play.
+            ; held runs then continue where they stopped. Or continue them on another family now.
           </p>
         </div>
         <footer class="flex items-center justify-between gap-2 border-t border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
@@ -138,7 +148,10 @@ export function Limit(props: { entry: EntryRecord }) {
               </span>
             }
           >
-            <span>paused for {formatDuration(Math.max(0, now() - (doc()?.since ?? now())))}</span>
+            <span class="mr-auto">
+              paused for {formatDuration(Math.max(0, now() - (doc()?.since ?? now())))}
+            </span>
+            <SwitchFamily provider={limit().provider!} />
             <Button
               aria-label="Play after rate limit"
               class="h-7 font-sans text-[12px]"
@@ -153,6 +166,50 @@ export function Limit(props: { entry: EntryRecord }) {
           </Show>
         </footer>
       </Card>
+    </Show>
+  )
+}
+
+export const switchConfirmation =
+  'Moves every run held on the rate-limited provider to another model family and continues all paused work.'
+
+function SwitchFamily(props: { provider: string }) {
+  const families = useFamilies()
+  const models = useModels()
+  const loggedIn = (ref: string) =>
+    models()?.models.some((model) => model.available && `${model.provider}/${model.id}` === ref)
+  const choices = createMemo(() =>
+    (families()?.families ?? []).filter((family) => {
+      const ref = runsOn(family)
+      return ref && !ref.startsWith(`${props.provider}/`) && loggedIn(ref)
+    }),
+  )
+  const switchTo = (family: string) =>
+    api
+      .action(SwitchAndPlayAction, { family }, { conversationId: ROOT })
+      .catch((error: unknown) => notify({ level: 'error', message: errorMessage(error) }))
+  return (
+    <Show when={choices().length > 0}>
+      <span class="contents" data-agent-confirm={switchConfirmation}>
+        <DropdownMenu modal={false} onAction={switchTo}>
+          <DropdownMenuTrigger
+            aria-label="Continue on another family"
+            class="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2.5 font-sans text-[12px] text-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            Continue on…
+            <ChevronDown class="size-3" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" class="min-w-56">
+            <For each={choices()} keyed={(family) => family.name}>
+              {(family) => (
+                <DropdownMenuItem class="text-[12.5px]" value={family().name}>
+                  <FamilyLabel family={family().name} />
+                </DropdownMenuItem>
+              )}
+            </For>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
     </Show>
   )
 }

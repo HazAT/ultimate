@@ -10,6 +10,7 @@ import {
   approval,
   pause,
   refetchState,
+  rejectSwitch,
   server,
   state,
   stream,
@@ -90,6 +91,60 @@ it('continues paused work from the popover for an agent only once a person appro
   approval.given = true
   await act('Play: continue paused work', 'press')
   expect(actions).toContainEqual({ name: 'play', args: null, source: 'agent' })
+})
+
+async function mountHeldLimit() {
+  const limit = {
+    provider: 'test',
+    model: 'test-model',
+    error: 'Rate limited',
+    at: 10,
+    conversationId: parseConversationId(42),
+  }
+  const entry = {
+    kind: 'pause.limit',
+    id: 12,
+    conversationId: 1,
+    data: limit,
+  } as unknown as EntryRecord
+  const container = renderSolid(() => <Limit entry={entry} />)
+  await tick()
+  state().paused = true
+  state().limit = limit
+  server()
+    .of(1)!
+    .send('doc', { kind: PauseDoc.kind, value: { paused: true, limit, since: limit.at } })
+  await tick(100)
+  return container
+}
+
+it('continues held runs on a logged-in family of another provider, only with a person’s approval', async () => {
+  const container = await mountHeldLimit()
+  await act('Continue on another family', 'setOpen', [true])
+  await expectDistinctAgentNames(agent)
+  const menu = () =>
+    agent.snapshot().find((control) => control.label === 'Continue on another family')!
+  expect(menu().buttons).toEqual(['Fast (atlas)'])
+  expect(menu().confirm).toBeDefined()
+
+  approval.given = false
+  await act('Continue on another family', 'press', ['Fast (atlas)'], false)
+  expect(actions.filter((call) => call.name === 'switchAndPlay')).toEqual([])
+
+  approval.given = true
+  rejectSwitch('No login for spare/atlas (family fast)')
+  await act('Continue on another family', 'setOpen', [true])
+  await act('Continue on another family', 'press', ['Fast (atlas)'])
+  expect(container.querySelector('[data-pause-limit][data-attention]')).not.toBeNull()
+
+  rejectSwitch(undefined)
+  await act('Continue on another family', 'setOpen', [true])
+  await act('Continue on another family', 'press', ['Fast (atlas)'])
+  expect(actions.filter((call) => call.name === 'switchAndPlay')).toEqual([
+    { name: 'switchAndPlay', args: { family: 'fast' }, source: 'agent' },
+    { name: 'switchAndPlay', args: { family: 'fast' }, source: 'agent' },
+  ])
+  expect(container.querySelector('[data-pause-limit][data-attention]')).toBeNull()
 })
 
 it('continues from the active rate-limit card when an agent presses Play', async () => {
