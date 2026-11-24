@@ -127,8 +127,8 @@ function atMost(text: string) {
   const parts: string[] = []
   let rest = text
   while (rest.length > MAX_SPOKEN) {
-    const space = rest.slice(0, MAX_SPOKEN + 1).search(/\s\S*$/)
-    const cut = space > 0 ? space : MAX_SPOKEN
+    const space = rest.slice(0, MAX_SPOKEN).search(/\s\S*$/)
+    const cut = space >= 0 ? space + 1 : MAX_SPOKEN
     parts.push(rest.slice(0, cut))
     rest = rest.slice(cut)
   }

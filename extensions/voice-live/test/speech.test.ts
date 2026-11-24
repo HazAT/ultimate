@@ -187,7 +187,11 @@ it('a clause longer than one request allows is split at a word boundary', () => 
   const parts = clauses(long)
   expect(parts.every((part) => part.length <= 2000)).toBe(true)
   expect(parts.join('')).toBe(long)
-  expect(parts[0].endsWith('word')).toBe(true)
+  expect(parts[0].endsWith('word ')).toBe(true)
+  expect(clauses(`${'a'.repeat(1999)}\t${'b'.repeat(2000)}`)).toEqual([
+    `${'a'.repeat(1999)}\t`,
+    'b'.repeat(2000),
+  ])
   const tabbed = clauses(`${' '.repeat(2001)}${'tab\t'.repeat(600)}end.`)
   expect(tabbed.every((part) => part.trim() && part.length <= 2000)).toBe(true)
   expect(
