@@ -11,7 +11,7 @@ Configure once in **user** settings (`~/.ultimate/settings.json`), or with ⌘K 
 ```
 
 Add `ULTIMATE_CLOUD_TOKEN` (the Worker's bearer token) and `ULTIMATE_CLOUD_SNAPSHOT_KEY` (encrypts backups; the same
-value on every machine) in the Secrets panel. `machine` defaults to the OS hostname. Project settings are never read: a
+value on every machine) in the Secrets panel. `machine` defaults to the macOS LocalHostName, else the OS hostname. Project settings are never read: a
 repository cannot redirect the user's history to another server. Environment overrides take precedence, for
 process-scoped experiments: `ULTIMATE_CLOUD_URL`, `ULTIMATE_CLOUD_TOKEN`, `ULTIMATE_CLOUD_SNAPSHOT_KEY` and
 `ULTIMATE_CLOUD_MACHINE`. Preview instances stay silent unless `ULTIMATE_CLOUD_URL` is set explicitly;

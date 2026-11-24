@@ -1,4 +1,4 @@
-import { hostname } from 'node:os'
+import { machineHostname } from './machine.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { cloudConfig, fetchRegister } from './cloud.ts'
 import type { Register } from './cloud.ts'
@@ -76,7 +76,7 @@ async function userConfiguredRemotes(host: Pick<ExtensionHost, 'userHome'>) {
 }
 
 async function machineName(host: Pick<ExtensionHost, 'userHome' | 'notice'>) {
-  return (await cloudConfig(host))?.machine ?? hostname()
+  return (await cloudConfig(host))?.machine ?? machineHostname()
 }
 
 export async function selfAddress(host: ExtensionHost) {
