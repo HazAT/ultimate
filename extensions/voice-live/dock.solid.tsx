@@ -308,18 +308,14 @@ export async function press() {
       return true
     })
   } catch (failure) {
+    if (pressing !== mine) return
     released = mine
-    dock.hold(undefined)
-    if (paused) dock.player.resume()
+    restore()
     dock.setError(micFailure(failure) ?? errorMessage(failure))
     return
   }
   if (released >= mine) {
-    if (started || pressing !== mine) return
-    dock.hold(undefined)
-    if (paused) dock.player.resume()
-    dock.setPhase('idle')
-    dock.setStatus(undefined)
+    if (!started && pressing === mine) restore()
     return
   }
   dock.setCapturing(true)
@@ -334,11 +330,15 @@ export async function cancelRecording() {
   const take = pressing
   released = take
   dock.setCapturing(false)
-  const stopped = await onMic(() => dock.mic.stop())
-  if (!stopped || pressing !== take) return
+  await onMic(() => dock.mic.stop())
+  if (pressing === take) restore()
+}
+
+function restore() {
   const held = dock.held()
+  if (!held) return
   dock.hold(undefined)
-  if (playerState().paused) {
+  if (dock.player.state.get().paused) {
     dock.player.resume()
     dock.setPhase('speaking')
   } else dock.setPhase(held?.busy ? 'thinking' : 'idle')
