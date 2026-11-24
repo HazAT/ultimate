@@ -6,7 +6,7 @@ import type {
   HighlighterGeneric,
   ThemedToken,
 } from 'shiki'
-import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import { createOnigurumaEngine } from 'shiki/engine/oniguruma'
 
 export type Line = ThemedToken[]
 
@@ -54,7 +54,7 @@ const starting = once(() =>
   createHighlighter({
     themes: [themes.light, themes.dark],
     langs: [],
-    engine: createJavaScriptRegexEngine({ forgiving: true }),
+    engine: createOnigurumaEngine(import('shiki/wasm')),
   }).then((created) => (highlighter = created)),
 )
 const loading = new Map<string, Promise<unknown>>()
