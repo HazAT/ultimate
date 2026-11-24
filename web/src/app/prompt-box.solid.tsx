@@ -73,13 +73,17 @@ function createDraftState(props: PromptBoxProps) {
 const readValue = (props: PromptBoxProps) => () => props.value ?? ''
 const writeValue = (props: PromptBoxProps) => (next: string) => props.onValue?.(next)
 const reportUploading = (props: PromptBoxProps) => (busy: boolean) => props.onUploading?.(busy)
-function sent(target: DraftStore) {
-  return new Promise<void>((resolve) => {
-    if (!target.get().sending) return resolve()
+function sent(target: DraftStore, gone: Promise<void>) {
+  return new Promise<boolean>((resolve) => {
+    if (!target.get().sending) return resolve(true)
     const stop = target.subscribe(() => {
       if (target.get().sending) return
       stop()
-      resolve()
+      resolve(true)
+    })
+    void gone.then(() => {
+      stop()
+      resolve(false)
     })
   })
 }
@@ -106,8 +110,13 @@ export function PromptBox(props: PromptBoxProps) {
           ...uploads().map((upload) => `${upload.accepts}*`),
         ].join(',')
   let mounted = true
+  let unmount!: () => void
+  const gone = new Promise<void>((resolve) => {
+    unmount = resolve
+  })
   onCleanup(() => {
     mounted = false
+    unmount()
   })
   const [level, setLevel] = createSignal<number>()
   const [recording, setRecording] = createSignal(false)
@@ -118,14 +127,8 @@ export function PromptBox(props: PromptBoxProps) {
     draft().set({ ...change, revision: draft().get().revision + 1 })
   const setImages = (change: (current: PastedImage[]) => PastedImage[]) =>
     revised({ images: change(draft().get().images) })
-  const setFiles = (change: (current: DraftFile[]) => DraftFile[]) => {
+  const setFiles = (change: (current: DraftFile[]) => DraftFile[]) =>
     revised({ files: change(draft().get().files) })
-    props.onUploading?.(
-      draft()
-        .get()
-        .files.some((file) => !attached(file)),
-    )
-  }
   const attach = createAttach({
     images,
     setImages,
@@ -272,11 +275,11 @@ export function PromptBox(props: PromptBoxProps) {
       <Provided
         input={{
           name: props.name,
-          draft: props.draft,
+          draft: props.draft ?? `box:${props.name}`,
           attach: async (picked: readonly File[], source: UploadSource = 'recording') => {
             const target = draft()
-            await sent(target)
-            return mounted && draft() === target && attach.attach(picked, source)
+            const settled = await sent(target, gone)
+            return settled && mounted && draft() === target && attach.attach(picked, source)
           },
           recording: setRecording,
         }}
