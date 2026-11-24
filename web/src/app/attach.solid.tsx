@@ -56,7 +56,7 @@ export function createAttach(options: {
     ])
     const controller = new AbortController()
     inFlight.set(id, controller)
-    upload
+    return upload
       .upload(file, {
         source,
         conversation: options.conversation(),
@@ -75,16 +75,18 @@ export function createAttach(options: {
 
   function sendAll(files: readonly File[], source: UploadSource) {
     const tooLarge = new Set<number>()
+    const sent: Promise<void>[] = []
     for (const file of files) {
       const upload = uploadFor(options.uploads(), file.type)!
-      if (file.size <= upload.maxBytes) send(file, upload, source)
+      if (file.size <= upload.maxBytes) sent.push(send(file, upload, source))
       else tooLarge.add(upload.maxBytes)
     }
-    return [...tooLarge].map((bytes) => `Files up to ${limit(bytes)} attach.`)
+    return { sent, problems: [...tooLarge].map((bytes) => `Files up to ${limit(bytes)} attach.`) }
   }
 
   async function attach(dropped: readonly File[], source: UploadSource = 'file') {
-    if (pending || options.disabled()) return
+    const busyBoxRefuses = source !== 'recording' && (pending || options.disabled())
+    if (busyBoxRefuses) return false
     const uploads = options.uploads()
     const uploadable = (file: File) =>
       !!uploadFor(uploads, file.type) &&
@@ -93,13 +95,17 @@ export function createAttach(options: {
     const others = dropped.filter(uploadable)
     const supported = files.filter((file) => imageMimeTypes.includes(file.type))
     const accepted = supported.slice(0, Math.max(0, maxImages - options.images().length))
+    const uploading = sendAll(others, source)
     const problems = [
-      ...sendAll(others, source),
+      ...uploading.problems,
       ...(supported.length < files.length ? ['Only PNG, JPEG, WebP and GIF images attach.'] : []),
       ...(accepted.length < supported.length ? [`Attach up to ${maxImages} images.`] : []),
     ]
     options.setError(problems.join(' ') || undefined)
-    if (!accepted.length) return
+    if (!accepted.length) {
+      await Promise.all(uploading.sent)
+      return true
+    }
     pending = true
     setReading(true)
     try {
@@ -110,13 +116,15 @@ export function createAttach(options: {
       const failed = results.flatMap((result) =>
         result.status === 'rejected' ? [result.reason] : [],
       )
-      if (!alive) return
+      if (!alive) return true
       options.setImages((current) => [...current, ...added])
       if (failed.length) options.setError([...problems, ...failed.map(errorMessage)].join(' '))
     } finally {
       pending = false
       if (alive) setReading(false)
     }
+    await Promise.all(uploading.sent)
+    return true
   }
 
   const accepts = (file: { type: string }) =>

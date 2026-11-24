@@ -53,7 +53,7 @@ import type { TranscriptFrame } from './transcript-frame.ts'
 import { subscribeViewport, viewport } from './viewport.ts'
 import type { Viewport } from './viewport.ts'
 
-export { api, bundle, switched } from './client.ts'
+export { api, bundle, holdReload, switched } from './client.ts'
 /**
  * This page's ui-sdk agent bridge (`snapshot`, `query`), with the `act` the browser tool's `ui` steps use, so a label
  * that exactly names one control acts on it: to run an agent's UI steps on the user's own page.
@@ -486,10 +486,11 @@ export const { switchConversation, showSurface, runCommand, openPanel, closePane
 export { uncoveredComposer } from './actions.ts'
 /**
  * `fillComposer(id, text)` replaces conversation `id`'s composer draft, `insertIntoComposer(id, text)` inserts at its
- * cursor. `composerDraft(id)` reads the text, images and number of attached files in its composer (`id` may be a `ComposerTarget`'s `draft` key);
+ * cursor. `composerDraft(id)` reads the text, images and number of attached files in its composer (`id` may be a `ComposerTarget`'s `draft` key),
+ * and `attachments`, the prompt lines of the files that finished uploading;
  * `reserve()` marks the draft as being sent, which locks the box and Enter (undefined when a send already holds it),
- * and returns `release(sent)`: `'all'` or `'images'` removes what was sent unless it changed meanwhile, nothing keeps
- * it; `subscribe(listener)` hears every change to that draft.
+ * and returns `release(sent)`: `'all'` or `'attachments'` removes the images and finished files that were sent (and with
+ * `'all'` the text) unless they changed meanwhile, nothing keeps it; `subscribe(listener)` hears every change to that draft.
  */
 export { composerDraft, fillComposer, insertIntoComposer } from '../app/drafts.ts'
 

@@ -1,7 +1,7 @@
 import type { DraftFile, PastedImage } from './attachments.ts'
 import { storeFiles, storedFiles, storeImages, storedImages } from './draft-images.ts'
 import { spliced } from './queued.ts'
-import { splitAttachments } from './attachments.ts'
+import { attached, attachmentLine, splitAttachments } from './attachments.ts'
 
 export type Draft = {
   text: string
@@ -98,21 +98,28 @@ export function insertIntoComposer(id: number, text: string) {
 export function composerDraft(id: number | string) {
   const draft = getDraft(id)
   const { text, images, files } = draft.get()
+  const finished = files.filter(attached)
   return {
     text,
     images: images.map(({ data, mimeType }) => ({ data, mimeType })),
     files: files.length,
+    attachments: finished.map(attachmentLine),
     subscribe: draft.subscribe,
     reserve: () => {
       if (draft.get().sending) return undefined
       draft.set({ sending: true })
-      return (sent?: 'all' | 'images') => {
+      return (sent?: 'all' | 'attachments') => {
         if (sent === 'all' && draft.get().text === text) {
           if (draft.key && localStorage.getItem(draft.key) === text)
             localStorage.removeItem(draft.key)
           draft.set({ text: '', revision: draft.get().revision + 1 })
         }
         if (sent && draft.get().images === images) draft.set({ images: [] })
+        if (sent && finished.length)
+          draft.set({
+            files: draft.get().files.filter((file) => !finished.includes(file)),
+            revision: draft.get().revision + 1,
+          })
         draft.set({ sending: false })
       }
     },

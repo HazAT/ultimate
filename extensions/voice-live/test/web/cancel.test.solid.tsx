@@ -26,6 +26,7 @@ vi.mock('@/sdk/solid', async () => {
       text: '',
       images: [],
       files: 0,
+      attachments: [],
       reserve: () => () => {},
       subscribe: () => () => {},
     }),

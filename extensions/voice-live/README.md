@@ -27,6 +27,8 @@ collect mode (optional), each with what to do when it is missing.
      renderers and other models never see audio. The transcript arrives in parallel and shows as your message.
    - Any other model waits for that transcript; the trace shows the transcribe stage on the critical path.
    - Typed text, pasted text and pasted or dropped screenshots go through the same `turn`, with Enter in the prompt box.
+     A video in the box (pasted, or recorded with its screen-record button) goes with the next spoken or typed turn as its
+     `Attached video` line once it is ready, so the fork can ask about it and name its id in a handoff.
 4. **The session** is a fork of @ultimate, made on the first turn from its last finished answer, like a side chat:
    ownerless, its automatic summaries off. Every fork is recorded in `voice.session` `forks` and kept out of the
    sidebar's lists (`Unlisted`); while a session is open, one live row under @ultimate (`UnderUltimate`) shows it

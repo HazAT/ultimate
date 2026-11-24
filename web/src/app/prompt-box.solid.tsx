@@ -1,7 +1,7 @@
 import { ArrowUp, LoaderCircle, Paperclip } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createEffect, createMemo, createSignal, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
@@ -30,7 +30,7 @@ import {
   setDraftText,
   storedText,
 } from './drafts.ts'
-import type { Draft } from './drafts.ts'
+import type { Draft, DraftStore } from './drafts.ts'
 
 const androidImagePasteStyle: JSX.CSSProperties = {
   '-webkit-user-modify': 'read-write',
@@ -58,6 +58,17 @@ function createDraftState(id: () => number | string | undefined) {
   return { draft, value }
 }
 
+function sent(target: DraftStore) {
+  return new Promise<void>((resolve) => {
+    if (!target.get().sending) return resolve()
+    const stop = target.subscribe(() => {
+      if (target.get().sending) return
+      stop()
+      resolve()
+    })
+  })
+}
+
 export function PromptBox(props: PromptBoxProps) {
   const { draft, value } = createDraftState(() => props.draft)
   const text = () => value().text
@@ -78,6 +89,10 @@ export function PromptBox(props: PromptBoxProps) {
           ...(allowsImages() ? imageMimeTypes : []),
           ...uploads().map((upload) => `${upload.accepts}*`),
         ].join(',')
+  let mounted = true
+  onCleanup(() => {
+    mounted = false
+  })
   const [level, setLevel] = createSignal<number>()
   const [recording, setRecording] = createSignal(false)
   const [dragging, setDragging] = createSignal(false)
@@ -279,8 +294,12 @@ export function PromptBox(props: PromptBoxProps) {
           <Provided
             input={{
               name: props.name,
-              attach: (picked: readonly File[], source: UploadSource = 'recording') =>
-                void attach.attach(picked, source),
+              draft: props.draft,
+              attach: async (picked: readonly File[], source: UploadSource = 'recording') => {
+                const target = draft()
+                await sent(target)
+                return mounted && draft() === target && attach.attach(picked, source)
+              },
               recording: setRecording,
             }}
             last
