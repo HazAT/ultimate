@@ -467,7 +467,8 @@ export { uncoveredComposer } from './actions.ts'
 /**
  * `fillComposer(id, text)` replaces conversation `id`'s composer draft, `insertIntoComposer(id, text)` inserts at its
  * cursor. `composerDraft(id)` reads the text and images in its composer (`id` may be a `ComposerTarget`'s `draft` key),
- * and `clear()` removes them once sent unless they changed meanwhile (`clear('images')` only the images);
+ * and `clear()` removes them unless they changed meanwhile (`clear('images')` only the images), returning a function
+ * that puts back what it took if the box is still empty of it, for a send that failed;
  * `subscribe(listener)` hears every change to that draft.
  */
 export { composerDraft, fillComposer, insertIntoComposer } from '../app/drafts.ts'

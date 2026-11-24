@@ -471,6 +471,8 @@ async function sendTurn(input: {
     : (carried ?? (session === undefined ? undefined : composerDraft(session)))
   const images = [...(input.images ?? pasted?.images ?? [])]
   const typed = [input.typed, carried?.text.trim()].filter(Boolean).join('\n\n')
+  const restore = pasted?.clear(carried ? 'all' : 'images')
+  let delivered = false
   const key = crypto.randomUUID()
   const clips = input.clips ?? []
   const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
@@ -501,6 +503,7 @@ async function sendTurn(input: {
   else dock.cues.send()
   if (input.recorded || clips.length) trace.record('mic', seconds * 1000)
   try {
+    if (signal.aborted) return cancelled()
     const status = await api.action(StatusAction, null, { signal })
     dock.setKeyed(status.transcribes)
     trace.label('model', status.model.split('/')[0])
@@ -548,7 +551,7 @@ async function sendTurn(input: {
       },
       { signal },
     )
-    pasted?.clear(carried ? 'all' : 'images')
+    delivered = !sent.dropped
     patchLocal(key, { conversation: sent.conversation })
     if (dock.pending() !== key) {
       if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
@@ -582,6 +585,8 @@ async function sendTurn(input: {
     dock.setPhase('error')
     dock.setStatus(errorMessage(failure))
     if (input.fromComposer) throw failure
+  } finally {
+    if (!delivered) restore?.()
   }
 }
 

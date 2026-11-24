@@ -430,18 +430,18 @@ it('End racing a rollover leaves voice cold, and a stale request never touches t
   await f.server.harness.commit(async (tx) => {
     ;(await tx.doc(Fork, first.id)).handedOff = true
   }, context)
-  const [rolled, ended] = await Promise.all([
+  const [, ended] = await Promise.all([
     f.action('turn', { key: 'roll', text: 'next', session: first.id }),
     f.action('end', null),
   ])
   expect(ended.status).toBe(200)
   const after = (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-  const successor = rolled.status === 200 ? rolled.data.result.conversation : undefined
-  expect([undefined, successor]).toContain(after)
-  expect(after === undefined || !(await f.forkOf(after))?.ended).toBe(true)
+  expect(after).toBeUndefined()
   const late = await f.action('turn', { key: 'late', text: 'late', session: first.id })
   expect(late.data.error).toContain('This voice session ended')
-  expect((await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id).toBe(after)
+  expect(
+    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id,
+  ).toBeUndefined()
 
   const current = await f.turn({ key: 'current', text: 'now' })
   await f.server.harness.commit(async (tx) => {

@@ -74,8 +74,18 @@ export function composerDraft(id: number | string) {
     images: images.map(({ data, mimeType }) => ({ data, mimeType })),
     subscribe: draft.subscribe,
     clear: (parts: 'all' | 'images' = 'all') => {
+      const tookText = parts === 'all' && !!text && draft.get().revision === revision
       if (parts === 'all') clearDraft(draft, { text, revision })
-      if (draft.get().images === images) draft.set({ images: [] })
+      const tookImages = images.length > 0 && draft.get().images === images
+      if (tookImages) draft.set({ images: [] })
+      return () => {
+        const now = draft.get()
+        if (tookText && !now.text.trim()) {
+          draft.set({ text, revision: now.revision + 1 })
+          if (draft.key) localStorage.setItem(draft.key, text)
+        }
+        if (tookImages && !now.images.length) draft.set({ images })
+      }
     },
   }
 }
