@@ -226,7 +226,7 @@ function TalkBar(props: { words?: boolean }) {
         <Waveform class="h-5 min-w-0 flex-1 text-error" live />
         <Show when={tap()}>
           <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-error/80">
-            tap to stop
+            tap to send
           </span>
         </Show>
       </Show>

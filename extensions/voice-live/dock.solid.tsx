@@ -263,11 +263,7 @@ export async function press() {
   }
   dock.setPhase('recording')
   dock.setStatus(
-    dock.talkMode() === 'tap'
-      ? 'Recording · tap to send'
-      : dock.held()?.busy
-        ? 'Recording · say something to interrupt'
-        : 'Recording · I hear you',
+    dock.held()?.busy ? 'Recording · say something to interrupt' : 'Recording · I hear you',
   )
   dock.cues.press()
 }
