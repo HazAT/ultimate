@@ -16,6 +16,7 @@ import {
   urlOf,
   validId,
 } from './input.ts'
+import { KEPT_MS } from './limits.ts'
 import { VideoReady, VideosDoc } from './refs.ts'
 import type { Video, Videos } from './refs.ts'
 
@@ -29,7 +30,6 @@ export const VideosState = defineDoc<Videos>({
   initial: () => ({ videos: {}, threads: {} }),
 })
 
-const KEPT_MS = 30 * 24 * 60 * 60 * 1000
 const newId = () => `v_${randomUUID().replaceAll('-', '')}`
 const uploads = (host: ExtensionHost) => join(host.home, 'videos')
 export const folder = (host: ExtensionHost, id: string) => join(uploads(host), id)

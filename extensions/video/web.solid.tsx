@@ -2,12 +2,11 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { createEffect, createRoot } from 'solid-js'
 import { api, defineWebExtension, FileUpload, provide, ROOT, useDocOf } from '@/sdk/solid'
 import type { UploadSource } from '@/sdk/solid'
+import { StandingDoc } from '../subagents/refs.ts'
+import { VideoAskCall } from './call.solid.tsx'
 import { AppendAction, BeginAction, FinishAction, RemoveAction, VideosDoc } from './refs.ts'
 import type { Video } from './refs.ts'
-
-const CHUNK_BYTES = 8 * 1024 * 1024
-const MAX_BYTES = 1024 ** 3
-const KEPT_MS = 30 * 24 * 60 * 60 * 1000
+import { KEPT_MS, MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.ts'
 
 async function base64(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer())
@@ -18,6 +17,7 @@ async function base64(blob: Blob) {
 }
 
 function settled(id: string, signal: AbortSignal) {
+  signal.throwIfAborted()
   return new Promise<Video>((resolve, reject) =>
     createRoot((dispose) => {
       const doc = useDocOf(() => ROOT, VideosDoc)
@@ -62,37 +62,48 @@ async function upload(
   },
 ) {
   const { status, signal } = options
-  const call = { conversationId: options.conversation, signal }
+  const call = { conversationId: options.conversation }
   const { id } = await api.action(
     BeginAction,
     { name: file.name || 'video', mimeType: file.type, bytes: file.size, source: options.source },
     call,
   )
   try {
-    for (let offset = 0; offset < file.size || offset === 0; offset += CHUNK_BYTES) {
+    for (let offset = 0; offset === 0 || offset < file.size; offset += MAX_CHUNK_BYTES) {
+      signal.throwIfAborted()
       status(
         `Uploading ${Math.floor((100 * offset) / Math.max(file.size, 1))}%`,
-        offset / file.size,
+        file.size ? offset / file.size : 0,
       )
-      const data = await base64(file.slice(offset, offset + CHUNK_BYTES))
-      await api.action(AppendAction, { id, offset, data }, call)
-      if (file.size === 0) break
+      const data = await base64(file.slice(offset, offset + MAX_CHUNK_BYTES))
+      await api.action(AppendAction, { id, offset, data }, { ...call, signal })
     }
+    signal.throwIfAborted()
     status('Preparing · for Google')
-    const ready = settled(id, signal)
-    await api.action(FinishAction, { id }, call)
-    const video = await ready
+    await api.action(FinishAction, { id }, { ...call, signal })
+    const video = await settled(id, signal)
     return {
       path: '',
       line: videoLine(video),
       note: `${video.seconds === undefined ? 'Video' : `${Math.round(video.seconds)} s`} · for Google`,
     }
   } catch (failure) {
-    if (signal.aborted) void api.action(RemoveAction, { id })
+    void api.action(RemoveAction, { id })
     throw failure
   }
 }
 
-const videos = { accepts: 'video/', upload, maxBytes: MAX_BYTES, keptMs: KEPT_MS }
+const videos = { accepts: 'video/', upload, maxBytes: MAX_UPLOAD_BYTES, keptMs: KEPT_MS }
 
-export default defineWebExtension({ provides: [provide(FileUpload, () => () => videos)] })
+export default defineWebExtension({
+  provides: [provide(FileUpload, () => () => videos)],
+  tools: { video_ask: VideoAskCall },
+  compact: {
+    when: (conversation, docs) =>
+      (docs[StandingDoc.kind] as Record<string, number> | null | undefined)?.ultimate ===
+      conversation.id,
+    tools: ['video_ask'],
+    docs: [StandingDoc.kind],
+    thread: (row) => row.calls.some((call) => call.name === 'video_ask') || 'hidden',
+  },
+})
