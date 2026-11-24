@@ -128,6 +128,7 @@ it('leaves a reply alone when `user` is fenced, inside a line, or the call is no
     'The roles:\n```\nuser\nassistant\n```\nDone.',
     'Ask the user\nwhat they think.',
     'The field is\nuser',
+    'whoami prints:\n\n    user\n\nso you are fine.',
   ]) {
     const message = fauxAssistantMessage(text)
     const { result } = await drain(

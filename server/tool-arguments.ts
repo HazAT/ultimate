@@ -165,7 +165,7 @@ function startOfImitatedUserTurn(text: string) {
   let offset = 0
   for (const line of text.split('\n')) {
     const userRoleMarkerWithTextAfter =
-      line.trim() === 'user' && text.slice(offset + line.length).trim() !== ''
+      line.replace(/\r$/, '') === 'user' && text.slice(offset + line.length).trim() !== ''
     if (/^\s*(```|~~~)/.test(line)) insideCodeFence = !insideCodeFence
     else if (!insideCodeFence && userRoleMarkerWithTextAfter) return offset
     offset += line.length + 1
