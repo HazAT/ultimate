@@ -18,7 +18,14 @@ import {
   TurnAction,
 } from './refs.ts'
 import type { OpenAiVoice, VoiceClip, VoiceDelivery, VoiceFork, VoiceTurn } from './refs.ts'
-import { createPlayer, fetchedVoice, splitReply, splitSentences, systemVoice } from './speech.ts'
+import {
+  createPlayer,
+  fetchedVoice,
+  splitReply,
+  splitSentences,
+  systemVoice,
+  systemVoices,
+} from './speech.ts'
 import type { Player } from './speech.ts'
 import { createTrace } from './trace.ts'
 import type { Trace } from './trace.ts'
@@ -63,7 +70,10 @@ export const dock = createRoot(() => {
   const [voice, setVoice] = useUiState<'system' | 'openai'>('ext.voice-live.voice', 'system')
   const [openaiVoice, setOpenaiVoice] = useUiState('ext.voice-live.openai-voice', 'cedar')
   const [keyed, setKeyed] = createSignal<boolean | undefined>()
-  const openaiOn = () => voice() === 'openai' && keyed() === true
+  const voices = systemVoices()
+  const [voiced, setVoiced] = createSignal(voices.some())
+  voices.subscribe(() => setVoiced(voices.some()))
+  const openaiOn = () => keyed() === true && (voice() === 'openai' || !voiced())
   const system = systemVoice()
   const openai = fetchedVoice({
     load: async (text, signal) => {
@@ -101,6 +111,7 @@ export const dock = createRoot(() => {
     setVoice,
     keyed,
     setKeyed,
+    voiced,
     openaiOn,
     openaiVoice,
     setOpenaiVoice,
