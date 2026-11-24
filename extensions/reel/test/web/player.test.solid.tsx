@@ -13,6 +13,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 vi.mock('../../frames.solid.tsx', () => ({
   imageOf: async (): Promise<string> => 'data:image/png;base64,AA==',
+  thumbOf: async (): Promise<string> => 'blob:thumb',
 }))
 
 const agent = createAgent()
@@ -39,6 +40,8 @@ it('shows the inline answer on the last paused screenshot and hides it on resume
   ))
   expect(container.querySelector('[data-reel-answer]')).toBeNull()
   await expectDistinctAgentNames(agent)
+  const thumbs = [...container.querySelectorAll<HTMLImageElement>('[data-reel-thumb]')]
+  expect(thumbs.map((thumb) => thumb.getAttribute('src'))).toEqual(['blob:thumb', 'blob:thumb'])
   const second = agent
     .snapshot()
     .find((item) => !item.offPage && item.label === 'Reel frame 2: Second screenshot')
