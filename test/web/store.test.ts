@@ -730,7 +730,7 @@ describe('web replica store', () => {
     await tick()
     const secondRefusal: unknown[] = []
     const microtasks: (() => void)[] = []
-    const spy = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation((fn) => {
+    const spy = vi.spyOn(globalThis, 'queueMicrotask').mockImplementationOnce((fn) => {
       microtasks.push(fn)
     })
     try {
