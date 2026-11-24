@@ -1,6 +1,7 @@
 import { defineExtension, section } from '@earendil-works/pi-durable'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { openaiProviderKeyUsable } from '../../lib/openai.ts'
 import { secretMetadata, validateName, validateValue } from '../../lib/secrets.ts'
 import { writeSecret } from './store.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -55,8 +56,10 @@ export const actions: Record<string, ExtensionAction> = {
     for (const item of items.values()) {
       if (
         item.provider &&
-        host.modelRuntime.getProviderAuthStatus(item.provider).configured &&
-        !host.modelRuntime.isUsingOAuth(item.provider)
+        (item.provider === 'openai'
+          ? openaiProviderKeyUsable(host.modelRuntime)
+          : host.modelRuntime.getProviderAuthStatus(item.provider).configured &&
+            !host.modelRuntime.isUsingOAuth(item.provider))
       )
         item.via = item.provider
       delete item.provider

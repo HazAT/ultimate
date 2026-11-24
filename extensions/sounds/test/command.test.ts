@@ -67,6 +67,8 @@ async function fixture(sounds: JsonObject = {}) {
     modelRuntime: {
       getProviderAuthStatus: () => ({ configured: true }),
       isUsingOAuth: () => false,
+      getProvider: () => ({ baseUrl: 'https://api.openai.com/v1' }),
+      getAllModels: () => [{ baseUrl: 'https://api.openai.com/v1' }],
       getAuth,
     },
   } as unknown as ExtensionHost

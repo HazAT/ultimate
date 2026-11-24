@@ -24,6 +24,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
 import { writeJson } from '../../lib/json-file.ts'
+import { openaiProviderKeyUsable } from '../../lib/openai.ts'
 import { secretMetadata } from '../../lib/secrets.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
@@ -103,8 +104,10 @@ async function missingSecrets(host: ExtensionHost, chosen: Record<string, boolea
         !process.env[name] &&
         !(
           provider &&
-          host.modelRuntime.getProviderAuthStatus(provider).configured &&
-          !host.modelRuntime.isUsingOAuth(provider)
+          (provider === 'openai'
+            ? openaiProviderKeyUsable(host.modelRuntime)
+            : host.modelRuntime.getProviderAuthStatus(provider).configured &&
+              !host.modelRuntime.isUsingOAuth(provider))
         ),
     )
   if (!declared.length) return []

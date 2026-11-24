@@ -15,6 +15,7 @@ import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { discoverAgents } from '../../lib/agents.ts'
+import { openaiProviderKeyUsable } from '../../lib/openai.ts'
 import { readFamilyLayers } from '../../lib/families-settings.ts'
 import { isolatable } from '../../lib/git.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -61,7 +62,9 @@ const configured = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
   host.modelRuntime.getProviderAuthStatus(provider).configured
 
 const configuredNonOAuthApiKey = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
-  configured(host, provider) && !host.modelRuntime.isUsingOAuth(provider)
+  provider === 'openai'
+    ? openaiProviderKeyUsable(host.modelRuntime)
+    : configured(host, provider) && !host.modelRuntime.isUsingOAuth(provider)
 
 const loggedIn = (host: Pick<CheckHost, 'modelRuntime'>) =>
   host.modelRuntime.getAvailableSnapshot().length > 0
