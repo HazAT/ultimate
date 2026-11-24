@@ -254,3 +254,15 @@ it('names each copy and link button apart, across replies and links the parser s
   await settle()
   expect(labels().at(-1)).toBe(streamed)
 })
+
+it('drops raw names and ids that would shadow document and window, keeping footnote links', () => {
+  const html = finished(
+    'Claim[^1] <img name="createElement" id="process" src="https://a/x.png"><img id="process-user-content-" src="https://a/x.png"><span name="x" id="user-content-y">y</span>\n\n[^1]: Source.',
+  )
+  expect(html).not.toMatch(/createElement|process|name=/)
+  expect(html).toContain('id="user-content-y"')
+  const reference = html.match(/href="#(user-content-fn-1)"/)?.[1]
+  expect(reference).toBeDefined()
+  expect(html).toContain(`id="${reference}"`)
+  expect(html).toContain('id="footnote-label"')
+})
