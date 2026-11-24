@@ -50,8 +50,8 @@ collect mode (optional), each with what to do when it is missing.
    lists every tool call it made, each with a checkmark.
 8. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
    @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With `to`, it
-   goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`); a
-   conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
+   goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`), as a
+   steer a busy coordinator reads after its current tool round; a conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
 
 ## Collect until send
 

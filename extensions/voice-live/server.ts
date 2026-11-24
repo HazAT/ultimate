@@ -839,7 +839,7 @@ export default function voiceExtension(host: ExtensionHost) {
         name: 'voice_handoff',
         deferred: true,
         description:
-          "Hand the agreed outcome of this voice conversation to the main @ultimate as a message it acts on, or with `to` to the branch conversation on Daniel's screen (its coordinator). Write it the way you would brief yourself.",
+          "Hand the agreed outcome of this voice conversation to the main @ultimate as a message it acts on, or with `to` to the branch conversation on Daniel's screen (its coordinator), which a busy coordinator reads after its current tool round. Write it the way you would brief yourself.",
         parameters: obj({
           to: opt(
             num({ description: "A branch conversation on Daniel's screen; omit for @ultimate" }),
@@ -879,7 +879,7 @@ export default function voiceExtension(host: ExtensionHost) {
             await receiver.submit(tx, {
               type: 'input',
               requestId,
-              whenBusy: 'followUp',
+              whenBusy: branch === undefined ? 'followUp' : 'steer',
               entry: { kind: VoiceHandoffEntry.kind, data: handoff },
               content: lines.join('\n'),
             })
