@@ -1,5 +1,6 @@
 import { ArrowLeft, ExternalLink, GitBranch } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
+import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Provided,
@@ -13,7 +14,15 @@ import {
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { Body, MessageExtras, MessageImages } from '../messages/ui.solid.tsx'
 import { MessageQuestions } from '../questions/ui.solid.tsx'
-import { WAIT_WARNING_AFTER_MS, amber, lead, previewUrl, senderOf, tagOf } from './items.ts'
+import {
+  WAIT_WARNING_AFTER_MS,
+  amber,
+  asOneParagraph,
+  lead,
+  previewUrl,
+  senderOf,
+  tagOf,
+} from './items.ts'
 import type { Entry } from './items.ts'
 
 export function Reading(props: { entry: Entry; now: number; phone: boolean; onBack: () => void }) {
@@ -89,7 +98,7 @@ export function Reading(props: { entry: Entry; now: number; phone: boolean; onBa
             </span>
           </header>
           <h2 class="mt-3 text-[17px] leading-7 font-semibold tracking-[-0.01em]">
-            {text().title}
+            <Markdown text={asOneParagraph(text().title)} without={['img']} />
           </h2>
           <Show when={text().body}>
             {(body) => <Body class="mt-1 px-0 py-0 text-[15px] leading-6" text={body()} />}

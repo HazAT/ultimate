@@ -1,4 +1,8 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import type { Nodes } from 'mdast'
+import remarkGfm from 'remark-gfm'
+import remarkParse from 'remark-parse'
+import { unified } from 'unified'
 import { openQuestion } from '../../lib/message-state.ts'
 import type { Message } from '../messages/refs.ts'
 import type { InboxItem } from './points.ts'
@@ -82,13 +86,32 @@ export function lead(text: string) {
   if (bold) return { title: bold[1].trim(), body: trimmed.slice(bold[0].length) }
   const [first = '', ...rest] = trimmed.split('\n')
   return {
-    title: first
-      .replace(/^[#>\-*\s]+/, '')
-      .replace(/[*_`]/g, '')
-      .trim(),
+    title: first.replace(/^(?:\s*(?:#{1,6}(?=\s)|>|[-*+](?=\s)))+\s*/, '').trim(),
     body: rest.join('\n').trim(),
   }
 }
+
+export const asOneParagraph = (title: string) =>
+  title
+    .replace(/^(\d+)([.)])(?=\s|$)/, '$1\\$2')
+    .replace(
+      /^(?:#{1,6}(?=\s|$)|[-+*](?=\s|$)|[-*_](?=[-*_\s]*$)|>|[`~](?=[`~]{2})|\[(?=[^\]]*\]:))/,
+      '\\$&',
+    )
+
+const inline = unified().use(remarkParse).use(remarkGfm)
+const textOf = (node: Nodes): string =>
+  node.type === 'html'
+    ? ''
+    : node.type === 'break'
+      ? ' '
+      : 'value' in node
+        ? node.value
+        : 'children' in node
+          ? node.children.map(textOf).join('')
+          : ''
+
+export const readerText = (title: string) => textOf(inline.parse(asOneParagraph(title))).trim()
 
 export const tagOf = (entry: Entry) =>
   entry.message ? (previewUrl(entry.message.text) ? 'preview' : 'question') : entry.item.tag
@@ -106,7 +129,7 @@ export function toRow(entry: Entry): Row {
     at,
     ...senderOf(entry),
     tag: tagOf(entry),
-    title: message ? lead(message.text).title : item.title,
+    title: readerText(message ? lead(message.text).title : item.title),
     gist: message ? message.questions?.[0]?.text : item.gist,
     more: Math.max(0, (message?.questions?.length ?? 0) - 1),
     message: message?.id,
@@ -125,7 +148,7 @@ export function answeredToday(messages: readonly Message[], now: number): Answer
               ...sender(m.from),
               id: m.id,
               at: reply.at,
-              title: lead(m.text).title,
+              title: readerText(lead(m.text).title),
             },
           ]
         : []
