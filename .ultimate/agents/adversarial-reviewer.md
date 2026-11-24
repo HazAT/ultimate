@@ -1,8 +1,7 @@
 ---
 name: adversarial-reviewer
 description: Fact-checks a review team's blocking findings against the code and pushes back on nitpicks; started by the reviewer lead only on NEEDS CHANGES.
-model: antigravity/gemini-4-neon-high
-thinking: high
+family: adversarial
 tools: [read, bash]
 skills: []
 ---
