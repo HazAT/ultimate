@@ -372,6 +372,9 @@ describe('questions on a message', () => {
         's',
       ),
     )
+    expect(note.model?.[0]?.content).toContain(
+      'The user never sees message ids: name a question to them by its words.',
+    )
     expect(typed[typed.indexOf(note) + 1]).toMatchObject({ kind: 'pi.user' })
     await f.answer({ messageId: message!.id, answers: [{ question: 'Land it?', answer: 'No' }] })
     expect((await f.log()).messages.find((m) => m.id === message!.id)?.state).toBe('answered')

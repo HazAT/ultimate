@@ -126,7 +126,7 @@ export async function openQuestionsNote(tx: Tx, conversationId: ConversationId, 
     )
     .join(
       '\n',
-    )}${canSettleEveryOpenQuestion ? `\nWhen the user decides one in your chat, settle it with tools.action({extension: 'messages', action: 'settle', args: { messageId, text }}).` : ''}`
+    )}\nThe user never sees message ids: name a question to them by its words.${canSettleEveryOpenQuestion ? `\nWhen the user decides one in your chat, settle it with tools.action({extension: 'messages', action: 'settle', args: { messageId, text }}).` : ''}`
   const perInputCacheReminder = {
     kind: 'board.open',
     data: { ids: open.map((m) => m.id) },
