@@ -478,140 +478,138 @@ async function sendTurn(input: {
   const key = crypto.randomUUID()
   const clips = input.clips ?? []
   for (const clip of clips) sending.add(clip.audio)
-  const unclaim = () => {
+  try {
+    if (input.interrupted) {
+      dock.player.stop()
+      for (const local of Object.values(dock.local())) local.trace.fail('cut in')
+      dock.setPending(undefined)
+      await api.action(StopAction, null, { signal }).catch((failure: unknown) => {
+        if (!signal.aborted) throw failure
+      })
+    }
+    if (signal.aborted) return cancelled()
+    delivered = await deliver()
+  } finally {
     releaseBox?.(delivered ? (carried ? 'all' : 'images') : undefined)
     for (const clip of clips) sending.delete(clip.audio)
   }
-  if (input.interrupted) {
-    dock.player.stop()
-    for (const local of Object.values(dock.local())) local.trace.fail('cut in')
-    dock.setPending(undefined)
-    const stopped = await api.action(StopAction, null, { signal }).then(
-      () => true,
-      (failure: unknown) => {
-        unclaim()
-        if (!signal.aborted) throw failure
-        return false
-      },
+
+  async function deliver(): Promise<boolean> {
+    const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
+    const envelope = input.recorded?.envelope ?? clips.flatMap((clip) => clip.envelope ?? [])
+    const trace = createTrace(
+      input.recorded || clips.length
+        ? ['mic', 'transcribe', 'send', 'model', 'thinking', 'voice']
+        : ['send', 'model', 'thinking', 'voice'],
     )
-    if (!stopped) return cancelled()
-  }
-  if (signal.aborted) {
-    unclaim()
-    return cancelled()
-  }
-  const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
-  const envelope = input.recorded?.envelope ?? clips.flatMap((clip) => clip.envelope ?? [])
-  const trace = createTrace(
-    input.recorded || clips.length
-      ? ['mic', 'transcribe', 'send', 'model', 'thinking', 'voice']
-      : ['send', 'model', 'thinking', 'voice'],
-  )
-  patchLocal(key, {
-    trace,
-    optimistic: {
-      key,
-      text: typed,
-      route: 'text',
-      ...(input.recorded || clips.length
-        ? { audio: clips[0]?.audio ?? 'pending', seconds, envelope }
-        : {}),
-      ...(clips.length > 1 ? { clips: clips.map((clip) => clip.audio) } : {}),
-      ...(hint ? { hint } : {}),
-    },
-    images,
-  })
-  dock.setPending(key)
-  dock.setPhase('sending')
-  dock.setStatus(input.recorded || clips.length ? 'Sending your voice…' : 'Sending…')
-  if (input.interrupted) dock.cues.steer()
-  else dock.cues.send()
-  if (input.recorded || clips.length) trace.record('mic', seconds * 1000)
-  try {
-    if (signal.aborted) return cancelled()
-    const status = await api.action(StatusAction, null, { signal })
-    dock.setKeyed(status.transcribes)
-    trace.label('model', status.model.split('/')[0])
-    const audio = input.recorded ? await base64(input.recorded.blob) : undefined
-    const mimeType = input.recorded?.blob.type ?? ''
-    const recorded = audio
-      ? await api.action(
-          RecordAction,
-          { audio, mimeType, ...(owner !== undefined ? { session: owner } : {}) },
-          { signal },
-        )
-      : undefined
-    owner = recorded?.session ?? owner
-    const kept = recorded?.audio ?? clips[0]?.audio
-    if (kept) patchLocal(key, { audio: kept })
-    let text = typed
-    if (kept && status.route === 'text') {
-      trace.start('transcribe')
-      const heard = await Promise.all(
-        (clips.length ? clips.map((clip) => clip.audio) : [kept]).map((clip) =>
-          settled(clip, signal),
-        ),
-      )
-      text = [heard.filter((part) => part.trim()).join(' '), text].filter(Boolean).join('\n\n')
-      trace.done('transcribe')
-      if (!text.trim() && !images.length) {
-        heardNothing(key, trace)
-        return
-      }
-    } else if (kept) trace.drop('transcribe')
-    trace.start('send')
-    const sent = await api.action(
-      TurnAction,
-      {
-        ...(owner !== undefined ? { session: owner } : {}),
+    patchLocal(key, {
+      trace,
+      optimistic: {
         key,
-        text,
-        ...(kept ? { audio: kept } : {}),
-        ...(clips.length ? { clips: clips.map((clip) => clip.audio) } : {}),
-        ...(input.delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
-        ...(input.recorded || clips.length ? { seconds, envelope } : {}),
+        text: typed,
+        route: 'text',
+        ...(input.recorded || clips.length
+          ? { audio: clips[0]?.audio ?? 'pending', seconds, envelope }
+          : {}),
+        ...(clips.length > 1 ? { clips: clips.map((clip) => clip.audio) } : {}),
         ...(hint ? { hint } : {}),
-        ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),
-        images,
       },
-      { signal },
-    )
-    delivered = !sent.dropped
-    patchLocal(key, { conversation: sent.conversation })
-    if (dock.pending() !== key) {
-      if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
-      return
-    }
-    if (sent.dropped) {
-      heardNothing(key, trace)
-      return
-    }
-    if (kept && status.route !== 'text') {
-      const group = clips.length ? clips.map((clip) => clip.audio) : [kept]
-      void Promise.all(group.map((clip) => settled(clip, signal))).then(
-        (heard) => {
-          const silent = heard.every((part) => !part.trim())
-          if (silent && !typed && !images.length && dock.pending() === key) heardNothing(key, trace)
+      images,
+    })
+    dock.setPending(key)
+    dock.setPhase('sending')
+    dock.setStatus(input.recorded || clips.length ? 'Sending your voice…' : 'Sending…')
+    if (input.interrupted) dock.cues.steer()
+    else dock.cues.send()
+    if (input.recorded || clips.length) trace.record('mic', seconds * 1000)
+    try {
+      const status = await api.action(StatusAction, null, { signal })
+      dock.setKeyed(status.transcribes)
+      trace.label('model', status.model.split('/')[0])
+      const audio = input.recorded ? await base64(input.recorded.blob) : undefined
+      const mimeType = input.recorded?.blob.type ?? ''
+      const recorded = audio
+        ? await api.action(
+            RecordAction,
+            { audio, mimeType, ...(owner !== undefined ? { session: owner } : {}) },
+            { signal },
+          )
+        : undefined
+      owner = recorded?.session ?? owner
+      const kept = recorded?.audio ?? clips[0]?.audio
+      if (kept) patchLocal(key, { audio: kept })
+      let text = typed
+      if (kept && status.route === 'text') {
+        trace.start('transcribe')
+        const heard = await Promise.all(
+          (clips.length ? clips.map((clip) => clip.audio) : [kept]).map((clip) =>
+            settled(clip, signal),
+          ),
+        )
+        text = [heard.filter((part) => part.trim()).join(' '), text].filter(Boolean).join('\n\n')
+        trace.done('transcribe')
+        if (!text.trim() && !images.length) {
+          heardNothing(key, trace)
+          return false
+        }
+      } else if (kept) trace.drop('transcribe')
+      trace.start('send')
+      const sent = await api.action(
+        TurnAction,
+        {
+          ...(owner !== undefined ? { session: owner } : {}),
+          key,
+          text,
+          ...(kept ? { audio: kept } : {}),
+          ...(clips.length ? { clips: clips.map((clip) => clip.audio) } : {}),
+          ...(input.delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
+          ...(input.recorded || clips.length ? { seconds, envelope } : {}),
+          ...(hint ? { hint } : {}),
+          ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),
+          images,
         },
-        () => undefined,
+        { signal },
       )
+      patchLocal(key, { conversation: sent.conversation })
+      if (dock.pending() !== key) {
+        if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
+        return !sent.dropped
+      }
+      if (sent.dropped) {
+        heardNothing(key, trace)
+        return false
+      }
+      if (kept && status.route !== 'text') {
+        const group = clips.length ? clips.map((clip) => clip.audio) : [kept]
+        void Promise.all(group.map((clip) => settled(clip, signal))).then(
+          (heard) => {
+            const silent = heard.every((part) => !part.trim())
+            if (silent && !typed && !images.length && dock.pending() === key)
+              heardNothing(key, trace)
+          },
+          () => undefined,
+        )
+      }
+      trace.done('send')
+      trace.start('model')
+      dock.setPhase('thinking')
+      dock.setStatus('Thinking…')
+      dock.pulse(true)
+      return true
+    } catch (failure) {
+      if (signal.aborted) {
+        cancelled()
+        return false
+      }
+      trace.fail('error')
+      patchLocal(key, { failed: errorMessage(failure) })
+      dock.pulse(false)
+      dock.cues.error()
+      dock.setPhase('error')
+      dock.setStatus(errorMessage(failure))
+      if (input.fromComposer) throw failure
+      return false
     }
-    trace.done('send')
-    trace.start('model')
-    dock.setPhase('thinking')
-    dock.setStatus('Thinking…')
-    dock.pulse(true)
-  } catch (failure) {
-    if (signal.aborted) return cancelled()
-    trace.fail('error')
-    patchLocal(key, { failed: errorMessage(failure) })
-    dock.pulse(false)
-    dock.cues.error()
-    dock.setPhase('error')
-    dock.setStatus(errorMessage(failure))
-    if (input.fromComposer) throw failure
-  } finally {
-    unclaim()
   }
 }
 

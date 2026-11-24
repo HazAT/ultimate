@@ -295,3 +295,21 @@ it('a file attached to the cold box keeps it in view when the session opens', as
   composeIn(session)
   expect(coldHolds(composerDraft(COLD_DRAFT))).toBe(true)
 })
+
+it('a file upload finishing during a spoken turn still clears the text that turn sent', async () => {
+  await endSession()
+  const pending = { id: 'f', name: 'spec.pdf', size: '1 KB', mimeType: 'application/pdf', path: '' }
+  getDraft(COLD_DRAFT).set({ text: 'look', files: [pending], revision: 1 })
+  let answer = () => {}
+  harness.status = new Promise((resolve) => (answer = resolve))
+  const spoken = sendDraft('steer', '', true, [clip])
+  await vi.waitFor(() => expect(harness.asked).toBe(1))
+  getDraft(COLD_DRAFT).set({ files: [{ ...pending, path: '/uploads/spec.pdf' }], revision: 2 })
+  answer()
+  await spoken
+  expect(harness.turns).toEqual([expect.objectContaining({ text: 'look' })])
+  expect(getDraft(COLD_DRAFT).get()).toMatchObject({
+    text: '',
+    files: [expect.objectContaining({ path: '/uploads/spec.pdf' })],
+  })
+})
