@@ -2,13 +2,7 @@ import { Check, Clapperboard } from '@lucide/solid'
 import { cn } from 'cn'
 import { createMemo, For, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolOutput,
-  ToolSection,
-} from '@/components/ai/tool.solid.tsx'
+import { Tool, ToolContent, ToolHeader, ToolSection } from '@/components/ai/tool.solid.tsx'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { formatTokens, ROOT, useDocOf, useToolDuration, type SolidToolProps } from '@/sdk/solid'
 import { VideosDoc } from './refs.ts'
@@ -26,6 +20,18 @@ function range(args: SolidToolProps['call']['args']) {
 }
 
 export function VideoAskCall(props: SolidToolProps) {
+  const ours = () => {
+    const stage = (props.call.details as AskDetails | undefined)?.stage
+    return props.call.status === 'done' ? stage === 'answered' : props.call.status === 'running'
+  }
+  return (
+    <Show when={ours()} fallback={props.core}>
+      <AskCard call={props.call} />
+    </Show>
+  )
+}
+
+function AskCard(props: { call: SolidToolProps['call'] }) {
   const duration = useToolDuration(() => props.call)
   const videos = useDocOf(() => ROOT, VideosDoc)
   const video = () => videos()?.videos[words(props.call.args.id)]
@@ -34,7 +40,6 @@ export function VideoAskCall(props: SolidToolProps) {
     const value = details()
     return value?.stage === 'answered' ? value : undefined
   }
-  const failed = () => props.call.status === 'error' || props.call.status === 'interrupted'
   const step = createMemo(() => {
     if (answered()) return 3
     if (details()?.stage === 'asking') return 2
@@ -61,7 +66,8 @@ export function VideoAskCall(props: SolidToolProps) {
       `${formatTokens(done.usage.candidatesTokenCount)} out`,
     ].join(' · ')
   }
-  const name = () => video()?.name ?? words(props.call.args.id)
+  const name = () => details()?.name ?? video()?.name ?? words(props.call.args.id)
+  const length = () => details()?.seconds ?? video()?.seconds
   return (
     <Tool defaultOpen>
       <ToolHeader
@@ -73,7 +79,7 @@ export function VideoAskCall(props: SolidToolProps) {
         title={
           <>
             <span class="text-foreground/90">{name()}</span>
-            <Show when={video()?.seconds}>{(length) => <span> · {seconds(length())}</span>}</Show>
+            <Show when={length()}>{(value) => <span> · {seconds(value())}</span>}</Show>
             <Show when={range(props.call.args)}>{(part) => <span> · {part()}</span>}</Show>
           </>
         }
@@ -85,50 +91,46 @@ export function VideoAskCall(props: SolidToolProps) {
             class="flex h-12 w-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-sm border border-border/70 bg-terminal text-muted-foreground"
           >
             <Clapperboard class="size-4" stroke-width={1.5} />
-            <Show when={video()?.seconds}>
-              {(length) => <span class="text-[10px] tabular-nums">{seconds(length())}</span>}
+            <Show when={length()}>
+              {(value) => <span class="text-[10px] tabular-nums">{seconds(value())}</span>}
             </Show>
           </div>
           <div class="min-w-0 flex-1 space-y-1.5">
             <p class="font-sans text-[13px] leading-snug text-foreground/90">
               {words(props.call.args.question)}
             </p>
-            <Show when={!failed()}>
-              <ol
-                aria-label={`Video question #${props.call.id} progress`}
-                class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground"
-              >
-                <For each={steps()} keyed={false}>
-                  {(item, index) => (
-                    <li class="flex items-center gap-1.5">
-                      <Show when={index > 0}>
-                        <span class="text-muted-foreground/40">→</span>
-                      </Show>
-                      <Show
-                        when={step() === item().at && step() < 3}
-                        fallback={
-                          <span
-                            class={cn(
-                              'flex items-center gap-1',
-                              step() >= item().at
-                                ? 'text-foreground/80'
-                                : 'text-muted-foreground/50',
-                            )}
-                          >
-                            <Show when={step() > item().at || step() === 3}>
-                              <Check aria-hidden="true" class="size-3 text-success" />
-                            </Show>
-                            {item().label}
-                          </span>
-                        }
-                      >
-                        <Shimmer class="text-brand">{item().label}</Shimmer>
-                      </Show>
-                    </li>
-                  )}
-                </For>
-              </ol>
-            </Show>
+            <ol
+              aria-label={`Video question #${props.call.id} progress`}
+              class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground"
+            >
+              <For each={steps()} keyed={false}>
+                {(item, index) => (
+                  <li class="flex items-center gap-1.5">
+                    <Show when={index > 0}>
+                      <span class="text-muted-foreground/40">→</span>
+                    </Show>
+                    <Show
+                      when={step() === item().at && step() < 3}
+                      fallback={
+                        <span
+                          class={cn(
+                            'flex items-center gap-1',
+                            step() >= item().at ? 'text-foreground/80' : 'text-muted-foreground/50',
+                          )}
+                        >
+                          <Show when={step() > item().at || step() === 3}>
+                            <Check aria-hidden="true" class="size-3 text-success" />
+                          </Show>
+                          {item().label}
+                        </span>
+                      }
+                    >
+                      <Shimmer class="text-brand">{item().label}</Shimmer>
+                    </Show>
+                  </li>
+                )}
+              </For>
+            </ol>
           </div>
         </ToolSection>
         <Show when={answered()}>
@@ -140,9 +142,6 @@ export function VideoAskCall(props: SolidToolProps) {
               </div>
             </ToolSection>
           )}
-        </Show>
-        <Show when={failed()}>
-          <ToolOutput class="border-t border-border/60" isError output={props.call.output} />
         </Show>
       </ToolContent>
     </Tool>

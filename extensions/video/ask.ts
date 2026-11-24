@@ -136,6 +136,8 @@ export function ask(
         stage: 'asking',
         part: index + 1,
         parts: parts.length,
+        name: video.name,
+        ...(video.seconds === undefined ? {} : { seconds: video.seconds }),
       })
       const body = request(host, video, selected, turns, question, detail, signal)
       try {
