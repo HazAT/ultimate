@@ -19,11 +19,8 @@ export interface ProjectInfo {
   conversations: ProjectConversation[]
 }
 
-export async function writeProject(home: string, root: string) {
-  await atomicJson(
-    join(home, 'project.json'),
-    JSON.stringify({ root, name: basename(root), openedAt: Date.now() }),
-  )
+export async function writeProject(home: string, root: string, name: string) {
+  await atomicJson(join(home, 'project.json'), JSON.stringify({ root, name, openedAt: Date.now() }))
 }
 export async function atomicJson(path: string, value: string) {
   const temporary = `${path}.${process.pid}.tmp`

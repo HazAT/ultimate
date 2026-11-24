@@ -30,8 +30,8 @@ it('lists other projects with their standing agents, and a new one on the next r
   const homes = join(userHome, '.ultimate/projects')
   await mkdir(join(homes, 'life'), { recursive: true })
   await mkdir(join(homes, 'here'), { recursive: true })
-  await writeProject(join(homes, 'life'), life)
-  await writeProject(join(homes, 'here'), here)
+  await writeProject(join(homes, 'life'), life, 'Life')
+  await writeProject(join(homes, 'here'), here, 'Here')
   new ProjectTrustStore(join(userHome, '.ultimate')).set(life, true)
   const host = {
     projects: () => projects(userHome, join(homes, 'here')),
@@ -39,11 +39,10 @@ it('lists other projects with their standing agents, and a new one on the next r
     userHome,
     modelRuntime: await ModelRuntime.create(),
   }
-  const name = life.split('/').at(-1)
-  expect(await projectsSection(host)).toContain(`\n- ${name}`)
-  expect(await projectsSection(host)).not.toContain(here.split('/').at(-1))
+  expect(await projectsSection(host)).toContain('\n- Life')
+  expect(await projectsSection(host)).not.toContain('Here')
 
   await mkdir(join(life, '.ultimate/agents'), { recursive: true })
   await writeFile(join(life, '.ultimate/agents/notes.md'), resident('notes'))
-  expect(await projectsSection(host)).toContain(`\n- ${name}: @notes`)
+  expect(await projectsSection(host)).toContain('\n- Life: @notes')
 })

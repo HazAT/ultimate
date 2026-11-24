@@ -10,9 +10,9 @@ import {
   totalmem,
   userInfo,
 } from 'node:os'
-import { relative, basename, join } from 'node:path'
+import { relative, join } from 'node:path'
 import { projectSkills } from './skills.ts'
-import { projectSetup, projectSettings } from '../lib/project-setup.ts'
+import { projectName, projectSetup, projectSettings } from '../lib/project-setup.ts'
 import { loadProjectContextFiles } from '@earendil-works/pi-coding-agent'
 import type { ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { Watch } from './extensions.ts'
@@ -105,7 +105,7 @@ export async function createSystem(
       build: host.build(),
       project: {
         root: host.projectRoot,
-        name: basename(host.projectRoot),
+        name: projectName(host.projectRoot, settings),
         ...(await projectSetup(host.projectRoot, host.userHome)),
         settings,
         ...(settingsError ? { settingsError } : {}),
