@@ -25,7 +25,9 @@ export const shellKeys = {
   shownSurface: 'shell.shownSurface',
   panel: 'shell.panel',
   panelOpen: 'shell.panelOpen',
+  panelWidth: 'shell.panelWidth',
   sidebarOpen: 'shell.sidebarOpen',
+  sidebarWidth: 'shell.sidebarWidth',
 
   dock: 'shell.dock',
 } as const
