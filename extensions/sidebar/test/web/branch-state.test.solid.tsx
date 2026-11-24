@@ -266,7 +266,7 @@ it('lets an agent switch, rename, and persist a folded section', async ({ onTest
     expect(result).toMatchObject({ ok: true })
     flush()
   }
-  await act('Earlier', 'setOpen', [true])
+  await act('Earlier conversations', 'setOpen', [true])
   await expectDistinctAgentNames(agent)
   await act('A branch · #12', 'press')
   await uiState.flush()

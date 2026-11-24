@@ -364,7 +364,7 @@ function HistoryGroup(props: {
     <Show when={props.count > 0}>
       <Collapsible class="pt-1">
         <CollapsibleTrigger
-          aria-label={props.label}
+          aria-label={`${props.label} conversations`}
           class={cn(
             'group/history flex w-full items-center gap-1 px-4 py-1.5 section-label outline-none hover:text-foreground',
             props.label === 'Concluded' && 'focus-visible:text-foreground',
@@ -374,7 +374,7 @@ function HistoryGroup(props: {
           {props.label} · {props.count}
         </CollapsibleTrigger>
         <CollapsibleContent
-          aria-label={props.label}
+          aria-label={`${props.label} conversations`}
           class="flex flex-col gap-0.5 pt-1"
           render={(panel) => <section {...panel} />}
         >

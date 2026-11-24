@@ -54,8 +54,14 @@ import { subscribeViewport, viewport } from './viewport.ts'
 import type { Viewport } from './viewport.ts'
 
 export { api, bundle, switched } from './client.ts'
-/** This page's ui-sdk agent bridge (`snapshot`, `query`, `act`), to run an agent's UI steps on the user's own page. */
-export const pageAgent = () => uiAgent.bridge()
+/**
+ * This page's ui-sdk agent bridge (`snapshot`, `query`), with the `act` the browser tool's `ui` steps use, so a label
+ * that exactly names one control acts on it: to run an agent's UI steps on the user's own page.
+ */
+export const pageAgent = () => {
+  const bridge = uiAgent.bridge()
+  return { snapshot: () => bridge.snapshot(), query: bridge.query, act: uiAgent.act }
+}
 /** The page's event bus: `events.emit('secrets:open', { name })`; subscribe for a component's life with `useEvent`. */
 export { events } from './events.ts'
 /**
