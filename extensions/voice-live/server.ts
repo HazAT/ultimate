@@ -279,7 +279,13 @@ async function openSession(host: ExtensionHost) {
       : { ...loaded, add: [...(loaded?.add ?? []), ...own] }
     Object.assign(await tx.doc(host.metadata, fork.id), { title: 'Voice', label: 'voice' })
     await host.need(ConversationsApi).setAutomaticSummaries(tx, fork.id, false)
-    Object.assign(session, { id: fork.id, of: main, at, startedAt: Date.now() })
+    Object.assign(session, {
+      id: fork.id,
+      of: main,
+      at,
+      startedAt: Date.now(),
+      forks: [...(session.forks ?? []), fork.id],
+    })
     return fork.id
   }, context)
 }
