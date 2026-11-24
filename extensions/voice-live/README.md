@@ -26,7 +26,10 @@ collect mode (optional), each with what to do when it is missing.
    - Any other model waits for that transcript; the trace shows the transcribe stage on the critical path.
    - Typed text, pasted text and pasted or dropped screenshots go through the same `turn`, with Enter in the prompt box.
 4. **The session** is a fork of @ultimate, made on the first turn from its last finished answer, like a side chat:
-   ownerless, its automatic summaries off, out of the sidebar's lists. It keeps the fork's tools and adds
+   ownerless, its automatic summaries off. Every fork is recorded in `voice.session` `forks` and kept out of the
+   sidebar's lists (`Unlisted`); while a session is open, one live row under @ultimate (`UnderUltimate`) shows it
+   instead, with a small level that follows the mic while you talk and sways while voice speaks; clicking it shows or
+   hides the panel. It keeps the fork's tools and adds
    `voice_handoff` and `ui`; `beforeTool` lets it only read (read, memory, web search and fetch), run codemode, drive the UI and hand off: no bash, no file edits.
    Its first input carries the voice-mode prompt (`prompt.ts`) as a hidden `conversations.identity` entry; each later
    input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
