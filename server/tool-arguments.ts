@@ -55,6 +55,7 @@ export function guardToolArguments<T extends Models>(models: T, trace?: ModelTra
       model,
       options?.signal,
       options?.timeoutMs,
+      { agent: options?.sessionId !== undefined },
     )
     if (trace) record(trace, stream, model, options?.sessionId)
     return stream
@@ -159,11 +160,38 @@ export function classify(stopReason: string, message = '') {
   return parts.join(' ')
 }
 
+function startOfImitatedUserTurn(text: string) {
+  let insideCodeFence = false
+  let offset = 0
+  for (const line of text.split('\n')) {
+    const userRoleMarkerWithTextAfter =
+      line.trim() === 'user' && text.slice(offset + line.length).trim() !== ''
+    if (/^\s*(```|~~~)/.test(line)) insideCodeFence = !insideCodeFence
+    else if (!insideCodeFence && userRoleMarkerWithTextAfter) return offset
+    offset += line.length + 1
+  }
+  return undefined
+}
+
+function replyBeforeImitatedUserTurn(message: AssistantMessage) {
+  for (const [index, block] of message.content.entries()) {
+    if (block.type !== 'text') continue
+    const start = startOfImitatedUserTurn(block.text)
+    if (start === undefined) continue
+    const text = block.text.slice(0, start).trimEnd()
+    const content = [...message.content.slice(0, index), ...(text ? [{ ...block, text }] : [])]
+    const reason = content.some((kept) => kept.type === 'toolCall') ? 'toolUse' : 'stop'
+    return { reason, message: { ...message, content, stopReason: reason } } as const
+  }
+  return undefined
+}
+
 export function guardStream(
   open: (signal: AbortSignal) => AssistantMessageEventStream,
   model: Pick<Model<Api>, 'api' | 'provider' | 'id'>,
   signal?: AbortSignal,
   silenceMs?: number,
+  { agent = false }: { agent?: boolean } = {},
 ): AssistantMessageEventStream {
   const controller = new AbortController()
   const sourceWithFinalResult = open(
@@ -230,7 +258,9 @@ export function guardStream(
             return
           }
         }
-        guarded.push(event)
+        const cut =
+          agent && event.type === 'done' ? replyBeforeImitatedUserTurn(event.message) : undefined
+        guarded.push(cut ? { type: 'done', ...cut } : event)
         if (event.type === 'done' || event.type === 'error') return guarded.end()
       }
       const result = await sourceWithFinalResult.result()

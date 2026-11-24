@@ -90,6 +90,87 @@ it('passes a normal tool call and a large legitimate write through untouched', a
   }
 })
 
+/** A provider stream that sends only its final message. */
+function done(message: AssistantMessage) {
+  return () => {
+    const stream = createAssistantMessageEventStream()
+    stream.push({ type: 'done', reason: message.stopReason as 'stop' | 'toolUse', message })
+    return stream
+  }
+}
+
+// A model wrote the user's answer into its own reply, then acted on it in the same response.
+const asked = 'Want me to rewrite both blocks?\n\nPull on: the zones · the revision'
+const imitated = `${asked}\nuser\nyes please!\n`
+
+it("ends an agent's reply where it starts an input turn of its own, dropping what follows", async () => {
+  const write = fauxToolCall('codemode', { code: "await tools.canvas({ action: 'update' })" })
+  const message = fauxAssistantMessage([{ type: 'text', text: imitated }, write], {
+    stopReason: 'toolUse',
+  })
+  const { events, result } = await drain(
+    guardStream(done(message), model, undefined, undefined, { agent: true }),
+  )
+  expect(result.content).toEqual([{ type: 'text', text: asked }])
+  expect(result.stopReason).toBe('stop')
+  expect(events).toEqual([{ type: 'done', reason: 'stop', message: result }])
+  const before = fauxToolCall('read', { path: 'a.ts' })
+  const kept = fauxAssistantMessage([before, { type: 'text', text: imitated }, write], {
+    stopReason: 'toolUse',
+  })
+  const cut = await drain(guardStream(done(kept), model, undefined, undefined, { agent: true }))
+  expect(cut.result.content).toEqual([before, { type: 'text', text: asked }])
+  expect(cut.result.stopReason).toBe('toolUse')
+})
+
+it('leaves a reply alone when `user` is fenced, inside a line, or the call is no agent turn', async () => {
+  for (const text of [
+    'The roles:\n```\nuser\nassistant\n```\nDone.',
+    'Ask the user\nwhat they think.',
+    'The field is\nuser',
+  ]) {
+    const message = fauxAssistantMessage(text)
+    const { result } = await drain(
+      guardStream(done(message), model, undefined, undefined, { agent: true }),
+    )
+    expect(result).toBe(message)
+  }
+  const summary = fauxAssistantMessage(imitated)
+  expect((await drain(guardStream(done(summary), model))).result).toBe(summary)
+})
+
+it('runs no tool call the model made after imitating an input turn', async () => {
+  const faux = fauxProvider()
+  const collection = createModels()
+  collection.setProvider(faux.provider)
+  faux.setResponses([
+    fauxAssistantMessage(
+      [{ type: 'text', text: imitated }, fauxToolCall('canvas', { action: 'update' })],
+      { stopReason: 'toolUse' },
+    ),
+  ])
+  const storage = new MemoryStorage()
+  storage.close = async () => {}
+  const harness = await Harness.open(
+    storage,
+    { models: guardToolArguments(collection), registry: createRegistry() },
+    context,
+  )
+  cleanups.push(() => harness.close(context))
+  const root = await harness.root(context, {
+    agent: { model: { provider: 'faux', modelId: 'faux-1' } },
+  })
+  const submitted = await root.submit({ type: 'input', content: 'Rewrite them?' }, context)
+  expect((await submitted.wait(context)).status).toBe('done')
+  const kinds = (await root.context(context)).entries.map((entry) => entry.kind)
+  expect(kinds.filter((kind) => kind !== 'pi.user')).toEqual(['pi.assistant'])
+  const answer = (await root.context(context)).entries.findLast(
+    (entry) => entry.kind === 'pi.assistant',
+  )!.model as AssistantMessage[]
+  expect(answer[0]).toMatchObject({ stopReason: 'stop', content: [{ type: 'text', text: asked }] })
+  expect(faux.state.callCount).toBe(1)
+})
+
 it('settles when the source ends by its result alone', async () => {
   const { message } = source([])
   const stream = guardStream(() => {
