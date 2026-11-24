@@ -1,4 +1,4 @@
-A read-only `debug` tool for finding out why something did or did not happen in the running Ultimate, and for following one chain of work across extensions. It is deferred: only agents whose definition names it get it (@ultimate, in `agents/ultimate.md`).
+A read-only `debug` tool for finding out why something did or did not happen in the running Ultimate, and for following one chain of work across extensions. It is deferred: only agents whose definition names it get it (@ultimate in `agents/ultimate.md`, and `dream-pass`).
 
 One tool, one `call` discriminator; every answer is compact text, one line per row, newest first, with relative ages (`40s`, `12m`, `3h`, `2d`) and at most about 16K characters:
 

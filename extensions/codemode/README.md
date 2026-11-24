@@ -39,7 +39,7 @@ available chapters. `chapter` and `project` cannot be combined. Cross-chapter li
 
 ### Other projects
 
-`conversations`, `entries`, `search`, `trace`, `traceTree` and `doc` take `{ project, machine? }` in their options object (`ultimate.conversations({ project })`, `ultimate.traceTree(id, { project })`, `ultimate.doc('todos', 1, { project })`) and then read that project instead, read-only; `doc` there reads conversation 1 unless one is named, and `machine` picks one machine's instance when the project runs on several. `project` is a name (`my-app`) or a key (`github.com/acme/my-app`), case-insensitive. Only a running instance answers:
+`conversations`, `entries`, `search`, `trace`, `traceTree` and `doc` take `{ project, machine? }` in their options object (`ultimate.conversations({ project })`, `ultimate.traceTree(id, { project })`, `ultimate.doc('todos', 1, { project })`) and then read that project instead, read-only; `doc` there reads conversation 1 unless one is named, and `machine` picks one machine's instance when the project runs on several. `project` is a name (`my-app`) or a key (`github.com/acme/my-app`), case-insensitive, or the absolute path of a project folder on this machine (`ultimate.projects()`'s `root`). Only a running instance answers:
 
 - this project reads its own storage;
 - another running project on this machine answers over loopback (`ultimate.projects()`'s URL);
