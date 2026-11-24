@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Cpu, LoaderCircle, Search, SlidersHorizontal } from '@lucide/solid'
+import { Check, ChevronDown, Cpu, LoaderCircle, Search } from '@lucide/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
@@ -14,36 +14,9 @@ import { FamilyDot, useCurrentModel, useFamilies } from './readers.solid.tsx'
 import { dialogs, pickerTarget, thinkingDialog } from './state.ts'
 import type { ModelInfo, ThinkingLevel } from './state.ts'
 
-type Variant = 'a' | 'b' | 'c'
-const variantKey = 'models.toolbar.variant'
-const [variant, setVariant] = createSignal<Variant>(
-  (globalThis.localStorage?.getItem(variantKey) as Variant | null) ?? 'a',
-)
-
 const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground'
 const Down = () => <ChevronDown class="size-3 shrink-0 opacity-60 @max-md:hidden" />
-
-export function VariantSwitch() {
-  return (
-    <SegmentedControl
-      aria-label="Preview: model control variant"
-      bind={[
-        variant,
-        (next) => {
-          localStorage.setItem(variantKey, next)
-          setVariant(next)
-        },
-      ]}
-      class="ml-1 border-dashed"
-      title="Preview only: switch between the three variations"
-    >
-      <For each={['a', 'b', 'c'] as const}>
-        {(value) => <SegmentedControlItem value={value}>{value}</SegmentedControlItem>}
-      </For>
-    </SegmentedControl>
-  )
-}
 
 export function ModelControl() {
   const current = useCurrentModel()
@@ -74,7 +47,7 @@ export function ModelControl() {
           <Popover onOpenChange={setOpen} open={open()}>
             <PopoverTrigger
               aria-label="Model and thinking"
-              class={cn(toolbarButton, 'min-w-0 shrink', variant() !== 'a' && 'gap-1 px-1.5')}
+              class={cn(toolbarButton, 'min-w-0 shrink')}
               title={[
                 family() ? familyTitle(family()!.name) : undefined,
                 current.ref()?.modelId ?? 'no model',
@@ -118,57 +91,20 @@ function Trigger(props: {
   model: ModelInfo | undefined
   thinking: ThinkingLevel
 }) {
-  const name = () => (props.family ? familyTitle(props.family.name) : (props.modelId ?? 'no model'))
-  const thinks = () => props.model?.reasoning === true
   return (
     <>
-      <Show when={variant() === 'a'}>
-        <Show when={props.family} fallback={<Cpu class="size-3.5 shrink-0" />}>
-          {(family) => <FamilyDot color={family().color} class="mx-0.5" />}
-        </Show>
-        <span class={cn('truncate', props.modelId ? 'text-foreground/85' : 'text-warning')}>
-          {name()}
-        </span>
-        <Show when={thinks()}>
-          <span class="shrink-0 opacity-50">·</span>
-          <span class="shrink-0">{props.thinking}</span>
-        </Show>
-        <Down />
+      <Show when={props.family} fallback={<Cpu class="size-3.5 shrink-0" />}>
+        {(family) => <FamilyDot color={family().color} class="mx-0.5" />}
       </Show>
-      <Show when={variant() === 'b'}>
-        <Show when={props.family} fallback={<Cpu class="size-3.5 shrink-0" />}>
-          {(family) => <FamilyDot color={family().color} class="mx-0.5" />}
-        </Show>
-        <Show when={thinks() && props.model}>
-          {(model) => <Bars levels={model().thinkingLevels} current={props.thinking} />}
-        </Show>
+      <span class={cn('truncate', props.modelId ? 'text-foreground/85' : 'text-warning')}>
+        {props.family ? familyTitle(props.family.name) : (props.modelId ?? 'no model')}
+      </span>
+      <Show when={props.model?.reasoning}>
+        <span class="shrink-0 opacity-50">·</span>
+        <span class="shrink-0">{props.thinking}</span>
       </Show>
-      <Show when={variant() === 'c'}>
-        <SlidersHorizontal class="size-3.5 shrink-0" />
-      </Show>
+      <Down />
     </>
-  )
-}
-
-function Bars(props: { levels: ModelInfo['thinkingLevels']; current: ThinkingLevel }) {
-  const filled = () => {
-    const steps = props.levels.length - 1
-    return steps ? Math.round((props.levels.indexOf(props.current) / steps) * 4) : 0
-  }
-  return (
-    <span aria-hidden="true" class="flex h-3 shrink-0 items-end gap-[2px] px-0.5">
-      <For each={[1, 2, 3, 4]}>
-        {(bar) => (
-          <span
-            class={cn(
-              'w-[2.5px] rounded-[1px]',
-              bar <= filled() ? 'bg-brand' : 'bg-muted-foreground/30',
-            )}
-            style={{ height: `${3 + bar * 2}px` }}
-          />
-        )}
-      </For>
-    </span>
   )
 }
 
@@ -206,9 +142,10 @@ function Options(props: {
   }
 
   function openPicker(source: string) {
+    const close = props.close
     pickerTarget.set(props.id)
     writingAs(source, () => {
-      props.close()
+      close()
       setPicker(true)
     })
   }
@@ -221,9 +158,10 @@ function Options(props: {
       (entry) => entry.provider === provider && entry.id === modelId,
     )?.available
     if (available === false) return openPicker(source)
+    const id = props.id
     return run(
       `family/${family.name}`,
-      () => selectModel({ provider, modelId }, props.id, source, family),
+      () => selectModel({ provider, modelId }, id, source, family),
       true,
     )
   }
@@ -288,10 +226,11 @@ function Options(props: {
                 class="w-full"
                 disabled={pending() !== undefined}
                 onValueChange={(level) => {
+                  const id = props.id
                   if (level)
                     void run(
                       `thinking/${level}`,
-                      () => api.configure({ thinkingLevel: level }, props.id),
+                      () => api.configure({ thinkingLevel: level }, id),
                       false,
                     )
                 }}

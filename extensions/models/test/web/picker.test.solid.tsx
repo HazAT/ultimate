@@ -40,7 +40,7 @@ import { store } from '../../../../web/src/sdk/client.ts'
 import { ConversationScope } from '../../../../web/src/sdk/solid.ts'
 import { LoginDialog } from '../../login.solid.tsx'
 import { ModelPicker } from '../../picker.solid.tsx'
-import { ModelButton, ThinkingButton } from '../../toolbar.solid.tsx'
+import { ModelControl } from '../../toolbar.solid.tsx'
 import { openLogin } from '../../state.ts'
 import models from '../../web.solid.tsx'
 
@@ -149,38 +149,37 @@ it('keeps the picked effort pending and ignores a quick second choice', async ()
   harness.fetch.mockImplementation((url, init) =>
     typeof url === 'string' && url.endsWith('/configure') ? pending.promise : respond(url, init),
   )
-  const page = renderSolid(() => <ThinkingButton />)
-  expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
-  const high = page.querySelector<HTMLButtonElement>('[aria-label="high effort"]')!
-  const low = page.querySelector<HTMLButtonElement>('[aria-label="low effort"]')!
-  const off = page.querySelector<HTMLButtonElement>('[aria-label="off effort"]')!
-  expect(off.getAttribute('aria-current')).toBe('true')
-  expect(high.getAttribute('aria-current')).toBeNull()
-  high.click()
-  low.click()
+  const page = renderSolid(() => <ModelControl />)
   await sync()
-  expect(high.hasAttribute('data-pending')).toBe(true)
-  expect(low.disabled).toBe(true)
-  expect(off.disabled).toBe(true)
-  low.click()
+  expect(await act('Model and thinking', 'setOpen', true)).toMatchObject({ ok: true })
+  const level = (name: string) =>
+    page.querySelector<HTMLButtonElement>(`[aria-label="${name} effort"]`)!
+  expect(level('off').hasAttribute('data-checked')).toBe(true)
+  level('high').click()
+  level('low').click()
+  await sync()
+  expect(level('low').hasAttribute('data-disabled')).toBe(true)
+  level('low').click()
   await sync()
   expect(writes()).toEqual([
     { path: '/api/conversations/1/configure', body: { thinkingLevel: 'high' }, source: 'person' },
   ])
   pending.resolve(Response.json({ ok: true }))
   await sync()
-  expect(page.querySelector('[aria-label="high effort"]')).toBeNull()
+  expect(level('low').hasAttribute('data-disabled')).toBe(false)
 })
 
 it('lets an agent pick a model and a family by name, recording both writes as the agent', async () => {
   const container = renderSolid(() => (
     <>
-      <ModelButton />
+      <ModelControl />
       <ModelPicker />
     </>
   ))
   await sync()
-  expect(await act('Open the model picker', 'press')).toMatchObject({ ok: true })
+  expect(await act('Model and thinking', 'setOpen', true)).toMatchObject({ ok: true })
+  await expectDistinctAgentNames(agent)
+  expect(await act('Pick another model', 'press')).toMatchObject({ ok: true })
   await expectDistinctAgentNames(agent)
   expect(container.querySelector('[data-highlighted][role="option"]')?.textContent).toContain(
     'atlas',
@@ -190,8 +189,8 @@ it('lets an agent pick a model and a family by name, recording both writes as th
     'orion',
   )
   expect(await act('Search model catalog', 'run', 'faux/orion')).toMatchObject({ ok: true })
-  expect(await act('Open the model picker', 'press')).toMatchObject({ ok: true })
-  expect(await act('Search model catalog', 'run', 'Review')).toMatchObject({ ok: true })
+  expect(await act('Model and thinking', 'setOpen', true)).toMatchObject({ ok: true })
+  expect(await act('Review family', 'press')).toMatchObject({ ok: true })
   expect(writes()).toEqual([
     {
       path: '/api/conversations/1/configure',
@@ -221,8 +220,7 @@ it('targets the side chat from thinking controls and the picker, including after
   const container = renderSolid(() => (
     <>
       <ConversationScope value={side}>
-        <ModelButton />
-        <ThinkingButton />
+        <ModelControl />
       </ConversationScope>
       <ModelPicker />
       <LoginDialog />
@@ -232,18 +230,18 @@ it('targets the side chat from thinking controls and the picker, including after
     await sync()
     server.of(side, true)!.send('view', view(side, 'orion', 'low'))
     await sync()
-    expect(container.querySelector('[aria-label="Open the model picker"]')?.textContent).toContain(
-      'orion',
+    expect(container.querySelector('[aria-label="Model and thinking"]')?.textContent).toContain(
+      'orion·low',
     )
-    expect(await act('Thinking level', 'setOpen', true)).toMatchObject({ ok: true })
+    expect(await act('Model and thinking', 'setOpen', true)).toMatchObject({ ok: true })
     await expectDistinctAgentNames(agent)
-    expect(await act('high effort', 'press')).toMatchObject({ ok: true })
+    expect(await act('Thinking level', 'setValue', 'high')).toMatchObject({ ok: true })
     const cycle = models.commands!.find((command) => command.id === 'model.thinking.cycle')!
     expect(cycle).toMatchObject({ keys: 'shift+tab', whileTyping: true })
     await cycle.run(currentContext(side))
     await cycle.run(currentContext())
 
-    expect(await act('Open the model picker', 'press')).toMatchObject({ ok: true })
+    expect(await act('Pick another model', 'press')).toMatchObject({ ok: true })
     expect(await act('Search model catalog', 'run', 'accounts/login')).toMatchObject({ ok: true })
     expect(await act('Faux credentials (API key, faux)', 'press')).toMatchObject({ ok: true })
     server.of(1)!.send('doc', {
