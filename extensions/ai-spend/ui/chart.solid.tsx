@@ -231,21 +231,21 @@ export function SpendChart(props: ChartProps) {
                 />
               )}
             </Show>
-            <For each={layout().bars}>
+            <For each={layout().bars} keyed={(bar) => bar.at}>
               {(bar) => (
                 <g>
-                  <For each={bar.rects}>
+                  <For each={bar().rects} keyed={(rect) => rect.key}>
                     {(rect) => (
                       <rect
                         class={cn(
-                          layout().colors.get(rect.key)?.fill,
+                          layout().colors.get(rect().key)?.fill,
                           'transition-opacity',
-                          dimmed(rect.key) && 'opacity-25',
+                          dimmed(rect().key) && 'opacity-25',
                         )}
-                        height={rect.h}
+                        height={rect().h}
                         width={layout().bar}
-                        x={bar.x}
-                        y={rect.y}
+                        x={bar().x}
+                        y={rect().y}
                       />
                     )}
                   </For>

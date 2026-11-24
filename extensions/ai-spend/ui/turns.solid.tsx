@@ -150,7 +150,7 @@ export function TurnList(props: { turns: Turn[] }) {
         </div>
         <div class="flex flex-col pt-1">
           <For each={shown()} keyed={turnKey}>
-            {(turn) => <TurnRow turn={turn()} />}
+            {(turn, index) => <TurnRow rank={index() + 1} turn={turn()} />}
           </For>
         </div>
         <Show when={props.turns.length > FIRST}>
@@ -171,7 +171,7 @@ export function TurnList(props: { turns: Turn[] }) {
   )
 }
 
-function TurnRow(props: { turn: Turn }) {
+function TurnRow(props: { turn: Turn; rank: number }) {
   const row = () => props.turn.row
   const conversation = () => props.turn.conversation
   const why = createMemo(() => reason(props.turn))
@@ -180,7 +180,7 @@ function TurnRow(props: { turn: Turn }) {
   const live = () => conversation().live
   return (
     <Button
-      aria-label={`Open ${refOf(conversation())} at its ${usd(props.turn.usd)} turn of ${when()}`}
+      aria-label={`Open ${refOf(conversation())} at its ${usd(props.turn.usd)} turn of ${when()} (turn ${props.rank})`}
       class={cn(
         GRID,
         'group/row h-auto min-h-8 justify-stretch gap-y-0 rounded-md px-2 py-1.5 text-left font-mono text-[11.5px] font-normal whitespace-normal text-foreground/85 tabular-nums outline-none hover:bg-muted/40 focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-auto disabled:opacity-100 data-disabled:opacity-100 disabled:hover:bg-transparent @3xl:py-0',

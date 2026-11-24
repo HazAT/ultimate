@@ -69,7 +69,11 @@ export function RangePicker(props: {
             <DateField label="to" max={today()} min={from()} onChange={setTo} value={to()} />
             <Button
               class="mt-1 h-7 rounded-md bg-primary px-3 text-[12px] font-medium text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => {
+              onClick={(event) => {
+                const form = (event.currentTarget as HTMLButtonElement).form
+                const browserRejects = form && !form.reportValidity()
+                if (browserRejects) return
+                if (!(from() <= to() && to() <= today())) return
                 props.onChange({ range: 'custom', from: from(), to: to(), bucket: undefined })
                 setOpen(false)
               }}

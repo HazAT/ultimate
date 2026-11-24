@@ -483,13 +483,11 @@ export default function costs(host: ExtensionHost) {
     await Promise.all(pending.map((id) => enqueue(id, () => read(host.harness(), id, epoch))))
   }
 
-  const stop = async (pending = true) => {
+  const stop = async () => {
     stopObserving?.()
     stopObserving = undefined
-    if (pending) {
-      await flush()
-      await Promise.all(queues.values())
-    }
+    await flush()
+    await Promise.all(queues.values())
     epoch++
     for (const due of coalescedReads.values()) due.cancel()
     coalescedReads.clear()
@@ -501,9 +499,7 @@ export default function costs(host: ExtensionHost) {
     await saving
   }
   snapshots.set(host, (asked) => delta(asked))
-  host.onClose(() => stop())
   host.onOpen(async (session) => {
-    await stop(false)
     session.defer(() => stop())
     ready = false
     initialized = false
