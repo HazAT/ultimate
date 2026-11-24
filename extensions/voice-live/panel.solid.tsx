@@ -3,7 +3,6 @@ import {
   Check,
   LoaderCircle,
   CircleDashed,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Maximize2,
@@ -25,13 +24,6 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { Slider } from '@/components/ui/slider.solid.tsx'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
@@ -390,35 +382,19 @@ function SpeechVoice() {
         </span>
       </Show>
       <Show when={dock.openaiOn()}>
-        <div class="flex items-center justify-between gap-3">
-          OpenAI voice
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="OpenAI voice"
-              class="flex h-6 items-center gap-1 rounded-md border border-border/70 px-2 text-foreground/85 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {dock.openaiVoice()}
-              <ChevronDown aria-hidden="true" class="size-3 text-muted-foreground" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              class="max-h-72 overflow-y-auto font-mono text-[11.5px]"
-            >
-              <DropdownMenuRadioGroup
-                value={dock.openaiVoice()}
-                onValueChange={(value) => dock.setOpenaiVoice(value)}
-              >
-                <For each={VOICES}>
-                  {(name) => (
-                    <DropdownMenuRadioItem closeOnSelect value={name}>
-                      {name}
-                    </DropdownMenuRadioItem>
-                  )}
-                </For>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <SegmentedControl
+          aria-label="OpenAI voice"
+          bind={[dock.openaiVoice, dock.setOpenaiVoice]}
+          class="grid grid-cols-5"
+        >
+          <For each={VOICES}>
+            {(name) => (
+              <SegmentedControlItem class="justify-center" value={name}>
+                {name}
+              </SegmentedControlItem>
+            )}
+          </For>
+        </SegmentedControl>
       </Show>
     </div>
   )
