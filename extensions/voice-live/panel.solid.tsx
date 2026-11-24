@@ -699,6 +699,7 @@ function Bottom(props: { fork: ConversationId | undefined }) {
   const target = (): ComposerTarget => ({
     placeholder: `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`,
     images: true,
+    dictation: false,
     ready: () => draftOf().length > 0,
     send: (text, images) => sendTyped(text, images),
     ...(hot() === undefined ? { draft: COLD_DRAFT } : {}),

@@ -225,6 +225,7 @@ function DraftComposer(props: { dock?: boolean }) {
       <PromptBox
         accepts={{ images: !!target()?.images }}
         autofocus
+        dictation={target()?.dictation}
         draft={target()?.draft}
         id={`composer-input-${target()?.draft}`}
         name="the new conversation"
@@ -342,6 +343,7 @@ function ComposerEditor(props: { dock?: boolean }) {
         }
         autofocus
         blocked={blocked()}
+        dictation={target()?.dictation}
         conversation={id()}
         draft={id()}
         hint={

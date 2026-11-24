@@ -172,6 +172,8 @@ export interface ComposerTarget {
    * cold voice session): the composer then shows none of the scoped conversation's run, queue, toolbar or status.
    */
   draft?: string
+  /** `false` hides the box's dictation control, for a target that takes voice its own way. */
+  dictation?: false
 }
 
 /** What a document renderer receives: the shown conversation's document of its kind, live. */
@@ -434,6 +436,8 @@ export interface PromptBoxProps {
   pageDrop?: boolean
   /** Focuses the box when it mounts, except behind a touch keyboard. */
   autofocus?: boolean
+  /** `false` hides the dictation control. */
+  dictation?: false
 }
 
 /** What a facet provides for a point. */

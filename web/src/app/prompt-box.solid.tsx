@@ -272,20 +272,22 @@ export function PromptBox(props: PromptBoxProps) {
             last
             point={PromptRecorder}
           />
-          <Provided
-            input={{
-              get name() {
-                return props.name
-              },
-              get conversation() {
-                return props.conversation
-              },
-              insert: (words: string) => insertIntoDraft(draft(), editor, words),
-              level: setLevel,
-            }}
-            last
-            point={Dictation}
-          />
+          <Show when={props.dictation !== false}>
+            <Provided
+              input={{
+                get name() {
+                  return props.name
+                },
+                get conversation() {
+                  return props.conversation
+                },
+                insert: (words: string) => insertIntoDraft(draft(), editor, words),
+                level: setLevel,
+              }}
+              last
+              point={Dictation}
+            />
+          </Show>
           {props.actions}
           <Show when={!props.running || !empty()}>
             <Button
