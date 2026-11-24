@@ -108,7 +108,7 @@ export function composerDraft(id: number | string) {
     reserve: () => {
       if (draft.get().sending) return undefined
       draft.set({ sending: true })
-      return (sent?: 'all' | 'images') => {
+      return (sent?: 'all' | 'attachments') => {
         if (sent === 'all' && draft.get().text === text) {
           if (draft.key && localStorage.getItem(draft.key) === text)
             localStorage.removeItem(draft.key)

@@ -1,7 +1,7 @@
 import { Blob as NodeBlob, File as NodeFile } from 'node:buffer'
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush } from 'solid-js'
+import { createRoot, createSignal, flush, Show } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
@@ -15,8 +15,15 @@ class FakeTrack extends EventTarget {
     super()
     this.kind = kind
   }
+  get readyState() {
+    return this.stopped ? 'ended' : 'live'
+  }
   stop() {
     this.stopped = true
+  }
+  end() {
+    this.stopped = true
+    this.dispatchEvent(new Event('ended'))
   }
 }
 class FakeStream {
@@ -31,6 +38,7 @@ class FakeStream {
 class FakeRecorder extends EventTarget {
   static isTypeSupported = (type: string) => type === 'video/webm;codecs=vp9,opus'
   static last: FakeRecorder | undefined
+  static failStart = false
   state = 'inactive'
   readonly stream: FakeStream
   readonly options: { mimeType?: string }
@@ -44,6 +52,7 @@ class FakeRecorder extends EventTarget {
     return this.options.mimeType ?? ''
   }
   start() {
+    if (FakeRecorder.failStart) throw new DOMException('no encoder', 'NotSupportedError')
     this.state = 'recording'
   }
   stop() {
@@ -54,7 +63,12 @@ class FakeRecorder extends EventTarget {
 }
 class FakeAudio {
   static closed = 0
-  createMediaStreamDestination = () => ({ stream: new FakeStream([new FakeTrack('audio')]) })
+  static mixed: FakeTrack[] = []
+  createMediaStreamDestination = () => {
+    const track = new FakeTrack('audio')
+    FakeAudio.mixed.push(track)
+    return { stream: new FakeStream([track]) }
+  }
   createMediaStreamSource = () => ({ connect: () => undefined })
   close() {
     FakeAudio.closed++
@@ -68,8 +82,10 @@ let mic: FakeStream
 const display = vi.fn<() => Promise<MediaStream>>()
 const microphone = vi.fn<() => Promise<MediaStream>>()
 const released = vi.fn<() => void>()
-const attached: { box: string; files: File[] }[] = []
+const attached: { box: string; draft: unknown; files: File[] }[] = []
 const marks: boolean[] = []
+let accepts = true
+let upload: Promise<void> = Promise.resolve()
 
 beforeEach(() => {
   vi.stubGlobal('MediaRecorder', FakeRecorder)
@@ -84,11 +100,17 @@ beforeEach(() => {
   released.mockReset()
   attached.length = 0
   marks.length = 0
+  accepts = true
+  upload = Promise.resolve()
   FakeAudio.closed = 0
+  FakeAudio.mixed = []
   FakeRecorder.last = undefined
+  FakeRecorder.failStart = false
 })
 
-function mount(...names: string[]) {
+type Spec = { name: string; draft: number; dock?: boolean; shown?: () => boolean }
+
+function mount(...specs: Spec[]) {
   const recorder = createScreenRecorder({
     display,
     mic: microphone,
@@ -96,13 +118,23 @@ function mount(...names: string[]) {
     now: () => 0,
   })
   const Button = recordButton(recorder, () => true)
+  const box = (spec: Spec) => (
+    <Button
+      attach={(files) => {
+        if (!accepts) return Promise.resolve(false)
+        attached.push({ box: spec.name, draft: spec.draft, files: [...files] })
+        return upload.then(() => true)
+      }}
+      draft={spec.draft}
+      name={spec.name}
+      recording={(on) => marks.push(on)}
+    />
+  )
   const container = renderSolid(() =>
-    names.map((name) => (
-      <Button
-        attach={(files) => attached.push({ box: name, files: [...files] })}
-        name={name}
-        recording={(on) => marks.push(on)}
-      />
+    specs.map((spec) => (
+      <Show when={spec.shown?.() ?? true}>
+        {spec.dock ? <div data-voice-bottom>{box(spec)}</div> : box(spec)}
+      </Show>
     )),
   )
   flush()
@@ -119,50 +151,86 @@ async function press(label: string) {
   flush()
 }
 
-const allStopped = () => [...screen.tracks, ...mic.tracks].every((track) => track.stopped)
+const allStopped = () =>
+  [...screen.tracks, ...mic.tracks, ...FakeAudio.mixed].every((track) => track.stopped)
 
 it('records screen and mic into one webm and attaches it to the box it was stopped from', async () => {
-  const { container } = mount('box A', 'box B')
-  await press('Record the screen into box A')
+  const { container } = mount({ name: 'box A', draft: 1 }, { name: 'box B', draft: 2 })
+  await press('Record the screen into box A (prompt box)')
   expect(display).toHaveBeenCalledOnce()
   expect(FakeRecorder.last?.mimeType).toBe('video/webm;codecs=vp9,opus')
   expect(FakeRecorder.last?.stream.getVideoTracks()).toEqual(screen.getVideoTracks())
   expect(FakeRecorder.last?.stream.getAudioTracks()).toHaveLength(1)
   expect(container.textContent).toContain('screen + mic')
   expect(marks.at(-1)).toBe(true)
-  await expectDistinctAgentNames(agent)
 
-  await press('Stop and attach the screen recording to box B')
-  expect(attached).toHaveLength(1)
-  expect(attached[0].box).toBe('box B')
+  await press('Stop and attach the screen recording to box B (prompt box)')
+  expect(attached.map((entry) => entry.box)).toEqual(['box B'])
   expect(attached[0].files[0]).toMatchObject({ type: 'video/webm' })
   expect(attached[0].files[0].name).toMatch(/^Screen recording .+\.webm$/)
   expect(allStopped()).toBe(true)
   expect(FakeAudio.closed).toBe(1)
-  expect(released).toHaveBeenCalledOnce()
   expect(marks.at(-1)).toBe(false)
 })
 
-it('keeps the recording when the browser’s Stop sharing ends it, for the box that started it', async () => {
-  mount('box A', 'box B')
-  await press('Record the screen into box B')
-  screen.getVideoTracks()[0].dispatchEvent(new Event('ended'))
+it('holds a waiting page reload until the recording’s upload has settled', async () => {
+  const done = Promise.withResolvers<void>()
+  upload = done.promise
+  mount({ name: 'box A', draft: 1 })
+  await press('Record the screen into box A (prompt box)')
+  await press('Stop and attach the screen recording to box A (prompt box)')
+  expect(attached).toHaveLength(1)
+  expect(released).not.toHaveBeenCalled()
+  done.resolve()
+  await settle()
+  expect(released).toHaveBeenCalledOnce()
+})
+
+it('Stop sharing from the browser attaches to the draft that started it, even after a switch away', async () => {
+  const [shown, setShown] = createRoot(() => createSignal(true))
+  mount({ name: 'box A', draft: 1, shown }, { name: 'box B', draft: 2 })
+  await press('Record the screen into box A (prompt box)')
+  setShown(false)
   flush()
-  expect(attached.map((entry) => entry.box)).toEqual(['box B'])
-  expect(allStopped()).toBe(true)
+  screen.getVideoTracks()[0].end()
+  await settle()
+  expect(attached).toEqual([])
+  expect(released).not.toHaveBeenCalled()
+  setShown(true)
+  flush()
+  await settle()
+  expect(attached.map((entry) => entry.draft)).toEqual([1])
+  expect(released).toHaveBeenCalledOnce()
+})
+
+it('keeps a recording a busy box refused until that box takes it', async () => {
+  const { recorder } = mount({ name: 'box A', draft: 1 })
+  await press('Record the screen into box A (prompt box)')
+  accepts = false
+  await press('Stop and attach the screen recording to box A (prompt box)')
+  expect(attached).toEqual([])
+  expect(released).not.toHaveBeenCalled()
+  accepts = true
+  recorder.mount({
+    draft: 1,
+    attach: async (files) => (attached.push({ box: 'again', draft: 1, files: [...files] }), true),
+  })
+  await settle()
+  expect(attached.map((entry) => entry.box)).toEqual(['again'])
+  expect(released).toHaveBeenCalledOnce()
 })
 
 it('discards on Cancel and on Escape: nothing attaches and every track is released', async () => {
-  mount('box A')
-  await press('Record the screen into box A')
-  await press('Cancel the screen recording in box A')
+  mount({ name: 'box A', draft: 1 })
+  await press('Record the screen into box A (prompt box)')
+  await press('Cancel the screen recording in box A (prompt box)')
   expect(attached).toEqual([])
   expect(allStopped()).toBe(true)
   expect(released).toHaveBeenCalledOnce()
 
   screen = new FakeStream([new FakeTrack('video')])
   mic = new FakeStream([new FakeTrack('audio')])
-  await press('Record the screen into box A')
+  await press('Record the screen into box A (prompt box)')
   const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
   window.dispatchEvent(escape)
   flush()
@@ -172,18 +240,51 @@ it('discards on Cancel and on Escape: nothing attaches and every track is releas
   expect(released).toHaveBeenCalledTimes(2)
 })
 
-it('starts nothing when the person declines to share, and records the screen alone without a mic', async () => {
-  const { container } = mount('box A')
-  display.mockRejectedValueOnce(new DOMException('denied', 'NotAllowedError'))
-  await press('Record the screen into box A')
+it('abandons a start when sharing ends during the mic prompt, or setup throws', async () => {
+  const { container } = mount({ name: 'box A', draft: 1 })
+  const micAsked = Promise.withResolvers<MediaStream>()
+  microphone.mockReturnValueOnce(micAsked.promise)
+  const starting = press('Record the screen into box A (prompt box)')
+  await vi.waitFor(() => expect(microphone).toHaveBeenCalledOnce())
+  screen.getVideoTracks()[0].end()
+  micAsked.resolve(mic as unknown as MediaStream)
+  await starting
   expect(FakeRecorder.last).toBeUndefined()
-  expect(container.querySelector('[role="alert"]')).toBeNull()
+  expect(allStopped()).toBe(true)
   expect(released).not.toHaveBeenCalled()
 
+  screen = new FakeStream([new FakeTrack('video')])
+  mic = new FakeStream([new FakeTrack('audio')])
+  FakeRecorder.failStart = true
+  await press('Record the screen into box A (prompt box)')
+  expect(allStopped()).toBe(true)
+  expect(released).toHaveBeenCalledOnce()
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('no encoder')
+  expect(
+    container.querySelector('[data-screen-recorder]')?.getAttribute('data-screen-recorder'),
+  ).toBe('idle')
+})
+
+it('starts nothing when the person declines to share, and records the screen alone without a mic', async () => {
+  const { container } = mount({ name: 'box A', draft: 1 })
+  display.mockRejectedValueOnce(new DOMException('denied', 'NotAllowedError'))
+  await press('Record the screen into box A (prompt box)')
+  expect(FakeRecorder.last).toBeUndefined()
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+
   microphone.mockRejectedValueOnce(new DOMException('no mic', 'NotFoundError'))
-  await press('Record the screen into box A')
-  expect(container.textContent).toContain('screen')
+  await press('Record the screen into box A (prompt box)')
   expect(container.textContent).not.toContain('screen + mic')
-  await press('Stop and attach the screen recording to box A')
+  await press('Stop and attach the screen recording to box A (prompt box)')
   expect(attached).toHaveLength(1)
+})
+
+it('names the voice dock’s controls apart from the main box on the same conversation', async () => {
+  mount({ name: 'conversation #9', draft: 9 }, { name: 'conversation #9', draft: 9, dock: true })
+  await settle()
+  flush()
+  await press('Record the screen into conversation #9 (voice dock)')
+  await expectDistinctAgentNames(agent)
+  await press('Stop and attach the screen recording to conversation #9 (prompt box)')
+  expect(attached.map((entry) => entry.box)).toEqual(['conversation #9'])
 })

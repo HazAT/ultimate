@@ -9,8 +9,10 @@ Screen recording: a button in every desktop prompt box records the screen and mi
   view after a conversation switch. The page does not switch to a new bundle until the recording ends
   (`holdReload` from the SDK). Recordings stop themselves after 30 minutes.
 - **Stop** (the badge's square, or the browser's own "Stop sharing") ends it and attaches a `Screen recording <time>.webm`
-  to the box it was stopped from, or the box that started it: the same path as a pasted video (`video` uploads it in
-  chunks and shows its chip). **Cancel** or **Escape** discards it; nothing is uploaded.
+  to the box the square was pressed in, or for the browser's stop to the draft that started it: the same path as a
+  pasted video (`video` uploads it in chunks and shows its chip). When that draft's box is not on screen or busy, the
+  recording waits in the page until it is shown again, and the page keeps holding reloads until the upload settles.
+  **Cancel** or **Escape** discards it; nothing is uploaded.
 - **Mixing:** the shared audio and the mic go through one `AudioContext` into one `MediaRecorder` track:
   `video/webm` with VP9 and Opus on Chromium (VP8 or MP4 where VP9 is missing), about 2.5 Mbit/s.
 - **Desktop only:** phones and touch devices show no button; they can still paste or pick a video. It needs a

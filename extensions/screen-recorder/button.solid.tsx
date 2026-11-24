@@ -35,8 +35,18 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
   )
 
   return function RecordButton(props: RecorderProps) {
-    const box: Box = { attach: (files) => props.attach(files) }
+    const box: Box = {
+      get draft() {
+        return props.draft
+      },
+      attach: (files) => props.attach(files),
+    }
+    const [docked, setDocked] = createSignal(false)
     onSettled(() => recorder.mount(box))
+    const place = (element: HTMLElement) => {
+      queueMicrotask(() => setDocked(!!element.closest('[data-voice-bottom]')))
+    }
+    const name = () => `${props.name} (${docked() ? 'voice dock' : 'prompt box'})`
     const recording = () => phase().phase === 'recording'
     const now = useNow(500, recording)
     createEffect(recording, (on) => {
@@ -57,7 +67,7 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
               : undefined
           }
           fallback={
-            <div class="flex min-w-0 shrink items-center gap-1.5">
+            <div class="flex min-w-0 shrink items-center gap-1.5" ref={place}>
               <Show when={phase().phase === 'idle' && (phase() as { error?: string }).error}>
                 {(error) => (
                   <span
@@ -74,7 +84,7 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
                   render={(trigger) => (
                     <Button
                       {...trigger}
-                      aria-label={`Record the screen into ${props.name}`}
+                      aria-label={`Record the screen into ${name()}`}
                       class={`${buttonSize} text-muted-foreground`}
                       data-screen-recorder={phase().phase}
                       disabled={phase().phase === 'asking'}
@@ -101,9 +111,13 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
           }
         >
           {(active) => (
-            <div class="flex shrink-0 items-center gap-1" data-screen-recorder="recording">
+            <div
+              class="flex shrink-0 items-center gap-1"
+              data-screen-recorder="recording"
+              ref={place}
+            >
               <Button
-                aria-label={`Cancel the screen recording in ${props.name}`}
+                aria-label={`Cancel the screen recording in ${name()}`}
                 class={`${buttonSize} text-muted-foreground`}
                 onClick={() => recorder.cancel()}
                 onPointerDown={keepEditorFocus}
@@ -121,7 +135,7 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
                 {active().mic ? 'screen + mic' : 'screen'} {clock(now() - active().started)}
               </span>
               <Button
-                aria-label={`Stop and attach the screen recording to ${props.name}`}
+                aria-label={`Stop and attach the screen recording to ${name()}`}
                 class={`${buttonSize} bg-error text-white hover:bg-error/90`}
                 onClick={() => recorder.stop(box)}
                 onPointerDown={keepEditorFocus}

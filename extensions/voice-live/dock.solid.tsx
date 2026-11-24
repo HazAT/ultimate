@@ -528,7 +528,7 @@ async function sendTurn(input: {
     if (signal.aborted) return cancelled()
     delivered = await deliver()
   } finally {
-    releaseBox?.(delivered ? (carried ? 'all' : 'images') : undefined)
+    releaseBox?.(delivered ? (carried ? 'all' : 'attachments') : undefined)
     for (const clip of clips) sending.delete(clip.audio)
   }
 

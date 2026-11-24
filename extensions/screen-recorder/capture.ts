@@ -1,6 +1,5 @@
+import { inProcess, meansNone } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
-import { meansNone } from '../../lib/errors.ts'
 
 export const MAX_RECORDING_MS = 30 * 60_000
 const videoMimeOrder = [
@@ -10,7 +9,8 @@ const videoMimeOrder = [
   'video/mp4',
 ]
 
-export type Box = { attach: (files: readonly File[]) => void }
+export type Draft = number | string | undefined
+export type Box = { draft: Draft; attach: (files: readonly File[]) => Promise<boolean> }
 export type Phase =
   | { phase: 'idle'; error?: string }
   | { phase: 'asking' }
@@ -38,10 +38,11 @@ export const screenSupported = () =>
   typeof navigator.mediaDevices?.getDisplayMedia === 'function' &&
   typeof MediaRecorder !== 'undefined'
 
-function captureFailure(failure: unknown) {
-  if (failure instanceof DOMException && failure.name === 'NotAllowedError') return undefined
-  return `Could not record the screen: ${failure instanceof Error ? failure.message : String(failure)}`
-}
+const failureText = (failure: unknown) =>
+  `Could not record the screen: ${failure instanceof Error ? failure.message : String(failure)}`
+
+const declined = (failure: unknown) =>
+  failure instanceof DOMException && failure.name === 'NotAllowedError'
 
 const stamp = (at: number) => {
   const date = new Date(at)
@@ -49,25 +50,11 @@ const stamp = (at: number) => {
   return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}.${two(date.getMinutes())}.${two(date.getSeconds())}`
 }
 
-function mixed(streams: MediaStream[]) {
-  const audio = streams.filter((stream) => stream.getAudioTracks().length)
-  if (!audio.length) return { tracks: [], close: () => undefined }
-  const context = new AudioContext()
-  const destination = context.createMediaStreamDestination()
-  for (const stream of audio)
-    context.createMediaStreamSource(new MediaStream(stream.getAudioTracks())).connect(destination)
-  return {
-    tracks: destination.stream.getAudioTracks(),
-    close: () => void context.close().catch(meansNone),
-  }
-}
-
 export function createScreenRecorder(media: Media) {
   let state: Phase = { phase: 'idle' }
   const listeners = new Set<() => void>()
-  const boxes: Box[] = []
-  let starter: Box | undefined
-  let held: File | undefined
+  const boxes = new Set<Box>()
+  const waiting = new Map<Draft, { file: File; release: () => void }[]>()
   let end: ((keep: boolean, into?: Box) => void) | undefined
 
   const set = (next: Phase) => {
@@ -75,75 +62,118 @@ export function createScreenRecorder(media: Media) {
     for (const listener of listeners) listener()
   }
 
-  function deliver(file: File, into: Box | undefined) {
-    const target =
-      into && boxes.includes(into)
-        ? into
-        : starter && boxes.includes(starter)
-          ? starter
-          : boxes.at(-1)
-    if (target) target.attach([file])
-    else held = file
+  function offer(draft: Draft) {
+    const files = waiting.get(draft)
+    if (!files?.length) return
+    const box = [...boxes].findLast((candidate) => candidate.draft === draft)
+    if (!box) return
+    waiting.delete(draft)
+    inProcess(
+      'a recording lives in this page until its box takes it; the reload hold keeps the page',
+      box.attach(files.map((held) => held.file)).then(
+        (taken) => {
+          if (!taken) waiting.set(draft, [...files, ...(waiting.get(draft) ?? [])])
+          else for (const held of files) held.release()
+        },
+        () => {
+          for (const held of files) held.release()
+        },
+      ),
+    )
+  }
+
+  function keepFor(draft: Draft, file: File, release: () => void) {
+    waiting.set(draft, [...(waiting.get(draft) ?? []), { file, release }])
+    offer(draft)
   }
 
   async function start(box: Box) {
     if (state.phase !== 'idle') return
-    starter = box
+    const draft = box.draft
     set({ phase: 'asking' })
-    let screen: MediaStream
+    const owned: MediaStreamTrack[] = []
+    let context: AudioContext | undefined
+    let release: (() => void) | undefined
+    const teardown = () => {
+      for (const track of owned) track.stop()
+      void context?.close().catch(meansNone)
+    }
+    let shareEnded = false
     try {
-      screen = await media.display()
-    } catch (failure) {
-      set({ phase: 'idle', error: captureFailure(failure) })
-      return
-    }
-    const mic = await media.mic().catch(meansNone)
-    const audio = mixed(mic ? [screen, mic] : [screen])
-    const stream = new MediaStream([...screen.getVideoTracks(), ...audio.tracks])
-    const type = videoMimeOrder.find((candidate) => MediaRecorder.isTypeSupported(candidate))
-    const recorder = new MediaRecorder(stream, {
-      ...(type ? { mimeType: type } : {}),
-      videoBitsPerSecond: 2_500_000,
-    })
-    const started = media.now()
-    const chunks: Blob[] = []
-    const release = media.hold()
-    let keep = true
-    let into: Box | undefined
-    let stopLimit: Cancel | undefined
-    recorder.addEventListener('dataavailable', ({ data }) => {
-      if (data.size) chunks.push(data)
-    })
-    recorder.addEventListener(
-      'stop',
-      () => {
-        stopLimit?.()
-        for (const track of [...screen.getTracks(), ...(mic?.getTracks() ?? [])]) track.stop()
-        audio.close()
-        end = undefined
-        release()
+      const screen = await media.display()
+      owned.push(...screen.getTracks())
+      const video = screen.getVideoTracks()
+      for (const track of video)
+        track.addEventListener('ended', () => (end ? end(true) : (shareEnded = true)), {
+          once: true,
+        })
+      const mic = await media.mic().catch(meansNone)
+      if (mic) owned.push(...mic.getTracks())
+      if (shareEnded || video.every((track) => track.readyState === 'ended')) {
+        teardown()
         set({ phase: 'idle' })
-        if (!keep || !chunks.length) return
-        const mimeType = (recorder.mimeType || type || 'video/webm').split(';')[0]
-        const extension = mimeType === 'video/mp4' ? 'mp4' : 'webm'
-        deliver(
-          new File(chunks, `Screen recording ${stamp(started)}.${extension}`, { type: mimeType }),
-          into,
-        )
-      },
-      { once: true },
-    )
-    end = (keeping, stoppedFrom) => {
-      if (recorder.state === 'inactive') return
-      keep = keeping
-      into = stoppedFrom
-      recorder.stop()
+        return
+      }
+      const sources = [screen, mic].filter(
+        (stream): stream is MediaStream => !!stream?.getAudioTracks().length,
+      )
+      const audio: MediaStreamTrack[] = []
+      if (sources.length) {
+        context = new AudioContext()
+        const destination = context.createMediaStreamDestination()
+        for (const stream of sources)
+          context
+            .createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
+            .connect(destination)
+        audio.push(...destination.stream.getAudioTracks())
+        owned.push(...audio)
+      }
+      const type = videoMimeOrder.find((candidate) => MediaRecorder.isTypeSupported(candidate))
+      const recorder = new MediaRecorder(new MediaStream([...video, ...audio]), {
+        ...(type ? { mimeType: type } : {}),
+        videoBitsPerSecond: 2_500_000,
+      })
+      const started = media.now()
+      const chunks: Blob[] = []
+      let keep = true
+      let into = box
+      recorder.addEventListener('dataavailable', ({ data }) => {
+        if (data.size) chunks.push(data)
+      })
+      release = media.hold()
+      const held = release
+      const stopLimit = deadline(MAX_RECORDING_MS, () => end?.(true))
+      recorder.addEventListener(
+        'stop',
+        () => {
+          stopLimit()
+          teardown()
+          end = undefined
+          set({ phase: 'idle' })
+          if (!keep || !chunks.length) return held()
+          const mimeType = (recorder.mimeType || type || 'video/webm').split(';')[0]
+          const extension = mimeType === 'video/mp4' ? 'mp4' : 'webm'
+          const file = new File(chunks, `Screen recording ${stamp(started)}.${extension}`, {
+            type: mimeType,
+          })
+          keepFor(boxes.has(into) ? into.draft : draft, file, held)
+        },
+        { once: true },
+      )
+      recorder.start(1000)
+      end = (keeping, stoppedFrom) => {
+        if (recorder.state === 'inactive') return
+        keep = keeping
+        if (stoppedFrom) into = stoppedFrom
+        recorder.stop()
+      }
+      set({ phase: 'recording', started, mic: !!mic })
+    } catch (failure) {
+      teardown()
+      release?.()
+      end = undefined
+      set({ phase: 'idle', ...(declined(failure) ? {} : { error: failureText(failure) }) })
     }
-    for (const track of screen.getVideoTracks())
-      track.addEventListener('ended', () => end?.(true), { once: true })
-    recorder.start(1000)
-    stopLimit = deadline(MAX_RECORDING_MS, () => end?.(true))
-    set({ phase: 'recording', started, mic: !!mic })
   }
 
   return {
@@ -155,15 +185,12 @@ export function createScreenRecorder(media: Media) {
       }
     },
     mount(box: Box) {
-      boxes.push(box)
-      const waiting = held
-      held = undefined
-      if (waiting) box.attach([waiting])
+      boxes.add(box)
+      offer(box.draft)
       return () => {
-        boxes.splice(boxes.indexOf(box), 1)
+        boxes.delete(box)
       }
     },
-    mounted: () => boxes.length,
     start,
     stop: (into?: Box) => end?.(true, into),
     cancel: () => end?.(false),

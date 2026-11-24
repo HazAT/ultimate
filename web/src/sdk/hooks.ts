@@ -489,7 +489,7 @@ export { uncoveredComposer } from './actions.ts'
  * cursor. `composerDraft(id)` reads the text, images and number of attached files in its composer (`id` may be a `ComposerTarget`'s `draft` key),
  * and `attachments`, the prompt lines of the files that finished uploading;
  * `reserve()` marks the draft as being sent, which locks the box and Enter (undefined when a send already holds it),
- * and returns `release(sent)`: `'all'` or `'images'` removes the images and finished files that were sent (and with
+ * and returns `release(sent)`: `'all'` or `'attachments'` removes the images and finished files that were sent (and with
  * `'all'` the text) unless they changed meanwhile, nothing keeps it; `subscribe(listener)` hears every change to that draft.
  */
 export { composerDraft, fillComposer, insertIntoComposer } from '../app/drafts.ts'

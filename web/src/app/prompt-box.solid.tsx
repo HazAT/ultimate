@@ -279,8 +279,9 @@ export function PromptBox(props: PromptBoxProps) {
           <Provided
             input={{
               name: props.name,
+              draft: props.draft,
               attach: (picked: readonly File[], source: UploadSource = 'recording') =>
-                void attach.attach(picked, source),
+                attach.attach(picked, source),
               recording: setRecording,
             }}
             last
