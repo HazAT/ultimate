@@ -100,6 +100,7 @@ it('a key change retires the old socket, and its late close fails nothing on the
   await voice.connect('old', new AbortController().signal)
   const fresh = voice.speak('new', 'Hello.', 'cedar', new AbortController().signal)
   await until(() => creates(1).length === 1)
+  expect(sockets[0].closed).toBe(true)
   sockets[0].finishClose()
   event(
     {
