@@ -33,7 +33,7 @@ export interface JoinState {
   joined?: { url: string; host: string; machine: string }
   /** `cloud.url`, when set. */
   url?: string
-  /** `cloud.machine`, else the hostname. */
+  /** `cloud.machine`, else the macOS LocalHostName or the hostname. */
   machine: string
   /** The secret names this machine lacks. */
   missing: string[]

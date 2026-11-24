@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { hostname } from 'node:os'
+import { machineHostname } from '../lib/machine.ts'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { JsonObject } from '@earendil-works/pi-durable'
@@ -82,8 +82,8 @@ it('prefers environment overrides, including on previews', async () => {
   })
 })
 
-it('defaults the machine name to the OS hostname', async () => {
+it('defaults the machine name to the machine hostname', async () => {
   const { host, settings } = await fixture()
   await settings({ url: 'wss://user/sync' })
-  expect((await cloudConfig(host, {}))?.machine).toBe(hostname())
+  expect((await cloudConfig(host, {}))?.machine).toBe(machineHostname())
 })

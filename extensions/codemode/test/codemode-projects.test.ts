@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 import type { Register } from '../../../lib/cloud.ts'
 import { actions } from '../server.ts'
 import { readProject } from '../projects.ts'
-import { hostname } from 'node:os'
+import { machineHostname } from '../../../lib/machine.ts'
 import { join } from 'node:path'
 import { writeJson } from '../../../lib/json-file.ts'
 import { locate, resolveProject } from '../../../lib/remote.ts'
@@ -212,7 +212,7 @@ it('reaches another machine at the address the user set in remotes, with no clou
     name: 'Ultimate',
     machine: 'laptop',
   })
-  expect(await locate(host, 'ultimate', hostname())).toEqual({ current: true })
+  expect(await locate(host, 'ultimate', machineHostname())).toEqual({ current: true })
   // A project listed on several machines needs one named.
   await expect(locate(host, 'blog')).rejects.toThrow('blog runs on laptop, desktop in remotes')
   expect(await locate(host, 'blog', 'desktop')).toMatchObject({ machine: 'desktop' })

@@ -1,4 +1,4 @@
-import { hostname } from 'node:os'
+import { machineHostname } from '../../lib/machine.ts'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { httpBase } from '../../lib/cloud.ts'
 import { meansNone } from '../../lib/errors.ts'
@@ -103,7 +103,7 @@ export async function joinState(userHome: string): Promise<JoinState> {
       ? settings.cloud
       : {}
   const url = typeof cloud.url === 'string' ? cloud.url : undefined
-  const machine = typeof cloud.machine === 'string' ? cloud.machine : hostname()
+  const machine = typeof cloud.machine === 'string' ? cloud.machine : machineHostname()
   const missing = [TOKEN, SNAPSHOT_KEY].filter(
     (name) => !stored.some((secret) => secret.name === name),
   )
