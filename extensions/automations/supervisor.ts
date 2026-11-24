@@ -7,7 +7,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { access, appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -100,7 +100,9 @@ type Delivery = {
   kind: 'writing' | 'fired' | 'finished' | 'failed' | 'escalated'
   text: string
   targets: Subscriber[]
+  reset?: Reset
 }
+type Reset = { previousPid?: number; stopWatcher: boolean }
 type AskBeforeConcurrentDiscovery = string
 type KeyedCreateRetry = boolean
 export type Prepared = {
@@ -112,6 +114,7 @@ export type Prepared = {
   subscribers?: Subscriber[]
   manifest?: Manifest
   previousAsk?: AskBeforeConcurrentDiscovery
+  previousOnce?: boolean
   keyed?: KeyedCreateRetry
 }
 type Run = {
@@ -324,11 +327,21 @@ export function supervisor(
       throw error
     }
   }
-  const Deliver = defineTask<Delivery, { phase: 'deliver' }, null>({
+  const Deliver = defineTask<Delivery, { phase: 'reset' } | { phase: 'deliver' }, null>({
     name: 'ultimate.automation-delivery',
     version: 1,
-    initial: () => ({ phase: 'deliver' }),
+    initial: (input) => ({ phase: input.reset ? 'reset' : 'deliver' }),
     phases: {
+      reset: async (task, runtime, ctx) => {
+        const { sub, reset } = task.input
+        await apply({ id: sub.id, action: 'pause', ...reset! })
+        if (reset!.stopWatcher)
+          await (
+            await runtime.conversation(sub.script!.conversationId, ctx)
+          )?.abort(ctx, { background: true })
+        await rm(join(folder(sub.id), 'state'), { recursive: true, force: true })
+        await runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'deliver' } }), ctx)
+      },
       deliver: async (task, runtime, ctx) => {
         const { sub, event, kind, text, targets } = task.input
         const now = (await runtime.snapshot(Automations, ctx))?.automations[sub.id]
@@ -407,6 +420,7 @@ export function supervisor(
     event: number | string,
     kind: Delivery['kind'],
     text: string,
+    reset?: Reset,
   ) {
     await tx.createTask(
       Deliver,
@@ -415,6 +429,7 @@ export function supervisor(
         event,
         kind,
         text,
+        ...(reset ? { reset } : {}),
         targets:
           kind === 'writing' || kind === 'failed'
             ? [sub.script!.conversationId]
