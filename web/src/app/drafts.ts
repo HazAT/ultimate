@@ -68,23 +68,19 @@ export function insertIntoComposer(id: number, text: string) {
 
 export function composerDraft(id: number | string) {
   const draft = getDraft(id)
-  const { text, images, revision } = draft.get()
+  const { text, images, revision, sending } = draft.get()
   return {
     text,
     images: images.map(({ data, mimeType }) => ({ data, mimeType })),
+    sending,
     subscribe: draft.subscribe,
-    clear: (parts: 'all' | 'images' = 'all') => {
-      const tookText = parts === 'all' && !!text && draft.get().revision === revision
-      if (parts === 'all') clearDraft(draft, { text, revision })
-      const tookImages = images.length > 0 && draft.get().images === images
-      if (tookImages) draft.set({ images: [] })
-      return () => {
-        const now = draft.get()
-        if (tookText && !now.text.trim()) {
-          draft.set({ text, revision: now.revision + 1 })
-          if (draft.key) localStorage.setItem(draft.key, text)
-        }
-        if (tookImages && !now.images.length) draft.set({ images })
+    reserve: () => {
+      if (draft.get().sending) return undefined
+      draft.set({ sending: true })
+      return (sent?: 'all' | 'images') => {
+        if (sent === 'all') clearDraft(draft, { text, revision })
+        if (sent && draft.get().images === images) draft.set({ images: [] })
+        draft.set({ sending: false })
       }
     },
   }

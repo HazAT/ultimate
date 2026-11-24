@@ -157,10 +157,9 @@ const [screen, setScreen] = createRoot(() =>
 )
 export { setScreen }
 
-const waiting = new Map<
-  string,
-  { resolve: (text: string) => void; reject: (error: Error) => void }
->()
+type Waiter = { resolve: (text: string) => void; reject: (error: Error) => void }
+const waiting = new Map<string, Set<Waiter>>()
+const sending = new Set<string>()
 const forks = new Map<ConversationId, Readonly<VoiceFork>>()
 let session: ConversationId | undefined
 export const COLD_DRAFT = 'voice-live.cold'
@@ -180,13 +179,14 @@ const settled = (audio: string, signal: AbortSignal) =>
       reject(signal.reason as Error)
       return
     }
-    const ended = () => {
-      waiting.delete(audio)
-      reject(signal.reason as Error)
+    const waiters = waiting.get(audio) ?? new Set<Waiter>()
+    waiting.set(audio, waiters)
+    const done = () => {
+      signal.removeEventListener('abort', ended)
+      waiters.delete(waiter)
+      if (!waiters.size) waiting.delete(audio)
     }
-    signal.addEventListener('abort', ended, { once: true })
-    const done = () => signal.removeEventListener('abort', ended)
-    waiting.set(audio, {
+    const waiter: Waiter = {
       resolve: (text) => {
         done()
         resolve(text)
@@ -195,7 +195,10 @@ const settled = (audio: string, signal: AbortSignal) =>
         done()
         reject(error)
       },
-    })
+    }
+    const ended = () => waiter.reject(signal.reason as Error)
+    signal.addEventListener('abort', ended, { once: true })
+    waiters.add(waiter)
     for (const fork of forks.values()) settleTranscripts(fork)
   })
 
@@ -205,13 +208,13 @@ export function settleTranscripts(
 ) {
   if (fork && id !== undefined) forks.set(id, fork)
   if (id !== undefined && id === session) setDraft(fork?.draft ?? [])
-  for (const [audio, wait] of waiting) {
+  for (const [audio, waiters] of waiting) {
     const text = fork?.transcripts?.[audio]
     const failed = fork?.failed?.[audio]
     if (text === undefined && failed === undefined) continue
-    waiting.delete(audio)
-    if (text !== undefined) wait.resolve(text)
-    else wait.reject(new Error(`Transcription failed: ${failed}`))
+    for (const waiter of waiters)
+      if (text !== undefined) waiter.resolve(text)
+      else waiter.reject(new Error(`Transcription failed: ${failed}`))
   }
 }
 
@@ -386,6 +389,7 @@ export async function sendDraft(
   fromComposer = false,
   images?: readonly Image[],
 ) {
+  clips = clips.filter((clip) => !sending.has(clip.audio))
   if (!clips.length && !typed.trim() && !images?.length) return
   const busy =
     playerState().playing ||
@@ -409,7 +413,8 @@ export async function sendDraft(
 export const discardDraft = () => api.action(DiscardAction, null)
 
 export async function sendTyped(text: string, images: readonly Image[] = []) {
-  if (draftOf().length) return sendDraft('steer', text, false, draftOf(), true, images)
+  const free = draftOf().filter((clip) => !sending.has(clip.audio))
+  if (free.length) return sendDraft('steer', text, false, free, true, images)
   if (!text.trim() && !images.length) return
   const interrupted =
     playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
@@ -464,17 +469,23 @@ async function sendTurn(input: {
   }
   if (signal.aborted) return cancelled()
   const cold = composerDraft(COLD_DRAFT)
-  const carried =
-    !input.fromComposer && (session === undefined || coldHolds(cold)) ? cold : undefined
-  const pasted = input.images
+  const fromCold = !input.fromComposer && (session === undefined || coldHolds(cold))
+  const box = input.images
     ? undefined
-    : (carried ?? (session === undefined ? undefined : composerDraft(session)))
+    : fromCold
+      ? cold
+      : session === undefined
+        ? undefined
+        : composerDraft(session)
+  const releaseBox = box?.reserve()
+  const pasted = releaseBox ? box : undefined
+  const carried = fromCold ? pasted : undefined
   const images = [...(input.images ?? pasted?.images ?? [])]
   const typed = [input.typed, carried?.text.trim()].filter(Boolean).join('\n\n')
-  const restore = pasted?.clear(carried ? 'all' : 'images')
   let delivered = false
   const key = crypto.randomUUID()
   const clips = input.clips ?? []
+  for (const clip of clips) sending.add(clip.audio)
   const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
   const envelope = input.recorded?.envelope ?? clips.flatMap((clip) => clip.envelope ?? [])
   const trace = createTrace(
@@ -586,7 +597,8 @@ async function sendTurn(input: {
     dock.setStatus(errorMessage(failure))
     if (input.fromComposer) throw failure
   } finally {
-    if (!delivered) restore?.()
+    releaseBox?.(delivered ? (carried ? 'all' : 'images') : undefined)
+    for (const clip of clips) sending.delete(clip.audio)
   }
 }
 

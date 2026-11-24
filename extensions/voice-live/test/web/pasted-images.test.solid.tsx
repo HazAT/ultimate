@@ -82,8 +82,8 @@ beforeEach(async ({ onTestFinished }) => {
 })
 afterEach(() => {
   vi.unstubAllGlobals()
-  getDraft(session).set({ text: '', images: [] })
-  getDraft(COLD_DRAFT).set({ text: '', images: [] })
+  getDraft(session).set({ text: '', images: [], sending: false })
+  getDraft(COLD_DRAFT).set({ text: '', images: [], sending: false })
 })
 
 it('a spoken "send it" takes the images pasted into the voice composer and clears them', async () => {
@@ -217,33 +217,45 @@ it('a send from the cold box after the session opened carries its text once', as
   expect(harness.turns).toEqual([expect.objectContaining({ text: 'look at this' })])
 })
 
-it('Enter while the first spoken turn waits for its transcript does not send the pasted screenshot twice', async () => {
+it('the send button while a spoken turn holds the collected clip and the box sends nothing more', async () => {
   await endSession()
+  composeIn(session)
+  settleTranscripts({ of: parseConversationId(1), draft: [clip] }, session)
   harness.route = 'text'
   getDraft(COLD_DRAFT).set({ text: 'look', images: [shot] })
   const spoken = sendDraft('steer', '', true, [clip])
   await vi.waitFor(() => expect(harness.asked).toBe(1))
   await settle()
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: '', images: [] })
-  await sendTyped('', [])
-  settleTranscripts({ transcripts: { 'clip-1': 'hello' } }, session)
+  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: true })
+  await sendDraft('steer')
+  settleTranscripts({ of: parseConversationId(1), transcripts: { 'clip-1': 'hello' } }, session)
   await spoken
   await settle()
-  expect(harness.turns.filter((turn) => (turn.images as unknown[]).length)).toEqual([
-    expect.objectContaining({ text: 'hello\n\nlook', images: [shot] }),
+  expect(harness.turns).toEqual([
+    expect.objectContaining({ text: 'hello\n\nlook', clips: ['clip-1'], images: [shot] }),
   ])
+  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: '', images: [], sending: false })
 })
 
-it('a spoken turn that ends without sending puts the cold text and screenshot back', async () => {
+it('a spoken cut-in while Enter is sending the box leaves the box to that send', async () => {
+  getDraft(session).set({ images: [shot], sending: true })
+  await sendDraft('steer', '', true, [clip])
+  await settle()
+  expect(harness.turns).toEqual([expect.objectContaining({ clips: ['clip-1'], images: [] })])
+  expect(getDraft(session).get().images).toEqual([shot])
+  getDraft(session).set({ sending: false })
+})
+
+it('a spoken turn that ends without sending leaves the cold text and screenshot in the box', async () => {
   await endSession()
   getDraft(COLD_DRAFT).set({ text: 'look', images: [shot] })
   let answer = () => {}
   harness.status = new Promise((resolve) => (answer = resolve))
   const spoken = sendDraft('steer', '', true, [clip])
   await vi.waitFor(() => expect(harness.asked).toBe(1))
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: '', images: [] })
+  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: true })
   await endSession()
   answer()
   await spoken
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot] })
+  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: false })
 })
