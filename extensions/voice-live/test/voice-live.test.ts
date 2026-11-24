@@ -148,6 +148,7 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   await f.action('end', null)
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({
     model: 'faux/gemini-faux',
+    forks: [first.id],
   })
   expect(await f.action('status', null)).toMatchObject({
     data: { result: { model: 'faux/gemini-faux', route: 'audio' } },
@@ -155,6 +156,10 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   expect(await readdir(join(f.home, 'voice')).catch(() => [])).toEqual([])
   const next = await f.turn({ key: 'three', text: 'new session' })
   expect(next.id).not.toBe(first.id)
+  expect((await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.forks).toEqual([
+    first.id,
+    next.id,
+  ])
 })
 
 it('switching to a model that does not hear audio sends it the transcript instead', async () => {

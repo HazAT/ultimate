@@ -2,7 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { cn, ROOT, useDocOf } from '@/sdk/solid'
+import { cn, ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { dock, playerState, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
 import { VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 
@@ -61,10 +61,12 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
   const id = () => session()?.id
   const fork = useDocOf(id, VoiceForkDoc)
+  const conversations = useConversations()
+  const busy = () => conversations().some((row) => row.id === id() && row.busy)
   const live = createMemo((): Live => {
     if (dock.phase() === 'recording') return 'listening'
     if (playerState().playing) return 'speaking'
-    if (dock.phase() === 'sending' || dock.phase() === 'thinking') return 'thinking'
+    if (dock.phase() === 'sending' || busy()) return 'thinking'
     return fork()?.handedOff ? 'handed off' : 'open'
   })
   return (
@@ -105,5 +107,11 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
 
 export function voiceForks() {
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
-  return createMemo(() => new Set<number>(session()?.forks ?? []))
+  return createMemo(() => {
+    const current = session()
+    return new Set<number>([
+      ...(current?.forks ?? []),
+      ...(current?.id === undefined ? [] : [current.id]),
+    ])
+  })
 }
