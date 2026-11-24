@@ -1,5 +1,6 @@
 import { chmod, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { createServer as createHttpServer } from 'node:http'
+import { createServer as createHttpServer, request as httpRequest } from 'node:http'
+import type { IncomingHttpHeaders } from 'node:http'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import tailscale, { actions, meshAllows, meshPeerOf } from '../server.ts'
@@ -694,6 +695,67 @@ it('admits an explicitly allowed peer named by IP and nobody else, with no Serve
   const reopened = await f.instance('/project/a', meshPort)
   expect((await reopened.status()).url).toBe(`http://rog.tail.example.com:${meshPort}`)
   await reopened.close()
+})
+
+// Caught in review: every proxied request re-ran `tailscale status --json`; the cached peer map must
+// decide for a known address, and only an address it does not know may force one re-read.
+it('serves a known peer from the cached map and re-reads status once for an address it does not know', async () => {
+  const known = { HostName: 'loop', DNSName: 'loop.tail.example.com.', TailscaleIPs: ['127.0.0.2'] }
+  const f = await fixture({ node: { ...meshNode, Peer: { ...meshNode.Peer, known } } })
+  await writeFile(
+    join(f.home, '.ultimate/settings.json'),
+    meshSettings(['loop.tail.example.com', 'late.tail.example.com']),
+  )
+  const localPort = meshPort + 20
+  const proxiedHeaders: IncomingHttpHeaders[] = []
+  const supervisor = createHttpServer((request, response) => {
+    proxiedHeaders.push(request.headers)
+    response.writeHead(204)
+    response.end()
+  })
+  await new Promise<void>((done) => supervisor.listen(localPort, '127.0.0.1', done))
+  closes.push(() => new Promise<void>((done) => supervisor.close(() => done())))
+  const app = await f.instance('/project/a', localPort)
+  expect(await app.status()).toMatchObject({ state: 'ready', mode: 'mesh' })
+  const listenerPort = localPort + 1
+  const requestFrom = (ip: string) =>
+    new Promise<number>((settle, reject) => {
+      const proxied = httpRequest(
+        {
+          host: '127.0.0.1',
+          port: listenerPort,
+          path: '/',
+          localAddress: ip,
+          headers: { host: `rog.tail.example.com:${listenerPort}` },
+        },
+        (response) => {
+          response.resume()
+          response.on('end', () => settle(response.statusCode!))
+        },
+      )
+      proxied.on('error', reject)
+      proxied.end()
+    })
+  const statusReads = async () =>
+    (await f.invocations()).filter((args) => args.join(' ') === 'status --json').length
+  expect(await statusReads()).toBe(1)
+  for (let request = 0; request < 3; request++) expect(await requestFrom('127.0.0.2')).toBe(204)
+  expect(proxiedHeaders.at(-1)).toMatchObject({ 'tailscale-user-login': 'loop.tail.example.com' })
+  expect(await statusReads()).toBe(1)
+  // A peer that joined since the last read: one forced re-read admits it, then the cache holds it.
+  const config = JSON.parse(await readFile(f.config, 'utf8'))
+  config.node.Peer.late = {
+    HostName: 'late',
+    DNSName: 'late.tail.example.com.',
+    TailscaleIPs: ['127.0.0.3'],
+  }
+  await writeFile(f.config, JSON.stringify(config))
+  expect(await requestFrom('127.0.0.3')).toBe(204)
+  expect(proxiedHeaders.at(-1)).toMatchObject({ 'tailscale-user-login': 'late.tail.example.com' })
+  expect(await statusReads()).toBe(2)
+  expect(await requestFrom('127.0.0.3')).toBe(204)
+  expect(await requestFrom('127.0.0.2')).toBe(204)
+  expect(await statusReads()).toBe(2)
 })
 
 it('reports failed teardown without throwing and classifies filesystem failures as errors', async () => {

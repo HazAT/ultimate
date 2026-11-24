@@ -385,8 +385,14 @@ export default function tailscale(host: ExtensionHost) {
     remote: string | undefined,
     allow: string[],
   ) => {
-    const peer = meshPeerOf((await meshNode(true).catch(meansNone)) ?? {}, remote)
-    return peer && meshAllows(allow, peer) ? meshHeaders(received, peer, remote) : undefined
+    const admitted = (node: MeshNode | undefined) => {
+      const peer = node && meshPeerOf(node, remote)
+      return peer && meshAllows(allow, peer) ? meshHeaders(received, peer, remote) : undefined
+    }
+    const cached = await meshNode().catch(meansNone)
+    return cached && meshPeerOf(cached, remote)
+      ? admitted(cached)
+      : admitted(await meshNode(true).catch(meansNone))
   }
   async function startMesh(meshSettings: MeshSettings) {
     if (closed) return
