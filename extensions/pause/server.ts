@@ -2,7 +2,14 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { ConversationId, Cursor, SubmissionId } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
-import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { clampThinkingLevel } from '@earendil-works/pi-ai'
+import {
+  AgentDoc,
+  configure,
+  defineDoc,
+  LiveDoc,
+  ROOT_CONVERSATION_ID,
+} from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { rebuiltOnOpen, inProcess, settled } from '../../lib/errors.ts'
@@ -12,7 +19,18 @@ import { rateLimited } from '../../lib/rate-limit.ts'
 import { Standing } from '../subagents/api.ts'
 import { PauseApi } from './api.ts'
 import { formatDuration } from '../../lib/format.ts'
-import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
+import { DEFAULT_FAMILY, definitionRuns, refName, refOf } from '../../lib/families.ts'
+import { readFamilies } from '../../lib/families-settings.ts'
+import { defaultModel, hasLogin, previewModel } from '../../lib/agents.ts'
+import { Family } from '../models/api.ts'
+import {
+  AutoPlayAction,
+  PauseAction,
+  PauseDoc,
+  PlayAction,
+  StateAction,
+  SwitchAndPlayAction,
+} from './refs.ts'
 import type {
   AutoPlayed,
   HeldNote,
@@ -34,7 +52,19 @@ const State = defineDoc<PauseDocState>({
 })
 export const docs = [State]
 
-type Host = Pick<ExtensionHost, 'harness' | 'resource' | 'onOpen' | 'implement' | 'conversations'>
+type Host = Pick<
+  ExtensionHost,
+  | 'harness'
+  | 'resource'
+  | 'onOpen'
+  | 'implement'
+  | 'conversations'
+  | 'userHome'
+  | 'projectRoot'
+  | 'projectSettings'
+  | 'settings'
+  | 'modelRuntime'
+>
 
 const sharedPauseFlag = (host: Pick<ExtensionHost, 'resource'>) =>
   host.resource('pause.flag', () => ({ paused: false }))
@@ -363,6 +393,59 @@ async function noteRunsThenRelease(host: Host, auto = false) {
   return state(host)
 }
 
+async function familyModelAndThinking(host: Host, name: string) {
+  const families = await readFamilies(host.userHome, host.projectRoot, await host.projectSettings())
+  if (!Object.hasOwn(families.families, name))
+    throw new Error(
+      `Unknown family: ${name}. Families: ${Object.keys(families.families).join(', ')}`,
+    )
+  const spec = families.families[name]
+  const ref =
+    previewModel() ??
+    (name === DEFAULT_FAMILY
+      ? defaultModel(host.modelRuntime.getAvailableSnapshot(), host.settings, refOf(spec.model))
+      : definitionRuns({ family: name }, families).model)
+  if (!ref) throw new Error(`Family ${name} names no model`)
+  return { ref, thinking: spec.thinking }
+}
+
+async function moveLimitedRunsToFamilyThenPlay(host: Host, name: unknown) {
+  if (typeof name !== 'string' || !name) throw new Error('Expected family: a family name')
+  const doc = await read(host)
+  if (!doc.paused || !doc.limit) throw new Error('No rate limit holds Ultimate')
+  const limited = doc.limit.provider
+  const { ref, thinking } = await familyModelAndThinking(host, name)
+  if (ref.provider === limited)
+    throw new Error(
+      `Family ${name} runs on ${refName(ref)}, also ${limited}, which is rate limited`,
+    )
+  const model = host.modelRuntime.getModel(ref.provider, ref.modelId)
+  if (!model || !hasLogin(host.modelRuntime.getAvailableSnapshot(), ref))
+    throw new Error(`No login for ${refName(ref)} (family ${name})`)
+  const switched = await host.harness().commit(async (tx) => {
+    const moved: ConversationId[] = []
+    for (const [key, recorded] of Object.entries(doc.runs ?? {})) {
+      const id = parseConversationId(Number(key))
+      const run = (await tx.doc(LiveDoc, id)).run
+      const stillTheHeldRun =
+        run &&
+        (run.taskId === recorded.task ||
+          (recorded.input !== undefined && run.inputs[0] === recorded.input))
+      const agent = await tx.doc(AgentDoc, id)
+      if (!stillTheHeldRun || agent.model?.provider !== limited) continue
+      const level = thinking ?? agent.thinkingLevel
+      await configure(tx, id, {
+        model: ref,
+        ...(level ? { thinkingLevel: clampThinkingLevel(model, level) } : {}),
+      })
+      ;(await tx.doc(Family, id)).name = name
+      moved.push(id)
+    }
+    return moved
+  }, context)
+  return { ...(await noteRunsThenRelease(host)), switched }
+}
+
 export default function pauseExtension(host: Host) {
   host.implement(PauseApi, { paused: () => sharedPauseFlag(host).paused })
   host.onOpen(async (opened) => {
@@ -425,5 +508,10 @@ export const actions = {
   autoPlay: implementAction(AutoPlayAction, (args, { host }) =>
     serializePause(host, () => setAutoPlay(host, (args as { minutes?: unknown } | null)?.minutes)),
   ),
+  switchAndPlay: implementAction(SwitchAndPlayAction, (args, { host }) =>
+    serializePause(host, () =>
+      moveLimitedRunsToFamilyThenPlay(host, (args as { family?: unknown } | null)?.family),
+    ),
+  ),
 }
-export const userActions = ['pause', 'play', 'autoPlay']
+export const userActions = ['pause', 'play', 'autoPlay', 'switchAndPlay']
