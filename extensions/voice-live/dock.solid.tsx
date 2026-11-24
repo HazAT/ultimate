@@ -372,8 +372,11 @@ async function collectClip(recorded: Recorded) {
     const intent = await api.action(IntentAction, { audio: kept }, { signal })
     if (intent.send && intent.clips) {
       const chosen = new Set(intent.clips)
-      const clips = draftOf().filter((clip) => chosen.has(clip.audio))
-      if (clips.length === chosen.size)
+      const held = draftOf()
+      const clips = held.filter((clip) => chosen.has(clip.audio))
+      if (intent.answered && held.length !== chosen.size) {
+        if (playerState().paused) dock.player.resume()
+      } else if (clips.length === chosen.size)
         await sendDraft(intent.send, '', intent.answered ? 'answer' : true, clips)
       else dock.setStatus('The collected clips changed · press Enter to send')
     } else if (playerState().paused) dock.player.resume()

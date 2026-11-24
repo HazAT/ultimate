@@ -22,7 +22,7 @@ import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { openaiSecretOrNonOAuthKey, openaiTranscribe } from '../../lib/openai.ts'
 import { readSecret } from '../../lib/secrets.ts'
-import { imagesOf } from '../../lib/entries.ts'
+import { imagesOf, isInput } from '../../lib/entries.ts'
 import { offsetEntryId } from '../../lib/ids.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import {
@@ -315,24 +315,33 @@ const ANSWER_QUESTION = {
 }
 const ANSWER_THRESHOLD = 0.85
 
-async function openQuestion(host: ExtensionHost, id: ConversationId) {
-  const conversation = await host.harness().conversation(id, context)
-  const page = await conversation!.entries({}, 50, undefined, context)
-  for (const entry of page.items) {
-    if (entry.input) return undefined
-    if (entry.kind !== 'pi.assistant') continue
-    const text = (entry.model ?? [])
-      .flatMap((message) =>
-        message.role === 'assistant'
-          ? message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
-          : [],
-      )
-      .join(' ')
-      .trim()
-    if (!text) continue
-    const ending = text.split(/\n\s*\n/).at(-1)!
-    return ending.includes('?') ? ending : undefined
-  }
+async function openQuestion(host: ExtensionHost, id: ConversationId, forkedAt: EntryId) {
+  const conversation = (await host.harness().conversation(id, context))!
+  let cursor: Cursor | undefined
+  do {
+    const page = await conversation.entries(
+      { minEntryId: offsetEntryId(forkedAt, 1) },
+      100,
+      cursor,
+      context,
+    )
+    for (const entry of page.items) {
+      if (isInput(entry)) return undefined
+      if (entry.kind !== 'pi.assistant') continue
+      const text = (entry.model ?? [])
+        .flatMap((message) =>
+          message.role === 'assistant'
+            ? message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
+            : [],
+        )
+        .join(' ')
+        .trim()
+      if (!text) continue
+      const ending = text.split(/\n\s*\n/).at(-1)!
+      return ending.includes('?') ? ending : undefined
+    }
+    cursor = page.next
+  } while (cursor)
   return undefined
 }
 
@@ -660,7 +669,12 @@ export const actions = {
       .filter((clip) => clip.audio !== audio)
       .map((clip) => fork?.transcripts?.[clip.audio] ?? '')
       .join(' ')
-    const question = await openQuestion(host, id)
+    const collected = fork.draft ?? []
+    const settled =
+      collected.at(-1)?.audio === audio &&
+      collected.every((clip) => fork.transcripts?.[clip.audio] !== undefined)
+    const question =
+      settled && fork.at !== undefined ? await openQuestion(host, id, fork.at) : undefined
     const state = { collectedSoFar: before, latestRecording: said }
     const asking = classify.ask(
       {
@@ -696,21 +710,22 @@ export const actions = {
           signal,
         )
       : undefined
-    const [{ answers }, reply] = await Promise.all([asking, answering])
+    const [asked, replied] = await Promise.allSettled([asking, answering])
+    if (asked.status === 'rejected') throw asked.reason
+    const { answers } = asked.value
     const send = answers.send
     const commanded = send?.type === 'choice' && send.choice !== 'hold' && send.confidence >= 0.6
-    const answer = reply?.answers.answer
-    const answered =
-      !commanded &&
-      answer?.type === 'choice' &&
-      (answer.probabilities.complete ?? 0) >= ANSWER_THRESHOLD
-    if (answered)
+    if (!commanded) {
+      if (replied.status === 'rejected') throw replied.reason
+      const answer = replied.value?.answers.answer
+      if (answer?.type !== 'choice' || (answer.probabilities.complete ?? 0) < ANSWER_THRESHOLD)
+        return {}
       return {
         send: 'steer' as const,
-        clips: (fork.draft ?? []).map((clip) => clip.audio),
+        clips: collected.map((clip) => clip.audio),
         answered: true as const,
       }
-    if (!commanded) return {}
+    }
     const only = answers.only?.type === 'noul' && answers.only.noul > 0.5
     if (only)
       await host.harness().commit(async (tx) => {
