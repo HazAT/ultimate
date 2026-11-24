@@ -1,8 +1,9 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush } from 'solid-js'
+import { flush, For, Show } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { events, ExtensionName, writingAs } from '@/sdk/solid'
+import type { SolidEntryProps } from '@/sdk/solid'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
@@ -12,6 +13,8 @@ import { Footer } from '../../footer.solid.tsx'
 import { getTarget } from '../../link-state.ts'
 import { ReviewLink } from '../../link.solid.tsx'
 import ReviewSurface from '../../surface.solid.tsx'
+import type { ReviewComments } from '../../types.ts'
+import { Contributed } from '../../../../web/src/sdk/contribution.solid.tsx'
 
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
@@ -116,7 +119,7 @@ it('opens a sent review at the chosen comment, even when both sides share the sa
       ],
     },
   } as unknown as EntryRecord
-  const container = renderSolid(() => <ReviewCard entry={entry} />)
+  const container = renderSolid(() => <ReviewCard entry={entry} core={null} />)
   expect(container.querySelector('[data-review-chip="src/main.ts:4"]')).not.toBeNull()
   expect(container.textContent).toContain('const count = 0')
   await expectDistinctAgentNames(agent)
@@ -134,4 +137,47 @@ it('opens a sent review at the chosen comment, even when both sides share the sa
       source: 'agent',
     },
   ])
+})
+
+it('leaves a review whose spec another extension owns to that extension’s card', () => {
+  // Another extension renders the reviews it sends with a spec of its own; Review loads after it, so it composes
+  // on top and must hand those back.
+  const NotesCard = (props: SolidEntryProps) => (
+    <Show
+      when={(props.entry.data as ReviewComments).spec.startsWith('notes2:')}
+      fallback={props.core}
+    >
+      <div data-notes-card={props.entry.id} />
+    </Show>
+  )
+  const renderers = [
+    { extension: 'notes', version: 1, component: NotesCard },
+    { extension: 'review', version: 1, component: ReviewCard },
+  ]
+  const sent = (id: number, spec: string) =>
+    ({
+      id,
+      kind: 'review.comments',
+      data: {
+        spec,
+        comments: [{ file: 'notes.md', side: 'new', start: 2, end: 2, text: 'Clarify this.' }],
+      },
+    }) as unknown as EntryRecord
+  const container = renderSolid(() => (
+    <For each={[sent(11, 'notes2:/project/notes.md'), sent(12, 'branch:feature')]}>
+      {(entry) => (
+        <Contributed
+          core={() => null}
+          fallback={(_extension, error) => {
+            throw error
+          }}
+          props={{ entry }}
+          renderers={renderers}
+        />
+      )}
+    </For>
+  ))
+  expect(container.querySelector('[data-notes-card="11"]')).not.toBeNull()
+  expect(container.querySelector('[data-review-card="11"]')).toBeNull()
+  expect(container.querySelector('[data-review-card="12"]')).not.toBeNull()
 })
