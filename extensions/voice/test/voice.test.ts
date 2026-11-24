@@ -11,13 +11,23 @@ afterEach(async () => {
 })
 
 /** A host whose secret store holds `key`, and whose Pi `openai` provider holds `piKey` as an API key when given. */
-async function context(key?: string, piKey?: string) {
+const OPENAI = 'https://api.openai.com/v1'
+const GATEWAY = 'https://llm.example.com/v1'
+type Endpoints = { provider?: string; models: { baseUrl: string; type?: 'classifier' }[] }
+
+async function context(
+  key?: string,
+  piKey?: string,
+  endpoints: Endpoints = { provider: OPENAI, models: [{ baseUrl: OPENAI }, { baseUrl: '' }] },
+) {
   const userHome = await temp()
   cleanup.push(userHome)
   if (key) await writeSecret(userHome, 'OPENAI_API_KEY', key)
   const modelRuntime = {
     getProviderAuthStatus: () => ({ configured: piKey !== undefined }),
     isUsingOAuth: () => false,
+    getProvider: () => ({ baseUrl: endpoints.provider }),
+    getAllModels: () => endpoints.models,
     getAuth: async () => (piKey ? { auth: { apiKey: piKey } } : undefined),
   }
   return {
@@ -56,6 +66,27 @@ it('falls back to an API key Pi holds for openai', async () => {
   expect(await actions.status(null, ctx)).toEqual({ available: true })
   await actions.transcribe(audio, ctx)
   expect(fetch.mock.calls[0][1]?.headers).toEqual({ Authorization: 'Bearer sk-pi' })
+})
+
+it.each<[string, Endpoints]>([
+  ['a custom provider endpoint', { provider: GATEWAY, models: [{ baseUrl: GATEWAY }] }],
+  ['a custom provider with an empty catalog', { provider: GATEWAY, models: [] }],
+  [
+    'one model on a custom endpoint',
+    { provider: OPENAI, models: [{ baseUrl: OPENAI }, { baseUrl: GATEWAY }] },
+  ],
+  [
+    'a classifier on a custom endpoint',
+    { provider: OPENAI, models: [{ baseUrl: GATEWAY, type: 'classifier' }] },
+  ],
+  ['no provider endpoint', { models: [{ baseUrl: '' }] }],
+])('does not send the key Pi holds for openai to OpenAI with %s', async (_, endpoints) => {
+  const fetch = vi.fn<typeof globalThis.fetch>()
+  vi.stubGlobal('fetch', fetch)
+  const ctx = await context(undefined, 'sk-pi', endpoints)
+  expect(await actions.status(null, ctx)).toMatchObject({ available: false })
+  await expect(actions.transcribe(audio, ctx)).rejects.toThrow('Voice needs an OpenAI API key')
+  expect(fetch).not.toHaveBeenCalled()
 })
 
 it('without a key: status disables voice and transcribe sends nothing', async () => {
