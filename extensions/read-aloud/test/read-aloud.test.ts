@@ -29,6 +29,8 @@ async function context(rewrite: (input: string) => string, key?: string) {
     modelRuntime: {
       getProviderAuthStatus: () => ({ configured: false }),
       isUsingOAuth: () => false,
+      getProvider: () => ({ baseUrl: 'https://api.openai.com/v1' }),
+      getAllModels: () => [{ baseUrl: 'https://api.openai.com/v1' }],
       getAuth: async () => undefined,
     },
     need: () => conversations,

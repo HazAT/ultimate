@@ -24,6 +24,7 @@ import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
 import { writeJson } from '../../lib/json-file.ts'
+import { providerKeyStandsIn } from '../../lib/openai.ts'
 import { secretMetadata } from '../../lib/secrets.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
@@ -100,12 +101,7 @@ async function missingSecrets(host: ExtensionHost, chosen: Record<string, boolea
     .flatMap((extension) => extension.server?.secrets ?? [])
     .filter(
       ({ name, provider }) =>
-        !process.env[name] &&
-        !(
-          provider &&
-          host.modelRuntime.getProviderAuthStatus(provider).configured &&
-          !host.modelRuntime.isUsingOAuth(provider)
-        ),
+        !process.env[name] && !(provider && providerKeyStandsIn(host.modelRuntime, provider)),
     )
   if (!declared.length) return []
   const stored = new Set((await secretMetadata(host.userHome)).map((secret) => secret.name))

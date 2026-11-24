@@ -15,6 +15,7 @@ import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { discoverAgents } from '../../lib/agents.ts'
+import { providerKeyStandsIn } from '../../lib/openai.ts'
 import { readFamilyLayers } from '../../lib/families-settings.ts'
 import { isolatable } from '../../lib/git.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -59,9 +60,6 @@ type CheckHost = Pick<
 
 const configured = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
   host.modelRuntime.getProviderAuthStatus(provider).configured
-
-const configuredNonOAuthApiKey = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
-  configured(host, provider) && !host.modelRuntime.isUsingOAuth(provider)
 
 const loggedIn = (host: Pick<CheckHost, 'modelRuntime'>) =>
   host.modelRuntime.getAvailableSnapshot().length > 0
@@ -205,7 +203,7 @@ async function secretsArea(host: AreaHost): Promise<SetupIssue[]> {
     if (!extension.enabled || !extension.server || extension.server.error) continue
     const missing = extension.layer === 'default' ? optional : chosen
     for (const { name, provider } of extension.server.secrets ?? [])
-      if (!set.has(name) && !(provider && configuredNonOAuthApiKey(host, provider)))
+      if (!set.has(name) && !(provider && providerKeyStandsIn(host.modelRuntime, provider)))
         missing.set(name, [...(missing.get(name) ?? []), extension.name])
   }
   for (const name of chosen.keys()) optional.delete(name)

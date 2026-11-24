@@ -66,7 +66,7 @@ it('falls back to the cheapest model when no known-good one is available', () =>
   expect(fallbackModel([])).toBeUndefined()
 })
 
-async function checkHost(options: { logins: string[]; oauth?: string[] }) {
+async function checkHost(options: { logins: string[]; oauth?: string[]; openaiBaseUrl?: string }) {
   const userHome = await temp('ultimate-setup-check-')
   const projectRoot = join(userHome, 'project')
   await mkdir(join(userHome, '.ultimate/agents'), { recursive: true })
@@ -89,6 +89,8 @@ async function checkHost(options: { logins: string[]; oauth?: string[] }) {
         configured: options.logins.includes(provider),
       }),
       isUsingOAuth: (provider: string) => options.oauth?.includes(provider) ?? false,
+      getProvider: () => ({ baseUrl: options.openaiBaseUrl ?? 'https://api.openai.com/v1' }),
+      getAllModels: () => [],
     },
     projectSettings: async () => ({ lander: { checks: ['pnpm check'] } }),
     projectSetup: async () => ({ config: false, decision: null as boolean | null }),
@@ -193,6 +195,9 @@ it("lets an openai API key stand in for voice's OPENAI_API_KEY, but not an OAuth
   expect(await secrets({ logins: ['openai'] })).toBe('ok')
   expect(await secrets({ logins: ['openai'], oauth: ['openai'] })).toBe('warn')
   expect(await secrets({ logins: [] })).toBe('warn')
+  expect(await secrets({ logins: ['openai'], openaiBaseUrl: 'https://llm.example.com/v1' })).toBe(
+    'warn',
+  )
 })
 
 it('warns only about the login on a fresh install, and offers default-on secrets as optional', async () => {
