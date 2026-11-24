@@ -1,0 +1,18 @@
+diff --git a/dist/api/constrained-sampling.js b/dist/api/constrained-sampling.js
+index a5351b0..50bedff 100644
+--- a/dist/api/constrained-sampling.js
++++ b/dist/api/constrained-sampling.js
+@@ -129,10 +129,9 @@ export function getJsonSchemaToolParameters(tool, strict) {
+ }
+ export function getGrammarToolInput(toolName, arguments_, inputProperty) {
+     const input = arguments_[inputProperty];
+-    if (typeof input !== "string") {
+-        throw new Error(`Grammar tool call "${toolName}" requires argument "${inputProperty}" to be a string.`);
+-    }
+-    return input;
++    // A recorded call without the string (its arguments failed to parse, or it predates the grammar) replays as its
++    // JSON: throwing here made every later request of that conversation fail.
++    return typeof input === "string" ? input : JSON.stringify(arguments_);
+ }
+ /**
+  * Append `inputDelta` to a streaming grammar tool input and return the matching piece of its JSON arguments text, or
