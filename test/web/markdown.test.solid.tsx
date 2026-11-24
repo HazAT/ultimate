@@ -27,7 +27,7 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import type { CodeBlockRenderer } from '../../web/src/sdk/types.ts'
+import type { CodeBlockRenderer, InlineCodeRenderer } from '../../web/src/sdk/types.ts'
 import { Markdown } from '../../web/src/components/markdown/markdown.solid.tsx'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { settle } from '@ui-sdk/core/testing'
@@ -129,6 +129,33 @@ it('tells a code block renderer only its own fence is unfinished', () => {
     expect(probes(['> ```ts\n> one', '\noutside\n```ts\ntwo'])).toEqual([
       ['one', 'done'],
       ['two', 'open'],
+    ])
+  } finally {
+    installed.set([])
+  }
+})
+
+it('tells an inline code renderer when its span sits in a link', () => {
+  const Probe: InlineCodeRenderer = (props) => (
+    <span data-in-link={String(props.inLink)}>{props.code}</span>
+  )
+  installed.set([{ name: 'probe', version: 1, extension: { inlineCode: Probe } }])
+  try {
+    const view = renderSolid(() => (
+      <Markdown text="`a` [`b`](https://example.com) [**`c`**](#x) <a href='/d'>`d`</a> `e`" />
+    ))
+    flush()
+    expect(
+      [...view.querySelectorAll('[data-in-link]')].map((probe) => [
+        probe.textContent,
+        probe.getAttribute('data-in-link'),
+      ]),
+    ).toEqual([
+      ['a', 'false'],
+      ['b', 'true'],
+      ['c', 'true'],
+      ['d', 'true'],
+      ['e', 'false'],
     ])
   } finally {
     installed.set([])

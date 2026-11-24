@@ -1,15 +1,25 @@
-import type { EntryRecord } from '@earendil-works/pi-durable'
 import { FileDiff } from '@lucide/solid'
 import { For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Fold, events } from '@/sdk/solid'
+import type { SolidEntryProps } from '@/sdk/solid'
 import { commentCount, location, shortSpec } from './comments.ts'
 import { ReviewCommentsEntry } from './entries.ts'
 import type { ReviewComment, ReviewComments } from './types.ts'
 
-export function ReviewCard(props: { entry: EntryRecord }) {
+const ownScheme = (spec: string) => {
+  const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(spec)?.[1]
+  return scheme === undefined || scheme === 'uncommitted' || scheme === 'branch'
+}
+
+export function ReviewCard(props: SolidEntryProps) {
   return (
-    <Show when={ReviewCommentsEntry.is(props.entry) && props.entry.data}>
+    <Show
+      when={
+        ReviewCommentsEntry.is(props.entry) && ownScheme(props.entry.data.spec) && props.entry.data
+      }
+      fallback={props.core}
+    >
       {(review) => <SentReview id={props.entry.id} review={review()} />}
     </Show>
   )
