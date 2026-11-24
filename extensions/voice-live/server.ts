@@ -674,15 +674,16 @@ export const actions = {
     if (!classify) return { unavailable: 'Spoken send needs the classify extension and its key' }
     const collected = fork.draft
     const heard = collected.map((clip) => fork.transcripts?.[clip.audio])
-    const whole = heard.every((text) => text !== undefined)
-    const latest = whole ? collected.at(-1)!.audio : audio
+    const question =
+      heard.every((text) => text !== undefined) && fork.at !== undefined
+        ? await openQuestion(host, id, fork.at)
+        : undefined
+    const latest = question ? collected.at(-1)!.audio : audio
     const said = fork.transcripts[latest]
     const before = collected
       .filter((clip) => clip.audio !== latest)
       .map((clip) => fork.transcripts?.[clip.audio] ?? '')
       .join(' ')
-    const question =
-      whole && fork.at !== undefined ? await openQuestion(host, id, fork.at) : undefined
     const asking = classify.ask(
       {
         state: { collectedSoFar: before, latestRecording: said },
