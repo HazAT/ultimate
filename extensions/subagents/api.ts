@@ -93,6 +93,20 @@ export const Profile = defineDoc<{ definition?: string; adhoc?: true }>({
   initial: () => ({}),
 })
 
+/**
+ * The tools a conversation's own `denyTools` removed from it. Its children are checked against, and inherit from, its
+ * tools plus these: a definition's `denyTools` limits only the conversation configured from it.
+ */
+export const Withheld = defineDoc<{ tools: string[] }>({
+  kind: 'ultimate.agent-withheld',
+  checkpointWhen: () => false,
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ tools: [] }),
+})
+
 export type SubagentsService = {
   /** The standing agents that run in this home, by name and description; use it to list valid `@name` addresses. */
   residents(ctx: Context): Promise<{ name: string; description: string }[]>

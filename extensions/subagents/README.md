@@ -81,10 +81,12 @@ Fields (others are errors):
 - `model`: a pin, `provider/id`, a fuzzy id or name, optionally with `:thinking` (Pi's `resolveCliModel`; custom models
   go in Pi's `models.json`). Unknown models are errors; a pin whose provider has no login here is skipped.
 - `thinking`: a Pi thinking level; overrides a model suffix.
-- `tools`: a YAML list, a subset of the parent's. Omitted: the parent's tools minus `subagent`. `[read, bash,
+- `tools`: a YAML list, a subset of the parent's (before the parent's own `denyTools`). Omitted: the parent's tools minus `subagent`. `[read, bash,
   subagent]` opts into bounded delegation. A deferred tool named here is loaded for that conversation. Tool lists
   select tools; they are not a shell sandbox.
-- `denyTools`: tool names removed from `tools` or the inherited ones; unknown names are ignored.
+- `denyTools`: tool names removed from `tools` or the inherited ones; unknown names are ignored. It limits only the
+  conversation it configures: that conversation's own children inherit from, and may name in `tools`, its tools as they
+  were before its `denyTools`.
 - `skills`: a YAML list of the skill names its system prompt lists; omitted, every project skill, `[]` none. An overlay
   replaces the list. `/skill:name` still runs any skill. The Agent card and the form flag names no skill provides.
 - `isolate`: `none` or `worktree`. `resident: true` makes it a standing agent.

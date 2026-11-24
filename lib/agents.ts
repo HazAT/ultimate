@@ -164,8 +164,9 @@ export function definitionAgent(
     model?: { provider: string; modelId: string }
     thinking?: ModelThinkingLevel
   } = {},
-): AgentChange {
-  const excludeTools = [...excluded, ...(definition?.denyTools ?? [])]
+): AgentChange & { withheld: string[] } {
+  const denied = definition?.denyTools ?? []
+  const excludeTools = [...excluded, ...denied]
   const familyResolvedModelOrOwnPin = definition?.runs ? definition.runs.model : definition?.model
   const loggedInPin = hasLogin(modelRuntime.getAvailableSnapshot(), familyResolvedModelOrOwnPin)
     ? familyResolvedModelOrOwnPin
@@ -180,17 +181,27 @@ export function definitionAgent(
     ...new Map([...parent.tools, ...parent.deferred].map((tool) => [tool.name, tool])).values(),
   ]
   const named = [...(definition?.tools ?? []), ...(definition?.addTools ?? [])]
-  const offered = tools.filter(
+  const pool = tools.filter(
     (tool) =>
-      !excludeTools.includes(tool.name) &&
-      (!definition?.tools || definition.tools.includes(tool.name)),
+      !excluded.includes(tool.name) && (!definition?.tools || definition.tools.includes(tool.name)),
+  )
+  const offered = pool.filter((tool) => !denied.includes(tool.name))
+  const scriptCandidates = parent.callable.filter(
+    (tool) => tool.callers?.includes('model') === false && !excluded.includes(tool.name),
   )
   const scriptOnly = offered.some((tool) => tool.name === 'codemode')
-    ? parent.callable.filter(
-        (tool) => tool.callers?.includes('model') === false && !excludeTools.includes(tool.name),
-      )
+    ? scriptCandidates.filter((tool) => !denied.includes(tool.name))
     : []
+  const kept = new Set([...offered, ...scriptOnly].map((tool) => tool.name))
+  const withheld = [
+    ...new Set(
+      [...pool, ...(pool.some((tool) => tool.name === 'codemode') ? scriptCandidates : [])]
+        .map((tool) => tool.name)
+        .filter((name) => !kept.has(name)),
+    ),
+  ]
   return {
+    withheld,
     modelTools: {
       add: tools.filter(
         (tool) => tool.deferred && !excludeTools.includes(tool.name) && named.includes(tool.name),

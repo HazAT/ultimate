@@ -65,7 +65,7 @@ import { MessageEntry, ReplyEntry } from '../entries/api.ts'
 import { ConversationsApi, Marks } from '../conversations/api.ts'
 import type { AgentMarkStyle } from '../conversations/refs.ts'
 import { Pin } from '../models/api.ts'
-import { ChildFailures, Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
+import { ChildFailures, Profile, Runs, Standing, Subagents, SubagentsApi, Withheld } from './api.ts'
 import type { ChildFailuresService, SubagentsService } from './api.ts'
 import { definitionRuns, refName, refOf } from '../../lib/families.shared.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
@@ -733,12 +733,13 @@ export default function subagents(
     )
     const unreadFileMayHoldItsDenies = !discovered || discovered.errors.length > 0
     if (!definition || unreadFileMayHoldItsDenies) return
-    const { tools, modelTools, extensions } = definitionAgent(
+    const { tools, modelTools, extensions, withheld } = definitionAgent(
       definition,
       await agent(ROOT_CONVERSATION_ID),
       host.modelRuntime,
     )
     await configure(tx, id, { tools, modelTools, extensions })
+    ;(await tx.doc(Withheld, id)).tools = withheld
   }
   const spawnDefinition = async (
     args: {
@@ -1145,7 +1146,38 @@ export default function subagents(
               throw new Error(
                 `${args.action} requires ${args.action === 'start' ? 'task' : 'text'}`,
               )
-            const parent = await api.agent(context)
+            const ownAgent = await api.agent(context)
+            const withheld =
+              (await api.snapshot(Withheld, api.conversationId, context))?.tools ?? []
+            const registry = withheld.length
+              ? await (await host.harness().conversation(ROOT_CONVERSATION_ID, context))!.agent(
+                  context,
+                )
+              : ownAgent
+            const restored = [
+              ...new Map(
+                [...registry.tools, ...registry.deferred, ...registry.callable]
+                  .filter((tool) => withheld.includes(tool.name))
+                  .map((tool) => [tool.name, tool]),
+              ).values(),
+            ]
+            const absent = (own: readonly { name: string }[]) =>
+              restored.filter((tool) => !own.some((kept) => kept.name === tool.name))
+            const parent = {
+              ...ownAgent,
+              tools: [
+                ...ownAgent.tools,
+                ...absent(ownAgent.tools).filter(
+                  (tool) => tool.callers?.includes('model') !== false,
+                ),
+              ],
+              callable: [
+                ...ownAgent.callable,
+                ...absent(ownAgent.callable).filter((tool) =>
+                  registry.callable.some((callable) => callable.name === tool.name),
+                ),
+              ],
+            }
             const existingAction = index.actions[api.callId]
             const definitions =
               args.action === 'start' && !existingAction

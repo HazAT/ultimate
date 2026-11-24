@@ -15,7 +15,7 @@ import { Family } from '../models/api.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Started } from './refs.ts'
-import { Profile } from './api.ts'
+import { Profile, Withheld } from './api.ts'
 
 export async function started(
   host: Pick<ExtensionHost, 'emit'>,
@@ -49,8 +49,9 @@ export async function reconfigure(
     ...(own.model ? { model: own.model } : {}),
     ...(own.thinkingLevel ? { thinkingLevel: own.thinkingLevel } : {}),
   }
-  const change = definitionAgent(definition, currentModelSettings, modelRuntime)
+  const { withheld, ...change } = definitionAgent(definition, currentModelSettings, modelRuntime)
   await configure(tx, id, change)
+  ;(await tx.doc(Withheld, id)).tools = withheld
   ;(await tx.doc(Family, id)).name = definitionFamily(definition, change)
   ;(await tx.doc(Profile, id)).definition = definition.name
 }
@@ -76,7 +77,7 @@ export async function createChild(
   },
 ) {
   const { parentAgent: parent, definition, modelRuntime } = options
-  const change = definitionAgent(definition, parent, modelRuntime, options)
+  const { withheld, ...change } = definitionAgent(definition, parent, modelRuntime, options)
   const child = options.fork
     ? await tx.forkConversation(options.fork.conversationId, options.fork.at, {
         ownership: options.owner,
@@ -86,6 +87,7 @@ export async function createChild(
     ...change,
     cwd: options.cwd ?? parent.cwd ?? null,
   })
+  ;(await tx.doc(Withheld, child.id)).tools = withheld
   const family = await tx.doc(Family, child.id)
   const familyClearedByExplicitModel = options.model ? null : definitionFamily(definition, change)
   family.name = familyClearedByExplicitModel

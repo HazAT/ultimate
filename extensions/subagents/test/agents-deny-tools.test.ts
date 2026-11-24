@@ -5,9 +5,12 @@ import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
+import { configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { discoverAgents, parseDefinition, parseOverlay } from '../../../lib/agents.ts'
 import { context } from '../../../server/harness.ts'
+import { Roots } from '../../lineage/api.ts'
 import { Subagents } from '../api.ts'
 
 const definition = (fields: string) =>
@@ -110,6 +113,104 @@ it('denies instance to children with inherited or explicit tools without changin
       )
       expect((await server.root.agent(context)).tools.map((tool) => tool.name)).toEqual(parentTools)
     }
+  } finally {
+    await server.close()
+  }
+})
+
+it("limits a coordinator's denyTools to the coordinator, not its workers", async () => {
+  const home = await temp('ultimate-deny-parent-')
+  const root = await sourceCopy(home)
+  await mkdir(join(home, '.ultimate/agents'), { recursive: true })
+  const agents = {
+    coordinator: 'addTools: []\ndenyTools: [edit]',
+    inherits: '',
+    explicit: 'tools: [read, edit]',
+    denies: 'denyTools: [edit]',
+    narrow: 'tools: [read, bash, subagent]\ndenyTools: [bash, edit]',
+  }
+  for (const [name, fields] of Object.entries(agents))
+    await writeFile(
+      join(home, `.ultimate/agents/${name}.md`),
+      definition(fields).replace('name: restricted', `name: ${name}`),
+    )
+  await writeFile(
+    join(root, '.ultimate/settings.json'),
+    JSON.stringify({ summaryModel: 'unavailable/test' }),
+  )
+  const server = await fauxServer({ ultimateRoot: root, home: join(home, 'state'), userHome: home })
+  try {
+    const route: FauxResponseFactory = (transcript) => {
+      server.host.faux!.appendResponses([route])
+      const last = transcript.messages.findLast((message) => message.role !== 'system')!
+      const call = /^(BRANCH|CALL) /.exec(typeof last.content === 'string' ? last.content : '')
+      if (last.role === 'user' && call)
+        return fauxAssistantMessage(
+          [
+            fauxToolCall(
+              call[1] === 'BRANCH' ? 'branch' : 'subagent',
+              JSON.parse((last.content as string).slice(call[0].length)),
+            ),
+          ],
+          { stopReason: 'toolUse' },
+        )
+      return fauxAssistantMessage('Finished')
+    }
+    server.host.faux!.setResponses([route])
+    const branch = (await server.root.agent(context)).deferred.find(
+      (tool) => tool.name === 'branch',
+    )
+    await server.harness.commit(async (tx) => {
+      ;(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots = [1 as ConversationId]
+      await configure(tx, server.root.id, { modelTools: { add: [branch!] } })
+    }, context)
+    await (
+      await server.root.submit(
+        {
+          type: 'input',
+          content: `BRANCH ${JSON.stringify({ prompt: 'Coordinate', isolated: false })}`,
+        },
+        context,
+      )
+    ).wait(context)
+    const started = JSON.stringify(
+      (await server.root.context(context)).entries.filter(
+        (entry) => entry.kind === 'pi.tool-result',
+      ),
+    )
+    const coordinator = (await server.harness.conversation(
+      Number(/Branch #(\d+)[^"]* started/.exec(started)![1]) as ConversationId,
+      context,
+    ))!
+    await coordinator.waitForIdle(context)
+    const toolsOf = async (conversation: typeof coordinator) =>
+      (await conversation.agent(context)).tools.map((tool) => tool.name)
+    const child = async (parent: typeof coordinator, name: string) => {
+      await (
+        await parent.submit(
+          {
+            type: 'input',
+            content: `CALL ${JSON.stringify({ action: 'start', agent: name, task: 'Inspect tools' })}`,
+          },
+          context,
+        )
+      ).wait(context)
+      const index = await server.harness.snapshot(Subagents, parent.id, context)
+      const record = Object.values(index!.agents).find((candidate) => candidate.agent === name)
+      return record && (await server.harness.conversation(record.conversationId, context))!
+    }
+    expect(await toolsOf(coordinator)).not.toContain('edit')
+    expect(await toolsOf((await child(coordinator, 'inherits'))!)).toContain('edit')
+    expect(await toolsOf((await child(coordinator, 'explicit'))!)).toEqual(['read', 'edit'])
+    expect(await toolsOf((await child(coordinator, 'denies'))!)).not.toContain('edit')
+
+    const narrow = (await child(server.root, 'narrow'))!
+    expect(await toolsOf(narrow)).toEqual(['read', 'subagent'])
+    expect(await toolsOf((await child(narrow, 'inherits'))!)).toEqual(['read', 'bash'])
+    expect(await child(narrow, 'explicit')).toBeUndefined()
+    expect(JSON.stringify((await narrow.context(context)).entries)).toContain(
+      'Definition tools must be a subset of parent tools',
+    )
   } finally {
     await server.close()
   }
