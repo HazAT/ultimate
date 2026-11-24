@@ -2,7 +2,7 @@
 // /api/events stream open. Over plain HTTP/1.1 (127.0.0.1) the browser allows six connections per origin, so the
 // sixth visit to one instance found them all held by frozen pages: its reads stayed pending and it never loaded.
 import { join, resolve } from 'node:path'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
@@ -29,7 +29,7 @@ it('frees the event stream of a page kept in the back/forward cache', async () =
   const missed = 'Answered while the page was cached'
   server.host.faux!.setResponses([fauxAssistantMessage(missed)])
   const id = (await post(server, '/api/conversations', {})).data.id as ConversationId
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     ignoreDefaultArgs: ['--disable-back-forward-cache'],

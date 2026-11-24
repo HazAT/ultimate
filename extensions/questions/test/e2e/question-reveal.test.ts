@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../../../../test/chromium.ts'
 import type { Page } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
@@ -89,7 +89,7 @@ async function setup() {
   const asked = (await log())!.messages.filter((message) => message.to === 'user')
   expect(asked).toHaveLength(2)
 
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     // Keep the profile in the test's TMPDIR, but let Chromium put its singleton socket in the short system temp path.

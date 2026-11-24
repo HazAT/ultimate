@@ -7,7 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../../../../test/chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import { Started } from '../../../messages/addresses.ts'
@@ -68,7 +68,7 @@ it('runs through an answered question without an error where the Notifications a
     args: { messageId: asked.id, text: 'yes' },
   })
 
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     // Keep the profile in the test's TMPDIR, but let Chromium put its singleton socket in the short system temp path.

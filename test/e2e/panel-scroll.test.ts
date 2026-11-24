@@ -2,7 +2,7 @@
 // no positioned ancestor it was placed against the page, so the right panel's long Extensions list, scrolled out of
 // its own box, made the whole document taller than the window: the app sat at the top and the page scrolled.
 import { join, resolve } from 'node:path'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { fauxServer, removeTemp, temp } from '../helpers.ts'
@@ -24,7 +24,7 @@ it('keeps the page within the window while the Extensions panel scrolls its long
   })
   cleanup.push(() => server.close())
 
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },

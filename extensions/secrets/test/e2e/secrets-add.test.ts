@@ -1,7 +1,7 @@
 // The panel listed only declared and stored names, so a user could not store a secret of their own.
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../../../../test/chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import { readSecret } from '../../../../lib/secrets.ts'
@@ -22,7 +22,7 @@ it('adds a secret under a name the user types, refusing an invalid one inline', 
     port: 0,
   })
   cleanup.push(() => server.close())
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },

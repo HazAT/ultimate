@@ -2,7 +2,7 @@
 // WebP within 2000 px and 2 MiB.
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { maxImageBytes } from '../../shared/protocol.ts'
@@ -31,7 +31,7 @@ it('resizes a pasted image over the limit and sends it', async () => {
       return fauxAssistantMessage('Got it.')
     },
   ])
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },

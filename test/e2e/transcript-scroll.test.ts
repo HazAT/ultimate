@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { context } from '../../server/harness.ts'
@@ -55,7 +55,7 @@ it('follows, escapes, returns and keeps the read row in place while history page
     context,
   )
 
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },
@@ -204,7 +204,7 @@ it('opens every conversation at its end, cold and warm, until the reader scrolls
     ids.push(id)
   }
 
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },

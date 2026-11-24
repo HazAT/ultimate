@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../../../../test/chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import type { ModelsResponse } from '../../../../shared/protocol.ts'
@@ -25,7 +25,7 @@ it('lets Get ready hand focus and pointer input to login and the model picker an
   await post(server, `/api/conversations/${id}/configure`, {
     model: { provider: 'faux', modelId: 'faux-1' },
   })
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },

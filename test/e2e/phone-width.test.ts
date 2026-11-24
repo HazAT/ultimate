@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { context } from '../../server/harness.ts'
@@ -45,7 +45,7 @@ it('keeps the page and the transcript within a 375 px phone', async () => {
   for (const content of ['land it', 'fail'])
     await (await conversation.submit({ type: 'input', content }, context)).wait(context)
 
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     // Keep the profile in the test's TMPDIR, but let Chromium put its singleton socket in the short system temp path.

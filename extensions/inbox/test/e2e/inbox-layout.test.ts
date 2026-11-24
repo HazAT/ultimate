@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../../../../test/chromium.ts'
 import type { Page } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
@@ -112,7 +112,7 @@ async function setup() {
       context,
     )
   ).wait(context)
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     // Keep the profile in the test's TMPDIR, but let Chromium put its singleton socket in the short system temp path.

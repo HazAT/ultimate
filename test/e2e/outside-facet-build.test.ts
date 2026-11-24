@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../chromium.ts'
 import { afterAll, expect, it } from 'vitest'
 import { browserBinary } from '../../extensions/browser/server.ts'
 import { fauxServer, removeTemp, temp, until } from '../helpers.ts'
@@ -58,7 +58,7 @@ it('rejects an outside web.tsx facet in the built app with migration instruction
     home: join(home, 'state'),
   })
   try {
-    const browser = await chromium.launch({
+    const browser = await launchChromium({
       executablePath: await browserBinary(),
       headless: true,
       env: { ...process.env, TMPDIR: undefined },

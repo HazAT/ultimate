@@ -1,4 +1,4 @@
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../../../../test/chromium.ts'
 import type { Page } from 'playwright-core'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
@@ -27,7 +27,7 @@ it('fills and focuses the composer in front, whose page the open modal made iner
     port: 0,
   })
   cleanup.push(() => server.close())
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },

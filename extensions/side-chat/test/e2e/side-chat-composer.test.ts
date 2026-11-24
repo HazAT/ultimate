@@ -3,7 +3,7 @@
 // discards a file picked in between. The page holds back the real delivery of that document (its `doc` and `docOps`
 // stream events) until the test releases it, after the conversation's paperclip is enabled and both nodes are marked.
 import { join } from 'node:path'
-import { chromium } from 'playwright-core'
+import { launchChromium } from '../../../../test/chromium.ts'
 import { afterEach, expect, it } from 'vitest'
 import { browserBinary } from '../../../browser/server.ts'
 import { prebuiltServer, post, removeTemp, temp } from '../../../../test/helpers.ts'
@@ -22,7 +22,7 @@ it('keeps the composer editor and file input when the standing agents document a
     port: 0,
   })
   cleanup.push(() => server.close())
-  const browser = await chromium.launch({
+  const browser = await launchChromium({
     executablePath: await browserBinary(),
     headless: true,
     env: { ...process.env, TMPDIR: undefined },
