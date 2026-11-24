@@ -72,6 +72,7 @@ export function composerDraft(id: number | string) {
   return {
     text,
     images: images.map(({ data, mimeType }) => ({ data, mimeType })),
+    subscribe: draft.subscribe,
     clear: (parts: 'all' | 'images' = 'all') => {
       if (parts === 'all') clearDraft(draft, { text, revision })
       if (draft.get().images === images) draft.set({ images: [] })

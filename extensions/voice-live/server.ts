@@ -276,7 +276,8 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
   return host.harness().commit(async (tx) => {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
     const open = session.id !== undefined && !(await tx.doc(Fork, session.id)).ended
-    if (expected !== undefined && (!open || session.id !== expected))
+    const handedOff = expected !== undefined && !!(await tx.doc(Fork, expected)).handedOff
+    if (expected !== undefined && !handedOff && (!open || session.id !== expected))
       throw new Error('This voice session ended; send again')
     if (open) return session.id!
     const at = await answerIncludingClosingToolResults(tx, main, answer)
@@ -455,7 +456,7 @@ export const actions = {
       ]
     }, context)
     host.harness().resume()
-    return { audio: id }
+    return { audio: id, session }
   }),
   open: implementAction(OpenAction, async (_args, { host }) => ({
     conversation: await openSession(host),

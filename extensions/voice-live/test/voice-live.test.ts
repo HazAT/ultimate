@@ -402,7 +402,7 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
     ),
   )
 
-  const after = await f.turn({ key: 'after', text: 'next idea' })
+  const after = await f.turn({ key: 'after', text: 'next idea', session: blocked.id })
   expect(after.id).not.toBe(blocked.id)
 })
 

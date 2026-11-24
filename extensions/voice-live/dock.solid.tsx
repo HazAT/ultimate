@@ -164,17 +164,11 @@ const waiting = new Map<
 const forks = new Map<ConversationId, Readonly<VoiceFork>>()
 let session: ConversationId | undefined
 export const COLD_DRAFT = 'voice-live.cold'
-const coldHolds = () => {
-  const cold = composerDraft(COLD_DRAFT)
-  return !!cold.text.trim() || cold.images.length > 0
-}
-const [carrying, setCarrying] = createRoot(() => createSignal(true))
-export const composerOf = (id: ConversationId | undefined) =>
-  id === undefined || carrying() ? COLD_DRAFT : id
+export const coldHolds = (cold: { text: string; images: readonly unknown[] }) =>
+  !!cold.text.trim() || cold.images.length > 0
 export const composeIn = (id: ConversationId | undefined) => {
+  if (session !== undefined && id === undefined && !forks.get(session)?.handedOff) endLocally()
   session = id
-  if (id === undefined) setCarrying(true)
-  else if (!coldHolds()) setCarrying(false)
   setDraft((id !== undefined && forks.get(id)?.draft) || [])
 }
 let live = new AbortController()
@@ -444,7 +438,7 @@ async function sendTurn(input: {
   fromComposer?: boolean
 }) {
   const { signal } = live
-  const owner = session
+  let owner = session
   const cancelled = () => {
     if (input.fromComposer) throw signal.reason
   }
@@ -469,9 +463,12 @@ async function sendTurn(input: {
     })
   }
   if (signal.aborted) return cancelled()
-  const composer = composerOf(session)
-  const pasted = input.images ? undefined : composerDraft(composer)
-  const carried = composer === COLD_DRAFT ? pasted : undefined
+  const cold = composerDraft(COLD_DRAFT)
+  const carried =
+    !input.fromComposer && (session === undefined || coldHolds(cold)) ? cold : undefined
+  const pasted = input.images
+    ? undefined
+    : (carried ?? (session === undefined ? undefined : composerDraft(session)))
   const images = [...(input.images ?? pasted?.images ?? [])]
   const typed = [input.typed, carried?.text.trim()].filter(Boolean).join('\n\n')
   const key = crypto.randomUUID()
@@ -509,15 +506,15 @@ async function sendTurn(input: {
     trace.label('model', status.model.split('/')[0])
     const audio = input.recorded ? await base64(input.recorded.blob) : undefined
     const mimeType = input.recorded?.blob.type ?? ''
-    const kept = audio
-      ? (
-          await api.action(
-            RecordAction,
-            { audio, mimeType, ...(owner !== undefined ? { session: owner } : {}) },
-            { signal },
-          )
-        ).audio
-      : clips[0]?.audio
+    const recorded = audio
+      ? await api.action(
+          RecordAction,
+          { audio, mimeType, ...(owner !== undefined ? { session: owner } : {}) },
+          { signal },
+        )
+      : undefined
+    owner = recorded?.session ?? owner
+    const kept = recorded?.audio ?? clips[0]?.audio
     if (kept) patchLocal(key, { audio: kept })
     let text = typed
     if (kept && status.route === 'text') {
@@ -552,7 +549,6 @@ async function sendTurn(input: {
       { signal },
     )
     pasted?.clear(carried ? 'all' : 'images')
-    if (!coldHolds()) setCarrying(false)
     patchLocal(key, { conversation: sent.conversation })
     if (dock.pending() !== key) {
       if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
@@ -759,6 +755,11 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
 }
 
 export function endSession() {
+  endLocally()
+  return api.action(EndAction, null)
+}
+
+function endLocally() {
   released = pressing
   dock.hold(undefined)
   dock.player.stop()
@@ -766,7 +767,6 @@ export function endSession() {
   live.abort(new Error('The voice session ended'))
   live = new AbortController()
   session = undefined
-  setCarrying(true)
   forks.clear()
   setDraft([])
   dock.setPending(undefined)
@@ -774,5 +774,4 @@ export function endSession() {
   dock.setCuts([])
   dock.setPhase('idle')
   dock.setStatus(undefined)
-  return api.action(EndAction, null)
 }

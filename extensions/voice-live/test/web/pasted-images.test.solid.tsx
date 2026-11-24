@@ -7,10 +7,11 @@ import { store as clientStore } from '../../../../web/src/sdk/client.ts'
 import {
   COLD_DRAFT,
   composeIn,
-  composerOf,
+  coldHolds,
   dock,
   draftOf,
   endSession,
+  release,
   sendDraft,
   sendTyped,
   settleTranscripts,
@@ -42,6 +43,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       harness.turns.push(JSON.parse(init?.body as string).args)
       return Response.json({ result: { conversation: 40, route: 'audio' } })
     }
+    if (path === '/api/extensions/voice-live/actions/record')
+      return Response.json({ result: { audio: 'rec-1', session: 41 } })
     return subscriptions.handle(path, init) ?? Response.json({ ok: true })
   }
   const pageFetch = answerReadsWith(fetch)
@@ -112,14 +115,13 @@ it('what was typed and pasted while cold goes with the first turn, even when col
   await endSession()
   getDraft(COLD_DRAFT).set({ text: 'look at this', images: [shot] })
   composeIn(session)
-  expect(composerOf(session)).toBe(COLD_DRAFT)
   await sendDraft('steer', '', true, [clip])
   await settle()
   expect(harness.turns).toEqual([
     expect.objectContaining({ text: 'look at this', clips: ['clip-1'], images: [shot] }),
   ])
   expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: '', images: [] })
-  expect(composerOf(session)).toBe(session)
+  expect(coldHolds(getDraft(COLD_DRAFT).get())).toBe(false)
 })
 
 it('End during a send stops it before it reaches the session it ended', async () => {
@@ -174,5 +176,43 @@ it('what is typed into the cold box during the first send stays in the box the s
   await sending
   expect(harness.turns).toEqual([expect.objectContaining({ text: 'first' })])
   expect(getDraft(COLD_DRAFT).get().text).toBe('first and more')
-  expect(composerOf(session)).toBe(COLD_DRAFT)
+  expect(coldHolds(getDraft(COLD_DRAFT).get())).toBe(true)
+})
+
+it('a turn after a recording that opened the session belongs to that session', async () => {
+  await endSession()
+  dock.setCollect(false)
+  const recorded = {
+    blob: new Blob(['a'], { type: 'audio/webm' }),
+    seconds: 1,
+    spoke: true,
+    envelope: [],
+  }
+  vi.spyOn(dock.mic, 'stop').mockResolvedValueOnce(recorded)
+  await release()
+  await settle()
+  expect(harness.turns).toEqual([expect.objectContaining({ session: 41 })])
+})
+
+it('a session another tab ended stops this tab’s send and lets the cold box send again', async () => {
+  harness.route = 'text'
+  const sending = sendDraft('steer')
+  await vi.waitFor(() => expect(harness.asked).toBe(1))
+  await settle()
+  composeIn(undefined)
+  await sending
+  expect(harness.turns).toEqual([])
+  expect(draftOf()).toEqual([])
+  expect(dock.phase()).toBe('idle')
+})
+
+it('Enter in the cold box after the session opened sends its text once', async () => {
+  await endSession()
+  getDraft(COLD_DRAFT).set({ text: 'look at this' })
+  composeIn(session)
+  settleTranscripts({ of: parseConversationId(1) }, session)
+  expect(draftOf()).toEqual([])
+  await sendTyped('look at this', [])
+  await settle()
+  expect(harness.turns).toEqual([expect.objectContaining({ text: 'look at this' })])
 })

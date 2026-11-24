@@ -32,6 +32,7 @@ import {
   cn,
   Composer,
   ComposerRedirect,
+  composerDraft,
   formatKeys,
   ROOT,
   ScopedConversation,
@@ -52,8 +53,8 @@ import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   activity,
   COLD_DRAFT,
+  coldHolds,
   composeIn,
-  composerOf,
   discardDraft,
   dock,
   playerState,
@@ -639,10 +640,11 @@ function SetupList() {
 }
 
 function Bottom(props: { fork: ConversationId | undefined }) {
-  const hot = () => {
-    const composer = composerOf(props.fork)
-    return composer === COLD_DRAFT ? undefined : composer
-  }
+  const coldHeld = useExternal(
+    () => coldHolds(composerDraft(COLD_DRAFT)),
+    (notify) => composerDraft(COLD_DRAFT).subscribe(notify),
+  )
+  const hot = () => (coldHeld() ? undefined : props.fork)
   const target = (): ComposerTarget => ({
     placeholder: `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`,
     images: true,
