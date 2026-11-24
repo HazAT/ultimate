@@ -12,6 +12,7 @@ import { exec } from '../../lib/exec.ts'
 import { errnoCode, inProcess, isMissing, meansNone } from '../../lib/errors.ts'
 import { readJson, writeJson, writeTarget } from '../../lib/json-file.ts'
 import { userSettingsPath } from '../../lib/settings.ts'
+import { pace } from '../../lib/timers.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
@@ -256,13 +257,21 @@ export default function headscale(host: ExtensionHost) {
         fail('error', `headscale.bind must be one address of this node, not ${bind}.`)
         return
       }
-      const assigned = await withRegistry(async (registry) => {
-        const entry = registry.ports[key]
+      const handoffStepMs = 200
+      const handoffEnd = Date.now() + Number(process.env.ULTIMATE_HEADSCALE_HANDOFF_MS || 10_000)
+      let assigned: number | undefined
+      for (;;) {
+        const entry = await withRegistry(async (registry) => registry.ports[key])
         const owner = Number(entry?.owner.split(':')[0])
-        if (entry && owner !== process.pid && alive(owner))
+        if (!entry || owner === process.pid || !alive(owner)) {
+          assigned = entry?.port
+          break
+        }
+        if (closed) return
+        if (Date.now() + handoffStepMs > handoffEnd)
           throw new Error(`Mesh port ${entry.port} is owned by another running instance`)
-        return entry?.port
-      })
+        await pace(handoffStepMs)
+      }
       const server = createHttpServer((clientReq, clientRes) => {
         inProcess(
           'a mesh proxy request: the response dies with the process',
@@ -299,12 +308,24 @@ export default function headscale(host: ExtensionHost) {
         new Promise<number>((resolve, reject) =>
           server.once('error', reject).listen(candidate, bind, () => resolve(candidate)),
         )
-      const port = await (
-        assigned !== undefined ? listen(assigned) : Promise.reject('unassigned')
-      ).catch(async (error: unknown) => {
-        if (assigned !== undefined && errnoCode(error) !== 'EADDRINUSE') throw error
-        return listen(await freeMeshPort(bind, localPort === 443 ? 4747 : localPort))
-      })
+      const freshPort = () => freeMeshPort(bind, localPort === 443 ? 4747 : localPort)
+      let port: number
+      if (assigned === undefined) port = await listen(await freshPort())
+      else
+        for (;;) {
+          try {
+            port = await listen(assigned)
+            break
+          } catch (error) {
+            if (errnoCode(error) !== 'EADDRINUSE') throw error
+            if (closed) return
+            if (Date.now() + handoffStepMs > handoffEnd) {
+              port = await listen(await freshPort())
+              break
+            }
+            await pace(handoffStepMs)
+          }
+        }
       mesh = { server, port, localPort, dns }
       await withRegistry(async (registry) => {
         registry.ports[key] = {

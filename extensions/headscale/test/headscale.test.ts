@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { createServer, request as httpRequest } from 'node:http'
 import type { IncomingHttpHeaders } from 'node:http'
 import { join } from 'node:path'
@@ -45,7 +45,8 @@ afterEach(async () => {
   vi.unstubAllEnvs()
 })
 
-async function fixture(settings: Record<string, unknown> = {}) {
+// Opens the extension without waiting for a status: handoff tests drive the start themselves.
+async function setup(settings: Record<string, unknown> = {}) {
   const home = await temp()
   await mkdir(join(home, '.ultimate'))
   await writeFile(join(home, '.ultimate/settings.json'), JSON.stringify(settings))
@@ -122,11 +123,25 @@ else { console.error('unexpected args: ' + args.join(' ')); process.exit(1); }
   closes.push(async () => {
     for (const fn of cleanups) await fn()
   })
-  await Promise.all(openers.map((fn) => fn()))
   const status = async () =>
     (await actions.status(null, { host } as Parameters<typeof actions.status>[1])) as Status
-  await until(async () => (await status()).state === 'ready')
-  const port = new URL((await status()).url!).port
+  return {
+    home,
+    host,
+    localPort,
+    invocations,
+    seen,
+    status,
+    open: () => Promise.all(openers.map((fn) => fn())),
+  }
+}
+
+// A ready listener: the mesh URL's port and a request helper aimed at it.
+async function fixture(settings: Record<string, unknown> = {}) {
+  const opened = await setup(settings)
+  await opened.open()
+  await until(async () => (await opened.status()).state === 'ready')
+  const port = new URL((await opened.status()).url!).port
   const request = (
     path: string,
     headers: IncomingHttpHeaders = {},
@@ -148,7 +163,7 @@ else { console.error('unexpected args: ' + args.join(' ')); process.exit(1); }
       sent.on('error', reject)
       sent.end(body)
     })
-  return { home, host, invocations, seen, status, request, port }
+  return { ...opened, port, request }
 }
 
 it('admits an allowed peer, maps its identity, and strips the forwarding headers the client sent', async () => {
@@ -253,5 +268,57 @@ it('lists the tailnet with both URL forms and who may connect', async () => {
         allowed: false,
       },
     ],
+  })
+})
+
+// A core swap briefly overlaps two generations: the dying one keeps the registry entry and the port until its
+// close finishes, moments after the successor starts. The registry key a default home registers under.
+const registryKey = '/project/a'
+
+it('waits out a core swap and takes the stable port once the dying generation releases it', async () => {
+  const opened = await setup({ headscale: { allow: [peerB], bind } })
+  const predecessor = createServer()
+  await new Promise<void>((resolve) => predecessor.listen(opened.localPort, bind, resolve))
+  closes.push(async () => new Promise<void>((resolve) => predecessor.close(() => resolve())))
+  const registry = join(opened.home, '.ultimate/tailscale.json')
+  const heldByLiveOwner = JSON.stringify(
+    { ports: { [registryKey]: { port: opened.localPort, owner: '1:predecessor' } } },
+    null,
+    2,
+  )
+  await writeFile(registry, heldByLiveOwner + '\n')
+  const seeded = (await stat(registry)).mtimeMs
+  const starting = opened.open()
+  // Every registry poll rewrites the file, so the first rewrite proves the successor saw the held entry and
+  // chose to wait instead of reporting a conflict.
+  await until(
+    async () => ((await stat(registry).catch(() => undefined))?.mtimeMs ?? seeded) !== seeded,
+  )
+  // The dying generation closes exactly as the real one does: the socket first, then the registry entry.
+  await new Promise<void>((resolve) => predecessor.close(() => resolve()))
+  await writeFile(registry, JSON.stringify({ ports: {} }, null, 2) + '\n')
+  await starting
+  expect(await opened.status()).toMatchObject({ state: 'ready' })
+  expect(new URL((await opened.status()).url!).port).toBe(String(opened.localPort))
+})
+
+it('reports port-conflict only when a live holder outlives the handoff window', async () => {
+  vi.stubEnv('ULTIMATE_HEADSCALE_HANDOFF_MS', '300')
+  const opened = await setup({ headscale: { allow: [peerB], bind } })
+  const holder = createServer()
+  await new Promise<void>((resolve) => holder.listen(opened.localPort, bind, resolve))
+  closes.push(async () => new Promise<void>((resolve) => holder.close(() => resolve())))
+  await writeFile(
+    join(opened.home, '.ultimate/tailscale.json'),
+    JSON.stringify(
+      { ports: { [registryKey]: { port: opened.localPort, owner: '1:never-releases' } } },
+      null,
+      2,
+    ) + '\n',
+  )
+  await opened.open()
+  expect(await opened.status()).toMatchObject({
+    state: 'port-conflict',
+    hint: expect.stringMatching(/owned by another running instance/),
   })
 })

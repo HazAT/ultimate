@@ -48,6 +48,11 @@ project: a new project prefers its local supervisor port if free, otherwise the 
 scratch servers claim their port under their own home, marked `temporary`, and free it when they stop; a dead owner's
 entry is recovered at the next start. `TAILSCALE_COMMAND` names another CLI.
 
+A core swap briefly overlaps two generations of the same project: the dying one releases its registry entry and
+port moments after the successor starts, so a port that looks taken at first sight is usually that handoff in
+progress. The successor waits it out (up to 10 s, `ULTIMATE_HEADSCALE_HANDOFF_MS` overrides the window) and reports
+`port-conflict` only for a holder that outlives it.
+
 ## Status action
 
 `POST /api/extensions/headscale/actions/status` with `{ "args": null }` returns
