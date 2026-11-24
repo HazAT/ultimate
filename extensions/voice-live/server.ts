@@ -661,13 +661,10 @@ export const actions = {
       .map((clip) => fork?.transcripts?.[clip.audio] ?? '')
       .join(' ')
     const question = await openQuestion(host, id)
-    const { answers } = await classify.ask(
+    const state = { collectedSoFar: before, latestRecording: said }
+    const asking = classify.ask(
       {
-        state: {
-          ...(question ? { assistantLastReply: question } : {}),
-          collectedSoFar: before,
-          latestRecording: said,
-        },
+        state,
         questions: {
           send: {
             type: 'choice',
@@ -686,14 +683,23 @@ export const actions = {
             instructions:
               'Is the latest recording nothing but a bare send command ("send it", "go", "follow up"), with no other content? A request to brainstorm or think something through is content, not a bare command.',
           },
-          ...(question ? { answer: ANSWER_QUESTION } : {}),
         },
       },
       signal,
     )
+    const answering = question
+      ? classify.ask(
+          {
+            state: { assistantLastReply: question, ...state },
+            questions: { answer: ANSWER_QUESTION },
+          },
+          signal,
+        )
+      : undefined
+    const [{ answers }, reply] = await Promise.all([asking, answering])
     const send = answers.send
     const commanded = send?.type === 'choice' && send.choice !== 'hold' && send.confidence >= 0.6
-    const answer = answers.answer
+    const answer = reply?.answers.answer
     const answered =
       !commanded &&
       answer?.type === 'choice' &&

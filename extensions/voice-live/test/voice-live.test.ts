@@ -539,13 +539,12 @@ it('a clip that completely answers the question voice just asked sends as a stee
       Response.json({
         model: 'jev',
         usage: { input_tokens: 1 },
-        answers: {
-          send: { type: 'choice', choice: send, confidence: 0.9, probabilities: {} },
-          only: { type: 'noul', noul: 0 },
-          ...(questions.answer && {
-            answer: { type: 'choice', choice: 'complete', confidence: 1, probabilities },
-          }),
-        },
+        answers: questions.answer
+          ? { answer: { type: 'choice', choice: 'complete', confidence: 1, probabilities } }
+          : {
+              send: { type: 'choice', choice: send, confidence: 0.9, probabilities: {} },
+              only: { type: 'noul', noul: 0 },
+            },
       }),
     )
   })
@@ -568,14 +567,20 @@ it('a clip that completely answers the question voice just asked sends as a stee
 
   const answer = await intent('the second one')
   expect(answer.result).toEqual({ send: 'steer', clips: answer.clips, answered: true })
-  expect(asked.at(-1)).toEqual({
-    state: {
-      assistantLastReply: 'echo Daniel, typed: Which one, the first or the second?',
-      collectedSoFar: '',
-      latestRecording: 'the second one',
+  expect(asked.slice(-2)).toEqual([
+    {
+      state: { collectedSoFar: '', latestRecording: 'the second one' },
+      questions: ['send', 'only'],
     },
-    questions: ['send', 'only', 'answer'],
-  })
+    {
+      state: {
+        assistantLastReply: 'echo Daniel, typed: Which one, the first or the second?',
+        collectedSoFar: '',
+        latestRecording: 'the second one',
+      },
+      questions: ['answer'],
+    },
+  ])
   expect((await intent('maybe the second')).result).toEqual({})
   expect((await intent('well first', 'and then I think')).result).toEqual({})
   const command = await intent('send it')
