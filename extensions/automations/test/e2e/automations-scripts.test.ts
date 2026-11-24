@@ -947,15 +947,14 @@ it('resets a script when an update changes its ask or once: re-enabled, no old f
   }
   const sub = (await invoke('create', { name: 'Watch', ask: 'Watch branch 1' })) as Automation
   const watcher = sub.script!.conversationId
-  const briefs = async () =>
-    JSON.stringify([
-      await entries(watcher, 'automations.writing'),
-      await app.harness.snapshot(InboxDoc, watcher, context),
-    ]).split('Write and briefly test run').length - 1
-  const update = async (args: { ask?: string; once?: boolean }) => {
-    const before = await briefs()
+  const update = async (args: { ask?: string; once?: boolean }, brief: string) => {
     const updated = (await invoke('update', { id: sub.id, ...args })) as Automation
-    await until(async () => (await briefs()) > before)
+    await until(async () =>
+      JSON.stringify([
+        await entries(watcher, 'automations.writing'),
+        await app.harness.snapshot(InboxDoc, watcher, context),
+      ]).includes(brief),
+    )
     return updated
   }
   const firesOnce = (text: string) =>
@@ -965,7 +964,7 @@ it('resets a script when an update changes its ask or once: re-enabled, no old f
   await writeRun(folder(sub.id), 'exit 1')
   await invoke('resume', { id: sub.id })
   await until(async () => (await get(sub.id)).script!.failures === 1)
-  expect(await update({ ask: 'Watch branch 2' })).toMatchObject({
+  expect(await update({ ask: 'Watch branch 2' }, 'Ask: Watch branch 2')).toMatchObject({
     enabled: true,
     script: { state: 'writing', ask: 'Watch branch 2' },
   })
@@ -976,7 +975,7 @@ it('resets a script when an update changes its ask or once: re-enabled, no old f
   await until(async () => (await get(sub.id)).script!.state === 'done')
   expect(await get(sub.id)).toMatchObject({ enabled: false, script: { state: 'done' } })
 
-  await update({ ask: 'Watch branch 3' })
+  await update({ ask: 'Watch branch 3' }, 'Ask: Watch branch 3')
   expect(await get(sub.id)).toMatchObject({ enabled: true, script: { state: 'writing' } })
   await expect(readFile(join(folder(sub.id), 'state/fired'))).rejects.toMatchObject({
     code: 'ENOENT',
@@ -990,7 +989,7 @@ it('resets a script when an update changes its ask or once: re-enabled, no old f
 
   await writeRun(folder(sub.id), "trap 'exit 0' TERM; echo ready; while :; do sleep 1; done")
   const running = (await invoke('resume', { id: sub.id })) as Automation
-  const switched = await update({ once: false })
+  const switched = await update({ once: false }, 'Mode: recurring')
   expect(switched).toMatchObject({ enabled: true, script: { state: 'writing', once: false } })
   expect(switched.script!.pid).toBeUndefined()
   expect(() => process.kill(-running.script!.pid!, 0)).toThrow(
