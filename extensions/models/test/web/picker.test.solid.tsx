@@ -143,7 +143,7 @@ const writes = () =>
     ]
   })
 
-it('keeps the picked effort pending and ignores a quick second choice', async () => {
+it('keeps the picked effort pending across closing the popover, then shows its failure', async () => {
   const pending = Promise.withResolvers<Response>()
   const respond = harness.fetch.getMockImplementation()!
   harness.fetch.mockImplementation((url, init) =>
@@ -156,17 +156,20 @@ it('keeps the picked effort pending and ignores a quick second choice', async ()
     page.querySelector<HTMLButtonElement>(`[aria-label="${name} effort"]`)!
   expect(level('off').hasAttribute('data-checked')).toBe(true)
   level('high').click()
-  level('low').click()
   await sync()
+  expect(await act('Model and thinking', 'setOpen', false)).toMatchObject({ ok: true })
+  expect(await act('Model and thinking', 'setOpen', true)).toMatchObject({ ok: true })
   expect(level('low').hasAttribute('data-disabled')).toBe(true)
   level('low').click()
   await sync()
   expect(writes()).toEqual([
     { path: '/api/conversations/1/configure', body: { thinkingLevel: 'high' }, source: 'person' },
   ])
-  pending.resolve(Response.json({ ok: true }))
+  pending.resolve(Response.json({ error: 'refused' }, { status: 500 }))
   await sync()
   expect(level('low').hasAttribute('data-disabled')).toBe(false)
+  expect(level('off').hasAttribute('data-checked')).toBe(true)
+  expect(page.querySelector('.text-error')?.textContent).toContain('refused')
 })
 
 it('lets an agent pick a model and a family by name, recording both writes as the agent', async () => {

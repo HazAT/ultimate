@@ -7,7 +7,7 @@ import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmente
 import { api, cn, errorMessage, useDialog, useModels, writingAs } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { familyTitle } from '../../lib/families.ts'
-import type { FamilyView } from './refs.ts'
+import type { FamiliesView, FamilyView } from './refs.ts'
 import { familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.ts'
 import { selectModel } from './picker.solid.tsx'
 import { FamilyDot, useCurrentModel, useFamilies } from './readers.solid.tsx'
@@ -43,6 +43,7 @@ export function ModelControl() {
     >
       {(conversation) => {
         const [open, setOpen] = useDialog(thinkingDialog(conversation))
+        const writes = createWrites()
         return (
           <Popover onOpenChange={setOpen} open={open()}>
             <PopoverTrigger
@@ -71,6 +72,8 @@ export function ModelControl() {
             >
               <Options
                 id={conversation}
+                families={families()}
+                writes={writes}
                 current={family()?.name}
                 model={current.model()}
                 modelId={current.ref()?.modelId}
@@ -108,31 +111,18 @@ function Trigger(props: {
   )
 }
 
-function Options(props: {
-  id: ConversationId
-  current: string | undefined
-  model: ModelInfo | undefined
-  modelId: string | undefined
-  thinking: ThinkingLevel
-  close: () => void
-}) {
-  const families = useFamilies()
-  const models = useModels()
-  const [, setPicker] = useDialog(dialogs.picker)
+function createWrites() {
   const [error, setError] = createSignal<string>()
   const [pending, setPending] = createSignal<string>()
-  const shown = createMemo(() => (families()?.families ?? []).filter((family) => runsOn(family)))
   let changing = false
-
-  async function run(key: string, write: () => Promise<unknown>, close: boolean) {
+  async function run(key: string, write: () => Promise<unknown>, done?: () => void) {
     if (changing) return
     changing = true
     setPending(key)
     setError(undefined)
-    const done = props.close
     try {
       await write()
-      if (close) done()
+      done?.()
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
@@ -140,6 +130,25 @@ function Options(props: {
       setPending(undefined)
     }
   }
+  return { error, pending, run }
+}
+
+function Options(props: {
+  id: ConversationId
+  families: FamiliesView | undefined
+  writes: ReturnType<typeof createWrites>
+  current: string | undefined
+  model: ModelInfo | undefined
+  modelId: string | undefined
+  thinking: ThinkingLevel
+  close: () => void
+}) {
+  const models = useModels()
+  const [, setPicker] = useDialog(dialogs.picker)
+  const pending = () => props.writes.pending()
+  const shown = createMemo(() =>
+    (props.families?.families ?? []).filter((family) => runsOn(family)),
+  )
 
   function openPicker(source: string) {
     const close = props.close
@@ -157,45 +166,47 @@ function Options(props: {
     const available = models()?.models.find(
       (entry) => entry.provider === provider && entry.id === modelId,
     )?.available
-    if (available === false) return openPicker(source)
+    if (available !== true) return openPicker(source)
     const id = props.id
-    return run(
+    return props.writes.run(
       `family/${family.name}`,
       () => selectModel({ provider, modelId }, id, source, family),
-      true,
+      props.close,
     )
   }
 
   return (
     <>
       <div class="px-2 pt-1 pb-1.5 section-label">Model</div>
-      <For each={shown()} keyed={(family) => family.name}>
-        {(family) => (
-          <Button
-            aria-current={family().name === props.current ? 'true' : undefined}
-            aria-label={`${familyTitle(family().name)} family`}
-            class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] font-normal"
-            data-pending={pending() === `family/${family().name}` ? '' : undefined}
-            disabled={pending() !== undefined}
-            onClick={(_, details) => chooseFamily(family(), details.source)}
-            size={null}
-            variant="ghost"
-          >
-            <LoaderCircle class="hidden size-3.5 motion-safe:animate-spin in-data-pending:block" />
-            <Check
-              class={cn(
-                'size-3.5 shrink-0 in-data-pending:hidden',
-                family().name === props.current ? 'text-brand' : 'opacity-0',
-              )}
-            />
-            <FamilyDot color={family().color} />
-            <span class="shrink-0 font-sans text-foreground">{familyTitle(family().name)}</span>
-            <span class="ml-auto truncate pl-3 text-[11px] text-muted-foreground">
-              {[modelIdOf(runsOn(family())!), thinkingOf(family())].filter(Boolean).join(' · ')}
-            </span>
-          </Button>
-        )}
-      </For>
+      <div class="max-h-[40vh] overflow-y-auto">
+        <For each={shown()} keyed={(family) => family.name}>
+          {(family) => (
+            <Button
+              aria-current={family().name === props.current ? 'true' : undefined}
+              aria-label={`${family().name} family`}
+              class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] font-normal"
+              data-pending={pending() === `family/${family().name}` ? '' : undefined}
+              disabled={pending() !== undefined}
+              onClick={(_, details) => chooseFamily(family(), details.source)}
+              size={null}
+              variant="ghost"
+            >
+              <LoaderCircle class="hidden size-3.5 motion-safe:animate-spin in-data-pending:block" />
+              <Check
+                class={cn(
+                  'size-3.5 shrink-0 in-data-pending:hidden',
+                  family().name === props.current ? 'text-brand' : 'opacity-0',
+                )}
+              />
+              <FamilyDot color={family().color} />
+              <span class="shrink-0 font-sans text-foreground">{familyTitle(family().name)}</span>
+              <span class="ml-auto truncate pl-3 text-[11px] text-muted-foreground">
+                {[modelIdOf(runsOn(family())!), thinkingOf(family())].filter(Boolean).join(' · ')}
+              </span>
+            </Button>
+          )}
+        </For>
+      </div>
       <Button
         aria-label="Pick another model"
         class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] font-normal text-muted-foreground"
@@ -210,9 +221,10 @@ function Options(props: {
         >
           <Check class="size-3.5 shrink-0 text-brand" />
         </Show>
-        <span class="truncate">
-          {!props.current && props.modelId ? props.modelId : 'Other model…'}
-        </span>
+        <span class="shrink-0">Other model…</span>
+        <Show when={!props.current && props.modelId}>
+          <span class="ml-auto truncate pl-3 text-[11px] text-brand">{props.modelId}</span>
+        </Show>
       </Button>
       <Show when={props.model?.reasoning && props.model}>
         {(model) => (
@@ -228,10 +240,8 @@ function Options(props: {
                 onValueChange={(level) => {
                   const id = props.id
                   if (level)
-                    void run(
-                      `thinking/${level}`,
-                      () => api.configure({ thinkingLevel: level }, id),
-                      false,
+                    void props.writes.run(`thinking/${level}`, () =>
+                      api.configure({ thinkingLevel: level }, id),
                     )
                 }}
                 value={props.thinking}
@@ -254,7 +264,7 @@ function Options(props: {
       </Show>
       <div class="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
         <Show
-          when={error()}
+          when={props.writes.error()}
           fallback={
             <>
               <Kbd>⇧ Tab</Kbd> cycles thinking
