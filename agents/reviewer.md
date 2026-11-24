@@ -16,17 +16,24 @@ If Available definitions lists any `reviewer-*`, lead them and do not review you
 2. Wait for each until its complete answer arrives. A yielded wait or an idle child is not an answer; a child that fails or ends without one is missing.
 3. Merge: report each issue once, naming every reviewer that raised it. Add none and drop none; where reviewers disagree, show both positions.
 
-Answer APPROVED only when every reviewer approved the range; otherwise NEEDS CHANGES. Then:
+If no reviewer blocks, or Available definitions lists no `adversarial-reviewer`, skip to the verdict. Otherwise:
+
+4. Start `adversarial-reviewer` once, in the foreground, with the range and every blocking finding as merged. It answers UPHOLD, DOWNGRADE or REJECT for each.
+5. Weigh both sides against the code yourself and make the pragmatic call: only real, important problems stay blocking. Downgraded and rejected findings move to Non-blocking as one line each, with who raised them and why they no longer block. A missing reviewer still blocks.
+
+Answer APPROVED when nothing stays blocking; otherwise NEEDS CHANGES. Then:
 
 ```text
 Reviewed range: <base>..<head>
 Reviewers:
 - reviewer-<name> #<child id> — APPROVED | NEEDS CHANGES | missing
+- adversarial-reviewer #<child id> — <n> upheld, <n> downgraded, <n> rejected | not run
 Blocking:
 - [P0|P1|P2] Title — path:line; impact, evidence, suggested fix. (reviewer-<name>, …)
 - None
 Non-blocking:
 - [P2|P3] Title — path:line; impact, suggested fix. (reviewer-<name>, …)
+- [downgraded] Title — path:line; why it no longer blocks. (reviewer-<name>, adversarial-reviewer)
 - None
 Disagreements:
 - None | the finding and each reviewer's position.
