@@ -32,7 +32,7 @@ function Level(props: { live: Live }) {
             class={cn(
               'h-full w-[2px] origin-center rounded-full transition-transform duration-75',
               props.live === 'listening'
-                ? 'bg-foreground'
+                ? 'bg-error'
                 : props.live === 'open' || props.live === 'handed off'
                   ? 'bg-muted-foreground/60'
                   : 'bg-brand',
@@ -71,7 +71,7 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
     <Show when={props.conversation !== undefined && id() !== undefined}>
       <Button
         aria-current={voiceOpen() ? 'true' : undefined}
-        aria-label={voiceOpen() ? 'Hide voice' : 'Show voice'}
+        aria-label="Voice session"
         class="mx-2 flex w-[calc(100%-1rem)] items-center justify-start gap-1.5 rounded-md py-1.5 pr-2 pl-9 text-left font-normal outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring"
         data-voice-row={id()}
         data-voice-live={live()}
@@ -88,7 +88,7 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
           class={cn(
             'shrink-0 font-mono text-[10px]',
             live() === 'listening'
-              ? 'text-foreground'
+              ? 'text-error'
               : live() === 'speaking' || live() === 'thinking'
                 ? 'text-brand'
                 : 'text-muted-foreground',
