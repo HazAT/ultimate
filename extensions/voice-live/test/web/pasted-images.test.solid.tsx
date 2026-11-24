@@ -313,3 +313,15 @@ it('a file upload finishing during a spoken turn still clears the text that turn
     files: [expect.objectContaining({ path: '/uploads/spec.pdf' })],
   })
 })
+
+it('a spoken turn that takes nothing from the live box leaves it open for typing', async () => {
+  getDraft(session).set({ text: 'still typing', images: [] })
+  harness.route = 'text'
+  const spoken = sendDraft('steer', '', true, [clip])
+  await vi.waitFor(() => expect(harness.asked).toBe(1))
+  await settle()
+  expect(getDraft(session).get().sending).toBe(false)
+  settleTranscripts({ of: parseConversationId(1), transcripts: { 'clip-1': 'hello' } }, session)
+  await spoken
+  expect(getDraft(session).get()).toMatchObject({ text: 'still typing', sending: false })
+})

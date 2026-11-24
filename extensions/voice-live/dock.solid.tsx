@@ -469,7 +469,8 @@ async function sendTurn(input: {
       : session === undefined
         ? undefined
         : composerDraft(session)
-  const releaseBox = box?.reserve()
+  const takes = !!box && (box.images.length > 0 || (fromCold && !!box.text.trim()))
+  const releaseBox = takes ? box.reserve() : undefined
   const pasted = releaseBox ? box : undefined
   const carried = fromCold ? pasted : undefined
   const images = [...(input.images ?? pasted?.images ?? [])]
