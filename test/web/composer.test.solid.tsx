@@ -52,11 +52,12 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { getDraft } from '../../web/src/app/drafts.ts'
+import { fillComposer, getDraft } from '../../web/src/app/drafts.ts'
 import { Composer } from '../../web/src/app/composer.solid.tsx'
 import { Dock, StatusLine } from '../../web/src/app/shell.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
-import { ComposerRedirect } from '../../web/src/sdk/solid.ts'
+import { Button } from '../../web/src/components/ui/button.solid.tsx'
+import { ComposerRedirect, Dictation, provide } from '../../web/src/sdk/solid.ts'
 import type { ComposerTarget, SolidInboxProps } from '../../web/src/sdk/solid.ts'
 
 const faux = { provider: 'faux', id: 'faux-1', available: true }
@@ -393,4 +394,55 @@ it('a composer with its own draft key sends there, keeps the conversation draft 
     { ref: 'Send prompt to the new conversation', action: 'press' },
   ])
   expect(getDraft('cold-test').get().text).toBe('kept')
+})
+
+it('dictation fills the box it was pressed in and lights only that box’s hairline', async () => {
+  await registry.setLoaders({
+    '/extensions/dictate/web.solid.tsx': async () => ({
+      default: {
+        provides: [
+          provide(Dictation, (props) => (
+            <Button
+              aria-label={`Dictate into ${props.name}`}
+              onClick={() => {
+                props.level(0.5)
+                props.insert('spoken words')
+              }}
+            >
+              mic
+            </Button>
+          )),
+        ],
+      },
+    }),
+  })
+  await show(21)
+  fillComposer(21, 'for the conversation')
+  const target: ComposerTarget = {
+    placeholder: 'cold',
+    draft: 'dictation-test',
+    send: async () => {},
+  }
+  const container = renderSolid(() => (
+    <>
+      <Composer />
+      <ComposerRedirect value={() => target}>
+        <Composer dock />
+      </ComposerRedirect>
+    </>
+  ))
+  await settle()
+  flush()
+  await expectDistinctAgentNames(agent)
+  expect(await act([{ ref: 'Dictate into the new conversation', action: 'press' }])).toMatchObject({
+    ok: true,
+  })
+  expect(getDraft('dictation-test').get().text).toBe('spoken words')
+  expect(getDraft(21).get().text).toBe('for the conversation')
+  expect(
+    [...container.querySelectorAll('[data-ui="prompt-box"]')].map((box) =>
+      box.getAttribute('data-signal'),
+    ),
+  ).toEqual(['idle', 'listening'])
+  await registry.setLoaders({})
 })

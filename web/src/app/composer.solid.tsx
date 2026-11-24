@@ -1,29 +1,10 @@
 import type { AgentState, ConversationId, InboxItem } from '@earendil-works/pi-durable'
-import {
-  CornerDownRight,
-  ListPlus,
-  LoaderCircle,
-  Paperclip,
-  ArrowUp,
-  Square,
-  X,
-} from '@lucide/solid'
+import { CornerDownRight, ListPlus, Square, X } from '@lucide/solid'
 import { Portal } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onCleanup,
-  onSettled,
-  Show,
-  useContext,
-} from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, useContext } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Form } from '@/components/ui/form.solid.tsx'
-import { Textarea } from '@/components/ui/input.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
   api,
@@ -35,11 +16,8 @@ import {
   createTranscriptFrame,
   errorMessage,
   events,
-  FileUpload,
-  formatBytes,
   inboxRenderer,
   isMac,
-  touchKeyboard,
   Transcript,
   useConversation,
   useExtensions,
@@ -49,22 +27,15 @@ import {
   writerNow,
   writingAs,
 } from '../sdk/hooks.ts'
+import type { ComposerTarget } from '../sdk/hooks.ts'
+import type { PromptInput } from '../sdk/types.ts'
 import type { ModelsResponse } from '../../../shared/protocol.ts'
-import { imageMimeTypes } from '../../../shared/protocol.ts'
-import {
-  Contributed,
-  Contribution,
-  Slot,
-  useAllProvided,
-  useProvided,
-} from '../sdk/contribution.solid.tsx'
+import { Contributed, Contribution, Slot, useAllProvided } from '../sdk/contribution.solid.tsx'
 import { useExternal } from '../sdk/page.ts'
-import { Attached, createAttach } from './attach.solid.tsx'
-import { splitAttachments, withAttachments } from './attachments.ts'
-import type { DraftFile, PastedImage } from './attachments.ts'
+import { splitAttachments } from './attachments.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
-import { clearDraft, getDraft } from './drafts.ts'
-import type { Draft } from './drafts.ts'
+import { getDraft } from './drafts.ts'
+import { PromptBox, restoreDraft } from './prompt-box.solid.tsx'
 import {
   atFirstLine,
   mergedSteer,
@@ -76,7 +47,6 @@ import {
 import { statusTarget, subscribeStatusTarget } from './status-target.ts'
 
 const alt = isMac ? '⌥' : 'Alt'
-const androidImagePasteStyle: JSX.CSSProperties = { '-webkit-user-modify': 'read-write' }
 
 function blockedBy(agent: AgentState, models: ModelsResponse | undefined): string | undefined {
   const model = agent.model
@@ -115,7 +85,7 @@ export function Composer(props: { dock?: boolean }) {
   const frame = createTranscriptFrame(() => conversation().entries)
   const target = useContext(ComposerRedirect)
   return (
-    <Show when={!target()?.draft} fallback={<ComposerEditor dock={props.dock} />}>
+    <Show when={target()?.draft === undefined} fallback={<DraftComposer dock={props.dock} />}>
       <Transcript value={frame.frame}>
         <Contributed
           core={() => <For each={[mountKey()]}>{() => <ComposerEditor dock={props.dock} />}</For>}
@@ -242,152 +212,70 @@ function QueuedRow(props: { item: InboxItem; cancel: JSX.Element }) {
   )
 }
 
-function createDraftState(id: () => number | string | undefined) {
-  const draft = createMemo(() => getDraft(id()))
-  const [changes, setChanges] = createSignal(0)
-  const value = createMemo((): Draft => {
-    changes()
-    return draft().get()
-  })
-  createEffect(draft, (current) => {
-    const unsubscribe = current.subscribe(() => setChanges((n) => n + 1))
-    const stored = (current.key ? localStorage.getItem(current.key) : null) ?? ''
-    if (stored !== current.get().text)
-      current.set({ text: stored, revision: current.get().revision + 1 })
-    return unsubscribe
-  })
-  return { draft, value }
+function redirected(redirect: ComposerTarget, input: PromptInput) {
+  if (!redirect.images && input.images.length)
+    throw new Error('Images stay here: remove them to send elsewhere')
+  return redirect.send(input.text, input.images)
+}
+
+function DraftComposer(props: { dock?: boolean }) {
+  const target = useContext(ComposerRedirect)
+  return (
+    <div class={cn(column(props.dock), 'pb-2')} data-composer-target="draft" data-ui="composer">
+      <PromptBox
+        accepts={{ images: !!target()?.images }}
+        autofocus
+        draft={target()?.draft}
+        id={`composer-input-${target()?.draft}`}
+        name="the new conversation"
+        onSubmit={(input) => redirected(target()!, input)}
+        placeholder={target()?.placeholder ?? ''}
+        ready={target()?.ready}
+      />
+    </div>
+  )
 }
 
 function ComposerEditor(props: { dock?: boolean }) {
   const conversation = useConversation()
   const scoped = useContext(ConversationScope)
   const target = useContext(ComposerRedirect)
-  const detached = () => target()?.draft
   const id = createMemo(() => conversation().id)
-  const loading = createMemo(() => !detached() && conversation().loading)
-  const busy = createMemo(() => !detached() && conversation().busy)
-  const inbox = createMemo(() => (detached() ? [] : conversation().inbox))
+  const loading = createMemo(() => conversation().loading)
+  const busy = createMemo(() => conversation().busy)
+  const inbox = createMemo(() => conversation().inbox)
   const queued = createMemo(() => inbox().filter((item) => item.mode !== 'write'))
-  const { draft, value } = createDraftState(() => detached() ?? id())
-  const text = () => value().text
-  const images = () => value().images
-  const files = () => value().files
-  const sending = () => value().sending
-  const upload = useProvided(FileUpload, () => null)
+  const draft = createMemo(() => getDraft(id()))
   const [placeholder, setPlaceholder] = createSignal<string>()
   const models = useModels()
   const viewport = useViewport()
   const foldTarget = useExternal(statusTarget, subscribeStatusTarget)
   const foldStatus = createMemo(() =>
-    viewport() === 'phone' && scoped === null && !props.dock && !detached() ? foldTarget() : null,
+    viewport() === 'phone' && scoped === null && !props.dock ? foldTarget() : null,
   )
-
   const setError = (message: string | undefined) => draft().set({ error: message })
-  const revised = (change: Partial<Draft>) =>
-    draft().set({ ...change, revision: draft().get().revision + 1 })
-  const setImages = (change: (current: PastedImage[]) => PastedImage[]) =>
-    revised({ images: change(draft().get().images) })
-  const setFiles = (change: (current: DraftFile[]) => DraftFile[]) =>
-    revised({ files: change(draft().get().files) })
-  const attach = createAttach({
-    images,
-    setImages,
-    setFiles,
-    setError,
-    disabled: () => loading() || draft().get().sending,
-    upload,
-  })
-  const uploading = () => files().some((file) => !file.path)
-  const blocked = () =>
-    loading() || detached() ? undefined : blockedBy(conversation().agent, models())
-  const empty = () =>
-    !text().trim() && images().length === 0 && files().length === 0 && !target()?.ready?.()
-  const inert = () => loading() || sending() || attach.reading()
+  const blocked = () => (loading() ? undefined : blockedBy(conversation().agent, models()))
 
-  const update = (next: string) => {
-    revised({ text: next })
-    const key = draft().key
-    if (!key) return
-    if (next) localStorage.setItem(key, next)
-    else localStorage.removeItem(key)
-  }
-  const restoreTextAndFileChips = (restored: string) => {
-    const { text: rest, files: back } = splitAttachments(restored)
-    update(rest)
-    if (back.length)
-      setFiles((current) => [
-        ...back.map((file) => ({ ...file, id: crypto.randomUUID() })),
-        ...current,
-      ])
-  }
-
-  async function send(whenBusy?: 'steer' | 'followUp') {
-    const conversationId = id()
-    const current = draft()
+  async function submit(typed: PromptInput, how: 'followUp' | undefined) {
     const redirect = target()
-    if (
-      loading() ||
-      empty() ||
-      blocked() ||
-      uploading() ||
-      current.get().sending ||
-      attach.busy() ||
-      (conversationId === undefined && !redirect)
-    )
-      return
-    const submitted = current.get()
-    if (redirect && !redirect.images && submitted.images.length) {
-      setError('Images stay here: remove them to send elsewhere')
-      return
-    }
+    if (redirect) return redirected(redirect, typed)
+    const conversationId = id()
+    if (conversationId === undefined) throw new Error('No conversation to send to yet')
     const who = writerNow()
-    current.set({ sending: true, error: undefined })
-    const mode = busy() ? (whenBusy ?? 'steer') : undefined
-    let input = {
-      text: withAttachments(submitted.text.trim(), submitted.files),
-      images: submitted.images,
-    }
-    let withdrawnSteerToRestoreOnFailure: typeof input | undefined
+    const current = draft()
+    const mode = busy() ? (how ?? 'steer') : undefined
+    const withdrawn =
+      mode === 'steer' ? await withdrawQueuedSteer(api, conversationId, inbox()) : undefined
+    const input = withdrawn ? mergedSteer(withdrawn, typed) : typed
+    events.emit('ultimate:sent', { conversationId })
     try {
-      if (redirect)
-        await writingAs(who, () =>
-          redirect.send(
-            input.text,
-            input.images.map(({ data, mimeType }) => ({ data, mimeType })),
-          ),
-        )
-      else if (conversationId !== undefined) {
-        withdrawnSteerToRestoreOnFailure =
-          mode === 'steer' ? await withdrawQueuedSteer(api, conversationId, inbox()) : undefined
-        if (withdrawnSteerToRestoreOnFailure)
-          input = mergedSteer(withdrawnSteerToRestoreOnFailure, input)
-        events.emit('ultimate:sent', { conversationId })
-        await writingAs(who, () =>
-          api.submit(
-            input.text,
-            mode,
-            conversationId,
-            input.images.map(({ data, mimeType }) => ({ data, mimeType })),
-          ),
-        )
-      }
-      clearDraft(current, submitted)
-      if (current.get().images === submitted.images) current.set({ images: [] })
-      if (current.get().files === submitted.files) current.set({ files: [] })
+      return await writingAs(who, () => api.submit(input.text, mode, conversationId, input.images))
     } catch (failure) {
-      if (current.key && current.get().revision === submitted.revision)
-        current.set({ text: localStorage.getItem(current.key) ?? '' })
-      const withdrawn = withdrawnSteerToRestoreOnFailure
       if (withdrawn) {
-        restoreTextAndFileChips(
-          mergedSteer(withdrawn, { text: current.get().text, images: [] }).text,
-        )
-        setImages((kept) => [...withdrawn.images, ...kept])
+        restoreDraft(current, mergedSteer(withdrawn, { text: current.get().text, images: [] }).text)
+        current.set({ images: [...withdrawn.images, ...current.get().images] })
       }
-      setError(errorMessage(failure))
-    } finally {
-      current.set({ sending: false })
+      throw failure
     }
   }
 
@@ -395,12 +283,13 @@ function ComposerEditor(props: { dock?: boolean }) {
     const conversationId = id()
     const current = draft()
     if (loading() || current.get().sending || conversationId === undefined) return
-    if (queued().length === 0) return
     current.set({ sending: true, error: undefined })
     try {
       const recalled = await recallQueued(api, conversationId, queued())
-      restoreTextAndFileChips(recalledText(current.get().text, recalled))
-      setImages((kept) => [...kept, ...recalled.flatMap((input) => input.images)])
+      restoreDraft(current, recalledText(current.get().text, recalled))
+      current.set({
+        images: [...current.get().images, ...recalled.flatMap((input) => input.images)],
+      })
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
@@ -408,228 +297,76 @@ function ComposerEditor(props: { dock?: boolean }) {
     }
   }
 
-  function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
-    if (event.isComposing) return
-    if (event.key === 'ArrowUp' && !target() && queued().length > 0) {
-      const { value: typed, selectionStart } = event.currentTarget
-      if (!atFirstLine(typed, selectionStart)) return
-      event.preventDefault()
-      void recall()
-      return
-    }
-    if (event.key !== 'Enter' || event.shiftKey) return
-    const touchReturnInsertsNewline = touchKeyboard() && !event.metaKey && !event.ctrlKey
-    if (touchReturnInsertsNewline) return
+  function recallOnUp(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
+    if (event.key !== 'ArrowUp' || target() || queued().length === 0) return false
+    const { value: typed, selectionStart } = event.currentTarget
+    if (!atFirstLine(typed, selectionStart)) return false
     event.preventDefault()
-    void send(event.altKey ? 'followUp' : 'steer')
+    void recall()
+    return true
   }
 
-  const [dragging, setDragging] = createSignal(false)
-  onSettled(() => {
-    if (scoped !== null || detached()) return undefined
-    let depth = 0
-    const carriesFiles = (event: DragEvent) => !!event.dataTransfer?.types.includes('Files')
-    const enter = (event: DragEvent) => {
-      if (carriesFiles(event)) setDragging(++depth > 0)
-    }
-    const leave = (event: DragEvent) => {
-      if (carriesFiles(event)) setDragging(--depth > 0)
-    }
-    const dropped = (event: DragEvent) => {
-      depth = 0
-      setDragging(false)
-      const on = event.target instanceof Element ? event.target : null
-      const ignoreNonFileOrEditorOwnedDrop =
-        !carriesFiles(event) || on?.closest('[data-ui="composer"] textarea')
-      if (ignoreNonFileOrEditorOwnedDrop) return
-      void attach.drop(event)
-    }
-    document.addEventListener('dragenter', enter)
-    document.addEventListener('dragleave', leave)
-    document.addEventListener('drop', dropped)
-    return () => {
-      document.removeEventListener('dragenter', enter)
-      document.removeEventListener('dragleave', leave)
-      document.removeEventListener('drop', dropped)
-    }
-  })
-
-  let editor: HTMLTextAreaElement | undefined
-  onSettled(() => {
-    if (!touchKeyboard()) editor?.focus()
-  })
-
-  const label = () =>
-    detached()
-      ? 'the new conversation'
-      : id() === undefined
-        ? 'the conversation'
-        : `conversation #${id()}`
-  const status = () => (
-    <Show when={!detached()}>
-      <Slot fallback={failed} name="composer.status" />
-    </Show>
-  )
+  const label = () => (id() === undefined ? 'the conversation' : `conversation #${id()}`)
+  const status = () => <Slot fallback={failed} name="composer.status" />
 
   return (
     <div
       class={cn(column(props.dock), 'pb-2')}
-      data-composer-target={detached() ? 'draft' : scoped === null ? 'conversation' : 'scope'}
+      data-composer-target={scoped === null ? 'conversation' : 'scope'}
       data-ui="composer"
     >
-      <Show when={!detached() && id()} keyed>
+      <Show when={id()} keyed>
         {(conversationId) => (
           <Placeholder busy={busy()} conversation={conversationId} report={setPlaceholder} />
         )}
       </Show>
       <Inbox items={inbox()} />
-      <Form
-        class={cn(
-          'flex w-full flex-col rounded-xl border border-input/80 bg-card shadow-sm transition-colors focus-within:border-ring/70',
-          dragging() && 'ring-2 ring-brand/60',
-        )}
-      >
-        <Attached
-          disabled={inert()}
-          files={files()}
-          images={images()}
-          remove={(index) => setImages((current) => current.filter((_, at) => at !== index))}
-          removeFile={(fileId) =>
-            setFiles((current) => current.filter((file) => file.id !== fileId))
-          }
-        />
-        <Textarea
-          aria-label={`Prompt for ${label()}`}
-          autoResize
-          class="block max-h-80 min-h-0 w-full resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-1 font-sans text-[14px] leading-relaxed outline-none focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed"
-          data-conversation={detached() ? undefined : id()}
-          id={
-            detached()
-              ? `composer-input-${detached()}`
-              : scoped === null
-                ? 'composer-input'
-                : `composer-input-${scoped}`
-          }
-          onDrop={(event) => void attach.drop(event)}
-          onKeyDown={onKeyDown}
-          onPaste={(event) => void attach.paste(event)}
-          onValueChange={update}
-          placeholder={
-            target()?.placeholder ??
-            placeholder() ??
-            (busy() ? 'Steer the run, or queue a follow-up…' : 'Ask Ultimate to change something…')
-          }
-          readonly={loading() || sending()}
-          ref={(element) => {
-            editor = element
-          }}
-          rows={1}
-          style={touchKeyboard() ? androidImagePasteStyle : undefined}
-          value={text()}
-        />
-        <div class="@container flex items-center justify-between gap-2 px-2 pt-1 pb-2">
-          <div class="flex min-w-0 items-center gap-1 overflow-hidden">
-            <Show when={!detached()}>
-              <Slot fallback={failed} name="composer.toolbar" />
-            </Show>
-          </div>
-          <div class="flex max-w-full min-w-0 shrink-0 items-center gap-2">
-            <span
-              class={cn(
-                'truncate font-mono text-[11px]',
-                value().error || blocked() ? 'text-error' : 'text-muted-foreground/70',
-              )}
-            >
-              <Show
-                when={value().error ?? blocked()}
-                fallback={
-                  <Show when={busy() && !target()}>
-                    <span class="pointer-coarse:hidden">
-                      <Kbd>↵</Kbd> steer · <Kbd>{alt} ↵</Kbd> follow-up · <Kbd>esc</Kbd> stop
-                    </span>
-                  </Show>
-                }
-              >
-                {(problem) => problem()}
-              </Show>
-            </span>
-            <label
-              aria-label={upload() ? 'Attach files' : 'Attach images'}
-              class={cn(
-                'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9',
-                inert() && 'pointer-events-none opacity-50 hover:bg-transparent',
-              )}
-              title={
-                upload()
-                  ? `Attach files: images inline, others up to ${formatBytes(upload()!.maxBytes).replace('.0 ', ' ')}`
-                  : 'Attach images'
+      <PromptBox
+        accepts={{ images: !target() || !!target()!.images }}
+        actions={
+          <Show when={busy()}>
+            <Button
+              aria-label={`Stop the run in ${label()}`}
+              data-agent-confirm="Stops the current run in this conversation."
+              class="ml-1 size-7 rounded-md pointer-coarse:size-9"
+              onClick={() =>
+                api.abort(id()).catch((failure: unknown) => setError(errorMessage(failure)))
               }
+              size="icon"
+              title="Stop (Esc)"
+              variant="secondary"
             >
-              <Paperclip class="size-4" />
-              <input
-                accept={upload() ? undefined : imageMimeTypes.join(',')}
-                class="sr-only"
-                disabled={inert()}
-                multiple
-                onChange={(event) => {
-                  const picked = Array.from(event.currentTarget.files ?? [])
-                  event.currentTarget.value = ''
-                  void attach.attach(picked)
-                }}
-                type="file"
-              />
-            </label>
-            <Show when={!target()}>
-              <Slot fallback={failed} name="composer.actions" />
-            </Show>
-            <Show when={busy()}>
-              <Button
-                aria-label={`Stop the run in ${label()}`}
-                data-agent-confirm="Stops the current run in this conversation."
-                class={submitClass}
-                onClick={() =>
-                  api.abort(id()).catch((failure: unknown) => setError(errorMessage(failure)))
-                }
-                size="icon"
-                title="Stop (Esc)"
-                variant="secondary"
-              >
-                <Square class="size-3 fill-current" />
-              </Button>
-            </Show>
-            <Show when={!busy() || !empty()}>
-              <Button
-                aria-label={loading() ? 'Loading conversation' : `Send prompt to ${label()}`}
-                class={cn(submitClass, loading() && 'bg-muted text-muted-foreground')}
-                disabled={
-                  loading() ||
-                  empty() ||
-                  !!blocked() ||
-                  sending() ||
-                  attach.reading() ||
-                  uploading()
-                }
-                onClick={() => send()}
-                size="icon"
-                title={
-                  loading()
-                    ? 'Loading conversation'
-                    : uploading()
-                      ? 'Uploading files…'
-                      : busy() && !target()
-                        ? 'Steer (Enter)'
-                        : 'Send (Enter)'
-                }
-                type="submit"
-              >
-                <Show when={loading()} fallback={<ArrowUp class="size-4" />}>
-                  <LoaderCircle class="size-4 motion-safe:animate-spin" />
-                </Show>
-              </Button>
-            </Show>
-          </div>
-        </div>
-      </Form>
+              <Square class="size-3 fill-current" />
+            </Button>
+          </Show>
+        }
+        autofocus
+        blocked={blocked()}
+        conversation={id()}
+        draft={id()}
+        hint={
+          <Show when={busy() && !target()}>
+            <span class="pointer-coarse:hidden">
+              <Kbd>↵</Kbd> steer · <Kbd>{alt} ↵</Kbd> follow-up · <Kbd>esc</Kbd> stop
+            </span>
+          </Show>
+        }
+        id={scoped === null ? 'composer-input' : `composer-input-${scoped}`}
+        loading={loading()}
+        name={label()}
+        onKeyDown={recallOnUp}
+        onSubmit={submit}
+        pageDrop={scoped === null}
+        placeholder={
+          target()?.placeholder ??
+          placeholder() ??
+          (busy() ? 'Steer the run, or queue a follow-up…' : 'Ask Ultimate to change something…')
+        }
+        ready={target()?.ready}
+        running={busy()}
+        sendTitle={busy() && !target() ? 'Steer (Enter)' : undefined}
+        toolbar={<Slot fallback={failed} name="composer.toolbar" />}
+      />
       <Show
         when={foldStatus()}
         keyed
@@ -644,6 +381,3 @@ function ComposerEditor(props: { dock?: boolean }) {
     </div>
   )
 }
-
-const submitClass =
-  'size-7 rounded-lg pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'

@@ -60,7 +60,11 @@ export { api, bundle, switched } from './client.ts'
  */
 export const pageAgent = () => {
   const bridge = uiAgent.bridge()
-  return { snapshot: () => bridge.snapshot(), query: bridge.query, act: uiAgent.act }
+  return {
+    snapshot: () => bridge.snapshot(),
+    query: bridge.query,
+    act: uiAgent.act,
+  }
 }
 /** The page's event bus: `events.emit('secrets:open', { name })`; subscribe for a component's life with `useEvent`. */
 export { events } from './events.ts'
@@ -119,6 +123,8 @@ export type {
   UltimateContext,
   WebExtension,
   ComposerTarget,
+  PromptBoxProps,
+  PromptInput,
   SolidComposerProps,
   SolidInboxProps,
   SolidEntryProps,
@@ -132,11 +138,13 @@ export type {
 export {
   ComposerPlaceholder,
   ConversationKind,
+  Dictation,
   EmptyTranscript,
   ErrorReport,
   FileUpload,
   MessageReference,
   ParkedRuns,
+  PromptRecorder,
   RunStart,
 } from './types.ts'
 /** Whether `region` overlays the page on `viewport` (a phone's sidebar, a phone's or tablet's panel) instead of docking. */
@@ -220,7 +228,12 @@ function createReplica() {
     watch(target: Target, kind: string) {
       const release = target === 'shown' ? store.watchDoc(kind) : store.watchDocOf(target, kind)
       const key = replicaKey(target, kind)
-      const reader = watched.get(key) ?? { target, kind, readers: 0, seen: undefined }
+      const reader = watched.get(key) ?? {
+        target,
+        kind,
+        readers: 0,
+        seen: undefined,
+      }
       if (reader.readers++ === 0) {
         watched.set(key, reader)
         reader.seen = immutableDoc(store.getState(), target, kind)
@@ -695,7 +708,11 @@ export function useRestart(timeoutMs = 120_000) {
   const connection = useConnection()
   const [state, setState] = createSignal<RestartPhase>({ phase: 'idle' })
   createEffect(
-    () => ({ current: state(), system: system(), open: connection().status === 'open' }),
+    () => ({
+      current: state(),
+      system: system(),
+      open: connection().status === 'open',
+    }),
     ({ current, system: info, open }) => {
       const next = restartPhase(current, info, open)
       if (next !== current) setState(next)

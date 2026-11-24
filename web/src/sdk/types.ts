@@ -25,7 +25,6 @@ export type SlotName =
   | 'statusline.right'
   | 'composer.toolbar'
   | 'composer.status'
-  | 'composer.actions'
   | 'conversation.overlay'
   | 'transcript.top'
   | 'transcript.start'
@@ -103,7 +102,11 @@ export type ToolRenderer = Component<SolidToolProps>
  * `core` is the core's rendering of the entry: return it for entries you leave alone, or wrap it. `blocks` are the
  * content blocks of an assistant message a compact row shows, when it shows only some.
  */
-export type SolidEntryProps = { entry: EntryRecord; core: JSX.Element; blocks?: readonly number[] }
+export type SolidEntryProps = {
+  entry: EntryRecord
+  core: JSX.Element
+  blocks?: readonly number[]
+}
 export type EntryRenderer = Component<SolidEntryProps>
 /** A tool call as one short line of plain text, for a folded run's step list. */
 export type ToolLineRenderer = Component<{ call: ToolCallView }>
@@ -113,14 +116,22 @@ export type ToolLineRenderer = Component<{ call: ToolCallView }>
  * `core`, the rendering so far, starting with the default link that opens in a new tab. Return `core` for links you
  * leave alone.
  */
-export type LinkRenderer = Component<{ href: string; children: JSX.Element; core: JSX.Element }>
+export type LinkRenderer = Component<{
+  href: string
+  children: JSX.Element
+  core: JSX.Element
+}>
 
 /**
  * An inline code span in Markdown (messages, reports): its text as `code`, `inLink` when it sits inside a link (which
  * is already a control: add no button there), and `core`, the rendering so far, starting with the default `<code>`.
  * Return `core` for spans you leave alone.
  */
-export type InlineCodeRenderer = Component<{ code: string; inLink: boolean; core: JSX.Element }>
+export type InlineCodeRenderer = Component<{
+  code: string
+  inLink: boolean
+  core: JSX.Element
+}>
 
 /**
  * A fenced code block in Markdown by its language: `code`, `language`, `incomplete` while the
@@ -137,7 +148,11 @@ export type CodeBlockRenderer = Component<{
  * A queued input above the composer: `item`, `core`, the core's row, and `cancel`, its cancel button. Return `core` for
  * items you leave alone.
  */
-export type SolidInboxProps = { item: InboxItem; core: JSX.Element; cancel: JSX.Element }
+export type SolidInboxProps = {
+  item: InboxItem
+  core: JSX.Element
+  cancel: JSX.Element
+}
 export type InboxRenderer = Component<SolidInboxProps>
 
 /** Wraps the shown conversation's composer (`core`); `dock` when it sits in a narrow side region. */
@@ -341,8 +356,85 @@ export const ErrorReport = definePoint<
  */
 export const FileUpload = definePoint<
   null,
-  { upload: (file: File) => Promise<string>; maxBytes: number; keptMs: number } | undefined
+  | {
+      upload: (file: File) => Promise<string>
+      maxBytes: number
+      keptMs: number
+    }
+  | undefined
 >('ultimate.fileUpload')
+
+/**
+ * What a prompt box's dictation control gets (`voice` provides it, a mic button): `name` names the box for the control's
+ * agent label, `conversation` is the box's conversation or undefined for a draft-only box, `insert` puts words into that
+ * same box at its cursor, and `level` drives the box's hairline with the live voice level, 0 to 1, until `undefined`
+ * ends dictation. No control while nothing provides it.
+ */
+export const Dictation = definePoint<
+  {
+    name: string
+    conversation: ConversationId | undefined
+    insert: (text: string) => void
+    level: (value: number | undefined) => void
+  },
+  JSX.Element
+>('ultimate.dictation')
+/**
+ * What a prompt box's record control gets, beside its attach button: `attach` adds recorded files to that box like a
+ * drop, `recording` turns the box's hairline red while true. Nothing shows while nothing provides it.
+ */
+export const PromptRecorder = definePoint<
+  {
+    name: string
+    attach: (files: readonly File[]) => void
+    recording: (on: boolean) => void
+  },
+  JSX.Element
+>('ultimate.promptRecorder')
+
+export type PromptInput = {
+  text: string
+  images: { data: string; mimeType: string }[]
+}
+
+/** A `PromptBox`'s inputs; its draft survives reloads under `draft`. */
+export interface PromptBoxProps {
+  /** Where the draft is kept: a conversation id, or a key of its own; undefined keeps it only in memory. */
+  draft: number | string | undefined
+  /** Names the box in its controls' labels: `Prompt for <name>`, `Send prompt to <name>`. */
+  name: string
+  placeholder: string
+  /** Sends the trimmed text with attachment lines and the pasted images; a rejection keeps the draft and shows it. */
+  onSubmit: (input: PromptInput, how: 'followUp' | undefined) => Promise<unknown>
+  /** What attaches: `images` inline (pasted, dropped), `files` through the upload target (images too when `images` is off). */
+  accepts?: { images?: boolean; files?: boolean }
+  /** The conversation the box writes for; dictation transcribes for it. */
+  conversation?: ConversationId
+  /** The textarea's element id. */
+  id?: string
+  /** Sweeps the hairline: the receiver is working. */
+  running?: boolean
+  /** Locks the box while the receiver loads. */
+  loading?: boolean
+  /** Why sending is not possible now; shown in the box and disables send. */
+  blocked?: string
+  /** True while the receiver holds something of its own to send, so Enter sends an empty box. */
+  ready?: () => boolean
+  /** Before the box's own keys; true when it handled the key. */
+  onKeyDown?: (event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => boolean
+  /** The send button's tooltip; default `Send (Enter)`. */
+  sendTitle?: string
+  /** Controls at the start of the box's row (model, thinking). */
+  toolbar?: JSX.Element
+  /** Quiet text before the row's buttons while there is no error. */
+  hint?: JSX.Element
+  /** Buttons before send (stop). */
+  actions?: JSX.Element
+  /** Attaches files dropped anywhere on the page, not only on the box. */
+  pageDrop?: boolean
+  /** Focuses the box when it mounts, except behind a touch keyboard. */
+  autofocus?: boolean
+}
 
 /** What a facet provides for a point. */
 export interface Provision {
