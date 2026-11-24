@@ -2000,7 +2000,7 @@ describe('subagents', () => {
       actions.deleteDefinition({ name: 'scout', scope: 'builtin' }, ctx),
     ).rejects.toThrow('scope must be user or project')
   })
-  it('saves a definition an overlay extends as that overlay, holding only what differs from the base', async () => {
+  it('saves only overlay changes and denies a removed inherited tool', async () => {
     const { prepared, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {
       host: { ...prepared, harness: () => opened.harness },
@@ -2035,14 +2035,117 @@ describe('subagents', () => {
         overlays: [overlay],
       },
     })
-    const written = await readFile(overlay, 'utf8')
-    await expect(save({ tools: ['read', 'write'] }, 'Original instructions')).rejects.toThrow(
-      'An overlay cannot remove bash',
+    const denied = '---\nname: scout\naddTools: [write]\ndenyTools: [bash]\n---\n'
+    await save({ tools: ['read', 'write'] }, 'Original instructions')
+    expect(await readFile(overlay, 'utf8')).toBe(denied)
+    expect(await actions.definition({ name: 'scout' }, ctx)).toMatchObject({
+      definition: { tools: ['read', 'bash', 'write'], denyTools: ['bash'] },
+    })
+    await call(opened, { action: 'start', agent: 'scout', task: 'facts' })
+    const child = (await children(opened)).at(-1)!
+    const started = await (await opened.harness.conversation(child.conversationId, context))!.agent(
+      context,
     )
+    const toolNames = started.tools.map((tool) => tool.name)
+    expect(toolNames).toContain('read')
+    expect(toolNames).not.toContain('bash')
     await expect(save({ tools: ['read', 'bash'] }, 'Rewritten')).rejects.toThrow(
       'An overlay cannot change the instructions it starts with',
     )
-    expect(await readFile(overlay, 'utf8')).toBe(written)
+    expect(await readFile(overlay, 'utf8')).toBe(denied)
+    await save({ tools: ['read', 'bash', 'write', 'edit'] }, 'Original instructions')
+    expect(await readFile(overlay, 'utf8')).toBe('---\nname: scout\naddTools: [write, edit]\n---\n')
+    expect((await actions.definition({ name: 'scout' }, ctx)).definition?.denyTools).toBeUndefined()
+    expect(await readFile(join(ultimateRoot, 'agents/scout.md'), 'utf8')).toBe(definition())
+  })
+  it('keeps headings in project instructions added over a user overlay', async () => {
+    const { prepared, opened, userHome } = await fixture()
+    const ctx = {
+      host: { ...prepared, harness: () => opened.harness },
+    } as unknown as ActionContext
+    new ProjectTrustStore(join(userHome, '.ultimate')).set(prepared.projectRoot, true)
+    const userDir = join(userHome, '.ultimate/agents')
+    await mkdir(userDir, { recursive: true })
+    const userFile = join(userDir, 'scout.md')
+    const user = '---\nname: scout\naddTools: []\n---\n\nUser note.\n'
+    await writeFile(userFile, user)
+    const show = async () => (await actions.definition({ name: 'scout' }, ctx)).definition!
+    const save = (instructions: string) =>
+      actions.saveDefinition(
+        {
+          name: 'scout',
+          scope: 'project',
+          frontmatter: { description: 'Search', tools: ['read', 'bash'] },
+          instructions,
+        },
+        ctx,
+      )
+    const inherited = (await show()).instructions
+    const additions = '## Project additions checklist\n\nProject note.'
+    await save(`${inherited}\n\n${additions}`)
+    const projectFile = join(prepared.projectRoot, '.ultimate/agents/scout.md')
+    const written = `---\nname: scout\naddTools: []\n---\n\n${additions}\n`
+    expect(await readFile(projectFile, 'utf8')).toBe(written)
+    const reopened = (await show()).instructions
+    expect(reopened).toBe(`${inherited}\n\n## Project additions\n\n${additions}`)
+    await save(reopened)
+    await expect(save(reopened.replace('User note.', 'Changed.'))).rejects.toThrow(
+      'An overlay cannot change the instructions it starts with',
+    )
+    expect(await readFile(projectFile, 'utf8')).toBe(written)
+    expect(await readFile(userFile, 'utf8')).toBe(user)
+  })
+  it('keeps a lower layer denial and its own denial when an overlay is saved without a tool change', async () => {
+    const { prepared, opened, userHome, ultimateRoot } = await fixture()
+    const ctx = {
+      host: { ...prepared, harness: () => opened.harness },
+    } as unknown as ActionContext
+    const base =
+      '---\nname: helper\ndescription: Helps\ntools: [read, bash]\ndenyTools: [bash]\n---\nHelp.\n'
+    await writeFile(join(ultimateRoot, 'agents/helper.md'), base)
+    const overlay = join(userHome, '.ultimate/agents/helper.md')
+    await mkdir(join(userHome, '.ultimate/agents'), { recursive: true })
+    await writeFile(overlay, '---\nname: helper\naddTools: []\ndenyTools: [instance]\n---\n')
+    const save = (frontmatter: Record<string, unknown>) =>
+      actions.saveDefinition(
+        {
+          name: 'helper',
+          scope: 'user',
+          frontmatter: { resident: false, ...frontmatter },
+          instructions: 'Help.',
+        },
+        ctx,
+      )
+    await save({
+      description: 'Helps more',
+      tools: ['read'],
+      denyTools: ['instance', 'bash'],
+    })
+    expect(await readFile(overlay, 'utf8')).toBe(
+      '---\nname: helper\naddTools: []\ndescription: Helps more\ndenyTools: [instance]\n---\n',
+    )
+    expect(await readFile(join(ultimateRoot, 'agents/helper.md'), 'utf8')).toBe(base)
+    expect(await actions.definition({ name: 'helper' }, ctx)).toMatchObject({
+      definition: {
+        description: 'Helps more',
+        tools: ['read', 'bash'],
+        denyTools: ['bash', 'instance'],
+      },
+    })
+    await save({
+      description: 'Helps more',
+      tools: ['read', 'bash', 'instance'],
+      denyTools: ['instance', 'bash'],
+    })
+    expect(await readFile(overlay, 'utf8')).toBe(
+      '---\nname: helper\naddTools: []\ndescription: Helps more\ndenyTools: [instance]\n---\n',
+    )
+    expect(await actions.definition({ name: 'helper' }, ctx)).toMatchObject({
+      definition: { denyTools: ['bash', 'instance'] },
+    })
+    await expect(
+      save({ description: 'Helps more', tools: ['read', 'bash'], denyTools: ['instance'] }),
+    ).rejects.toThrow('An overlay cannot allow bash again')
   })
   it('keeps the tools an overlay adds to a base that inherits every tool when its form is saved', async () => {
     const { prepared, opened, userHome, ultimateRoot } = await fixture()

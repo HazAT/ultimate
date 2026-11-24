@@ -653,10 +653,15 @@ export async function saveOverlay(
 
   if (!base.tools && form.tools) throw cannot('limit the tools of a definition that inherits all')
   if (base.tools && !form.tools) throw cannot('make it inherit every tool')
+  const baseDeny = base.denyTools ?? []
+  const undenied = baseDeny.filter((tool) => !form.denyTools?.includes(tool))
+  if (undenied.length) throw cannot(`allow ${undenied.join(', ')} again`)
   const removed = base.tools?.filter((tool) => !form.tools?.includes(tool)) ?? []
-  if (removed.length) throw cannot(`remove ${removed.join(', ')}`)
+  const denyTools = [...new Set([...(form.denyTools ?? []), ...removed])].filter(
+    (tool) => !baseDeny.includes(tool),
+  )
   const addTools =
-    form.tools?.filter((tool) => !base.tools?.includes(tool)) ??
+    form.tools?.filter((tool) => !base.tools?.includes(tool) && !denyTools.includes(tool)) ??
     (await readFile(path, 'utf8').then(
       (text) => {
         const kept = parseFrontmatter(text).frontmatter.addTools
@@ -667,10 +672,6 @@ export async function saveOverlay(
         throw error
       },
     ))
-  const baseDeny = base.denyTools ?? []
-  const undenied = baseDeny.filter((tool) => !form.denyTools?.includes(tool))
-  if (undenied.length) throw cannot(`allow ${undenied.join(', ')} again`)
-  const denyTools = (form.denyTools ?? []).filter((tool) => !baseDeny.includes(tool))
   if (denyTools.length) settings.push(`denyTools: ${toolList(denyTools)}`)
 
   const start = base.instructions.trim()
@@ -678,7 +679,7 @@ export async function saveOverlay(
   if (!text.startsWith(start)) throw cannot('change the instructions it starts with')
   const heading = `## ${scope === 'user' ? 'User' : 'Project'} additions`
   let body = text.slice(start.length).trim()
-  if (body.startsWith(heading)) body = body.slice(heading.length).trim()
+  if (body.split(/\r?\n/, 1)[0] === heading) body = body.slice(heading.length).trim()
 
   const overlay = `---\n${[`name: ${scalar(name)}`, `addTools: ${toolList(addTools)}`, ...settings].join('\n')}\n---\n${body ? `\n${body}\n` : ''}`
   parseOverlay(overlay, path, modelRuntime)
