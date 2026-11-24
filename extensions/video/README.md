@@ -14,9 +14,10 @@ conversation or media option starts a separate thread.
 
 A `Video` contains `id` (`v_` plus random hex), `name`, `mimeType`, `bytes`, `source` (`paste`, `drop`, `recording`,
 `file`, or `url`), the supplying `conversation`, `createdAt` (Unix milliseconds), and `state` (`receiving`,
-`preparing`, `ready`, or `failed`). It can also contain `url`, `seconds`, `error`, and `parts`. Each part has a
-`mimeType`, and optionally `file` (relative to the video folder), `seconds`, and `bytes`. URL videos report zero
-local bytes and have one `video/mp4` part without a file. Duration and range arguments are in seconds.
+`preparing`, `ready`, or `failed`). It can also contain `url`, `seconds`, `error`, and `parts`. While preparing, it
+includes the numeric task ID in `task`. Each part has a `mimeType`, and optionally `file` (relative to the video
+folder), `seconds`, and `bytes`. URL videos report zero local bytes and have one `video/mp4` part without a file.
+Duration and range arguments are in seconds.
 
 `VideoReady` (`video.ready`, `{ id }`) and `VideoFailed` (`video.failed`, `{ id, error }`) commit with the state change.
 `video.failed` rules out `video.ready` for a waiter; both events and the document ref are exported by `api.ts`.
@@ -30,7 +31,7 @@ local bytes and have one `video/mp4` part without a file. Duration and range arg
 | `finish` | `{ id }`                                              | `Video`. Queues durable preparation only when the source has exactly the declared bytes. Already preparing or ready videos are returned unchanged. |
 | `addUrl` | `{ url, name? }`                                      | `Video`. Registers an HTTPS URL as ready without downloading it on the host. Gemini handles YouTube and other URLs it can read.                    |
 | `ask`    | `{ id, question, model?, from?, to?, detail?, fps? }` | `{ answer, usage, model }`. Requires a ready video.                                                                                                |
-| `remove` | `{ id }`                                              | `null`. Deletes the video, its threads, and local files.                                                                                           |
+| `remove` | `{ id }`                                              | `null`. Stops any preparation, then deletes local files before dropping the video and its threads.                                                 |
 
 The `video_ask` tool takes the same arguments as `ask` and adds a usage line to its answer. Use a bare model id or
 `antigravity/<id>`. `from` and `to` select a time range; `fps` changes sampling and `detail` is `low` or `high`.
@@ -47,6 +48,8 @@ extensions; they are copied into storage and queued for preparation. A URL is re
 
 Uploads live under `<host.home>/videos/<id>/`, never in the checkout. Preparation uses `ffprobe` and `ffmpeg` for
 standalone video containers such as MP4, MOV, and WebM. It produces H.264/AAC MP4 parts at most 720 pixels tall,
-5 frames per second, and 45 minutes or 100 MiB each. If either program is absent, files up to 100 MiB are used
-as-is; larger files need ffmpeg installed. Preparation resumes after a restart. When the host opens, it removes
-videos older than 30 days with their threads and folders, along with orphan folders older than 30 days.
+5 frames per second, 45 minutes, and 100 MiB each. If either program is absent, files up to 100 MiB are used
+as-is, but a duration longer than 45 minutes requires ffmpeg if `ffprobe` could measure it. Without `ffprobe`,
+no duration can be measured and only the 100 MiB cap applies. Preparation resumes after a restart. When the
+host opens, it removes videos older than 30 days with their threads and folders, along with orphan folders
+older than 30 days.

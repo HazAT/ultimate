@@ -60,6 +60,7 @@ function prepare(host: ExtensionHost, run: Runner) {
       const doc = await tx.doc(VideosState, ROOT_CONVERSATION_ID)
       const video = doc.videos[id]
       if (!video || video.state !== 'preparing') return
+      delete video.task
       if (outcome.ok) {
         video.state = 'ready'
         if (outcome.value.seconds !== undefined) video.seconds = outcome.value.seconds
@@ -86,11 +87,9 @@ function finish(host: ExtensionHost, id: string): Promise<Video> {
     const { size } = await stat(join(folder(host, id), source))
     if (size !== video.bytes)
       throw new Error(`Video is incomplete: received ${size} of ${video.bytes} bytes`)
-    const preparing = { ...video, state: 'preparing' } as const
-    await host.harness().commit(async (tx) => {
+    const preparing = await host.harness().commit(async (tx) => {
       const doc = await tx.doc(VideosState, ROOT_CONVERSATION_ID)
-      doc.videos[id] = preparing
-      await tx.createTask(
+      const task = await tx.createTask(
         effects.get(host)!,
         { id, source, mimeType: video.mimeType },
         {
@@ -99,6 +98,9 @@ function finish(host: ExtensionHost, id: string): Promise<Video> {
           background: true,
         },
       )
+      const queued = { ...video, state: 'preparing', task } as const
+      doc.videos[id] = queued
+      return queued
     }, context)
     host.harness().resume()
     return preparing

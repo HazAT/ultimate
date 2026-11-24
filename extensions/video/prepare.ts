@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Video } from './refs.ts'
 
@@ -10,7 +10,9 @@ export type Runner = (
 export type Prepared = { seconds?: number; parts: NonNullable<Video['parts']> }
 
 const MAX_PART_BYTES = 100 * 1024 * 1024
-const SEGMENT_SECONDS = 2699
+const MAX_PART_SECONDS = 45 * 60
+const SEGMENT_SECONDS = MAX_PART_SECONDS - 1
+const SCRATCH_PREFIX = '.preparing-'
 const localInput = [
   '-protocol_whitelist',
   'file',
@@ -38,9 +40,10 @@ export async function prepareVideo(
   signal: AbortSignal,
 ): Promise<Prepared> {
   const input = join(dir, source)
-  const temp = join(dir, '.preparing')
-  await rm(temp, { recursive: true, force: true })
-  await mkdir(temp)
+  for (const name of await readdir(dir)) {
+    if (name.startsWith(SCRATCH_PREFIX)) await rm(join(dir, name), { recursive: true, force: true })
+  }
+  const temp = await mkdtemp(join(dir, SCRATCH_PREFIX))
   try {
     const probe = await runTool(
       run,
@@ -111,9 +114,15 @@ export async function prepareVideo(
           )
     if (transcoded === undefined) {
       const bytes = (await stat(input)).size
-      if (bytes > MAX_PART_BYTES)
+      const limit =
+        bytes > MAX_PART_BYTES
+          ? '100 MB'
+          : seconds !== undefined && seconds > MAX_PART_SECONDS
+            ? '45 minutes'
+            : undefined
+      if (limit)
         throw new Error(
-          'Install ffmpeg (e.g. "sudo pacman -S ffmpeg", "brew install ffmpeg" or "apt install ffmpeg") to send videos over 100 MB',
+          `Install ffmpeg (e.g. "sudo pacman -S ffmpeg", "brew install ffmpeg" or "apt install ffmpeg") to send videos over ${limit}`,
         )
       return {
         ...(seconds === undefined ? {} : { seconds }),
@@ -128,12 +137,14 @@ export async function prepareVideo(
       if (!segment) throw new Error('ffmpeg did not record a video part')
       const [, file, start, until] = segment
       const length = Number(until) - Number(start)
-      if (length <= 0 || length > 2700) throw new Error(`${file} must be at most 45 minutes`)
+      if (length <= 0 || length > MAX_PART_SECONDS)
+        throw new Error(`${file} must be at most 45 minutes`)
       const bytes = (await stat(join(temp, file))).size
       if (bytes > MAX_PART_BYTES) throw new Error(`${file} is over 100 MB`)
       parts.push({ file: `parts/${file}`, mimeType: 'video/mp4', seconds: length, bytes })
       end = Number(until)
     }
+    await rm(manifest)
     signal.throwIfAborted()
     await rm(join(dir, 'parts'), { recursive: true, force: true })
     await rename(temp, join(dir, 'parts'))

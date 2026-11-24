@@ -159,10 +159,16 @@ function forget(doc: Videos, id: string) {
 
 export async function remove(host: ExtensionHost, id: string) {
   return serialized(host, id, async () => {
-    await host.harness().commit(async (tx) => {
+    const harness = host.harness()
+    const video = (await snapshot(host))?.videos[id]
+    if (video?.state === 'preparing' && video.task !== undefined) {
+      await harness.abortTask(video.task, context)
+      await harness.waitForTask(video.task, context)
+    }
+    await rm(folder(host, id), { recursive: true, force: true })
+    await harness.commit(async (tx) => {
       forget(await tx.doc(VideosState, ROOT_CONVERSATION_ID), id)
     }, context)
-    await rm(folder(host, id), { recursive: true, force: true })
     return null
   })
 }

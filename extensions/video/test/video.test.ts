@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
+import { context } from '../../../server/harness.ts'
 import { VideoFailed, VideoReady } from '../refs.ts'
 import type { Runner } from '../prepare.ts'
 import { actions } from '../server.ts'
@@ -14,6 +14,11 @@ const succeeds: Runner = async (command, args) => {
   await writeFile(args[args.indexOf('-segment_list') + 1], 'part-000.mp4,0.000000,2.400000\n')
   return done
 }
+
+const waitForAbort = (signal: AbortSignal) =>
+  new Promise<never>((_, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+  })
 
 it('writes upload chunks by position without duplicating retries or allowing gaps', async () => {
   const f = await fixture(succeeds)
@@ -53,19 +58,16 @@ it('stores ffmpeg stderr and emits video.failed when preparation fails', async (
 
 it('resumes a prepare interrupted by closing the harness and cleans its scratch output', async () => {
   const launched = Promise.withResolvers<string>()
-  const resumedWithScratch: boolean[] = []
+  const resumedScratch: string[] = []
   let interrupted = false
   const f = await fixture(async (command, args, options) => {
     if (command === 'ffmpeg') {
-      const part = args.at(-1)!.replace('%03d', '000')
-      if (interrupted) resumedWithScratch.push(existsSync(part))
+      const scratch = dirname(args.at(-1)!)
+      if (interrupted) resumedScratch.push(scratch)
       else {
-        await writeFile(part, 'incomplete output')
-        const signal = options.signal
-        const aborted = new Promise<never>((_, reject) => {
-          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
-        })
-        launched.resolve(part)
+        await writeFile(join(scratch, 'part-000.mp4'), 'incomplete output')
+        const aborted = waitForAbort(options.signal)
+        launched.resolve(scratch)
         return aborted
       }
     }
@@ -76,8 +78,8 @@ it('resumes a prepare interrupted by closing the harness and cleans its scratch 
   const scratch = await launched.promise
   expect(await actions.finish({ id }, f.action)).toMatchObject({ state: 'preparing' })
   await f.close()
-  await mkdir(dirname(scratch), { recursive: true })
-  await writeFile(scratch, 'incomplete output left by a crash')
+  await mkdir(scratch, { recursive: true })
+  await writeFile(join(scratch, 'part-001.mp4'), 'incomplete output left by a crash')
   interrupted = true
   await f.open()
   expect(await f.prepared(id)).toMatchObject({
@@ -85,14 +87,43 @@ it('resumes a prepare interrupted by closing the harness and cleans its scratch 
     seconds: 2.4,
     parts: [{ file: 'parts/part-000.mp4' }],
   })
-  expect(resumedWithScratch).toEqual([false])
-  expect(await readFile(join(f.home, 'videos', id, 'parts/part-000.mp4'))).toEqual(bytes)
+  expect(resumedScratch).toHaveLength(1)
+  expect(resumedScratch[0]).not.toBe(scratch)
+  await expect(stat(scratch)).rejects.toMatchObject({ code: 'ENOENT' })
+  const parts = join(f.home, 'videos', id, 'parts')
+  expect(await readdir(parts)).toEqual(['part-000.mp4'])
+  expect(await readFile(join(parts, 'part-000.mp4'))).toEqual(bytes)
   expect(
     (await f.recent({ events: [VideoReady, VideoFailed] })).map(({ name, data }) => ({
       name,
       data,
     })),
   ).toEqual([{ name: 'video.ready', data: { id } }])
+})
+
+it('aborts preparation before removing the video and its local files', async () => {
+  const launched = Promise.withResolvers<void>()
+  const f = await fixture(async (command, args, options) => {
+    if (command !== 'ffmpeg') return succeeds(command, args, options)
+    await writeFile(args.at(-1)!.replace('%03d', '000'), 'incomplete output')
+    const aborted = waitForAbort(options.signal)
+    launched.resolve()
+    return aborted
+  })
+  const id = await f.upload(Buffer.from('original clip'))
+  await launched.promise
+  const video = (await f.state())?.videos[id]
+  expect(video).toMatchObject({ state: 'preparing', task: expect.any(Number) })
+
+  expect(await actions.remove({ id }, f.action)).toBeNull()
+  expect((await f.state())?.videos[id]).toBeUndefined()
+  await expect(stat(join(f.home, 'videos', id))).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(await f.harness().waitForTask(video!.task!, context)).toMatchObject({
+    state: { status: 'terminal', outcome: { status: 'aborted' } },
+  })
+  expect((await f.recent({ events: [VideoFailed] })).map(({ data }) => data)).toEqual([
+    { id, error: 'stopped' },
+  ])
 })
 
 it('prepares videos without Antigravity and tells the caller how to enable questions', async () => {

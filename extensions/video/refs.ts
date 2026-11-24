@@ -1,4 +1,5 @@
 /** Videos, their question threads, and the actions and events for supplying and asking about them. */
+import type { TaskId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 import type { AskResult } from './types.ts'
@@ -13,6 +14,7 @@ export type Video = {
   url?: string
   conversation: number
   state: 'receiving' | 'preparing' | 'ready' | 'failed'
+  task?: TaskId
   error?: string
   createdAt: number
   parts?: { file?: string; mimeType: string; seconds?: number; bytes?: number }[]
