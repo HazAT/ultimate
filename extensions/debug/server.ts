@@ -57,6 +57,7 @@ export default function debug(host: ExtensionHost) {
     call: 'events' | 'reactors' | 'catalogue' | 'trace' | 'apis' | 'api'
     events?: string[]
     since?: number | string
+    until?: string
     limit?: number
     trace?: string
     conversation?: ConversationId
@@ -133,6 +134,7 @@ export default function debug(host: ExtensionHost) {
           .query({
             ...(args.conversation === undefined ? {} : { conversation: args.conversation }),
             ...(args.since === undefined ? {} : { since: args.since }),
+            ...(args.until === undefined ? {} : { until: args.until }),
             limit,
           })
           .toReversed()
@@ -174,7 +176,7 @@ export default function debug(host: ExtensionHost) {
           'call: `events` lists durable events newest first (filter `events` by name like `workspaces.landed`, `since` an event id); ' +
           '`reactors` shows each reactor with its cursor, lag (pending events), whether it runs, and its last failure; ' +
           '`catalogue` lists each extension API with its provider, needs and wants, plus missing providers and cycles; ' +
-          '`trace` lists recorded service, action, reactor, tool and model calls newest first (filter by `conversation` or ISO `since`), or with `trace` set the whole call tree of that trace id, indented; ' +
+          '`trace` lists recorded service, action, reactor, tool and model calls newest first (filter by `conversation`, ISO `since`, or ISO `until`; `since` reads forward from that time, otherwise the newest calls before `until` or now), or with `trace` set the whole call tree of that trace id, indented; ' +
           "`apis` lists extension contracts (api.ts, refs.ts) with summaries and `api` returns one extension's by `name`, each file under a header. " +
           'Start from an event or a call, take its trace id and read the tree. Read-only; one line per row, ages relative; `limit` defaults to 20 events or 50 rows.',
         parameters: obj({
@@ -186,9 +188,11 @@ export default function debug(host: ExtensionHost) {
           ),
           since: opt(
             union([int({ minimum: 0 }), str({ minLength: 1 })], {
-              description: 'events: an event id to read after; trace: an ISO time.',
+              description:
+                'events: an event id to read after; trace: an ISO time to read forward from.',
             }),
           ),
+          until: opt(str({ minLength: 1, description: 'trace: an ISO time to read before.' })),
           trace: opt(str({ minLength: 1, description: 'trace: a trace id.' })),
           conversation: opt(int({ minimum: 1, description: 'trace: calls of this conversation.' })),
           name: opt(str({ minLength: 1, description: 'api: extension name.' })),
