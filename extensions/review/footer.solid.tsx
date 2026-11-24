@@ -14,6 +14,7 @@ export function Footer(props: {
 }) {
   const [noting, setNoting] = createSignal(false)
   const [rejected, setRejected] = createSignal(false)
+  const [uploading, setUploading] = createSignal(false)
   const count = () => props.drafts.comments.length
   const over = () => count() > limits.comments
   const keepNote = (note: string) => {
@@ -32,23 +33,28 @@ export function Footer(props: {
           <PromptBox
             accepts={{ images: false }}
             autofocus={!props.drafts.note}
-            blocked={
-              rejected()
-                ? 'Too long to keep as a draft: shorten the note, or send the review first'
-                : undefined
-            }
             disabled={props.sending}
             draft={undefined}
             label="Overall note"
             minimal
             name="the overall review note"
-            onSubmit={() => (over() ? Promise.resolve() : props.onSend(writerNow()))}
+            onSubmit={() => (over() || uploading() ? Promise.resolve() : props.onSend(writerNow()))}
+            onUploading={setUploading}
             onValue={keepNote}
             placeholder="An overall note for the review (optional)"
             ready={() => count() > 0}
             sendButton={false}
             value={props.drafts.note}
           />
+          {rejected() && (
+            <p
+              class="mt-1 px-1 font-mono text-[11px] text-error"
+              data-review-refused=""
+              role="alert"
+            >
+              Too long to keep as a draft: shorten the note, or send the review first
+            </p>
+          )}
         </div>
       )}
       {props.error && (
@@ -95,7 +101,7 @@ export function Footer(props: {
             Discard
           </Button>
           <Button
-            disabled={props.sending || over()}
+            disabled={props.sending || over() || uploading()}
             onClick={(_, details) => props.onSend(details.source)}
             size="xs"
           >

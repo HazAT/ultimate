@@ -49,10 +49,11 @@ export function splitTrailingAttachments(value: string): { text: string; files: 
   let at = lines.length
   while (at > 0 && parsed(lines[at - 1])) at--
   if (at === lines.length || (at > 0 && lines[at - 1] !== '')) return { text: value, files: [] }
-  return {
+  const split = {
     text: at === 0 ? '' : lines.slice(0, at - 1).join('\n'),
     files: lines.slice(at).map((line) => parsed(line)!),
   }
+  return withAttachments(split.text, split.files) === value ? split : { text: value, files: [] }
 }
 
 export const withAttachments = (text: string, files: readonly AttachedFile[]) =>

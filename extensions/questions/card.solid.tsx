@@ -15,6 +15,7 @@ import {
   useDocOf,
   useUiState,
   useViewport,
+  writerNow,
   writingAs,
   type Point,
 } from '@/sdk/solid'
@@ -42,6 +43,10 @@ import {
 import type { CardState, Draft } from './state.ts'
 
 const CHECK_LANDING_BEFORE_ADVANCE_MS = 320
+
+const caretAtEdge = (field: HTMLTextAreaElement, edge: 'start' | 'end') =>
+  field.selectionStart === field.selectionEnd &&
+  field.selectionStart === (edge === 'start' ? 0 : field.value.length)
 const KEEPALIVE_BYTES = 60 * 1024
 
 export const CardActions: Point<{ message: Message }, JSX.Element> = {
@@ -153,6 +158,10 @@ function AnswerCard(props: CardProps & { id: number }) {
   let waiting: { cancel: Cancel; fire: () => void } | undefined
   let committed = false
   const [phase, setPhase] = createSignal<Phase>('answering')
+  const [uploads, setUploads] = createSignal<Record<string, boolean>>({})
+  const uploading = () => Object.values(uploads()).some(Boolean)
+  const uploadingIn = (box: string) => (pending: boolean) =>
+    setUploads((all) => ({ ...all, [box]: pending }))
   const [heldDraft, setHeldDraft] = createSignal<Pick<CardState, 'drafts' | 'note'>>()
   const drafts = () => heldDraft()?.drafts ?? state().drafts
   const note = () => heldDraft()?.note ?? state().note
@@ -178,7 +187,7 @@ function AnswerCard(props: CardProps & { id: number }) {
     if (questions()[next]?.kind === 'text')
       requestAnimationFrame(() =>
         root
-          .querySelector<HTMLInputElement>(`[data-question="${next}"] input`)
+          .querySelector<HTMLTextAreaElement>(`[data-question="${next}"] textarea`)
           ?.focus({ preventScroll: true }),
       )
   }
@@ -232,7 +241,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   const send = (immediately = false, source?: string) => {
     const extra = note().trim()
     const answers = ready()
-    if ((!answers.length && !extra) || committed || busy()) return
+    if ((!answers.length && !extra) || committed || busy() || uploading()) return
     const reply = answerRequest()
     committed = true
     advance?.()
@@ -262,13 +271,12 @@ function AnswerCard(props: CardProps & { id: number }) {
     if (phase() === 'undo') return flushAnswer()
     if (locked()) return
     if (beforeLast()) go(current() + 1)
-    else send()
+    else send(false, writerNow())
   }
   const fieldKey = (event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
-    const { value, selectionStart, selectionEnd } = event.currentTarget
     const leavesField =
-      (event.key === 'ArrowUp' && !value.slice(0, selectionStart).includes('\n')) ||
-      (event.key === 'ArrowDown' && !value.slice(selectionEnd).includes('\n'))
+      (event.key === 'ArrowUp' && caretAtEdge(event.currentTarget, 'start')) ||
+      (event.key === 'ArrowDown' && caretAtEdge(event.currentTarget, 'end'))
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       event.stopPropagation()
@@ -346,7 +354,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   const answerText = () => {
     const reply = answerRequest()
     const text = state().text.trim()
-    return text ? run(() => reply({ text })) : Promise.resolve()
+    return text && !uploading() ? run(() => reply({ text })) : Promise.resolve()
   }
   const textOnly = () => (
     <Form
@@ -363,6 +371,7 @@ function AnswerCard(props: CardProps & { id: number }) {
           minimal
           name={`the answer to message ${props.id}`}
           onSubmit={answerText}
+          onUploading={uploadingIn('answer')}
           onValue={(text) => change((old) => ({ ...old, text }), true)}
           placeholder="Your answer…"
           sendButton={false}
@@ -374,7 +383,7 @@ function AnswerCard(props: CardProps & { id: number }) {
         aria-label={`${props.sendLabel ?? 'Send'}: answer to message ${props.id}`}
         size="sm"
         type="submit"
-        disabled={!state().text.trim() || busy()}
+        disabled={!state().text.trim() || busy() || uploading()}
         onClick={answerText}
       >
         {busy() ? 'Sending…' : (props.sendLabel ?? 'Send')}
@@ -427,6 +436,7 @@ function AnswerCard(props: CardProps & { id: number }) {
                   onText={(value) => draft(index, (old) => ({ ...old, text: value }), true)}
                   onFieldKey={fieldKey}
                   onFieldSend={enter}
+                  onUploading={uploadingIn(`question ${index}`)}
                 />
               </div>
             )}
@@ -446,7 +456,8 @@ function AnswerCard(props: CardProps & { id: number }) {
               event.currentTarget.blur()
               return true
             }}
-            onSubmit={() => Promise.resolve(send())}
+            onSubmit={() => Promise.resolve(send(false, writerNow()))}
+            onUploading={uploadingIn('note')}
             onValue={(value) => change((old) => ({ ...old, note: value }), true)}
             placeholder="Anything else? Sent with your answers, or on its own…"
             ready={() => ready().length > 0}
@@ -502,7 +513,7 @@ function AnswerCard(props: CardProps & { id: number }) {
             <SendButton
               messageId={props.id}
               phase={phase()}
-              disabled={(!locked() && !ready().length && !note().trim()) || busy()}
+              disabled={(!locked() && !ready().length && !note().trim()) || busy() || uploading()}
               label={sendLabel()}
               onSend={(source) => send(false, source)}
               onSendNow={() => send(true)}

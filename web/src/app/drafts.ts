@@ -50,7 +50,11 @@ function createDraft(id: number | string | undefined) {
 
 export type DraftStore = ReturnType<typeof createDraft>
 
-export function boundDraft(read: () => string, write: (value: string) => boolean | void) {
+export function boundDraft(
+  read: () => string,
+  write: (value: string) => boolean | void,
+  dropUpload: (id: string) => void,
+) {
   let local: Omit<Draft, 'text' | 'files'> & { uploading: DraftFile[] } = {
     images: [],
     uploading: [],
@@ -59,9 +63,17 @@ export function boundDraft(read: () => string, write: (value: string) => boolean
   }
   const listeners = new Set<() => void>()
   let parsed: { from: string; text: string; files: DraftFile[] } | undefined
+  const ours = new Set<string>()
+  let latest: string | undefined
+  const dropUploads = () => {
+    for (const file of local.uploading) dropUpload(file.id)
+    local = { ...local, uploading: [] }
+  }
   const kept = () => {
     const from = read()
     if (parsed?.from !== from) {
+      if (parsed && !ours.has(from)) dropUploads()
+      if (from === latest) ours.clear()
       const { text, files } = splitTrailingAttachments(from)
       parsed = { from, text, files: files.map((file) => ({ ...file, id: file.line ?? file.path })) }
     }
@@ -70,8 +82,8 @@ export function boundDraft(read: () => string, write: (value: string) => boolean
   return {
     key: undefined,
     get: (): Draft => {
-      const { uploading, ...rest } = local
       const { text, files } = kept()
+      const { uploading, ...rest } = local
       return { ...rest, text, files: [...files, ...uploading] }
     },
     subscribe: (listener: () => void) => {
@@ -87,8 +99,18 @@ export function boundDraft(read: () => string, write: (value: string) => boolean
         const now = kept()
         const all = files ?? [...now.files, ...local.uploading]
         const next = withAttachments(text ?? now.text, all.filter(attached))
+        ours.add(next)
+        latest = next
         accepted = next === read() || write(next) !== false
-        if (accepted) uploading = all.filter((file) => !attached(file))
+        const finished = all.filter(
+          (file) => attached(file) && local.uploading.some((pending) => pending.id === file.id),
+        )
+        uploading = all.filter((file) => !attached(file))
+        if (!accepted && finished.length)
+          change = {
+            ...change,
+            error: `Not attached: ${finished.map((file) => file.name).join(', ')}`,
+          }
       }
       local = { ...local, ...change, uploading }
       for (const listener of listeners) listener()

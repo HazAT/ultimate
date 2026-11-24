@@ -315,13 +315,20 @@ it('lets an agent choose, undo a send, send again, and dismiss another card', as
   ])
 })
 
-it('sends a file attached to the note to the asker as an attachment line', async () => {
+it('holds Send while a note’s file uploads, then sends it to the asker as an attachment line', async () => {
+  let finish!: () => void
+  const uploaded = new Promise<void>((resolve) => {
+    finish = resolve
+  })
   await registry.setLoaders({
     '/extensions/uploads/web.solid.tsx': async () => ({
       default: {
         provides: [
           provide(FileUpload, () => () => ({
-            upload: async (file: File) => ({ path: `/tmp/attachments/${file.name}` }),
+            upload: async (file: File) => {
+              await uploaded
+              return { path: `/tmp/attachments/${file.name}` }
+            },
             maxBytes: 1024,
             keptMs: 1000,
           })),
@@ -347,6 +354,17 @@ it('sends a file attached to the note to the asker as an attachment line', async
   await vi.advanceTimersByTimeAsync(10)
   flush()
   expect(card.textContent).toContain('build.log')
+  const send = () =>
+    card.querySelector<HTMLButtonElement>('[aria-label="Send note: answer to message 11"]')!
+  expect(send().disabled).toBe(true)
+  note.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+  )
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(harness.actions).toEqual([])
+  finish()
+  await vi.advanceTimersByTimeAsync(10)
+  flush()
   await press('Send note: answer to message 11')
   await vi.advanceTimersByTimeAsync(3000)
   expect(harness.actions).toEqual([

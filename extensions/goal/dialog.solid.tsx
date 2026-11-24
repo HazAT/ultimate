@@ -41,10 +41,13 @@ function GoalForm(props: { close: () => void }) {
   const active = useOpenGoal()
   const [text, setText] = useUiState('ext.goal.draft', '')
   const [failure, setFailure] = createSignal<string>()
-  const canStart = () => !active() && !!text().trim()
+  const [starting, setStarting] = createSignal(false)
+  const [uploading, setUploading] = createSignal(false)
+  const canStart = () => !active() && !!text().trim() && !starting() && !uploading()
 
   async function start(source: string) {
     if (!canStart()) return
+    setStarting(true)
     const close = props.close
     setFailure(undefined)
     try {
@@ -52,6 +55,8 @@ function GoalForm(props: { close: () => void }) {
     } catch (error) {
       setFailure(errorMessage(error))
       return
+    } finally {
+      setStarting(false)
     }
     writingAs(source, () => {
       setText('')
@@ -85,6 +90,7 @@ function GoalForm(props: { close: () => void }) {
             minimal
             name="the goal"
             onSubmit={() => start(writerNow())}
+            onUploading={setUploading}
             onValue={setText}
             placeholder="Make the sidebar load instantly with 2,000 conversations. Stop by 8:00."
             sendButton={false}

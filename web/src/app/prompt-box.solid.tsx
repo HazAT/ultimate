@@ -1,7 +1,7 @@
 import { ArrowUp, LoaderCircle, Paperclip } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createEffect, createMemo, createSignal, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
@@ -43,7 +43,10 @@ const submitClass =
 
 function createDraftState(props: PromptBoxProps) {
   const local = createLocalDraft()
-  const bound = boundDraft(readValue(props), writeValue(props))
+  const bound = boundDraft(readValue(props), writeValue(props), cancelUpload)
+  onCleanup(() => {
+    for (const file of bound.get().files) if (!attached(file)) cancelUpload(file.id)
+  })
   const draft = createMemo<DraftStore>(() =>
     props.onValue ? bound : props.draft === undefined ? local : getDraft(props.draft),
   )
@@ -97,8 +100,14 @@ export function PromptBox(props: PromptBoxProps) {
     draft().set({ ...change, revision: draft().get().revision + 1 })
   const setImages = (change: (current: PastedImage[]) => PastedImage[]) =>
     revised({ images: change(draft().get().images) })
-  const setFiles = (change: (current: DraftFile[]) => DraftFile[]) =>
+  const setFiles = (change: (current: DraftFile[]) => DraftFile[]) => {
     revised({ files: change(draft().get().files) })
+    props.onUploading?.(
+      draft()
+        .get()
+        .files.some((file) => !attached(file)),
+    )
+  }
   const attach = createAttach({
     images,
     setImages,
@@ -157,7 +166,8 @@ export function PromptBox(props: PromptBoxProps) {
     if (event.isComposing) return
     if (props.onKeyDown?.(event)) return
     if (event.key !== 'Enter' || event.shiftKey) return
-    const touchReturnInsertsNewline = touchKeyboard() && !event.metaKey && !event.ctrlKey
+    const touchReturnInsertsNewline =
+      !props.minimal && touchKeyboard() && !event.metaKey && !event.ctrlKey
     if (touchReturnInsertsNewline) return
     event.preventDefault()
     void send(event.altKey ? 'followUp' : undefined)
@@ -353,7 +363,6 @@ export function PromptBox(props: PromptBoxProps) {
       'group/keel relative flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card transition-colors focus-within:border-foreground/25',
       minimal() && 'rounded-md bg-background/40',
       dragging() && 'ring-2 ring-brand/60',
-      props.class,
     )
   const dropped = (event: DragEvent) => {
     if (!event.dataTransfer?.types.includes('Files')) return

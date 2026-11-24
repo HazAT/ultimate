@@ -53,16 +53,22 @@ export function ProposedGoal(props: { call: ToolCallView }) {
 function StartForm(props: { call: string; text: string; blocked?: number }) {
   const [text, setText] = createSignal(untrack(() => props.text))
   const [failure, setFailure] = createSignal<string>()
-  const canStart = () => props.blocked === undefined && !!text().trim()
+  const [starting, setStarting] = createSignal(false)
+  const [uploading, setUploading] = createSignal(false)
+  const canStart = () =>
+    props.blocked === undefined && !!text().trim() && !starting() && !uploading()
 
   async function start(source: string) {
     if (!canStart()) return
+    setStarting(true)
     setFailure(undefined)
     try {
       await api.action(StartAction, { text: text(), proposal: props.call })
     } catch (error) {
       setFailure(errorMessage(error))
       return
+    } finally {
+      setStarting(false)
     }
     await openUltimate(source)
   }
@@ -79,6 +85,7 @@ function StartForm(props: { call: string; text: string; blocked?: number }) {
             minimal
             name={`the goal of call ${props.call}`}
             onSubmit={() => start(writerNow())}
+            onUploading={setUploading}
             onValue={setText}
             placeholder="What done means…"
             sendButton={false}

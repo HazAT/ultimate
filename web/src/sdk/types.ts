@@ -475,7 +475,8 @@ export interface PromptBoxProps {
   sendButton?: false
   /** The textarea element, for the owner to focus it. */
   ref?: (element: HTMLTextAreaElement) => void
-  class?: string
+  /** Whether a file is still uploading, for an owner whose own button sends: hold the send until it is false. */
+  onUploading?: (busy: boolean) => void
 }
 
 /** What a facet provides for a point. */

@@ -71,6 +71,7 @@ function Field(props: {
   onChange: (value: string) => void
   onKey: (event: FieldKey) => boolean
   onSend: () => void
+  onUploading: (busy: boolean) => void
 }) {
   let input: HTMLTextAreaElement | undefined
   createEffect(
@@ -89,6 +90,7 @@ function Field(props: {
       name={props.name}
       onKeyDown={(event) => props.onKey(event)}
       onSubmit={() => Promise.resolve(props.onSend())}
+      onUploading={(busy) => props.onUploading(busy)}
       onValue={(value) => props.onChange(value)}
       placeholder={props.placeholder}
       ref={(element) => {
@@ -112,6 +114,7 @@ export function QuestionItem(props: {
   onText: (text: string) => void
   onFieldKey: (event: FieldKey) => boolean
   onFieldSend: () => void
+  onUploading: (busy: boolean) => void
 }) {
   const list = createMemo(() => choices(props.question))
   const [active, setActive] = createSignal<number>()
@@ -152,6 +155,7 @@ export function QuestionItem(props: {
       onChange={(value) => props.onText(value)}
       onKey={(event) => props.onFieldKey(event)}
       onSend={() => props.onFieldSend()}
+      onUploading={(busy) => props.onUploading(busy)}
     />
   )
   const options = () => (
