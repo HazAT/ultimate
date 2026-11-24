@@ -53,6 +53,24 @@ it('tap mode: a first tap starts, a second tap stops and sends, autorepeat is ig
   expect(calls).toEqual(['press', 'release', 'press', 'release'])
 })
 
+it('a pointer cancelled by the permission prompt lets go once in hold mode and keeps recording in tap mode', async () => {
+  const hold = setup('hold')
+  hold.talk.pointer.onPointerDown(pointer())
+  hold.talk.pointer.onPointerCancel()
+  hold.talk.pointer.onPointerUp()
+  await vi.runAllTimersAsync()
+  expect(hold.calls).toEqual(['press', 'release'])
+
+  const tap = setup('tap')
+  tap.talk.pointer.onPointerDown(pointer())
+  tap.talk.pointer.onPointerCancel()
+  await vi.runAllTimersAsync()
+  expect(tap.calls).toEqual(['press'])
+  tap.talk.pointer.onPointerDown(pointer())
+  await vi.runAllTimersAsync()
+  expect(tap.calls).toEqual(['press', 'release'])
+})
+
 it('hold mode: pressing records and letting go sends', async () => {
   const { talk, calls } = setup('hold')
   talk.pointer.onPointerDown(pointer())

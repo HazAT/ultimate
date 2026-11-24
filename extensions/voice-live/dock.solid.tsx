@@ -5,7 +5,7 @@ import { api, composerDraft, errorMessage, ROOT, useConversation, useUiState } f
 import { every } from '../../lib/timers.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
 import { createCues } from './cues.ts'
-import { base64, createMic, unsupported } from './recorder.ts'
+import { base64, createMic, micFailure, unsupported } from './recorder.ts'
 import type { Recorded } from './recorder.ts'
 import {
   DiscardAction,
@@ -277,12 +277,12 @@ export const talking = () => pressing > released || dock.mic.recording()
 
 export async function press() {
   if (dock.mic.recording() || pressing > released) return
-  const mine = ++pressing
   const reason = unsupported()
   if (reason) {
     dock.setError(reason)
     return
   }
+  const mine = ++pressing
   dock.setError(undefined)
   const paused = dock.player.pause()
   dock.hold({ busy: paused || dock.phase() === 'thinking' || dock.phase() === 'sending' })
@@ -292,7 +292,7 @@ export async function press() {
     released = mine
     dock.hold(undefined)
     if (paused) dock.player.resume()
-    dock.setError(errorMessage(failure))
+    dock.setError(micFailure(failure) ?? errorMessage(failure))
     return
   }
   if (released >= mine) {

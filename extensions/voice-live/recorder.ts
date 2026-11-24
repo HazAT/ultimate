@@ -12,6 +12,17 @@ export function unsupported() {
   return undefined
 }
 
+export function micFailure(failure: unknown) {
+  if (!(failure instanceof DOMException)) return undefined
+  if (failure.name === 'NotFoundError') return 'No microphone found'
+  if (failure.name !== 'NotAllowedError') return undefined
+  if (/; wv\)/.test(navigator.userAgent))
+    return 'Microphone denied: this app must declare and grant the microphone to its web view'
+  if (/Android/.test(navigator.userAgent))
+    return 'Microphone denied: allow it in Chrome → Site settings → Microphone, and for Chrome in Android’s app permissions'
+  return 'Microphone denied: allow it in the browser’s site settings'
+}
+
 export async function base64(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer())
   let binary = ''

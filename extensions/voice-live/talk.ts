@@ -34,6 +34,7 @@ export function createTalk(talk: {
         pointer = true
         start()
       },
+      onPointerCancel: letGoPointer,
       onPointerLeave: letGoPointer,
       onPointerUp: letGoPointer,
     },
