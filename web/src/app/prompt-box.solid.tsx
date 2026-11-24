@@ -350,14 +350,15 @@ function Hairline(props: {
     <span
       aria-hidden="true"
       class={cn(
-        'pointer-events-none absolute inset-x-0 bottom-0 h-[2px] transition-colors',
+        'pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden transition-colors',
         props.signal === 'idle' && 'bg-brand/0 group-focus-within/keel:bg-brand/70',
-        props.signal === 'running' &&
-          'bg-[linear-gradient(90deg,transparent,var(--brand),transparent)] bg-size-[200%_100%] motion-safe:animate-sweep',
         props.signal === 'recording' && 'bg-error',
       )}
       data-ui="prompt-hairline"
     >
+      <Show when={props.signal === 'running'}>
+        <span class="absolute inset-y-0 left-0 w-2/5 bg-[linear-gradient(90deg,transparent,var(--brand),transparent)] motion-safe:animate-glide" />
+      </Show>
       <Show when={props.signal === 'listening'}>
         <span
           class="absolute inset-0 origin-center bg-brand transition-transform duration-75"
