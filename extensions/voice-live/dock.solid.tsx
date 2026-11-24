@@ -220,7 +220,7 @@ export function settleTranscripts(
 
 export const voiceOpen = () => dock.open()
 export const setVoiceOpen = (open: boolean) => {
-  if (!open && talking()) void discardRecording()
+  if (!open && talking()) void cancelRecording()
   dock.setOpen(open)
 }
 export const playerState = createRoot(() => {
@@ -310,13 +310,15 @@ export async function press() {
   dock.cues.press()
 }
 
-async function discardRecording() {
+export async function cancelRecording() {
   released = pressing
   const held = dock.held()
   dock.hold(undefined)
   if (!(await dock.mic.stop())) return
-  if (playerState().paused) dock.player.resume()
-  dock.setPhase(held?.busy ? 'thinking' : 'idle')
+  if (playerState().paused) {
+    dock.player.resume()
+    dock.setPhase('speaking')
+  } else dock.setPhase(held?.busy ? 'thinking' : 'idle')
   dock.setStatus(undefined)
 }
 

@@ -12,6 +12,7 @@ export function createTalk(talk: {
   talking: () => boolean
   press: () => Promise<void>
   release: () => Promise<void>
+  cancel: () => Promise<void>
   matches: (event: KeyboardEvent) => boolean
   wake: () => void
 }) {
@@ -39,6 +40,10 @@ export function createTalk(talk: {
       onPointerUp: letGoPointer,
     },
     keyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && talk.talking()) {
+        onThisPage(talk.cancel())
+        return true
+      }
       if (talk.tap()) {
         if (!talk.matches(event)) return false
         if (event.repeat) return true

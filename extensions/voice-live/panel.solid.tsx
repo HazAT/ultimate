@@ -52,6 +52,7 @@ import { every } from '../../lib/timers.ts'
 import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   activity,
+  cancelRecording,
   COLD_DRAFT,
   coldHolds,
   composeIn,
@@ -139,6 +140,7 @@ const talk = createTalk({
   talking,
   press,
   release,
+  cancel: cancelRecording,
   matches: (event) => keyChord(event) === parseHold(),
   wake: () => {
     if (!voiceOpen()) setVoiceOpen(true)
@@ -149,6 +151,26 @@ const talkTitle = () =>
   recording() && tap()
     ? `Tap, or press ${holdKeys()}, to stop and send`
     : `${talkLabel()}, or ${talkVerb()} ${holdKeys()} anywhere · ${keys()} hides Voice`
+
+function CancelRecording(props: { class?: string }) {
+  return (
+    <Show when={recording()}>
+      <Button
+        aria-label="Cancel recording"
+        class={cn(
+          'flex shrink-0 items-center justify-center rounded-md text-error/70 transition-colors hover:bg-error/10 hover:text-error',
+          props.class,
+        )}
+        onClick={() => cancelRecording()}
+        size={null}
+        title="Cancel recording · Esc"
+        variant={null}
+      >
+        <X class="size-3.5" />
+      </Button>
+    </Show>
+  )
+}
 
 function SpokenParagraph() {
   const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
@@ -198,54 +220,57 @@ function Working() {
 
 function TalkBar(props: { words?: boolean }) {
   return (
-    <Button
-      aria-label="Talk bar"
-      class={cn(
-        'relative flex h-auto min-h-9 w-full touch-none items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-3 font-normal text-muted-foreground transition-colors select-none hover:border-ring/50 hover:bg-muted/50',
-        recording() && 'border-error/40 bg-error/5 hover:border-error/40 hover:bg-error/5',
-        audible() && 'border-brand/40',
-      )}
-      size={null}
-      title={talkTitle()}
-      variant={null}
-      {...talk.pointer}
-    >
-      <Mic class={cn('size-3.5 shrink-0', recording() && 'text-error')} />
-      <Show
-        when={recording()}
-        fallback={
-          <Show
-            when={props.words && (playerState().playing || playerState().paused)}
-            fallback={
-              <Show when={activity().current} fallback={<Status class="flex-1" />}>
-                <Working />
-              </Show>
-            }
-          >
-            <SpokenParagraph />
-          </Show>
-        }
+    <div class="relative">
+      <Button
+        aria-label="Talk bar"
+        class={cn(
+          'relative flex h-auto min-h-9 w-full touch-none items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-3 font-normal text-muted-foreground transition-colors select-none hover:border-ring/50 hover:bg-muted/50',
+          recording() && 'border-error/40 bg-error/5 pr-10 hover:border-error/40 hover:bg-error/5',
+          audible() && 'border-brand/40',
+        )}
+        size={null}
+        title={talkTitle()}
+        variant={null}
+        {...talk.pointer}
       >
-        <Status class="shrink-0" />
-        <Waveform class="h-5 min-w-0 flex-1 text-error" live />
-        <Show when={tap()}>
-          <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-error/80">
-            tap to send
+        <Mic class={cn('size-3.5 shrink-0', recording() && 'text-error')} />
+        <Show
+          when={recording()}
+          fallback={
+            <Show
+              when={props.words && (playerState().playing || playerState().paused)}
+              fallback={
+                <Show when={activity().current} fallback={<Status class="flex-1" />}>
+                  <Working />
+                </Show>
+              }
+            >
+              <SpokenParagraph />
+            </Show>
+          }
+        >
+          <Status class="shrink-0" />
+          <Waveform class="h-5 min-w-0 flex-1 text-error" live />
+          <Show when={tap()}>
+            <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-error/80">
+              tap to send
+            </span>
+          </Show>
+        </Show>
+        <Show when={!recording() && draftOf().length}>
+          <span class="flex shrink-0 items-center gap-1 rounded-full bg-brand/15 px-1.5 font-mono text-[10.5px] text-brand">
+            <span class="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
+            {draftOf().length} collected
           </span>
         </Show>
-      </Show>
-      <Show when={!recording() && draftOf().length}>
-        <span class="flex shrink-0 items-center gap-1 rounded-full bg-brand/15 px-1.5 font-mono text-[10.5px] text-brand">
-          <span class="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
-          {draftOf().length} collected
-        </span>
-      </Show>
-      <Show when={!recording()}>
-        <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-muted-foreground/70 pointer-coarse:hidden">
-          {talkVerb()} <Kbd>{holdKeys()}</Kbd>
-        </span>
-      </Show>
-    </Button>
+        <Show when={!recording()}>
+          <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] whitespace-nowrap text-muted-foreground/70 pointer-coarse:hidden">
+            {talkVerb()} <Kbd>{holdKeys()}</Kbd>
+          </span>
+        </Show>
+      </Button>
+      <CancelRecording class="absolute top-1/2 right-1.5 size-7 -translate-y-1/2" />
+    </div>
   )
 }
 
@@ -263,6 +288,7 @@ const audible = () => playerState().playing
 function TalkButton(props: { unfold: () => void }) {
   return (
     <div class="flex items-center justify-end gap-2.5" data-voice-talk-button>
+      <CancelRecording class="size-9 rounded-full border border-error/40 bg-background/95 shadow-lg shadow-black/30" />
       <Button
         aria-label="Unfold voice"
         class="h-auto max-w-[60vw] min-w-0 truncate rounded-full border border-border/70 bg-background/95 px-3 py-1.5 text-left font-mono text-[11.5px] font-normal shadow-lg shadow-black/30"

@@ -19,6 +19,10 @@ function setup(mode: 'hold' | 'tap') {
       calls.push('release')
       recording = false
     },
+    cancel: async () => {
+      calls.push('cancel')
+      recording = false
+    },
     matches: (event) => event.code === 'Space' && event.ctrlKey && event.shiftKey,
     wake: () => undefined,
   })
@@ -69,6 +73,26 @@ it('a pointer cancelled by the permission prompt lets go once in hold mode and k
   tap.talk.pointer.onPointerDown(pointer())
   await vi.runAllTimersAsync()
   expect(tap.calls).toEqual(['press', 'release'])
+})
+
+it('Escape cancels only a recording: tap starts fresh after it, a hold lets go after it', async () => {
+  const escape = key({ key: 'Escape', code: 'Escape' })
+  const tap = setup('tap')
+  expect(tap.talk.keyDown(escape)).toBe(false)
+  tap.talk.keyDown(key(chord))
+  await vi.runAllTimersAsync()
+  expect(tap.talk.keyDown(escape)).toBe(true)
+  tap.talk.keyDown(key(chord))
+  await vi.runAllTimersAsync()
+  expect(tap.calls).toEqual(['press', 'cancel', 'press'])
+
+  const hold = setup('hold')
+  hold.talk.keyDown(key(chord))
+  await vi.runAllTimersAsync()
+  expect(hold.talk.keyDown(escape)).toBe(true)
+  hold.talk.keyUp(key({ ...chord, key: ' ' }))
+  await vi.runAllTimersAsync()
+  expect(hold.calls).toEqual(['press', 'cancel', 'release'])
 })
 
 it('hold mode: pressing records and letting go sends', async () => {
