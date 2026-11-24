@@ -48,10 +48,10 @@ it('lets Get ready hand focus and pointer input to login and the model picker an
   })
   await page.goto(`${server.url}/?conversation=${id}`)
   await page.locator('#composer-input').waitFor()
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('ControlOrMeta+k')
   await page.getByPlaceholder('Run a command…').fill('Set the thinking level')
   await page.keyboard.press('Enter')
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('ControlOrMeta+k')
   await page.getByPlaceholder('Run a command…').fill('Get ready')
   await page.keyboard.press('Enter')
 
