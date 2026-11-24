@@ -31,6 +31,7 @@ import { createTrace } from './trace.ts'
 import type { Trace } from './trace.ts'
 
 export const KEYS = 'mod+shift+v'
+export const CANCEL_LABEL = 'Cancel recording'
 const frame = (fn: () => void) => {
   let handle = requestAnimationFrame(function tick() {
     fn()
@@ -60,6 +61,7 @@ export const dock = createRoot(() => {
   const [collect, setCollect] = useUiState('ext.voice-live.collect', false)
   const [talkMode, setTalkMode] = useUiState<'hold' | 'tap'>('ext.voice-live.talk', 'hold')
   const [phase, setPhase] = createSignal<Phase>('idle')
+  const [capturing, setCapturing] = createSignal(false)
   const [status, setStatus] = createSignal<string | undefined>()
   const [local, setLocal] = createSignal<Record<string, Local>>({})
   const [cuts, setCuts] = createSignal<Cut[]>([])
@@ -125,6 +127,8 @@ export const dock = createRoot(() => {
     setOpen,
     phase,
     setPhase,
+    capturing,
+    setCapturing,
     status,
     setStatus,
     local,
@@ -220,7 +224,7 @@ export function settleTranscripts(
 
 export const voiceOpen = () => dock.open()
 export const setVoiceOpen = (open: boolean) => {
-  if (!open && talking()) void discardRecording()
+  if (!open && talking()) void cancelRecording()
   dock.setOpen(open)
 }
 export const playerState = createRoot(() => {
@@ -273,10 +277,17 @@ function markCut() {
 let pressing = 0
 let released = 0
 
-export const talking = () => pressing > released || dock.mic.recording()
+let micWork: Promise<unknown> = Promise.resolve()
+const onMic = <T,>(work: () => Promise<T>) => {
+  const run = micWork.then(work, work)
+  micWork = run
+  return run
+}
+
+export const talking = () => pressing > released
 
 export async function press() {
-  if (dock.mic.recording() || pressing > released) return
+  if (pressing > released) return
   const reason = unsupported()
   if (reason) {
     dock.setError(reason)
@@ -285,24 +296,29 @@ export async function press() {
   const mine = ++pressing
   dock.setError(undefined)
   const paused = dock.player.pause()
-  dock.hold({ busy: paused || dock.phase() === 'thinking' || dock.phase() === 'sending' })
+  dock.hold({
+    busy:
+      paused || !!dock.held()?.busy || dock.phase() === 'thinking' || dock.phase() === 'sending',
+  })
+  let started: boolean
   try {
-    await dock.mic.start()
+    started = await onMic(async () => {
+      if (released >= mine) return false
+      await dock.mic.start()
+      return true
+    })
   } catch (failure) {
+    if (pressing !== mine) return
     released = mine
-    dock.hold(undefined)
-    if (paused) dock.player.resume()
+    restore()
     dock.setError(micFailure(failure) ?? errorMessage(failure))
     return
   }
   if (released >= mine) {
-    await dock.mic.stop()
-    dock.hold(undefined)
-    if (paused) dock.player.resume()
-    dock.setPhase('idle')
-    dock.setStatus(undefined)
+    if (!started && pressing === mine) restore()
     return
   }
+  dock.setCapturing(true)
   dock.setPhase('recording')
   dock.setStatus(
     dock.held()?.busy ? 'Recording · say something to interrupt' : 'Recording · I hear you',
@@ -310,23 +326,34 @@ export async function press() {
   dock.cues.press()
 }
 
-async function discardRecording() {
-  released = pressing
+export async function cancelRecording() {
+  const take = pressing
+  released = take
+  dock.setCapturing(false)
+  await onMic(() => dock.mic.stop())
+  if (pressing === take) restore()
+}
+
+function restore() {
   const held = dock.held()
+  if (!held) return
   dock.hold(undefined)
-  if (!(await dock.mic.stop())) return
-  if (playerState().paused) dock.player.resume()
-  dock.setPhase(held?.busy ? 'thinking' : 'idle')
+  if (dock.player.state.get().paused) {
+    dock.player.resume()
+    dock.setPhase('speaking')
+  } else dock.setPhase(held?.busy ? 'thinking' : 'idle')
   dock.setStatus(undefined)
 }
 
 export async function release() {
-  released = pressing
+  const take = pressing
+  released = take
   const { signal } = live
-  const recorded = await dock.mic.stop()
+  dock.setCapturing(false)
+  const recorded = await onMic(() => dock.mic.stop())
   if (!recorded || signal.aborted) return
   const held = dock.held()
-  dock.hold(undefined)
+  if (pressing === take) dock.hold(undefined)
   if (!recorded.spoke) {
     if (playerState().paused) {
       dock.player.resume()
@@ -800,7 +827,7 @@ function endLocally() {
   released = pressing
   dock.hold(undefined)
   dock.player.stop()
-  void dock.mic.release()
+  void onMic(async () => dock.mic.release())
   live.abort(new Error('The voice session ended'))
   live = new AbortController()
   session = undefined
@@ -809,6 +836,7 @@ function endLocally() {
   dock.setPending(undefined)
   dock.setLocal({})
   dock.setCuts([])
+  dock.setCapturing(false)
   dock.setPhase('idle')
   dock.setStatus(undefined)
 }
