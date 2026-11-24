@@ -88,6 +88,7 @@
     "extensions/instance/previews.ts",
     "extensions/update/item.ts",
     "extensions/attachments/limits.ts",
+    "extensions/video/limits.ts",
     "extensions/pause/provider-error.ts",
     "extensions/pause/autoplay.ts",
     "extensions/pause/parked.ts",

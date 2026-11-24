@@ -6,7 +6,7 @@ import { AntigravityApi } from '../antigravity/api.ts'
 import type { GeminiUsage } from '../antigravity/api.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { askOf } from './input.ts'
-import type { AskArgs, Turn, Video } from './refs.ts'
+import type { AskArgs, AskingDetails, Turn, Video } from './refs.ts'
 import { folder, serialized, snapshot, threadPrefix, VideosState } from './storage.ts'
 import type { AskResult } from './types.ts'
 
@@ -104,7 +104,12 @@ function addUsage(a: GeminiUsage, b: GeminiUsage): GeminiUsage {
   }
 }
 
-export function ask(host: ExtensionHost, raw: unknown, signal: AbortSignal): Promise<AskResult> {
+export function ask(
+  host: ExtensionHost,
+  raw: unknown,
+  signal: AbortSignal,
+  onStage: (stage: AskingDetails) => Promise<void> | void = () => {},
+): Promise<AskResult> {
   const args = askOf(raw)
   const { id, conversation, question, model, from, to, fps, detail } = args
   const key = threadPrefix(id) + JSON.stringify([conversation, from, to, fps, detail])
@@ -125,8 +130,15 @@ export function ask(host: ExtensionHost, raw: unknown, signal: AbortSignal): Pro
       )
     const answers: string[] = []
     let usage: GeminiUsage | undefined
-    for (const selected of parts) {
+    for (const [index, selected] of parts.entries()) {
       signal.throwIfAborted()
+      await onStage({
+        stage: 'asking',
+        part: index + 1,
+        parts: parts.length,
+        name: video.name,
+        ...(video.seconds === undefined ? {} : { seconds: video.seconds }),
+      })
       const body = request(host, video, selected, turns, question, detail, signal)
       try {
         const result = await antigravity.generate(model, body, signal)

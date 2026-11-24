@@ -1,8 +1,7 @@
 import { basename, extname } from 'node:path'
+import { MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.ts'
 import type { AskArgs, Video } from './refs.ts'
 
-const MAX_UPLOAD_BYTES = 1024 ** 3
-const MAX_CHUNK_BYTES = 8 * 1024 ** 2
 const videoMimes = {
   mp4: 'video/mp4',
   m4v: 'video/x-m4v',
