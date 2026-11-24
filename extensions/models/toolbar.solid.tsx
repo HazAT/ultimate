@@ -1,12 +1,15 @@
-import { Brain, Check, ChevronDown, Cpu, LoaderCircle } from '@lucide/solid'
-import { createSignal, For, Show } from 'solid-js'
+import { Check, ChevronDown, Cpu, LoaderCircle, Search } from '@lucide/solid'
+import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
-import { api, cn, errorMessage, useDialog, writingAs } from '@/sdk/solid'
+import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
+import { api, cn, errorMessage, useDialog, useModels, writingAs } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { familyTitle } from '../../lib/families.ts'
-import { familyOf } from './family-state.ts'
+import type { FamiliesView, FamilyView } from './refs.ts'
+import { familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.ts'
+import { selectModel } from './picker.solid.tsx'
 import { FamilyDot, useCurrentModel, useFamilies } from './readers.solid.tsx'
 import { dialogs, pickerTarget, thinkingDialog } from './state.ts'
 import type { ModelInfo, ThinkingLevel } from './state.ts'
@@ -15,137 +18,111 @@ const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground'
 const Down = () => <ChevronDown class="size-3 shrink-0 opacity-60 @max-md:hidden" />
 
-export function ModelButton() {
-  const { id, ref, thinking, recorded, loading } = useCurrentModel()
+export function ModelControl() {
+  const current = useCurrentModel()
   const families = useFamilies()
-  const family = () => familyOf(families(), ref(), thinking(), recorded()?.name)
-  const [, setPicker] = useDialog(dialogs.picker)
-  return (
-    <Button
-      aria-label={loading() ? 'Loading model' : 'Open the model picker'}
-      class={cn(toolbarButton, 'min-w-0 shrink')}
-      disabled={loading()}
-      onClick={() => {
-        pickerTarget.set(id())
-        setPicker(true)
-      }}
-      title={
-        loading()
-          ? 'Loading model'
-          : ref()
-            ? `${ref()!.modelId} · ${ref()!.provider} — pick a model`
-            : 'Pick a model'
-      }
-      size={null}
-      variant={null}
-    >
-      <Show when={!loading() && family()} fallback={<Cpu class="size-3.5 shrink-0" />}>
-        {(current) => <FamilyDot color={current().color} class="mx-0.5" />}
-      </Show>
-      <span class={cn('truncate', !loading() && (ref() ? 'text-foreground/85' : 'text-warning'))}>
-        {loading()
-          ? 'model…'
-          : family()
-            ? `${familyTitle(family()!.name)} (${ref()!.modelId})`
-            : (ref()?.modelId ?? 'no model')}
-      </span>
-      <Down />
-    </Button>
+  const family = createMemo(() =>
+    familyOf(families(), current.ref(), current.thinking(), current.recorded()?.name),
   )
-}
-
-export function ThinkingButton() {
-  const { id, model, thinking, loading } = useCurrentModel()
   return (
     <Show
-      when={!loading()}
+      when={!current.loading() && current.id()}
+      keyed
       fallback={
         <Button
-          aria-label="Loading thinking level"
+          aria-label="Loading model"
           class={toolbarButton}
           disabled
           size={null}
-          title="Loading thinking level"
+          title="Loading model"
           variant={null}
         >
-          <Brain class="size-3.5 shrink-0" /> thinking… <Down />
+          <Cpu class="size-3.5 shrink-0" /> model… <Down />
         </Button>
       }
     >
-      <Show when={model()?.reasoning && id()} keyed>
-        {(conversation) => {
-          const [open, setOpen] = useDialog(thinkingDialog(conversation))
-          return (
-            <ThinkingPopover
-              id={conversation}
-              open={open()}
-              setOpen={setOpen}
-              levels={model()!.thinkingLevels}
-              current={thinking() ?? 'off'}
-            />
-          )
-        }}
-      </Show>
+      {(conversation) => {
+        const [open, setOpen] = useDialog(thinkingDialog(conversation))
+        const writes = createWrites()
+        return (
+          <Popover onOpenChange={setOpen} open={open()}>
+            <PopoverTrigger
+              aria-label="Model and thinking"
+              class={cn(toolbarButton, 'min-w-0 shrink')}
+              title={[
+                family() ? familyTitle(family()!.name) : undefined,
+                current.ref()?.modelId ?? 'no model',
+                current.model()?.reasoning ? `thinking ${current.thinking() ?? 'off'}` : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            >
+              <Trigger
+                family={family()}
+                modelId={current.ref()?.modelId}
+                model={current.model()}
+                thinking={current.thinking() ?? 'off'}
+              />
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              aria-label="Model and thinking options"
+              class="w-80 p-1 font-mono"
+              side="top"
+            >
+              <Options
+                id={conversation}
+                families={families()}
+                writes={writes}
+                current={family()?.name}
+                model={current.model()}
+                modelId={current.ref()?.modelId}
+                thinking={current.thinking() ?? 'off'}
+                close={() => setOpen(false)}
+              />
+            </PopoverContent>
+          </Popover>
+        )
+      }}
     </Show>
   )
 }
 
-function ThinkingPopover(props: {
-  id: ConversationId
-  open: boolean
-  setOpen: (open: boolean) => void
-  levels: ModelInfo['thinkingLevels']
-  current: ThinkingLevel
+function Trigger(props: {
+  family: FamilyView | undefined
+  modelId: string | undefined
+  model: ModelInfo | undefined
+  thinking: ThinkingLevel
 }) {
   return (
-    <Popover onOpenChange={props.setOpen} open={props.open}>
-      <PopoverTrigger
-        aria-label="Thinking level"
-        class={toolbarButton}
-        title="Thinking level (Shift+Tab cycles)"
-      >
-        <Brain class={cn('size-3.5 shrink-0', props.current !== 'off' && 'text-brand')} />
-        <span class={props.current !== 'off' ? 'text-foreground/85' : undefined}>
-          {props.current}
-        </span>
-        <Down />
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        aria-label="Reasoning effort options"
-        class="w-48 p-1 font-mono"
-        side="top"
-      >
-        <div class="px-2 pt-1 pb-1.5 section-label">Thinking</div>
-        <ThinkingLevels
-          id={props.id}
-          levels={props.levels}
-          current={props.current}
-          close={() => props.setOpen(false)}
-        />
-      </PopoverContent>
-    </Popover>
+    <>
+      <Show when={props.family} fallback={<Cpu class="size-3.5 shrink-0" />}>
+        {(family) => <FamilyDot color={family().color} class="mx-0.5" />}
+      </Show>
+      <span class={cn('truncate', props.modelId ? 'text-foreground/85' : 'text-warning')}>
+        {props.family ? familyTitle(props.family.name) : (props.modelId ?? 'no model')}
+      </span>
+      <Show when={props.model?.reasoning}>
+        <span class="shrink-0 opacity-50">·</span>
+        <span class="shrink-0">{props.thinking}</span>
+      </Show>
+      <Down />
+    </>
   )
 }
 
-function ThinkingLevels(props: {
-  id: ConversationId
-  levels: ModelInfo['thinkingLevels']
-  current: ThinkingLevel
-  close: () => void
-}) {
+function createWrites() {
   const [error, setError] = createSignal<string>()
-  const [pending, setPending] = createSignal<ThinkingLevel>()
+  const [pending, setPending] = createSignal<string>()
   let changing = false
-  async function choose(level: ThinkingLevel, source: string) {
+  async function run(key: string, write: () => Promise<unknown>, done?: () => void) {
     if (changing) return
     changing = true
-    setPending(level)
-    const close = props.close
+    setPending(key)
     setError(undefined)
     try {
-      await api.configure({ thinkingLevel: level }, props.id)
-      writingAs(source, close)
+      await write()
+      done?.()
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
@@ -153,32 +130,144 @@ function ThinkingLevels(props: {
       setPending(undefined)
     }
   }
+  return { error, pending, run }
+}
+
+function Options(props: {
+  id: ConversationId
+  families: FamiliesView | undefined
+  writes: ReturnType<typeof createWrites>
+  current: string | undefined
+  model: ModelInfo | undefined
+  modelId: string | undefined
+  thinking: ThinkingLevel
+  close: () => void
+}) {
+  const models = useModels()
+  const [, setPicker] = useDialog(dialogs.picker)
+  const pending = () => props.writes.pending()
+  const shown = createMemo(() =>
+    (props.families?.families ?? []).filter((family) => runsOn(family)),
+  )
+
+  function openPicker(source: string) {
+    const close = props.close
+    pickerTarget.set(props.id)
+    writingAs(source, () => {
+      close()
+      setPicker(true)
+    })
+  }
+
+  function chooseFamily(family: FamilyView, source: string) {
+    const target = runsOn(family)!
+    const provider = target.slice(0, target.indexOf('/'))
+    const modelId = modelIdOf(target)
+    const available = models()?.models.find(
+      (entry) => entry.provider === provider && entry.id === modelId,
+    )?.available
+    if (available !== true) return openPicker(source)
+    const id = props.id
+    return props.writes.run(
+      `family/${family.name}`,
+      () => selectModel({ provider, modelId }, id, source, family),
+      props.close,
+    )
+  }
+
   return (
     <>
-      <For each={props.levels}>
-        {(level) => (
-          <Button
-            aria-current={level === props.current ? 'true' : undefined}
-            aria-label={`${level} effort`}
-            data-selected={level === props.current ? '' : undefined}
-            disabled={pending() !== undefined && pending() !== level}
-            class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] data-selected:text-brand"
-            onClick={(_, details) => choose(level, details.source)}
-            size={null}
-            variant="ghost"
-          >
-            <LoaderCircle class="hidden size-3.5 motion-safe:animate-spin in-data-pending:block" />
-            <Check class="size-3.5 opacity-0 in-data-selected:opacity-100 in-data-pending:hidden" />
-            {level}
-          </Button>
+      <div class="px-2 pt-1 pb-1.5 section-label">Model</div>
+      <div class="max-h-[40vh] overflow-y-auto">
+        <For each={shown()} keyed={(family) => family.name}>
+          {(family) => (
+            <Button
+              aria-current={family().name === props.current ? 'true' : undefined}
+              aria-label={`${family().name} family`}
+              class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] font-normal"
+              data-pending={pending() === `family/${family().name}` ? '' : undefined}
+              disabled={pending() !== undefined}
+              onClick={(_, details) => chooseFamily(family(), details.source)}
+              size={null}
+              variant="ghost"
+            >
+              <LoaderCircle class="hidden size-3.5 motion-safe:animate-spin in-data-pending:block" />
+              <Check
+                class={cn(
+                  'size-3.5 shrink-0 in-data-pending:hidden',
+                  family().name === props.current ? 'text-brand' : 'opacity-0',
+                )}
+              />
+              <FamilyDot color={family().color} />
+              <span class="shrink-0 font-sans text-foreground">{familyTitle(family().name)}</span>
+              <span class="ml-auto truncate pl-3 text-[11px] text-muted-foreground">
+                {[modelIdOf(runsOn(family())!), thinkingOf(family())].filter(Boolean).join(' · ')}
+              </span>
+            </Button>
+          )}
+        </For>
+      </div>
+      <Button
+        aria-label="Pick another model"
+        class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] font-normal text-muted-foreground"
+        disabled={pending() !== undefined}
+        onClick={(_, details) => openPicker(details.source)}
+        size={null}
+        variant="ghost"
+      >
+        <Show
+          when={!props.current && props.modelId}
+          fallback={<Search class="size-3.5 shrink-0" />}
+        >
+          <Check class="size-3.5 shrink-0 text-brand" />
+        </Show>
+        <span class="shrink-0">Other model…</span>
+        <Show when={!props.current && props.modelId}>
+          <span class="ml-auto truncate pl-3 text-[11px] text-brand">{props.modelId}</span>
+        </Show>
+      </Button>
+      <Show when={props.model?.reasoning && props.model}>
+        {(model) => (
+          <>
+            <div class="mt-1 border-t border-border/70 px-2 pt-2 pb-1.5 section-label">
+              Thinking
+            </div>
+            <div class="px-1 pb-1">
+              <SegmentedControl
+                aria-label="Thinking level"
+                class="w-full"
+                disabled={pending() !== undefined}
+                onValueChange={(level) => {
+                  const id = props.id
+                  if (level)
+                    void props.writes.run(`thinking/${level}`, () =>
+                      api.configure({ thinkingLevel: level }, id),
+                    )
+                }}
+                value={props.thinking}
+              >
+                <For each={model().thinkingLevels}>
+                  {(level) => (
+                    <SegmentedControlItem
+                      aria-label={`${level} effort`}
+                      class="flex-1 justify-center"
+                      value={level}
+                    >
+                      {level}
+                    </SegmentedControlItem>
+                  )}
+                </For>
+              </SegmentedControl>
+            </div>
+          </>
         )}
-      </For>
+      </Show>
       <div class="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
         <Show
-          when={error()}
+          when={props.writes.error()}
           fallback={
             <>
-              <Kbd>⇧ Tab</Kbd> cycles
+              <Kbd>⇧ Tab</Kbd> cycles thinking
             </>
           }
         >
