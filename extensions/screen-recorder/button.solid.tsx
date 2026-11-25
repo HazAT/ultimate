@@ -30,8 +30,8 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
     (event) => {
       if (event.key !== 'Escape') return
       const cancels = !event.repeat && recorder.state().phase === 'recording'
-      if (!cancels && !(event.repeat && escapeHeld)) return
-      escapeHeld = true
+      if (!event.repeat) escapeHeld = cancels
+      if (!escapeHeld) return
       event.preventDefault()
       event.stopImmediatePropagation()
       if (cancels) recorder.cancel()
