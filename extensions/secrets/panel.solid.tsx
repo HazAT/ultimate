@@ -21,6 +21,7 @@ import {
   formatAgo,
   keepLast,
   openPanel,
+  refreshModels,
   useAction,
   useEvent,
   useNow,
@@ -88,6 +89,7 @@ function Editor(props: {
       else await api.action(SetAction, { name: target, value: value().trim() })
       setValue('')
       events.emit('secrets:changed', { name: target })
+      void refreshModels()
       props.close()
     } catch (failure) {
       setError(errorMessage(failure))

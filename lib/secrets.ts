@@ -1,7 +1,9 @@
 import { open } from 'node:fs/promises'
+import { defaultProviderAuthContext } from '@earendil-works/pi-ai'
+import type { AuthContext } from '@earendil-works/pi-ai'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
-import { isMissing } from './errors.ts'
+import { isMissing, meansNone } from './errors.ts'
 
 export type Store = { secrets: Record<string, { value: string; updatedAt: string }> }
 export function validateName(name: unknown): asserts name is string {
@@ -57,4 +59,13 @@ export async function secretMetadata(userHome: string) {
     set: true,
     updatedAt: item.updatedAt,
   }))
+}
+export function secretsAuthContext(userHome: string): AuthContext {
+  const ambient = defaultProviderAuthContext()
+  return {
+    ...ambient,
+    env: async (name) =>
+      (await ambient.env(name)) ??
+      (await readStore(userHome).catch(meansNone))?.secrets[name]?.value,
+  }
 }

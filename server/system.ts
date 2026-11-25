@@ -166,6 +166,10 @@ export async function createSystem(
   const schedule = (_event?: string, path?: string | null) => {
     if (path === secrets) {
       rebuiltOnOpen('open reads secrets again', changed())
+      rebuiltOnOpen(
+        'open checks provider auth again',
+        host.modelRuntime.refresh({ allowNetwork: false }),
+      )
       return
     }
     if (path && corePath(relative(host.ultimateRoot, path))) {

@@ -40,6 +40,10 @@ async function fixture() {
     join(home, '.ultimate/settings.json'),
     JSON.stringify({ voice: { model: 'faux/gemini-faux' } }),
   )
+  await writeFile(
+    join(home, '.ultimate/model-families.json'),
+    JSON.stringify({ recent: { families: { default: { model: 'faux/main-faux' } } } }),
+  )
   await writeSecret(home, 'OPENAI_API_KEY', 'sk-test')
   const realFetch = globalThis.fetch
   const transcribed: string[] = []
