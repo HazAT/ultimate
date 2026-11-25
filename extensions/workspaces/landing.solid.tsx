@@ -115,8 +115,9 @@ export function LandingCard(props: {
         <>
           <Icon class={cn('size-3 shrink-0', tone().color)} />
           <span class={cn('shrink-0', tone().color)}>
-            {tone().label}
-            {props.tone === 'landed' && props.target ? ` on ${props.target}` : ''}
+            {props.tone === 'failed' ? tone().label : props.sha ? 'landed' : 'nothing new to land'}
+            {props.tone !== 'failed' && props.target ? ` on ${props.target}` : ''}
+            {props.tone === 'pushFailed' ? ` · ${tone().label}` : ''}
           </span>
           <Show when={named()?.feature}>
             {(feature) => <FeatureTag class="shrink-0" feature={feature()} />}

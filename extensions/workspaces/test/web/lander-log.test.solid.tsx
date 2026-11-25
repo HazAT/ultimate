@@ -222,7 +222,6 @@ it('starts a landing folded to one line, and lets an agent expand it, open the r
   const findControl = (label: string) =>
     agent.snapshot().find((item) => !item.offPage && item.label === label)
   const toggle = findControl('Toggle landing card #89')!
-  expect(toggle.label).toBe('Toggle landing card #89')
   expect(container.textContent).toMatch(/^landed on main.*#43· abcdef0· pushed$/)
   expect(
     await agent.act({ steps: [{ ref: toggle.ref, action: 'setOpen', args: [true] }] }),
