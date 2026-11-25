@@ -16,3 +16,186 @@ index a5351b0..50bedff 100644
  }
  /**
   * Append `inputDelta` to a streaming grammar tool input and return the matching piece of its JSON arguments text, or
+diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
+index 532ea26..abbe4f0 100644
+--- a/dist/api/openai-codex-responses.js
++++ b/dist/api/openai-codex-responses.js
+@@ -341,7 +341,7 @@ export const stream = (model, context, options) => {
+                 startEmitted = true;
+                 stream.push({ type: "start", partial: output });
+             }
+-            await processStream(response, output, stream, model, grammarToolInputProperties, options);
++            await processStream(response, body, output, stream, model, grammarToolInputProperties, options);
+             if (options?.signal?.aborted) {
+                 throw new Error("Request was aborted");
+             }
+@@ -501,10 +501,33 @@ function resolveCodexWebSocketUrl(baseUrl) {
+ // ============================================================================
+ // Response Processing
+ // ============================================================================
+-async function processStream(response, output, stream, model, grammarToolInputProperties, options) {
++function getGrammarFunctionInputProperties(body, grammarToolInputProperties) {
++    const properties = new Map();
++    if (grammarToolInputProperties.size === 0)
++        return properties;
++    const applyTools = (tools) => {
++        for (const tool of tools ?? []) {
++            const property = grammarToolInputProperties.get(tool.name);
++            if (property === undefined)
++                continue;
++            if (tool.type === "custom" && tool.format?.type === "grammar")
++                properties.set(tool.name, property);
++            else
++                properties.delete(tool.name);
++        }
++    };
++    applyTools(body.tools);
++    for (const item of body.input ?? []) {
++        if (item.type === "additional_tools" || item.type === "tool_search_output")
++            applyTools(item.tools);
++    }
++    return properties;
++}
++async function processStream(response, body, output, stream, model, grammarToolInputProperties, options) {
+     await processResponsesStream(mapCodexEvents(parseSSE(response, options?.signal), output, model, options?.onProviderStreamEvent), output, stream, model, {
+         serviceTier: options?.serviceTier,
+         grammarToolInputProperties,
++        grammarFunctionInputProperties: getGrammarFunctionInputProperties(body, grammarToolInputProperties),
+         resolveServiceTier: resolveCodexServiceTier,
+         applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),
+     });
+@@ -1230,15 +1253,21 @@ async function processWebSocketStream(url, body, headers, output, stream, model,
+     }
+     try {
+         socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
+-        await processResponsesStream(startWebSocketOutputOnFirstEvent(mapCodexEvents(parseWebSocket(socket, options?.signal, idleTimeoutMs), output, model, options?.onProviderStreamEvent), onStart), output, stream, model, {
++        const sawGrammarFunctionCall = await processResponsesStream(startWebSocketOutputOnFirstEvent(mapCodexEvents(parseWebSocket(socket, options?.signal, idleTimeoutMs), output, model, options?.onProviderStreamEvent), onStart), output, stream, model, {
+             serviceTier: options?.serviceTier,
+             grammarToolInputProperties,
++            grammarFunctionInputProperties: getGrammarFunctionInputProperties(fullBody, grammarToolInputProperties),
+             resolveServiceTier: resolveCodexServiceTier,
+             applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),
+         });
+         if (options?.signal?.aborted) {
+             keepConnection = false;
+         }
++        else if (sawGrammarFunctionCall && entry) {
++            // Full replay pairs a custom call with custom output. Do not send that output alone
++            // against the provider's cached function call.
++            entry.continuation = undefined;
++        }
+         else if (useCachedContext && entry && output.responseId) {
+             const responseItems = convertResponsesMessages(model, normalizeContext({ messages: [output] }), CODEX_TOOL_CALL_PROVIDERS, { grammarToolInputProperties }).filter((item) => item.type !== "function_call_output" && item.type !== "custom_tool_call_output");
+             entry.continuation = {
+diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
+index b7016e3..2ce14ab 100644
+--- a/dist/api/openai-responses-shared.js
++++ b/dist/api/openai-responses-shared.js
+@@ -1,6 +1,7 @@
+ import { calculateCost } from "../models.js";
+ import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.js";
+ import { shortHash } from "../utils/hash.js";
++import { parseJsonWithRepair } from "../utils/json-parse.js";
+ import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
+ import { ToolCallArgumentsStream } from "../utils/streaming-json.js";
+ import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.js";
+@@ -368,6 +369,7 @@ export function convertResponsesTools(tools, options) {
+ }
+ export async function processResponsesStream(openaiStream, output, stream, model, options) {
+     let sawTerminalResponseEvent = false;
++    let sawGrammarFunctionCall = false;
+     const outputSlots = new Map();
+     // Tool calls whose output_item.done has not arrived yet.
+     const unfinishedToolCalls = new Set();
+@@ -414,12 +416,13 @@ export async function processResponsesStream(openaiStream, output, stream, model
+             return slot;
+         }
+         if (item.type === "function_call") {
+-            const args = new ToolCallArgumentsStream();
++            const property = options?.grammarFunctionInputProperties?.get(item.name);
++            const args = property === undefined ? new ToolCallArgumentsStream() : undefined;
+             const block = {
+                 type: "toolCall",
+                 id: `${item.call_id}|${item.id}`,
+                 name: item.name,
+-                arguments: item.arguments ? args.append(item.arguments) : {},
++                arguments: item.arguments && args ? args.append(item.arguments) : {},
+                 ...(item.namespace !== undefined ? { namespace: item.namespace } : {}),
+             };
+             output.content.push(block);
+@@ -428,7 +431,7 @@ export async function processResponsesStream(openaiStream, output, stream, model
+                 type: "toolCall",
+                 block,
+                 contentIndex: output.content.length - 1,
+-                input: { kind: "json", arguments: args },
++                input: args ? { kind: "json", arguments: args } : { kind: "grammarFunction", property, text: item.arguments ?? "" },
+             };
+             outputSlots.set(outputIndex, slot);
+             stream.push({ type: "toolcall_start", contentIndex: slot.contentIndex, partial: output });
+@@ -596,6 +599,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
+         }
+         else if (event.type === "response.function_call_arguments.delta") {
+             const slot = getSlot(event.output_index, "toolCall");
++            if (slot?.input.kind === "grammarFunction") {
++                slot.input.text += event.delta;
++                continue;
++            }
+             if (slot?.input.kind !== "json")
+                 continue;
+             slot.block.arguments = slot.input.arguments.append(event.delta);
+@@ -603,6 +610,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
+         }
+         else if (event.type === "response.function_call_arguments.done") {
+             const slot = getSlot(event.output_index, "toolCall");
++            if (slot?.input.kind === "grammarFunction") {
++                slot.input.text = event.arguments;
++                continue;
++            }
+             if (slot?.input.kind !== "json")
+                 continue;
+             const replaced = slot.input.arguments.replace(event.arguments);
+@@ -651,10 +662,17 @@ export async function processResponsesStream(openaiStream, output, stream, model
+                 });
+                 outputSlots.delete(event.output_index);
+             }
+-            else if (item.type === "function_call" && slot?.type === "toolCall" && slot.input.kind === "json") {
+-                if (item.arguments)
+-                    slot.input.arguments.replace(item.arguments);
+-                Object.assign(slot.block, slot.input.arguments.finish());
++            else if (item.type === "function_call" && slot?.type === "toolCall" && slot.input.kind !== "custom") {
++                if (slot.input.kind === "grammarFunction") {
++                    sawGrammarFunctionCall = true;
++                    slot.block.arguments = decodeGrammarFunctionInput(slot.input.property, item.arguments || slot.input.text);
++                    pushToolCallDelta(slot, JSON.stringify(slot.block.arguments));
++                }
++                else {
++                    if (item.arguments)
++                        slot.input.arguments.replace(item.arguments);
++                    Object.assign(slot.block, slot.input.arguments.finish());
++                }
+                 if (item.namespace !== undefined)
+                     slot.block.namespace = item.namespace;
+                 unfinishedToolCalls.delete(slot.block);
+@@ -710,6 +728,22 @@ export async function processResponsesStream(openaiStream, output, stream, model
+             throw new Error(`OpenAI Responses stream completed with an unfinished tool call: ${toolCall.name} (${toolCall.id})`);
+         }
+     }
++    return sawGrammarFunctionCall;
++}
++function decodeGrammarFunctionInput(property, text) {
++    // Buffer until done: a JavaScript block and a JSON argument object can share the same prefix.
++    if (text.trimStart().startsWith("{")) {
++        try {
++            const wrapper = parseJsonWithRepair(text);
++            if (Object.hasOwn(wrapper, property) && typeof wrapper[property] === "string") {
++                return wrapper;
++            }
++        }
++        catch {
++            // A JavaScript block need not be JSON.
++        }
++    }
++    return { [property]: text };
+ }
+ /**
+  * Record the replayed reasoning items the API withheld from the model, with the reason for each.
