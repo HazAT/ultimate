@@ -24,7 +24,8 @@ export type { Sentence } from './speech.ts'
  * and, while it has a source, `{ key, spans, span?, play? }`. `spans` are the message's parts in order (its
  * sentences, or its sections), found in the element's text: its `.markdown` blocks when it has any, else all of it.
  * `span(item)` maps the player's item to a span, by default the sentence's place in its reply (`Sentence.at`). The span
- * being spoken carries the `read-aloud` CSS highlight; with `play`, a click on a span calls `play(span)`.
+ * being spoken carries the `read-aloud` CSS highlight; with `play`, a click on a span calls `play(span)` while
+ * the player holds this source (its bar shows), never to start one.
  */
 export { useSpokenText } from './spoken.solid.tsx'
 /** What a message being read gives the highlight. */

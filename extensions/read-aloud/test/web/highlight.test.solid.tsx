@@ -69,7 +69,7 @@ function mount(play: (span: number) => void) {
   flush()
 }
 
-it('marks the sentence the player speaks, by its text when sentences were skipped, and plays from a clicked one', () => {
+it('marks the sentence the player speaks, by its place when sentences were skipped; a click plays from a sentence only while the player has the reply', () => {
   const play = vi.fn<(span: number) => void>()
   mount(play)
   speech.load('reply', [sentences[0]], true)
@@ -90,6 +90,8 @@ it('marks the sentence the player speaks, by its text when sentences were skippe
 
   speech.stop()
   expect(spoken()).toEqual([])
+  document.querySelector('strong')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  expect(play).toHaveBeenCalledTimes(1)
 })
 
 it('a repeated sentence spoken after its twin was muted marks its own place', () => {

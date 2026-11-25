@@ -37,7 +37,6 @@ it('reads a message aloud, then pauses and resumes it from the same button', asy
     ),
     pause: vi.fn<() => void>(() => set(reading && { ...reading, status: 'paused' })),
     resume: vi.fn<() => void>(() => set(reading && { ...reading, status: 'playing' })),
-    wasRead: () => false,
     sectionOf: () => undefined,
     playSection: () => undefined,
   }

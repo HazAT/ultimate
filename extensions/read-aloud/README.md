@@ -32,9 +32,11 @@ lightly rewritten for listening.
   bullets do not matter, and found again whenever the message's DOM changes (while it streams). Voice replies are
   spoken as written, so their parts are sentences, and the player's sentence maps to the part with its text, which
   stays right when sentences were skipped (Speak replies turned on mid-reply). The speaker's rewrite changes the
-  words, so its parts are the `prepare` sections and the player's sentence maps to the section it came from. A click
-  on a part of a message being read, or one read before on this page, plays from there; the speaker prepares from
-  that section when it was not read yet. Code blocks, tool calls and anything `not-prose` are skipped.
-- **The strip** above the composer shows Preparing, Reading or Paused with a link to the message
-  (`#conversation/entry`, which opens and scrolls to it), the speed, pause and stop. It keeps playing when you switch
+  words, so its parts are the `prepare` sections and the player's sentence maps to the section it came from. While the
+  player holds a message (its bar shows), a click on one of its parts plays from there; the speaker prepares from
+  that section when it was not read yet. A click never starts reading. Code blocks, tool calls and anything `not-prose` are skipped.
+- **The playback bar** (`bar.solid.tsx`) is the one bar for the player, shared with voice: Preparing, Reading,
+  Speaking or Paused, then paragraph, sentence and time left, the speed, skip by paragraph or sentence, pause and
+  stop, with a progress line. Above the main composer its status opens and scrolls to the message being read; a
+  redirected composer (the voice panel) shows none, since voice shows its own. It keeps playing when you switch
   conversations. On phones the Media Session API gives lock-screen pause and stop.

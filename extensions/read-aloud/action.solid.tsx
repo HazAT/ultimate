@@ -20,7 +20,6 @@ type Player = {
   read: (conversation: ConversationId, entry: number, text: string) => void
   pause: () => void
   resume: () => void
-  wasRead: (conversation: ConversationId, entry: number, text: string) => boolean
   sectionOf: (item: number) => number | undefined
   playSection: (conversation: ConversationId, entry: number, text: string, section: number) => void
 }
@@ -46,7 +45,7 @@ export function readAloudAction(player: Player) {
         const key = status() ? reading()?.key : undefined
         const { conversationId, id } = props.entry
         const text = props.text
-        if (!key && !player.wasRead(conversationId, id, text)) return undefined
+        if (!key) return undefined
         return {
           key,
           spans: spans(),

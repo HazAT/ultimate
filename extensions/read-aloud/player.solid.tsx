@@ -24,7 +24,6 @@ type Source = {
 
 let source: Source | undefined
 let attempts = 0
-const heard = new Set<string>()
 const listeners = new Set<() => void>()
 const changed = () => {
   for (const listener of listeners) listener()
@@ -68,19 +67,12 @@ export function current(): Reading | undefined {
   }
 }
 
-const heardAs = (conversation: ConversationId, entry: number, text: string) =>
-  JSON.stringify([conversation, entry, text])
-
-export const wasRead = (conversation: ConversationId, entry: number, text: string) =>
-  heard.has(heardAs(conversation, entry, text))
-
 export const sectionOf = (item: number) => source?.sections[item]
 
 export function read(conversation: ConversationId, entry: number, text: string, from = 0) {
   source?.preparing.abort()
   const key = `read-aloud:${conversation}/${entry}:${++attempts}`
   source = { key, conversation, entry, text, preparing: new AbortController(), sections: [] }
-  heard.add(heardAs(conversation, entry, text))
   speech.warm()
   speech.load(key, [], true)
   setUpMediaSession()

@@ -1,8 +1,9 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { createEffect, createSignal, Show } from 'solid-js'
+import { createEffect, createSignal, Show, useContext } from 'solid-js'
 import {
   cn,
   column,
+  ComposerRedirect,
   events,
   ROOT,
   switchConversation,
@@ -29,6 +30,7 @@ export function readingStrip(player: Player) {
   return function ReadingStrip(props: SolidComposerProps) {
     const reading = useExternal(player.current, player.subscribe)
     const conversation = useConversation()
+    const redirected = useContext(ComposerRedirect)
     const status = useAction(SpeechStatusAction, null, { conversation: ROOT })
     useEvent('secrets:changed', () => void status.refetch())
     createEffect(
@@ -58,7 +60,7 @@ export function readingStrip(player: Player) {
     )
     return (
       <>
-        <Show when={reading()}>
+        <Show when={!redirected() && reading()}>
           {(current) => {
             const goToMessage = () => {
               const { conversation: id, entry } = current()

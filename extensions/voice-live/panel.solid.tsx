@@ -150,7 +150,7 @@ function VoiceLine(props: { words?: boolean }) {
     spoken() ||
     !!activity().current ||
     !!dock.error() ||
-    !!dock.status() ||
+    (!!dock.status() && !audible()) ||
     draftOf().length > 0
   return (
     <Show when={shown()}>

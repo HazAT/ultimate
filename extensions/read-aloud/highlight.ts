@@ -148,16 +148,18 @@ export function createHighlight(player: Source) {
   const under = (event: MouseEvent) => {
     const target = event.target
     if (!(target instanceof Element)) return undefined
-    const playing = player.state.get().key
+    const now = player.state.get()
+    if (!now.playing && !now.paused && !now.streaming) return undefined
     const candidates = [...tracked].filter((each) => {
       const root = each.element()
       return (
         each.now?.play &&
+        each.now.key === now.key &&
         root?.contains(target) &&
         !within(target, `a, button, input, textarea, ${skipped}`, root)
       )
     })
-    const spoken = candidates.find((each) => each.now?.key === playing) ?? candidates[0]
+    const spoken = candidates[0]
     if (!spoken?.now?.play) return undefined
     const all = ranges(spoken)
     const span = all.findIndex((range) =>
