@@ -52,6 +52,9 @@ Server factories receive exactly these `ExtensionHost` fields (import its type o
   time the harness opens (at once if it is open; the server serves once it settles), and async cleanup at unload or shutdown. `onOpen(async (opened) => …)` gets an `AsyncDisposableStack`: `opened.defer(cleanup)` each thing the open starts (commit subscriptions, timers, background work) right after starting it. The stack is disposed, newest first, when that open ends (a core swap's release, a reload or unload of the facet, or shutdown) and at once if the open throws, so a half-done open leaves nothing running. Facet-level callbacks are removed on unload/reload, with cleanup run before the replacement opens. Callbacks registered inside a shared resource's creation belong to that reload-stable resource and survive until server shutdown.
   Keep only process state in a resource (running children, in-flight promises, flags); never capture document or task
   tokens or facet functions in it, since they go stale on reload. Build those on each install around the shared state.
+  `create` runs once per process, so after a reload the lookup returns the object an older version of the facet built:
+  a field the new version added is `undefined` there until the server restarts. Fill new fields after the lookup
+  (`state.seen ??= new Map()`) instead of only in `create`, or code that uses the field fails until then.
 - `onLoadError(callback)`: run `callback(name, error)` each time an extension's server facet fails to load; facet-scoped.
 - `onBeforeLoad(callback)`: run and await `callback()` before each extension reload, web build and restart, so none reads a checkout or packages still being written (`update` waits for git and installs owed packages there). When it throws, a reload or build goes on with a notice and a restart is refused with the message; facet-scoped.
 
