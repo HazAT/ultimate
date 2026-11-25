@@ -90,9 +90,6 @@ importers:
       lovely-mermaid:
         specifier: 0.3.3
         version: 0.3.3
-      ogl:
-        specifier: ^1.0.11
-        version: 1.0.11
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
@@ -2271,9 +2268,6 @@ packages:
   obug@3.0.0:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
     engines: {node: '>=12.20.0'}
-
-  ogl@1.0.11:
-    resolution: {integrity: sha512-kUpC154AFfxi16pmZUK4jk3J+8zxwTWGPo03EoYA8QPbzikHoaC82n6pNTbd+oEaJonaE8aPWBlX7ad9zrqLsA==}
 
   onetime@7.0.0:
     resolution: {integrity: sha512-VXJjc87FScF88uafS3JllDgvAm+c/Slfz06lorj2uAY34rlUu0Nt+v8wreiImcrgAjjIHp1rXpTDlLOGw29WwQ==}
@@ -4938,8 +4932,6 @@ snapshots:
       formdata-polyfill: 4.0.10
 
   obug@3.0.0: {}
-
-  ogl@1.0.11: {}
 
   onetime@7.0.0:
     dependencies:
