@@ -3,7 +3,7 @@ back to @ultimate when you agree.
 
 It is off by default. Enable it with `"extensions": { "enable": ["voice-live"] }` in your user or project
 `.ultimate/settings.json`. It needs the voice model's login (by default Claude Code's, for
-`claude-code/claude-sonnet-5-5`) and an OpenAI API key for transcription (`OPENAI_API_KEY` in ⌘K → Secrets, the key
+`claude-code/claude-opus-5-5`) and an OpenAI API key for transcription (`OPENAI_API_KEY` in ⌘K → Secrets, the key
 dictation uses). Pick another model with `"voice": { "model": "provider/model" }` in `~/.ultimate/settings.json`.
 
 The empty voice panel shows this setup as a checklist from `status`: the voice model's login, OpenAI transcription (required) and Jev for hands-free send in
@@ -24,7 +24,7 @@ collect mode (optional), each with what to do when it is missing.
    - A model that hears audio (any Gemini model you configure) gets the turn at once: `turn` submits the transcript placeholder as the input,
      and a `beforeRequest` hook adds the recording to that request only. Stored history stays text, so compaction,
      renderers and other models never see audio. The transcript arrives in parallel and shows as your message.
-   - Any other model, the default Claude Sonnet included, waits for that transcript; the trace shows the transcribe stage on the critical path.
+   - Any other model, the default Claude Opus included, waits for that transcript; the trace shows the transcribe stage on the critical path.
    - Typed text, pasted text and pasted or dropped screenshots go through the same `turn`, with Enter in the prompt box.
      A video in the box (pasted, or recorded with its screen-record button) goes with the next spoken or typed turn as its
      `Attached video` line once it is ready, so the fork can ask about it and name its id in a handoff.
