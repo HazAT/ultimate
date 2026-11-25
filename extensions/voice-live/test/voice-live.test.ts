@@ -58,7 +58,7 @@ async function fixture() {
     )
   })
   const faux = fauxProvider({
-    models: [{ id: 'main-faux' }, { id: 'gemini-faux', input: ['text', 'image'] }],
+    models: [{ id: 'main-faux' }, { id: 'gemini-faux', input: ['text', 'image'], reasoning: true }],
   })
   const server = await fauxServer({ ultimateRoot, home, userHome: home, faux })
   servers.push(server)
@@ -200,6 +200,32 @@ it('switching to a model that does not hear audio sends it the transcript instea
   expect(request.model).toBe('main-faux')
   expect(JSON.stringify(request.messages)).toContain('(transcribed): what about the sidebar')
   expect(JSON.stringify(request.messages)).not.toContain('audio/webm')
+})
+
+it('voice thinks at low unless picked; a pick applies to the open session and falls back on a model without it', async () => {
+  const f = await fixture()
+  expect((await f.action('status', null)).data.result).toMatchObject({
+    thinking: 'low',
+    thinkingLevels: ['off', 'minimal', 'low', 'medium', 'high'],
+  })
+  const first = await f.turn({ key: 'one', text: 'start' })
+  const agent = () => f.server.harness.snapshot(AgentDoc, first.id, context)
+  expect((await agent())?.thinkingLevel).toBe('low')
+
+  const picked = await f.action('thinking', { thinking: 'medium' })
+  expect([picked.status, picked.data.error]).toEqual([200, undefined])
+  expect((await agent())?.thinkingLevel).toBe('medium')
+  expect((await f.action('status', null)).data.result.thinking).toBe('medium')
+  expect((await f.action('thinking', { thinking: 'max' })).status).not.toBe(200)
+
+  await f.action('model', { model: 'faux/main-faux' })
+  expect((await agent())?.thinkingLevel).toBe('off')
+  expect((await f.action('status', null)).data.result).toMatchObject({
+    thinking: 'off',
+    thinkingLevels: ['off'],
+  })
+  await f.action('model', { model: 'faux/gemini-faux' })
+  expect((await agent())?.thinkingLevel).toBe('medium')
 })
 
 it('a recording whose transcript is empty is never sent to the model', async () => {

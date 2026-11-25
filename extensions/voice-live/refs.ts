@@ -1,5 +1,6 @@
 /** Voice mode: a push-to-talk fork of @ultimate, its actions, session document and handoff entry. Browser-safe. */
 import type { JsonValue } from '@earendil-works/chord/json'
+import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
@@ -16,6 +17,8 @@ export type VoiceSession = {
   forks?: ConversationId[]
   /** The model voice uses, `provider/model`, picked in the panel; unset, the default. */
   model?: string
+  /** The thinking level voice asks for, picked in the panel; unset, `low`. A model without it uses its closest level. */
+  thinking?: ModelThinkingLevel
 }
 
 /**
@@ -133,6 +136,12 @@ export const ModelAction = actionRef<{ model: string }, Record<string, never>>(
   'model',
 )
 
+/** `{ thinking }` → the voice thinking level from now on, the open session's included; the voice model must support it. */
+export const ThinkingAction = actionRef<{ thinking: ModelThinkingLevel }, Record<string, never>>(
+  'voice-live',
+  'thinking',
+)
+
 /** Open the session without a turn yet: forks @ultimate unless a session is open. Returns its conversation. */
 export const OpenAction = actionRef<null, { conversation: ConversationId }>('voice-live', 'open')
 
@@ -146,13 +155,16 @@ export const EndAction = actionRef<null, Record<string, never>>('voice-live', 'e
 export type VoiceSetupItem = { ready: boolean; detail: string; fix?: string }
 
 /**
- * The voice model and whether it hears audio, for the dock's header, and the setup checklist for its empty state: the
- * voice model's login, OpenAI transcription (required), and Jev for spoken send in collect mode (optional).
+ * The voice model, its thinking level and the levels it supports, and whether it hears audio, for the dock's header,
+ * and the setup checklist for its empty state: the voice model's login, OpenAI transcription (required), and Jev for
+ * spoken send in collect mode (optional).
  */
 export const StatusAction = actionRef<
   null,
   {
     model: string
+    thinking: ModelThinkingLevel
+    thinkingLevels: ModelThinkingLevel[]
     route: VoiceRoute
     transcribes: boolean
     reason?: string

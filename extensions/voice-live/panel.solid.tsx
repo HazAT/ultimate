@@ -16,6 +16,7 @@ import {
   SquareArrowOutUpRight,
   X,
 } from '@lucide/solid'
+import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
@@ -33,6 +34,7 @@ import {
   Composer,
   ComposerRedirect,
   composerDraft,
+  errorMessage,
   formatKeys,
   ROOT,
   ScopedConversation,
@@ -73,7 +75,7 @@ import {
   voiceOpen,
 } from './dock.solid.tsx'
 import { createTalk } from './talk.ts'
-import { ModelAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
+import { ModelAction, StatusAction, ThinkingAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { VOICES } from './voices.ts'
 import { estimate } from './speech.ts'
 
@@ -110,6 +112,50 @@ export function VoiceModel(props: { class?: string }) {
       }}
       value={status.data()?.model}
     />
+  )
+}
+
+function VoiceThinking() {
+  const status = useAction(StatusAction, null, { conversation: ROOT })
+  const [error, setError] = createSignal<string>()
+  const pick = (thinking: ModelThinkingLevel) => {
+    setError(undefined)
+    void api
+      .action(ThinkingAction, { thinking })
+      .catch((failure: unknown) => setError(errorMessage(failure)))
+      .then(() => status.refetch())
+  }
+  const leveled = () => {
+    const data = status.data()
+    return data && data.thinkingLevels.length > 1 ? data : undefined
+  }
+  return (
+    <Show when={leveled()}>
+      {(data) => (
+        <div class="px-1.5 pb-1.5">
+          <SegmentedControl
+            aria-label="Voice thinking level"
+            bind={[() => data().thinking, pick]}
+            class="w-full"
+          >
+            <For each={data().thinkingLevels}>
+              {(level) => (
+                <SegmentedControlItem
+                  aria-label={`Voice ${level} thinking`}
+                  class="flex-1 justify-center"
+                  value={level}
+                >
+                  {level}
+                </SegmentedControlItem>
+              )}
+            </For>
+          </SegmentedControl>
+          <Show when={error()}>
+            {(message) => <p class="px-1 pt-1 text-[10.5px] text-error">{message()}</p>}
+          </Show>
+        </div>
+      )}
+    </Show>
   )
 }
 
@@ -374,6 +420,7 @@ function Settings(props: { model?: boolean }) {
           <div class="px-1.5 pb-1">
             <VoiceModel class={cn(toolbarButton, 'w-full max-w-none')} />
           </div>
+          <VoiceThinking />
         </Show>
         <div class="flex flex-col gap-2.5 border-t border-border/60 px-3 py-2.5 text-muted-foreground">
           <label class="flex items-center justify-between gap-3">

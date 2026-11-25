@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Message } from '@earendil-works/pi-ai'
+import { clampThinkingLevel, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
+import type { Message, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import {
   AgentDoc,
@@ -43,6 +44,7 @@ import {
   OpenAction,
   StatusAction,
   StopAction,
+  ThinkingAction,
   DiscardAction,
   IntentAction,
   SpeakAction,
@@ -88,6 +90,7 @@ export const userActions = [
   'record',
   'turn',
   'model',
+  'thinking',
   'stop',
   'end',
   'ui-claim',
@@ -143,6 +146,18 @@ async function voiceModel(host: ExtensionHost) {
     return { provider, modelId: rest.join('/') }
   }
   return DEFAULT_MODEL
+}
+
+const DEFAULT_THINKING: ModelThinkingLevel = 'low'
+
+function thinkingFor(
+  host: ExtensionHost,
+  ref: { provider: string; modelId: string },
+  picked: ModelThinkingLevel | undefined,
+) {
+  const model = host.modelRuntime.getModel(ref.provider, ref.modelId)
+  const level = picked ?? DEFAULT_THINKING
+  return model ? clampThinkingLevel(model, level) : level
 }
 
 const recordings = (host: ExtensionHost, session: ConversationId) =>
@@ -281,7 +296,7 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
     Object.assign(await tx.doc(Fork, fork.id), { of: main, at, seen: at })
     const agent = await tx.doc(AgentDoc, fork.id)
     agent.model = model
-    agent.thinkingLevel = 'low'
+    agent.thinkingLevel = thinkingFor(host, model, session.thinking)
     const own = ['ui', 'voice_handoff']
     const tools = agent.tools
     if (Array.isArray(tools))
@@ -424,7 +439,8 @@ const unwrap = <T extends object>(args: unknown) =>
 
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host }) => {
-    const open = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
+    const session = await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context)
+    const open = session?.id
     const model =
       (open === undefined
         ? undefined
@@ -434,11 +450,14 @@ export const actions = {
       .getAvailableSnapshot()
       .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
     const name = `${model.provider}/${model.modelId}`
+    const listed = host.modelRuntime.getModel(model.provider, model.modelId)
     const transcribes = !!(await openaiSecretOrNonOAuthKey(host))
     const classifies =
       !!host.want(ClassifyApi) && !!(await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
     return {
       model: name,
+      thinking: thinkingFor(host, model, session?.thinking),
+      thinkingLevels: listed ? getSupportedThinkingLevels(listed) : [],
       route: hearsAudio(model) ? ('audio' as const) : ('text' as const),
       transcribes,
       ...(available ? {} : { reason: `${name} has no login` }),
@@ -660,7 +679,28 @@ export const actions = {
     await host.harness().commit(async (tx) => {
       const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
       session.model = model
-      if (session.id !== undefined) (await tx.doc(AgentDoc, session.id)).model = ref
+      if (session.id === undefined) return
+      const agent = await tx.doc(AgentDoc, session.id)
+      agent.model = ref
+      agent.thinkingLevel = thinkingFor(host, ref, session.thinking)
+    }, context)
+    return {}
+  }),
+  thinking: implementAction(ThinkingAction, async (args, { host }) => {
+    const { thinking } = unwrap<{ thinking: unknown }>(args)
+    const configured = await voiceModel(host)
+    await host.harness().commit(async (tx) => {
+      const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+      const agent = session.id === undefined ? undefined : await tx.doc(AgentDoc, session.id)
+      const ref = agent?.model ?? configured
+      const model = host.modelRuntime.getModel(ref.provider, ref.modelId)
+      const levels = model ? getSupportedThinkingLevels(model) : []
+      if (!levels.includes(thinking as ModelThinkingLevel))
+        throw new Error(
+          `${ref.provider}/${ref.modelId} supports thinking ${levels.join(', ') || 'none'}, not ${String(thinking)}`,
+        )
+      session.thinking = thinking as ModelThinkingLevel
+      if (agent) agent.thinkingLevel = session.thinking
     }, context)
     return {}
   }),

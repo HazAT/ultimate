@@ -5,6 +5,8 @@ It is off by default. Enable it with `"extensions": { "enable": ["voice-live"] }
 `.ultimate/settings.json`. It needs the voice model's login (by default Claude Code's, for
 `claude-code/claude-opus-5-5`) and an OpenAI API key for transcription (`OPENAI_API_KEY` in ⌘K → Secrets, the key
 dictation uses). Pick another model with `"voice": { "model": "provider/model" }` in `~/.ultimate/settings.json`.
+The voice settings pick the model and its thinking level (`thinking`, default `low`; a model without the picked level
+uses its closest one), both kept in `voice.session` and applied from the next turn on.
 
 The empty voice panel shows this setup as a checklist from `status`: the voice model's login, OpenAI transcription (required) and Jev for hands-free send in
 collect mode (optional), each with what to do when it is missing.
