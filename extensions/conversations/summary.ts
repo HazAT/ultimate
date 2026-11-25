@@ -231,6 +231,12 @@ export async function askSummaryModel(
   return response ?? (await persistResponseBeforeUse(answer))
 }
 
+function parseJsonResponse(text: string): unknown {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('```') || !trimmed.endsWith('```')) return JSON.parse(trimmed)
+  return JSON.parse(trimmed.slice(trimmed.indexOf('\n') + 1, -3))
+}
+
 export async function generateSummary(
   models: Models,
   input: string,
@@ -268,7 +274,7 @@ export async function generateSummary(
     receipt,
   )
   if (response.stopReason !== 'stop') throw new Error('Summary request did not finish')
-  const parsed: unknown = JSON.parse(response.text)
+  const parsed: unknown = parseJsonResponse(response.text)
   if (
     mode === 'reply' &&
     (!parsed ||
