@@ -152,7 +152,7 @@ export async function prepareVideo(
     }
     await rm(manifest)
     const at = Math.min(1, (seconds ?? end) / 2)
-    const thumbnail = await runTool(
+    await runTool(
       run,
       'ffmpeg',
       [
@@ -177,11 +177,12 @@ export async function prepareVideo(
       signal,
     ).catch(meansNone)
     signal.throwIfAborted()
+    const framed = await stat(join(temp, THUMBNAIL)).then((file) => file.size > 0, meansNone)
     await rm(join(dir, 'parts'), { recursive: true, force: true })
     await rename(temp, join(dir, 'parts'))
     return {
       seconds: seconds ?? end,
-      ...(thumbnail === undefined ? {} : { thumbnail: `parts/${THUMBNAIL}` }),
+      ...(framed ? { thumbnail: `parts/${THUMBNAIL}` } : {}),
       parts,
     }
   } finally {

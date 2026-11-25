@@ -63,11 +63,8 @@ export const FinishAction = actionRef<{ id: string }, Video>('video', 'finish')
 export const AddUrlAction = actionRef<{ url: string; name?: string }, Video>('video', 'addUrl')
 /** `{ id, question, model?, thinking?, from?, to?, detail?, fps? }` → `{ answer, usage, model }`. */
 export const AskAction = actionRef<AskArgs, AskResult>('video', 'ask')
-/** `{ id }` → `{ mimeType, data }` (base64 JPEG) or `null`: a small frame from about 1 s in, once prepared. */
-export const ThumbnailAction = actionRef<{ id: string }, { mimeType: string; data: string } | null>(
-  'video',
-  'thumbnail',
-)
+/** `{ id }` → a `data:image/jpeg` URL of a small frame from about 1 s in, or `null` before it exists. */
+export const ThumbnailAction = actionRef<{ id: string }, string | null>('video', 'thumbnail')
 /** `{ id }` → `null`: delete a video, its local and uploaded files and all its threads. */
 export const RemoveAction = actionRef<{ id: string }, null>('video', 'remove')
 /** A video can now be asked about. */

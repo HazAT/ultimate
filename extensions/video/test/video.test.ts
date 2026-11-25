@@ -13,6 +13,7 @@ import { GEMINI } from '../gemini.ts'
 const done = { stdout: '', stderr: '' }
 const succeeds: Runner = async (command, args) => {
   if (command === 'ffprobe') return { ...done, stdout: '2.4\n' }
+  if (args.includes('-frames:v')) return done
   await copyFile(args[args.indexOf('-i') + 1], args.at(-1)!.replace('%03d', '000'))
   await writeFile(args[args.indexOf('-segment_list') + 1], 'part-000.mp4,0.000000,2.400000\n')
   return done
@@ -95,7 +96,7 @@ it('resumes a prepare interrupted by closing the harness and cleans its scratch 
   expect(resumedScratch[0]).not.toBe(scratch)
   await expect(stat(scratch)).rejects.toMatchObject({ code: 'ENOENT' })
   const parts = join(f.home, 'videos', id, 'parts')
-  expect(await readdir(parts)).toEqual(['part-000.mp4', 'thumbnail.jpg'])
+  expect(await readdir(parts)).toEqual(['part-000.mp4'])
   expect(await readFile(join(parts, 'part-000.mp4'))).toEqual(bytes)
   expect(
     (await f.recent({ events: [VideoReady, VideoFailed] })).map(({ name, data }) => ({
@@ -302,6 +303,8 @@ it('re-uploads an expiring part, deletes uploads on remove and passes on a 402',
 
   expect(await actions.remove({ id }, f.action)).toBeNull()
   expect(f.calls.filter((call) => call.method === 'DELETE').map((call) => call.path)).toEqual([
+    '/v1beta/files/f1',
+    '/v1beta/files/f2',
     '/v1beta/files/f3',
   ])
   expect((await f.state())?.videos[id]).toBeUndefined()
@@ -320,8 +323,40 @@ it('serves the thumbnail preparation saved next to the parts', async () => {
   const id = await f.upload(Buffer.from('original clip'))
   expect(await f.prepared(id)).toMatchObject({ thumbnail: 'parts/thumbnail.jpg' })
   expect(seek).toBe('1.000')
-  expect(await actions.thumbnail({ id }, f.action)).toEqual({
-    mimeType: 'image/jpeg',
-    data: Buffer.from('jpeg bytes').toString('base64'),
+  expect(await actions.thumbnail({ id }, f.action)).toBe(
+    `data:image/jpeg;base64,${Buffer.from('jpeg bytes').toString('base64')}`,
+  )
+})
+
+it('keeps an upload interrupted while Google processes it, and finishes it on the next question', async () => {
+  const { fake } = google()
+  const asking = new AbortController()
+  let polls = 0
+  const f = await fixture(succeeds, (call) => {
+    if (call.method === 'GET' && (polls += 1) === 1) asking.abort(new Error('stopped'))
+    return fake(call)
   })
+  const id = await f.upload(Buffer.from('original clip'))
+  await f.prepared(id)
+  await expect(
+    f.service.ask({ id, conversation: 1, question: 'One' }, asking.signal),
+  ).rejects.toThrow('stopped')
+  expect((await f.state())?.videos[id]?.parts?.[0].remote).toMatchObject({ name: 'files/f1' })
+  expect((await f.state())?.videos[id]?.parts?.[0].remote?.active).toBeUndefined()
+
+  await actions.ask({ id, question: 'Two' }, f.action)
+  expect(f.calls.filter((call) => call.path === '/upload/v1beta/files')).toHaveLength(1)
+  expect((await f.state())?.videos[id]?.parts?.[0].remote).toMatchObject({
+    name: 'files/f1',
+    active: true,
+  })
+})
+
+it('keeps a ready video and its icon when no frame was written', async () => {
+  const f = await fixture(succeeds)
+  const id = await f.upload(Buffer.from('original clip'))
+  const video = await f.prepared(id)
+  expect(video).toMatchObject({ state: 'ready' })
+  expect(video?.thumbnail).toBeUndefined()
+  expect(await actions.thumbnail({ id }, f.action)).toBeNull()
 })

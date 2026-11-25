@@ -44,6 +44,15 @@ async function failure(response: Response) {
   return new GeminiError(response.status, message)
 }
 
+function remoteOf(file: FileResource): RemoteFile {
+  const expiresAt = file.expirationTime ? Date.parse(file.expirationTime) : NaN
+  return {
+    name: file.name,
+    uri: file.uri,
+    expiresAt: Number.isFinite(expiresAt) ? expiresAt : Date.now() + 47 * 60 * 60 * 1000,
+  }
+}
+
 export function geminiClient(key: string, { fetch, pollMs }: Google) {
   const call = async (
     path: string,
@@ -92,18 +101,19 @@ export function geminiClient(key: string, { fetch, pollMs }: Google) {
       signal,
     })
     if (!sent.ok) throw await failure(sent)
-    let { file } = (await sent.json()) as { file: FileResource }
-    while (file.state === 'PROCESSING') {
+    return remoteOf(((await sent.json()) as { file: FileResource }).file)
+  }
+
+  async function active(name: string, signal: AbortSignal) {
+    for (;;) {
+      const file = await json<FileResource>(`/v1beta/${name}`, {}, signal)
+      if (file.state === 'ACTIVE') return remoteOf(file)
+      if (file.state === 'FAILED')
+        throw new GeminiError(
+          422,
+          `Google could not process the video: ${file.error?.message ?? 'no reason given'}`,
+        )
       await pace(pollMs, signal)
-      file = await json<FileResource>(`/v1beta/${file.name}`, {}, signal)
-    }
-    if (file.state === 'FAILED')
-      throw new GeminiError(422, `Google could not process the video: ${file.error?.message ?? ''}`)
-    const expiresAt = file.expirationTime ? Date.parse(file.expirationTime) : NaN
-    return {
-      name: file.name,
-      uri: file.uri,
-      expiresAt: Number.isFinite(expiresAt) ? expiresAt : Date.now() + 47 * 60 * 60 * 1000,
     }
   }
 
@@ -149,12 +159,11 @@ export function geminiClient(key: string, { fetch, pollMs }: Google) {
     try {
       await call(`/v1beta/${name}`, { method: 'DELETE' }, signal)
     } catch (error) {
-      if (!(error instanceof GeminiError) || (error.status !== 404 && error.status !== 403))
-        throw error
+      if (!(error instanceof GeminiError) || error.status !== 404) throw error
     }
   }
 
-  return { upload, generate, remove }
+  return { upload, active, generate, remove }
 }
 export type Gemini = ReturnType<typeof geminiClient>
 

@@ -175,7 +175,7 @@ async function forgetUploads(host: ExtensionHost, google: Google, id: string, si
     await client.remove(name, signal).catch((error: unknown) => {
       signal.throwIfAborted()
       host.notice(
-        `Could not delete ${name} from Google (${String(error)}); Google deletes it within 48 hours.`,
+        `Could not confirm that Google deleted ${name} (${String(error)}); Google deletes it within 48 hours.`,
       )
     })
 }

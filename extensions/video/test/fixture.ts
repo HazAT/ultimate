@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
@@ -14,6 +14,7 @@ import videoExtension, { actions, docs } from '../server.ts'
 
 const opened = new Set<OpenHost>()
 afterEach(async () => {
+  vi.unstubAllEnvs()
   for (const host of opened) await host.close()
   opened.clear()
 })
@@ -25,6 +26,7 @@ export const gemini = (status: number, body: unknown, headers?: Record<string, s
   new Response(JSON.stringify(body), { status, headers })
 
 export async function fixture(run: Runner, fake?: Fake) {
+  vi.stubEnv('GEMINI_API_KEY', undefined)
   const home = await temp('ultimate-video-')
   const prepared = await prepareHarness({ home, ultimateRoot: home, userHome: home })
   await mkdir(join(home, '.ultimate'), { recursive: true })

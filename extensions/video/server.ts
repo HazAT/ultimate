@@ -231,8 +231,7 @@ export const actions = {
     const id = idOf(fields(args).id)
     const video = (await snapshot(host))?.videos[id]
     if (!video?.thumbnail) return null
-    const data = await readFile(join(folder(host, id), video.thumbnail), 'base64')
-    return { mimeType: 'image/jpeg', data }
+    return `data:image/jpeg;base64,${await readFile(join(folder(host, id), video.thumbnail), 'base64')}`
   }),
   remove: implementAction(RemoveAction, async (args, { host, signal }) => {
     const harness = host.harness()

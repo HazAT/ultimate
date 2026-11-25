@@ -81,10 +81,7 @@ function AskCard(props: { call: SolidToolProps['call'] }) {
     { id: untrack(() => words(props.call.args.id)) },
     { conversation: ROOT, onError: keepLast, on: () => video()?.thumbnail },
   )
-  const image = () => {
-    const value = video()?.thumbnail ? thumbnail.data() : undefined
-    return value ? `data:${value.mimeType};base64,${value.data}` : undefined
-  }
+  const image = () => (video()?.thumbnail ? thumbnail.data() : undefined)
   return (
     <Tool defaultOpen>
       <ToolHeader

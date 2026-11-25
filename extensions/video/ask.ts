@@ -49,28 +49,38 @@ function uploaded(
   signal: AbortSignal,
 ): Promise<RemoteFile> {
   return serialized(host, `upload:${video.id}:${index}`, async () => {
+    const record = (remote: RemoteFile) =>
+      host.harness().commit(async (tx) => {
+        const doc = await tx.doc(VideosState, ROOT_CONVERSATION_ID)
+        const part = doc.videos[video.id]?.parts?.[index]
+        if (doc.videos[video.id]?.state !== 'ready' || !part) return false
+        part.remote = remote
+        return true
+      }, context)
+    const removed = async (name: string) => {
+      await client.remove(name, signal)
+      return new Error('Video was removed while the question was running')
+    }
     const current = (await snapshot(host))?.videos[video.id]?.parts?.[index]
     if (!current?.file) throw new Error('Video was removed while the question was running')
-    if (current.remote && current.remote.expiresAt > Date.now() + REUSE_MARGIN_MS)
-      return current.remote
-    const remote = await client.upload(
-      join(folder(host, video.id), current.file),
-      current.mimeType,
-      `${video.id} ${video.name}`,
-      signal,
-    )
-    const kept = await host.harness().commit(async (tx) => {
-      const part = (await tx.doc(VideosState, ROOT_CONVERSATION_ID)).videos[video.id]?.parts?.[
-        index
-      ]
-      if (part) part.remote = remote
-      return !!part
-    }, context)
-    if (!kept) {
+    let remote = current.remote
+    if (remote && remote.expiresAt <= Date.now() + REUSE_MARGIN_MS) {
       await client.remove(remote.name, signal)
-      throw new Error('Video was removed while the question was running')
+      remote = undefined
     }
-    return remote
+    if (!remote) {
+      remote = await client.upload(
+        join(folder(host, video.id), current.file),
+        current.mimeType,
+        `${video.id} ${video.name}`,
+        signal,
+      )
+      if (!(await record(remote))) throw await removed(remote.name)
+    }
+    if (remote.active) return remote
+    const active = { ...(await client.active(remote.name, signal)), active: true }
+    if (!(await record(active))) throw await removed(active.name)
+    return active
   })
 }
 

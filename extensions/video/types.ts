@@ -6,6 +6,6 @@ export type GeminiUsage = {
   totalTokenCount: number
 }
 
-export type RemoteFile = { name: string; uri: string; expiresAt: number }
+export type RemoteFile = { name: string; uri: string; expiresAt: number; active?: boolean }
 
 export type AskResult = { answer: string; usage: GeminiUsage; model: string }

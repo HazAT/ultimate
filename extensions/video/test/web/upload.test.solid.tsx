@@ -49,8 +49,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: { id: args.id, state: 'preparing' } })
     }
     if (action === 'remove') return Response.json({ result: null })
-    if (action === 'thumbnail')
-      return Response.json({ result: { mimeType: 'image/jpeg', data: 'AAAA' } })
+    if (action === 'thumbnail') return Response.json({ result: 'data:image/jpeg;base64,AAAA' })
     if (action === 'upload')
       return Response.json({ result: { path: `/home/attachments/${'1'.repeat(13)}-x/notes.pdf` } })
     return Response.json({ ok: true, submissionId: 1 })
