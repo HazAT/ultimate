@@ -105,3 +105,8 @@ facet is still loading; they need not wait for ready.
 A reload of a rendered page (a core restart, a switch to a new web bundle, F5) paints the previous page's view from
 `sessionStorage` before any module loads and fades it out once the app has rendered and settled
 (`web/src/sdk/resume.ts`); `covered()` from `@/sdk/solid` is true while that picture still covers the page, so a loading overlay can stay away.
+Before it fades, the page gets back the transcript's reading position, the text of named fields, the focused field
+with its caret and the keys typed while the picture showed (`web/src/sdk/resume-place.ts`). A text field opts in with
+`data-resume="<key>"` (every `PromptBox` is named by its draft); a field the new page already filled keeps its text,
+and typed keys are dropped when the focused field did not come back unchanged. The transcript comes back at its top
+row when that row is among the entries the new page loads first; otherwise it follows the end.

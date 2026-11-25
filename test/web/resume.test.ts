@@ -99,7 +99,14 @@ function page(stored?: string) {
     createElement: (tag: string) => new Element(tag.toUpperCase()),
     querySelectorAll: () => [],
   }
-  return { document, sessionStorage, items, body, location: { search: '' } }
+  return {
+    document,
+    sessionStorage,
+    items,
+    body,
+    location: { search: '' },
+    addEventListener: () => {},
+  }
 }
 
 afterEach(() => {
