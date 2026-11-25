@@ -6,24 +6,27 @@ import {
   cn,
   column,
   events,
+  ROOT,
   switchConversation,
+  useAction,
   useConversation,
-  useExtensionUiState,
+  useEvent,
   useExternal,
 } from '@/sdk/solid'
 import type { SolidComposerProps } from '@/sdk/solid'
 import type { Reading } from './player.solid.tsx'
+import { SpeechStatusAction } from './refs.ts'
+import { speech } from './voice.solid.tsx'
 
 type Player = {
   current: () => Reading | undefined
   subscribe: (listener: () => void) => () => void
-  setRate: (rate: number) => void
   pause: () => void
   resume: () => void
   stop: () => void
 }
 
-const speeds = [1, 1.25, 1.5, 1.75, 2, 0.75]
+const speeds = [1, 1.1, 1.25, 1.5, 1.75, 2, 0.8]
 
 const rowButton =
   'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
@@ -32,8 +35,14 @@ export function readingStrip(player: Player) {
   return function ReadingStrip(props: SolidComposerProps) {
     const reading = useExternal(player.current, player.subscribe)
     const conversation = useConversation()
-    const [rate, setRate] = useExtensionUiState('rate', 1)
-    createEffect(rate, (next) => player.setRate(next))
+    const status = useAction(SpeechStatusAction, null, { conversation: ROOT })
+    useEvent('secrets:changed', () => void status.refetch())
+    createEffect(
+      () => status.data()?.openai,
+      (known) => {
+        if (known !== undefined) speech.setKeyed(known)
+      },
+    )
     const [revealing, setRevealing] = createSignal<{
       conversation: ConversationId
       entry: number
@@ -57,10 +66,6 @@ export function readingStrip(player: Player) {
       <>
         <Show when={reading()}>
           {(current) => {
-            const progress = () => {
-              const { sections, section } = current()
-              return sections && sections > 1 ? ` · ${section + 1}/${sections}` : ''
-            }
             const goToMessage = () => {
               const { conversation: id, entry } = current()
               if (conversation().id !== id) switchConversation(id)
@@ -94,17 +99,18 @@ export function readingStrip(player: Player) {
                     <span class="underline decoration-muted-foreground/40 underline-offset-2">
                       #{current().conversation}/{current().entry}
                     </span>
-                    {progress()}
                   </Button>
                   <Button
                     aria-label="Reading speed"
                     class="ml-auto h-auto shrink-0 rounded px-1 font-mono text-[11px] font-normal text-muted-foreground tabular-nums transition-colors hover:text-foreground"
-                    onClick={() => setRate(speeds[(speeds.indexOf(rate()) + 1) % speeds.length])}
+                    onClick={() =>
+                      speech.setRate(speeds[(speeds.indexOf(speech.rate()) + 1) % speeds.length])
+                    }
                     size={null}
                     title="Reading speed"
                     variant={null}
                   >
-                    {rate()}×
+                    {speech.rate()}×
                   </Button>
                   <Button
                     aria-label={playing() ? 'Pause reading' : 'Resume reading'}

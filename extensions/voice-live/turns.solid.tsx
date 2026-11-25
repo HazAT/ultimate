@@ -1,13 +1,5 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
-import {
-  Check,
-  ChevronRight,
-  CornerDownRight,
-  MessageCircleReply,
-  Mic,
-  Play,
-  Scissors,
-} from '@lucide/solid'
+import { Check, ChevronRight, MessageCircleReply, Mic, Play } from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
@@ -28,10 +20,9 @@ import {
   pageAgent,
   useConversation,
   useDocOf,
-  useExternal,
   UserText,
 } from '@/sdk/solid'
-import { every, nextTurn } from '../../lib/timers.ts'
+import { nextTurn } from '../../lib/timers.ts'
 import { capture, drawWave } from '../dictation/ui.solid.tsx'
 import {
   dock,
@@ -45,9 +36,8 @@ import {
 import type { TurnView } from './dock.solid.tsx'
 import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
 import type { VoiceFork, VoiceTurn, VoiceUiCall } from './refs.ts'
-import { splitReply } from './speech.ts'
-import type { Sentence } from './speech.ts'
-import type { Stage, Trace } from './trace.ts'
+import { splitReply } from '../read-aloud/ui.solid.tsx'
+import type { Sentence } from '../read-aloud/ui.solid.tsx'
 
 const short = (key: string) => key.slice(0, 8)
 
@@ -72,102 +62,6 @@ export function Waveform(props: { envelope?: readonly number[]; live?: boolean; 
   return <canvas aria-hidden="true" class={props.class} height={56} ref={canvas} width={440} />
 }
 
-function TraceLine(props: { trace: Trace; turn: string }) {
-  const stages = useExternal(
-    () => props.trace.stages.get(),
-    (changed) => props.trace.stages.subscribe(changed),
-  )
-  const total = useExternal(
-    () => props.trace.total.get(),
-    (changed) => props.trace.total.subscribe(changed),
-  )
-  const [now, setNow] = createSignal(Date.now())
-  const running = createMemo(() => stages().some((stage) => stage.status === 'running'))
-  createEffect(running, (on) => (on ? every(100, () => setNow(Date.now())) : undefined))
-  const succeeded = createMemo(
-    () => !!total() && !running() && !stages().some((stage) => stage.status === 'failed'),
-  )
-  const [open, setOpen] = createSignal(false)
-  const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
-  const detail = (stage: Stage) =>
-    [
-      stage.status === 'running'
-        ? seconds(now() - (stage.since ?? now()))
-        : stage.ms !== undefined
-          ? seconds(stage.ms)
-          : '',
-      stage.detail === '·' ? '' : stage.detail,
-    ]
-      .filter(Boolean)
-      .join(' ')
-  const list = (checks: boolean) => (
-    <For each={checks ? stages().filter((stage) => stage.status !== 'idle') : stages()}>
-      {(stage) => (
-        <>
-          <span
-            class={cn(
-              'inline-flex items-center gap-1 whitespace-nowrap',
-              stage.status === 'idle' && 'text-muted-foreground/35',
-              stage.status === 'skipped' && 'text-muted-foreground/50',
-              stage.status === 'running' && 'text-brand',
-              stage.status === 'slow' && 'text-warning',
-              stage.status === 'failed' && 'text-error',
-            )}
-            data-stage={stage.key}
-            data-status={stage.status}
-          >
-            <Show when={stage.status === 'running'}>
-              <span class="size-1.5 animate-pulse-dot rounded-full bg-brand" />
-            </Show>
-            <Show when={stage.status === 'done' || stage.status === 'slow'}>
-              <Check class="size-3 text-success" />
-            </Show>
-            {stage.label}
-            <Show when={detail(stage)}>
-              <span class={cn(stage.status === 'running' && 'text-brand/80')}>{detail(stage)}</span>
-            </Show>
-          </span>
-        </>
-      )}
-    </For>
-  )
-  return (
-    <div
-      class="min-w-0 font-mono text-[11px] leading-5 text-muted-foreground/70 tabular-nums"
-      data-ui="transcript-meta"
-      data-voice-trace
-    >
-      <Show
-        when={succeeded()}
-        fallback={
-          <div class="flex min-w-0 flex-wrap items-center gap-x-2.5">
-            {list(false)}
-            <Show when={total()}>
-              <span class="whitespace-nowrap text-foreground/70">{total()}</span>
-            </Show>
-          </div>
-        }
-      >
-        <Collapsible bind={[open, setOpen]} class="min-w-0">
-          <CollapsibleTrigger
-            aria-label={`Stages of turn ${short(props.turn)}`}
-            class="group/trace flex h-auto items-center gap-1 rounded-none p-0 font-mono text-[11px] font-normal text-muted-foreground/70 hover:text-muted-foreground"
-          >
-            <Check class="size-3 text-success" />
-            {total() ?? 'done'}
-            <ChevronRight class="size-3 transition-transform group-data-open/trace:rotate-90" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div class="flex min-w-0 flex-wrap items-center gap-x-2.5 pt-0.5 pl-4">
-              {list(true)}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      </Show>
-    </div>
-  )
-}
-
 export function saidIn(
   data: VoiceTurn,
   recording: string | undefined,
@@ -186,7 +80,6 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
   const data = () => props.turn.data
   const local = () => dock.local()[props.turn.key]
   const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
-  const cutIn = () => data().hint?.includes('(Hint:') ?? false
   const said = () =>
     saidIn(data(), audio(), !!props.turn.record, props.fork?.transcripts ?? undefined)
   const failed = () => {
@@ -196,13 +89,8 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
   return (
     <Message class="group/message mt-3 first:mt-0" data-voice-turn={props.turn.key} from="user">
       <MessageContent>
-        <Show when={data().audio || cutIn()}>
+        <Show when={data().audio}>
           <div class="flex min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
-            <Show when={cutIn()}>
-              <span class="inline-flex items-center gap-1 text-brand">
-                <CornerDownRight class="size-3" /> cut in
-              </span>
-            </Show>
             <Show when={data().answered}>
               <span class="inline-flex shrink-0 items-center gap-1 text-brand">
                 <MessageCircleReply class="size-3" /> sent as your answer
@@ -401,7 +289,6 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
       !streaming() &&
       !(playerState().key === props.turn.key && (playerState().playing || playerState().paused)),
   )
-  const cut = () => dock.cuts().find((item) => item.key === props.turn.key)
   const playing = (index: number) =>
     playerState().key === props.turn.key && playerState().index === index && playerState().playing
   const played = (index: number) =>
@@ -431,62 +318,24 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
               {(group, at) => (
                 <p>
                   <For each={group}>
-                    {({ sentence, index }) => {
-                      const unheardFrom = () => {
-                        const mark = cut()
-                        if (!mark || index < mark.sentence) return Infinity
-                        if (index > mark.sentence) return -1
-                        return mark.charIndex
-                      }
-                      return (
-                        <>
-                          <Button
-                            aria-label={`Play from sentence ${index + 1} of turn ${short(props.turn.key)}`}
-                            class={cn(
-                              'inline h-auto rounded-sm p-0 text-left align-baseline text-[length:inherit] leading-[inherit] font-normal whitespace-normal text-inherit transition-colors duration-300 [box-decoration-break:clone] hover:bg-accent/60',
-                              played(index) && 'text-foreground/70',
-                              (playing(index) || pausedAt(index)) && 'bg-brand/15 text-foreground',
-                            )}
-                            onClick={() => loadAndPlay(index)}
-                            size={null}
-                            title="Play from here"
-                            variant={null}
-                          >
-                            <For each={sentence.words}>
-                              {(word, wordAt) => {
-                                const start = () => sentence.starts[wordAt()]
-                                const gone = () =>
-                                  unheardFrom() !== Infinity && start() > unheardFrom()
-                                return (
-                                  <>
-                                    <span
-                                      class={cn(
-                                        gone() &&
-                                          'text-muted-foreground/60 line-through decoration-muted-foreground/40',
-                                      )}
-                                    >
-                                      {word}
-                                    </span>
-                                    <Show
-                                      when={unheardFrom() !== Infinity && unheardFrom() === start()}
-                                    >
-                                      <span
-                                        class="ml-1 inline-flex items-center gap-1 align-[1px] font-mono text-[11px] text-error"
-                                        data-voice-cut
-                                      >
-                                        <Scissors class="size-3" />
-                                        you cut in
-                                      </span>
-                                    </Show>
-                                    {wordAt() < sentence.words.length - 1 ? ' ' : ''}
-                                  </>
-                                )
-                              }}
-                            </For>
-                          </Button>{' '}
-                        </>
-                      )
-                    }}
+                    {({ sentence, index }) => (
+                      <>
+                        <Button
+                          aria-label={`Play from sentence ${index + 1} of turn ${short(props.turn.key)}`}
+                          class={cn(
+                            'inline h-auto rounded-sm p-0 text-left align-baseline text-[length:inherit] leading-[inherit] font-normal whitespace-normal text-inherit transition-colors duration-300 [box-decoration-break:clone] hover:bg-accent/60',
+                            played(index) && 'text-foreground/70',
+                            (playing(index) || pausedAt(index)) && 'bg-brand/15 text-foreground',
+                          )}
+                          onClick={() => loadAndPlay(index)}
+                          size={null}
+                          title="Play from here"
+                          variant={null}
+                        >
+                          {sentence.text.trim()}
+                        </Button>{' '}
+                      </>
+                    )}
                   </For>
                   <Show when={at() === paragraphs().length - 1 && sentences().pending}>
                     <span class="text-muted-foreground">{sentences().pending}</span>
@@ -649,9 +498,6 @@ export function Session(props: { fork: ConversationId }) {
                   last={index() === view().turns.length - 1}
                   turn={turn()}
                 />
-                <Show when={dock.local()[turn().key]?.trace}>
-                  {(trace) => <TraceLine trace={trace()} turn={turn().key} />}
-                </Show>
               </>
             )}
           </For>

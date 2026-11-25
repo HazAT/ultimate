@@ -189,28 +189,6 @@ export const UiAnswerAction = actionRef<
   Record<string, never>
 >('voice-live', 'ui-answer')
 
-/** An OpenAI voice of the realtime speech model; cedar and marin sound best. */
-export type OpenAiVoice =
-  | 'cedar'
-  | 'marin'
-  | 'alloy'
-  | 'ash'
-  | 'ballad'
-  | 'coral'
-  | 'echo'
-  | 'sage'
-  | 'shimmer'
-  | 'verse'
-
-/**
- * `{ voice, text }` → `{ audio }`, the text read aloud by that OpenAI voice as base64 WAV; aborting the request cancels
- * it. Without text it only opens the connection, so the first sentence starts sooner.
- */
-export const SpeakAction = actionRef<{ voice: OpenAiVoice; text?: string }, { audio?: string }>(
-  'voice-live',
-  'speak',
-)
-
 /** Drop every collected recording that was not sent. */
 export const DiscardAction = actionRef<null, Record<string, never>>('voice-live', 'discard')
 
