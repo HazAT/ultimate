@@ -1,5 +1,6 @@
 import { createRoot, createSignal } from 'solid-js'
 import { errorMessage } from '@/sdk/solid'
+import type { DictationSink, DictationTake } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
 
@@ -9,7 +10,8 @@ export const MIN_SPOKEN_SECONDS = 0.6
 const VOICED_LEVEL = 0.12
 const MIN_VOICED_FRAMES = 6
 
-export type Recorded = { blob: Blob; seconds: number; spoke: boolean; envelope: number[] }
+export type Recorded = DictationTake
+export type Sink = DictationSink
 
 export function unsupported() {
   if (!window.isSecureContext) return 'Voice needs HTTPS: open Ultimate over its tailnet URL'
@@ -152,17 +154,9 @@ function createMic(keepOpen: () => boolean) {
   }
 }
 
-export type Sink = {
-  start?(): void
-  recording?(): void
-  cancel?(): void
-  error?(message: string): void
-  finish(recorded: Recorded, retaking: boolean): Promise<void>
-}
-
 export function createCapture(keepOpen = () => false) {
   const mic = createMic(() => keepOpen())
-  const [active, setActive] = createSignal<Sink>()
+  const [active, setActive] = createSignal<{ sink: Sink; signal?: AbortSignal }>()
   let sink: Sink | undefined
   let lifetime: AbortSignal | undefined
   let pressing = 0
@@ -221,7 +215,7 @@ export function createCapture(keepOpen = () => false) {
       if (!started && (pressing === mine || sink !== next)) next.cancel?.()
       return
     }
-    setActive(next)
+    setActive({ sink: next, signal })
     next.recording?.()
   }
 
@@ -261,13 +255,24 @@ export function createCapture(keepOpen = () => false) {
     if (sink !== cancelled) cancelled?.cancel?.()
   }
 
+  const take = (owner?: Sink, signal?: AbortSignal) =>
+    pressing > released && (!owner || owner === sink) && (!signal || signal === lifetime)
+      ? pressing
+      : undefined
+
   return {
     press,
     release,
     cancel,
     end,
-    talking: (owner?: Sink) => pressing > released && (!owner || owner === sink),
-    capturing: (owner?: Sink) => !!active() && (!owner || owner === active()),
+    take,
+    talking: (owner?: Sink, signal?: AbortSignal) => take(owner, signal) !== undefined,
+    capturing: (owner?: Sink, signal?: AbortSignal) => {
+      const current = active()
+      return (
+        !!current && (!owner || owner === current.sink) && (!signal || signal === current.signal)
+      )
+    },
     recording: mic.recording,
     levels: mic.levels,
     onLevel: mic.onLevel,

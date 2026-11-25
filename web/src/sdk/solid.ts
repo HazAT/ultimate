@@ -123,6 +123,8 @@ export type {
   CompactRow,
   CompactSummaryProps,
   ComposerTarget,
+  DictationSink,
+  DictationTake,
   PromptBoxProps,
   PromptInput,
   UploadSource,

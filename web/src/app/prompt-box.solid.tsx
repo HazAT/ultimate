@@ -301,6 +301,9 @@ export function PromptBox(props: PromptBoxProps) {
                 insertIntoDraft(target, draft() === target ? editor : undefined, words)
             },
             level: setLevel,
+            get sink() {
+              return props.dictation || undefined
+            },
           }}
           last
           point={Dictation}

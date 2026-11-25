@@ -172,8 +172,8 @@ export interface ComposerTarget {
    * cold voice session): the composer then shows none of the scoped conversation's run, queue, toolbar or status.
    */
   draft?: string
-  /** `false` hides the box's dictation control, for a target that takes voice its own way. */
-  dictation?: false
+  /** `false` hides dictation; a sink replaces the box's default transcription and insertion. */
+  dictation?: false | DictationSink
 }
 
 /** What a document renderer receives: the shown conversation's document of its kind, live. */
@@ -382,11 +382,28 @@ export const FileUpload = definePoint<
   | undefined
 >('ultimate.fileUpload')
 
+/** One microphone take: audio, duration, whether it contained speech, and its sampled levels. */
+export type DictationTake = { blob: Blob; seconds: number; spoke: boolean; envelope: number[] }
+
+/** Receives microphone takes instead of transcribing and inserting them into a prompt box. */
+export type DictationSink = {
+  /** The take has claimed the microphone and is preparing to record. */
+  start?(): void
+  /** The microphone is recording. */
+  recording?(): void
+  /** The take was discarded or could not start. */
+  cancel?(): void
+  /** Reports why the microphone could not start. */
+  error?(message: string): void
+  /** Receives a completed take; `retaking` means this sink already owns another take. */
+  finish(recorded: DictationTake, retaking: boolean): Promise<void>
+}
+
 /**
  * What a prompt box's dictation control gets (`dictation` provides it, a mic button): `name` names the box for the control's
  * agent label, `conversation` is the box's conversation or undefined for a draft-only box, `insert` puts words into that
  * same box at its cursor, and `level` drives the box's hairline with the live voice level, 0 to 1, until `undefined`
- * ends dictation. No control while nothing provides it.
+ * ends dictation. `sink` replaces transcription and insertion when supplied. No control while nothing provides it.
  */
 export const Dictation = definePoint<
   {
@@ -394,6 +411,7 @@ export const Dictation = definePoint<
     conversation: ConversationId | undefined
     insert: (text: string) => void
     level: (value: number | undefined) => void
+    sink?: DictationSink
   },
   JSX.Element
 >('ultimate.dictation')
@@ -458,8 +476,8 @@ export interface PromptBoxProps {
   pageDrop?: boolean
   /** Focuses the box when it mounts, except behind a touch keyboard. */
   autofocus?: boolean
-  /** `false` hides the dictation control. */
-  dictation?: false
+  /** `false` hides dictation; a sink replaces the box's default transcription and insertion. */
+  dictation?: false | DictationSink
   /**
    * A light box in one line, text · attach · mic · send, inside its owner's own form, with the error under it.
    */

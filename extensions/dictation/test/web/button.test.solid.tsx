@@ -14,6 +14,7 @@ import { events } from '@/sdk/solid'
 import { VoiceButton } from '../../button.solid.tsx'
 import { capture } from '../../capture.ts'
 import type { VoiceStatus } from '../../refs.ts'
+import { talkMode } from '../../routing.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -112,14 +113,16 @@ async function mount(id: number, status: VoiceStatus, shown = () => id) {
   harness.status = status
   await showConversation(id)
   const container = renderSolid(() => (
-    <VoiceButton
-      conversation={parseConversationId(shown())}
-      insert={(text) => {
-        inserted.push(text)
-      }}
-      level={() => {}}
-      name={`conversation #${id}`}
-    />
+    <div data-ui="prompt-box">
+      <VoiceButton
+        conversation={parseConversationId(shown())}
+        insert={(text) => {
+          inserted.push(text)
+        }}
+        level={() => {}}
+        name={`conversation #${id}`}
+      />
+    </div>
   ))
   await settle()
   flush()
@@ -139,7 +142,11 @@ async function press(label: string) {
 function expectPointerDownPrevented(container: HTMLElement, label: string) {
   const button = container.querySelector(`button[aria-label="${label}"]`)
   expect(button).not.toBeNull()
-  const event = new PointerEvent('pointerdown', { bubbles: true, cancelable: true })
+  const event = new PointerEvent('pointerdown', {
+    bubbles: true,
+    cancelable: true,
+    pointerType: 'mouse',
+  })
   button!.dispatchEvent(event)
   expect(event.defaultPrevented).toBe(true)
 }
@@ -190,6 +197,36 @@ it('records for an agent and transcribes into the same composer, leaving the edi
     'agent',
   )
   expect(inserted).toEqual(['hello from the mic'])
+})
+
+it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation settings', async () => {
+  const container = await mount(15, { available: true })
+  const mic = 'Dictate into conversation #15'
+  const stop = 'Stop and transcribe into conversation #15'
+  const cog = 'Dictation settings for conversation #15'
+  const button = (label: string) =>
+    container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+  expect(talkMode()).toBe('hold')
+  expectPointerDownPrevented(container, mic)
+  expect(getUserMedia).not.toHaveBeenCalled()
+  button(mic).click()
+  await settle()
+  flush()
+  expect(getUserMedia).toHaveBeenCalledOnce()
+  expect(harness.transcribe).not.toHaveBeenCalled()
+
+  button(stop).click()
+  await settle()
+  flush()
+  expect(harness.transcribe).toHaveBeenCalledOnce()
+  expect(inserted).toEqual(['hello from the mic'])
+
+  expectPointerDownPrevented(container, cog)
+  const result = await agent.act({ steps: [{ ref: cog, action: 'setOpen', args: [true] }] })
+  expect(result).toMatchObject({ ok: true })
+  flush()
+  expect(button('Talk shortcut for conversation #15')).not.toBeNull()
+  await expectDistinctAgentNames(agent)
 })
 
 it('keeps a plain box’s microphone after Stop only while keepOpen is true', async () => {

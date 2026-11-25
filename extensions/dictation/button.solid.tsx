@@ -1,8 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { LoaderCircle, Mic, Square, X } from '@lucide/solid'
-import { createEffect, createSignal, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import {
   api,
   errorMessage,
@@ -18,15 +17,16 @@ import { deadline } from '../../lib/timers.ts'
 import { base64, capture, unsupported } from './capture.ts'
 import type { Sink } from './capture.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
+import { registerBox, talkMode } from './routing.solid.tsx'
+import { DictationSettings } from './settings.solid.tsx'
+import { createTalk } from './talk.ts'
 
-const buttonSize = 'size-7 rounded-md pointer-coarse:size-9'
+const buttonSize = 'size-6 rounded-md pointer-coarse:size-9'
 const stopSize =
   'size-6 rounded-md pointer-coarse:size-9 pointer-fine:group-data-minimal/keel:size-5'
 const keepEditorFocus = (event: PointerEvent) => event.preventDefault()
 
 type DictationProps = NonNullable<typeof Dictation.input>
-
-type Recording = { started: number; stop(source: string): void }
 
 const clock = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
@@ -42,31 +42,54 @@ export function VoiceButton(props: DictationProps) {
     const data = status.data()
     return data?.available === false ? data.reason : undefined
   }
-  const blocked = () => unavailable ?? missingKey()
-  const [recording, setRecording] = createSignal<Recording>()
+  const blocked = () => unavailable ?? (props.sink ? undefined : missingKey())
   const [transcribing, setTranscribing] = createSignal(false)
   const [error, setError] = createSignal<string>()
-  const now = useNow(250, () => !!recording())
-  let pending: { sink: Sink; lifetime: AbortController } | undefined
-
-  function cancelCapture() {
-    const take = pending
-    pending = undefined
-    setRecording(undefined)
-    if (take) {
-      take.lifetime.abort()
-      void capture.cancel(take.sink)
-    }
+  const busy = () => transcribing() || (!props.sink && status.loading())
+  let row!: HTMLDivElement
+  let lifetime = new AbortController()
+  let pending:
+    | { conversation: ConversationId; insert: (text: string) => void; source: string }
+    | undefined
+  const defaultSink: Sink = {
+    start() {
+      pending = { conversation: id() ?? ROOT, insert: props.insert, source: 'app' }
+      setError(undefined)
+    },
+    cancel() {
+      pending = undefined
+    },
+    error: setError,
+    async finish({ blob }) {
+      const take = pending
+      pending = undefined
+      if (take && blob.size) await transcribe(take.conversation, blob, take.source, take.insert)
+    },
   }
-  createEffect(id, () => cancelCapture)
+  const sink = () => props.sink ?? defaultSink
+  const taking = () => capture.talking(sink(), lifetime.signal)
+  const recording = () => capture.capturing(sink(), lifetime.signal)
+  const started = createMemo(() => (recording() ? Date.now() : undefined))
+  const now = useNow(250, recording)
+
   createEffect(
-    () => [recording(), props.level] as const,
-    ([active, level]) => {
+    () => [id(), sink()] as const,
+    ([, owner]) => {
+      if (lifetime.signal.aborted) lifetime = new AbortController()
+      return () => {
+        if (capture.talking(owner, lifetime.signal)) void capture.cancel(owner)
+        lifetime.abort()
+        pending = undefined
+      }
+    },
+  )
+  createEffect(
+    () => [recording(), props.level, sink()] as const,
+    ([active, level, owner]) => {
       if (!active) return undefined
-      const sink = pending?.sink
       level(0)
       const unsubscribe = capture.onLevel(() => {
-        if (sink && capture.capturing(sink)) level(capture.levels().at(-1) ?? 0)
+        if (capture.capturing(owner, lifetime.signal)) level(capture.levels().at(-1) ?? 0)
       })
       return () => {
         unsubscribe()
@@ -99,102 +122,146 @@ export function VoiceButton(props: DictationProps) {
     }
   }
 
-  function start() {
-    if (pending || capture.talking()) return undefined
-    const conversation = id() ?? ROOT
-    const insert = props.insert
-    const lifetime = new AbortController()
-    let source = 'app'
-    const clear = () => {
-      pending = undefined
-      setRecording(undefined)
-    }
-    const sink: Sink = {
-      start() {
-        pending = { sink, lifetime }
-        setError(undefined)
-      },
-      recording: () => {
-        setRecording({
-          started: Date.now(),
-          stop(requestedBy) {
-            if (!capture.talking(sink)) return
-            source = requestedBy
-            void capture.release(sink)
-          },
-        })
-      },
-      cancel() {
-        if (pending?.sink === sink) clear()
-      },
-      error: setError,
-      async finish({ blob }) {
-        if (pending?.sink !== sink) return
-        clear()
-        if (blob.size) await transcribe(conversation, blob, source, insert)
-      },
-    }
-    return capture.press(sink, lifetime.signal)
+  function ready() {
+    if (busy() || pending) return false
+    if (unavailable) setError(unavailable)
+    else if (!props.sink && missingKey()) events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
+    else return true
+    return false
   }
 
-  function pressMic() {
-    if (unavailable) setError(unavailable)
-    else if (missingKey()) events.emit('secrets:open', { name: 'OPENAI_API_KEY' })
-    else return start()
-    return undefined
+  onSettled(() => {
+    const root = row.closest('[data-ui="prompt-box"]')
+    if (!root) return undefined
+    return registerBox({
+      root,
+      get sink() {
+        return sink()
+      },
+      get signal() {
+        return lifetime.signal
+      },
+      ready,
+    })
+  })
+
+  async function pressMic() {
+    if (!capture.talking() && ready()) await capture.press(sink(), lifetime.signal)
+  }
+
+  function release(source: string) {
+    if (!taking()) return Promise.resolve()
+    if (pending) pending.source = source
+    return capture.release(sink())
+  }
+
+  let pointer: number | undefined
+  let pointerTake: number | undefined
+  const isPointerTake = () =>
+    pointerTake !== undefined && pointerTake === capture.take(sink(), lifetime.signal)
+  const touch = createTalk({
+    tap: () => talkMode() === 'tap',
+    talking: isPointerTake,
+    press: async () => {
+      if (taking()) return
+      const pressed = pressMic()
+      pointerTake = capture.take(sink(), lifetime.signal)
+      await pressed
+    },
+    release: async () => {
+      if (isPointerTake()) await release('person')
+    },
+    cancel: () => capture.cancel(sink()),
+    overCancel: (event) =>
+      row.contains(
+        document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest('[data-dictation-cancel]') ?? null,
+      ),
+  })
+  const startTouch = (event: PointerEvent) => {
+    keepEditorFocus(event)
+    if (
+      (event.pointerType !== 'touch' && event.pointerType !== 'pen') ||
+      pointer !== undefined ||
+      busy()
+    )
+      return
+    pointer = event.pointerId
+    row.setPointerCapture(pointer)
+    touch.pointer.onPointerDown(event)
+  }
+  const stopTouch = (event: PointerEvent) => {
+    if (event.pointerId !== pointer) return
+    pointer = undefined
+    if (event.type === 'pointerup') touch.pointer.onPointerUp(event)
+    else touch.pointer.onPointerCancel(event)
   }
 
   return (
-    <Show
-      when={recording()}
-      fallback={
-        <div class="flex min-w-0 shrink items-center gap-1.5">
-          {error() && (
-            <span
-              class="line-clamp-3 min-w-0 font-mono text-[11px] leading-tight text-error"
-              role="alert"
-              title={error()}
-            >
-              {error()}
-            </span>
-          )}
-          <Show when={transcribing()}>
-            <span class="shrink-0 font-mono text-[11px] text-muted-foreground">transcribing…</span>
-          </Show>
-          <Tooltip type="description">
-            <TooltipTrigger
-              render={(trigger) => (
-                <Button
-                  {...trigger}
-                  aria-label={`Dictate into ${props.name}${blocked() ? `: ${blocked()}` : ''}`}
-                  class={`${buttonSize} text-muted-foreground data-[voice=blocked]:opacity-50 data-[voice=blocked]:hover:bg-transparent data-[voice=blocked]:hover:text-muted-foreground`}
-                  data-voice={blocked() ? 'blocked' : transcribing() ? 'transcribing' : 'idle'}
-                  disabled={status.loading() || transcribing()}
-                  focusableWhenDisabled
-                  onClick={pressMic}
-                  onPointerDown={keepEditorFocus}
-                  size={null}
-                  variant="ghost"
-                />
-              )}
+    <div
+      class="flex min-w-0 shrink items-center gap-1"
+      onLostPointerCapture={stopTouch}
+      onPointerCancel={stopTouch}
+      onPointerUp={stopTouch}
+      ref={row}
+    >
+      <Show
+        when={recording()}
+        fallback={
+          <>
+            {error() && (
+              <span
+                class="line-clamp-3 min-w-0 font-mono text-[11px] leading-tight text-error"
+                role="alert"
+                title={error()}
+              >
+                {error()}
+              </span>
+            )}
+            <Show when={transcribing()}>
+              <span class="shrink-0 font-mono text-[11px] text-muted-foreground">
+                transcribing…
+              </span>
+            </Show>
+            <Button
+              aria-label={`Dictate into ${props.name}${blocked() ? `: ${blocked()}` : ''}`}
+              class={`${buttonSize} touch-none text-muted-foreground data-[voice=blocked]:opacity-50 data-[voice=blocked]:hover:bg-transparent data-[voice=blocked]:hover:text-muted-foreground`}
+              data-voice={blocked() ? 'blocked' : transcribing() ? 'transcribing' : 'idle'}
+              disabled={busy()}
+              focusableWhenDisabled
+              onClick={(event, details) => {
+                if (
+                  event instanceof PointerEvent &&
+                  (event.pointerType === 'touch' || event.pointerType === 'pen')
+                )
+                  return undefined
+                return taking() ? release(details.source) : pressMic()
+              }}
+              onPointerDown={startTouch}
+              size={null}
+              title={
+                blocked() ??
+                (talkMode() === 'hold'
+                  ? 'Voice input: click to toggle, or touch and hold'
+                  : 'Voice input: click or tap to toggle')
+              }
+              variant="ghost"
             >
               <Show when={transcribing()} fallback={<Mic class="size-3.5" />}>
                 <LoaderCircle class="size-3.5 motion-safe:animate-spin" />
               </Show>
-            </TooltipTrigger>
-            <TooltipContent>
-              {blocked() ?? 'Voice input: tap to record, tap again to transcribe'}
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      }
-    >
-      {(active) => (
-        <div class="flex shrink-0 items-center gap-1">
+            </Button>
+            <DictationSettings name={props.name} />
+          </>
+        }
+      >
+        <>
           <Button
             aria-label={`Cancel dictation into ${props.name}`}
             class={`${buttonSize} text-muted-foreground`}
-            onClick={cancelCapture}
+            data-dictation-cancel
+            onClick={() => (taking() ? capture.cancel(sink()) : undefined)}
             onPointerDown={keepEditorFocus}
             size={null}
             title="Cancel"
@@ -204,21 +271,25 @@ export function VoiceButton(props: DictationProps) {
           </Button>
           <span class="flex h-6 items-center gap-1.5 rounded-md bg-error/10 px-2 font-mono text-[11px] text-error tabular-nums pointer-coarse:h-9 pointer-fine:group-data-minimal/keel:h-5">
             <span class="size-1.5 rounded-full bg-error motion-safe:animate-pulse" />
-            {clock(now() - active().started)}
+            {clock(now() - (started() ?? now()))}
           </span>
           <Button
-            aria-label={`Stop and transcribe into ${props.name}`}
+            aria-label={
+              props.sink
+                ? `Stop recording for ${props.name}`
+                : `Stop and transcribe into ${props.name}`
+            }
             class={`${stopSize} bg-error text-white hover:bg-error/90`}
-            onClick={(_event, details) => active().stop(details.source)}
+            onClick={(_event, details) => release(details.source)}
             onPointerDown={keepEditorFocus}
             size={null}
-            title="Stop and transcribe"
+            title={props.sink ? 'Stop recording' : 'Stop and transcribe'}
             variant={null}
           >
             <Square class="size-2.5 fill-current" />
           </Button>
-        </div>
-      )}
-    </Show>
+        </>
+      </Show>
+    </div>
   )
 }

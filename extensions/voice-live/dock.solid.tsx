@@ -9,6 +9,7 @@ import {
   base64,
   capture,
   MIN_SPOKEN_SECONDS,
+  setFallback,
   talkMode,
 } from '../dictation/ui.solid.tsx'
 import type { Recorded, Sink } from '../dictation/ui.solid.tsx'
@@ -288,6 +289,19 @@ export const talking = () => capture.talking(voiceSink)
 export const press = () => capture.press(voiceSink, live.signal)
 export const release = () => capture.release(voiceSink)
 export const cancelRecording = () => capture.cancel(voiceSink)
+
+export function registerVoiceFallback() {
+  setFallback({
+    sink: voiceSink,
+    get signal() {
+      return live.signal
+    },
+    wake: () => {
+      if (!voiceOpen()) setVoiceOpen(true)
+    },
+  })
+  return () => setFallback(undefined)
+}
 
 function restore() {
   const held = dock.held()

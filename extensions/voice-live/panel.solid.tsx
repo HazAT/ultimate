@@ -27,7 +27,6 @@ import { Slider } from '@/components/ui/slider.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
-  chordOf,
   cn,
   Composer,
   ComposerRedirect,
@@ -48,7 +47,7 @@ import {
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
-import { createTalk, setShortcut, setTalkMode, shortcut, talkMode } from '../dictation/ui.solid.tsx'
+import { createTalk, shortcut, talkMode } from '../dictation/ui.solid.tsx'
 import {
   activity,
   cancelRecording,
@@ -63,6 +62,7 @@ import {
   endSession,
   KEYS,
   press,
+  registerVoiceFallback,
   release,
   sendDraft,
   sendTyped,
@@ -86,9 +86,6 @@ const holdKeys = () => formatKeys(shortcut())[0].join('+')
 const tap = () => talkMode() === 'tap'
 const talkVerb = () => (tap() ? 'tap' : 'hold')
 const talkLabel = () => (tap() ? 'Tap to talk' : 'Hold to talk')
-const parseHold = () => shortcut().trim().toLowerCase()
-const keyChord = (event: KeyboardEvent) =>
-  event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
 
 const recording = () => dock.capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
@@ -126,36 +123,12 @@ const talk = createTalk({
     [event.relatedTarget, document.elementFromPoint(event.clientX, event.clientY)].some(
       (target) => target instanceof Element && !!target.closest(`[aria-label="${CANCEL_LABEL}"]`),
     ),
-  matches: (event) => keyChord(event) === parseHold(),
-  wake: () => {
-    if (!voiceOpen()) setVoiceOpen(true)
-  },
 })
-
-let escapeCancelled = false
-window.addEventListener(
-  'keydown',
-  (event) => {
-    if (event.key !== 'Escape') return
-    if (!event.repeat) escapeCancelled = talk.cancel()
-    if (!escapeCancelled) return
-    event.preventDefault()
-    event.stopImmediatePropagation()
-  },
-  { capture: true },
-)
-window.addEventListener(
-  'keyup',
-  (event) => {
-    if (event.key === 'Escape') escapeCancelled = false
-  },
-  { capture: true },
-)
 
 const talkTitle = () =>
   recording() && tap()
-    ? `Tap, or press ${holdKeys()}, to stop and send`
-    : `${talkLabel()}, or ${talkVerb()} ${holdKeys()} anywhere · ${keys()} hides Voice`
+    ? 'Tap to stop and send'
+    : `${talkLabel()}, or ${talkVerb()} ${holdKeys()} when no prompt box is focused · ${keys()} hides Voice`
 
 function CancelRecording(props: { class?: string }) {
   return (
@@ -376,17 +349,6 @@ function Settings() {
               </span>
             </span>
           </label>
-          <div class="flex items-center justify-between gap-3">
-            Talk
-            <SegmentedControl aria-label="Talk mode" bind={[talkMode, setTalkMode]}>
-              <SegmentedControlItem value="hold">Hold</SegmentedControlItem>
-              <SegmentedControlItem value="tap">Tap</SegmentedControlItem>
-            </SegmentedControl>
-          </div>
-          <div class="flex items-center justify-between gap-3">
-            Talk anywhere
-            <ShortcutRecorder />
-          </div>
           <label class="flex items-start justify-between gap-3">
             <span class="flex flex-col gap-0.5">
               Collect until send
@@ -447,41 +409,6 @@ function SpeechVoice() {
         </SegmentedControl>
       </Show>
     </div>
-  )
-}
-
-function ShortcutRecorder() {
-  const [listening, setListening] = createSignal(false)
-  const record = (event: KeyboardEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (event.key === 'Escape') {
-      setListening(false)
-      return
-    }
-    const chord = keyChord(event)
-    const hasKey = !['mod', 'ctrl', 'alt', 'shift'].includes(chord.split('+').at(-1)!)
-    const hasModifier = chord.includes('+')
-    if (!hasKey || !hasModifier) return
-    setShortcut(chord)
-    setListening(false)
-  }
-  return (
-    <Button
-      aria-label="Talk anywhere shortcut"
-      class={cn(
-        'flex h-6 items-center gap-1 rounded-md border border-border/70 px-1.5 font-mono text-[11px] font-normal text-foreground/85 hover:bg-accent',
-        listening() && 'border-brand/60 text-brand',
-      )}
-      onBlur={() => setListening(false)}
-      onClick={() => setListening(true)}
-      onKeyDown={(event: KeyboardEvent) => listening() && record(event)}
-      size={null}
-      title="Click, then press a key with a modifier (Ctrl, Alt, Shift); Esc cancels"
-      variant={null}
-    >
-      {listening() ? 'press keys…' : holdKeys()}
-    </Button>
   )
 }
 
@@ -739,24 +666,7 @@ export function VoicePanel() {
       })
     },
   )
-  onSettled(() => {
-    const swallow = (event: KeyboardEvent) => {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const down = (event: KeyboardEvent) => {
-      if (talk.keyDown(event)) swallow(event)
-    }
-    const up = (event: KeyboardEvent) => {
-      if (talk.keyUp(event)) swallow(event)
-    }
-    window.addEventListener('keydown', down, { capture: true })
-    window.addEventListener('keyup', up, { capture: true })
-    return () => {
-      window.removeEventListener('keydown', down, { capture: true })
-      window.removeEventListener('keyup', up, { capture: true })
-    }
-  })
+  onSettled(registerVoiceFallback)
   const phone = () => viewport() === 'phone'
   const [place, setPlace] = useExtensionUiState<{ right: number; bottom: number } | null>(
     'corner',
@@ -915,9 +825,9 @@ export function VoicePanel() {
                 <AudioLines class="mb-1 size-5 text-brand" />
                 <p class="text-[14px] text-foreground">Think out loud with @ultimate</p>
                 <p class="max-w-sm text-[13px] text-muted-foreground">
-                  {tap() ? 'Tap' : 'Hold'} <Kbd>{holdKeys()}</Kbd> anywhere, or the talk bar, and
-                  speak. Voice forks @ultimate with everything it knows, talks it through with you,
-                  and hands the result back when you agree; then the next talk starts fresh.
+                  Use the talk bar, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> when no prompt box is
+                  focused. Voice forks @ultimate with everything it knows, talks it through with
+                  you, and hands the result back when you agree; then the next talk starts fresh.
                 </p>
                 <SetupList />
               </div>

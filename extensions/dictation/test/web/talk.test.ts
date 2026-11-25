@@ -25,7 +25,6 @@ function setup(mode: 'hold' | 'tap', over = { cancel: false }) {
     },
     overCancel: () => over.cancel,
     matches: (event) => event.code === 'Space' && event.ctrlKey && event.shiftKey,
-    wake: () => undefined,
   })
   return { talk, calls }
 }

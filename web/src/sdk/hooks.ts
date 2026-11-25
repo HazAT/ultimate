@@ -123,6 +123,8 @@ export type {
   UltimateContext,
   WebExtension,
   ComposerTarget,
+  DictationSink,
+  DictationTake,
   PromptBoxProps,
   PromptInput,
   UploadSource,

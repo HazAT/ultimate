@@ -14,8 +14,7 @@ export function createTalk(talk: {
   release: () => Promise<void>
   cancel: () => Promise<void>
   overCancel: (event: PointerEvent) => boolean
-  matches: (event: KeyboardEvent) => boolean
-  wake: () => void
+  matches?: (event: KeyboardEvent) => boolean
 }) {
   const start = () => onThisPage(talk.tap() && talk.talking() ? talk.release() : talk.press())
   const stop = () => {
@@ -24,14 +23,15 @@ export function createTalk(talk: {
   let pointer = false
   let held: string | undefined
   let letGo: Cancel | undefined
-  let gesture = 0
-  const cancel = () => {
-    if (!talk.talking()) return false
-    gesture++
+  const reset = () => {
     pointer = false
     held = undefined
     letGo?.()
     letGo = undefined
+  }
+  const cancel = () => {
+    if (!talk.talking()) return false
+    reset()
     onThisPage(talk.cancel())
     return true
   }
@@ -43,6 +43,7 @@ export function createTalk(talk: {
   }
   return {
     cancel,
+    reset,
     pointer: {
       onPointerDown: (event: PointerEvent) => {
         event.preventDefault()
@@ -55,9 +56,8 @@ export function createTalk(talk: {
     },
     keyDown(event: KeyboardEvent) {
       if (talk.tap()) {
-        if (!talk.matches(event)) return false
+        if (!talk.matches?.(event)) return false
         if (event.repeat) return true
-        talk.wake()
         start()
         return true
       }
@@ -67,16 +67,9 @@ export function createTalk(talk: {
         letGo = undefined
         return true
       }
-      if (event.repeat || !talk.matches(event)) return false
+      if (event.repeat || !talk.matches?.(event)) return false
       held = event.code
-      const mine = ++gesture
-      talk.wake()
-      onThisPage(
-        talk.press().then(() => {
-          if (held === undefined && gesture === mine) return talk.release()
-          return undefined
-        }),
-      )
+      onThisPage(talk.press())
       return true
     },
     keyUp(event: KeyboardEvent) {
