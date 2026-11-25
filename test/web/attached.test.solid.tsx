@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Attached, createAttach } from '../../web/src/app/attach.solid.tsx'
 import type { Upload } from '../../web/src/app/attach.solid.tsx'
 import type { DraftFile, PastedImage } from '../../web/src/app/attachments.ts'
+import { boundDraft } from '../../web/src/app/drafts.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
 const harness = vi.hoisted(() => ({
@@ -72,8 +73,20 @@ it('shows a pasted image as a small blob thumbnail and revokes it when removed',
   expect(harness.revoked).toEqual(['blob:thumb-1'])
 })
 
-it('keeps one thumbnail for an image uploaded as a file through progress and completion', async () => {
+it('keeps the thumbnail of an image a light box uploads as a file, and revokes it on remove', async () => {
+  let text = ''
+  const draft = boundDraft(
+    () => text,
+    (next) => {
+      text = next
+    },
+    () => {},
+    () => {},
+  )
   const [files, setFiles] = createSignal<DraftFile[]>([])
+  draft.subscribe(() => setFiles(draft.get().files))
+  const change = (update: (current: DraftFile[]) => DraftFile[]) =>
+    draft.set({ files: update(draft.get().files) })
   let progress: (note: string, at: number) => void = () => {}
   let finish: (result: { path: string }) => void = () => {}
   const upload: Upload = {
@@ -89,7 +102,7 @@ it('keeps one thumbnail for an image uploaded as a file through progress and com
     attach = createAttach({
       images: () => [],
       setImages: () => {},
-      setFiles: (change) => setFiles(change),
+      setFiles: change,
       setError: () => {},
       disabled: () => false,
       uploads: () => [upload],
@@ -102,7 +115,7 @@ it('keeps one thumbnail for an image uploaded as a file through progress and com
         files={files()}
         images={[]}
         remove={() => {}}
-        removeFile={(id) => setFiles((current) => current.filter((file) => file.id !== id))}
+        removeFile={(id) => change((current) => current.filter((file) => file.id !== id))}
       />
     )
   })
@@ -113,17 +126,19 @@ it('keeps one thumbnail for an image uploaded as a file through progress and com
 
   progress('Uploading 50%', 0.5)
   flush()
-  finish({ path: '/home/attachments/1-a/shot.png' })
-  await done
-  flush()
-  expect(container.querySelector('[data-ui="file-chip"]')?.getAttribute('title')).toBe(
-    '/home/attachments/1-a/shot.png',
-  )
-  expect(chipImage(container)).toBe('blob:thumb-1')
   expect(harness.made).toEqual(['blob:thumb-1'])
   expect(harness.revoked).toEqual([])
 
+  finish({ path: '/home/attachments/1-a/shot.png' })
+  await done
+  await settle()
+  flush()
+  expect(text).toContain('at `/home/attachments/1-a/shot.png`')
+  expect(chipImage(container)).toBe('blob:thumb-2')
+  expect(harness.revoked).toEqual(['blob:thumb-1'])
+
   container.querySelector<HTMLButtonElement>('[aria-label="Remove file 1: shot.png"]')!.click()
   flush()
-  expect(harness.revoked).toEqual(['blob:thumb-1'])
+  expect(container.querySelector('[data-ui="file-chip"]')).toBeNull()
+  expect(harness.revoked).toEqual(['blob:thumb-1', 'blob:thumb-2'])
 })

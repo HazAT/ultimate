@@ -20,8 +20,11 @@ export async function thumbnail(image: Blob) {
     Math.max(1, Math.round(width * scale)),
     Math.max(1, Math.round(height * scale)),
   )
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
+  try {
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  } finally {
+    bitmap.close()
+  }
   return canvas.convertToBlob({ type: 'image/webp', quality: 0.9 })
 }
 
