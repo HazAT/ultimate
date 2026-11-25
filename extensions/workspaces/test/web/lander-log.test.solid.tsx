@@ -183,7 +183,7 @@ it('replaces running checks as results arrive, leaving their unfinished siblings
   expect(running()).toEqual(['fast-forwarding'])
 })
 
-it('lets an agent open the review range, expand the landing state, and switch to the branch', async ({
+it('starts a landing folded to one line, and lets an agent expand it, open the review range, expand the landing state, and switch to the branch', async ({
   onTestFinished,
 }) => {
   vi.stubGlobal('matchMedia', () => ({
@@ -209,6 +209,7 @@ it('lets an agent open the review range, expand the landing state, and switch to
       base: '1234567',
       sha: 'abcdef0',
       target: 'main',
+      pushed: 'origin/main',
       title: 'Build the fold',
       commits: [{ sha: 'abcdef0', subject: 'Ship fold' }],
       more: 0,
@@ -220,6 +221,12 @@ it('lets an agent open the review range, expand the landing state, and switch to
   await settle()
   const findControl = (label: string) =>
     agent.snapshot().find((item) => !item.offPage && item.label === label)
+  const toggle = findControl('Toggle landing card #89')!
+  expect(container.textContent).toMatch(/^landed on main.*#43· abcdef0· pushed$/)
+  expect(
+    await agent.act({ steps: [{ ref: toggle.ref, action: 'setOpen', args: [true] }] }),
+  ).toMatchObject({ ok: true })
+  expect(container.textContent).toContain('Landed abcdef0 on main · pushed to origin/main')
   const reviewLabel = 'Review landing #89: 1234567...abcdef0'
   expect(findControl(reviewLabel)).toBeUndefined()
   expect(findControl('Compare landing #89: 1234567...abcdef0 on DiffsHub')).toBeDefined()

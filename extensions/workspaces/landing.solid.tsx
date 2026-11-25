@@ -2,7 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { Check, SquareArrowOutUpRight, TriangleAlert, X } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
-import { createMemo, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 import { MentionText } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Fold, Provided, cn, switchConversation, useConversations } from '@/sdk/solid'
@@ -91,6 +91,9 @@ export function LandingCard(props: {
   subject?: ConversationSubject
   from: ConversationId
   sha?: string
+  target?: string
+  pushed?: boolean
+  badges?: string[]
   at?: JSX.Element
   divergence?: string
   sourceEntry?: number
@@ -105,12 +108,17 @@ export function LandingCard(props: {
   )
   return (
     <Fold
+      always={props.tone !== 'failed'}
       card={props.card}
       label={`Toggle landing card #${props.card}`}
       summary={
         <>
           <Icon class={cn('size-3 shrink-0', tone().color)} />
-          <span class={cn('shrink-0', tone().color)}>{tone().label}</span>
+          <span class={cn('shrink-0', tone().color)}>
+            {props.tone === 'failed' ? tone().label : props.sha ? 'landed' : 'nothing new to land'}
+            {props.tone !== 'failed' && props.target ? ` on ${props.target}` : ''}
+            {props.tone === 'pushFailed' ? ` · ${tone().label}` : ''}
+          </span>
           <Show when={named()?.feature}>
             {(feature) => <FeatureTag class="shrink-0" feature={feature()} />}
           </Show>
@@ -123,6 +131,14 @@ export function LandingCard(props: {
           <Show when={props.sha}>
             {(sha) => <span class="shrink-0">· {sha().slice(0, 7)}</span>}
           </Show>
+          <Show when={props.pushed}>
+            <span class="shrink-0">· pushed</span>
+          </Show>
+          <For each={props.badges}>
+            {(badge) => (
+              <span class="shrink-0 rounded-sm bg-warning/10 px-1 text-warning">{badge}</span>
+            )}
+          </For>
         </>
       }
     >

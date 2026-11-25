@@ -154,7 +154,8 @@ What lands is named once, at submit: the queue entry keeps the submitter's `subj
 from the `conversations` service's `subject(id)`, so a later retitle does not rename it. The result, the lander log's
 first lines and outcome, and the root note carry that snapshot. `landing.solid.tsx` renders it the same everywhere: the
 `LandingCard` (feature tag, title, summary, then the outcome) is the lander log's outcome, the submitter's report and
-the root's landing note; its one-line `Subject` heads each submission in the lander log and the submit card, and the
+the root's landing note. A landed card starts folded to one line (outcome, target, title, short sha, pushed, and, in
+the lander log and report, `needs restart` or `flaky` badges) and expands to the full card; a failed one stays open. Its one-line `Subject` heads each submission in the lander log and the submit card, and the
 lander's sidebar row shows the feature it lands or landed last.
 
 1. Resets its own detached checkout, `<home>/lander/<hash of source>`, to the target branch tip. `isolates.worktree.setup`

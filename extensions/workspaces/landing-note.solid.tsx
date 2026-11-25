@@ -62,6 +62,7 @@ function NoteCard(props: { id: number; data: Landing }) {
             />
           </span>
         }
+        pushed={!!props.data.pushed}
         sha={props.data.sha}
         sourceEntry={props.data.at}
         subject={{
@@ -70,6 +71,7 @@ function NoteCard(props: { id: number; data: Landing }) {
           feature: props.data.feature,
         }}
         submission={props.data.submission}
+        target={props.data.target}
         tone="landed"
       >
         <Show when={props.data.paths.length}>

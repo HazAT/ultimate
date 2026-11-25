@@ -38,6 +38,11 @@ export function headline(outcome: LanderOutcome, target?: string) {
   return `${landed} · ${outcome.reason ?? 'not pushed'}`
 }
 
+export const badges = (outcome: LanderOutcome) => [
+  ...(outcome.needsRestart ? ['needs restart'] : []),
+  ...(outcome.flaky?.length ? ['flaky'] : []),
+]
+
 function Weight(props: { weight: NonNullable<LanderOutcome['weight']> }) {
   const tokens = () => props.weight.tokens
   return (

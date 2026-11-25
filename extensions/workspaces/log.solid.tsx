@@ -5,6 +5,7 @@ import { ROOT, useConversationId, useDocOf, useTranscript } from '@/sdk/solid'
 import { LanderLog } from './entries.ts'
 import { LandingCard, Open, Subject } from './landing.solid.tsx'
 import {
+  badges,
   headline,
   OutcomeBody,
   OutputTail,
@@ -34,14 +35,17 @@ export function LanderReport(props: { entry: EntryRecord }) {
             {(from) => (
               <div data-lander-report={toneOf(outcome())}>
                 <LandingCard
+                  badges={badges(outcome())}
                   card={props.entry.id}
                   divergence={outcome().divergence}
                   from={from()}
                   headline={headline(outcome(), outcome().target)}
+                  pushed={!!outcome().pushed}
                   sha={outcome().commits?.length ? outcome().sha : undefined}
                   sourceEntry={outcome().at}
                   subject={outcome().subject}
                   submission={data().id}
+                  target={outcome().target}
                   tone={toneOf(outcome())}
                 >
                   <OutcomeBody context={context()} outcome={outcome()} />
@@ -78,14 +82,17 @@ export function LanderLogEntry(props: { entry: EntryRecord }) {
                     {time(outcome().at)}
                   </time>
                 }
+                badges={badges(outcome())}
                 card={props.entry.id}
                 divergence={outcome().divergence}
                 from={outcome().conversationId}
                 headline={headline(outcome(), outcome().target)}
+                pushed={!!outcome().pushed}
                 sha={outcome().commits?.length ? outcome().sha : undefined}
                 sourceEntry={outcome().sourceEntry}
                 subject={outcome().subject}
                 submission={outcome().submission}
+                target={outcome().target}
                 tone={toneOf(outcome())}
               >
                 <OutcomeBody context={`lander outcome #${props.entry.id}`} outcome={outcome()} />
