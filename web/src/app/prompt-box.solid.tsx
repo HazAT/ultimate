@@ -415,6 +415,7 @@ export function PromptBox(props: PromptBoxProps) {
         <div class="flex flex-col gap-1">
           <div
             class={frameClass()}
+            data-minimal
             data-signal={signal()}
             data-ui="prompt-box"
             onDragOver={(event) => {

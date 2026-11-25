@@ -20,6 +20,7 @@ import { StatusAction, TranscribeAction } from './refs.ts'
 
 const recordingMimeOrder = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
 const buttonSize = 'size-7 rounded-md pointer-coarse:size-9'
+const sendSize = `${buttonSize} pointer-fine:group-data-minimal/keel:size-6`
 const keepEditorFocus = (event: PointerEvent) => event.preventDefault()
 
 type DictationProps = NonNullable<typeof Dictation.input>
@@ -279,13 +280,13 @@ export function VoiceButton(props: DictationProps) {
           >
             <X class="size-3.5" />
           </Button>
-          <span class="flex h-7 items-center gap-1.5 rounded-md bg-error/10 px-2 font-mono text-[11.5px] text-error tabular-nums pointer-coarse:h-9">
+          <span class="flex h-7 items-center gap-1.5 rounded-md bg-error/10 px-2 font-mono text-[11.5px] text-error tabular-nums pointer-coarse:h-9 pointer-fine:group-data-minimal/keel:h-6">
             <span class="size-1.5 rounded-full bg-error motion-safe:animate-pulse" />
             {clock(now() - active().started)}
           </span>
           <Button
             aria-label={`Stop and transcribe into ${props.name}`}
-            class={`${buttonSize} bg-error text-white hover:bg-error/90`}
+            class={`${sendSize} bg-error text-white hover:bg-error/90`}
             onClick={(_event, details) => active().stop(details.source)}
             onPointerDown={keepEditorFocus}
             size={null}

@@ -11,6 +11,7 @@ import type { Box, Phase, ScreenRecorder } from './capture.ts'
 type RecorderProps = NonNullable<typeof PromptRecorder.input>
 
 const buttonSize = 'size-7 rounded-md'
+const sendSize = 'size-7 rounded-md group-data-minimal/keel:size-6'
 const keepEditorFocus = (event: PointerEvent) => event.preventDefault()
 const clock = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
@@ -128,7 +129,7 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
                 <X class="size-3.5" />
               </Button>
               <span
-                class="flex h-7 items-center gap-1.5 rounded-md bg-error/10 px-2 font-mono text-[11.5px] text-error tabular-nums"
+                class="flex h-7 items-center gap-1.5 rounded-md bg-error/10 px-2 font-mono text-[11.5px] text-error tabular-nums group-data-minimal/keel:h-6"
                 title={active().mic ? 'Recording screen and mic' : 'Recording screen, no mic'}
               >
                 <span class="size-1.5 rounded-full bg-error motion-safe:animate-pulse" />
@@ -136,7 +137,7 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
               </span>
               <Button
                 aria-label={`Stop and attach the screen recording to ${name()}`}
-                class={`${buttonSize} bg-error text-white hover:bg-error/90`}
+                class={`${sendSize} bg-error text-white hover:bg-error/90`}
                 onClick={() => recorder.stop(box)}
                 onPointerDown={keepEditorFocus}
                 size={null}
