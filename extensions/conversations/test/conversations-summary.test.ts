@@ -1052,6 +1052,37 @@ it.each([
   })
 })
 
+it('parses summary JSON wrapped in a single markdown code fence', async () => {
+  const fenced = (text: string) =>
+    generateSummary(
+      {} as Models,
+      'Request',
+      new AbortController().signal,
+      true,
+      {
+        model: luna,
+        response: { provider: luna.provider, model: luna.id, stopReason: 'stop', text },
+      },
+      'intent',
+    )
+  const summary = JSON.stringify({
+    title: 'Improve the sidebar',
+    summary: 'Renders ``` fences and {nested braces} inside summary text.',
+  })
+  for (const text of [
+    '```json\n' + summary + '\n```',
+    '```\n' + summary + '\n```',
+    ' \n```json\n' + summary + '\n```\n ',
+  ])
+    await expect(fenced(text)).resolves.toEqual({
+      activity: '',
+      title: 'Improve the sidebar',
+      summary: 'Renders ``` fences and {nested braces} inside summary text.',
+    })
+  await expect(fenced('```json\n{"title": "Unbalanced')).rejects.toThrow(SyntaxError)
+  await expect(fenced('```json\n' + summary)).rejects.toThrow(SyntaxError)
+})
+
 const userMessage = (content: string) => ({ role: 'user' as const, content, timestamp: 1 })
 
 it('leaves a Play note out of what names and summarizes a conversation', () => {
