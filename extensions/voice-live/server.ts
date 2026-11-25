@@ -75,6 +75,7 @@ const VOICE_TOOLS = [
   'memory',
   'web_search',
   'web_fetch',
+  'video_ask',
   'codemode',
   'action',
   'ui',

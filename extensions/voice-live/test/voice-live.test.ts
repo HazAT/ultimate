@@ -411,6 +411,15 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   expect(blockedResult.role).toBe('toolResult')
   expect(JSON.stringify(blockedResult)).toContain('Voice mode reads, drives the UI and hands off')
 
+  await f.turn({
+    key: 'video',
+    text: `CALL ${JSON.stringify({ name: 'video_ask', args: { id: 'v_missing', question: 'What happens?' } })}`,
+    session: blocked.id,
+  })
+  const videoResult = f.requests.at(-1)!.messages.at(-1)!
+  expect(videoResult.role).toBe('toolResult')
+  expect(JSON.stringify(videoResult)).toContain('Expected a video id')
+
   const shot = { type: 'image', data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }
   await f.turn({ key: 'shot', text: 'look at this', images: [shot] })
   expect(userParts(f.requests.at(-1)!.messages.at(-1))).toContainEqual(shot)
