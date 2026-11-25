@@ -6,14 +6,7 @@ import { VoicePanel } from '../../panel.solid.tsx'
 
 vi.mock('@/sdk/solid', async (original) => ({
   ...(await original<typeof import('@/sdk/solid')>()),
-  useAction: () => ({
-    data: () => ({
-      model: 'antigravity/gemini-4-neon-low',
-      thinking: 'low',
-      thinkingLevels: ['off', 'low', 'medium', 'high'],
-    }),
-    refetch() {},
-  }),
+  useAction: () => ({ data: () => ({ model: 'antigravity/gemini-4-neon-low' }), refetch() {} }),
   useDocOf: () => () => undefined,
   useEvent: () => undefined,
   useExtensionUiState: (_key: string, initial: unknown) => createSignal(initial),
@@ -33,9 +26,6 @@ it('a press inside the settings popover reaches it instead of starting a drag of
   flush()
   const settings = header.querySelector('[aria-label="Voice settings options"]')!
   settings.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
-  settings
-    .querySelector('[aria-label="Voice medium thinking"]')!
-    .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
   expect(captured).toEqual([])
   header.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
   expect(captured).toEqual([header])

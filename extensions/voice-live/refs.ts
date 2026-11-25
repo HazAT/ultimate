@@ -15,9 +15,9 @@ export type VoiceSession = {
   startedAt?: number
   /** Every fork voice made, so the sidebar never lists them: voice shows as one live row while a session is open. */
   forks?: ConversationId[]
-  /** The model voice uses, `provider/model`, picked in the panel; unset, the default. */
+  /** The model voice uses, `provider/model`, as last picked in a session's prompt box; unset, the default. */
   model?: string
-  /** The thinking level voice asks for, picked in the panel; unset, `low`. A model without it uses its closest level. */
+  /** Its thinking level, likewise; unset, `low`. A model without it uses its closest level. */
   thinking?: ModelThinkingLevel
 }
 
@@ -130,18 +130,6 @@ export const TurnAction = actionRef<
   { conversation: ConversationId; route: VoiceRoute; dropped?: true }
 >('voice-live', 'turn')
 
-/** `{ model: 'provider/model' }` → the voice model from now on, the open session's included. */
-export const ModelAction = actionRef<{ model: string }, Record<string, never>>(
-  'voice-live',
-  'model',
-)
-
-/** `{ thinking }` → the voice thinking level from now on, the open session's included; the voice model must support it. */
-export const ThinkingAction = actionRef<{ thinking: ModelThinkingLevel }, Record<string, never>>(
-  'voice-live',
-  'thinking',
-)
-
 /** Open the session without a turn yet: forks @ultimate unless a session is open. Returns its conversation. */
 export const OpenAction = actionRef<null, { conversation: ConversationId }>('voice-live', 'open')
 
@@ -155,16 +143,13 @@ export const EndAction = actionRef<null, Record<string, never>>('voice-live', 'e
 export type VoiceSetupItem = { ready: boolean; detail: string; fix?: string }
 
 /**
- * The voice model, its thinking level and the levels it supports, and whether it hears audio, for the dock's header,
- * and the setup checklist for its empty state: the voice model's login, OpenAI transcription (required), and Jev for
- * spoken send in collect mode (optional).
+ * The voice model and whether it hears audio, for the dock's header, and the setup checklist for its empty state: the
+ * voice model's login, OpenAI transcription (required), and Jev for spoken send in collect mode (optional).
  */
 export const StatusAction = actionRef<
   null,
   {
     model: string
-    thinking: ModelThinkingLevel
-    thinkingLevels: ModelThinkingLevel[]
     route: VoiceRoute
     transcribes: boolean
     reason?: string
