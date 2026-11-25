@@ -42,6 +42,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import {
+  AnswerSpeaker,
   covered,
   createTranscriptFrame,
   elidePath,
@@ -1158,6 +1159,14 @@ function CoreEntry(props: {
   )
 }
 
+function FinalAnswerHeading() {
+  return (
+    <span class="inline-flex items-center gap-1.5 text-success">
+      <Check aria-hidden="true" class="size-3.5" /> Final answer
+    </span>
+  )
+}
+
 function AssistantView(props: {
   entry?: EntryRecord
   message: AssistantMessage
@@ -1202,20 +1211,26 @@ function AssistantView(props: {
   const cutOff = () =>
     !streaming() && props.message.stopReason === 'length' && ownsNoticeAndActions()
   return (
-    <Message
-      class={cn(
-        'group/message gap-3',
-        final() && 'rounded-lg border border-success/40 bg-success/5 px-3.5 py-2.5',
-      )}
-      data-final={final() || undefined}
-      from="assistant"
-    >
+    <Message class="group/message gap-3" data-final={final() || undefined} from="assistant">
       <Show when={final()}>
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-success">
-          <span class="inline-flex items-center gap-1.5">
-            <Check aria-hidden="true" class="size-3.5" /> Final answer
-          </span>
-          <Show when={props.entry}>{(entry) => answerLabels(entry())}</Show>
+        <div class="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px]">
+          <Show when={props.entry} fallback={<FinalAnswerHeading />}>
+            {(entry) => (
+              <>
+                <RenderedPoint
+                  core={() => <FinalAnswerHeading />}
+                  fallback={(extension, error, inner) => (
+                    <ContributionError error={error} extension={extension} inline>
+                      {inner()}
+                    </ContributionError>
+                  )}
+                  input={{ entry: entry() }}
+                  point={AnswerSpeaker}
+                />
+                {answerLabels(entry())}
+              </>
+            )}
+          </Show>
         </div>
       </Show>
       <Show when={cutOff() ? props.entry : undefined}>

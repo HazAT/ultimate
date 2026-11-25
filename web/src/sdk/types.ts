@@ -317,6 +317,14 @@ export const ConversationKind = definePoint<ConversationSummary | undefined, str
   'ultimate.conversationKind',
 )
 /**
+ * Who speaks a stored final answer, shown above it in place of the core's "Final answer" heading (`messages` provides
+ * it: a standing agent's mark and title, otherwise the conversation's model family). Each provider gets the rendering
+ * so far as `core` and returns it, wraps it or replaces it.
+ */
+export const AnswerSpeaker = definePoint<{ entry: EntryRecord; core: JSX.Element }, JSX.Element>(
+  'ultimate.answerSpeaker',
+)
+/**
  * What conversation `conversation`'s composer says while it is empty (`conversations` provides it: "Message Coach…" for
  * a standing agent with `title: Coach`). Every provider is asked and the last that answers wins, so one naming its own
  * conversations leaves another's. Undefined leaves the earlier providers' answer, the core's text while none answers;
@@ -557,7 +565,7 @@ export interface WebExtension {
   messageActions?: readonly Component<{ entry: EntryRecord; text: string }>[]
   /** Readouts on the hover action row on stored messages, before its time, in discovery order. */
   messageDetails?: readonly Component<{ entry: EntryRecord }>[]
-  /** Inline labels after the Final answer heading on stored assistant messages, and above an answer cut off at the output limit. */
+  /** Inline labels after a final answer's speaker on stored assistant messages, and above an answer cut off at the output limit. */
   answerLabels?: readonly Component<{ entry: EntryRecord }>[]
   /** Overlays on the user's bubble, rendered after it inside a positioned box exactly its size (`absolute inset-0`). */
   userBubble?: readonly Component<{ entry: EntryRecord }>[]

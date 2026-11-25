@@ -64,6 +64,7 @@ export {
   useViewport,
 } from './hooks.ts'
 export {
+  AnswerSpeaker,
   codeBlockRenderers,
   ComposerPlaceholder,
   ComposerRedirect,

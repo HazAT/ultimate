@@ -281,14 +281,13 @@
     --gutter: 0.75rem;
     padding-inline: var(--gutter);
   }
-  /* Rows that reach the screen's edges: a transcript entry's tool call, card, message card, final answer. Inside an
+  /* Rows that reach the screen's edges: a transcript entry's tool call, card, message card. Inside an
      opened step list they stay in its indented column, only losing their rounded box. The user's own bubble stays. */
   :is(
     [data-ui='transcript'] [data-tool-call-id] [data-ui='tool']:not([data-ui='tool'] *),
     [data-ui='transcript'] [data-ui='card'],
     [data-ui='transcript'] [data-ui='message-card-body'],
     [data-ui='transcript'] [data-ui='message-card'][data-message-input],
-    [data-ui='transcript'] [data-final],
     [data-ui='pinned-prompt'] [data-ui='turn-header']
   ) {
     border-radius: 0;
