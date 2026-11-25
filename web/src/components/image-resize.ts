@@ -16,11 +16,12 @@ export async function thumbnail(image: Blob) {
     Math.max(thumbWidth / width, thumbHeight / height),
     thumbMaxSide / Math.max(width, height),
   )
-  const canvas = new OffscreenCanvas(
-    Math.max(1, Math.round(width * scale)),
-    Math.max(1, Math.round(height * scale)),
-  )
+  let canvas: OffscreenCanvas
   try {
+    canvas = new OffscreenCanvas(
+      Math.max(1, Math.round(width * scale)),
+      Math.max(1, Math.round(height * scale)),
+    )
     canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
   } finally {
     bitmap.close()
