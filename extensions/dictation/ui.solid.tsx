@@ -1,6 +1,6 @@
 /** Dictation's page-wide microphone, shortcut routing, talk gestures, and durable settings. */
 
-export { animationFrames, base64, capture, drawWave, MIN_SPOKEN_SECONDS } from './capture.ts'
+export { base64, capture, drawWave, MIN_SPOKEN_SECONDS } from './capture.ts'
 /** A finished microphone take. */
 export type { Recorded } from './capture.ts'
 /** Receives a take; `finish` is told when the same sink already owns a retake. */

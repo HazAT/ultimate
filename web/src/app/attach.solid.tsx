@@ -169,20 +169,35 @@ export function createAttach(options: {
       event.preventDefault()
       return
     }
-    const files = Array.from(event.clipboardData?.items ?? [])
-      .filter((item) => item.kind === 'file' && accepts(item))
-      .flatMap((item) => {
-        const file = item.getAsFile()
-        return file ? [file] : []
-      })
+    const items = Array.from(event.clipboardData?.items ?? []).filter(
+      (item) => item.kind === 'file',
+    )
+    const files = items.filter(accepts).flatMap((item) => {
+      const file = item.getAsFile()
+      return file ? [file] : []
+    })
+    if (items.length) refuseOthers(items)
     if (!files.length) return
     event.preventDefault()
     await attach(files, 'paste')
   }
 
   async function drop(event: DragEvent) {
-    const files = Array.from(event.dataTransfer?.files ?? []).filter(accepts)
+    const dropped = Array.from(event.dataTransfer?.files ?? [])
+    refuseOthers(dropped)
+    const files = dropped.filter(accepts)
     if (files.length) await attach(files, 'drop')
+  }
+
+  function refuseOthers(items: readonly { type: string }[]) {
+    if (items.every(accepts)) return
+    const kinds = [
+      ...(options.inlineImages() ? ['images'] : []),
+      ...options.uploads().flatMap((upload) => (upload.accepts ? [`${upload.accepts}s`] : [])),
+    ].map((kind) => kind.replace('/', ''))
+    options.setError(
+      kinds.length ? `Only ${kinds.join(' and ')} attach.` : 'Files do not attach here.',
+    )
   }
 
   return { paste, drop, attach, reading, busy: () => pending }

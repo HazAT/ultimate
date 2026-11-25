@@ -21,6 +21,7 @@ import {
   showSurface,
   switchConversation,
   useDocOf,
+  useEnabled,
   useExtensionUiState,
   useNow,
   writingAs,
@@ -36,7 +37,8 @@ const webOrObsidianLinkWithoutClosingPunctuation =
 
 export function TodoList() {
   const { entries, failures } = Waiting()
-  const inbox = () => entries().length
+  const inboxOn = useEnabled('inbox')
+  const inbox = () => (inboxOn() ? entries().length : 0)
   const doc = useDocOf(() => ROOT, TodosDoc)
   const now = useNow(60_000)
   const [error, setError] = createSignal<string>()

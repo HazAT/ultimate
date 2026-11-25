@@ -533,6 +533,12 @@ export async function loadExtensions(
       ...winners
         .filter((winner) => winner.core && settings.overrides.get(winner.name) === false)
         .map((winner) => `${winner.name} is core and stays enabled; extensions.disable ignores it`),
+      ...winners
+        .filter((winner) => winner.missing.length)
+        .map(
+          (winner) =>
+            `${winner.name} stays off: it requires ${winner.missing.join(' and ')}, which ${winner.missing.length === 1 ? 'is' : 'are'} off`,
+        ),
     ]
     const signature = JSON.stringify([settings.contents, folders, diagnostics])
     if (signature !== previousSettings) {
@@ -547,6 +553,7 @@ export async function loadExtensions(
       enabled,
       files,
       core,
+      requires,
       error: discoveryError,
     } of winners) {
       if (closed) return
@@ -566,6 +573,7 @@ export async function loadExtensions(
         source,
         enabled,
         ...(core ? { core } : {}),
+        ...(requires ? { requires } : {}),
         layer,
         actions: Object.keys(actions.get(name) ?? {}),
         events: (await contractOutline({ name, path, enabled })).events,

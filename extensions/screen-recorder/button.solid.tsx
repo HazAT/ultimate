@@ -2,7 +2,7 @@ import { LoaderCircle, ScreenShare, Square, X } from '@lucide/solid'
 import { createEffect, createRoot, createSignal, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { holdReload, useNow } from '@/sdk/solid'
+import { holdReload, useEnabled, useNow } from '@/sdk/solid'
 import type { PromptRecorder } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import { browserMedia, createScreenRecorder, screenSupported } from './capture.ts'
@@ -55,6 +55,7 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
     }
     onSettled(() => recorder.mount(box))
     const name = () => props.name
+    const videos = useEnabled('video')
     const recording = () => phase().phase === 'recording'
     const now = useNow(500, recording)
     createEffect(recording, (on) => {
@@ -111,8 +112,11 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
                   </Show>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Record your screen and mic as a video for this prompt. Videos are sent to Google
-                  (Gemini API) when an agent asks about them.
+                  Record your screen and mic as a video for this prompt.
+                  <Show when={videos()}>
+                    {' '}
+                    Videos are sent to Google (Gemini API) when an agent asks about them.
+                  </Show>
                 </TooltipContent>
               </Tooltip>
             </div>

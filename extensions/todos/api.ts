@@ -9,5 +9,7 @@ export type TodosService = {
    */
   add(input: { text: string; owner: Todo['owner']; key?: string }): Promise<Todo>
 }
+/** The panel counts what waits in the Inbox beside the to-dos; without inbox it shows the to-dos alone. */
+export const wants = ['inbox']
 /** The project's to-do list; `want` it, to-dos are optional. */
 export const TodosApi = defineApi<TodosService>()('todos')

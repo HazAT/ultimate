@@ -16,6 +16,7 @@ import {
   formatTime,
   useConversations,
   useDocOf,
+  useEnabled,
   useSystem,
   useUiState,
   writingAs,
@@ -64,6 +65,7 @@ export function MorningCard(props: { entry: EntryRecord }) {
 }
 
 function Morning(props: { data: ChapterEntry; at?: number }) {
+  const sideChats = useEnabled('side-chat')
   return (
     <Card data-dream-morning={props.data.name}>
       <header class="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
@@ -92,7 +94,9 @@ function Morning(props: { data: ChapterEntry; at?: number }) {
         )}
         <Show when={props.data.carried}>{(counts) => <Carried counts={counts()} />}</Show>
       </div>
-      <Awake data={props.data} />
+      <Show when={sideChats()}>
+        <Awake data={props.data} />
+      </Show>
     </Card>
   )
 }

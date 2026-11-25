@@ -162,6 +162,15 @@ it('opens every contract and boundary message with why the rule exists', () => {
       "import { x } from '../plan/ui.solid.tsx'",
     ),
   ).toEqual(['The core tier must run with every optional extension off.'])
+  expect(
+    why(
+      'declared-requires',
+      'extensions/echo/web.solid.tsx',
+      "import { x } from '../dictation/ui.solid.tsx'",
+    ),
+  ).toEqual([
+    'An optional extension can be turned off, and its browser code then runs without its server, so whatever uses it half-works with no word why.',
+  ])
 })
 
 const api = `/**
@@ -218,7 +227,7 @@ export { EchoLine } from './line.ts'
     "api.ts imports at runtime only shared/, packages, its refs.ts and other extensions' api.ts; use `import type` for the rest.",
     'Document each exported token: what it is and when to use it.',
     ...Array(4).fill(
-      "api.ts holds only contracts: imports, `export const X = defineApi/defineDoc/defineEntry(...)`, re-exports of its refs.ts (where event tokens live, for the browser too), types and `export const tier = 'core'`.",
+      "api.ts holds only contracts: imports, `export const X = defineApi/defineDoc/defineEntry(...)`, re-exports of its refs.ts (where event tokens live, for the browser too), types, `export const tier = 'core'` and the extensions it `requires` or `wants`.",
     ),
     'Document EchoService.echo: what it does and when to call it.',
   ])
@@ -491,6 +500,25 @@ it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {
     "Use the kit's Tabs from @/components/ui.",
   ])
   expect(lint('ui-kit-roles', 'web/src/components/ui/listbox.solid.tsx', source)).toEqual([])
+})
+
+it('makes an optional extension declare the optional extensions whose browser code it runs', () => {
+  // extensions/voice-live/dock.solid.tsx at 0e174ad: voice ran dictation's and read aloud's browser code, so with
+  // either turned off it opened half-working ("OpenAI voice: Unknown extension action", a dead talk shortcut).
+  const dock = `import { capture, setFallback } from '../dictation/ui.solid.tsx'
+import type { Recorded } from '../dictation/ui.solid.tsx'
+import { speech, splitReply } from '../read-aloud/ui.solid.tsx'
+import { ConversationRef } from '../conversations/ui.solid.tsx'
+import { Changed } from '../health/refs.ts'`
+  expect(
+    diagnose('declared-requires', 'extensions/echo/dock.solid.tsx', dock).map(
+      (message) => /echo runs ([a-z-]+)'s browser code/.exec(message)?.[1],
+    ),
+  ).toEqual(['dictation', 'read-aloud', 'health'])
+  expect(diagnose('declared-requires', 'extensions/voice-live/dock.solid.tsx', dock)).toEqual([
+    expect.stringContaining("voice-live runs health's browser code"),
+  ])
+  expect(diagnose('declared-requires', 'extensions/conversations/rows.solid.tsx', dock)).toEqual([])
 })
 
 const coreMessage = (optional: string) =>

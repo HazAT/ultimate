@@ -199,7 +199,11 @@ export default defineConfig({
         // A core-tier extension (`export const tier = 'core'` in its api.ts) imports only the core tier.
         files: ['extensions/**/*.ts', 'extensions/**/*.tsx'],
         excludeFiles: ['extensions/*/test/**'],
-        rules: { 'ultimate/api-only-imports': 'error', 'ultimate/core-tier-deps': 'error' },
+        rules: {
+          'ultimate/api-only-imports': 'error',
+          'ultimate/core-tier-deps': 'error',
+          'ultimate/declared-requires': 'error',
+        },
       },
       {
         files: ['.ultimate/extensions/**/*.ts', '.ultimate/extensions/**/*.tsx'],

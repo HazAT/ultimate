@@ -323,6 +323,7 @@ function Details(props: { extension: ExtensionInfo }) {
   })
   const lists = createMemo((): [string, readonly string[]][] => [
     ['provides', [...(data()?.provides ?? []), ...(data()?.declares ?? [])]],
+    ['requires', extension().requires ?? []],
     ['needs', data()?.needs ?? []],
     ['wants', data()?.wants ?? []],
     ['actions', extension().actions],

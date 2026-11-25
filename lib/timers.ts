@@ -108,3 +108,11 @@ export function pace(beatMs: number, signal?: AbortSignal): Promise<void> {
 export function nextTurn(fn: () => void): Cancel {
   return deadline(0, fn)
 }
+
+export function animationFrames(fn: () => void): Cancel {
+  let handle = requestAnimationFrame(function tick() {
+    fn()
+    handle = requestAnimationFrame(tick)
+  })
+  return () => cancelAnimationFrame(handle)
+}

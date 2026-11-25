@@ -462,6 +462,12 @@ export const useExtensions = once((): Accessor<readonly ExtensionRecord[]> => {
   return records
 })
 
+/** Whether extension `name` is on in this page: what an extension that `wants` another shows only while it is. */
+export function useEnabled(name: string): Accessor<boolean> {
+  const records = useExtensions()
+  return () => records().some((record) => record.name === name)
+}
+
 /**
  * Page extension readiness: `ready`, `timedOut`, and the names that `failed` or are still `pending`.
  */

@@ -50,6 +50,7 @@ export {
   useDocKind,
   useDocOf,
   useExtensionUiState,
+  useEnabled,
   useExtensions,
   useModels,
   useNotices,

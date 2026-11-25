@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { webModule } from '../lib/web-alias.ts'
 import path from 'node:path'
 import { apiSummary } from '../lib/api-files.ts'
-import { coreTier } from '../shared/extension-api.ts'
+import { coreTier, declaredIn } from '../shared/extension-api.ts'
 
 interface ImportNode {
   type?: string
@@ -169,6 +169,26 @@ const tierOf = (statement: Node) =>
   statement.declaration?.type === 'VariableDeclaration'
     ? statement.declaration.declarations?.find((declarator) => declarator.id?.name === 'tier')
     : undefined
+
+/** `export const requires = [...]` or `export const wants = [...]`, an api.ts's declared extensions. */
+const declarationOf = (statement: Node) =>
+  statement.type === 'ExportNamedDeclaration' &&
+  statement.declaration?.type === 'VariableDeclaration' &&
+  statement.declaration.declarations?.length === 1 &&
+  ['requires', 'wants'].includes(statement.declaration.declarations[0].id?.name ?? '') &&
+  statement.declaration.declarations[0].init?.type === 'ArrayExpression'
+
+const apiTexts = new Map<string, string>()
+/** `extensions/<name>/api.ts`, or '' without one, read once per lint process. */
+function apiText(name: string) {
+  let text = apiTexts.get(name)
+  if (text === undefined) {
+    const file = path.join(process.cwd(), 'extensions', name, 'api.ts')
+    text = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    apiTexts.set(name, text)
+  }
+  return text
+}
 
 const tiers = new Map<string, boolean>()
 /** Whether `extensions/<name>` declares the core tier in its api.ts (`coreTier`), read once per lint process. */
@@ -857,6 +877,38 @@ export default {
         }
       },
     },
+    'declared-requires': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const own = extensionOf(context.filename)
+        if (!own || coreExtension(own)) return {}
+        const check = (node: ImportNode) => {
+          const source = node.source?.value
+          if (typeof source !== 'string' || !source.startsWith('.')) return
+          if (node.importKind === 'type' || node.exportKind === 'type') return
+          const [directory, extension, file] = resolved(context.filename, source)
+          if (
+            directory !== 'extensions' ||
+            extension === own ||
+            !['ui.solid.tsx', 'refs.ts'].includes(file) ||
+            coreExtension(extension) ||
+            declaredIn(apiText(own), 'requires').includes(extension) ||
+            declaredIn(apiText(own), 'wants').includes(extension)
+          )
+            return
+          context.report({
+            node,
+            message: `An optional extension can be turned off, and its browser code then runs without its server, so whatever uses it half-works with no word why. ${own} runs ${extension}'s browser code: declare it in extensions/${own}/api.ts, \`export const requires = ['${extension}']\` when ${own} cannot work without it (discovery then keeps ${own} off and says why), or \`export const wants = ['${extension}']\` when ${own} works without it and hides what needs it.`,
+          })
+        }
+        return {
+          ImportDeclaration: check,
+          ImportExpression: check,
+          ExportNamedDeclaration: check,
+          ExportAllDeclaration: check,
+        }
+      },
+    },
     'api-file-shape': {
       meta: { schema: [] },
       create(context: Context) {
@@ -939,6 +991,12 @@ export default {
                     statement,
                     "An extension declares its tier as `export const tier = 'core'` or not at all.",
                   )
+              } else if (file === 'api.ts' && declarationOf(statement)) {
+                if (!documented(context, statement))
+                  report(
+                    statement,
+                    'Document each declaration: what the extension does with that extension.',
+                  )
               } else if (
                 statement.type === 'ExportNamedDeclaration' &&
                 statement.declaration?.type === 'VariableDeclaration' &&
@@ -964,7 +1022,7 @@ export default {
                   statement,
                   file === 'refs.ts'
                     ? 'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent/defineEntry(...)` and types.'
-                    : "api.ts holds only contracts: imports, `export const X = defineApi/defineDoc/defineEntry(...)`, re-exports of its refs.ts (where event tokens live, for the browser too), types and `export const tier = 'core'`.",
+                    : "api.ts holds only contracts: imports, `export const X = defineApi/defineDoc/defineEntry(...)`, re-exports of its refs.ts (where event tokens live, for the browser too), types, `export const tier = 'core'` and the extensions it `requires` or `wants`.",
                 )
             }
             for (const statement of body) {

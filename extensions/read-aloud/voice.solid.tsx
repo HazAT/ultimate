@@ -1,6 +1,6 @@
 import { createEffect, createRoot, createSignal } from 'solid-js'
 import { api, errorMessage, ROOT, useUiState } from '@/sdk/solid'
-import { animationFrames } from '../dictation/ui.solid.tsx'
+import { animationFrames } from '../../lib/timers.ts'
 import { cell } from '../../lib/cell.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
 import { SpeakAction } from './refs.ts'
