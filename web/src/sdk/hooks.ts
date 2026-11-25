@@ -136,14 +136,15 @@ export type {
 } from './types.ts'
 /**
  * The points the core reads: a run's start, the parked runs, a message's reference, the upload target, the empty
- * transcript, the composer's placeholder, a conversation's kind, a final answer's speaker and where an error card sends
- * its report.
+ * transcript, the composer's placeholder and talk shortcut, a conversation's kind, a final answer's speaker and where
+ * an error card sends its report.
  */
 export {
   AnswerSpeaker,
   ComposerPlaceholder,
   ConversationKind,
   Dictation,
+  DictationShortcut,
   EmptyTranscript,
   ErrorReport,
   FileUpload,

@@ -14,6 +14,7 @@ import {
   composerRenderers,
   ConversationScope,
   createTranscriptFrame,
+  DictationShortcut,
   errorMessage,
   events,
   inboxRenderer,
@@ -30,7 +31,13 @@ import {
 import type { ComposerTarget } from '../sdk/hooks.ts'
 import type { PromptInput } from '../sdk/types.ts'
 import type { ModelsResponse } from '../../../shared/protocol.ts'
-import { Contributed, Contribution, Slot, useAllProvided } from '../sdk/contribution.solid.tsx'
+import {
+  Contributed,
+  Contribution,
+  Slot,
+  useAllProvided,
+  useProvided,
+} from '../sdk/contribution.solid.tsx'
 import { useExternal } from '../sdk/page.ts'
 import { splitAttachments } from './attachments.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
@@ -248,6 +255,11 @@ function ComposerEditor(props: { dock?: boolean }) {
   const queued = createMemo(() => inbox().filter((item) => item.mode !== 'write'))
   const draft = createMemo(() => getDraft(id()))
   const [placeholder, setPlaceholder] = createSignal<string>()
+  const talk = useProvided(DictationShortcut, () => null)
+  const idlePlaceholder = () =>
+    talk()
+      ? `Ask Ultimate anything, paste a screenshot, or ${talk()} to dictate…`
+      : 'Ask Ultimate anything or paste a screenshot…'
   const models = useModels()
   const viewport = useViewport()
   const foldTarget = useExternal(statusTarget, subscribeStatusTarget)
@@ -365,7 +377,7 @@ function ComposerEditor(props: { dock?: boolean }) {
         placeholder={
           target()?.placeholder ??
           placeholder() ??
-          (busy() ? 'Steer the run, or queue a follow-up…' : 'Ask Ultimate to change something…')
+          (busy() ? 'Steer the run, or queue a follow-up…' : idlePlaceholder())
         }
         ready={target()?.ready}
         running={busy()}

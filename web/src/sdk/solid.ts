@@ -73,6 +73,7 @@ export {
   ConversationScope,
   createTranscriptFrame,
   Dictation,
+  DictationShortcut,
   documentItems,
   EmptyTranscript,
   entryRenderers,

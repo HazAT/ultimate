@@ -29,8 +29,26 @@ export function parseKeys(keys: string): string[] {
 }
 
 const symbols: Record<string, string> = isMac
-  ? { mod: '⌘', ctrl: '⌃', alt: '⌥', shift: '⇧', enter: '↵', escape: 'esc', tab: '⇥' }
-  : { mod: 'Ctrl', ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', enter: '↵', escape: 'Esc', tab: 'Tab' }
+  ? {
+      mod: '⌘',
+      ctrl: '⌃',
+      alt: '⌥',
+      shift: '⇧',
+      enter: '↵',
+      escape: 'esc',
+      tab: '⇥',
+      space: 'Space',
+    }
+  : {
+      mod: 'Ctrl',
+      ctrl: 'Ctrl',
+      alt: 'Alt',
+      shift: 'Shift',
+      enter: '↵',
+      escape: 'Esc',
+      tab: 'Tab',
+      space: 'Space',
+    }
 
 /** Display parts of a shortcut, one array of keys per chord: `mod+k m` → [['⌘','K'],['M']]. */
 export function formatKeys(keys: string): string[][] {
