@@ -1211,7 +1211,7 @@ function AssistantView(props: {
   const cutOff = () =>
     !streaming() && props.message.stopReason === 'length' && ownsNoticeAndActions()
   return (
-    <Message class="group/message gap-3" from="assistant">
+    <Message class="group/message gap-3" data-final={final() || undefined} from="assistant">
       <Show when={final()}>
         <div class="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px]">
           <Show when={props.entry} fallback={<FinalAnswerHeading />}>
