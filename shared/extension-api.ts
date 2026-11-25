@@ -38,6 +38,7 @@ export const defaultOff: readonly string[] = [
   'cloud',
   'parallel',
   'tailscale',
+  'headscale',
   'health',
   'classify',
   'phase',
