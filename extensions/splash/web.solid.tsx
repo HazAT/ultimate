@@ -1,5 +1,14 @@
 import { TriangleAlertIcon, XIcon } from '@lucide/solid'
-import { createRoot, createSignal, For, onSettled, Show, untrack } from 'solid-js'
+import {
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  For,
+  onSettled,
+  Show,
+  untrack,
+} from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
 import {
@@ -16,6 +25,10 @@ import {
 import { firstRender } from '@/sdk/resume.ts'
 
 const readinessDeadlineMs = 8000
+const typeInStartMs = 200
+const typeInLetterMs = 45
+const exitMs = 160
+const wordmark = ['U', 'L', 'T', 'I', 'M', 'A', 'T', 'E']
 const held = new URLSearchParams(location.search).has('splash')
 const [typed, setTyped] = createRoot(() => createSignal(''))
 
@@ -55,7 +68,10 @@ function Prompt() {
   let box: HTMLDivElement | undefined
   onSettled(() => box?.querySelector('input')?.focus({ preventScroll: true }))
   return (
-    <div class="mt-4 flex items-center gap-2 text-left" ref={box}>
+    <div
+      class="mt-4 flex animate-fade-in items-center gap-2 text-left [animation-delay:500ms] motion-reduce:animate-none"
+      ref={box}
+    >
       <span aria-hidden="true" class="text-brand">
         ›
       </span>
@@ -98,18 +114,33 @@ function Boot() {
         aria-hidden="true"
         class="flex items-center text-[13px] font-semibold tracking-[0.3em] text-brand"
       >
-        ULTIMATE
+        <For each={wordmark}>
+          {(letter, index) => (
+            <span
+              class="animate-type-in motion-reduce:animate-none"
+              style={{ 'animation-delay': `${typeInStartMs + index() * typeInLetterMs}ms` }}
+            >
+              {letter}
+            </span>
+          )}
+        </For>
         <Cursor />
       </div>
       <div
         aria-hidden="true"
-        class="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left"
+        class="mt-5 grid animate-fade-in [animation-delay:200ms] motion-reduce:animate-none grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left"
       >
         <For each={rows()}>
           {(row) => (
             <>
               <span class="text-muted-foreground/70">{row.label}</span>
-              <span class={row.done ? 'text-foreground/85' : 'text-muted-foreground/60'}>
+              <span
+                class={
+                  row.done
+                    ? 'text-foreground/85'
+                    : 'animate-pulse-dot text-muted-foreground/60 motion-reduce:animate-none'
+                }
+              >
                 {row.value}
               </span>
             </>
@@ -121,12 +152,34 @@ function Boot() {
   )
 }
 
-function Loading() {
-  onSettled(() => () => void firstRender.then(handOver))
+function Loading(props: { onDone: () => void }) {
+  const ready = useReady()
+  let overlay: HTMLDivElement | undefined
+  const leaving = createMemo(() => !held && ready().ready)
+  createEffect(leaving, (leave) => {
+    if (!leave || !overlay) return undefined
+    void firstRender.then(handOver)
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      props.onDone()
+      return undefined
+    }
+    const fade = overlay.animate([{ opacity: 1 }, { opacity: 0 }], {
+      duration: exitMs,
+      easing: 'ease-out',
+      fill: 'both',
+    })
+    void fade.finished.then(props.onDone, props.onDone)
+    return () => fade.cancel()
+  })
   return (
-    <div class="fixed inset-0 z-[60] grid place-items-center bg-background" data-splash="">
+    <div
+      class="fixed inset-0 z-[60] grid place-items-center bg-background data-leaving:pointer-events-none"
+      data-leaving={leaving() ? '' : undefined}
+      data-splash=""
+      ref={overlay}
+    >
       <progress aria-busy="true" aria-label="Loading Ultimate" aria-live="polite" class="sr-only" />
-      <div class="flex w-full animate-fade-in justify-center [animation-delay:200ms] motion-reduce:animate-none">
+      <div class="flex w-full justify-center">
         <Boot />
       </div>
     </div>
@@ -135,17 +188,19 @@ function Loading() {
 
 function Overlay() {
   const ready = useReady()
-  const fresh = !untrack(() => ready().ready) && !resumed && !navigator.webdriver
+  const [gone, setGone] = createSignal(
+    !held && (untrack(() => ready().ready) || resumed || navigator.webdriver),
+  )
   return (
     <Show
-      when={held || (fresh && !ready().ready)}
+      when={!gone()}
       fallback={
         <Show when={ready().timedOut}>
           <Late />
         </Show>
       }
     >
-      <Loading />
+      <Loading onDone={() => setGone(true)} />
     </Show>
   )
 }

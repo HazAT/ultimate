@@ -156,6 +156,13 @@
       opacity: 0;
     }
   }
+  /* One letter of a word typed in, as a terminal would: off, then on, no easing. Stagger with animation-delay. */
+  --animate-type-in: type-in 1ms steps(1, end) both;
+  @keyframes type-in {
+    from {
+      opacity: 0;
+    }
+  }
   @keyframes sweep {
     from {
       background-position: 100% 0;

@@ -1008,11 +1008,9 @@ function EmptyState() {
     },
     {
       label: 'ext',
-      value:
-        system()
-          ?.extensions.filter((extension) => extension.enabled)
-          .map((extension) => extension.name)
-          .join(' · ') ?? '…',
+      value: system()
+        ? `${system()!.extensions.filter((extension) => extension.enabled).length} enabled`
+        : '…',
     },
     {
       label: 'host',
