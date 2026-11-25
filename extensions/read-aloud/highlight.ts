@@ -96,8 +96,9 @@ export function rangesIn(root: Element, spans: readonly string[]) {
   })
 }
 
+const LINE_GAP = 4
 const inside = (rect: DOMRect, x: number, y: number) =>
-  x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+  x >= rect.left && x <= rect.right && y >= rect.top - LINE_GAP && y <= rect.bottom + LINE_GAP
 
 export function createHighlight(player: Source) {
   const tracked = new Set<Tracked>()
