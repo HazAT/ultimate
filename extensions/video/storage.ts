@@ -16,6 +16,8 @@ import {
   urlOf,
   validId,
 } from './input.ts'
+import { gemini } from './gemini.ts'
+import type { Google } from './gemini.ts'
 import { KEPT_MS } from './limits.ts'
 import { VideoReady, VideosDoc } from './refs.ts'
 import type { Video, Videos } from './refs.ts'
@@ -159,7 +161,26 @@ function forget(doc: Videos, id: string) {
     if (key.startsWith(threadPrefix(id))) delete doc.threads[key]
 }
 
-export function removal(host: ExtensionHost) {
+async function forgetUploads(host: ExtensionHost, google: Google, id: string, signal: AbortSignal) {
+  const names = ((await snapshot(host))?.videos[id]?.parts ?? []).flatMap((part) =>
+    part.remote && part.remote.expiresAt > Date.now() ? [part.remote.name] : [],
+  )
+  if (!names.length) return
+  const client = await gemini(host.userHome, google)
+  if (!client)
+    return host.notice(
+      `Could not delete ${names.length} uploaded video part(s) from Google without GEMINI_API_KEY; Google deletes them within 48 hours.`,
+    )
+  for (const name of names)
+    await client.remove(name, signal).catch((error: unknown) => {
+      signal.throwIfAborted()
+      host.notice(
+        `Could not delete ${name} from Google (${String(error)}); Google deletes it within 48 hours.`,
+      )
+    })
+}
+
+export function removal(host: ExtensionHost, google: Google) {
   const Remove = defineEffect<{ id: string; task?: TaskId }, null>(
     'video.remove',
     async ({ id, task }, { context: runContext, signal }) => {
@@ -169,6 +190,7 @@ export function removal(host: ExtensionHost) {
         await harness.waitForTask(task, runContext)
       }
       signal.throwIfAborted()
+      await forgetUploads(host, google, id, signal)
       await rm(folder(host, id), { recursive: true, force: true })
       return null
     },

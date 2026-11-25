@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { afterEach } from 'vitest'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../../server/actions.ts'
@@ -5,9 +7,8 @@ import type { ExtensionHost } from '../../../server/extensions.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import { apis, eventHost, openers, temp } from '../../../test/helpers.ts'
-import { AntigravityApi } from '../../antigravity/api.ts'
-import type { AntigravityService } from '../../antigravity/api.ts'
 import { VideoApi } from '../api.ts'
+import { GEMINI } from '../gemini.ts'
 import type { Runner } from '../prepare.ts'
 import videoExtension, { actions, docs } from '../server.ts'
 
@@ -17,11 +18,36 @@ afterEach(async () => {
   opened.clear()
 })
 
-export async function fixture(run: Runner, generate?: AntigravityService['generate']) {
+export type Call = { method: string; path: string; headers: Headers; body?: string }
+export type Fake = (call: Call) => Response | Promise<Response>
+
+export const gemini = (status: number, body: unknown, headers?: Record<string, string>) =>
+  new Response(JSON.stringify(body), { status, headers })
+
+export async function fixture(run: Runner, fake?: Fake) {
   const home = await temp('ultimate-video-')
   const prepared = await prepareHarness({ home, ultimateRoot: home, userHome: home })
+  await mkdir(join(home, '.ultimate'), { recursive: true })
+  if (fake)
+    await writeFile(
+      join(home, '.ultimate/secrets.json'),
+      JSON.stringify({ secrets: { GEMINI_API_KEY: { value: 'test-key', updatedAt: '' } } }),
+      { mode: 0o600 },
+    )
+  const calls: Call[] = []
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
+    const href = String(url)
+    const call: Call = {
+      method: init?.method ?? 'GET',
+      path: href.startsWith(GEMINI) ? href.slice(GEMINI.length) : href,
+      headers: new Headers(init?.headers),
+      ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+      ...(init?.body instanceof Blob ? { body: await init.body.text() } : {}),
+    }
+    calls.push(call)
+    return fake!(call)
+  }) as typeof globalThis.fetch
   const services = apis()
-  if (generate) services.implement(AntigravityApi, { generate })
   const lifecycle = openers()
   let current: OpenHost
   const harness = () => current.harness
@@ -41,7 +67,7 @@ export async function fixture(run: Runner, generate?: AntigravityService['genera
       return resources.get(key)
     },
   } as unknown as ExtensionHost
-  prepared.registry.install(videoExtension(host, run))
+  prepared.registry.install(videoExtension(host, run, { fetch, pollMs: 0 }))
   const open = async () => {
     current = await prepared.open(false)
     opened.add(current)
@@ -62,6 +88,7 @@ export async function fixture(run: Runner, generate?: AntigravityService['genera
   const state = () => harness().snapshot(docs[0], ROOT_CONVERSATION_ID, context)
   return {
     home,
+    calls,
     action,
     open,
     close,

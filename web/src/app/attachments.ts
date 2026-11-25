@@ -5,7 +5,12 @@ export type AttachedFile = {
   path: string
   line?: string
 }
-export type DraftFile = AttachedFile & { id: string; note?: string; progress?: number }
+export type DraftFile = AttachedFile & {
+  id: string
+  note?: string
+  progress?: number
+  image?: string
+}
 export type PastedImage = { data: string; mimeType: string; note?: string }
 
 const plainTextAttachmentReference =

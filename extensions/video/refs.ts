@@ -2,7 +2,7 @@
 import type { TaskId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
-import type { AskResult } from './types.ts'
+import type { AskResult, RemoteFile } from './types.ts'
 
 export type Video = {
   id: string
@@ -17,7 +17,14 @@ export type Video = {
   task?: TaskId
   error?: string
   createdAt: number
-  parts?: { file?: string; mimeType: string; seconds?: number; bytes?: number }[]
+  thumbnail?: string
+  parts?: {
+    file?: string
+    mimeType: string
+    seconds?: number
+    bytes?: number
+    remote?: RemoteFile
+  }[]
 }
 
 export type Turn = { question: string; answer: string }
@@ -26,6 +33,7 @@ export type AskArgs = {
   id: string
   question: string
   model?: string
+  thinking?: 'low' | 'medium' | 'high'
   from?: number
   to?: number
   detail?: 'low' | 'high'
@@ -53,9 +61,14 @@ export const AppendAction = actionRef<
 export const FinishAction = actionRef<{ id: string }, Video>('video', 'finish')
 /** `{ url, name? }` → `Video`: register an HTTPS video URL without downloading it. */
 export const AddUrlAction = actionRef<{ url: string; name?: string }, Video>('video', 'addUrl')
-/** `{ id, question, model?, from?, to?, detail?, fps? }` → `{ answer, usage, model }`. */
+/** `{ id, question, model?, thinking?, from?, to?, detail?, fps? }` → `{ answer, usage, model }`. */
 export const AskAction = actionRef<AskArgs, AskResult>('video', 'ask')
-/** `{ id }` → `null`: delete a video, its files and all its threads. */
+/** `{ id }` → `{ mimeType, data }` (base64 JPEG) or `null`: a small frame from about 1 s in, once prepared. */
+export const ThumbnailAction = actionRef<{ id: string }, { mimeType: string; data: string } | null>(
+  'video',
+  'thumbnail',
+)
+/** `{ id }` → `null`: delete a video, its local and uploaded files and all its threads. */
 export const RemoveAction = actionRef<{ id: string }, null>('video', 'remove')
 /** A video can now be asked about. */
 export const VideoReady = defineEvent<{ id: string }>('video.ready')

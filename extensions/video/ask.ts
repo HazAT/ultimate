@@ -1,23 +1,23 @@
-import { createReadStream } from 'node:fs'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { AntigravityApi } from '../antigravity/api.ts'
-import type { GeminiUsage } from '../antigravity/api.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { gemini, GeminiError, missingKey } from './gemini.ts'
+import type { Gemini, Google } from './gemini.ts'
 import { askOf } from './input.ts'
 import type { AskArgs, AskingDetails, Turn, Video } from './refs.ts'
 import { folder, serialized, snapshot, threadPrefix, VideosState } from './storage.ts'
-import type { AskResult } from './types.ts'
+import type { AskResult, GeminiUsage, RemoteFile } from './types.ts'
 
 type Part = NonNullable<Video['parts']>[number]
 type Options = Pick<AskArgs, 'from' | 'to' | 'fps' | 'detail'>
+const REUSE_MARGIN_MS = 60 * 60 * 1000
 const offset = (seconds: number) => `${seconds.toFixed(9).replace(/\.?0+$/, '')}s`
 
 function selectParts(parts: Part[], { from, to, fps }: Options) {
   let start = 0
   const selected = []
-  for (const part of parts) {
+  for (const [index, part] of parts.entries()) {
     const end = part.seconds === undefined ? Infinity : start + part.seconds
     const left = Math.max(start, from ?? 0)
     const right = Math.min(end, to ?? Infinity)
@@ -28,6 +28,7 @@ function selectParts(parts: Part[], { from, to, fps }: Options) {
         ...(fps === undefined ? {} : { fps }),
       }
       selected.push({
+        index,
         part,
         left,
         right,
@@ -40,54 +41,84 @@ function selectParts(parts: Part[], { from, to, fps }: Options) {
   return selected
 }
 
-async function* base64(path: string, signal: AbortSignal) {
-  const stream = createReadStream(path, { highWaterMark: 3 * 64 * 1024, signal })
-  let tail: Buffer = Buffer.alloc(0)
-  for await (const data of stream) {
-    const chunk = tail.length ? Buffer.concat([tail, data as Buffer]) : (data as Buffer)
-    const length = chunk.length - (chunk.length % 3)
-    if (length) yield Buffer.from(chunk.toString('base64', 0, length))
-    tail = chunk.subarray(length)
-  }
-  if (tail.length) yield Buffer.from(tail.toString('base64'))
+function uploaded(
+  host: ExtensionHost,
+  client: Gemini,
+  video: Video,
+  index: number,
+  signal: AbortSignal,
+): Promise<RemoteFile> {
+  return serialized(host, `upload:${video.id}:${index}`, async () => {
+    const current = (await snapshot(host))?.videos[video.id]?.parts?.[index]
+    if (!current?.file) throw new Error('Video was removed while the question was running')
+    if (current.remote && current.remote.expiresAt > Date.now() + REUSE_MARGIN_MS)
+      return current.remote
+    const remote = await client.upload(
+      join(folder(host, video.id), current.file),
+      current.mimeType,
+      `${video.id} ${video.name}`,
+      signal,
+    )
+    const kept = await host.harness().commit(async (tx) => {
+      const part = (await tx.doc(VideosState, ROOT_CONVERSATION_ID)).videos[video.id]?.parts?.[
+        index
+      ]
+      if (part) part.remote = remote
+      return !!part
+    }, context)
+    if (!kept) {
+      await client.remove(remote.name, signal)
+      throw new Error('Video was removed while the question was running')
+    }
+    return remote
+  })
 }
 
-async function* request(
-  host: ExtensionHost,
-  video: Video,
-  { part, metadata }: ReturnType<typeof selectParts>[number],
+function request(
+  file: { fileUri: string; mimeType: string },
+  metadata: object | undefined,
   turns: Turn[],
   question: string,
-  detail: Options['detail'],
-  signal: AbortSignal,
+  { detail, thinking }: Pick<AskArgs, 'detail' | 'thinking'>,
 ) {
-  yield Buffer.from('{"contents":[{"role":"user","parts":[')
-  const videoMetadata = metadata ? { videoMetadata: metadata } : {}
-  if (part.file) {
-    yield Buffer.from(`{"inlineData":{"mimeType":${JSON.stringify(part.mimeType)},"data":"`)
-    yield* base64(join(folder(host, video.id), part.file), signal)
-    yield Buffer.from(`"}${metadata ? `,"videoMetadata":${JSON.stringify(metadata)}` : ''}}`)
-  } else {
-    yield Buffer.from(
-      JSON.stringify({
-        fileData: { fileUri: video.url, mimeType: part.mimeType },
-        ...videoMetadata,
-      }),
-    )
+  const text = (role: 'user' | 'model', value: string) => ({ role, parts: [{ text: value }] })
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { fileData: file, ...(metadata ? { videoMetadata: metadata } : {}) },
+          { text: turns[0]?.question ?? question },
+        ],
+      },
+      ...turns.flatMap((prior, index) => [
+        ...(index > 0 ? [text('user', prior.question)] : []),
+        text('model', prior.answer),
+      ]),
+      ...(turns.length ? [text('user', question)] : []),
+    ],
+    generationConfig: {
+      ...(detail ? { mediaResolution: `MEDIA_RESOLUTION_${detail.toUpperCase()}` } : {}),
+      thinkingConfig: { thinkingLevel: (thinking ?? 'low').toUpperCase() },
+    },
   }
+}
 
-  const turn = (role: 'user' | 'model', text: string) =>
-    Buffer.from(`,${JSON.stringify({ role, parts: [{ text }] })}`)
-  yield Buffer.from(`,${JSON.stringify({ text: turns[0]?.question ?? question })}]}`)
-  for (const [index, prior] of turns.entries()) {
-    if (index > 0) yield turn('user', prior.question)
-    yield turn('model', prior.answer)
-  }
-  if (turns.length) yield turn('user', question)
-  const config = detail
-    ? `,"generationConfig":{"mediaResolution":"MEDIA_RESOLUTION_${detail.toUpperCase()}"}`
-    : ''
-  yield Buffer.from(`]${config}}`)
+function explained(error: unknown) {
+  if (!(error instanceof GeminiError)) return error
+  const advice =
+    error.status === 402
+      ? "Google's Gemini API billing is empty (HTTP 402)"
+      : error.status === 429
+        ? "Gemini's rate limit or quota is reached (HTTP 429)"
+        : `The Gemini API refused the request (HTTP ${error.status})`
+  const next =
+    error.status === 429
+      ? ' A video question costs about 105 tokens per second of video; wait and retry, or narrow it with from/to or a lower fps.'
+      : error.status === 402
+        ? ' Add prepayment credits to the AI Studio project of GEMINI_API_KEY, then ask again.'
+        : ''
+  return new Error(`${advice}: ${error.message}${next}`, { cause: error })
 }
 
 function addUsage(a: GeminiUsage, b: GeminiUsage): GeminiUsage {
@@ -106,6 +137,7 @@ function addUsage(a: GeminiUsage, b: GeminiUsage): GeminiUsage {
 
 export function ask(
   host: ExtensionHost,
+  google: Google,
   raw: unknown,
   signal: AbortSignal,
   onStage: (stage: AskingDetails) => Promise<void> | void = () => {},
@@ -123,26 +155,28 @@ export function ask(
     const turns = current?.threads[key] ?? []
     const segments = video.parts ?? []
     const parts = selectParts(segments, args)
-    const antigravity = host.want(AntigravityApi)
-    if (!antigravity)
-      throw new Error(
-        'Video questions need the antigravity extension: enable it in ⌘K → Extensions and sign in with agy.',
-      )
+    const client = await gemini(host.userHome, google)
+    if (!client) throw new Error(missingKey)
     const answers: string[] = []
     let usage: GeminiUsage | undefined
-    for (const [index, selected] of parts.entries()) {
+    for (const [count, { index, part, left, right, metadata }] of parts.entries()) {
       signal.throwIfAborted()
       await onStage({
         stage: 'asking',
-        part: index + 1,
+        part: count + 1,
         parts: parts.length,
         name: video.name,
         ...(video.seconds === undefined ? {} : { seconds: video.seconds }),
       })
-      const body = request(host, video, selected, turns, question, detail, signal)
       try {
-        const result = await antigravity.generate(model, body, signal)
-        const { left, right } = selected
+        const fileUri = part.file
+          ? (await uploaded(host, client, video, index, signal)).uri
+          : video.url!
+        const result = await client.generate(
+          model,
+          request({ fileUri, mimeType: part.mimeType }, metadata, turns, question, args),
+          signal,
+        )
         answers.push(
           segments.length === 1
             ? result.text
@@ -150,11 +184,7 @@ export function ask(
         )
         usage = usage ? addUsage(usage, result.usage) : result.usage
       } catch (error) {
-        if (!(error instanceof Error) || !('status' in error) || error.status !== 429) throw error
-        throw new Error(
-          `Antigravity's rate limit or quota is reached (HTTP 429): ${error.message}. A video question costs about 105 tokens per second of video; wait and retry, or narrow it with from/to or a lower fps.`,
-          { cause: error },
-        )
+        throw explained(error)
       }
     }
     const answer = answers.join('\n\n')
@@ -163,6 +193,6 @@ export function ask(
       if (!doc.videos[id]) throw new Error('Video was removed while the answer was running')
       doc.threads[key] = [...turns, { question, answer }]
     }, context)
-    return { answer, usage: usage!, model }
+    return { answer, usage: usage!, model: `google/${model}` }
   })
 }

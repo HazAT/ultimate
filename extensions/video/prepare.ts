@@ -1,5 +1,6 @@
 import { mkdtemp, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { meansNone } from '../../lib/errors.ts'
 import type { Video } from './refs.ts'
 
 export type Runner = (
@@ -7,12 +8,17 @@ export type Runner = (
   args: readonly string[],
   options: { signal: AbortSignal },
 ) => Promise<{ stdout: string; stderr: string }>
-export type Prepared = { seconds?: number; parts: NonNullable<Video['parts']> }
+export type Prepared = {
+  seconds?: number
+  thumbnail?: string
+  parts: NonNullable<Video['parts']>
+}
 
 const MAX_PART_BYTES = 100 * 1024 * 1024
 const MAX_PART_SECONDS = 45 * 60
 const SEGMENT_SECONDS = MAX_PART_SECONDS - 1
 const SCRATCH_PREFIX = '.preparing-'
+const THUMBNAIL = 'thumbnail.jpg'
 const localInput = [
   '-protocol_whitelist',
   'file',
@@ -145,10 +151,39 @@ export async function prepareVideo(
       end = Number(until)
     }
     await rm(manifest)
+    const at = Math.min(1, (seconds ?? end) / 2)
+    const thumbnail = await runTool(
+      run,
+      'ffmpeg',
+      [
+        '-nostdin',
+        '-loglevel',
+        'error',
+        '-ss',
+        at.toFixed(3),
+        ...localInput,
+        '-i',
+        input,
+        '-map',
+        '0:V:0',
+        '-frames:v',
+        '1',
+        '-vf',
+        'scale=w=-2:h=min(180\\,max(2\\,trunc(ih/2)*2))',
+        '-q:v',
+        '5',
+        join(temp, THUMBNAIL),
+      ],
+      signal,
+    ).catch(meansNone)
     signal.throwIfAborted()
     await rm(join(dir, 'parts'), { recursive: true, force: true })
     await rename(temp, join(dir, 'parts'))
-    return { seconds: seconds ?? end, parts }
+    return {
+      seconds: seconds ?? end,
+      ...(thumbnail === undefined ? {} : { thumbnail: `parts/${THUMBNAIL}` }),
+      parts,
+    }
   } finally {
     await rm(temp, { recursive: true, force: true })
   }

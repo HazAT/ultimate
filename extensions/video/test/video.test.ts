@@ -6,7 +6,9 @@ import { until } from '../../../test/helpers.ts'
 import { VideoFailed, VideoReady } from '../refs.ts'
 import type { Runner } from '../prepare.ts'
 import { actions } from '../server.ts'
-import { fixture } from './fixture.ts'
+import { fixture, gemini } from './fixture.ts'
+import type { Fake } from './fixture.ts'
+import { GEMINI } from '../gemini.ts'
 
 const done = { stdout: '', stderr: '' }
 const succeeds: Runner = async (command, args) => {
@@ -63,7 +65,7 @@ it('resumes a prepare interrupted by closing the harness and cleans its scratch 
   const resumedScratch: string[] = []
   let interrupted = false
   const f = await fixture(async (command, args, options) => {
-    if (command === 'ffmpeg') {
+    if (command === 'ffmpeg' && !args.includes('-frames:v')) {
       const scratch = dirname(args.at(-1)!)
       if (interrupted) resumedScratch.push(scratch)
       else {
@@ -93,7 +95,7 @@ it('resumes a prepare interrupted by closing the harness and cleans its scratch 
   expect(resumedScratch[0]).not.toBe(scratch)
   await expect(stat(scratch)).rejects.toMatchObject({ code: 'ENOENT' })
   const parts = join(f.home, 'videos', id, 'parts')
-  expect(await readdir(parts)).toEqual(['part-000.mp4'])
+  expect(await readdir(parts)).toEqual(['part-000.mp4', 'thumbnail.jpg'])
   expect(await readFile(join(parts, 'part-000.mp4'))).toEqual(bytes)
   expect(
     (await f.recent({ events: [VideoReady, VideoFailed] })).map(({ name, data }) => ({
@@ -136,73 +138,138 @@ it('resumes removal after a crash and aborts preparation without a failure event
   expect(await f.recent({ events: [VideoFailed] })).toEqual([])
 })
 
-it('prepares videos without Antigravity and tells the caller how to enable questions', async () => {
+it('prepares videos without a Gemini key and tells the caller to add GEMINI_API_KEY', async () => {
   const f = await fixture(succeeds)
   const id = await f.upload(Buffer.from('original clip'))
   expect(await f.prepared(id)).toMatchObject({ state: 'ready' })
   await expect(
     actions.ask({ id, question: 'What happens in the video?' }, f.action),
   ).rejects.toThrow(
-    'Video questions need the antigravity extension: enable it in ⌘K → Extensions and sign in with agy.',
+    'Video questions need a Gemini API key: add GEMINI_API_KEY in the Secrets panel (⌘K → Secrets).',
   )
   expect((await f.state())?.threads).toEqual({})
 })
 
-it('streams the video first, replays a prior Q&A, and leaves the thread unchanged on a 429', async () => {
-  const requests: unknown[] = []
+const hour = 60 * 60 * 1000
+function google(options: { expiresIn?: number; fail?: Response } = {}) {
+  let uploads = 0
+  let answers = 0
+  let polls = 0
   const usage = {
     promptTokenCount: 31612,
     cachedContentTokenCount: 29535,
     candidatesTokenCount: 210,
     totalTokenCount: 31822,
   }
-  const f = await fixture(succeeds, async (model, body) => {
-    expect(model).toBe('gemini-4-neon-low')
-    expect(Symbol.asyncIterator in body).toBe(true)
-    const chunks = []
-    for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(chunk)
-    requests.push(JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown)
-    if (requests.length === 3)
-      throw Object.assign(new Error('Subscription exhausted'), { status: 429 })
-    return { text: `Answer ${requests.length}`, usage }
+  const fake: Fake = (call) => {
+    const file = (state: string) => ({
+      name: `files/f${uploads}`,
+      uri: `${GEMINI}/v1beta/files/f${uploads}`,
+      state,
+      expirationTime: new Date(Date.now() + (options.expiresIn ?? 47 * hour)).toISOString(),
+    })
+    if (call.path === '/upload/v1beta/files')
+      return gemini(200, {}, { 'x-goog-upload-url': 'https://upload.example/session' })
+    if (call.path === 'https://upload.example/session') {
+      uploads += 1
+      return gemini(200, { file: file('PROCESSING') })
+    }
+    if (call.method === 'GET' && call.path.startsWith('/v1beta/files/')) {
+      polls += 1
+      return gemini(200, file(polls % 2 ? 'PROCESSING' : 'ACTIVE'))
+    }
+    if (call.method === 'DELETE') return gemini(200, {})
+    if (call.path.endsWith(':generateContent')) {
+      answers += 1
+      if (answers === 3 && options.fail) return options.fail
+      return gemini(200, {
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'thinking…', thought: true }, { text: `Answer ${answers}` }],
+            },
+          },
+        ],
+        usageMetadata: usage,
+      })
+    }
+    throw new Error(`Unexpected ${call.method} ${call.path}`)
+  }
+  return { fake, usage }
+}
+
+it('uploads each part once, waits for ACTIVE, asks with its file URI and replays the thread', async () => {
+  const quota = gemini(429, {
+    error: { code: 429, message: 'Resource has been exhausted (e.g. check quota).' },
   })
-  const bytes = Buffer.alloc(3 * 64 * 1024 + 5, 171)
-  const id = await f.upload(bytes)
+  const { fake, usage } = google({ fail: quota })
+  const f = await fixture(succeeds, fake)
+  const id = await f.upload(Buffer.from('original clip'))
   expect(await f.prepared(id)).toMatchObject({ state: 'ready' })
   const options = { id, from: 0.2, to: 1.5, fps: 2, detail: 'low' } as const
   const ask = (question: string) => actions.ask({ ...options, question }, f.action)
   expect(await ask('First question')).toEqual({
     answer: 'Answer 1',
     usage,
-    model: 'gemini-4-neon-low',
+    model: 'google/gemini-4-neon',
   })
   await f.service.ask(
-    { ...options, model: 'antigravity/gemini-4-neon-low', conversation: 1, question: 'Follow-up' },
+    { ...options, model: 'google/gemini-4-neon', conversation: 1, question: 'Follow-up' },
     f.action.signal,
   )
 
+  const sent = f.calls.filter(
+    (call) => call.path.startsWith('/upload') || call.path.startsWith('https:'),
+  )
+  expect(sent.map((call) => call.path)).toEqual([
+    '/upload/v1beta/files',
+    'https://upload.example/session',
+  ])
+  expect(sent[0].headers.get('x-goog-api-key')).toBe('test-key')
+  expect(sent[0].headers.get('x-goog-upload-protocol')).toBe('resumable')
+  expect(sent[0].headers.get('x-goog-upload-header-content-length')).toBe('13')
+  expect(sent[1].headers.get('x-goog-upload-command')).toBe('upload, finalize')
+  expect(sent[1].body).toBe('original clip')
+  expect(f.calls.filter((call) => call.method === 'GET').map((call) => call.path)).toEqual([
+    '/v1beta/files/f1',
+    '/v1beta/files/f1',
+  ])
+  expect((await f.state())?.videos[id]?.parts?.[0].remote).toMatchObject({
+    name: 'files/f1',
+    uri: `${GEMINI}/v1beta/files/f1`,
+  })
+
+  const asked = f.calls.filter((call) => call.path.endsWith(':generateContent'))
+  expect(asked.map((call) => call.path)).toEqual([
+    '/v1beta/models/gemini-4-neon:generateContent',
+    '/v1beta/models/gemini-4-neon:generateContent',
+  ])
   const first = {
     role: 'user',
     parts: [
       {
-        inlineData: { mimeType: 'video/mp4', data: bytes.toString('base64') },
+        fileData: { fileUri: `${GEMINI}/v1beta/files/f1`, mimeType: 'video/mp4' },
         videoMetadata: { startOffset: '0.2s', endOffset: '1.5s', fps: 2 },
       },
       { text: 'First question' },
     ],
   }
-  const config = { generationConfig: { mediaResolution: 'MEDIA_RESOLUTION_LOW' } }
-  expect(requests[0]).toEqual({ contents: [first], ...config })
-  expect(requests[1]).toEqual({
+  const generationConfig = {
+    mediaResolution: 'MEDIA_RESOLUTION_LOW',
+    thinkingConfig: { thinkingLevel: 'LOW' },
+  }
+  expect(JSON.parse(asked[0].body!)).toEqual({ contents: [first], generationConfig })
+  expect(JSON.parse(asked[1].body!)).toEqual({
     contents: [
       first,
       { role: 'model', parts: [{ text: 'Answer 1' }] },
       { role: 'user', parts: [{ text: 'Follow-up' }] },
     ],
-    ...config,
+    generationConfig,
   })
+
   await expect(ask('Should not be saved')).rejects.toThrow(
-    "Antigravity's rate limit or quota is reached (HTTP 429): Subscription exhausted. A video question costs about 105 tokens per second of video; wait and retry, or narrow it with from/to or a lower fps.",
+    "Gemini's rate limit or quota is reached (HTTP 429): Resource has been exhausted (e.g. check quota). A video question costs about 105 tokens per second of video; wait and retry, or narrow it with from/to or a lower fps.",
   )
   expect(Object.values((await f.state())!.threads)).toEqual([
     [
@@ -210,4 +277,51 @@ it('streams the video first, replays a prior Q&A, and leaves the thread unchange
       { question: 'Follow-up', answer: 'Answer 2' },
     ],
   ])
+})
+
+it('re-uploads an expiring part, deletes uploads on remove and passes on a 402', async () => {
+  const depleted = gemini(402, {
+    error: {
+      code: 402,
+      message: 'Your prepayment credits are depleted.',
+      status: 'RESOURCE_EXHAUSTED',
+    },
+  })
+  const { fake } = google({ expiresIn: hour / 2, fail: depleted })
+  const f = await fixture(succeeds, fake)
+  const id = await f.upload(Buffer.from('original clip'))
+  await f.prepared(id)
+  await actions.ask({ id, question: 'One' }, f.action)
+  await actions.ask({ id, question: 'Two' }, f.action)
+  const uploads = () => f.calls.filter((call) => call.path === '/upload/v1beta/files').length
+  expect(uploads()).toBe(2)
+  expect((await f.state())?.videos[id]?.parts?.[0].remote?.name).toBe('files/f2')
+  await expect(actions.ask({ id, question: 'Three' }, f.action)).rejects.toThrow(
+    "Google's Gemini API billing is empty (HTTP 402): Your prepayment credits are depleted. Add prepayment credits to the AI Studio project of GEMINI_API_KEY, then ask again.",
+  )
+
+  expect(await actions.remove({ id }, f.action)).toBeNull()
+  expect(f.calls.filter((call) => call.method === 'DELETE').map((call) => call.path)).toEqual([
+    '/v1beta/files/f3',
+  ])
+  expect((await f.state())?.videos[id]).toBeUndefined()
+})
+
+it('serves the thumbnail preparation saved next to the parts', async () => {
+  let seek: string | undefined
+  const f = await fixture(async (command, args, options) => {
+    if (command === 'ffmpeg' && args.includes('-frames:v')) {
+      seek = args[args.indexOf('-ss') + 1]
+      await writeFile(args.at(-1)!, 'jpeg bytes')
+      return done
+    }
+    return succeeds(command, args, options)
+  })
+  const id = await f.upload(Buffer.from('original clip'))
+  expect(await f.prepared(id)).toMatchObject({ thumbnail: 'parts/thumbnail.jpg' })
+  expect(seek).toBe('1.000')
+  expect(await actions.thumbnail({ id }, f.action)).toEqual({
+    mimeType: 'image/jpeg',
+    data: Buffer.from('jpeg bytes').toString('base64'),
+  })
 })

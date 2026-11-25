@@ -5,7 +5,6 @@ import type { AddressInfo } from 'node:net'
 import { ReadableStream as NodeReadableStream } from 'node:stream/web'
 import { inProcess, meansNone, settled } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
-import type { AntigravityService, GeminiUsage } from './api.ts'
 
 export const CODE_ASSIST = 'https://daily-cloudcode-pa.googleapis.com'
 
@@ -127,13 +126,13 @@ async function* signedBody(req: IncomingMessage, agent: AgentRequest['body'], mo
 function postJson(
   url: string,
   headers: Record<string, string>,
-  body: string | AsyncIterable<Uint8Array>,
+  body: AsyncIterable<Uint8Array>,
   signal: AbortSignal,
 ) {
   const init: RequestInit & { duplex: 'half' } = {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
-    body: typeof body === 'string' ? body : (NodeReadableStream.from(body) as BodyInit),
+    body: NodeReadableStream.from(body) as BodyInit,
     duplex: 'half',
     signal,
   }
@@ -476,64 +475,3 @@ export async function startRelay(run: RunAgy, upstream = CODE_ASSIST) {
 }
 
 export type Relay = Awaited<ReturnType<typeof startRelay>>
-
-type GeminiEvent = ErrorEvent & {
-  candidates?: {
-    content?: { parts?: { text?: string; thought?: boolean }[] }
-    finishReason?: string
-  }[]
-  usageMetadata?: Partial<GeminiUsage>
-}
-
-export async function generateThroughRelay(
-  relay: Pick<Relay, 'url' | 'key'>,
-  ...[model, request, signal]: Parameters<AntigravityService['generate']>
-): ReturnType<AntigravityService['generate']> {
-  const answer = await postJson(
-    `${relay.url}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
-    { 'x-goog-api-key': relay.key },
-    Symbol.asyncIterator in request ? request : JSON.stringify(request),
-    signal,
-  )
-  if (!answer.ok) {
-    const { error } = (await answer.json()) as ErrorEvent
-    if (typeof error?.message === 'string') throw new RelayError(answer.status, error.message)
-    throw upstreamFailure(answer.status)
-  }
-  if (!answer.body) throw upstreamFailure(502)
-
-  let text = ''
-  let finishReason: string | undefined
-  let usage: Partial<GeminiUsage> = {}
-  for await (const data of sseEvents(answer.body)) {
-    const event = JSON.parse(data) as GeminiEvent
-    if (event.error) {
-      const status = eventStatus(event.error)
-      if (typeof event.error.message === 'string') throw new RelayError(status, event.error.message)
-      throw upstreamFailure(status)
-    }
-    const candidate = event.candidates?.[0]
-    for (const part of candidate?.content?.parts ?? [])
-      if (part.thought !== true && typeof part.text === 'string') text += part.text
-    finishReason = candidate?.finishReason ?? finishReason
-    usage = event.usageMetadata ?? usage
-  }
-  const {
-    promptTokenCount = 0,
-    candidatesTokenCount = 0,
-    totalTokenCount = 0,
-    cachedContentTokenCount,
-    thoughtsTokenCount,
-  } = usage
-  return {
-    text,
-    ...(finishReason === undefined ? {} : { finishReason }),
-    usage: {
-      promptTokenCount,
-      candidatesTokenCount,
-      totalTokenCount,
-      ...(cachedContentTokenCount === undefined ? {} : { cachedContentTokenCount }),
-      ...(thoughtsTokenCount === undefined ? {} : { thoughtsTokenCount }),
-    },
-  }
-}

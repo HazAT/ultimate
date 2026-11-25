@@ -4,7 +4,14 @@ import { api, defineWebExtension, FileUpload, provide, ROOT, useDocOf } from '@/
 import type { UploadSource } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'
 import { VideoAskCall } from './call.solid.tsx'
-import { AppendAction, BeginAction, FinishAction, RemoveAction, VideosDoc } from './refs.ts'
+import {
+  AppendAction,
+  BeginAction,
+  FinishAction,
+  RemoveAction,
+  ThumbnailAction,
+  VideosDoc,
+} from './refs.ts'
 import type { Video } from './refs.ts'
 import { KEPT_MS, MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.ts'
 
@@ -82,10 +89,14 @@ async function upload(
     status('Preparing · for Google')
     await api.action(FinishAction, { id }, { ...call, signal })
     const video = await settled(id, signal)
+    const thumbnail = video.thumbnail
+      ? await api.action(ThumbnailAction, { id }, { ...call, signal })
+      : null
     return {
       path: '',
       line: videoLine(video),
       note: `${video.seconds === undefined ? 'Video' : `${Math.round(video.seconds)} s`} · for Google`,
+      ...(thumbnail ? { image: `data:${thumbnail.mimeType};base64,${thumbnail.data}` } : {}),
     }
   } catch (failure) {
     void api.action(RemoveAction, { id })

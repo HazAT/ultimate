@@ -1,3 +1,11 @@
-import type { GeminiUsage } from '../antigravity/api.ts'
+export type GeminiUsage = {
+  promptTokenCount: number
+  candidatesTokenCount: number
+  cachedContentTokenCount?: number
+  thoughtsTokenCount?: number
+  totalTokenCount: number
+}
+
+export type RemoteFile = { name: string; uri: string; expiresAt: number }
 
 export type AskResult = { answer: string; usage: GeminiUsage; model: string }

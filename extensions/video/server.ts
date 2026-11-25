@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context, withAbortSignal } from '@earendil-works/chord/context'
 import { defineExtension, defineTool, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -8,9 +8,10 @@ import { defineEffect, effectResult } from '../../lib/effect.ts'
 import { strEnum } from '../../lib/schema.ts'
 import { execFile } from '../../lib/spawn.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { AntigravityApi } from '../antigravity/api.ts'
 import { VideoApi } from './api.ts'
 import { ask } from './ask.ts'
+import { liveGoogle } from './gemini.ts'
+import type { Google } from './gemini.ts'
 import {
   bytesOf,
   chunkOf,
@@ -32,6 +33,7 @@ import {
   BeginAction,
   FinishAction,
   RemoveAction,
+  ThumbnailAction,
   VideoFailed,
   VideoReady,
 } from './refs.ts'
@@ -50,6 +52,15 @@ import {
 } from './storage.ts'
 
 export const docs = [VideosState]
+export const pollActions = ['thumbnail']
+export const secrets = [
+  {
+    name: 'GEMINI_API_KEY',
+    description: 'Gemini API key for video_ask (billed per question)',
+    url: 'https://aistudio.google.com/apikey',
+    provider: 'google',
+  },
+]
 
 function prepare(host: ExtensionHost, run: Runner) {
   return defineEffect<{ id: string; source: string; mimeType: string }, Prepared>(
@@ -64,6 +75,7 @@ function prepare(host: ExtensionHost, run: Runner) {
       if (outcome.ok) {
         video.state = 'ready'
         if (outcome.value.seconds !== undefined) video.seconds = outcome.value.seconds
+        if (outcome.value.thumbnail !== undefined) video.thumbnail = outcome.value.thumbnail
         video.parts = outcome.value.parts
         await host.emit(tx, VideoReady, { id })
       } else {
@@ -80,6 +92,7 @@ const effects = new WeakMap<
   {
     Prepare: ReturnType<typeof prepare>
     queueRemoval: ReturnType<typeof removal>['queue']
+    google: Google
   }
 >()
 
@@ -114,11 +127,14 @@ function finish(host: ExtensionHost, id: string): Promise<Video> {
   })
 }
 
-export default function videoExtension(host: ExtensionHost, run: Runner = execFile) {
-  host.want(AntigravityApi)
+export default function videoExtension(
+  host: ExtensionHost,
+  run: Runner = execFile,
+  google: Google = liveGoogle,
+) {
   const Prepare = prepare(host, run)
-  const { Remove, queue: queueRemoval } = removal(host)
-  effects.set(host, { Prepare, queueRemoval })
+  const { Remove, queue: queueRemoval } = removal(host, google)
+  effects.set(host, { Prepare, queueRemoval, google })
   host.onOpen(async () => {
     await sweep(host, queueRemoval).catch((error: unknown) =>
       host.notice(`Video cleanup failed: ${String(error)}`),
@@ -133,7 +149,7 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
       const { id } = await receivePath(host, from.path, options)
       return finish(host, id)
     },
-    ask: (args, signal) => ask(host, args, signal),
+    ask: (args, signal) => ask(host, google, args, signal),
   })
   return defineExtension({
     name: 'video',
@@ -142,11 +158,14 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
       defineTool({
         name: 'video_ask',
         description:
-          'Ask a question about a video using Gemini through Antigravity, regardless of your model. Get the video id from the user’s attachments or video/addUrl. Costs about 105 tokens per second of video; use from/to to narrow the range. Follow-up questions with the same video and options are cheaper through caching.',
+          'Ask a question about a video using Gemini (official Gemini API, GEMINI_API_KEY), regardless of your model. Get the video id from the user’s attachments or video/addUrl. Costs about 105 tokens per second of video, billed to the key; use from/to to narrow the range. Follow-up questions with the same video and options are cheaper through caching.',
         parameters: obj({
           id: str({ description: 'Video id from an attachment or video/addUrl' }),
           question: str({ minLength: 1 }),
-          model: opt(str({ description: 'Antigravity model id (default: gemini-4-neon-low)' })),
+          model: opt(
+            str({ description: 'Gemini API model, google/<id> (default: google/gemini-4-neon)' }),
+          ),
+          thinking: opt(strEnum(['low', 'medium', 'high'])),
           from: opt(num({ minimum: 0, description: 'Start time in seconds' })),
           to: opt(num({ minimum: 0, description: 'End time in seconds' })),
           detail: opt(strEnum(['low', 'high'])),
@@ -156,6 +175,7 @@ export default function videoExtension(host: ExtensionHost, run: Runner = execFi
           let asked: AskedVideo | undefined
           const { answer, usage, model } = await ask(
             host,
+            google,
             { ...args, conversation: api.conversationId },
             ctx.abortSignal ?? new AbortController().signal,
             ({ name, seconds, ...stage }) => {
@@ -200,8 +220,20 @@ export const actions = {
     return addUrl(host, url, name, conversationId ?? ROOT_CONVERSATION_ID)
   }),
   ask: implementAction(AskAction, (args, { host, conversationId, signal }) =>
-    ask(host, { ...fields(args), conversation: conversationId ?? ROOT_CONVERSATION_ID }, signal),
+    ask(
+      host,
+      effects.get(host)!.google,
+      { ...fields(args), conversation: conversationId ?? ROOT_CONVERSATION_ID },
+      signal,
+    ),
   ),
+  thumbnail: implementAction(ThumbnailAction, async (args, { host }) => {
+    const id = idOf(fields(args).id)
+    const video = (await snapshot(host))?.videos[id]
+    if (!video?.thumbnail) return null
+    const data = await readFile(join(folder(host, id), video.thumbnail), 'base64')
+    return { mimeType: 'image/jpeg', data }
+  }),
   remove: implementAction(RemoveAction, async (args, { host, signal }) => {
     const harness = host.harness()
     const task = await effects.get(host)!.queueRemoval(idOf(fields(args).id))

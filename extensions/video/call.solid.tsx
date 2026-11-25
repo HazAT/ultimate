@@ -1,11 +1,19 @@
 import { Check, Clapperboard } from '@lucide/solid'
 import { cn } from 'cn'
-import { createMemo, For, Show } from 'solid-js'
+import { createMemo, For, Show, untrack } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Tool, ToolContent, ToolHeader, ToolSection } from '@/components/ai/tool.solid.tsx'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
-import { formatTokens, ROOT, useDocOf, useToolDuration, type SolidToolProps } from '@/sdk/solid'
-import { VideosDoc } from './refs.ts'
+import {
+  formatTokens,
+  keepLast,
+  ROOT,
+  useAction,
+  useDocOf,
+  useToolDuration,
+  type SolidToolProps,
+} from '@/sdk/solid'
+import { ThumbnailAction, VideosDoc } from './refs.ts'
 import type { AskDetails } from './refs.ts'
 
 const words = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
@@ -68,6 +76,15 @@ function AskCard(props: { call: SolidToolProps['call'] }) {
   }
   const name = () => details()?.name ?? video()?.name ?? words(props.call.args.id)
   const length = () => details()?.seconds ?? video()?.seconds
+  const thumbnail = useAction(
+    ThumbnailAction,
+    { id: untrack(() => words(props.call.args.id)) },
+    { conversation: ROOT, onError: keepLast, on: () => video()?.thumbnail },
+  )
+  const image = () => {
+    const value = video()?.thumbnail ? thumbnail.data() : undefined
+    return value ? `data:${value.mimeType};base64,${value.data}` : undefined
+  }
   return (
     <Tool defaultOpen>
       <ToolHeader
@@ -88,11 +105,37 @@ function AskCard(props: { call: SolidToolProps['call'] }) {
         <ToolSection class="flex gap-3">
           <div
             aria-hidden="true"
-            class="flex h-12 w-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-sm border border-border/70 bg-terminal text-muted-foreground"
+            class="relative flex h-12 w-20 shrink-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-sm border border-border/70 bg-terminal text-muted-foreground"
           >
-            <Clapperboard class="size-4" stroke-width={1.5} />
-            <Show when={length()}>
-              {(value) => <span class="text-[10px] tabular-nums">{seconds(value())}</span>}
+            <Show
+              when={image()}
+              fallback={
+                <>
+                  <Clapperboard class="size-4" stroke-width={1.5} />
+                  <Show when={length()}>
+                    {(value) => <span class="text-[10px] tabular-nums">{seconds(value())}</span>}
+                  </Show>
+                </>
+              }
+            >
+              {(src) => (
+                <>
+                  <img
+                    alt=""
+                    class="absolute inset-0 size-full object-cover"
+                    data-video-thumbnail
+                    decoding="async"
+                    src={src()}
+                  />
+                  <Show when={length()}>
+                    {(value) => (
+                      <span class="absolute right-0.5 bottom-0.5 rounded-sm bg-black/60 px-1 text-[10px] text-white tabular-nums">
+                        {seconds(value())}
+                      </span>
+                    )}
+                  </Show>
+                </>
+              )}
             </Show>
           </div>
           <div class="min-w-0 flex-1 space-y-1.5">
@@ -138,7 +181,7 @@ function AskCard(props: { call: SolidToolProps['call'] }) {
             <ToolSection class="border-t border-border/60">
               <Markdown class="font-sans text-[13px] leading-relaxed" text={done().answer} />
               <div class="pt-1 text-[11px] text-muted-foreground/70">
-                {usage()} · sent to Google (Antigravity)
+                {usage()} · sent to Google (Gemini API)
               </div>
             </ToolSection>
           )}

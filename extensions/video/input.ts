@@ -132,12 +132,17 @@ export function askOf(raw: unknown): AskArgs & { conversation: number; model: st
   if (typeof question !== 'string' || !question.trim()) throw new Error('Expected a video question')
   const model =
     args.model === undefined
-      ? 'gemini-4-neon-low'
+      ? 'gemini-4-neon'
       : typeof args.model === 'string'
-        ? args.model.replace(/^antigravity\//, '')
+        ? args.model.replace(/^google\//, '')
         : ''
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(model))
-    throw new Error('Choose an Antigravity model (antigravity/<id> or a bare id)')
+    throw new Error(
+      'Choose a Gemini API model (google/<id> or a bare id, e.g. google/gemini-4-neon)',
+    )
+  const thinking = args.thinking
+  if (thinking !== undefined && thinking !== 'low' && thinking !== 'medium' && thinking !== 'high')
+    throw new Error('Video thinking must be low, medium or high')
   const from = numberOf(args.from, 'from')
   const to = numberOf(args.to, 'to')
   const fps = numberOf(args.fps, 'fps')
@@ -145,5 +150,5 @@ export function askOf(raw: unknown): AskArgs & { conversation: number; model: st
   const detail = args.detail
   if (detail !== undefined && detail !== 'low' && detail !== 'high')
     throw new Error('Video detail must be low or high')
-  return { id, conversation, question, model, from, to, fps, detail }
+  return { id, conversation, question, model, thinking, from, to, fps, detail }
 }

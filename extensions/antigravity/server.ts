@@ -6,8 +6,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { rebuiltOnOpen, inProcess, isMissing, settled } from '../../lib/errors.ts'
 import { spawn } from '../../lib/spawn.ts'
-import { AntigravityApi } from './api.ts'
-import { generateThroughRelay, startRelay } from './relay.ts'
+import { startRelay } from './relay.ts'
 import type { Discovery, Relay, RunAgy } from './relay.ts'
 import { StatusAction } from './refs.ts'
 
@@ -192,12 +191,6 @@ const facets = new WeakMap<ExtensionHost, ReturnType<typeof facetState>>()
 
 export default function antigravity(host: ExtensionHost) {
   const state = facetState()
-  host.implement(AntigravityApi, {
-    async generate(model, request, signal) {
-      signal.throwIfAborted()
-      return generateThroughRelay(await state.relay(), model, request, signal)
-    },
-  })
   const provider = createProvider({
     id: PROVIDER_ID,
     name: 'Antigravity (Experimental)',

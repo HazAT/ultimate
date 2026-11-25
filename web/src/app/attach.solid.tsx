@@ -64,7 +64,8 @@ export function createAttach(options: {
         signal: controller.signal,
       })
       .then(
-        ({ path, line, note }) => change(id, { path, line, note, progress: undefined }),
+        ({ path, line, note, image }) =>
+          change(id, { path, line, note, image, progress: undefined }),
         (failure: unknown) => {
           options.setFiles((current) => current.filter((item) => item.id !== id))
           if (!controller.signal.aborted) options.setError(`${name}: ${errorMessage(failure)}`)
@@ -225,6 +226,7 @@ export function Attached(props: {
           {(file, index) => (
             <FileChip
               busy={!attached(file())}
+              image={file().image}
               mimeType={file().mimeType}
               name={file().name}
               note={

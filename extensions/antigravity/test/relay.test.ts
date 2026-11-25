@@ -1,13 +1,14 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { ReadableStream } from 'node:stream/web'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Model } from '@earendil-works/pi-ai'
 import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy'
 import { streamSimple } from '@earendil-works/pi-ai/api/google-generative-ai'
 import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript'
-import { generateThroughRelay, startRelay } from '../relay.ts'
+import { startRelay } from '../relay.ts'
 import { noProxyWithLoopback, officialCost, withPromptUpdatesInPlace } from '../server.ts'
-import type { RunAgy } from '../relay.ts'
+import type { Relay, RunAgy } from '../relay.ts'
 
 const closers: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -112,6 +113,16 @@ const model = (baseUrl: string): Model<'google-generative-ai'> => ({
   maxTokens: 1234,
 })
 
+function callRelay(relay: Relay, body: string | AsyncIterable<Uint8Array> = '{}') {
+  const request: RequestInit & { duplex: 'half' } = {
+    method: 'POST',
+    headers: { 'x-goog-api-key': relay.key, 'content-type': 'application/json' },
+    body: typeof body === 'string' ? body : (ReadableStream.from(body) as BodyInit),
+    duplex: 'half',
+  }
+  return fetch(`${relay.url}/models/gemini-x:streamGenerateContent?alt=sse`, request)
+}
+
 it('discovers models through agy and runs a Pi turn with Pi’s request and agy’s login', async () => {
   const upstream = await codeAssist([
     { candidates: [{ content: { role: 'model', parts: [{ text: 'calling' }] } }] },
@@ -192,7 +203,9 @@ it('streams the Gemini JSON bytes unchanged apart from agy’s session fields, i
     async function* body() {
       for (let i = 0; i < bytes.length; i++) yield bytes.subarray(i, i + 1)
     }
-    await generateThroughRelay(relay, 'gemini-x', body(), new AbortController().signal)
+    const answer = await callRelay(relay, body())
+    expect(answer.status).toBe(200)
+    expect(await answer.text()).toBe('')
     return upstream.seen.at(-1)!
   }
   const body =
@@ -227,7 +240,9 @@ it('sends the caller’s first data upstream before receiving the end of the req
     await received.promise
     yield Buffer.from(']}')
   }
-  await generateThroughRelay(relay, 'gemini-x', body(), new AbortController().signal)
+  const answer = await callRelay(relay, body())
+  expect(answer.status).toBe(200)
+  expect(await answer.text()).toBe('')
   expect(upstream.seen.at(-1)?.body.request).toEqual({
     contents: [{ parts: [{ text: 'upload marker' }] }],
     sessionId: 's1',
@@ -242,54 +257,11 @@ it.each([
   const upstream = await codeAssist([])
   const relay = await startRelay(fakeAgy([], []), upstream.url)
   closers.unshift(() => relay.close())
-  async function* body() {
-    yield Buffer.from(json)
-  }
-  await expect(
-    generateThroughRelay(relay, 'gemini-x', body(), new AbortController().signal),
-  ).rejects.toMatchObject({
-    status: 400,
-    message: `Gemini request body must ${edge} with \`${brace}\``,
+  const answer = await callRelay(relay, json)
+  expect(answer.status).toBe(400)
+  expect(await answer.json()).toMatchObject({
+    error: { code: 400, message: `Gemini request body must ${edge} with \`${brace}\`` },
   })
-})
-
-it('collects the first candidate’s text, last finish reason, and last reported usage', async () => {
-  const usage = {
-    promptTokenCount: 7,
-    candidatesTokenCount: 4,
-    totalTokenCount: 14,
-    thoughtsTokenCount: 3,
-    cachedContentTokenCount: 2,
-  }
-  const upstream = await codeAssist([
-    {
-      candidates: [
-        {
-          content: { parts: [{ text: 'ignore this', thought: true }, { text: 'some ' }] },
-          finishReason: 'MAX_TOKENS',
-        },
-        { content: { parts: [{ text: 'ignore this second candidate' }] } },
-      ],
-      usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 2, totalTokenCount: 9 },
-    },
-    {
-      candidates: [
-        { content: { parts: [{ text: 'text' }, { inlineData: {} }] }, finishReason: 'STOP' },
-      ],
-    },
-    { usageMetadata: { ...usage, promptTokensDetails: [] } },
-  ])
-  const relay = await startRelay(fakeAgy([], []), upstream.url)
-  closers.push(() => relay.close())
-  const request = { contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }
-  const result = await generateThroughRelay(
-    relay,
-    'gemini-x',
-    request,
-    new AbortController().signal,
-  )
-  expect(result).toEqual({ text: 'some text', finishReason: 'STOP', usage })
-  expect(upstream.seen.at(-1)?.body.request).toEqual({ ...request, sessionId: 's1' })
 })
 
 it.each([
@@ -303,9 +275,11 @@ it.each([
   )
   const relay = await startRelay(fakeAgy([], []), upstream.url)
   closers.push(() => relay.close())
-  await expect(
-    generateThroughRelay(relay, 'gemini-x', {}, new AbortController().signal),
-  ).rejects.toMatchObject({ status, message: `${context}: ${detail}` })
+  const answer = await callRelay(relay)
+  expect(answer.status).toBe(status)
+  expect(await answer.json()).toMatchObject({
+    error: { code: status, message: `${context}: ${detail}` },
+  })
 })
 
 it('reports agy as signed out when it lists no models', async () => {
@@ -419,11 +393,12 @@ it('keeps the status and message of an error after Gemini has started streaming 
   )
   const relay = await startRelay(fakeAgy([], []), upstream.url)
   closers.push(() => relay.close())
-  await expect(
-    generateThroughRelay(relay, 'gemini-x', {}, new AbortController().signal),
-  ).rejects.toMatchObject({
-    status: 429,
-    message: expect.stringContaining('Daily limit reached during the turn'),
+  const answer = await callRelay(relay)
+  expect(answer.status).toBe(200)
+  const events = (await answer.text()).trim().split('\n\n')
+  expect(events[0]).toContain('partial')
+  expect(JSON.parse(events[1].slice('data: '.length))).toMatchObject({
+    error: { code: 429, message: expect.stringContaining('Daily limit reached during the turn') },
   })
 })
 

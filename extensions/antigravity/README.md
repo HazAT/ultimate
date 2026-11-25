@@ -27,14 +27,6 @@ model call.
 
 `PI_ANTIGRAVITY_COMMAND` selects the executable (default `agy`).
 
-## Raw Gemini requests from extensions
-
-Use `host.need(AntigravityApi).generate(model, request, signal)` to send a raw Gemini request. Pass an object for
-small requests or an `AsyncIterable<Uint8Array>` of JSON bytes to stream large inline media without buffering the
-whole request. The relay adds `agy`'s `sessionId` and `labels`; leave those fields out of the Gemini request.
-The result includes text without thoughts, the finish reason if present, and token usage. Upstream errors include
-an HTTP status and Google's message when available; 401 and 403 only show a sign-in hint, never Google's body.
-
 ## Credentials and terms
 
 `agy` owns its login. The relay never stores, logs or copies its tokens: they pass through in memory for the one
