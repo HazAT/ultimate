@@ -126,5 +126,6 @@ The web core declares its own points in the SDK: `ParkedRuns`
 branches `branch · coordinator`), `ComposerPlaceholder` (what an empty composer says, the last provider that answers
 winning; conversations addresses a standing agent by its definition's `title`), `EmptyTranscript` (what a transcript
 shows before its first message; each provider receives `core`, the rendering so far, to keep, wrap or replace;
-conversations shows a standing agent's mark and title) and
+conversations shows a standing agent's mark and title), `AnswerSpeaker` (who speaks a final answer, in place of the
+core's "Final answer" heading; messages shows a standing agent's mark and title, else the conversation's model family) and
 `MessageReference` (the copyable reference to a stored message; codemode). The server's counterpart is the extension point above.

@@ -127,7 +127,7 @@ messageActions: [
 `messageDetails` contributes readouts to the same row, before the message's time, under the same rules. `status-line`
 shows each message's context and cost there.
 
-`answerLabels` contributes inline labels after the **Final answer** heading, only on stored final assistant messages
+`answerLabels` contributes inline labels after a final answer's speaker (the `AnswerSpeaker` point), only on stored final assistant messages
 (not streaming updates). Like `messageDetails`, it is an array of components receiving `{ entry: EntryRecord }`,
 rendered in discovery and contribution order, each behind an extension boundary. Return `null` when the entry has
 no relevant label. Keep labels brief and muted; the header wraps at narrow widths. Messages uses it to show where an

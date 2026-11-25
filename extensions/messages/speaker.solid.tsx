@@ -33,7 +33,7 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
   const families = useFamilies()
   const conversation = useConversationSummary(() => props.entry.conversationId)
   const family = createMemo(() => {
-    const name = recorded()?.name ?? DEFAULT_FAMILY
+    const name = recorded() === undefined ? undefined : (recorded()?.name ?? DEFAULT_FAMILY)
     return families()?.families.find((item) => item.name === name)
   })
   return (
