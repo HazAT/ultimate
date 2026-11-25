@@ -1,22 +1,28 @@
 import { settle } from '@ui-sdk/core/testing'
 import { createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Attached } from '../../web/src/app/attach.solid.tsx'
-import type { PastedImage } from '../../web/src/app/attachments.ts'
+import { Attached, createAttach } from '../../web/src/app/attach.solid.tsx'
+import type { Upload } from '../../web/src/app/attach.solid.tsx'
+import type { DraftFile, PastedImage } from '../../web/src/app/attachments.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
-const harness = vi.hoisted(() => ({ resized: [] as unknown[], revoked: [] as string[] }))
+const harness = vi.hoisted(() => ({
+  canvases: [] as [number, number][],
+  made: [] as string[],
+  revoked: [] as string[],
+}))
 
 beforeEach(() => {
-  harness.resized.length = 0
+  harness.canvases.length = 0
+  harness.made.length = 0
   harness.revoked.length = 0
-  vi.stubGlobal('createImageBitmap', async (_image: Blob, options: unknown) => {
-    harness.resized.push(options)
-    return { width: 304, height: 190, close() {} }
-  })
+  vi.stubGlobal('createImageBitmap', async () => ({ width: 2560, height: 1600, close() {} }))
   vi.stubGlobal(
     'OffscreenCanvas',
     class {
+      constructor(width: number, height: number) {
+        harness.canvases.push([width, height])
+      }
       getContext = () => ({ drawImage() {} })
       convertToBlob = async () => new Blob(['small'], { type: 'image/webp' })
     },
@@ -25,8 +31,10 @@ beforeEach(() => {
     'fetch',
     async (url: string) => new Response(new Blob([url], { type: 'image/png' })),
   )
-  let made = 0
-  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:thumb-${++made}`)
+  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => {
+    harness.made.push(`blob:thumb-${harness.made.length + 1}`)
+    return harness.made.at(-1)!
+  })
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => {
     harness.revoked.push(url)
   })
@@ -35,6 +43,9 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
+
+const chipImage = (container: HTMLElement) =>
+  container.querySelector<HTMLImageElement>('[data-ui="file-chip-image"]')?.getAttribute('src')
 
 it('shows a pasted image as a small blob thumbnail and revokes it when removed', async () => {
   const screenshot: PastedImage = { data: 'A'.repeat(4000), mimeType: 'image/png' }
@@ -51,14 +62,68 @@ it('shows a pasted image as a small blob thumbnail and revokes it when removed',
   await settle()
   flush()
 
-  const thumb = container.querySelector<HTMLImageElement>('[data-ui="file-chip-image"]')
-  expect(thumb?.getAttribute('src')).toBe('blob:thumb-1')
+  expect(chipImage(container)).toBe('blob:thumb-1')
   expect(container.querySelector('img[src^="data:"]')).toBeNull()
-  expect(harness.resized).toEqual([expect.objectContaining({ resizeWidth: 304 })])
-  expect(container.textContent).toContain('Image 1')
+  expect(harness.canvases).toEqual([[304, 190]])
 
   container.querySelector<HTMLButtonElement>('[aria-label="Remove image 1"]')!.click()
   flush()
   expect(container.querySelector('[data-ui="file-chip"]')).toBeNull()
+  expect(harness.revoked).toEqual(['blob:thumb-1'])
+})
+
+it('keeps one thumbnail for an image uploaded as a file through progress and completion', async () => {
+  const [files, setFiles] = createSignal<DraftFile[]>([])
+  let progress: (note: string, at: number) => void = () => {}
+  let finish: (result: { path: string }) => void = () => {}
+  const upload: Upload = {
+    maxBytes: 10_000_000,
+    keptMs: 1,
+    upload: (_file, options) => {
+      progress = options.status
+      return new Promise((resolve) => (finish = resolve))
+    },
+  }
+  let attach!: ReturnType<typeof createAttach>
+  const container = renderSolid(() => {
+    attach = createAttach({
+      images: () => [],
+      setImages: () => {},
+      setFiles: (change) => setFiles(change),
+      setError: () => {},
+      disabled: () => false,
+      uploads: () => [upload],
+      inlineImages: () => false,
+      conversation: () => undefined,
+    })
+    return (
+      <Attached
+        disabled={false}
+        files={files()}
+        images={[]}
+        remove={() => {}}
+        removeFile={(id) => setFiles((current) => current.filter((file) => file.id !== id))}
+      />
+    )
+  })
+  const done = attach.attach([new File(['png'], 'shot.png', { type: 'image/png' })], 'drop')
+  await settle()
+  flush()
+  expect(chipImage(container)).toBe('blob:thumb-1')
+
+  progress('Uploading 50%', 0.5)
+  flush()
+  finish({ path: '/home/attachments/1-a/shot.png' })
+  await done
+  flush()
+  expect(container.querySelector('[data-ui="file-chip"]')?.getAttribute('title')).toBe(
+    '/home/attachments/1-a/shot.png',
+  )
+  expect(chipImage(container)).toBe('blob:thumb-1')
+  expect(harness.made).toEqual(['blob:thumb-1'])
+  expect(harness.revoked).toEqual([])
+
+  container.querySelector<HTMLButtonElement>('[aria-label="Remove file 1: shot.png"]')!.click()
+  flush()
   expect(harness.revoked).toEqual(['blob:thumb-1'])
 })

@@ -39,7 +39,7 @@ export function FileChip(props: {
   children?: JSX.Element
 }) {
   const Icon = dynamic(() => icons[fileKind(props.name, props.mimeType)])
-  const [thumbnail, setThumbnail] = createSignal<string>()
+  const [thumbnail, setThumbnail] = createSignal<{ of: Promise<unknown>; url: string }>()
   const made = createMemo(() => ({ pending: props.thumbnail }), {
     equals: (before, after) => before.pending === after.pending,
   })
@@ -49,14 +49,18 @@ export function FileChip(props: {
     void pending?.then((blob) => {
       if (gone || !blob) return
       url = URL.createObjectURL(blob)
-      setThumbnail(url)
+      setThumbnail({ of: pending, url })
     })
     return () => {
       gone = true
       if (url) URL.revokeObjectURL(url)
     }
   })
-  const image = () => props.image ?? thumbnail()
+  const shown = () => {
+    const current = thumbnail()
+    return current && current.of === made().pending ? current.url : undefined
+  }
+  const image = () => props.image ?? shown()
   return (
     <div
       class={cn(fileChipClass, props.gone && 'opacity-60')}

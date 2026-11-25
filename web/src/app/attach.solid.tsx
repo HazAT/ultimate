@@ -18,7 +18,10 @@ export type Upload = NonNullable<typeof FileUpload.value>
 const limit = (bytes: number) => formatBytes(bytes).replace('.0 ', ' ')
 const inFlight = new Map<string, AbortController>()
 const keptFileThumbnails = 40
-const fileThumbnails = new Map<string, Promise<Blob | undefined>>()
+const uploadingThumbnails = new Map<string, Promise<Blob | undefined>>()
+const uploadedThumbnails = new Map<string, Promise<Blob | undefined>>()
+const fileThumbnail = (file: DraftFile) =>
+  uploadingThumbnails.get(file.id) ?? uploadedThumbnails.get(file.path)
 const imageThumbnails = new WeakMap<PastedImage, Promise<Blob | undefined>>()
 const noThumbnail = (failure: unknown) => {
   console.warn('Could not make a thumbnail', failure)
@@ -40,7 +43,7 @@ function imageThumbnail(image: PastedImage) {
 export function cancelUpload(id: string) {
   inFlight.get(id)?.abort(new Error('Removed'))
   inFlight.delete(id)
-  fileThumbnails.delete(id)
+  uploadingThumbnails.delete(id)
 }
 
 export function createAttach(options: {
@@ -75,10 +78,8 @@ export function createAttach(options: {
     ])
     const controller = new AbortController()
     inFlight.set(id, controller)
-    const small = mimeType.startsWith('image/')
-      ? thumbnail(file).catch(noThumbnail)
-      : Promise.resolve(undefined)
-    fileThumbnails.set(id, small)
+    const small = mimeType.startsWith('image/') ? thumbnail(file).catch(noThumbnail) : undefined
+    if (small) uploadingThumbnails.set(id, small)
     return upload
       .upload(file, {
         source,
@@ -88,14 +89,16 @@ export function createAttach(options: {
       })
       .then(
         ({ path, line, note, image }) => {
-          fileThumbnails.delete(id)
-          if (path) fileThumbnails.set(path, small)
-          if (fileThumbnails.size > keptFileThumbnails)
-            fileThumbnails.delete(fileThumbnails.keys().next().value!)
+          if (small && path) {
+            uploadedThumbnails.set(path, small)
+            if (uploadedThumbnails.size > keptFileThumbnails)
+              uploadedThumbnails.delete(uploadedThumbnails.keys().next().value!)
+          }
           change(id, { path, line, note, image, progress: undefined })
+          uploadingThumbnails.delete(id)
         },
         (failure: unknown) => {
-          fileThumbnails.delete(id)
+          uploadingThumbnails.delete(id)
           options.setFiles((current) => current.filter((item) => item.id !== id))
           if (!controller.signal.aborted) options.setError(`${name}: ${errorMessage(failure)}`)
         },
@@ -248,7 +251,7 @@ export function Attached(props: {
             <FileChip
               busy={!attached(file())}
               image={file().image}
-              thumbnail={fileThumbnails.get(file().path || file().id)}
+              thumbnail={fileThumbnail(file())}
               mimeType={file().mimeType}
               name={file().name}
               note={

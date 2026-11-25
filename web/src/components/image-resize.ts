@@ -4,16 +4,23 @@ export const maxImageSide = 2000
 
 export type FittedImage = { blob: Blob; note?: string }
 
-const thumbPx = 304
+const thumbWidth = 304
+const thumbHeight = 112
+const thumbMaxSide = 4 * thumbWidth
 
 export async function thumbnail(image: Blob) {
-  const bitmap = await createImageBitmap(image, {
-    imageOrientation: 'from-image',
-    resizeWidth: thumbPx,
-    resizeQuality: 'high',
-  })
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
+  const bitmap = await createImageBitmap(image, { imageOrientation: 'from-image' })
+  const { width, height } = bitmap
+  const scale = Math.min(
+    1,
+    Math.max(thumbWidth / width, thumbHeight / height),
+    thumbMaxSide / Math.max(width, height),
+  )
+  const canvas = new OffscreenCanvas(
+    Math.max(1, Math.round(width * scale)),
+    Math.max(1, Math.round(height * scale)),
+  )
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
   bitmap.close()
   return canvas.convertToBlob({ type: 'image/webp', quality: 0.9 })
 }
