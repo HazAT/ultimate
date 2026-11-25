@@ -44,7 +44,7 @@ import {
 } from './dock.solid.tsx'
 import type { TurnView } from './dock.solid.tsx'
 import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
-import type { VoiceFork, VoiceUiCall } from './refs.ts'
+import type { VoiceFork, VoiceTurn, VoiceUiCall } from './refs.ts'
 import { splitReply } from './speech.ts'
 import type { Sentence } from './speech.ts'
 import type { Stage, Trace } from './trace.ts'
@@ -168,20 +168,27 @@ function TraceLine(props: { trace: Trace; turn: string }) {
   )
 }
 
+export function saidIn(
+  data: VoiceTurn,
+  recording: string | undefined,
+  stored: boolean,
+  transcripts: Record<string, string> | undefined,
+) {
+  if (!data.audio || (stored && data.route === 'text')) return data.text
+  const clips = data.clips ?? (recording ? [recording] : [])
+  const heard = clips.map((clip) => transcripts?.[clip])
+  if (clips.length && heard.every((text) => text !== undefined))
+    return [heard.filter(Boolean).join(' '), data.text].filter(Boolean).join('\n\n')
+  return data.text || undefined
+}
+
 function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined }) {
   const data = () => props.turn.data
   const local = () => dock.local()[props.turn.key]
   const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
   const cutIn = () => data().hint?.includes('(Hint:') ?? false
-  const said = () => {
-    const recording = audio()
-    if (!data().audio) return data().text
-    const clips = data().clips ?? (recording ? [recording] : [])
-    const heard = clips.map((clip) => props.fork?.transcripts?.[clip])
-    if (clips.length && heard.every((text) => text !== undefined))
-      return heard.filter(Boolean).join(' ')
-    return data().text || undefined
-  }
+  const said = () =>
+    saidIn(data(), audio(), !!props.turn.record, props.fork?.transcripts ?? undefined)
   const failed = () => {
     const recording = audio()
     return local()?.failed ?? (recording ? props.fork?.failed?.[recording] : undefined)
@@ -246,7 +253,12 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
               </Show>
             }
           >
-            {(text) => <UserText text={text()} />}
+            {(text) => (
+              <UserText
+                at={props.turn.record ? timeOf(props.turn.record) : undefined}
+                text={text()}
+              />
+            )}
           </Show>
         </Show>
         <Show when={props.turn.images.length}>

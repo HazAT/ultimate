@@ -79,7 +79,7 @@ import { VideosDoc } from '../../refs.ts'
 import type { AskDetails, Video } from '../../refs.ts'
 import { VideoAskCall } from '../../call.solid.tsx'
 import type { ToolCallView } from '../../../../web/src/sdk/solid.ts'
-import { PromptRecorder, provide } from '../../../../web/src/sdk/solid.ts'
+import { PromptRecorder, provide, UserText } from '../../../../web/src/sdk/solid.ts'
 import { Button } from '../../../../web/src/components/ui/button.solid.tsx'
 
 const agent = createAgent()
@@ -356,6 +356,27 @@ it('shows a video_ask call going from asking Gemini to its answer and usage', as
   })
   flush()
   expect(container.querySelector('[data-testid="core"]')?.textContent).toBe('Unknown video')
+})
+
+it('a sent message shows its video as a chip with the first frame, name and length, never the raw line', async () => {
+  await show(24)
+  const text = [
+    'what happens here?',
+    '',
+    `Attached video: \`demo.webm\` (42 s), id \`${id}\`; ask about it with video_ask`,
+  ].join('\n')
+  const container = renderSolid(() => <UserText text={text} />)
+  await settle()
+  videoState({ state: 'ready', seconds: 41.6, thumbnail: 'parts/thumbnail.jpg' })
+  await settle()
+  flush()
+  expect(container.textContent).not.toContain('Attached video')
+  expect(container.querySelector('p')?.textContent).toBe('what happens here?')
+  expect(chipNotes(container)).toEqual(['42 s · WEBM'])
+  expect(container.querySelector('[data-ui="file-chip"] p')?.textContent).toBe('demo.webm')
+  expect(
+    container.querySelector<HTMLImageElement>('[data-ui="file-chip-image"]')?.getAttribute('src'),
+  ).toBe('data:image/jpeg;base64,AAAA')
 })
 
 it('a recording stopped while a typed prompt is sending waits for it, so the sent prompt still clears', async () => {

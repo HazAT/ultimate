@@ -106,7 +106,7 @@ const TurnRow = renderEntry(VoiceTurnEntry, function TurnRow(props) {
             {data().seconds?.toFixed(1)} s
           </span>
         </Show>
-        <UserText text={text()} />
+        <UserText at={timeOf(props.entry)} text={text()} />
       </MessageContent>
       <MessageActions
         class="-mt-1 justify-end"

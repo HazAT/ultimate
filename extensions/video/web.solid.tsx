@@ -1,7 +1,15 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createEffect, createRoot } from 'solid-js'
-import { meansNone } from '../../lib/errors.ts'
-import { api, defineWebExtension, FileUpload, provide, ROOT, useDocOf } from '@/sdk/solid'
+import { keepLast, meansNone } from '../../lib/errors.ts'
+import {
+  api,
+  defineWebExtension,
+  FileUpload,
+  provide,
+  ROOT,
+  useAction,
+  useDocOf,
+} from '@/sdk/solid'
 import type { UploadSource } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'
 import { VideoAskCall } from './call.solid.tsx'
@@ -106,7 +114,26 @@ async function upload(
   }
 }
 
-const videos = { accepts: 'video/', upload, maxBytes: MAX_UPLOAD_BYTES, keptMs: KEPT_MS }
+function preview(line: string) {
+  const id = /, id `(v_[a-f0-9]+)`;/.exec(line)?.[1]
+  if (!id) return () => undefined
+  const doc = useDocOf(() => ROOT, VideosDoc)
+  const framed = () => doc()?.videos[id]?.thumbnail
+  const thumbnail = useAction(
+    ThumbnailAction,
+    { id },
+    { conversation: ROOT, onError: keepLast, on: framed },
+  )
+  return () => (framed() ? (thumbnail.data() ?? undefined) : undefined)
+}
+
+const videos = {
+  accepts: 'video/',
+  upload,
+  preview,
+  maxBytes: MAX_UPLOAD_BYTES,
+  keptMs: KEPT_MS,
+}
 
 export default defineWebExtension({
   provides: [provide(FileUpload, () => () => videos)],
