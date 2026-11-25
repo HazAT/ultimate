@@ -365,6 +365,7 @@ export function PromptBox(props: PromptBoxProps) {
           : 'max-h-80 px-3.5 pt-3 pb-1 text-[14px]',
       )}
       data-conversation={props.conversation}
+      data-resume={`prompt:${props.draft ?? props.name}`}
       disabled={!!props.disabled}
       id={props.id}
       onKeyDown={onKeyDown}

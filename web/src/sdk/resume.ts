@@ -1,6 +1,10 @@
 import { debounce, deadline } from '../../../lib/timers.ts'
+import { capturePlace, restorePlace } from './resume-place.ts'
+import type { Place } from './resume-place.ts'
 
 const key = 'ultimate.resume'
+const placeKey = 'ultimate.resume-place'
+const placeFreshMs = 30000
 const previousPageCover = document.getElementById('resume')
 const unrenderedCoverLimitMs = 8000
 const renderSettleLimitMs = 700
@@ -16,6 +20,50 @@ export const firstRender = new Promise<void>((resolve) => {
 /** True when this page load painted the previous page's view: a reload, not a fresh start. */
 export const resumed = previousPageCover !== null
 export const covered = () => covering
+
+let previousPlace = ((): Place | undefined => {
+  const stored = JSON.parse(sessionStorage.getItem(placeKey) ?? 'null') as
+    | (Place & { at: number })
+    | null
+  return stored && Date.now() - stored.at < placeFreshMs ? stored : undefined
+})()
+const previousKept = new Map(Object.entries(previousPlace?.kept ?? {}))
+const keepers = new Map<string, () => unknown>()
+
+export function keepAcrossReload(name: string, read: () => unknown) {
+  keepers.set(name, read)
+  return () => {
+    if (keepers.get(name) === read) keepers.delete(name)
+  }
+}
+
+export function takeFromLastPage(name: string): unknown {
+  const kept = previousKept.get(name)
+  previousKept.delete(name)
+  return kept
+}
+
+function placeForNextPage() {
+  if (previousPlace) return previousPlace
+  if (!appHasRendered) return undefined
+  return capturePlace(Object.fromEntries([...keepers].map(([name, read]) => [name, read()])))
+}
+
+function keepPlace() {
+  try {
+    const place = placeForNextPage()
+    if (place) sessionStorage.setItem(placeKey, JSON.stringify({ ...place, at: Date.now() }))
+    else sessionStorage.removeItem(placeKey)
+  } catch {
+    sessionStorage.removeItem(placeKey)
+  }
+}
+
+function takeTypedUnderCover() {
+  const typed = previousPageCover?.dataset.typed ?? ''
+  if (previousPageCover) delete previousPageCover.dataset.typed
+  return typed
+}
 
 function copyViewportWithPlaceholders(node: Node): Node {
   if (!(node instanceof HTMLElement)) return node.cloneNode(true)
@@ -67,6 +115,7 @@ function captureForNextPage() {
 
 function uncover() {
   if (!previousPageCover || !covering) return
+  takeTypedUnderCover()
   covering = false
   sessionStorage.removeItem(key)
   if (document.hidden) previousPageCover.remove()
@@ -83,7 +132,7 @@ export function rendered() {
   if (appHasRendered) return
   appHasRendered = true
   markFirstRender()
-  if (!covering) return
+  if (!covering && !previousPlace) return
   const app = document.getElementById('app')!
   const wait = debounce(transcriptMutationOrScrollQuietMs, done)
   wait()
@@ -96,9 +145,17 @@ export function rendered() {
     removeEventListener('scroll', wait, true)
     wait.cancel()
     cancelCap()
+    const place = previousPlace
+    previousPlace = undefined
+    sessionStorage.removeItem(placeKey)
+    const typed = takeTypedUnderCover()
+    if (place) restorePlace(place, typed)
     uncover()
   }
 }
 
-addEventListener('pagehide', captureForNextPage)
+addEventListener('pagehide', () => {
+  captureForNextPage()
+  keepPlace()
+})
 if (previousPageCover) deadline(unrenderedCoverLimitMs, uncover)

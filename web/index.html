@@ -60,6 +60,21 @@
             element.scrollTop = top
             element.scrollLeft = left
           }
+          // Keys typed while the picture shows; resume.ts replays the text into the field that had focus.
+          view.dataset.typed = ''
+          const typing = (event) => {
+            if (view.dataset.typed === undefined)
+              return removeEventListener('keydown', typing, true)
+            if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return
+            if (/^F\d+$/.test(event.key)) return
+            const typed = [...view.dataset.typed]
+            if (event.key === 'Backspace') typed.pop()
+            else if ([...event.key].length === 1) typed.push(event.key)
+            view.dataset.typed = typed.join('')
+            event.preventDefault()
+            event.stopImmediatePropagation()
+          }
+          addEventListener('keydown', typing, true)
         }
       }
     </script>
