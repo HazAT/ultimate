@@ -14,7 +14,7 @@ import {
 } from '@/sdk/solid'
 import type { Dictation } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
-import { base64, capture, unsupported } from './capture.ts'
+import { base64, capture, MIN_SPOKEN_SECONDS, unsupported } from './capture.ts'
 import type { Sink, Take } from './capture.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 import { registerBox, talkMode } from './routing.solid.tsx'
@@ -63,10 +63,12 @@ export function VoiceButton(props: DictationProps) {
       pending = undefined
     },
     error: setError,
-    async finish({ blob }) {
+    async finish({ blob, seconds }) {
       const take = pending
       pending = undefined
-      if (take && blob.size) await transcribe(take.conversation, blob, take.source, take.insert)
+      if (!take) return
+      if (seconds < MIN_SPOKEN_SECONDS) setError('Too short to transcribe')
+      else if (blob.size) await transcribe(take.conversation, blob, take.source, take.insert)
     },
   }
   const sink = () => props.sink ?? defaultSink
