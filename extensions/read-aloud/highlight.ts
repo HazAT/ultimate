@@ -3,16 +3,15 @@ import type { PlayerState } from './speech.ts'
 export type SpokenText = {
   key?: string
   spans: readonly string[]
-  clickable: boolean
   span?: (item: number) => number | undefined
-  play: (span: number) => void
+  play?: (span: number) => void
 }
 
 type Tracked = { element: () => Element | null | undefined; now?: SpokenText }
 
 type Source = {
   state: { get: () => PlayerState; subscribe: (listener: () => void) => () => void }
-  items: () => readonly { text: string }[]
+  items: () => readonly { at?: number }[]
 }
 
 const ANCHOR = 24
@@ -27,15 +26,6 @@ const style = `::highlight(read-aloud) {
   background-color: color-mix(in oklab, var(--accent) 70%, transparent);
 }`
 
-export function matchItems(spans: readonly string[], items: readonly { text: string }[]) {
-  let next = 0
-  return items.map((item) => {
-    const at = spans.findIndex((span, index) => index >= next && span.trim() === item.text.trim())
-    if (at >= 0) next = at + 1
-    return at
-  })
-}
-
 const lettersOf = (markdown: string) =>
   (
     markdown
@@ -46,16 +36,20 @@ const lettersOf = (markdown: string) =>
       .match(letter) ?? []
   ).join('')
 
+const within = (node: Element, selector: string, root: Element) => {
+  const found = node.closest(selector)
+  return !!found && found !== root && root.contains(found)
+}
+
 function rendered(root: Element) {
   const points: { node: Text; offset: number }[] = []
   let text = ''
+  const prose = root.matches('.markdown') || !root.querySelector('.markdown')
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
     const parent = node.parentElement
-    const markdown = parent?.closest('.markdown')
-    if (!markdown || !root.contains(markdown)) continue
-    const skip = parent!.closest(skipped)
-    if (skip && skip !== root && root.contains(skip)) continue
+    if (!parent || (!prose && !within(parent, '.markdown', root))) continue
+    if (within(parent, skipped, root)) continue
     for (const match of node.data.matchAll(letter))
       for (let unit = 0; unit < match[0].length; unit++) {
         text += match[0][unit]
@@ -116,7 +110,12 @@ export function createHighlight(player: Source) {
     if (!root?.isConnected || !spans.length) return []
     const content = root.textContent ?? ''
     const known = cached.get(each)
-    if (known?.root === root && known.content === content && known.spans === spans)
+    if (
+      known?.root === root &&
+      known.content === content &&
+      known.spans === spans &&
+      known.ranges.every((range) => !range || root.contains(range.startContainer))
+    )
       return known.ranges
     const fresh = rangesIn(root, spans)
     cached.set(each, { root, content, spans, ranges: fresh })
@@ -140,22 +139,26 @@ export function createHighlight(player: Source) {
     shown = shape
     page.current.clear()
     if (!spoken?.now) return
-    const { span, spans } = spoken.now
-    const at = span ? span(now.index) : matchItems(spans, player.items())[now.index]
+    const { span } = spoken.now
+    const at = span ? span(now.index) : player.items()[now.index]?.at
     const range = at === undefined || at < 0 ? undefined : ranges(spoken)[at]
     if (range) page.current.add(range)
   }
 
   const under = (event: MouseEvent) => {
     const target = event.target
-    if (!(target instanceof Element) || target.closest(`a, button, input, textarea, ${skipped}`))
-      return undefined
+    if (!(target instanceof Element)) return undefined
     const playing = player.state.get().key
-    const candidates = [...tracked].filter(
-      (each) => each.now?.clickable && each.element()?.contains(target),
-    )
+    const candidates = [...tracked].filter((each) => {
+      const root = each.element()
+      return (
+        each.now?.play &&
+        root?.contains(target) &&
+        !within(target, `a, button, input, textarea, ${skipped}`, root)
+      )
+    })
     const spoken = candidates.find((each) => each.now?.key === playing) ?? candidates[0]
-    if (!spoken?.now) return undefined
+    if (!spoken?.now?.play) return undefined
     const all = ranges(spoken)
     const span = all.findIndex((range) =>
       [...(range?.getClientRects() ?? [])].some((rect) =>

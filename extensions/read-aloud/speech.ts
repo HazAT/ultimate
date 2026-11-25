@@ -4,7 +4,13 @@ import { MAX_SPOKEN } from './voices.ts'
 
 export const CHARS_PER_SECOND = 14.5
 
-export type Sentence = { text: string; paragraph: number; starts: number[]; words: string[] }
+export type Sentence = {
+  text: string
+  paragraph: number
+  starts: number[]
+  words: string[]
+  at?: number
+}
 
 export type PlayerState = {
   key?: string
@@ -40,7 +46,11 @@ export function splitReply(parts: readonly { text: string; final: boolean }[]) {
     const split = splitSentences(part.text, part.final)
     if (sentences.length) paragraph++
     for (const sentence of split.sentences)
-      sentences.push({ ...sentence, paragraph: paragraph + sentence.paragraph })
+      sentences.push({
+        ...sentence,
+        paragraph: paragraph + sentence.paragraph,
+        at: sentences.length,
+      })
     paragraph += split.sentences.at(-1)?.paragraph ?? 0
     pending = split.pending
   }

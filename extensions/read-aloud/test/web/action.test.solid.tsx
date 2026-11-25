@@ -7,6 +7,7 @@ import { readAloudAction } from '../../action.solid.tsx'
 
 type Reading = {
   key: string
+  text: string
   conversation: ConversationId
   entry: number
   status: 'playing' | 'paused'
@@ -31,8 +32,8 @@ it('reads a message aloud, then pauses and resumes it from the same button', asy
       return () => listeners.delete(listener)
     },
     read: vi.fn<(conversation: ConversationId, entry: number, text: string) => void>(
-      (conversation: ConversationId, entry: number) =>
-        set({ key: `${entry}`, conversation, entry, status: 'playing' }),
+      (conversation: ConversationId, entry: number, text: string) =>
+        set({ key: `${entry}`, text, conversation, entry, status: 'playing' }),
     ),
     pause: vi.fn<() => void>(() => set(reading && { ...reading, status: 'paused' })),
     resume: vi.fn<() => void>(() => set(reading && { ...reading, status: 'playing' })),

@@ -10,6 +10,7 @@ type Player = {
   current: () =>
     | {
         key: string
+        text: string
         conversation: ConversationId
         entry: number
         status: 'loading' | 'playing' | 'paused'
@@ -19,7 +20,7 @@ type Player = {
   read: (conversation: ConversationId, entry: number, text: string) => void
   pause: () => void
   resume: () => void
-  wasRead: (conversation: ConversationId, entry: number) => boolean
+  wasRead: (conversation: ConversationId, entry: number, text: string) => boolean
   sectionOf: (item: number) => number | undefined
   playSection: (conversation: ConversationId, entry: number, text: string, section: number) => void
 }
@@ -32,7 +33,8 @@ export function readAloudAction(player: Player) {
     const status = () => {
       const current = reading()
       return current?.conversation === props.entry.conversationId &&
-        current.entry === props.entry.id
+        current.entry === props.entry.id &&
+        current.text === props.text
         ? current.status
         : undefined
     }
@@ -42,13 +44,12 @@ export function readAloudAction(player: Player) {
       () => button()?.closest(message) ?? undefined,
       () => {
         const key = status() ? reading()?.key : undefined
-        if (!key && !player.wasRead(props.entry.conversationId, props.entry.id)) return undefined
         const { conversationId, id } = props.entry
         const text = props.text
+        if (!key && !player.wasRead(conversationId, id, text)) return undefined
         return {
           key,
           spans: spans(),
-          clickable: true,
           span: player.sectionOf,
           play: (section: number) => player.playSection(conversationId, id, text, section),
         }

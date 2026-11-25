@@ -6,6 +6,7 @@ import { speech } from './voice.solid.tsx'
 
 export type Reading = {
   key: string
+  text: string
   conversation: ConversationId
   entry: number
   status: 'loading' | 'playing' | 'paused'
@@ -52,22 +53,26 @@ export const subscribe = (listener: () => void) => {
 
 export function current(): Reading | undefined {
   if (!source) return undefined
-  const { key, conversation, entry } = source
+  const { key, text, conversation, entry } = source
   const failure = speech.failure.get()
   if (failure?.key === source.key)
-    return { key, conversation, entry, status: 'paused', error: failure.message }
+    return { key, text, conversation, entry, status: 'paused', error: failure.message }
   const now = speech.state.get()
   if (now.key !== source.key || !(now.playing || now.paused || now.streaming)) return undefined
   return {
     key,
+    text,
     conversation,
     entry,
     status: now.playing ? 'playing' : now.paused ? 'paused' : 'loading',
   }
 }
 
-export const wasRead = (conversation: ConversationId, entry: number) =>
-  heard.has(`${conversation}/${entry}`)
+const heardAs = (conversation: ConversationId, entry: number, text: string) =>
+  JSON.stringify([conversation, entry, text])
+
+export const wasRead = (conversation: ConversationId, entry: number, text: string) =>
+  heard.has(heardAs(conversation, entry, text))
 
 export const sectionOf = (item: number) => source?.sections[item]
 
@@ -75,7 +80,7 @@ export function read(conversation: ConversationId, entry: number, text: string, 
   source?.preparing.abort()
   const key = `read-aloud:${conversation}/${entry}:${++attempts}`
   source = { key, conversation, entry, text, preparing: new AbortController(), sections: [] }
-  heard.add(`${conversation}/${entry}`)
+  heard.add(heardAs(conversation, entry, text))
   speech.warm()
   speech.load(key, [], true)
   setUpMediaSession()
@@ -88,9 +93,13 @@ export function playSection(
   text: string,
   section: number,
 ) {
-  const ours = source?.conversation === conversation && source.entry === entry ? source : undefined
-  const item = ours?.sections.indexOf(section) ?? -1
-  if (ours && speech.state.get().key === ours.key && item >= 0) speech.play(item)
+  const reading = current()
+  const ours =
+    reading && !reading.error && reading.text === text && reading.entry === entry
+      ? reading.conversation === conversation && source
+      : undefined
+  const item = ours ? ours.sections.indexOf(section) : -1
+  if (ours && item >= 0) speech.play(item)
   else read(conversation, entry, text, section)
 }
 

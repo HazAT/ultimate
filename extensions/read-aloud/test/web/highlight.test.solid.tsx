@@ -91,3 +91,26 @@ it('marks the sentence the player speaks, by its text when sentences were skippe
   speech.stop()
   expect(spoken()).toEqual([])
 })
+
+it('a repeated sentence spoken after its twin was muted marks its own place', () => {
+  const repeated = splitReply([{ text: 'Start. Again. Again.', final: true }]).sentences
+  const [element, setElement] = createSignal<HTMLElement>()
+  renderSolid(() => {
+    useSpokenText(element, () => ({
+      key: 'repeat',
+      spans: repeated.map((sentence) => sentence.text),
+    }))
+    return (
+      <p ref={setElement}>
+        Start. Again. <em>Again.</em>
+      </p>
+    )
+  })
+  flush()
+  speech.load('repeat', [repeated[0], repeated[2]], false)
+  speech.play(1)
+  const [range] = highlights.get('read-aloud')!
+  expect(String(range)).toBe('Again.')
+  expect(range.startContainer.parentElement?.tagName).toBe('EM')
+  speech.stop()
+})
