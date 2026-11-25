@@ -52,3 +52,7 @@ its key with `at: 0`, so the entry shows when it arrives and the selection takes
   a quiet `Inbox` at zero; a click opens the surface. @ultimate's own row then says only `waits on you`.
 - **To-dos**: the panel's "For you" keeps one `Inbox · N` row, provided items counted, that opens it.
 - ⌘K **Open Inbox**.
+- **App icon**: an installed app shows the same count as a badge on its Dock, taskbar or home-screen icon
+  (`navigator.setAppBadge`), cleared at zero and left alone until the open questions have loaded; a browser without
+  the Badging API shows nothing, and iOS shows it only once notifications are allowed. It follows the open pages, so
+  the last count stays on the icon after the last window closes.

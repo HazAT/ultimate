@@ -8,7 +8,7 @@ import { InboxItems } from './points.ts'
 
 /**
  * Everything that waits on the user, oldest first: open questions and other extensions' items. `failures` holds the
- * inline error card of each provider that throws.
+ * inline error card of each provider that throws; `loaded` turns true once the open questions have arrived.
  */
 export function Waiting() {
   const log = useDocOf(() => ROOT, MessagesDoc)
@@ -16,7 +16,8 @@ export function Waiting() {
   const provided = useAllProvided(InboxItems, () => null, failures)
   const messages = () => (log() ?? emptyMessages).messages
   const entries = createMemo(() => inboxItems(messages(), provided()))
-  return { entries, messages, failures }
+  const loaded = () => log() !== undefined
+  return { entries, messages, failures, loaded }
 }
 /** Every provider's waiting items, merged in the Inbox and its counters in waiting order. */
 export { InboxItems } from './points.ts'

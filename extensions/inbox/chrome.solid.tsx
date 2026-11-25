@@ -82,6 +82,12 @@ export function Badge(props: { count: number }) {
   )
 }
 
+export function showOnAppIcon(count: number) {
+  if (!('setAppBadge' in navigator)) return
+  const shown = count > 0 ? navigator.setAppBadge(count) : navigator.clearAppBadge()
+  shown.catch((error: unknown) => console.warn('App badge', error))
+}
+
 export function SidebarRow(props: { count: number; oldest?: number; active: boolean }) {
   const now = useNow(60_000, () => props.count > 0)
   return (

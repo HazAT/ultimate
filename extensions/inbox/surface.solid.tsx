@@ -1,7 +1,7 @@
 import { Inbox as InboxIcon } from '@lucide/solid'
-import { createMemo, For, Show } from 'solid-js'
+import { createEffect, createMemo, For, Show } from 'solid-js'
 import { Header, Sidebar, useProvided, useNow, useSurface, useViewport } from '@/sdk/solid'
-import { Badge, LinkOverlay, SidebarRow, Zero } from './chrome.solid.tsx'
+import { Badge, LinkOverlay, SidebarRow, Zero, showOnAppIcon } from './chrome.solid.tsx'
 import { SURFACE, answeredToday, toRow } from './items.ts'
 import { List } from './list.solid.tsx'
 import { QuestionPane } from './points.ts'
@@ -104,6 +104,15 @@ export function WaitingBadge() {
       {failures}
     </>
   )
+}
+
+export function AppBadge() {
+  const { entries, loaded } = Waiting()
+  const count = createMemo(() => (loaded() ? entries().length : undefined))
+  createEffect(count, (shown) => {
+    if (shown !== undefined) showOnAppIcon(shown)
+  })
+  return null
 }
 
 export function WaitingLink() {
