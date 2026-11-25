@@ -8,7 +8,12 @@ it('a sent voice turn keeps the video line it carried once its clip is transcrib
   const transcripts = { 'clip-1': 'look at this' }
   const sent = { key: 'k', audio: 'clip-1', seconds: 2 }
   expect(
-    saidIn({ ...sent, route: 'text', text: `look at this\n\n${line}` }, 'clip-1', true, transcripts),
+    saidIn(
+      { ...sent, route: 'text', text: `look at this\n\n${line}` },
+      'clip-1',
+      true,
+      transcripts,
+    ),
   ).toBe(`look at this\n\n${line}`)
   expect(saidIn({ ...sent, route: 'audio', text: line }, 'clip-1', true, transcripts)).toBe(
     `look at this\n\n${line}`,
