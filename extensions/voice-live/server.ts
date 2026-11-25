@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Message } from '@earendil-works/pi-ai'
+import { clampThinkingLevel } from '@earendil-works/pi-ai'
+import type { Message, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import {
   AgentDoc,
@@ -39,7 +40,6 @@ import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
 import {
   EndAction,
   RecordAction,
-  ModelAction,
   OpenAction,
   StatusAction,
   StopAction,
@@ -87,7 +87,6 @@ export const userActions = [
   'open',
   'record',
   'turn',
-  'model',
   'stop',
   'end',
   'ui-claim',
@@ -245,9 +244,19 @@ async function checkBranch(
 
 function keepModel(
   session: VoiceSession,
-  agent: { model?: { provider: string; modelId: string } },
+  agent: { model?: { provider: string; modelId: string }; thinkingLevel?: ModelThinkingLevel },
 ) {
   if (agent.model) session.model = `${agent.model.provider}/${agent.model.modelId}`
+  if (agent.thinkingLevel) session.thinking = agent.thinkingLevel
+}
+
+function thinkingFor(
+  host: ExtensionHost,
+  ref: { provider: string; modelId: string },
+  picked: ModelThinkingLevel = 'low',
+) {
+  const model = host.modelRuntime.getModel(ref.provider, ref.modelId)
+  return model ? clampThinkingLevel(model, picked) : picked
 }
 
 const sessionArg = (value: unknown) => {
@@ -281,7 +290,7 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
     Object.assign(await tx.doc(Fork, fork.id), { of: main, at, seen: at })
     const agent = await tx.doc(AgentDoc, fork.id)
     agent.model = model
-    agent.thinkingLevel = 'low'
+    agent.thinkingLevel = thinkingFor(host, model, session.thinking)
     const own = ['ui', 'voice_handoff']
     const tools = agent.tools
     if (Array.isArray(tools))
@@ -453,7 +462,7 @@ export const actions = {
           : {
               ready: false,
               detail: `${name} has no login`,
-              fix: 'Log in to its provider, or pick another model in the voice settings.',
+              fix: 'Log in to its provider, or type a first message to open a session and pick another model in its prompt box.',
             },
         transcription: transcribes
           ? {
@@ -648,21 +657,6 @@ export const actions = {
     host.harness().resume()
     if (outcome === 'dropped') return { conversation: id, route, dropped: true as const }
     return { conversation: id, route }
-  }),
-  model: implementAction(ModelAction, async (args, { host }) => {
-    const { model } = unwrap<{ model: unknown }>(args)
-    if (typeof model !== 'string' || !/^[^/\s]+\/\S+$/.test(model))
-      throw new Error('Expected { model: "provider/model" }')
-    const [provider, ...rest] = model.split('/')
-    const ref = { provider, modelId: rest.join('/') }
-    if (!host.modelRuntime.getModel(ref.provider, ref.modelId))
-      throw new Error(`Unknown model ${model}`)
-    await host.harness().commit(async (tx) => {
-      const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
-      session.model = model
-      if (session.id !== undefined) (await tx.doc(AgentDoc, session.id)).model = ref
-    }, context)
-    return {}
   }),
   discard: implementAction(DiscardAction, async (_args, { host }) => {
     const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id

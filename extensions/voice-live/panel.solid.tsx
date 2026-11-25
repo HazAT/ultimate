@@ -27,7 +27,6 @@ import { Slider } from '@/components/ui/slider.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
-  api,
   chordOf,
   cn,
   Composer,
@@ -49,7 +48,6 @@ import {
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
-import { ModelSelect } from '../models/ui.solid.tsx'
 import {
   activity,
   cancelRecording,
@@ -73,14 +71,12 @@ import {
   voiceOpen,
 } from './dock.solid.tsx'
 import { createTalk } from './talk.ts'
-import { ModelAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
+import { StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { VOICES } from './voices.ts'
 import { estimate } from './speech.ts'
 
 import { Session, Voicing, Waveform } from './turns.solid.tsx'
 
-const toolbarButton =
-  'flex h-7 max-w-56 min-w-0 shrink items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground'
 const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground pointer-coarse:size-9'
 const rowButton =
@@ -96,22 +92,6 @@ const keyChord = (event: KeyboardEvent) =>
 
 const recording = () => dock.capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
-
-export function VoiceModel(props: { class?: string }) {
-  const status = useAction(StatusAction, null, { conversation: ROOT })
-  return (
-    <ModelSelect
-      class={props.class}
-      compact
-      name="Voice model"
-      onChange={(model) => {
-        if (!model) return undefined
-        return api.action(ModelAction, { model }).then(() => status.refetch())
-      }}
-      value={status.data()?.model}
-    />
-  )
-}
 
 function Status(props: { class?: string }) {
   const text = () => dock.error() ?? dock.status() ?? talkLabel()
@@ -357,7 +337,7 @@ function TalkButton(props: { unfold: () => void }) {
   )
 }
 
-function Settings(props: { model?: boolean }) {
+function Settings() {
   return (
     <Popover>
       <PopoverTrigger aria-label="Voice settings" class={iconButton} title="Voice settings">
@@ -370,12 +350,7 @@ function Settings(props: { model?: boolean }) {
         side="top"
       >
         <div class="px-3 pt-2.5 pb-1 section-label">Voice</div>
-        <Show when={props.model}>
-          <div class="px-1.5 pb-1">
-            <VoiceModel class={cn(toolbarButton, 'w-full max-w-none')} />
-          </div>
-        </Show>
-        <div class="flex flex-col gap-2.5 border-t border-border/60 px-3 py-2.5 text-muted-foreground">
+        <div class="flex flex-col gap-2.5 px-3 pt-1 pb-2.5 text-muted-foreground">
           <label class="flex items-center justify-between gap-3">
             Speak replies
             <Toggle aria-label="Speak replies" bind={[dock.speak, dock.setSpeak]} />
@@ -862,7 +837,7 @@ export function VoicePanel() {
             </span>
           </Show>
           <span class="ml-auto flex shrink-0 items-center gap-1">
-            <Settings model />
+            <Settings />
             <Show when={!folded()}>
               <Show when={id()}>
                 <Button

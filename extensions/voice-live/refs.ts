@@ -1,5 +1,6 @@
 /** Voice mode: a push-to-talk fork of @ultimate, its actions, session document and handoff entry. Browser-safe. */
 import type { JsonValue } from '@earendil-works/chord/json'
+import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
@@ -14,8 +15,10 @@ export type VoiceSession = {
   startedAt?: number
   /** Every fork voice made, so the sidebar never lists them: voice shows as one live row while a session is open. */
   forks?: ConversationId[]
-  /** The model voice uses, `provider/model`, picked in the panel; unset, the default. */
+  /** The model voice uses, `provider/model`, as last picked in a session's prompt box; unset, the default. */
   model?: string
+  /** Its thinking level, likewise; unset, `low`. A model without it uses its closest level. */
+  thinking?: ModelThinkingLevel
 }
 
 /**
@@ -126,12 +129,6 @@ export const TurnAction = actionRef<
   },
   { conversation: ConversationId; route: VoiceRoute; dropped?: true }
 >('voice-live', 'turn')
-
-/** `{ model: 'provider/model' }` → the voice model from now on, the open session's included. */
-export const ModelAction = actionRef<{ model: string }, Record<string, never>>(
-  'voice-live',
-  'model',
-)
 
 /** Open the session without a turn yet: forks @ultimate unless a session is open. Returns its conversation. */
 export const OpenAction = actionRef<null, { conversation: ConversationId }>('voice-live', 'open')

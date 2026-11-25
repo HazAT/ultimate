@@ -58,7 +58,7 @@ async function fixture() {
     )
   })
   const faux = fauxProvider({
-    models: [{ id: 'main-faux' }, { id: 'gemini-faux', input: ['text', 'image'] }],
+    models: [{ id: 'main-faux' }, { id: 'gemini-faux', input: ['text', 'image'], reasoning: true }],
   })
   const server = await fauxServer({ ultimateRoot, home, userHome: home, faux })
   servers.push(server)
@@ -169,6 +169,7 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   await f.action('end', null)
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({
     model: 'faux/gemini-faux',
+    thinking: 'low',
     forks: [first.id],
   })
   expect(await f.action('status', null)).toMatchObject({
@@ -186,8 +187,10 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
 it('switching to a model that does not hear audio sends it the transcript instead', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })
-  const switched = await f.action('model', { model: 'faux/main-faux' })
-  expect([switched.status, switched.data.error]).toEqual([200, undefined])
+  const switched = await post(f.server, `/api/conversations/${first.id}/configure`, {
+    model: { provider: 'faux', modelId: 'main-faux' },
+  })
+  expect(switched.status).toBe(200)
   f.transcribed.push('what about the sidebar')
   const recorded = await f.action('record', { audio, mimeType: 'audio/webm' })
   const second = await f.turn({
@@ -200,6 +203,40 @@ it('switching to a model that does not hear audio sends it the transcript instea
   expect(request.model).toBe('main-faux')
   expect(JSON.stringify(request.messages)).toContain('(transcribed): what about the sidebar')
   expect(JSON.stringify(request.messages)).not.toContain('audio/webm')
+})
+
+it('voice starts at low thinking; the next session keeps the level picked in its prompt box, clamped to the model', async () => {
+  const f = await fixture()
+  const thinking = async (id: ConversationId) =>
+    (await f.server.harness.snapshot(AgentDoc, id, context))?.thinkingLevel
+  const first = await f.turn({ key: 'one', text: 'start' })
+  expect(await thinking(first.id)).toBe('low')
+  const configure = (id: ConversationId, data: object) =>
+    post(f.server, `/api/conversations/${id}/configure`, data)
+  expect((await configure(first.id, { thinkingLevel: 'medium' })).status).toBe(200)
+  await f.action('end', null)
+  const second = await f.turn({ key: 'two', text: 'again' })
+  expect(await thinking(second.id)).toBe('medium')
+
+  const model = { provider: 'faux', modelId: 'main-faux' }
+  expect((await configure(second.id, { model })).status).toBe(200)
+  await f.action('end', null)
+  const third = await f.turn({ key: 'three', text: 'no thinking' })
+  expect(await thinking(third.id)).toBe('off')
+  expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toMatchObject({
+    model: 'faux/main-faux',
+    thinking: 'off',
+  })
+
+  await f.action('end', null)
+  await f.server.harness.commit(async (tx) => {
+    Object.assign(await tx.doc(Session, ROOT_CONVERSATION_ID), {
+      model: 'faux/gemini-faux',
+      thinking: 'max',
+    })
+  }, context)
+  const fourth = await f.turn({ key: 'four', text: 'clamped' })
+  expect(await thinking(fourth.id)).toBe('high')
 })
 
 it('a recording whose transcript is empty is never sent to the model', async () => {
