@@ -2,7 +2,7 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { cn, useConversationSummary, useDocOf } from '@/sdk/solid'
-import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'
+import { familyColor, familyTitle } from '../../lib/families.ts'
 import { AgentMark, AgentTitle } from '../conversations/ui.solid.tsx'
 import { FamilyDoc } from '../models/refs.ts'
 import { useFamilies } from '../models/ui.solid.tsx'
@@ -17,9 +17,9 @@ export function Speaker(props: { entry: EntryRecord; core: JSX.Element }) {
   return (
     <Show when={agent()} fallback={<FamilySpeaker entry={props.entry} core={props.core} />}>
       {(name) => (
-        <span class="flex shrink-0 items-center gap-2" data-speaker={name()} title={`@${name()}`}>
+        <span class="flex min-w-0 items-center gap-2" data-speaker={name()} title={`@${name()}`}>
           <AgentMark name={name()} />
-          <span class={cn(titleClass, accent().name)}>
+          <span class={cn(titleClass, 'min-w-0 truncate', accent().name)}>
             <AgentTitle name={name()} />
           </span>
         </span>
@@ -33,14 +33,21 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
   const families = useFamilies()
   const conversation = useConversationSummary(() => props.entry.conversationId)
   const family = createMemo(() => {
-    const name = recorded() === undefined ? undefined : (recorded()?.name ?? DEFAULT_FAMILY)
-    return families()?.families.find((item) => item.name === name)
+    const name = recorded()?.name
+    return name ? families()?.families.find((item) => item.name === name) : undefined
+  })
+  const speaker = createMemo(() => {
+    const item = family()
+    if (item) return { name: item.name, title: familyTitle(item.name), color: item.color }
+    const label = recorded() === undefined ? undefined : conversation()?.label
+    return label ? { name: label, title: familyTitle(label), color: undefined } : undefined
   })
   return (
-    <Show when={family()} fallback={props.core}>
+    <Show when={speaker()} fallback={props.core}>
       {(item) => {
         const color = () => familyColor(item().color)
-        const title = () => familyTitle(item().name)
+        const title = () => item().title
+        const role = () => (family() ? conversation()?.label : undefined)
         return (
           <span class="flex min-w-0 items-center gap-2" data-speaker={item().name}>
             <span
@@ -54,10 +61,10 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
             >
               {title().charAt(0)}
             </span>
-            <span class={cn(titleClass, 'shrink-0')} style={{ color: color() }}>
+            <span class={cn(titleClass, 'min-w-0 truncate')} style={{ color: color() }}>
               {title()}
             </span>
-            <Show when={conversation()?.label}>
+            <Show when={role()}>
               {(label) => (
                 <span class="min-w-0 truncate text-muted-foreground/70" title={label()}>
                   {label()}

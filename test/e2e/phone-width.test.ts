@@ -63,6 +63,7 @@ it('keeps the page and the transcript within a 375 px phone', async () => {
   // Both the long code and the error notice are on screen: without them this test could pass with nothing to overflow.
   await transcript.getByText(range).waitFor()
   await transcript.getByText(failure).waitFor()
+  await transcript.locator('[data-speaker]', { hasText: 'Claude code response' }).waitFor()
   const widths = await page.evaluate(() => {
     let scroller = document.querySelector('[data-ui="transcript"]')!.parentElement!
     while (getComputedStyle(scroller).overflowX === 'visible') scroller = scroller.parentElement!

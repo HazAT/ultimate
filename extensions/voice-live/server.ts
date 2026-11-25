@@ -34,6 +34,7 @@ import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
 import { ClassifyApi } from '../classify/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
+import { Family } from '../models/api.ts'
 import { Branch } from '../lineage/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
@@ -286,6 +287,7 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
     const agent = await tx.doc(AgentDoc, fork.id)
     agent.model = model
     agent.thinkingLevel = thinkingFor(host, model, session.thinking)
+    ;(await tx.doc(Family, fork.id)).name = null
     const own = ['ui', 'voice_handoff']
     const tools = agent.tools
     if (Array.isArray(tools))

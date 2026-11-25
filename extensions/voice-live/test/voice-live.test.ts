@@ -13,6 +13,7 @@ import { AgentDoc, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-dur
 import type { EntryId } from '@earendil-works/pi-durable'
 import { Branch } from '../../lineage/api.ts'
 import { context } from '../../../server/harness.ts'
+import { Family } from '../../models/api.ts'
 import { Fork, Session, Ui } from '../server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
 import { writeSecret } from '../../secrets/store.ts'
@@ -133,6 +134,8 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   expect(first.route).toBe('audio')
   const fork = f.requests.at(-1)!
   expect(fork.model).toBe('gemini-faux')
+  expect(await f.server.harness.snapshot(Family, f.main, context)).toEqual({ name: 'default' })
+  expect(await f.server.harness.snapshot(Family, first.id, context)).toEqual({ name: null })
   expect(JSON.stringify(fork.messages)).toContain('MAIN HISTORY')
   expect(JSON.stringify(fork.messages)).toContain('You are Ultimate in voice mode')
   expect(userParts(fork.messages.at(-1))).toContainEqual({
