@@ -90,3 +90,38 @@ export default { name: 'linked' }
     await server.close()
   }
 })
+
+it('unloads an extension when a folder it requires is removed, and loads it when it is back', async () => {
+  const home = await temp()
+  homes.push(home)
+  const projectRoot = join(home, 'project')
+  await mkdir(projectRoot)
+  const extensions = join(home, '.ultimate/extensions')
+  await mkdir(join(extensions, 'base'), { recursive: true })
+  await writeFile(join(extensions, 'base/server.ts'), "export default { name: 'base' }\n")
+  await mkdir(join(extensions, 'top'), { recursive: true })
+  await writeFile(join(extensions, 'top/api.ts'), "export const requires = ['base']\n")
+  await writeFile(
+    join(extensions, 'top/server.ts'),
+    "export const actions = { which: () => 'top' }\nexport default { name: 'top' }\n",
+  )
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot,
+    userHome: home,
+    home: join(home, 'state'),
+  })
+  try {
+    const top = () => server.extensions.info().find((entry) => entry.name === 'top')
+    expect(top()?.enabled).toBe(true)
+    await rm(join(extensions, 'base'), { recursive: true })
+    await until(() => top()?.enabled === false)
+    expect(server.extensions.action('top', 'which')).toBeUndefined()
+    await mkdir(join(extensions, 'base'))
+    await writeFile(join(extensions, 'base/server.ts'), "export default { name: 'base' }\n")
+    await until(() => top()?.enabled === true)
+    expect(await server.extensions.action('top', 'which')?.({}, {} as never)).toBe('top')
+  } finally {
+    await server.close()
+  }
+})

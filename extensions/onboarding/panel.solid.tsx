@@ -44,10 +44,12 @@ const without =
   <T,>(record: Record<string, T>) =>
     Object.fromEntries(Object.entries(record).filter(([key]) => key !== name))
 
+const switchedOn = (extension: ExtensionInfo) => extension.enabled || !!extension.offForMissing
+
 function decided(extension: ExtensionInfo, local: boolean): [string, string] {
   if (extension.core) return ['core', 'On: the core tier is always on, whatever the settings say']
   const state = extension.enabled ? 'On' : 'Off'
-  const verb = extension.enabled ? 'enables' : 'disables'
+  const verb = switchedOn(extension) ? 'enables' : 'disables'
   if (extension.source === 'project' && !local)
     return ['setup not in use', "Part of this project's setup, which is not in use"]
   if (extension.layer === 'default') return ['default', 'On: built-ins are on by default']
@@ -446,7 +448,7 @@ function Row(props: {
       .filter(Boolean)
       .join('\n')
   })
-  const checked = () => props.pending ?? extension().enabled
+  const checked = () => props.pending ?? switchedOn(extension())
   const where = () => (props.scope === 'project' ? 'for this project' : 'everywhere')
   return (
     <li class="px-3 py-1.5">
@@ -513,6 +515,14 @@ function Row(props: {
                 ? 'replaces the built-in'
                 : "this project's setup replaces it"}
             </span>
+          </Show>
+          <Show when={extension().offForMissing}>
+            {(missing) => (
+              <span class="mt-1 flex items-center gap-1.5 font-mono text-[10.5px] text-warning">
+                <TriangleAlertIcon class="size-3 shrink-0" />
+                off: requires {missing().join(' and ')}
+              </span>
+            )}
           </Show>
         </Button>
         <Show when={!extension().core}>
@@ -628,10 +638,18 @@ function ExtensionList(props: { system: SystemInfo }) {
         setNotes((previous) => ({ ...previous, [name]: note }))
         setToggleAnnouncement(`${name}: ${note}`)
         remountFocus = undefined
-      } else
+      } else {
+        const blocked =
+          enabled &&
+          props.system.extensions.some(
+            (other) => !other.enabled && extension.requires?.includes(other.name),
+          )
         setToggleAnnouncement(
-          `${name} is ${enabled ? 'on' : 'off'}, under ${enabled ? 'On' : 'Available'}`,
+          blocked
+            ? `${name} is saved on but stays off: it requires ${extension.requires!.join(' and ')}`
+            : `${name} is ${enabled ? 'on' : 'off'}, under ${enabled ? 'On' : 'Available'}`,
         )
+      }
     } catch (failure) {
       setErrors((previous) => ({ ...previous, [name]: errorMessage(failure) }))
       setToggleAnnouncement(`${name} did not change: ${errorMessage(failure)}`)
@@ -644,7 +662,8 @@ function ExtensionList(props: { system: SystemInfo }) {
     const sorted = props.system.extensions.toSorted((a, b) => a.name.localeCompare(b.name))
     return [
       ['On', sorted.filter((extension) => extension.enabled && !extension.core)],
-      ['Available', sorted.filter((extension) => !extension.enabled)],
+      ['Waiting on a requirement', sorted.filter((extension) => extension.offForMissing)],
+      ['Available', sorted.filter((extension) => !switchedOn(extension))],
       [
         'Always on',
         sorted.filter((extension) => extension.core),

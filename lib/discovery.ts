@@ -9,7 +9,8 @@ import { discoveryRoots } from './project-paths.ts'
 import type { Source } from './project-paths.ts'
 import { useProjectSetup } from './project-setup.ts'
 import { extensionSettings } from './extension-settings.ts'
-import { coreTier, declaredIn, defaultOff } from '../shared/extension-api.ts'
+import { coreTier, defaultOff } from '../shared/extension-api.ts'
+import { declaredExtensions } from './declared.ts'
 
 const sourceOrder = { builtin: 0, user: 1, project: 2 }
 
@@ -74,7 +75,7 @@ export async function discoverExtensions(
         const coreBelongsToBuiltinName = root.source === 'builtin' || builtinCore.has(entry.name)
         const api = files.includes('api.ts') ? await readFile(join(path, 'api.ts'), 'utf8') : ''
         const core = coreBelongsToBuiltinName && coreTier.test(api)
-        const requires = declaredIn(api, 'requires')
+        const { requires } = declaredExtensions(api, join(path, 'api.ts'))
         if (core && root.source === 'builtin') builtinCore.add(entry.name)
         winners.set(entry.name, {
           name: entry.name,

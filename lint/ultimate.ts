@@ -2,7 +2,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { webModule } from '../lib/web-alias.ts'
 import path from 'node:path'
 import { apiSummary } from '../lib/api-files.ts'
-import { coreTier, declaredIn } from '../shared/extension-api.ts'
+import { coreTier } from '../shared/extension-api.ts'
+import { declaredExtensions } from '../lib/declared.ts'
 
 interface ImportNode {
   type?: string
@@ -66,6 +67,11 @@ interface Comment {
   end: number
 }
 
+const extensionFolderOf = (filename: string) => {
+  const parts = path.relative(process.cwd(), filename).split(path.sep)
+  const at = parts[0] === '.ultimate' ? 1 : 0
+  return parts[at] === 'extensions' && parts[at + 1] ? parts.slice(0, at + 2).join('/') : undefined
+}
 const extensionOf = (filename: string) => {
   const parts = path.relative(process.cwd(), filename).split(path.sep)
   const [directory, extension] = parts[0] === '.ultimate' ? parts.slice(1) : parts
@@ -179,28 +185,17 @@ const declarationOf = (statement: Node) =>
   statement.declaration.declarations[0].init?.type === 'ArrayExpression'
 
 const apiTexts = new Map<string, string>()
-/** `extensions/<name>/api.ts`, or '' without one, read once per lint process. */
-function apiText(name: string) {
-  let text = apiTexts.get(name)
+function apiText(folder: string) {
+  let text = apiTexts.get(folder)
   if (text === undefined) {
-    const file = path.join(process.cwd(), 'extensions', name, 'api.ts')
+    const file = path.join(process.cwd(), folder, 'api.ts')
     text = existsSync(file) ? readFileSync(file, 'utf8') : ''
-    apiTexts.set(name, text)
+    apiTexts.set(folder, text)
   }
   return text
 }
 
-const tiers = new Map<string, boolean>()
-/** Whether `extensions/<name>` declares the core tier in its api.ts (`coreTier`), read once per lint process. */
-function coreExtension(name: string) {
-  let core = tiers.get(name)
-  if (core === undefined) {
-    const file = path.join(process.cwd(), 'extensions', name, 'api.ts')
-    core = existsSync(file) && coreTier.test(readFileSync(file, 'utf8'))
-    tiers.set(name, core)
-  }
-  return core
-}
+const coreExtension = (name: string) => coreTier.test(apiText(path.join('extensions', name)))
 
 const propertyName = (node: Node | undefined) =>
   node?.computed ? node.property?.value : (node?.property?.name ?? node?.property?.value)
@@ -881,24 +876,27 @@ export default {
       meta: { schema: [] },
       create(context: Context) {
         const own = extensionOf(context.filename)
-        if (!own || coreExtension(own)) return {}
+        const folder = extensionFolderOf(context.filename)
+        if (!own || !folder || coreExtension(own)) return {}
+        const declared = declaredExtensions(apiText(folder), path.join(folder, 'api.ts'))
         const check = (node: ImportNode) => {
           const source = node.source?.value
           if (typeof source !== 'string' || !source.startsWith('.')) return
           if (node.importKind === 'type' || node.exportKind === 'type') return
-          const [directory, extension, file] = resolved(context.filename, source)
+          const target = resolved(context.filename, source)
+          const [directory, extension, file] = target[0] === '.ultimate' ? target.slice(1) : target
           if (
             directory !== 'extensions' ||
             extension === own ||
             !['ui.solid.tsx', 'refs.ts'].includes(file) ||
             coreExtension(extension) ||
-            declaredIn(apiText(own), 'requires').includes(extension) ||
-            declaredIn(apiText(own), 'wants').includes(extension)
+            declared.requires.includes(extension) ||
+            declared.wants.includes(extension)
           )
             return
           context.report({
             node,
-            message: `An optional extension can be turned off, and its browser code then runs without its server, so whatever uses it half-works with no word why. ${own} runs ${extension}'s browser code: declare it in extensions/${own}/api.ts, \`export const requires = ['${extension}']\` when ${own} cannot work without it (discovery then keeps ${own} off and says why), or \`export const wants = ['${extension}']\` when ${own} works without it and hides what needs it.`,
+            message: `An optional extension can be turned off, and its browser code then runs without its server, so whatever uses it half-works with no word why. ${own} runs ${extension}'s browser code: declare it in ${folder}/api.ts, \`export const requires = ['${extension}']\` when ${own} cannot work without it (discovery then keeps ${own} off and says why), or \`export const wants = ['${extension}']\` when ${own} works without it and hides what needs it.`,
           })
         }
         return {

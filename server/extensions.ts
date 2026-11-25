@@ -512,7 +512,7 @@ export async function loadExtensions(
       ...active,
       ...available
         .filter((entry) => !active.some((current) => current.name === entry.name))
-        .map((entry) => ({ ...entry, enabled: false })),
+        .map((entry) => ({ ...entry, enabled: false, missing: [] })),
     ].toSorted(compareExtensions)
     return Object.assign(winners, { settings: active.settings })
   }
@@ -522,6 +522,11 @@ export async function loadExtensions(
     winners?: Awaited<ReturnType<typeof discover>>,
   ) {
     winners ??= await discover()
+    for (const winner of winners)
+      if (selected && records.get(winner.name)?.enabled !== winner.enabled) {
+        selected.add(winner.name)
+        servers?.add(winner.name)
+      }
     const folders = winners.map((winner) => winner.name)
     const settings = winners.settings
     diagnostics = [
@@ -554,6 +559,7 @@ export async function loadExtensions(
       files,
       core,
       requires,
+      missing,
       error: discoveryError,
     } of winners) {
       if (closed) return
@@ -574,6 +580,7 @@ export async function loadExtensions(
         enabled,
         ...(core ? { core } : {}),
         ...(requires ? { requires } : {}),
+        ...(missing.length ? { offForMissing: missing } : {}),
         layer,
         actions: Object.keys(actions.get(name) ?? {}),
         events: (await contractOutline({ name, path, enabled })).events,

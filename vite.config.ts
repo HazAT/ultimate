@@ -208,7 +208,7 @@ export default defineConfig({
       {
         files: ['.ultimate/extensions/**/*.ts', '.ultimate/extensions/**/*.tsx'],
         excludeFiles: ['.ultimate/extensions/*/test/**'],
-        rules: { 'ultimate/api-only-imports': 'error' },
+        rules: { 'ultimate/api-only-imports': 'error', 'ultimate/declared-requires': 'error' },
       },
       {
         files: [

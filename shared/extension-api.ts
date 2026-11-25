@@ -31,13 +31,6 @@ export const actionRef = <Args, Result>(
 
 export const coreTier = /^export const tier = 'core'$/m
 
-export const declaredIn = (apiText: string, list: 'requires' | 'wants') =>
-  [
-    ...(
-      new RegExp(`^export const ${list} = \\[([^\\]]*)\\]`, 'm').exec(apiText)?.[1] ?? ''
-    ).matchAll(/'([a-z0-9-]+)'/g),
-  ].map((match) => match[1])
-
 export const extensionTests = 'test'
 export const inExtensionTests = (path: string) => path.split('/')[1] === extensionTests
 

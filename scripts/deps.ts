@@ -3,8 +3,9 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 import { parseSync } from 'vite-plus'
 import { coreTier, extensionTests } from '../shared/extension-api.ts'
 import { cycles } from '../server/extension-apis.ts'
+import { declaredExtensions } from '../lib/declared.ts'
 
-type Kind = 'import' | 'type' | 'need' | 'want'
+type Kind = 'import' | 'type' | 'need' | 'want' | 'requires'
 export type Graph = Map<string, { core: boolean; deps: Map<string, Set<Kind>> }>
 
 const sources = (folder: string): string[] =>
@@ -67,6 +68,12 @@ export function extensionGraph(directory: string): Graph {
       for (const [, kind, token] of text.matchAll(/\.(need|want)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g))
         add(tokens.get(token), kind as Kind)
     }
+    const api = join(directory, name, 'api.ts')
+    if (existsSync(api)) {
+      const declared = declaredExtensions(readFileSync(api, 'utf8'), api)
+      for (const target of declared.requires) add(target, 'requires')
+      for (const target of declared.wants) add(target, 'want')
+    }
   }
   return graph
 }
@@ -95,7 +102,7 @@ export function render(graph: Graph) {
   return [...graph].map(([name, { core, deps }]) => {
     const label = `${name}${core ? '*' : ''}`
     const targets = [...deps].map(([target, kinds]) => {
-      const how = (['type', 'need', 'want'] as const).filter(
+      const how = (['type', 'need', 'want', 'requires'] as const).filter(
         (kind) => kinds.has(kind) && !(kind === 'type' && kinds.has('import')),
       )
       return how.length ? `${target}(${how.join(',')})` : target
@@ -110,7 +117,7 @@ if (import.meta.main) {
   const edges = [...graph.values()].reduce((sum, { deps }) => sum + deps.size, 0)
   console.log(
     [
-      'Extension dependencies (* core tier; (type) only types, (need)/(want) a token):',
+      'Extension dependencies (* core tier; (type) only types, (need)/(want) a token, (requires) declared):',
       ...render(graph).map((line) => `  ${line}`),
       found.length
         ? found.map((problem) => `✗ ${problem}`).join('\n')

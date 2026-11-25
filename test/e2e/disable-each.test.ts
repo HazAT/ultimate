@@ -1,10 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { context } from '../../server/harness.ts'
 import { extensionGraph } from '../../scripts/deps.ts'
-import { declaredIn, defaultOff } from '../../shared/extension-api.ts'
 import { fauxServer, removeTemp, temp } from '../helpers.ts'
 
 // Each case boots its own server on its own home; a few at a time keep the machine responsive.
@@ -52,25 +50,18 @@ it('knows optional extensions and the core tier', () => {
   expect(core).toEqual(expect.arrayContaining(['conversations', 'subagents', 'workspaces']))
 })
 
-/** The extensions that require `name` and are on by default, which discovery keeps off with it. */
-const requiring = (name: string) =>
-  optional.filter(
-    (other) =>
-      !defaultOff.includes(other) &&
-      declaredIn(
-        existsSync(join('extensions', other, 'api.ts'))
-          ? readFileSync(join('extensions', other, 'api.ts'), 'utf8')
-          : '',
-        'requires',
-      ).includes(name),
-  )
+/** What turning each required built-in off keeps off with it: the default-on built-ins that declare `requires`. */
+const keptOff: Record<string, string[]> = {
+  questions: ['inbox'],
+  system: ['ui'],
+}
 
 it.concurrent.each(optional)('boots cleanly with %s disabled', async (name) => {
   const state = await boot([name])
   expect(state.enabled).not.toContain(name)
   expect(state.errors).toEqual([])
   expect(state.diagnostics).toEqual(
-    requiring(name).map((other) => `${other} stays off: it requires ${name}, which is off`),
+    (keptOff[name] ?? []).map((other) => `${other} stays off: it requires ${name}, which is off`),
   )
   expect(state.missing).toEqual([])
   expect(state.tools).toContain('bash')

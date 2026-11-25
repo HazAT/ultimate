@@ -450,6 +450,35 @@ it('keeps voice-live off with a diagnostic while dictation, which it requires, i
   ])
 })
 
+it('keeps a chain of user extensions off behind a disabled requirement, and refuses a declaration it cannot read', async () => {
+  const home = await temp()
+  homes.push(home)
+  const projectRoot = join(home, 'project')
+  await mkdir(projectRoot)
+  await mkdir(join(home, '.ultimate'), { recursive: true })
+  await writeFile(
+    join(home, '.ultimate/settings.json'),
+    JSON.stringify({ extensions: { disable: ['chain-base'] } }),
+  )
+  const apis = {
+    'chain-base': '',
+    'chain-middle': 'export const requires: string[] = ["chain-base"]\n',
+    'chain-top': "export const requires = ['chain-middle'] as const\n",
+    'chain-unread': 'export const requires = names\n',
+  }
+  for (const [name, api] of Object.entries(apis)) {
+    await mkdir(join(home, '.ultimate/extensions', name), { recursive: true })
+    await writeFile(join(home, '.ultimate/extensions', name, 'api.ts'), api)
+  }
+  const discovered = await discoverExtensions(resolve('.'), projectRoot, home)
+  const find = (name: string) => discovered.find((entry) => entry.name === name)
+  expect(find('chain-middle')).toMatchObject({ enabled: false, missing: ['chain-base'] })
+  expect(find('chain-top')).toMatchObject({ enabled: false, missing: ['chain-middle'] })
+  expect(find('chain-unread')?.error).toContain(
+    'export const requires must be an array of extension names as string literals',
+  )
+})
+
 it('enables every built-in by default except the default-off ones', async () => {
   const home = await temp()
   homes.push(home)
