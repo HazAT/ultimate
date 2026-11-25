@@ -442,7 +442,7 @@ function AnswerCard(props: CardProps & { id: number }) {
             )}
           </For>
         </div>
-        <div class="relative px-3 pt-2" data-note-box>
+        <div class="px-3 pt-2" data-note-box>
           <PromptBox
             accepts={{ images: false }}
             disabled={disabled()}
@@ -467,11 +467,6 @@ function AnswerCard(props: CardProps & { id: number }) {
             sendButton={false}
             value={note()}
           />
-          <Show when={hints() && !note()}>
-            <Key class="pointer-events-none absolute top-4 right-14 bg-transparent text-muted-foreground/60">
-              /
-            </Key>
-          </Show>
         </div>
         <div class="flex flex-wrap items-center gap-2 px-3 pt-2 pb-2.5">
           <Show when={hints() && phase() === 'undo'}>
@@ -501,6 +496,11 @@ function AnswerCard(props: CardProps & { id: number }) {
                 <Key>↵</Key>
                 {beforeLast() ? 'next' : 'send'}
               </span>
+              <Show when={!note()}>
+                <span class="flex items-center gap-1">
+                  <Key>/</Key> note
+                </span>
+              </Show>
               <Show when={questions()[current()] && word(current())}>
                 <span class="flex items-center gap-1">
                   <Key>esc</Key> clear
