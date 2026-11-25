@@ -60,7 +60,6 @@ vi.stubGlobal(
 const reply = (key: string, text: string): TurnView => ({
   key,
   data: { key, text: 'hi', route: 'text' },
-  images: [],
   replies: [
     {
       role: 'assistant',

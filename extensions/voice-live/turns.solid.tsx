@@ -110,13 +110,15 @@ function useSpokenReply(key: () => string, turnRow: () => Element | undefined) {
 export function VoiceTurnView(props: {
   turn: { key: string; data: VoiceTurn; images: readonly { data: string; mimeType: string }[] }
   record?: EntryRecord
+  submitted?: boolean
   conversation: ConversationId | undefined
 }) {
   const data = () => props.turn.data
   const fork = useDocOf(() => props.conversation, VoiceForkDoc)
   const local = () => dock.local()[props.turn.key]
   const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
-  const said = () => saidIn(data(), audio(), !!props.record, fork()?.transcripts ?? undefined)
+  const said = () =>
+    saidIn(data(), audio(), props.submitted ?? !!props.record, fork()?.transcripts ?? undefined)
   const failed = () => {
     const recording = audio()
     return local()?.failed ?? (recording ? fork()?.failed?.[recording] : undefined)
@@ -240,7 +242,7 @@ export function PendingTurns() {
     const candidates = [
       ...Object.entries(dock.local()).flatMap(([key, each]) =>
         each.optimistic && (each.conversation === undefined || each.conversation === here)
-          ? [{ key, data: each.optimistic, images: each.images ?? [] }]
+          ? [{ key, data: each.optimistic, images: each.images ?? [], submitted: false }]
           : [],
       ),
       ...state.inbox.flatMap((item) =>
@@ -250,6 +252,7 @@ export function PendingTurns() {
                 key: (item.entry.data as VoiceTurn).key,
                 data: item.entry.data as VoiceTurn,
                 images: imagesIn(item.content),
+                submitted: true,
               },
             ]
           : [],
@@ -265,7 +268,7 @@ export function PendingTurns() {
     <For each={pending()} keyed={(turn) => turn.key}>
       {(turn) => (
         <div class="empty-row" data-voice-pending={turn().key}>
-          <VoiceTurnView conversation={id()} turn={turn()} />
+          <VoiceTurnView conversation={id()} submitted={turn().submitted} turn={turn()} />
         </div>
       )}
     </For>

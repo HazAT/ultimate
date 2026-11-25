@@ -533,7 +533,6 @@ const textOf = (message: AssistantMessage | undefined) =>
 export type TurnView = {
   key: string
   data: VoiceTurn
-  images: { data: string; mimeType: string }[]
   replies: AssistantMessage[]
   live?: AssistantMessage
   optimistic?: true
@@ -550,7 +549,7 @@ export function turnsIn(state: ReturnType<ReturnType<typeof useConversation>>) {
   for (const entry of state.entries) {
     if (entry.kind === 'voice.turn') {
       const data = entry.data as VoiceTurn
-      turns.push({ key: data.key, data, images: imagesOf(entry), replies: [] })
+      turns.push({ key: data.key, data, replies: [] })
     } else if (entry.kind === 'pi.assistant' && turns.length) {
       const message = entry.model?.[0]
       if (message?.role === 'assistant') turns.at(-1)!.replies.push(message)
@@ -569,7 +568,6 @@ export function turnsIn(state: ReturnType<ReturnType<typeof useConversation>>) {
       turns.push({
         key,
         data: local.optimistic,
-        images: local.images ?? [],
         replies: [],
         optimistic: true,
       })
