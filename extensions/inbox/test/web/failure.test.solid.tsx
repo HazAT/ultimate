@@ -25,6 +25,7 @@ import { TodoList } from '../../../todos/panel.solid.tsx'
 it('shows a failing item provider as an inline error card on the badge and the To-dos panel', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   await registry.setLoaders({
+    'extensions/inbox/web.solid.tsx': async () => ({ default: {} }),
     'extensions/broken/web.solid.tsx': async () => ({
       default: {
         provides: [

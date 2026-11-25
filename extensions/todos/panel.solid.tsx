@@ -39,7 +39,9 @@ function InboxWaiting(props: { count: (count: number) => void }) {
   const { entries, failures } = Waiting()
   createEffect(
     () => entries().length,
-    (count) => props.count(count),
+    (count) => {
+      props.count(count)
+    },
   )
   onCleanup(() => props.count(0))
   return failures
