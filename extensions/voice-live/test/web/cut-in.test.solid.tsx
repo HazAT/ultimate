@@ -131,8 +131,9 @@ it('turning Speak replies on mid-reply plays from the first new sentence, at its
   await endSession()
   dock.setSpeak(false)
   said.length = 0
+  const before = harness.turns.length
   const sent = sendTyped('quiet start')
-  await vi.waitFor(() => expect(harness.turns.length).toBeGreaterThan(5))
+  await vi.waitFor(() => expect(harness.turns).toHaveLength(before + 1))
   harness.turns.at(-1)!({ conversation: 7, route: 'text' })
   await sent
   const key = dock.pending()!
