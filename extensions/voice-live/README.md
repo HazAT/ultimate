@@ -31,7 +31,7 @@ collect mode (optional), each with what to do when it is missing.
    - A model that hears audio (any Gemini model you configure) gets the turn at once: `turn` submits the transcript placeholder as the input,
      and a `beforeRequest` hook adds the recording to that request only. Stored history stays text, so compaction,
      renderers and other models never see audio. The transcript arrives in parallel and shows as your message.
-   - Any other model, the default Claude Opus included, waits for that transcript; the trace shows the transcribe stage on the critical path.
+   - Any other model, the default Claude Opus included, waits for that transcript; the turn shows "transcribing…" meanwhile.
    - Typed text, pasted text and pasted or dropped screenshots go through the same `turn`, with Enter in the prompt box.
      A video in the box (pasted, or recorded with its screen-record button) goes with the next spoken or typed turn as its
      `Attached video` line once it is ready, so the fork can ask about it and name its id in a handoff.
@@ -45,20 +45,16 @@ collect mode (optional), each with what to do when it is missing.
    input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
    conversation are on screen. The session stays hot until it hands off or End: after a handoff the next turn
    concludes it and forks @ultimate afresh; End concludes it and deletes the session's recordings.
-5. **Replies** stream from the fork's live partial. Each finished sentence is spoken by the browser's
-   `speechSynthesis` at the chosen speed, and the sentence being read is highlighted: word timing from the browser's
-   voices is too unreliable to follow word by word. Voice settings → Voice switches to OpenAI (UI state
-   `ext.voice-live.voice`, the voice in `ext.voice-live.openai-voice`, cedar by default; it needs `OPENAI_API_KEY`).
-   Then `speak` reads each sentence on the server through one Realtime connection to `gpt-realtime-2.1-mini`, which
-   the first turn opens early, and returns WAV the page plays at the chosen speed. While one sentence plays the next
-   is already being read; a cut-in pauses the audio and aborts every request in flight, which cancels its response. Folded, the status line shows the whole paragraph being read with that
-   sentence highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips by sentence or paragraph; any
-   sentence plays on click and each reply has replay. Thinking shows open while the model thinks, with a token count
-   in the trace, and folds once the reply has played.
+5. **Replies** stream from the fork's live partial. Each finished sentence is spoken through read-aloud's page-wide
+   speech player (`extensions/read-aloud/README.md`), with the shared Speech setting (voice, speed) that Voice settings
+   shows; the sentence being read is highlighted. Starting a read-aloud elsewhere stops voice's reply, and a new voice
+   reply stops a read-aloud. Folded, the status line shows the whole paragraph being read with that sentence
+   highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips by
+   sentence or paragraph; any sentence plays on click and each reply has replay. Thinking shows open while the model
+   thinks and folds once the reply has played.
 6. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
-   A press while it speaks pauses at once. With real speech it cuts: the reply is marked where you
-   cut in, the running turn is stopped (`stop`), and the next turn carries a hint of what was played and what was not.
-   Without speech it resumes where it paused.
+   A press while it speaks pauses at once. With real speech it cuts: speech stops, the running turn is stopped
+   (`stop`) and the rest of that reply stays silent. Without speech it resumes where it paused.
 7. **The UI and codemode**: voice may use `codemode` (its scripts reach `tools.action`) and a `ui` tool that drives the
    user's own page. `ui {op: query | act | snapshot}` records the request on the fork's `voice.ui` document and parks
    durably; the voice panel in the user's page runs it on the page's ui-sdk bridge (`pageAgent()` from `@/sdk/solid`)
@@ -88,13 +84,10 @@ buttons, send it too; discard drops it. The collected clips go out as one turn (
 every recording, a text model their joined transcripts. The panel shows a Collecting box with the clips, their length
 and their transcripts so far; folded, the status line shows "N collected".
 
-## Trace and cues
+## Cues
 
-Every turn has a stage trace under it: mic, transcribe (only when the model waits for it), send, model, thinking with
-its token count, voice; each finished stage gets a checkmark. Once heard, it folds to "✓ heard after X s" (release to
-the first spoken word). Slow stages turn amber, failures red. Soft cues
-mark press, send, each finished stage, the thinking pulse, the first word, done and errors; the speak, cues and speed
-settings live in the UI state `ext.voice-live.settings`.
+"Transcribing…" and failures show on the turn itself. Soft cues mark press, send, the thinking pulse, the first word,
+done and errors; Speak replies and Sound cues are UI state (`ext.voice-live.speak`, `ext.voice-live.cues`).
 
 ## Contract
 

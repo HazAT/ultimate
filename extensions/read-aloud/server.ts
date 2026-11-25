@@ -2,17 +2,16 @@ import { createHash } from 'node:crypto'
 import { defineExtension } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { openaiSecretOrNonOAuthKey, openaiError } from '../../lib/openai.ts'
+import { openaiSecretOrNonOAuthKey } from '../../lib/openai.ts'
 import { ConversationsApi } from '../conversations/api.ts'
-import { SpeakAction } from './refs.ts'
-import type { SpokenSection } from './refs.ts'
-import { plainSpeech, sections, words } from './speech.ts'
+import { createRealtimeVoice } from './openai-voice.ts'
+import { PrepareAction, SpeakAction, SpeechStatusAction } from './refs.ts'
+import type { OpenAiVoice } from './refs.ts'
+import { plainSpeech, sections, words } from './text.ts'
+import { MAX_SPOKEN, VOICES } from './voices.ts'
 
-const TTS_MODEL = 'gpt-4o-mini-tts'
-const TTS_VOICE = 'marin'
-const TTS_INSTRUCTIONS = 'Calm, warm and clear, at an easy conversational pace.'
 const REWRITE_TIMEOUT_MS = 30_000
-const TTS_TIMEOUT_MS = 60_000
+const SPEAK_TIMEOUT_MS = 20_000
 const MAX_TEXT = 100_000
 const CACHED_SECTIONS = 200
 
@@ -29,10 +28,10 @@ Only change what does not work when heard:
 
 Return only the text to speak, as plain prose with paragraphs, no Markdown.`
 
-type Cached = Omit<SpokenSection, 'sections'>
+export const userActions = ['speak']
 
 function sectionCache(host: ExtensionHost) {
-  return host.resource('read-aloud.spoken-sections', () => new Map<string, Cached>())
+  return host.resource('read-aloud.prepared-sections', () => new Map<string, string>())
 }
 
 async function rewrite(host: ExtensionHost, markdown: string, signal: AbortSignal) {
@@ -55,25 +54,21 @@ async function rewrite(host: ExtensionHost, markdown: string, signal: AbortSigna
   return text
 }
 
-export async function openaiSpeech(key: string, text: string, signal: AbortSignal) {
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: TTS_MODEL,
-      voice: TTS_VOICE,
-      input: text,
-      instructions: TTS_INSTRUCTIONS,
-      response_format: 'mp3',
-    }),
-    signal,
+const voices = new WeakMap<ExtensionHost, ReturnType<typeof createRealtimeVoice>>()
+const realtimeVoice = (host: ExtensionHost) => {
+  const known = voices.get(host)
+  if (known) return known
+  const made = createRealtimeVoice()
+  voices.set(host, made)
+  host.onClose(async () => {
+    voices.delete(host)
+    made.close()
   })
-  if (!response.ok) {
-    const { status, message } = await openaiError(response)
-    throw new Error(`OpenAI speech failed (HTTP ${status})${message ? `: ${message}` : ''}`)
-  }
-  return Buffer.from(await response.arrayBuffer()).toString('base64')
+  return made
 }
+
+const unwrap = <T extends object>(args: unknown) =>
+  (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as Partial<T>
 
 export default function readAloud(host: ExtensionHost) {
   host.need(ConversationsApi)
@@ -81,8 +76,8 @@ export default function readAloud(host: ExtensionHost) {
 }
 
 export const actions = {
-  speak: implementAction(SpeakAction, async (args, { host, signal }) => {
-    const { text, section } = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
+  prepare: implementAction(PrepareAction, async (args, { host, signal }) => {
+    const { text, section } = unwrap<{ text: unknown; section: unknown }>(args)
     if (typeof text !== 'string' || !text.trim() || text.length > MAX_TEXT)
       throw new Error(`Expected { text } of at most ${MAX_TEXT} characters`)
     const parts = sections(text)
@@ -92,19 +87,29 @@ export const actions = {
     const cache = sectionCache(host)
     const key = createHash('sha256').update(parts[section]).digest('hex')
     const cached = cache.get(key)
-    if (cached) return { sections: parts.length, ...cached }
+    if (cached !== undefined) return { sections: parts.length, spoken: cached }
     const spoken = await rewrite(host, parts[section], signal)
-    const apiKey = await openaiSecretOrNonOAuthKey(host, signal)
-    const audio =
-      apiKey && spoken.trim()
-        ? await openaiSpeech(
-            apiKey,
-            spoken,
-            AbortSignal.any([signal, AbortSignal.timeout(TTS_TIMEOUT_MS)]),
-          )
-        : null
-    cache.set(key, { spoken, audio })
+    cache.set(key, spoken)
     if (cache.size > CACHED_SECTIONS) cache.delete(cache.keys().next().value!)
-    return { sections: parts.length, spoken, audio }
+    return { sections: parts.length, spoken }
   }),
+  speak: implementAction(SpeakAction, async (args, { host, signal }) => {
+    const { voice, text } = unwrap<{ voice: unknown; text: unknown }>(args)
+    if (!VOICES.includes(voice as OpenAiVoice)) throw new Error(`Unknown voice: ${String(voice)}`)
+    if (
+      text !== undefined &&
+      (typeof text !== 'string' || !text.trim() || text.length > MAX_SPOKEN)
+    )
+      throw new Error(`Expected text of at most ${MAX_SPOKEN} characters`)
+    const key = await openaiSecretOrNonOAuthKey(host, signal)
+    if (!key) throw new Error('OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets')
+    const realtime = realtimeVoice(host)
+    const bounded = AbortSignal.any([signal, AbortSignal.timeout(SPEAK_TIMEOUT_MS)])
+    if (text === undefined) return await realtime.connect(key, bounded).then(() => ({}))
+    const wav = await realtime.speak(key, text, voice as OpenAiVoice, bounded)
+    return { audio: wav.toString('base64') }
+  }),
+  status: implementAction(SpeechStatusAction, async (_args, { host, signal }) => ({
+    openai: !!(await openaiSecretOrNonOAuthKey(host, signal)),
+  })),
 }

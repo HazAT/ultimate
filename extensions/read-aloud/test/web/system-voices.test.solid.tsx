@@ -14,8 +14,7 @@ vi.mock('@/sdk/solid', async () => {
     errorMessage: String,
     ROOT: 1,
     useConversation: () => () => ({ entries: [], live: {}, busy: false }),
-    useUiState: (key: string, initial: unknown) =>
-      createSignal<unknown>(key === 'ext.voice-live.cues' ? false : initial),
+    useUiState: (_key: string, initial: unknown) => createSignal<unknown>(initial),
   }
 })
 
@@ -46,20 +45,21 @@ beforeEach(() => {
 
 const speakWith = async (synth: FakeSynth) => {
   vi.stubGlobal('speechSynthesis', synth)
-  const { dock } = await import('../../dock.solid.tsx')
+  const { speech } = await import('../../voice.solid.tsx')
   const { splitSentences } = await import('../../speech.ts')
-  dock.setKeyed(true)
+  speech.setVoice('system')
+  speech.setKeyed(true)
   flush()
   const say = () => {
-    dock.player.load('reply', [], true)
-    dock.player.push('reply', splitSentences('Hello there.', true).sentences[0])
+    speech.load('reply', [], true)
+    speech.push('reply', splitSentences('Hello there.', true).sentences[0])
   }
-  return { dock, say }
+  return { speech, say }
 }
 
 it('speaks with OpenAI when the browser has no system voices and a key is set', async () => {
-  const { dock, say } = await speakWith(new FakeSynth())
-  expect(dock.voice()).toBe('system')
+  const { speech, say } = await speakWith(new FakeSynth())
+  expect(speech.voice()).toBe('system')
   say()
   await vi.waitFor(() => expect(harness.spoken).toEqual(['Hello there.']))
   expect(harness.said).toEqual([])
@@ -67,11 +67,11 @@ it('speaks with OpenAI when the browser has no system voices and a key is set', 
 
 it('keeps the system voice when the browser has voices, including ones that load late', async () => {
   const synth = new FakeSynth()
-  const { dock, say } = await speakWith(synth)
+  const { speech, say } = await speakWith(synth)
   synth.voices = [{ name: 'Late voice' }]
   synth.dispatchEvent(new Event('voiceschanged'))
   flush()
-  expect(dock.openaiOn()).toBe(false)
+  expect(speech.openaiOn()).toBe(false)
   say()
   expect(harness.said).toEqual(['Hello there.'])
   expect(harness.spoken).toEqual([])

@@ -68,8 +68,7 @@ import {
   voiceSink,
 } from './dock.solid.tsx'
 import { StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
-import { VOICES } from './voices.ts'
-import { estimate } from './speech.ts'
+import { estimate, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Session, Voicing, Waveform } from './turns.solid.tsx'
 
@@ -109,7 +108,7 @@ function Status(props: { class?: string }) {
 }
 
 function SpokenParagraph() {
-  const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
+  const state = playerState
   const paragraph = createMemo(() => {
     const items = dock.player.items()
     const current = items[state().index]
@@ -233,14 +232,14 @@ function Settings() {
             <span class="flex items-center gap-2">
               <Slider
                 aria-label="Speech speed"
-                bind={[dock.rate, dock.setRate]}
+                bind={[speech.rate, speech.setRate]}
                 class="w-24"
                 max={2}
                 min={0.8}
                 step={0.05}
               />
               <span class="w-9 text-right text-foreground/85 tabular-nums">
-                {dock.rate().toFixed(2)}×
+                {speech.rate().toFixed(2)}×
               </span>
             </span>
           </label>
@@ -260,10 +259,10 @@ function Settings() {
 }
 
 function SpeechVoice() {
-  const keyed = () => dock.keyed() === true
+  const keyed = () => speech.keyed() === true
   const voiceNote = () => {
-    const needsKey = dock.keyed() === false && 'OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets'
-    if (dock.voiced()) return needsKey
+    const needsKey = speech.keyed() === false && 'OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets'
+    if (speech.voiced()) return needsKey
     if (needsKey) return `No system voices in this browser. ${needsKey}`
     return keyed() && 'No system voices in this browser · speaking with OpenAI'
   }
@@ -273,9 +272,9 @@ function SpeechVoice() {
         Voice
         <SegmentedControl
           aria-label="Speech voice"
-          bind={[() => (dock.openaiOn() ? 'openai' : 'system'), dock.setVoice]}
+          bind={[() => (speech.openaiOn() ? 'openai' : 'system'), speech.setVoice]}
         >
-          <SegmentedControlItem disabled={!dock.voiced()} value="system">
+          <SegmentedControlItem disabled={!speech.voiced()} value="system">
             System
           </SegmentedControlItem>
           <SegmentedControlItem disabled={!keyed()} value="openai">
@@ -288,10 +287,10 @@ function SpeechVoice() {
           <span class="text-[10.5px] leading-snug text-muted-foreground/70">{note()}</span>
         )}
       </Show>
-      <Show when={dock.openaiOn()}>
+      <Show when={speech.openaiOn()}>
         <SegmentedControl
           aria-label="OpenAI voice"
-          bind={[dock.openaiVoice, dock.setOpenaiVoice]}
+          bind={[speech.openaiVoice, speech.setOpenaiVoice]}
           class="grid grid-cols-5"
         >
           <For each={VOICES}>
@@ -308,7 +307,7 @@ function SpeechVoice() {
 }
 
 function PlaybackStrip() {
-  const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
+  const state = playerState
   const [now, setNow] = createSignal(Date.now())
   createEffect(
     () => state().playing,
@@ -318,13 +317,13 @@ function PlaybackStrip() {
     const list = dock.player.items()
     const current = list[state().index]
     if (!current) return { done: 0, total: 1, paragraphs: 1, paragraph: 0 }
-    const total = list.reduce((sum, item) => sum + estimate(item.text, dock.rate()), 0)
+    const total = list.reduce((sum, item) => sum + estimate(item.text, speech.rate()), 0)
     const done =
       list
         .slice(0, state().index)
-        .reduce((sum, item) => sum + estimate(item.text, dock.rate()), 0) +
+        .reduce((sum, item) => sum + estimate(item.text, speech.rate()), 0) +
       (state().playing
-        ? Math.min(estimate(current.text, dock.rate()), (now() - state().startedAt) / 1000)
+        ? Math.min(estimate(current.text, speech.rate()), (now() - state().startedAt) / 1000)
         : 0)
     return {
       done,
@@ -566,7 +565,7 @@ export function VoicePanel() {
   createEffect(
     () => status.data()?.transcribes,
     (known) => {
-      if (known !== undefined) dock.setKeyed(known)
+      if (known !== undefined) speech.setKeyed(known)
     },
   )
   createEffect(
