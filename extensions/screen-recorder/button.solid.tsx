@@ -24,13 +24,24 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
     recorder.subscribe(() => setCurrent(recorder.state()))
     return current
   })
+  let escapeHeld = false
   window.addEventListener(
     'keydown',
     (event) => {
-      if (event.key !== 'Escape' || recorder.state().phase !== 'recording') return
+      if (event.key !== 'Escape') return
+      const cancels = !event.repeat && recorder.state().phase === 'recording'
+      if (!cancels && !(event.repeat && escapeHeld)) return
+      escapeHeld = true
       event.preventDefault()
       event.stopImmediatePropagation()
-      recorder.cancel()
+      if (cancels) recorder.cancel()
+    },
+    { capture: true },
+  )
+  window.addEventListener(
+    'keyup',
+    (event) => {
+      if (event.key === 'Escape') escapeHeld = false
     },
     { capture: true },
   )

@@ -507,7 +507,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
     <Show
       when={!props.fold}
       fallback={
-        <footer class="flex shrink-0 flex-col gap-1 px-2 pb-2" data-voice-bottom>
+        <footer class="flex shrink-0 flex-col gap-1 px-2 pb-2">
           <VoiceLine words />
           <PromptBox
             accepts={{ images: true }}
@@ -523,7 +523,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
         </footer>
       }
     >
-      <footer class="flex shrink-0 flex-col gap-1.5 pt-1" data-voice-bottom>
+      <footer class="flex shrink-0 flex-col gap-1.5 pt-1">
         <div class="flex flex-col gap-1.5 px-4">
           <PlaybackStrip />
           <Collected fork={props.fork} />

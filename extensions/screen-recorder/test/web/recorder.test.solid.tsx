@@ -327,6 +327,56 @@ it('Escape in a busy composer cancels screen recording, then dictation, then sto
   )
 })
 
+it('a held Escape that discarded a screen recording does not also stop a busy run', async ({
+  onTestFinished,
+}) => {
+  const stopRun = vi.fn<() => void>()
+  const busyId = parseConversationId(7)
+  await registry.setLoaders({
+    '/extensions/agent/web.solid.tsx': async () => ({
+      default: {
+        commands: [
+          {
+            id: 'agent.stop',
+            title: 'Stop the run',
+            keys: 'escape',
+            whileTyping: true,
+            when: (context: UltimateContext) => context.conversationId === busyId,
+            run: stopRun,
+          },
+        ],
+      },
+    }),
+  })
+  const uninstall = installShortcuts()
+  onTestFinished(async () => {
+    uninstall()
+    await registry.setLoaders({})
+  })
+  const composer = renderSolid(() => (
+    <div data-composer-target="conversation" data-conversation-scope={busyId}>
+      <textarea aria-label="Busy composer" />
+    </div>
+  )).querySelector('textarea')!
+  composer.focus()
+  const { recorder } = mount({ name: 'box A', draft: 1 })
+  await press('Record the screen into box A')
+  const escape = (type: 'keydown' | 'keyup', repeat = false) =>
+    composer.dispatchEvent(
+      new KeyboardEvent(type, { key: 'Escape', cancelable: true, bubbles: true, repeat }),
+    )
+  escape('keydown')
+  escape('keydown', true)
+  escape('keydown', true)
+  await settle()
+  expect(recorder.state().phase).toBe('idle')
+  expect(stopRun).not.toHaveBeenCalled()
+  escape('keyup')
+  escape('keydown')
+  await settle()
+  expect(stopRun).toHaveBeenCalledOnce()
+})
+
 it('abandons a start when sharing ends during the mic prompt, or setup throws', async () => {
   const { container } = mount({ name: 'box A', draft: 1 })
   const micAsked = Promise.withResolvers<MediaStream>()

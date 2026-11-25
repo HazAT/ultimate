@@ -2,8 +2,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { capture } from '../../../dictation/ui.solid.tsx'
 import { dock, voiceSink } from '../../dock.solid.tsx'
 
-const press = () => capture.press(voiceSink)?.started
-const release = () => capture.take(voiceSink)?.release()
+let take: ReturnType<typeof capture.press>
+const press = () => {
+  take = capture.press(voiceSink)
+  return take?.started
+}
+const release = () => take!.release()
 const talking = () => capture.talking(voiceSink)
 
 beforeEach(() => vi.stubGlobal('MediaRecorder', Object))
