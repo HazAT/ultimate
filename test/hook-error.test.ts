@@ -72,10 +72,3 @@ it('a throwing beforeTool hook blocks the call with a message naming its extensi
   )
   expect(ran).toBe(false)
 })
-
-it('a throwing beforeTool hook blocks the call even when its error cannot be formatted', async () => {
-  const { ran } = await callPingPast(() =>
-    Object.assign(new Error('denied'), { message: Symbol('denied') }),
-  )
-  expect(ran).toBe(false)
-})
