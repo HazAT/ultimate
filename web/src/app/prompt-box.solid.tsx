@@ -4,9 +4,9 @@ import { cn } from 'cn'
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
+  createDropdownMenuController,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuContextTrigger,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
@@ -27,6 +27,7 @@ import { useAllProvided } from '../sdk/contribution.solid.tsx'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
 import { Attached, cancelUpload, createAttach } from './attach.solid.tsx'
 import { attached, withAttachments } from './attachments.ts'
+import { bindLongPress } from './hold.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
 import {
   boundDraft,
@@ -46,7 +47,7 @@ const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9'
 const menuItemClass = 'pointer-coarse:min-h-11'
 const submitClass =
-  'size-7 rounded-md pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
+  'size-7 touch-manipulation rounded-md select-none [-webkit-touch-callout:none] pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
 
 function createDraftState(props: PromptBoxProps) {
   const local = createLocalDraft()
@@ -318,25 +319,39 @@ export function PromptBox(props: PromptBoxProps) {
       </Show>
       {props.actions}
       <Show when={props.sendButton !== false && (!props.running || !empty())}>
-        <DropdownMenu onAction={(how) => send(how === 'followUp' ? 'followUp' : undefined)}>
-          <DropdownMenuContextTrigger class="flex" disabled={!offersFollowUp()}>
-            {sendButton()}
-          </DropdownMenuContextTrigger>
-          <DropdownMenuContent side="top" align="end">
-            <DropdownMenuItem class={menuItemClass} value="steer">
-              <Navigation />
-              Steer now
-            </DropdownMenuItem>
-            <DropdownMenuItem class={menuItemClass} value="followUp">
-              <ListPlus />
-              Queue as follow-up
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {sendButton()}
+        <Show when={offersFollowUp()}>
+          <DropdownMenu
+            onAction={(how) => send(how === 'followUp' ? 'followUp' : undefined)}
+            controller={sendMenu}
+          >
+            <DropdownMenuContent align="end" side="top">
+              <DropdownMenuItem class={menuItemClass} value="steer">
+                <Navigation />
+                Steer now
+              </DropdownMenuItem>
+              <DropdownMenuItem class={menuItemClass} value="followUp">
+                <ListPlus />
+                Queue as follow-up
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Show>
       </Show>
     </>
   )
   const offersFollowUp = () => !!props.followUp && !!props.running && !minimal()
+  const sendMenu = createDropdownMenuController()
+  let releaseHold: (() => void) | undefined
+  onCleanup(() => releaseHold?.())
+  const holdSend = (element: HTMLButtonElement) => {
+    releaseHold?.()
+    releaseHold = bindLongPress(
+      element,
+      offersFollowUp,
+      () => void sendMenu.open({ anchor: element }),
+    )
+  }
   const sendButton = () => (
     <Button
       aria-description={
@@ -347,6 +362,7 @@ export function PromptBox(props: PromptBoxProps) {
           ? `Loading ${props.name}`
           : (props.sendLabel ?? `Send prompt to ${props.name}`)
       }
+      ref={holdSend}
       class={cn(
         'ml-1',
         submitClass,
