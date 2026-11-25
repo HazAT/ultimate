@@ -49,6 +49,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       return Response.json({ result: { id: args.id, state: 'preparing' } })
     }
     if (action === 'remove') return Response.json({ result: null })
+    if (action === 'thumbnail')
+      return Response.json({ result: { mimeType: 'image/jpeg', data: 'AAAA' } })
     if (action === 'upload')
       return Response.json({ result: { path: `/home/attachments/${'1'.repeat(13)}-x/notes.pdf` } })
     return Response.json({ ok: true, submissionId: 1 })
@@ -219,11 +221,15 @@ it('routes a dropped video to video in 8 MB chunks and other files to attachment
     ['video/actions/begin', 'video/actions/append', 'video/actions/append', 'video/actions/finish'],
   )
   expect(chipNotes(container)).toEqual(['Preparing · for Google', '4 B · PDF'])
+  expect(container.querySelector('[data-ui="file-chip-image"]')).toBeNull()
 
-  videoState({ state: 'ready', seconds: 41.6 })
+  videoState({ state: 'ready', seconds: 41.6, thumbnail: 'parts/thumbnail.jpg' })
   await settle()
   flush()
   expect(chipNotes(container)).toEqual(['42 s · for Google', '4 B · PDF'])
+  expect(
+    container.querySelector<HTMLImageElement>('[data-ui="file-chip-image"]')?.getAttribute('src'),
+  ).toBe('data:image/jpeg;base64,AAAA')
   await expectDistinctAgentNames(agent)
 
   const result = await agent.act({
@@ -323,14 +329,23 @@ it('shows a video_ask call going from asking Gemini to its answer and usage', as
       name: 'demo.webm',
       seconds: 41.6,
       answer: 'It says PELICAN.',
-      model: 'gemini-4-neon-low',
+      model: 'google/gemini-4-neon',
       usage: { promptTokenCount: 4200, candidatesTokenCount: 12, totalTokenCount: 4212 },
     }),
   )
   flush()
   expect(container.querySelector('.animate-shimmer')).toBeNull()
+  expect(container.querySelector('[data-video-thumbnail]')).toBeNull()
+  videoState({ state: 'ready', seconds: 41.6, thumbnail: 'parts/thumbnail.jpg' })
+  await settle()
+  flush()
+  expect(container.querySelector('[data-video-thumbnail]')?.getAttribute('src')).toBe(
+    'data:image/jpeg;base64,AAAA',
+  )
   expect(container.textContent).toContain('It says PELICAN.')
-  expect(container.textContent).toContain('gemini-4-neon-low · 4.2k in · 12 out')
+  expect(container.textContent).toContain(
+    'google/gemini-4-neon · 4.2k in · 12 out · sent to Google (Gemini API)',
+  )
   await expectDistinctAgentNames(agent)
 
   setView({ ...call('done', { usage: {} } as unknown as AskDetails), output: 'Earlier answer' })
