@@ -331,12 +331,47 @@
   }
 }
 
-/* Touch browsers zoom into a focused field set smaller than 16px. Unlayered, so it wins over text utilities. */
 @media (pointer: coarse) {
-  input,
-  textarea,
-  select {
-    font-size: 16px;
+  /* Type a finger's length away: the dense desktop sizes step up to 13px for meta and 16px for body, in rem so the
+     browser's font size and zoom scale them. Badges and avatars below 10px keep their size inside their fixed box. */
+  body {
+    font-size: 1rem;
+  }
+  :is(
+    .text-\[10px\],
+    .text-\[10\.5px\],
+    .text-\[11px\],
+    .text-\[11\.5px\],
+    .text-\[12px\],
+    .text-\[12\.5px\],
+    .text-\[13px\],
+    .text-xs
+  ) {
+    font-size: 0.8125rem;
+  }
+  .text-\[13\.5px\] {
+    font-size: 0.875rem;
+  }
+  :is(.text-\[14px\], .text-\[14\.5px\], .text-\[15px\], .text-\[15\.5px\], .text-sm) {
+    font-size: 1rem;
+  }
+  /* Touch browsers zoom into a focused field set smaller than 16px: fields stay at 16px, after the map and more specific
+     than its classes. */
+  :is(input, textarea, select),
+  :is(input, textarea, select)[class] {
+    font-size: 1rem;
+  }
+  /* A finger needs 44px: the bars grow to hold controls that size. */
+  :is([data-ui='titlebar'], [data-ui='conversation-header']) {
+    height: 2.75rem;
+  }
+  [data-ui='surface-tabs'] {
+    height: 100%;
+  }
+  :is([data-ui='titlebar'], [data-ui='conversation-header'], [data-ui='prompt-box'])
+    :is(button, [role='button']) {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
   }
 }
 
@@ -513,4 +548,14 @@
   line-height: 1.6;
   letter-spacing: -0.003em;
   font-feature-settings: normal;
+}
+
+/* On touch the prose and the user's turns read at 16px, thinking a step below. */
+@media (pointer: coarse) {
+  :is([role='log'] .markdown:not(.group\/tool .markdown), [role='log'] .is-user > div > p) {
+    font-size: 1rem;
+  }
+  [role='log'] .group\/reasoning .markdown {
+    font-size: 0.875rem;
+  }
 }

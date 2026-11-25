@@ -509,7 +509,7 @@ function AnswerCard(props: CardProps & { id: number }) {
             </span>
           </Show>
           <span class="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-            <Actions disabled={disabled()} class="max-md:h-11" />
+            <Actions disabled={disabled()} class="pointer-coarse:h-11" />
             <SendButton
               messageId={props.id}
               phase={phase()}
