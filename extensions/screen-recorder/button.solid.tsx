@@ -112,7 +112,7 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
                 </TooltipTrigger>
                 <TooltipContent>
                   Record your screen and mic as a video for this prompt. Videos are sent to Google
-                  (Antigravity) when an agent asks about them.
+                  (Gemini API) when an agent asks about them.
                 </TooltipContent>
               </Tooltip>
             </div>
