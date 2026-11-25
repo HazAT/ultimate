@@ -1548,7 +1548,13 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   )
   // A card answer is a decision @ultimate acts on (a dream branch stalled when it arrived as a note).
   const toStarter = (await b.from()).filter((m) => m.to === 1 && m.text.includes('A: Yes'))
-  expect(toStarter).toEqual([expect.objectContaining({ report: true })])
+  expect(toStarter).toEqual([expect.objectContaining({ report: true, shown: true })])
+  // @ultimate sent a branch's answer to the user's card question to the user a second time.
+  expect(f.observed).toContainEqual(
+    expect.stringContaining(
+      `Message from #${b.id}:\nThis answers the user's own input in #${b.id}, and they already see it in #${b.id}'s conversation, where they gave it. Do not send it to them again: if it needs their decision, #${b.id} asks them with a card.\n${toStarter[0].text}`,
+    ),
+  )
   await until(
     async () =>
       (await entries('pi.assistant')).length > generations &&
@@ -2284,6 +2290,8 @@ it("routes an answer to the starter's one-way message, waking it for a decision 
     text: 'Scope changed. Proceed?\n1. Yes\n2. No',
   })
   expect(routed.re).toBeUndefined()
+  expect(routed.shown).toBeUndefined()
+  expect(f.observed.some((t) => t.includes("This answers the user's own input"))).toBe(false)
   // @ultimate woke and answered; that answer is to a one-way message, so nothing goes back to the branch.
   const root = await f.opened.root.context(context)
   const input = root.entries.find((e) => e.kind === 'board.message' && e.input === true)

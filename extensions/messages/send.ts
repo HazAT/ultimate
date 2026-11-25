@@ -76,6 +76,7 @@ export async function send(
     report?: boolean
     routed?: EntryId
     echo?: boolean
+    shown?: boolean
     judged?: Judged
     stillReports?: (tx: Tx) => Promise<boolean>
     serveBranch?: true
@@ -213,6 +214,7 @@ export async function send(
       ...(report ? { report: true as const } : {}),
       ...(options.routed !== undefined ? { routed: options.routed } : {}),
       ...(options.echo ? { echo: true as const } : {}),
+      ...(options.shown ? { shown: true as const } : {}),
       ...(options.judged ? { judged: options.judged } : {}),
       ...(via ? { via } : {}),
     })
