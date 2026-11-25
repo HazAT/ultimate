@@ -15,7 +15,11 @@ vi.mock('../../web/src/sdk/client.ts', async () => {
     reportCompact: () => {},
   }
 })
-vi.mock('../../web/src/sdk/resume.ts', () => ({ covered: () => false }))
+vi.mock('../../web/src/sdk/resume.ts', () => ({
+  covered: () => false,
+  keepAcrossReload: () => () => {},
+  takeFromLastPage: () => undefined,
+}))
 vi.stubGlobal('matchMedia', () => ({
   matches: false,
   addEventListener() {},
