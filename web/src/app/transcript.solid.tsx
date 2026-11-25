@@ -56,7 +56,14 @@ import {
   shortenPath,
   Transcript as TranscriptScope,
   useCompact,
+  fillComposer,
+  focusComposer,
+  openPanel,
+  runCommand,
+  showSurface,
   useConversation,
+  useConversationId,
+  useCopy,
   useEvent,
   useExtensions,
   useModels,
@@ -974,6 +981,8 @@ function StepLines(props: {
   )
 }
 
+const starters = ['what is this repo?', 'what changed lately?', 'build me an extension'] as const
+
 function EmptyState() {
   const system = useSystem()
   const conversation = useConversation()
@@ -984,9 +993,25 @@ function EmptyState() {
       (model) => model.provider === agent().model?.provider && model.id === agent().model?.modelId,
     )?.reasoning
   const cwd = () => agent().cwd ?? system()?.execution.defaultCwd ?? ''
-  const rows = (): { label: string; value: JSX.Element }[] => [
+  const id = useConversationId()
+  const { copy } = useCopy()
+  const enabled = () => system()?.extensions.filter((extension) => extension.enabled).length
+  const ask = (prompt: string) => {
+    const target = id()
+    if (target === undefined) return
+    fillComposer(target, prompt)
+    focusComposer()
+  }
+  const rows = (): {
+    label: string
+    name: string
+    run: () => void
+    value: JSX.Element
+  }[] => [
     {
       label: 'repo',
+      name: `Copy repo path: ${cwd()}`,
+      run: () => void copy(cwd()),
       value: (
         <>
           {elidePath(shortenPath(cwd(), { home: system()?.machine.home }), 44)}
@@ -998,6 +1023,8 @@ function EmptyState() {
     },
     {
       label: 'model',
+      name: 'Pick a model',
+      run: () => runCommand('model.pick'),
       value: (
         <Show when={agent().model} fallback={<span class="text-warning">none configured</span>}>
           {(model) =>
@@ -1008,14 +1035,14 @@ function EmptyState() {
     },
     {
       label: 'ext',
-      value:
-        system()
-          ?.extensions.filter((extension) => extension.enabled)
-          .map((extension) => extension.name)
-          .join(' · ') ?? '…',
+      name: 'Open extensions',
+      run: () => openPanel('extensions'),
+      value: enabled() === undefined ? '…' : `${enabled()} enabled`,
     },
     {
       label: 'host',
+      name: 'Open System',
+      run: () => showSurface('system'),
       value: system()
         ? `${system()!.machine.hostname} · ${system()!.process.node} · gen ${system()!.process.generation}`
         : '…',
@@ -1032,13 +1059,36 @@ function EmptyState() {
             ? 'A coding agent that edits this repository, itself included.'
             : `A coding agent that edits ${system()!.project.name}, and can change itself too.`}
         </div>
-        <div class="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left">
+        <div class="mt-5 flex flex-col border-t border-border/70 pt-3 text-left">
           <For each={rows()}>
             {(row) => (
-              <>
+              <Button
+                aria-label={row.name}
+                class="group/row -mx-2 grid h-auto text-[12px] grid-cols-[4rem_1fr_auto] gap-x-3 rounded-sm px-2 py-0.5 text-left font-normal whitespace-normal hover:bg-muted/60 focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={() => row.run()}
+                size={null}
+                variant={null}
+              >
                 <span class="text-muted-foreground/70">{row.label}</span>
                 <span class="truncate text-foreground/85">{row.value}</span>
-              </>
+                <ChevronRight class="size-3 self-center text-muted-foreground/0 group-hover/row:text-muted-foreground/70 group-focus-visible/row:text-muted-foreground/70" />
+              </Button>
+            )}
+          </For>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center gap-x-1 gap-y-1 text-left text-muted-foreground/70">
+          <span class="mr-1 text-brand">›</span>
+          <For each={starters}>
+            {(prompt) => (
+              <Button
+                aria-label={`Ask: ${prompt}`}
+                class="h-auto rounded-sm border border-border/70 px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground hover:border-brand/50 hover:text-foreground"
+                onClick={() => ask(prompt)}
+                size={null}
+                variant={null}
+              >
+                {prompt}
+              </Button>
             )}
           </For>
         </div>
