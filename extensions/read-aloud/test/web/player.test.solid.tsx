@@ -38,6 +38,7 @@ vi.stubGlobal(
 )
 
 const { read, stop, current } = await import('../../player.solid.tsx')
+const { speech } = await import('../../voice.solid.tsx')
 const conversation = 5 as ConversationId
 
 it('a section prepared after Stop, or for an earlier read of the same message, never plays', async () => {
@@ -53,4 +54,19 @@ it('a section prepared after Stop, or for an earlier read of the same message, n
   await vi.waitFor(() => expect(said).toEqual(['Fresh.']))
   stop()
   expect(current()).toBeUndefined()
+})
+
+it('after a playback failure, a later section waits for Retry instead of playing', async () => {
+  said.length = 0
+  prepares.length = 0
+  read(conversation, 2, 'Long message.')
+  prepares[0].resolve({ sections: 2, spoken: 'First part.' })
+  await vi.waitFor(() => expect(said).toEqual(['First part.']))
+  speech.failure.set({ key: speech.state.get().key, message: 'The audio could not play' })
+  speech.stop()
+  await vi.waitFor(() => expect(prepares).toHaveLength(2))
+  prepares[1].resolve({ sections: 2, spoken: 'Second part.' })
+  await Promise.resolve()
+  expect(said).toEqual(['First part.'])
+  expect(current()).toMatchObject({ entry: 2, error: 'The audio could not play' })
 })

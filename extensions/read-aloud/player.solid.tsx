@@ -33,8 +33,14 @@ const changed = () => {
       : 'playing'
   if (!reading) clearMediaSession()
 }
-speech.state.subscribe(changed)
-speech.failure.subscribe(changed)
+speech.state.subscribe(() => {
+  if (source && speech.state.get().key !== source.key) source.preparing.abort()
+  changed()
+})
+speech.failure.subscribe(() => {
+  if (source && speech.failure.get()?.key === source.key) source.preparing.abort()
+  changed()
+})
 
 export const subscribe = (listener: () => void) => {
   listeners.add(listener)

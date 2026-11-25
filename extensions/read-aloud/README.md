@@ -6,7 +6,8 @@ lightly rewritten for listening.
 - **The player** (`speech.ts`, `voice.solid.tsx`) is one per page and keyed by source: `load(key, …)` stops whatever
   plays, and sentences pushed for another key are ignored. It plays sentence by sentence, also while a reply still
   streams, keeps a word clock, learns how fast each speed really speaks, waits until idle, steps by sentence or
-  paragraph, and holds while any page microphone records. Voice mode and the speaker both play through it;
+  paragraph. A source can pass a hold (voice passes its own microphone): a sentence that would start then waits,
+  paused, for that source to resume it. Voice mode and the speaker both play through it;
   `ui.solid.tsx` is the contract other extensions use.
 - **The voices:** the browser's `speechSynthesis`, or OpenAI's Realtime `gpt-realtime-2.1-mini` through the `speak`
   action (`openai-voice.ts`), with the `OPENAI_API_KEY` secret or an API key Pi's `openai` provider holds. The OpenAI

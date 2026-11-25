@@ -647,11 +647,14 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
           if (!listening()) dock.cues.firstWord()
         }
       }
-      const fresh = sentences.slice(spoken.count)
+      const from = spoken.count
+      const fresh = sentences.slice(from)
       spoken.count = Math.max(spoken.count, sentences.length)
-      if (dock.speak() && fresh.length && ours().key !== latest.key)
-        dock.player.load(latest.key, [], latest.busy)
-      if (dock.speak()) for (const sentence of fresh) dock.player.push(latest.key, sentence)
+      const voice = dock.speak() && fresh.length > 0
+      if (voice && !loaded.has(latest.key)) {
+        dock.player.load(latest.key, sentences, latest.busy)
+        dock.player.play(from)
+      } else if (voice) for (const sentence of fresh) dock.player.push(latest.key, sentence)
       if (!latest.busy) {
         dock.player.streaming(false)
         if (!latest.text.trim()) dock.pulse(false)

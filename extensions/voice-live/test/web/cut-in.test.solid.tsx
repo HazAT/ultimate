@@ -1,7 +1,7 @@
 import { createRoot, createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { speech } from '../../../read-aloud/ui.solid.tsx'
-import { sendTyped, dock, useSpeaking } from '../../dock.solid.tsx'
+import { endSession, sendTyped, dock, useSpeaking } from '../../dock.solid.tsx'
 import type { TurnView } from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
@@ -88,6 +88,7 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
   await vi.waitFor(() => expect(harness.turns).toHaveLength(2))
   expect(harness.stops).toBe(1)
   expect(dock.pending()).not.toBe(firstKey)
+  expect(harness.sent[1].hint).toBeUndefined()
 
   setView({
     turns: [reply(firstKey, 'The first point is short. The second one. A third arrives late.')],
@@ -98,9 +99,13 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
   await second
   expect(said).toEqual(['The first point is short.'])
 
-  setView({ turns: [reply(dock.pending()!, 'Still streaming. More')], busy: true })
+  const thirdKey = dock.pending()!
+  setView({ turns: [reply(thirdKey, 'Still streaming. More')], busy: true })
   flush()
   speech.load('read-aloud:elsewhere', [], true)
+  setView({ turns: [reply(thirdKey, 'Still streaming. More arrives. Even')], busy: true })
+  flush()
+  expect(speech.state.get()).toMatchObject({ key: 'read-aloud:elsewhere' })
   dock.setPhase('speaking')
   const elsewhere = sendTyped('cutting in while another source speaks')
   await vi.waitFor(() => expect(harness.turns).toHaveLength(3))
@@ -120,4 +125,25 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
   await fourth
   expect(dock.phase()).toBe('thinking')
   expect(harness.stops).toBe(4)
+})
+
+it('turning Speak replies on mid-reply plays from the first new sentence, at its place in the reply', async () => {
+  await endSession()
+  dock.setSpeak(false)
+  said.length = 0
+  const sent = sendTyped('quiet start')
+  await vi.waitFor(() => expect(harness.turns.length).toBeGreaterThan(5))
+  harness.turns.at(-1)!({ conversation: 7, route: 'text' })
+  await sent
+  const key = dock.pending()!
+  const [view, setView] = createSignal({ turns: [] as TurnView[], busy: true })
+  createRoot(() => useSpeaking(view))
+  setView({ turns: [reply(key, 'One muted. ')], busy: true })
+  flush()
+  expect(said).toEqual([])
+  dock.setSpeak(true)
+  setView({ turns: [reply(key, 'One muted. Two heard. ')], busy: true })
+  flush()
+  expect(said).toEqual([' Two heard.'])
+  expect(dock.player.state.get()).toMatchObject({ key, index: 1, playing: true })
 })
