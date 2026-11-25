@@ -56,11 +56,11 @@ export function PlaybackBar(props: {
       paragraphs: new Set(list.map((item) => item.paragraph)).size,
     }
   })
-  const step = (label: string, icon: JSX.Element, run: () => void) => (
+  const step = (label: string, icon: JSX.Element, run: () => void, ready = true) => (
     <Button
       aria-label={label}
       class={rowButton}
-      disabled={!progress()}
+      disabled={!progress() || !!props.error || !ready}
       onClick={() => run()}
       size={null}
       title={label}
@@ -70,6 +70,21 @@ export function PlaybackBar(props: {
     </Button>
   )
   const more = () => (state().streaming ? '+' : '')
+  const summary = () => (
+    <>
+      {props.status}
+      <Show when={!props.error && progress()}>
+        {(at) => (
+          <>
+            {' '}
+            · ¶ {at().paragraph}/{at().paragraphs}
+            {more()} · {at().sentence}/{at().sentences}
+            {more()} · ~{Math.max(0, Math.round(at().total - at().done))} s
+          </>
+        )}
+      </Show>
+    </>
+  )
   return (
     <div
       class="relative flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1 font-mono text-[11px] text-muted-foreground"
@@ -77,27 +92,23 @@ export function PlaybackBar(props: {
       title={props.error}
     >
       <AudioLines class={cn('size-3.5 shrink-0', props.error ? 'text-error' : 'text-brand')} />
-      <Button
-        aria-label="Show what is being read"
-        class="h-auto min-w-0 justify-start truncate p-0 font-mono text-[11px] font-normal text-muted-foreground tabular-nums hover:text-foreground disabled:opacity-100"
-        disabled={!props.onShow}
-        onClick={() => props.onShow?.()}
-        size={null}
-        title={props.onShow ? 'Show the message' : undefined}
-        variant={null}
+      <Show
+        when={props.onShow}
+        fallback={<span class="min-w-0 truncate tabular-nums">{summary()}</span>}
       >
-        {props.status}
-        <Show when={!props.error && progress()}>
-          {(at) => (
-            <>
-              {' '}
-              · ¶ {at().paragraph}/{at().paragraphs}
-              {more()} · {at().sentence}/{at().sentences}
-              {more()} · ~{Math.max(0, Math.round(at().total - at().done))} s
-            </>
-          )}
-        </Show>
-      </Button>
+        {(show) => (
+          <Button
+            aria-label="Show what is being read"
+            class="h-auto min-w-0 justify-start truncate p-0 font-mono text-[11px] font-normal text-muted-foreground tabular-nums hover:text-foreground"
+            onClick={() => show()()}
+            size={null}
+            title="Show the message"
+            variant={null}
+          >
+            {summary()}
+          </Button>
+        )}
+      </Show>
       <span class="ml-auto flex shrink-0 items-center gap-1">
         <Button
           aria-label="Reading speed"
@@ -129,7 +140,12 @@ export function PlaybackBar(props: {
           </Show>
         </Button>
         {step('Next sentence', <ChevronRight />, () => speech.sentence(1))}
-        {step('Next paragraph', <SkipForward />, () => speech.paragraph(1))}
+        {step(
+          'Next paragraph',
+          <SkipForward />,
+          () => speech.paragraph(1),
+          !state().streaming || (progress()?.paragraph ?? 0) < (progress()?.paragraphs ?? 0),
+        )}
         <Show when={props.stop}>
           {(stop) => (
             <Button

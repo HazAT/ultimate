@@ -338,6 +338,11 @@ export function createPlayer(options: {
     items: () => items as readonly Sentence[],
     load(key: string, sentences: readonly Sentence[], streaming: boolean) {
       drop()
+      if (state.get().key === key) {
+        items = [...sentences]
+        publish({ index: -1, charIndex: -1, streaming })
+        return
+      }
       release()
       items = [...sentences]
       publish({ key, index: -1, charIndex: -1, playing: false, paused: false, streaming })

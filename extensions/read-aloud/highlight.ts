@@ -94,6 +94,11 @@ const LINE_GAP = 4
 const inside = (rect: DOMRect, x: number, y: number) =>
   x >= rect.left && x <= rect.right && y >= rect.top - LINE_GAP && y <= rect.bottom + LINE_GAP
 
+const attached = (range: Range, root: Element) =>
+  [range.startContainer, range.endContainer].every(
+    (node) => node.nodeType === Node.TEXT_NODE && root.contains(node),
+  )
+
 export function createHighlight(player: Source) {
   const tracked = new Set<Tracked>()
   const cached = new WeakMap<
@@ -114,7 +119,7 @@ export function createHighlight(player: Source) {
       known?.root === root &&
       known.content === content &&
       known.spans === spans &&
-      known.ranges.every((range) => !range || root.contains(range.startContainer))
+      known.ranges.every((range) => !range || attached(range, root))
     )
       return known.ranges
     const fresh = rangesIn(root, spans)

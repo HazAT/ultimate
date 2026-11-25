@@ -4,7 +4,7 @@ lightly rewritten for listening.
 ## How it works
 
 - **The player** (`speech.ts`, `voice.solid.tsx`) is one per page and keyed by source: `load(key, …)` stops whatever
-  plays, and sentences pushed for another key are ignored. It plays sentence by sentence, also while a reply still
+  plays (loading the same key again only replaces its queue, so a seek keeps its `idle()` waiters), and sentences pushed for another key are ignored. It plays sentence by sentence, also while a reply still
   streams, keeps a word clock, learns how fast each speed really speaks, waits until idle, steps by sentence or
   paragraph. A source can pass a hold (voice passes its own microphone): a sentence that would start then waits,
   paused, for that source to resume it. Voice mode and the speaker both play through it;
@@ -30,13 +30,14 @@ lightly rewritten for listening.
   with the CSS Custom Highlight API: no wrappers in the message's DOM. A message gives its root element and its parts
   in order; each part is found in the rendered text by its letters and digits, so Markdown marks, links and list
   bullets do not matter, and found again whenever the message's DOM changes (while it streams). Voice replies are
-  spoken as written, so their parts are sentences, and the player's sentence maps to the part with its text, which
-  stays right when sentences were skipped (Speak replies turned on mid-reply). The speaker's rewrite changes the
+  spoken as written, so their parts are sentences, and the player's sentence maps to its place in the reply
+  (`Sentence.at`), which stays right when sentences were skipped (Speak replies turned on mid-reply). The speaker's rewrite changes the
   words, so its parts are the `prepare` sections and the player's sentence maps to the section it came from. While the
   player holds a message (its bar shows), a click on one of its parts plays from there; the speaker prepares from
   that section when it was not read yet. A click never starts reading. Code blocks, tool calls and anything `not-prose` are skipped.
 - **The playback bar** (`bar.solid.tsx`) is the one bar for the player, shared with voice: Preparing, Reading,
   Speaking or Paused, then paragraph, sentence and time left, the speed, skip by paragraph or sentence, pause and
   stop, with a progress line. Above the main composer its status opens and scrolls to the message being read; a
-  redirected composer (the voice panel) shows none, since voice shows its own. It keeps playing when you switch
+  redirected composer (the voice panel) shows none: the open voice panel shows the bar for whatever plays.
+  Skips stay off after a failure (Resume retries). It keeps playing when you switch
   conversations. On phones the Media Session API gives lock-screen pause and stop.

@@ -75,7 +75,7 @@ const recording = () => dock.capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
 
 function Status(props: { class?: string }) {
-  const text = () => dock.error() ?? dock.status()
+  const text = () => dock.error() ?? (audible() ? undefined : dock.status())
   return (
     <output
       class={cn(
@@ -297,11 +297,14 @@ function SpeechVoice() {
 }
 
 function PlaybackStrip() {
+  const state = useExternal(speech.state.get, speech.state.subscribe)
+  const voiced = () => playerState().playing || playerState().paused
   return (
-    <Show when={playerState().playing || playerState().paused}>
+    <Show when={state().playing || state().paused}>
       <PlaybackBar
-        status={playerState().paused ? 'Paused' : 'Speaking'}
-        toggle={() => dock.player.toggle()}
+        status={state().paused ? 'Paused' : voiced() ? 'Speaking' : 'Reading'}
+        stop={voiced() ? undefined : () => speech.stop()}
+        toggle={() => speech.toggle()}
       />
     </Show>
   )

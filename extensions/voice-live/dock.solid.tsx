@@ -44,8 +44,6 @@ const player = {
   idle: () => speech.idle(),
   push: (key: string, sentence: Sentence) => owned() && speech.push(key, sentence),
   play: (index: number) => speech.play(index),
-  sentence: (step: number) => speech.sentence(step),
-  paragraph: (step: number) => speech.paragraph(step),
   toggle: () => speech.toggle(),
   load(key: string, sentences: readonly Sentence[], streaming: boolean) {
     loaded.add(key)

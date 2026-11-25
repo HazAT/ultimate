@@ -55,7 +55,6 @@ function mount(play: (span: number) => void) {
     useSpokenText(element, () => ({
       key: 'reply',
       spans: sentences.map((sentence) => sentence.text),
-      clickable: true,
       play,
     }))
     return (
@@ -69,7 +68,7 @@ function mount(play: (span: number) => void) {
   flush()
 }
 
-it('marks the sentence the player speaks, by its place when sentences were skipped; a click plays from a sentence only while the player has the reply', () => {
+it('marks the sentence the player speaks, by its place when sentences were skipped; a click plays from a sentence only while the player has the reply', async () => {
   const play = vi.fn<(span: number) => void>()
   mount(play)
   speech.load('reply', [sentences[0]], true)
@@ -83,6 +82,12 @@ it('marks the sentence the player speaks, by its place when sentences were skipp
   speech.load('reply', [sentences[1]], false)
   speech.play(0)
   expect(spoken()).toEqual(['Two is bold here.'])
+
+  const paragraph = document.querySelector('p')!
+  paragraph.replaceWith(paragraph.cloneNode(true))
+  await Promise.resolve()
+  expect(spoken()).toEqual(['Two is bold here.'])
+  expect(highlights.get('read-aloud')!.values().next().value!.startContainer.isConnected).toBe(true)
 
   hits.text = 'Three follows.'
   document.querySelector('strong')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))

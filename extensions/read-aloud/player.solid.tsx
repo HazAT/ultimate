@@ -37,7 +37,9 @@ const changed = () => {
   if (!reading) clearMediaSession()
 }
 speech.state.subscribe(() => {
-  if (source && speech.state.get().key !== source.key) source.preparing.abort()
+  const now = speech.state.get()
+  const stopped = !now.playing && !now.paused && !now.streaming
+  if (source && (now.key !== source.key || stopped)) source.preparing.abort()
   changed()
 })
 speech.failure.subscribe(() => {

@@ -289,11 +289,6 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
       !(playerState().key === props.turn.key && (playerState().playing || playerState().paused)),
   )
   const loadAndPlay = (index: number) => {
-    const queued =
-      playerState().key === props.turn.key
-        ? dock.player.items().findIndex((item) => item.at === index)
-        : -1
-    if (queued >= 0) return dock.player.play(queued)
     dock.player.load(props.turn.key, sentences().sentences, streaming())
     dock.player.play(index)
   }

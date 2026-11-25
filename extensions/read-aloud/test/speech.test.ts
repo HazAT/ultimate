@@ -198,3 +198,32 @@ it('a clause longer than one request allows is split at a word boundary', () => 
     tabbed.every((part) => !/\S$/.test(part) || part.endsWith('end.') || part.endsWith('tab')),
   ).toBe(true)
 })
+
+it('reloading the reply that plays to seek in it keeps its idle waiter until the new place has played', async () => {
+  const ends: (() => void)[] = []
+  const player = createPlayer({
+    rate: () => 1,
+    enabled: () => true,
+    listening: () => false,
+    frame: () => () => {},
+    engine: () => ({
+      say: (_text, _rate, events) => void ends.push(events.end),
+      halt() {},
+      reset() {},
+    }),
+  })
+  const sentences = splitReply([{ text: 'One. Two. Three.', final: true }]).sentences
+  player.load('turn', [sentences[0], sentences[2]], false)
+  player.play(0)
+  let idle = false
+  const done = player.idle().then(() => {
+    idle = true
+  })
+  player.load('turn', sentences, false)
+  player.play(1)
+  await Promise.resolve()
+  expect(idle).toBe(false)
+  ends.at(-1)!()
+  ends.at(-1)!()
+  await done
+})
