@@ -1,4 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import type { JSX } from '@solidjs/web'
 import { createMemo, For, mapArray, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
@@ -382,9 +383,54 @@ function useFlightActivity(branches: () => readonly ConversationId[]) {
   }
 }
 
+export function StandingFlights(props: {
+  name: string
+  ids: readonly ConversationId[]
+  onConclude: (id: ConversationId, conclude: boolean) => void
+}) {
+  const data = useData()
+  const attention = createMemo(
+    () =>
+      props.ids.filter((id) => {
+        const state = conversationState(data.facts(id), data.log(), data.timers())
+        return state === 'waits' || state === 'failed'
+      }).length,
+  )
+  return (
+    <div class="ml-4 border-l border-border/60" data-standing-flights={props.name}>
+      <InFlight
+        badge={
+          <Show when={attention()}>
+            {(count) => (
+              <span
+                class="ml-auto rounded-full bg-amber-400/20 px-1.5 text-amber-700 tabular-nums dark:text-amber-300"
+                data-attention={count()}
+                title={count() === 1 ? '1 branch needs you' : `${count()} branches need you`}
+              >
+                {count()}
+              </span>
+            )}
+          </Show>
+        }
+        folded
+        id={`standing-${props.name}`}
+        ids={props.ids}
+        label="Branches"
+        name={`Branches of @${props.name}`}
+        onConclude={props.onConclude}
+      />
+    </div>
+  )
+}
+
 export function InFlight(props: {
   ids: readonly ConversationId[]
   onConclude: (id: ConversationId, conclude: boolean) => void
+  id?: string
+  label?: string
+  name?: string
+  folded?: boolean
+  badge?: JSX.Element
 }) {
   const data = useData()
   const runs = useDocOf(() => ROOT, RunsDoc)
@@ -403,7 +449,14 @@ export function InFlight(props: {
     })
   return (
     <Show when={props.ids.length > 0}>
-      <Section count={props.ids.length} id="in-flight" label="In flight">
+      <Section
+        badge={props.badge}
+        count={props.ids.length}
+        folded={props.folded}
+        id={props.id ?? 'in-flight'}
+        label={props.label ?? 'In flight'}
+        name={props.name}
+      >
         <ul class="flex flex-col gap-0.5">
           <For each={props.ids}>
             {(id) => (

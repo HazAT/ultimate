@@ -63,6 +63,10 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
   · 3 lessons`). Clicking it opens lineage's **Memory** surface, grouped into decisions, facts and lessons (empty
   until @ultimate remembers something), and the row shows selected while it is open. The project path above it opens the root's tally, the browsable history (every
   branch, abstract and landing). The row has no menu; a root is never renamed, cleared or concluded here.
+  An open branch that a standing agent other than @ultimate started (messages' `board.started` names a standing agent)
+  sits under that agent's row instead of in In flight: a **Branches · N** section (`StandingFlights`, `root.solid.tsx`)
+  with the same rows, folded by default (unfolded ones kept in `ext.conversations.openedSections`), and an amber count
+  of the branches that wait on you or failed.
 - The `sidebar.top` slot: background work that optional extensions contribute without the sidebar importing them,
   automations' **Scheduled**, up to five compact rows with `+N more`, and its own
   bottom rule. Each hides while it has nothing active.
