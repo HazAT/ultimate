@@ -59,6 +59,11 @@ export function projectDecision(projectRoot: string, userHome = homedir()) {
   return readDecision(projectRoot, userHome).decision
 }
 
+export function projectName(projectRoot: string, settings: JsonObject) {
+  const name = typeof settings.name === 'string' ? settings.name.trim() : ''
+  return name || basename(projectRoot)
+}
+
 export function useProjectSetup(projectRoot: string, userHome?: string) {
   return projectDecision(projectRoot, userHome) === true
 }

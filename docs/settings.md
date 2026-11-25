@@ -53,6 +53,11 @@ how they are made and removed (`add`, `remove`); see `extensions/workspaces/READ
 This repository's `.ultimate/settings.json` holds its isolate setup,
 lander checks and preview model.
 
+A project's `name` (for example `"My App"`) replaces its folder name in the title bar, the sidebar's project heading,
+the projects rail and for other projects: the `<projects>` prompt section lists it and `tools.tell({project})` finds
+the project by it. Unset or blank, the folder name stays. The project list reads it from the project's
+`project.json`, written at each start, so other projects see a new name after the project's next start.
+
 A project can name the app it installs as and pin its port, so each project's Chrome or home-screen app keeps its own
 name, icon and origin. `app.name` (for example `"Ultimate - my-app"`) is the web manifest's `name` and `short_name`
 and the home-screen title; `app.icon` is a PNG path relative to the project (512×512 is best), served as the

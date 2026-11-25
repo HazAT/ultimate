@@ -2,7 +2,7 @@ import type { ConversationId, TaskId } from '@earendil-works/pi-durable'
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { fauxServer, post, prepareFauxServer, temp, until } from './helpers.ts'
+import { attach, fauxServer, post, prepareFauxServer, temp, until } from './helpers.ts'
 import { projects, conversationIndex } from '../server/project.ts'
 import { projectHome } from '../lib/project-paths.ts'
 import { context } from '../server/harness.ts'
@@ -22,7 +22,10 @@ it('keeps stores local while exposing projects, conversations and live URLs thro
     // This test observes input-derived titles, not the background summary model.
     await writeFile(
       join(root, '.ultimate/settings.json'),
-      JSON.stringify({ summaryModel: 'unavailable/test' }),
+      JSON.stringify({
+        summaryModel: 'unavailable/test',
+        ...(root === bRoot ? { name: ' My App ' } : {}),
+      }),
     )
   }
   const launch = async (projectRoot: string) => {
@@ -87,9 +90,12 @@ it('keeps stores local while exposing projects, conversations and live URLs thro
         conversations,
         running: { pid: process.pid, url: a.url },
       }),
-      expect.objectContaining({ root: bRoot, current: true }),
+      expect.objectContaining({ root: bRoot, name: 'My App', current: true }),
     ]),
   )
+  const connection = await attach(b)
+  expect(connection.system().project.name).toBe('My App')
+  await connection.close()
   expect(b.api.conversations().some((item) => item.title === 'A titled conversation')).toBe(false)
 })
 
