@@ -38,6 +38,7 @@ lightly rewritten for listening.
 - **The playback bar** (`bar.solid.tsx`) is the one bar for the player, shared with voice: Preparing, Reading,
   Speaking or Paused, then paragraph, sentence and time left, the speed, skip by paragraph or sentence, pause and
   stop, with a progress line. Above the main composer its status opens and scrolls to the message being read; a
-  redirected composer (the voice panel) shows none: the open voice panel shows the bar for whatever plays.
+  redirected composer (the voice panel) shows none; the open voice panel shows voice's bar, or the speaker's
+  (`SpeakerBar`, with Stop and Resume) while the speaker prepares, reads or failed.
   Skips stay off after a failure (Resume retries). It keeps playing when you switch
   conversations. On phones the Media Session API gives lock-screen pause and stop.

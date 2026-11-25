@@ -394,8 +394,8 @@ export function createPlayer(options: {
       const mine = starts.findLast((at) => at <= now.index) ?? 0
       if (step > 0) {
         const next = starts.find((at) => at > now.index)
-        if (next === undefined) this.stop()
-        else play(next)
+        if (next !== undefined) play(next)
+        else if (!now.streaming) this.stop()
         return
       }
       const intoIt = now.index > mine || Date.now() - now.startedAt > 1500

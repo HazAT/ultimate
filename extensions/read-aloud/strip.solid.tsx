@@ -13,7 +13,7 @@ import {
   useExternal,
 } from '@/sdk/solid'
 import type { SolidComposerProps } from '@/sdk/solid'
-import { PlaybackBar } from './bar.solid.tsx'
+import { ReadingBar } from './reading-bar.solid.tsx'
 import type { Reading } from './player.solid.tsx'
 import { SpeechStatusAction } from './refs.ts'
 import { speech } from './voice.solid.tsx'
@@ -67,25 +67,9 @@ export function readingStrip(player: Player) {
               if (conversation().id !== id) switchConversation(id)
               setRevealing({ conversation: id, entry })
             }
-            const playing = () => current().status === 'playing'
             return (
               <div class={cn(column(props.dock), 'pb-1.5')} data-read-aloud-strip={current().entry}>
-                <PlaybackBar
-                  error={current().error}
-                  loading={current().status === 'loading'}
-                  onShow={goToMessage}
-                  status={
-                    current().error
-                      ? 'Could not read'
-                      : current().status === 'loading'
-                        ? 'Preparing'
-                        : current().status === 'paused'
-                          ? 'Paused'
-                          : 'Reading'
-                  }
-                  stop={player.stop}
-                  toggle={() => (playing() ? player.pause() : player.resume())}
-                />
+                <ReadingBar onShow={goToMessage} player={player} reading={current()} />
               </div>
             )
           }}

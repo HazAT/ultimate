@@ -58,11 +58,11 @@ export function PlaybackBar(props: {
     }
   })
   const named = (label: string) => (props.name ? `${label} in ${props.name}` : label)
-  const step = (label: string, icon: JSX.Element, run: () => void, ready = true) => (
+  const step = (label: string, icon: JSX.Element, run: () => void) => (
     <Button
       aria-label={named(label)}
       class={rowButton}
-      disabled={!progress() || !!props.error || !ready}
+      disabled={!progress() || !!props.error}
       onClick={() => run()}
       size={null}
       title={label}
@@ -142,12 +142,7 @@ export function PlaybackBar(props: {
           </Show>
         </Button>
         {step('Next sentence', <ChevronRight />, () => speech.sentence(1))}
-        {step(
-          'Next paragraph',
-          <SkipForward />,
-          () => speech.paragraph(1),
-          !state().streaming || (progress()?.paragraph ?? 0) < (progress()?.paragraphs ?? 0),
-        )}
+        {step('Next paragraph', <SkipForward />, () => speech.paragraph(1))}
         <Show when={props.stop}>
           {(stop) => (
             <Button

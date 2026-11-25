@@ -37,5 +37,10 @@ export type { SpokenText } from './highlight.ts'
  * names its controls when another bar may show beside it (`Pause speech in Voice dock`).
  */
 export { PlaybackBar } from './bar.solid.tsx'
+/**
+ * The speaker's bar while it reads a message, for a box that hides the composer's own (the voice panel); `name` names
+ * its controls apart from the composer's.
+ */
+export { SpeakerBar } from './reading-bar.solid.tsx'
 /** The voices the OpenAI voice offers. */
 export { VOICES } from './voices.ts'

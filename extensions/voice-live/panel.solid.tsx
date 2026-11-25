@@ -60,7 +60,7 @@ import {
   voiceSink,
 } from './dock.solid.tsx'
 import { StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
-import { PlaybackBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
+import { PlaybackBar, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Session, Voicing, Waveform } from './turns.solid.tsx'
 
@@ -75,7 +75,8 @@ const recording = () => dock.capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
 
 function Status(props: { class?: string }) {
-  const text = () => dock.error() ?? (audible() ? undefined : dock.status())
+  const text = () =>
+    dock.error() ?? (audible() && dock.status() === 'Speaking' ? undefined : dock.status())
   return (
     <output
       class={cn(
@@ -150,7 +151,7 @@ function VoiceLine(props: { words?: boolean }) {
     spoken() ||
     !!activity().current ||
     !!dock.error() ||
-    (!!dock.status() && !audible()) ||
+    !!(dock.status() && !(audible() && dock.status() === 'Speaking')) ||
     draftOf().length > 0
   return (
     <Show when={shown()}>
@@ -297,14 +298,14 @@ function SpeechVoice() {
 }
 
 function PlaybackStrip() {
-  const state = useExternal(speech.state.get, speech.state.subscribe)
-  const voiced = () => playerState().playing || playerState().paused
   return (
-    <Show when={state().playing || state().paused}>
+    <Show
+      when={playerState().playing || playerState().paused}
+      fallback={<SpeakerBar name="Voice dock" />}
+    >
       <PlaybackBar
         name="Voice dock"
-        status={state().paused ? 'Paused' : voiced() ? 'Speaking' : 'Reading'}
-        stop={voiced() ? undefined : () => speech.stop()}
+        status={playerState().paused ? 'Paused' : 'Speaking'}
         toggle={() => speech.toggle()}
       />
     </Show>
