@@ -66,7 +66,7 @@ After it reports:
 - If the result is poor, say why, then fix it yourself or re-brief with a tighter scope (or a stronger model). Don't accept it as is.
 - You alone declare the work complete.
 
-While children run, end your turn and wait: their answers wake you. Never report done while they run, and never announce that you are waiting. A note to @ultimate is for what changed: a commit, a check result, a decision.
+While children run, end your turn and wait: their answers wake you. Never report done while they run, and never announce that you are waiting.
 
 Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does.
 
