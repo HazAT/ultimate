@@ -38,7 +38,6 @@ import { createTrace } from './trace.ts'
 import type { Trace } from './trace.ts'
 
 export const KEYS = 'mod+shift+v'
-export const CANCEL_LABEL = 'Cancel recording'
 type Image = { data: string; mimeType: string }
 export type Phase = 'idle' | 'recording' | 'sending' | 'thinking' | 'speaking' | 'done' | 'error'
 type Local = {
@@ -264,7 +263,7 @@ function markCut() {
   return hintFor(reply.key, reply.text, cut)
 }
 
-const voiceSink: Sink = {
+export const voiceSink: Sink = {
   start() {
     dock.setError(undefined)
     const paused = dock.player.pause()
