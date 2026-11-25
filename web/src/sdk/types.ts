@@ -422,6 +422,11 @@ export const Dictation = definePoint<
   JSX.Element
 >('ultimate.dictation')
 /**
+ * How the talk shortcut is pressed, gesture and keys (`dictation` provides it: `hold Ctrl+Shift+Space`), for the main
+ * composer's placeholder. While nothing provides it, the placeholder leaves it out.
+ */
+export const DictationShortcut = definePoint<null, string | undefined>('ultimate.dictationShortcut')
+/**
  * What a prompt box's record control gets, beside its attach button: `draft` is the box's draft key (boxes showing one
  * conversation share it; a box without one is keyed by its `name`, so give such boxes distinct names), `attach` adds recorded files to that box like a drop (as `source`, `recording` by default; a
  * recording waits for a send in flight, then attaches even to a busy box) and resolves once their uploads settle, false

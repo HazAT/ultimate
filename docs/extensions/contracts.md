@@ -124,7 +124,8 @@ point and lists `provide(Point, value)` under `provides` in `web.solid.tsx`. Bot
 The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
 branches `branch · coordinator`), `ComposerPlaceholder` (what an empty composer says, the last provider that answers
-winning; conversations addresses a standing agent by its definition's `title`), `EmptyTranscript` (what a transcript
+winning; conversations addresses a standing agent by its definition's `title`), `DictationShortcut` (how the talk
+shortcut is pressed, which the core's placeholder names; dictation provides it), `EmptyTranscript` (what a transcript
 shows before its first message; each provider receives `core`, the rendering so far, to keep, wrap or replace;
 conversations shows a standing agent's mark and title) and
 `MessageReference` (the copyable reference to a stored message; codemode). The server's counterpart is the extension point above.
