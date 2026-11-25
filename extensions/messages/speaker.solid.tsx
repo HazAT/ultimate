@@ -42,7 +42,7 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
         const color = () => familyColor(item().color)
         const title = () => familyTitle(item().name)
         return (
-          <span class="flex shrink-0 items-center gap-2" data-speaker={item().name}>
+          <span class="flex min-w-0 items-center gap-2" data-speaker={item().name}>
             <span
               aria-hidden="true"
               class="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] font-sans text-[9.5px] leading-none font-semibold ring-1 ring-inset"
@@ -54,11 +54,15 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
             >
               {title().charAt(0)}
             </span>
-            <span class={titleClass} style={{ color: color() }}>
+            <span class={cn(titleClass, 'shrink-0')} style={{ color: color() }}>
               {title()}
             </span>
             <Show when={conversation()?.label}>
-              {(label) => <span class="text-muted-foreground/70">{label()}</span>}
+              {(label) => (
+                <span class="min-w-0 truncate text-muted-foreground/70" title={label()}>
+                  {label()}
+                </span>
+              )}
             </Show>
           </span>
         )
