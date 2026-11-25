@@ -21,6 +21,7 @@ import {
   imagesOf,
   playerState,
   replyOf,
+  retireStored,
   setActivity,
   settleTranscripts,
   turnsIn,
@@ -357,6 +358,10 @@ export function Voicing(props: { fork: ConversationId }) {
     },
   )
   onCleanup(() => setActivity({ done: 0 }))
+  createEffect(
+    () => turns().turns,
+    (all) => retireStored(all),
+  )
   useSpeaking(turns)
   return null
 }

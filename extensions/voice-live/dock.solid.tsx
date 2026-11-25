@@ -1,7 +1,7 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
-import { api, composerDraft, errorMessage, useConversation, useUiState } from '@/sdk/solid'
+import { api, composerDraft, errorMessage, events, useConversation, useUiState } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
 import {
   base64,
@@ -430,6 +430,7 @@ async function sendTurn(input: {
       },
       images,
     })
+    if (owner !== undefined) events.emit('ultimate:sent', { conversationId: owner })
     dock.setPending(key)
     dock.setPhase('sending')
     dock.setStatus(input.recorded || clips.length ? 'Sending your voice…' : 'Sending…')
@@ -521,16 +522,11 @@ async function sendTurn(input: {
 
 const textOf = (message: AssistantMessage | undefined) =>
   message?.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('') ?? ''
-const thoughtOf = (message: AssistantMessage | undefined) =>
-  message?.content.flatMap((part) => (part.type === 'thinking' ? [part.thinking] : [])).join('') ??
-  ''
 
 export type TurnView = {
   key: string
   data: VoiceTurn
   images: { data: string; mimeType: string }[]
-  record?: EntryRecord
-  answer?: EntryRecord
   replies: AssistantMessage[]
   live?: AssistantMessage
   optimistic?: true
@@ -547,13 +543,10 @@ export function turnsIn(state: ReturnType<ReturnType<typeof useConversation>>) {
   for (const entry of state.entries) {
     if (entry.kind === 'voice.turn') {
       const data = entry.data as VoiceTurn
-      turns.push({ key: data.key, data, images: imagesOf(entry), record: entry, replies: [] })
+      turns.push({ key: data.key, data, images: imagesOf(entry), replies: [] })
     } else if (entry.kind === 'pi.assistant' && turns.length) {
       const message = entry.model?.[0]
-      if (message?.role === 'assistant') {
-        turns.at(-1)!.replies.push(message)
-        turns.at(-1)!.answer = entry
-      }
+      if (message?.role === 'assistant') turns.at(-1)!.replies.push(message)
     }
   }
   const last = turns.at(-1)
@@ -576,6 +569,19 @@ export function turnsIn(state: ReturnType<ReturnType<typeof useConversation>>) {
   return { turns, busy: state.busy }
 }
 
+export function retireStored(turns: readonly TurnView[]) {
+  const stored = turns.filter((turn) => !turn.optimistic && dock.local()[turn.key]?.optimistic)
+  if (!stored.length) return
+  dock.setLocal((all) => {
+    const next = { ...all }
+    for (const { key } of stored) {
+      const { optimistic: _sent, images: _shown, ...kept } = next[key]
+      next[key] = kept
+    }
+    return next
+  })
+}
+
 export function imagesOf(entry: EntryRecord) {
   const message = entry.model?.[0]
   return message?.role === 'user' && Array.isArray(message.content)
@@ -591,12 +597,7 @@ export function replyOf(turn: TurnView) {
     ...turn.replies.map((message) => ({ text: textOf(message), final: true })),
     ...(turn.live ? [{ text: textOf(turn.live), final: false }] : []),
   ]
-  return {
-    parts,
-    text: messages.map(textOf).filter(Boolean).join('\n\n'),
-    thought: messages.map(thoughtOf).filter(Boolean).join('\n\n'),
-    calls: messages.some((message) => message.content.some((part) => part.type === 'toolCall')),
-  }
+  return { parts, text: messages.map(textOf).filter(Boolean).join('\n\n') }
 }
 
 export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {

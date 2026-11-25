@@ -134,3 +134,25 @@ it('a repeated sentence spoken after its twin was muted marks its own place', ()
   expect(range.startContainer.parentElement?.tagName).toBe('EM')
   speech.stop()
 })
+
+it('a reply shown in two transcripts at once, the voice panel and its conversation, is marked in both', () => {
+  const view = () => {
+    const [element, setElement] = createSignal<HTMLElement>()
+    renderSolid(() => {
+      useSpokenText(
+        () => (element() ? [element()!] : []),
+        () => ({ key: 'twice', spans: sentences.map((sentence) => sentence.text) }),
+      )
+      return <p ref={setElement}>One muted. Two is bold here. Three follows.</p>
+    })
+  }
+  view()
+  view()
+  flush()
+  speech.load('twice', sentences, false)
+  speech.play(1)
+  const marked = [...highlights.get('read-aloud')!]
+  expect(marked.map(String)).toEqual(['Two is bold here.', 'Two is bold here.'])
+  expect(marked[0].startContainer).not.toBe(marked[1].startContainer)
+  speech.stop()
+})

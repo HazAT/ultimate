@@ -148,9 +148,9 @@ export function createHighlight(player: Source) {
     if (!page) return
     const now = player.state.get()
     const on = (now.playing || now.paused) && now.index >= 0
-    const spoken = on ? [...tracked].find((each) => each.now?.key === now.key) : undefined
+    const spoken = on ? [...tracked].filter((each) => each.now?.key === now.key) : []
     const parents = [
-      ...new Set((spoken ? connected(spoken) : []).map((root) => root.parentElement ?? root)),
+      ...new Set(spoken.flatMap(connected).map((root) => root.parentElement ?? root)),
     ]
     if (!same(parents, watched)) {
       page.observer.disconnect()
@@ -159,15 +159,16 @@ export function createHighlight(player: Source) {
         page.observer.observe(parent, { subtree: true, childList: true, characterData: true })
       force = true
     }
-    const shape = spoken ? `${now.key}\n${now.index}` : ''
+    const shape = spoken.length ? `${now.key}\n${now.index}` : ''
     if (!force && shape === shown) return
     shown = shape
     page.current.clear()
-    if (!spoken?.now) return
-    const { span } = spoken.now
-    const at = span ? span(now.index) : player.items()[now.index]?.at
-    const range = at === undefined || at < 0 ? undefined : ranges(spoken)[at]
-    if (range) page.current.add(range)
+    for (const each of spoken) {
+      const span = each.now?.span
+      const at = span ? span(now.index) : player.items()[now.index]?.at
+      const range = at === undefined || at < 0 ? undefined : ranges(each)[at]
+      if (range) page.current.add(range)
+    }
   }
 
   const under = (event: MouseEvent) => {
