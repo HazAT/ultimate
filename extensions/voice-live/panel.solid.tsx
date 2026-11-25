@@ -302,6 +302,7 @@ function PlaybackStrip() {
   return (
     <Show when={state().playing || state().paused}>
       <PlaybackBar
+        name="Voice dock"
         status={state().paused ? 'Paused' : voiced() ? 'Speaking' : 'Reading'}
         stop={voiced() ? undefined : () => speech.stop()}
         toggle={() => speech.toggle()}
