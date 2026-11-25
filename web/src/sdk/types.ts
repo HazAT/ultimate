@@ -485,6 +485,8 @@ export interface PromptBoxProps {
   sendLabel?: string
   /** The send button's tooltip; default `Send (Enter)`. */
   sendTitle?: string
+  /** Offers a follow-up beside the send: a long press or right-click on send opens Steer now and Queue as follow-up. */
+  followUp?: boolean
   /** Controls at the start of the box's row (model, thinking). */
   toolbar?: JSX.Element
   /** Quiet text before the row's buttons while there is no error. */

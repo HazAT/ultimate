@@ -381,7 +381,8 @@ function ComposerEditor(props: { dock?: boolean }) {
         }
         ready={target()?.ready}
         running={busy()}
-        sendTitle={busy() && !target() ? 'Steer (Enter)' : undefined}
+        followUp={!target()}
+        sendTitle={busy() && !target() ? 'Steer (Enter) · hold to queue a follow-up' : undefined}
         toolbar={<Slot fallback={failed} name="composer.toolbar" />}
       />
       <Show

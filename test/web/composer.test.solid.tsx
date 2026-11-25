@@ -166,6 +166,31 @@ it('steers on Enter, queues a follow-up on Alt+Enter, cancels a queued input and
   ])
 })
 
+it('queues a follow-up from a long press on send', async () => {
+  await show(9, { 'pi.live': { run: { taskId: 3, inputs: [], turns: 0 } } })
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  await act([{ ref: 'Prompt for conversation #9', action: 'setValue', args: ['later'] }])
+  const send = container.querySelector<HTMLButtonElement>(
+    '[aria-label="Send prompt to conversation #9"]',
+  )!
+  send.dispatchEvent(
+    new PointerEvent('contextmenu', { bubbles: true, cancelable: true, pointerType: 'touch' }),
+  )
+  await settle()
+  flush()
+  await expectDistinctAgentNames(agent)
+  const items = document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitem"]')
+  expect([...items].map((item) => item.textContent)).toEqual(['Steer now', 'Queue as follow-up'])
+  items[1].click()
+  await settle()
+  flush()
+  expect(submits().map(({ body, source }) => [body, source])).toEqual([
+    [{ text: 'later', whenBusy: 'followUp', images: [] }, 'person'],
+  ])
+})
+
 it('withdraws a queued steer into the next steer, and restores both when the submit fails', async () => {
   await show(12, {
     'pi.live': { run: { taskId: 2, inputs: [], turns: 0 } },

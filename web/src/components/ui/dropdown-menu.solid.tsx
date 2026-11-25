@@ -1,6 +1,7 @@
 import { Circle } from '@lucide/solid'
 import {
   MenuContent,
+  MenuContextTrigger as DropdownMenuContextTrigger,
   MenuGroup as DropdownMenuGroup,
   MenuGroupLabel,
   MenuItem,
@@ -125,6 +126,7 @@ function DropdownMenuRadioItem(props: ComponentProps<typeof MenuRadioItem> & { c
 export {
   DropdownMenu,
   DropdownMenuTrigger,
+  DropdownMenuContextTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuGroup,

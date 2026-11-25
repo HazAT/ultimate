@@ -1,8 +1,14 @@
-import { ArrowUp, LoaderCircle, Paperclip } from '@lucide/solid'
+import { ArrowUp, ListPlus, LoaderCircle, Navigation, Paperclip } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuContextTrigger,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
 import { Provided } from '../sdk/parts.solid.tsx'
@@ -38,6 +44,7 @@ const androidImagePasteStyle: JSX.CSSProperties = {
 }
 const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9'
+const menuItemClass = 'pointer-coarse:min-h-11'
 const submitClass =
   'size-7 rounded-md pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
 
@@ -311,47 +318,65 @@ export function PromptBox(props: PromptBoxProps) {
       </Show>
       {props.actions}
       <Show when={props.sendButton !== false && (!props.running || !empty())}>
-        <Button
-          aria-label={
-            props.loading
-              ? `Loading ${props.name}`
-              : (props.sendLabel ?? `Send prompt to ${props.name}`)
-          }
-          class={cn(
-            'ml-1',
-            submitClass,
-            minimal() && 'size-6',
-            props.loading && 'bg-muted text-muted-foreground',
-          )}
-          disabled={
-            !!props.loading ||
-            !!props.disabled ||
-            empty() ||
-            !!props.blocked ||
-            sending() ||
-            attach.reading() ||
-            uploading()
-          }
-          onClick={() => send()}
-          size="icon"
-          title={
-            props.loading
-              ? `Loading ${props.name}`
-              : uploading()
-                ? 'Uploading files…'
-                : (props.sendTitle ?? 'Send (Enter)')
-          }
-          type={minimal() ? 'button' : 'submit'}
-        >
-          <Show
-            when={props.loading}
-            fallback={<ArrowUp class={minimal() ? 'size-3.5' : 'size-4'} />}
-          >
-            <LoaderCircle class="size-4 motion-safe:animate-spin" />
-          </Show>
-        </Button>
+        <DropdownMenu onAction={(how) => send(how === 'followUp' ? 'followUp' : undefined)}>
+          <DropdownMenuContextTrigger class="flex" disabled={!offersFollowUp()}>
+            {sendButton()}
+          </DropdownMenuContextTrigger>
+          <DropdownMenuContent side="top" align="end">
+            <DropdownMenuItem class={menuItemClass} value="steer">
+              <Navigation />
+              Steer now
+            </DropdownMenuItem>
+            <DropdownMenuItem class={menuItemClass} value="followUp">
+              <ListPlus />
+              Queue as follow-up
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </Show>
     </>
+  )
+  const offersFollowUp = () => !!props.followUp && !!props.running && !minimal()
+  const sendButton = () => (
+    <Button
+      aria-description={
+        offersFollowUp() ? 'Long-press or right-click to queue a follow-up instead' : undefined
+      }
+      aria-label={
+        props.loading
+          ? `Loading ${props.name}`
+          : (props.sendLabel ?? `Send prompt to ${props.name}`)
+      }
+      class={cn(
+        'ml-1',
+        submitClass,
+        minimal() && 'size-6',
+        props.loading && 'bg-muted text-muted-foreground',
+      )}
+      disabled={
+        !!props.loading ||
+        !!props.disabled ||
+        empty() ||
+        !!props.blocked ||
+        sending() ||
+        attach.reading() ||
+        uploading()
+      }
+      onClick={() => send()}
+      size="icon"
+      title={
+        props.loading
+          ? `Loading ${props.name}`
+          : uploading()
+            ? 'Uploading files…'
+            : (props.sendTitle ?? 'Send (Enter)')
+      }
+      type={minimal() ? 'button' : 'submit'}
+    >
+      <Show when={props.loading} fallback={<ArrowUp class={minimal() ? 'size-3.5' : 'size-4'} />}>
+        <LoaderCircle class="size-4 motion-safe:animate-spin" />
+      </Show>
+    </Button>
   )
   const status = () => value().error ?? props.blocked ?? props.hint
   const textarea = () => (
