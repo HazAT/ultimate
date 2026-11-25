@@ -174,7 +174,7 @@ export function saidIn(
   stored: boolean,
   transcripts: Record<string, string> | undefined,
 ) {
-  if (!data.audio || (stored && data.route === 'text')) return data.text || undefined
+  if (!data.audio || (stored && data.route === 'text')) return data.text
   const clips = data.clips ?? (recording ? [recording] : [])
   const heard = clips.map((clip) => transcripts?.[clip])
   if (clips.length && heard.every((text) => text !== undefined))
