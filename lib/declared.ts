@@ -2,7 +2,8 @@ import { parseSync } from 'vite-plus'
 
 type Node = {
   type: string
-  specifiers?: { exported?: { name?: string; value?: unknown } }[]
+  exportKind?: string
+  specifiers?: { exportKind?: string; exported?: { name?: string; value?: unknown } }[]
   value?: unknown
   expression?: Node
   elements?: (Node | null)[]
@@ -26,8 +27,9 @@ export function declaredExtensions(apiText: string, file = 'api.ts'): Declared {
   }
   if (errors.length) throw new Error(`${file}: ${errors[0].message}`)
   for (const statement of program.body) {
-    if (statement.type !== 'ExportNamedDeclaration') continue
+    if (statement.type !== 'ExportNamedDeclaration' || statement.exportKind === 'type') continue
     for (const specifier of statement.specifiers ?? []) {
+      if (specifier.exportKind === 'type') continue
       const exported = specifier.exported?.name ?? specifier.exported?.value
       if (exported === 'requires' || exported === 'wants')
         throw new Error(

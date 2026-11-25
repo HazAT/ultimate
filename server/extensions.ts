@@ -527,8 +527,8 @@ export async function loadExtensions(
       const previous = records.get(winner.name)
       if (
         selected &&
-        previous &&
-        (previous.enabled !== winner.enabled ||
+        (!previous ||
+          previous.enabled !== winner.enabled ||
           (previous.offForMissing ?? []).join() !== winner.missing.join() ||
           (discoveryFailed.has(winner.name) && !winner.error))
       ) {

@@ -876,7 +876,7 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         const folder = extensionFolderOf(context.filename)
-        if (!own || !folder || coreTier.test(apiText(folder))) return {}
+        if (!own || !folder || (coreExtension(own) && coreTier.test(apiText(folder)))) return {}
         const declared = declaredExtensions(apiText(folder), path.join(folder, 'api.ts'))
         const check = (node: ImportNode) => {
           const source = node.source?.value
