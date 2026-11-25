@@ -61,7 +61,7 @@ it('resizes a pasted image over the limit and sends it', async () => {
     return blob.size
   })
   expect(size).toBeGreaterThan(maxImageBytes)
-  const note = page.locator('[data-ui="composer"] p[title^="Resized"]')
+  const note = page.locator('[data-ui="composer"] [data-ui="file-chip"][title^="Resized"]')
   await note.waitFor()
   expect(await note.getAttribute('title')).toMatch(/^Resized \d+\.\d MB · 3000×2400 → 2000×1600$/)
   await editor.press('Enter')
