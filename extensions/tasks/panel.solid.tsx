@@ -326,7 +326,7 @@ function ConversationRow(props: { id: ConversationId; tree: TaskTree; place: Pla
             </span>
           </span>
         </Button>
-        <span class="ml-1.5 flex self-center empty:hidden">
+        <span class="contents [&>button]:ml-1.5 [&>button]:self-center">
           <Provided
             input={{ conversation: props.id, on: `task row #${props.id}` }}
             last

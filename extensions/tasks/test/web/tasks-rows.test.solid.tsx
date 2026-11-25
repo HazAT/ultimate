@@ -23,6 +23,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
   const { createApi } = await import('../../../../web/src/sdk/api.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
+  const { createRegistry } = await import('../../../../web/src/sdk/registry.ts')
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
     const action = /^\/api\/extensions\/tasks\/actions\/(\w+)$/.exec(path)?.[1]
@@ -49,10 +50,11 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     harness.writes.push(...ops)
     return { ok: true, rev: 1 }
   })
-  return { store, api: createApi(store, { fetch }), uiState }
+  return { store, api: createApi(store, { fetch }), uiState, registry: createRegistry() }
 })
 
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
+import plan from '../../../plan/web.solid.tsx'
 import { TasksPanel } from '../../panel.solid.tsx'
 
 const agent = createAgent()
@@ -176,6 +178,7 @@ it('asks again on the new connection for each batch whose request failed across 
 
 it('lets an agent open the conversation without opening its linked plan task', async () => {
   vi.stubGlobal('matchMedia', () => ({ matches: true }))
+  await registry.setLoaders({ 'extensions/plan/web.solid.tsx': async () => ({ default: plan }) })
   stream().send('conversations', [{ id: child, busy: true, title: 'Write the guide' }])
   sendTasks(task(7, { conversationId: child }))
   const panel = renderSolid(() => <TasksPanel />)
@@ -224,7 +227,8 @@ it('lets an agent open the conversation without opening its linked plan task', a
   const button = panel.querySelector(`button[aria-label="${label}"]`)
   const chip = panel.querySelector('button[data-task="E1.2"]')
   expect(chip).not.toBeNull()
-  expect(chip?.parentElement).toBe(button?.parentElement)
+  expect(button?.contains(chip)).toBe(false)
+  expect(chip?.closest('[data-current], div')).toBe(button?.parentElement)
   expect(button?.textContent).toContain('#3')
   expect(button?.querySelector('[data-feature="Docs"]')).not.toBeNull()
   expect(button?.querySelector('svg[aria-label="Isolated checkout"]')).not.toBeNull()
