@@ -313,8 +313,7 @@ export async function createWeb(options: {
     if (settings.includes(file)) return settingsSaved(file)
     if (file.includes(`${sep}node_modules${sep}`) || tests(file)) return
     if (inside(file, webRoot) || always.includes(file) || inputs.has(file)) return touched(file)
-    if (basename(file) === 'api.ts' && roots.some((root) => inside(file, root)))
-      return settingsSaved(file)
+    if (basename(file) === 'api.ts' && roots.some((root) => inside(file, root))) settingsSaved(file)
     if (roots.some((root) => inside(file, root)))
       inProcess(
         'the web file watcher belongs to this process',

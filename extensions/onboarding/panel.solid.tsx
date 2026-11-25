@@ -641,8 +641,9 @@ function ExtensionList(props: { system: SystemInfo }) {
       } else {
         const blocked =
           enabled &&
-          props.system.extensions.some(
-            (other) => !other.enabled && extension.requires?.includes(other.name),
+          extension.requires?.some(
+            (required) =>
+              !props.system.extensions.some((other) => other.name === required && other.enabled),
           )
         setToggleAnnouncement(
           blocked

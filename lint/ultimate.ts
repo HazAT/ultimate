@@ -181,8 +181,7 @@ const declarationOf = (statement: Node) =>
   statement.type === 'ExportNamedDeclaration' &&
   statement.declaration?.type === 'VariableDeclaration' &&
   statement.declaration.declarations?.length === 1 &&
-  ['requires', 'wants'].includes(statement.declaration.declarations[0].id?.name ?? '') &&
-  statement.declaration.declarations[0].init?.type === 'ArrayExpression'
+  ['requires', 'wants'].includes(statement.declaration.declarations[0].id?.name ?? '')
 
 const apiTexts = new Map<string, string>()
 function apiText(folder: string) {
@@ -877,7 +876,7 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         const folder = extensionFolderOf(context.filename)
-        if (!own || !folder || coreExtension(own)) return {}
+        if (!own || !folder || coreTier.test(apiText(folder))) return {}
         const declared = declaredExtensions(apiText(folder), path.join(folder, 'api.ts'))
         const check = (node: ImportNode) => {
           const source = node.source?.value

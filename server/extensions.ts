@@ -499,6 +499,7 @@ export async function loadExtensions(
   ]
   let previousSettings: string | undefined
   let diagnostics: string[] = []
+  const discoveryFailed = new Set<string>()
   async function discover() {
     const active = await discoverExtensions(host.ultimateRoot, host.projectRoot, host.userHome)
     const available = await discoverExtensions(
@@ -522,11 +523,19 @@ export async function loadExtensions(
     winners?: Awaited<ReturnType<typeof discover>>,
   ) {
     winners ??= await discover()
-    for (const winner of winners)
-      if (selected && records.get(winner.name)?.enabled !== winner.enabled) {
+    for (const winner of winners) {
+      const previous = records.get(winner.name)
+      if (
+        selected &&
+        previous &&
+        (previous.enabled !== winner.enabled ||
+          (previous.offForMissing ?? []).join() !== winner.missing.join() ||
+          (discoveryFailed.has(winner.name) && !winner.error))
+      ) {
         selected.add(winner.name)
         servers?.add(winner.name)
       }
+    }
     const folders = winners.map((winner) => winner.name)
     const settings = winners.settings
     diagnostics = [
@@ -674,8 +683,10 @@ export async function loadExtensions(
         record.actions = []
         delete record.server
       }
-      if (enabled && discoveryError)
+      if (enabled && discoveryError) {
         record.server = { tools: [], sections: [], hooks: 0, docs: [], error: discoveryError }
+        discoveryFailed.add(name)
+      } else discoveryFailed.delete(name)
       if (enabled && !record.server?.error) host.builds.extension(name, path)
       if (!enabled) host.builds.remove(name)
       records.set(name, record)
