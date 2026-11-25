@@ -7,7 +7,7 @@ import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store } from '../../../../web/src/sdk/client.ts'
-import { ActivityAction } from '../../../conversations/refs.ts'
+import { ActivityAction, OverviewDoc } from '../../../conversations/refs.ts'
 import { RootsDoc } from '../../../lineage/refs.ts'
 import { MessagesDoc, StartedDoc } from '../../../messages/refs.ts'
 import { StandingDoc } from '../../../subagents/refs.ts'
@@ -181,6 +181,12 @@ it('nests branches a standing agent started under its row, folded, with an atten
   expect(group().querySelector('[aria-label="Branches of @triage"]')?.textContent).toContain('2')
   expect(group().querySelector('[data-attention]')?.textContent).toBe('1')
   expect(rows('[data-standing-flights="triage"]')).toEqual([])
+  root.send('doc', {
+    kind: OverviewDoc.kind,
+    value: { conversations: { [quiet]: { runState: 'error' } } },
+  })
+  flush()
+  expect(group().querySelector('[data-attention]')?.textContent).toBe('2')
 
   group().querySelector<HTMLElement>('[aria-label="Branches of @triage"]')!.click()
   flush()
