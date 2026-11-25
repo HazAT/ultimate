@@ -64,7 +64,7 @@ import { voicePrompt } from './prompt.ts'
 import { createRealtimeVoice } from './openai-voice.ts'
 import { MAX_SPOKEN, VOICES } from './voices.ts'
 
-const DEFAULT_MODEL = { provider: 'claude-code', modelId: 'claude-sonnet-5-5' }
+const DEFAULT_MODEL = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const PLACEHOLDER = '(no transcript yet)'
 const TRANSCRIBE_TIMEOUT_MS = 65_000
