@@ -13,7 +13,7 @@ export function DictationSettings(props: { name: string }) {
         aria-label={`Dictation settings for ${props.name}`}
         class={cn(
           buttonVariants({ size: null, variant: 'ghost' }),
-          'size-6 text-muted-foreground data-open:bg-accent pointer-coarse:size-9 group-data-minimal/keel:invisible group-data-minimal/keel:group-hover/keel:visible group-data-minimal/keel:group-focus-within/keel:visible',
+          'size-6 rounded-md text-muted-foreground data-open:bg-accent pointer-coarse:size-9',
         )}
         onPointerDown={(event) => event.preventDefault()}
         title="Dictation settings"
