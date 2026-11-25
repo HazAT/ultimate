@@ -260,7 +260,7 @@ index 5881fa888ef51eec3c39e20bf75dbf30bafda05c..62cf3cc82854ddf75a6e0ddce6c644b5
       * Why a live task cannot run here, if it cannot: its definition is missing, too old, or failed to migrate. A running
       * task, an abort-marked one, and one holding its outcome are never blocked.
 diff --git a/dist/harness/scheduler.js b/dist/harness/scheduler.js
-index 1a6472ef7931838d30c9e418540bc225dfea315a..6238c069376cd8209f9160b1eef344fc524985a1 100644
+index 1a6472ef7931838d30c9e418540bc225dfea315a..69139c51000d76e1b9f102169ebee6485f8846cc 100644
 --- a/dist/harness/scheduler.js
 +++ b/dist/harness/scheduler.js
 @@ -194,6 +194,7 @@ export class TaskScheduler {
@@ -316,6 +316,15 @@ index 1a6472ef7931838d30c9e418540bc225dfea315a..6238c069376cd8209f9160b1eef344fc
          state.publication = this.#publications;
          state.snapshot = this.#registry.snapshot();
          const next = state.snapshot.task(current.kind);
+@@ -2580,7 +2596,7 @@ export class TaskScheduler {
+                     if (typeof handler !== "function")
+                         continue;
+                     try {
+-                        await invoke(handler.bind(handlers));
++                        await invoke(handler.bind(handlers), extension);
+                     }
+                     catch (error) {
+                         if (invocation.controller.signal.aborted)
 diff --git a/dist/harness/submissions.js b/dist/harness/submissions.js
 index 908492f520c857c8198355820ad9de96fc6ff713..1d249913ddd6d85856c08149d213f40188e5ef37 100644
 --- a/dist/harness/submissions.js
@@ -356,6 +365,30 @@ index 908492f520c857c8198355820ad9de96fc6ff713..1d249913ddd6d85856c08149d213f401
      const entry = await appendInput(tx, conversationId, draft.content, draft.entry, now);
      const input = { ...fields, type: "input", status: "placed", entry: entry.id };
      const { id } = await tx.createSubmission(input);
+diff --git a/dist/harness/tool.js b/dist/harness/tool.js
+index b8508975f67dd4977f81dc1d8b99f55aaf4533ff..f06d8a7160e6a96c2ec3b2926e23b2cb99b18af4 100644
+--- a/dist/harness/tool.js
++++ b/dist/harness/tool.js
+@@ -72,7 +72,7 @@ export const ToolTask = defineTask({
+             let args = checked.args;
+             let block;
+             let sleep;
+-            await runtime.hooks.each("beforeTool", async (hook) => {
++            await runtime.hooks.each("beforeTool", async (hook, extension) => {
+                 if (block !== undefined || sleep !== undefined)
+                     return;
+                 try {
+@@ -87,7 +87,9 @@ export const ToolTask = defineTask({
+                 catch (error) {
+                     if (runtime.signal.aborted)
+                         throw error;
+-                    block = errorMessage(error);
++                    // A guard that throws still blocks, even when its error cannot be formatted; the message names it.
++                    block = `the ${extension} extension's beforeTool hook threw`;
++                    block = `${block}: ${errorMessage(error)}`;
+                 }
+             });
+             if (block !== undefined) {
 diff --git a/dist/harness/types.d.ts b/dist/harness/types.d.ts
 index 7ba2571ffb2594913c2dea1cc809f70da912b947..d204d4ef04e530053fd4522e3546e93b3abe03e7 100644
 --- a/dist/harness/types.d.ts
@@ -457,10 +490,23 @@ index 982db5f1c65c11082c91cb59ce6a2cba941047f1..0045cbf287f5c0b94f72302859851bd7
          if (typeof first === "number")
              return this.#appendEntry(first, second);
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index daaca6e107536809a827a4a2f5b5b6f1494723f8..0cd1b2e822d5340bb55a515f8513a3040f248b20 100644
+index daaca6e107536809a827a4a2f5b5b6f1494723f8..68c9ddcd9b01f6c9686f8359d3c400060d852e6d 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
-@@ -444,6 +444,8 @@ export type ContextEdit = {
+@@ -223,9 +223,10 @@ export type PhaseHandler<I, P, S, R, H extends object> = (task: RunningTask<I, P
+ export interface HookRunner<H extends object> {
+     /**
+      * Call `invoke` with each matching handler named `name`. An ordinary throw from `invoke` is reported and the next
+-     * handler runs; once the invocation is signalled, the error propagates. Composition happens inside `invoke`.
++     * handler runs; once the invocation is signalled, the error propagates. Composition happens inside `invoke`, which
++     * also gets the name of the extension that registered the handler.
+      */
+-    each<K extends keyof H>(name: K, invoke: (handler: NonNullable<H[K]>) => void | Promise<void>): Promise<void>;
++    each<K extends keyof H>(name: K, invoke: (handler: NonNullable<H[K]>, extension: string) => void | Promise<void>): Promise<void>;
+ }
+ /**
+  * Operations of one task invocation. Every operation rejects after the invocation ends; watches acquired through it
+@@ -444,6 +445,8 @@ export type ContextEdit = {
  });
  /** Immutable transcript event with separate model-facing and application-facing payloads. */
  export type EntryRecord = {
@@ -469,7 +515,7 @@ index daaca6e107536809a827a4a2f5b5b6f1494723f8..0cd1b2e822d5340bb55a515f8513a304
      readonly id: EntryId;
      readonly conversationId: ConversationId;
      /** Application-defined entry discriminator. */
-@@ -939,6 +941,8 @@ export type CommitPublication = {
+@@ -939,6 +942,8 @@ export type CommitPublication = {
   * Session may freeze them (its caches and context ranges keep them), so mutating one can throw.
   */
  export interface Tx {
