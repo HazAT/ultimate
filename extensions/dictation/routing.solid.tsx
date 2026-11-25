@@ -87,7 +87,7 @@ export function DictationShortcuts() {
             event.target.closest('[data-dictation-shortcut-recorder]'))
         )
           return
-        if (talkMode() === 'tap' && !event.repeat && matches(event)) {
+        if (talkMode() === 'tap' && !event.repeat && !owner?.active() && matches(event)) {
           const target = route()?.target
           owner = target && capture.take(target.sink)
         }
@@ -99,8 +99,8 @@ export function DictationShortcuts() {
       'keydown',
       (event) => {
         if (event.key !== 'Escape' || event.defaultPrevented) return
+        const take = capture.take()
         if (!event.repeat) {
-          const take = capture.take()
           escapeCancelled = !!take
           if (take) {
             owner = undefined
@@ -108,7 +108,7 @@ export function DictationShortcuts() {
             inProcess('a recording lives and ends with this open page', take.cancel())
           }
         }
-        if (!escapeCancelled) return
+        if (!take && !escapeCancelled) return
         event.preventDefault()
         event.stopImmediatePropagation()
       },

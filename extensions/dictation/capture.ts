@@ -62,7 +62,6 @@ function createMic(keepOpen: () => boolean) {
   let analyser: AnalyserNode | undefined
   const levels: number[] = []
   const listeners = new Set<() => void>()
-  let recording = false
 
   async function release() {
     stream?.getTracks().forEach((track) => track.stop())
@@ -102,7 +101,6 @@ function createMic(keepOpen: () => boolean) {
       'stop',
       () => {
         stopFrames?.()
-        recording = false
         const seconds = (performance.now() - started) / 1000
         const unexpected = !requestedStop
         stopped.resolve({
@@ -119,7 +117,6 @@ function createMic(keepOpen: () => boolean) {
       { once: true },
     )
     recorder.start()
-    recording = true
     const meter = analyser
     if (meter) {
       const samples = new Float32Array(meter.fftSize)
@@ -147,7 +144,6 @@ function createMic(keepOpen: () => boolean) {
 
   return {
     start,
-    recording: () => recording,
     levels: () => levels as readonly number[],
     onLevel: (listener: () => void) => {
       listeners.add(listener)
@@ -255,7 +251,6 @@ export function createCapture(keepOpen = () => false) {
       const sink = active()
       return !!sink && (!owner || owner === sink)
     },
-    recording: mic.recording,
     levels: mic.levels,
     onLevel: mic.onLevel,
     setKeepOpen: (next: () => boolean) => (keepOpen = next),

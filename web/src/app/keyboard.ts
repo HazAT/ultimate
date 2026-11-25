@@ -63,9 +63,17 @@ export function installShortcuts() {
       resetPending()
     }
   }
-  window.addEventListener('keydown', onKeyDown, { capture: true })
+  const onShortcut = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') onKeyDown(event)
+  }
+  const onEscape = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') onKeyDown(event)
+  }
+  window.addEventListener('keydown', onShortcut, { capture: true })
+  window.addEventListener('keydown', onEscape)
   return () => {
     resetPending.cancel()
-    window.removeEventListener('keydown', onKeyDown, { capture: true })
+    window.removeEventListener('keydown', onShortcut, { capture: true })
+    window.removeEventListener('keydown', onEscape)
   }
 }

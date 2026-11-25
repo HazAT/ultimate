@@ -5,7 +5,7 @@ import { PromptBox } from '@/sdk/solid'
 import type { DictationSink } from '@/sdk/solid'
 import { registry } from '../../../../web/src/sdk/client.ts'
 import { capture } from '../../capture.ts'
-import { DictationShortcuts, setFallback } from '../../routing.solid.tsx'
+import { DictationShortcuts, setFallback, setTalkMode } from '../../routing.solid.tsx'
 import dictation from '../../web.solid.tsx'
 
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
@@ -104,7 +104,7 @@ function mount(plain: DictationSink, main: DictationSink, voice?: DictationSink)
   return { container, plainEditor, mainEditor, openVoice: () => setOpen(true) }
 }
 
-function key(type: 'keydown' | 'keyup') {
+function key(type: 'keydown' | 'keyup', handled = true) {
   const event = new KeyboardEvent(type, {
     key: ' ',
     code: 'Space',
@@ -115,7 +115,7 @@ function key(type: 'keydown' | 'keyup') {
     bubbles: true,
   })
   document.activeElement!.dispatchEvent(event)
-  expect(event.defaultPrevented).toBe(true)
+  expect(event.defaultPrevented).toBe(handled)
 }
 
 async function press() {
@@ -146,6 +146,26 @@ it('records into the focused prompt box and finishes there even if focus moves b
   expect(plain.finish).toHaveBeenCalledOnce()
   expect(main.recording).not.toHaveBeenCalled()
   expect(wake).not.toHaveBeenCalled()
+})
+
+it('a second tap finishes the shortcut-owned take after focus moves to another box', async ({
+  onTestFinished,
+}) => {
+  setTalkMode('tap')
+  onTestFinished(() => setTalkMode('hold'))
+  const plain = sink()
+  const main = sink()
+  const { plainEditor, mainEditor } = mount(plain, main)
+  plainEditor.focus()
+  await press()
+  expect(plain.recording).toHaveBeenCalledOnce()
+  key('keyup', false)
+
+  mainEditor.focus()
+  await press()
+  expect(plain.finish).toHaveBeenCalledOnce()
+  expect(main.recording).not.toHaveBeenCalled()
+  expect(capture.talking()).toBe(false)
 })
 
 it('wakes the fallback before recording when no prompt box is focused', async () => {

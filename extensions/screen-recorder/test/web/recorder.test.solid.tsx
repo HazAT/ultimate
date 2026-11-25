@@ -3,7 +3,11 @@ import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { createRoot, createSignal, flush, Show } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
+import type { UltimateContext } from '@/sdk/solid'
+import { parseConversationId } from '../../../../lib/ids.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
+import { installShortcuts } from '../../../../web/src/app/keyboard.ts'
+import { registry } from '../../../../web/src/sdk/client.ts'
 import { capture } from '../../../dictation/capture.ts'
 import { DictationShortcuts } from '../../../dictation/routing.solid.tsx'
 import { recordButton } from '../../button.solid.tsx'
@@ -245,18 +249,45 @@ it('discards on Cancel and on Escape: nothing attaches and every track is releas
   expect(released).toHaveBeenCalledTimes(2)
 })
 
-it('Escape discards the screen recording first and leaves dictation for the second Escape', async ({
+it('Escape in a busy composer cancels screen recording, then dictation, then stops the run', async ({
   onTestFinished,
 }) => {
   vi.stubGlobal('isSecureContext', true)
   vi.stubGlobal('navigator', {
     mediaDevices: { getUserMedia: async () => new FakeStream([new FakeTrack('audio')]) },
   })
-  onTestFinished(() => {
+  const stopRun = vi.fn<() => void>()
+  const busyId = parseConversationId(7)
+  await registry.setLoaders({
+    '/extensions/agent/web.solid.tsx': async () => ({
+      default: {
+        commands: [
+          {
+            id: 'agent.stop',
+            title: 'Stop the run',
+            keys: 'escape',
+            whileTyping: true,
+            when: (context: UltimateContext) => context.conversationId === busyId,
+            run: stopRun,
+          },
+        ],
+      },
+    }),
+  })
+  const uninstall = installShortcuts()
+  onTestFinished(async () => {
+    uninstall()
+    await registry.setLoaders({})
+    await capture.end()
     vi.unstubAllGlobals()
   })
-  renderSolid(() => <DictationShortcuts />)
-  flush()
+  const composer = renderSolid(() => (
+    <div data-composer-target="conversation" data-conversation-scope={busyId}>
+      <DictationShortcuts />
+      <textarea aria-label="Busy composer" />
+    </div>
+  )).querySelector('textarea')!
+  composer.focus()
   const { recorder } = mount({ name: 'box A', draft: 1 })
   await press('Record the screen into box A')
   vi.stubGlobal('AudioContext', undefined)
@@ -266,19 +297,34 @@ it('Escape discards the screen recording first and leaves dictation for the seco
   expect(recorder.state().phase).toBe('recording')
   expect(capture.capturing(sink)).toBe(true)
 
-  const escape = () =>
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+  const escape = (type: 'keydown' | 'keyup' = 'keydown', repeat = false) =>
+    composer.dispatchEvent(
+      new KeyboardEvent(type, { key: 'Escape', cancelable: true, bubbles: true, repeat }),
+    )
   expect(escape()).toBe(false)
   expect(recorder.state().phase).toBe('idle')
   expect(capture.talking(sink)).toBe(true)
   expect(sink.cancel).not.toHaveBeenCalled()
+  await settle()
+  expect(stopRun).not.toHaveBeenCalled()
 
+  expect(escape('keydown', true)).toBe(false)
+  expect(capture.talking(sink)).toBe(true)
+  escape('keyup')
   expect(escape()).toBe(false)
   expect(capture.talking(sink)).toBe(false)
   await capture.end()
   expect(sink.cancel).toHaveBeenCalledOnce()
   expect(sink.finish).not.toHaveBeenCalled()
   expect(attached).toEqual([])
+  expect(stopRun).not.toHaveBeenCalled()
+
+  escape('keyup')
+  expect(escape()).toBe(false)
+  await settle()
+  expect(stopRun).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ conversationId: busyId }),
+  )
 })
 
 it('abandons a start when sharing ends during the mic prompt, or setup throws', async () => {

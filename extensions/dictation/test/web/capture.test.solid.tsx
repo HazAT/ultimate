@@ -4,7 +4,7 @@ import { createCapture } from '../../capture.ts'
 
 class FakeRecorder extends EventTarget {
   static isTypeSupported = () => true
-  static last: FakeRecorder
+  static last: FakeRecorder | undefined
   mimeType = 'audio/webm'
   state = 'inactive'
   deferStop = false
@@ -25,6 +25,7 @@ class FakeRecorder extends EventTarget {
 }
 
 beforeEach(() => {
+  FakeRecorder.last = undefined
   vi.stubGlobal('isSecureContext', true)
   vi.stubGlobal('MediaRecorder', FakeRecorder)
   vi.stubGlobal('matchMedia', () => ({ matches: false }))
@@ -71,10 +72,11 @@ it('a cancel while the mic is still starting lets a fresh press record once it h
   await Promise.all([first.started, cancelled, second.started])
   expect(capture.talking()).toBe(true)
   expect(capture.capturing()).toBe(true)
-  expect(capture.recording()).toBe(true)
+  const recorder = FakeRecorder.last!
+  expect(recorder.state).toBe('recording')
   expect(sink.recording).toHaveBeenCalledOnce()
   await second.cancel()
-  expect(capture.recording()).toBe(false)
+  expect(recorder.state).toBe('inactive')
   await capture.end()
 })
 
@@ -93,7 +95,7 @@ it('End skips a queued mic start and releases one already in flight', async () =
   await Promise.all([ended, first.started, cancelled, retake.started])
   expect(mic).toMatchObject({ acquired: 1, live: 0 })
   expect(capture.talking()).toBe(false)
-  expect(capture.recording()).toBe(false)
+  expect(FakeRecorder.last?.state).not.toBe('recording')
 })
 
 it('a mic start that fails after End cannot revive the retake queued behind it', async () => {
@@ -113,7 +115,7 @@ it('a mic start that fails after End cannot revive the retake queued behind it',
   expect(capture.talking()).toBe(false)
   const next = capture.press(sink)!
   await next.started
-  expect(capture.recording()).toBe(true)
+  expect(FakeRecorder.last?.state).toBe('recording')
   await next.cancel()
   await capture.end()
 })
@@ -124,7 +126,7 @@ it('End discards a released Voice take without disturbing a press in another box
   const voice = { ...sink, signal: session.signal }
   const first = capture.press(voice)!
   await first.started
-  const recorder = FakeRecorder.last
+  const recorder = FakeRecorder.last!
   recorder.deferStop = true
   const releasing = first.release()
   const next = capture.press(sink)!
@@ -146,7 +148,7 @@ it('settles a take once when the recorder stops on its own and lets the next pre
   const { capture, mic, sink } = testCapture()
   const first = capture.press(sink)!
   await first.started
-  FakeRecorder.last.deliverStop(true)
+  FakeRecorder.last!.deliverStop(true)
   await settle()
   expect(capture.talking()).toBe(false)
   expect(capture.capturing()).toBe(false)
@@ -158,7 +160,7 @@ it('settles a take once when the recorder stops on its own and lets the next pre
   const next = capture.press(sink)!
   await next.started
   expect(capture.capturing(sink)).toBe(true)
-  FakeRecorder.last.deliverStop()
+  FakeRecorder.last!.deliverStop()
   await settle()
   expect(capture.talking()).toBe(false)
   expect(sink.finish).toHaveBeenCalledOnce()
