@@ -1,19 +1,11 @@
 import { TriangleAlertIcon, XIcon } from '@lucide/solid'
-import {
-  createEffect,
-  createMemo,
-  createRoot,
-  createSignal,
-  For,
-  onSettled,
-  Show,
-  untrack,
-} from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onSettled, Show, untrack } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Input } from '@/components/ui/input.solid.tsx'
 import {
   defineWebExtension,
   composerDraft,
+  getState,
   fillComposer,
   resumed,
   uncoveredComposer,
@@ -30,19 +22,39 @@ const typeInLetterMs = 45
 const exitMs = 160
 const wordmark = ['U', 'L', 'T', 'I', 'M', 'A', 'T', 'E']
 const held = new URLSearchParams(location.search).has('splash')
-const [typed, setTyped] = createRoot(() => createSignal(''))
-
-function handOver() {
-  const text = typed()
-  const composer = uncoveredComposer()
-  if (!text || !(composer instanceof HTMLTextAreaElement)) return
-  const conversation = Number(composer.dataset.conversation)
-  if (!Number.isInteger(conversation)) return
+function handOver(text: string) {
+  const conversation = getState().view?.conversation.id
+  if (!text || conversation === undefined) return
   const draft = composerDraft(conversation).text
   const joined = draft ? `${draft}\n${text}` : text
   fillComposer(conversation, joined)
+  const composer = uncoveredComposer()
+  if (!(composer instanceof HTMLTextAreaElement)) return
   composer.focus()
   requestAnimationFrame(() => composer.setSelectionRange(joined.length, joined.length))
+}
+
+const isBrowserReload = (event: KeyboardEvent) =>
+  event.key === 'F5' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r')
+
+function keepKeysInside(overlay: HTMLElement) {
+  const inside = (event: KeyboardEvent) => {
+    if (isBrowserReload(event)) return
+    event.stopImmediatePropagation()
+    if (!(event.target instanceof Node && overlay.contains(event.target))) event.preventDefault()
+  }
+  const refocus = (event: FocusEvent) => {
+    if (event.target instanceof Node && !overlay.contains(event.target))
+      overlay.querySelector('input')?.focus({ preventScroll: true })
+  }
+  window.addEventListener('keydown', inside, true)
+  window.addEventListener('keyup', inside, true)
+  document.addEventListener('focusin', refocus, true)
+  return () => {
+    window.removeEventListener('keydown', inside, true)
+    window.removeEventListener('keyup', inside, true)
+    document.removeEventListener('focusin', refocus, true)
+  }
 }
 
 function Cursor() {
@@ -64,7 +76,8 @@ function Cursor() {
   )
 }
 
-function Prompt() {
+function Prompt(props: { onInput: (text: string) => void }) {
+  const [typed, setTyped] = createSignal('')
   let box: HTMLDivElement | undefined
   onSettled(() => box?.querySelector('input')?.focus({ preventScroll: true }))
   return (
@@ -78,7 +91,10 @@ function Prompt() {
       <Input
         aria-label="Start typing while Ultimate loads"
         class="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[12px] caret-brand shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
-        onValueChange={setTyped}
+        onValueChange={(text) => {
+          setTyped(text)
+          props.onInput(text)
+        }}
         placeholder="start typing, it carries over"
         value={typed()}
       />
@@ -86,7 +102,7 @@ function Prompt() {
   )
 }
 
-function Boot() {
+function Boot(props: { onInput: (text: string) => void }) {
   const connection = useConnection()
   const system = useSystem()
   const extensions = useExtensions()
@@ -147,7 +163,7 @@ function Boot() {
           )}
         </For>
       </div>
-      <Prompt />
+      <Prompt onInput={(text) => props.onInput(text)} />
     </div>
   )
 }
@@ -155,10 +171,13 @@ function Boot() {
 function Loading(props: { onDone: () => void }) {
   const ready = useReady()
   let overlay: HTMLDivElement | undefined
+  let typed = ''
   const leaving = createMemo(() => !held && ready().ready)
   createEffect(leaving, (leave) => {
-    if (!leave || !overlay) return undefined
-    void firstRender.then(handOver)
+    if (!overlay) return undefined
+    if (!leave) return keepKeysInside(overlay)
+    const text = typed
+    void firstRender.then(() => handOver(text))
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
       props.onDone()
       return undefined
@@ -180,7 +199,11 @@ function Loading(props: { onDone: () => void }) {
     >
       <progress aria-busy="true" aria-label="Loading Ultimate" aria-live="polite" class="sr-only" />
       <div class="flex w-full justify-center">
-        <Boot />
+        <Boot
+          onInput={(text) => {
+            typed = text
+          }}
+        />
       </div>
     </div>
   )
