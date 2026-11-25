@@ -37,7 +37,7 @@ vi.stubGlobal(
   },
 )
 
-const { read, stop, current } = await import('../../player.solid.tsx')
+const { read, stop, current, playSection, sectionOf } = await import('../../player.solid.tsx')
 const { speech } = await import('../../voice.solid.tsx')
 const conversation = 5 as ConversationId
 
@@ -69,4 +69,28 @@ it('after a playback failure, a later section waits for Retry instead of playing
   await Promise.resolve()
   expect(said).toEqual(['First part.'])
   expect(current()).toMatchObject({ entry: 2, error: 'The audio could not play' })
+})
+
+it('a click on a section plays it: from where it was read, or preparing from that section on', async () => {
+  stop()
+  said.length = 0
+  prepares.length = 0
+  read(conversation, 3, 'Three sections.')
+  prepares[0].resolve({ sections: 3, spoken: 'Zero one. Zero two.' })
+  await vi.waitFor(() => expect(prepares).toHaveLength(2))
+  prepares[1].resolve({ sections: 3, spoken: 'One.' })
+  await vi.waitFor(() => expect(prepares).toHaveLength(3))
+  expect([0, 1, 2].map(sectionOf)).toEqual([0, 0, 1])
+
+  playSection(conversation, 3, 'Three sections.', 1)
+  expect(speech.state.get()).toMatchObject({ index: 2, playing: true })
+  expect(said.at(-1)).toBe('One.')
+
+  playSection(conversation, 3, 'Three sections.', 2)
+  await vi.waitFor(() => expect(prepares).toHaveLength(4))
+  expect(prepares[3].args).toMatchObject({ section: 2 })
+  prepares[3].resolve({ sections: 3, spoken: 'Two.' })
+  await vi.waitFor(() => expect(said.at(-1)).toBe('Two.'))
+  expect(sectionOf(0)).toBe(2)
+  stop()
 })

@@ -26,6 +26,15 @@ lightly rewritten for listening.
   (`{ text, section }`) splits the message into sections, a short first one so audio starts quickly, and returns one
   rewritten section; the speaker streams each section's sentences into the player as it arrives. The last 200
   sections are cached in memory, so a replay is quick; a restart clears it.
+- **The highlight** (`highlight.ts`, `useSpokenText` in `ui.solid.tsx`) marks the part being spoken in any message,
+  with the CSS Custom Highlight API: no wrappers in the message's DOM. A message gives its root element and its parts
+  in order; each part is found in the rendered text by its letters and digits, so Markdown marks, links and list
+  bullets do not matter, and found again whenever the message's DOM changes (while it streams). Voice replies are
+  spoken as written, so their parts are sentences, and the player's sentence maps to the part with its text, which
+  stays right when sentences were skipped (Speak replies turned on mid-reply). The speaker's rewrite changes the
+  words, so its parts are the `prepare` sections and the player's sentence maps to the section it came from. A click
+  on a part of a message being read, or one read before on this page, plays from there; the speaker prepares from
+  that section when it was not read yet. Code blocks, tool calls and anything `not-prose` are skipped.
 - **The strip** above the composer shows Preparing, Reading or Paused with a link to the message
   (`#conversation/entry`, which opens and scrolls to it), the speed, pause and stop. It keeps playing when you switch
   conversations. On phones the Media Session API gives lock-screen pause and stop.

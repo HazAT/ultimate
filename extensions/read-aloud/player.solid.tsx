@@ -5,6 +5,7 @@ import { splitReply } from './speech.ts'
 import { speech } from './voice.solid.tsx'
 
 export type Reading = {
+  key: string
   conversation: ConversationId
   entry: number
   status: 'loading' | 'playing' | 'paused'
@@ -17,10 +18,12 @@ type Source = {
   entry: number
   text: string
   preparing: AbortController
+  sections: number[]
 }
 
 let source: Source | undefined
 let attempts = 0
+const heard = new Set<string>()
 const listeners = new Set<() => void>()
 const changed = () => {
   for (const listener of listeners) listener()
@@ -49,35 +52,54 @@ export const subscribe = (listener: () => void) => {
 
 export function current(): Reading | undefined {
   if (!source) return undefined
-  const { conversation, entry } = source
+  const { key, conversation, entry } = source
   const failure = speech.failure.get()
   if (failure?.key === source.key)
-    return { conversation, entry, status: 'paused', error: failure.message }
+    return { key, conversation, entry, status: 'paused', error: failure.message }
   const now = speech.state.get()
   if (now.key !== source.key || !(now.playing || now.paused || now.streaming)) return undefined
   return {
+    key,
     conversation,
     entry,
     status: now.playing ? 'playing' : now.paused ? 'paused' : 'loading',
   }
 }
 
-export function read(conversation: ConversationId, entry: number, text: string) {
+export const wasRead = (conversation: ConversationId, entry: number) =>
+  heard.has(`${conversation}/${entry}`)
+
+export const sectionOf = (item: number) => source?.sections[item]
+
+export function read(conversation: ConversationId, entry: number, text: string, from = 0) {
   source?.preparing.abort()
   const key = `read-aloud:${conversation}/${entry}:${++attempts}`
-  source = { key, conversation, entry, text, preparing: new AbortController() }
+  source = { key, conversation, entry, text, preparing: new AbortController(), sections: [] }
+  heard.add(`${conversation}/${entry}`)
   speech.warm()
   speech.load(key, [], true)
   setUpMediaSession()
-  void prepare(source)
+  void prepare(source, from)
 }
 
-async function prepare({ key, text, preparing }: Source) {
+export function playSection(
+  conversation: ConversationId,
+  entry: number,
+  text: string,
+  section: number,
+) {
+  const ours = source?.conversation === conversation && source.entry === entry ? source : undefined
+  const item = ours?.sections.indexOf(section) ?? -1
+  if (ours && speech.state.get().key === ours.key && item >= 0) speech.play(item)
+  else read(conversation, entry, text, section)
+}
+
+async function prepare({ key, text, preparing, sections: owners }: Source, from: number) {
   const ours = () => !preparing.signal.aborted && speech.state.get().key === key
   const parts: { text: string; final: boolean }[] = []
   let pushed = 0
   try {
-    for (let section = 0, sections = 1; section < sections && ours(); section++) {
+    for (let section = from, sections = from + 1; section < sections && ours(); section++) {
       const prepared = await api.action(
         PrepareAction,
         { text, section },
@@ -87,7 +109,10 @@ async function prepare({ key, text, preparing }: Source) {
       if (!ours()) return
       parts.push({ text: prepared.spoken, final: true })
       const { sentences } = splitReply(parts)
-      for (const sentence of sentences.slice(pushed)) speech.push(key, sentence)
+      for (const sentence of sentences.slice(pushed)) {
+        owners.push(section)
+        speech.push(key, sentence)
+      }
       pushed = sentences.length
     }
     if (ours()) speech.streaming(false)

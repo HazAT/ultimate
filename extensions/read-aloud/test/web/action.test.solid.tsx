@@ -5,7 +5,15 @@ import { expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { readAloudAction } from '../../action.solid.tsx'
 
-type Reading = { conversation: ConversationId; entry: number; status: 'playing' | 'paused' }
+type Reading = {
+  key: string
+  conversation: ConversationId
+  entry: number
+  status: 'playing' | 'paused'
+}
+
+vi.stubGlobal('CSS', { highlights: new Map() })
+vi.stubGlobal('Highlight', Set)
 
 const agent = createAgent()
 
@@ -24,10 +32,13 @@ it('reads a message aloud, then pauses and resumes it from the same button', asy
     },
     read: vi.fn<(conversation: ConversationId, entry: number, text: string) => void>(
       (conversation: ConversationId, entry: number) =>
-        set({ conversation, entry, status: 'playing' }),
+        set({ key: `${entry}`, conversation, entry, status: 'playing' }),
     ),
     pause: vi.fn<() => void>(() => set(reading && { ...reading, status: 'paused' })),
     resume: vi.fn<() => void>(() => set(reading && { ...reading, status: 'playing' })),
+    wasRead: () => false,
+    sectionOf: () => undefined,
+    playSection: () => undefined,
   }
   const ReadAloud = readAloudAction(player)
   const entry = (id: number) =>

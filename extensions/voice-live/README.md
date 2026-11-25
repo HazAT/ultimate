@@ -47,10 +47,10 @@ collect mode (optional), each with what to do when it is missing.
    concludes it and forks @ultimate afresh; End concludes it and deletes the session's recordings.
 5. **Replies** stream from the fork's live partial. Each finished sentence is spoken through read-aloud's page-wide
    speech player (`extensions/read-aloud/README.md`), with the shared Speech setting (voice, speed) that Voice settings
-   shows; the sentence being read is highlighted. Starting a read-aloud elsewhere stops voice's reply, and a new voice
+   shows; read-aloud's highlight marks the sentence being read and plays any sentence on click. Starting a read-aloud elsewhere stops voice's reply, and a new voice
    reply stops a read-aloud. Folded, the status line shows the whole paragraph being read with that sentence
    highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips by
-   sentence or paragraph; any sentence plays on click and each reply has replay. Thinking shows open while the model
+   sentence or paragraph; each reply has replay. Thinking shows open while the model
    thinks and folds once the reply has played.
 6. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
    A press while it speaks pauses at once. With real speech it cuts: speech stops, the running turn is stopped

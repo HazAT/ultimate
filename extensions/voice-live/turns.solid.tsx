@@ -36,7 +36,7 @@ import {
 import type { TurnView } from './dock.solid.tsx'
 import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
 import type { VoiceFork, VoiceTurn, VoiceUiCall } from './refs.ts'
-import { splitReply } from '../read-aloud/ui.solid.tsx'
+import { splitReply, useSpokenText } from '../read-aloud/ui.solid.tsx'
 import type { Sentence } from '../read-aloud/ui.solid.tsx'
 
 const short = (key: string) => key.slice(0, 8)
@@ -275,13 +275,12 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
     ),
   )
   const paragraphs = createMemo(() => {
-    const groups: { sentence: Sentence; index: number }[][] = []
-    sentences().sentences.forEach((sentence, index) => {
+    const groups: Sentence[][] = []
+    for (const sentence of sentences().sentences) {
       const previous = groups.at(-1)
-      if (previous && previous[0].sentence.paragraph === sentence.paragraph)
-        previous.push({ sentence, index })
-      else groups.push([{ sentence, index }])
-    })
+      if (previous && previous[0].paragraph === sentence.paragraph) previous.push(sentence)
+      else groups.push([sentence])
+    }
     return groups
   })
   const finished = createMemo(
@@ -289,17 +288,17 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
       !streaming() &&
       !(playerState().key === props.turn.key && (playerState().playing || playerState().paused)),
   )
-  const playing = (index: number) =>
-    playerState().key === props.turn.key && playerState().index === index && playerState().playing
-  const played = (index: number) =>
-    playerState().key === props.turn.key && playerState().index > index
-  const pausedAt = (index: number) =>
-    playerState().key === props.turn.key && playerState().index === index && playerState().paused
   const loadAndPlay = (index: number) => {
-    if (playerState().key !== props.turn.key)
-      dock.player.load(props.turn.key, sentences().sentences, false)
+    dock.player.load(props.turn.key, sentences().sentences, streaming())
     dock.player.play(index)
   }
+  const [text, setText] = createSignal<HTMLElement>()
+  useSpokenText(text, () => ({
+    key: props.turn.key,
+    spans: sentences().sentences.map((sentence) => sentence.text),
+    clickable: true,
+    play: loadAndPlay,
+  }))
   const thinkingNow = () => streaming() && !reply().text.trim()
   return (
     <Show when={reply().thought.trim() || reply().text.trim() || reply().calls}>
@@ -313,30 +312,11 @@ function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
           />
         </Show>
         <Show when={reply().text.trim()}>
-          <div class="markdown">
+          <div class="markdown" ref={setText}>
             <For each={paragraphs()}>
               {(group, at) => (
                 <p>
-                  <For each={group}>
-                    {({ sentence, index }) => (
-                      <>
-                        <Button
-                          aria-label={`Play from sentence ${index + 1} of turn ${short(props.turn.key)}`}
-                          class={cn(
-                            'inline h-auto rounded-sm p-0 text-left align-baseline text-[length:inherit] leading-[inherit] font-normal whitespace-normal text-inherit transition-colors duration-300 [box-decoration-break:clone] hover:bg-accent/60',
-                            played(index) && 'text-foreground/70',
-                            (playing(index) || pausedAt(index)) && 'bg-brand/15 text-foreground',
-                          )}
-                          onClick={() => loadAndPlay(index)}
-                          size={null}
-                          title="Play from here"
-                          variant={null}
-                        >
-                          {sentence.text.trim()}
-                        </Button>{' '}
-                      </>
-                    )}
-                  </For>
+                  {group.map((sentence) => sentence.text.trim()).join(' ')}{' '}
                   <Show when={at() === paragraphs().length - 1 && sentences().pending}>
                     <span class="text-muted-foreground">{sentences().pending}</span>
                   </Show>

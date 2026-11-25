@@ -19,5 +19,15 @@ export type { Speech } from './voice.solid.tsx'
 export { estimate, splitReply, splitSentences } from './speech.ts'
 /** One spoken sentence: its text, paragraph and word starts. */
 export type { Sentence } from './speech.ts'
+/**
+ * Mark what the player speaks in a rendered message: `useSpokenText(element, spoken)` with the message's root element
+ * and, while it has a source, `{ key, spans, clickable, span?, play }`. `spans` are the message's parts in order (its
+ * sentences, or its sections), found in the element's text; `span(item)` maps the player's item to a span, by default
+ * the span with the item's text. The span being spoken carries the `read-aloud` CSS highlight; with `clickable`, a
+ * click on a span calls `play(span)`.
+ */
+export { useSpokenText } from './spoken.solid.tsx'
+/** What a message being read gives the highlight. */
+export type { SpokenText } from './highlight.ts'
 /** The voices the OpenAI voice offers. */
 export { VOICES } from './voices.ts'
