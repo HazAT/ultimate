@@ -227,6 +227,16 @@ it('voice starts at low thinking; the next session keeps the level picked in its
     model: 'faux/main-faux',
     thinking: 'off',
   })
+
+  await f.action('end', null)
+  await f.server.harness.commit(async (tx) => {
+    Object.assign(await tx.doc(Session, ROOT_CONVERSATION_ID), {
+      model: 'faux/gemini-faux',
+      thinking: 'max',
+    })
+  }, context)
+  const fourth = await f.turn({ key: 'four', text: 'clamped' })
+  expect(await thinking(fourth.id)).toBe('high')
 })
 
 it('a recording whose transcript is empty is never sent to the model', async () => {

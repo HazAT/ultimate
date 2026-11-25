@@ -462,7 +462,7 @@ export const actions = {
           : {
               ready: false,
               detail: `${name} has no login`,
-              fix: 'Log in to its provider, or pick another model in the prompt box of an open voice session.',
+              fix: 'Log in to its provider, or type a first message to open a session and pick another model in its prompt box.',
             },
         transcription: transcribes
           ? {
