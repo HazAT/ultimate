@@ -578,9 +578,15 @@ export function turnsIn(state: ReturnType<ReturnType<typeof useConversation>>) {
 
 export function imagesOf(entry: EntryRecord) {
   const message = entry.model?.[0]
-  return message?.role === 'user' && Array.isArray(message.content)
-    ? message.content.flatMap((part) =>
-        part.type === 'image' ? [{ data: part.data, mimeType: part.mimeType }] : [],
+  return message?.role === 'user' ? imagesIn(message.content) : []
+}
+
+export function imagesIn(content: unknown) {
+  return Array.isArray(content)
+    ? (content as { type: string; data?: string; mimeType?: string }[]).flatMap((part) =>
+        part.type === 'image' && part.data && part.mimeType
+          ? [{ data: part.data, mimeType: part.mimeType }]
+          : [],
       )
     : []
 }

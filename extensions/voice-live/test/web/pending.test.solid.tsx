@@ -4,7 +4,12 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { dock, sendTyped } from '../../dock.solid.tsx'
 import { PendingTurns } from '../../turns.solid.tsx'
 
-const harness = vi.hoisted(() => ({ id: 40, stored: undefined as (() => void) | undefined }))
+const harness = vi.hoisted(() => ({
+  id: 40,
+  stored: undefined as (() => void) | undefined,
+  inbox: [] as unknown[],
+  entries: [] as unknown[],
+}))
 vi.mock('@/sdk/solid', async (original) => ({
   ...(await original<typeof import('@/sdk/solid')>()),
   api: {
@@ -17,7 +22,13 @@ vi.mock('@/sdk/solid', async (original) => ({
     },
   },
   useConversationId: () => () => harness.id,
-  useConversation: () => () => ({ id: harness.id, entries: [], live: {}, busy: false }),
+  useConversation: () => () => ({
+    id: harness.id,
+    entries: harness.entries,
+    inbox: harness.inbox,
+    live: {},
+    busy: false,
+  }),
   useDocOf: (_id: unknown, ref: { kind: string }) => () =>
     ref.kind === 'voice.session' ? { id: 40 } : undefined,
 }))
@@ -44,4 +55,30 @@ it('a sent turn shows in the voice fork at once and in no other conversation, an
   flush()
   expect(fork.querySelector('[data-voice-pending]')).toBeNull()
   expect(later.querySelector('[data-voice-pending]')).toBeNull()
+})
+
+it('a follow-up queued while voice is busy stays shown, once, until its turn is placed', () => {
+  const data = { key: 'queued', text: 'and then this', route: 'text' }
+  const shot = { type: 'image', data: 'cG5n', mimeType: 'image/png' }
+  harness.inbox = [
+    { id: 9, mode: 'followUp', content: [shot], entry: { kind: 'voice.turn', data } },
+  ]
+  dock.setLocal({ queued: { optimistic: data as never, conversation: 40 } })
+  const reopened = renderSolid(() => <PendingTurns />)
+  flush()
+  expect(reopened.querySelectorAll('[data-voice-pending="queued"]')).toHaveLength(1)
+
+  dock.setLocal({})
+  flush()
+  expect(reopened.querySelector('[data-voice-pending="queued"]')?.textContent).toContain(
+    'and then this',
+  )
+  expect(reopened.querySelector('[data-voice-pending="queued"] img')).not.toBeNull()
+
+  harness.inbox = []
+  harness.entries = [{ id: 1, conversationId: 40, kind: 'voice.turn', data }]
+  const placed = renderSolid(() => <PendingTurns />)
+  flush()
+  expect(placed.querySelector('[data-voice-pending]')).toBeNull()
+  harness.entries = []
 })

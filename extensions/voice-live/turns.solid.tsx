@@ -18,6 +18,7 @@ import {
 import { capture, drawWave } from '../dictation/ui.solid.tsx'
 import {
   dock,
+  imagesIn,
   imagesOf,
   playerState,
   replyOf,
@@ -27,6 +28,7 @@ import {
   useSpeaking,
   useTurns,
 } from './dock.solid.tsx'
+import { VoiceTurnEntry } from './entries.ts'
 import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceSessionDoc, VoiceUiDoc } from './refs.ts'
 import type { VoiceFork, VoiceTurn, VoiceUiCall } from './refs.ts'
 import { splitReply, useSpokenText } from '../read-aloud/ui.solid.tsx'
@@ -231,11 +233,34 @@ export function PendingTurns() {
   const id = useConversationId()
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
   const conversation = useConversation()
-  const pending = createMemo(() =>
-    id() !== undefined && id() === session()?.id
-      ? turnsIn(conversation()).turns.filter((turn) => turn.optimistic)
-      : [],
-  )
+  const pending = createMemo(() => {
+    const here = id()
+    if (here === undefined || here !== session()?.id) return []
+    const state = conversation()
+    const candidates = [
+      ...Object.entries(dock.local()).flatMap(([key, each]) =>
+        each.optimistic && (each.conversation === undefined || each.conversation === here)
+          ? [{ key, data: each.optimistic, images: each.images ?? [] }]
+          : [],
+      ),
+      ...state.inbox.flatMap((item) =>
+        item.mode !== 'write' && item.entry?.kind === VoiceTurnEntry.kind
+          ? [
+              {
+                key: (item.entry.data as VoiceTurn).key,
+                data: item.entry.data as VoiceTurn,
+                images: imagesIn(item.content),
+              },
+            ]
+          : [],
+      ),
+    ]
+    if (!candidates.length) return []
+    const shown = new Set(
+      state.entries.flatMap((entry) => (VoiceTurnEntry.is(entry) ? [entry.data.key] : [])),
+    )
+    return candidates.filter((turn) => !shown.has(turn.key) && !!shown.add(turn.key))
+  })
   return (
     <For each={pending()} keyed={(turn) => turn.key}>
       {(turn) => (
