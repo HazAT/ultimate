@@ -108,7 +108,7 @@ function Status(props: { class?: string }) {
 }
 
 function SpokenParagraph() {
-  const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
+  const state = playerState
   const paragraph = createMemo(() => {
     const items = dock.player.items()
     const current = items[state().index]
@@ -307,7 +307,7 @@ function SpeechVoice() {
 }
 
 function PlaybackStrip() {
-  const state = useExternal(dock.player.state.get, dock.player.state.subscribe)
+  const state = playerState
   const [now, setNow] = createSignal(Date.now())
   createEffect(
     () => state().playing,
