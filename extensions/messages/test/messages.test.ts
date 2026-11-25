@@ -1994,6 +1994,48 @@ it("leaves a branch's answer to @ultimate's routed answer as a note that does no
   ])
   expect(view.entries.filter((e) => e.id > note.id && e.kind === 'pi.assistant')).toHaveLength(0)
 })
+async function branchWorkedOnRequest(f: Awaited<ReturnType<typeof fixture>>) {
+  await enableBranch(f)
+  const branch = 'BRANCH ' + JSON.stringify({ prompt: 'Build\nHOLD', isolated: false })
+  await f.send('@scout', 'SEND ' + JSON.stringify({ to: '#1', text: branch }), { reply: false })
+  await until(async () => (await f.log())!.messages.some((m) => m.from === 1 && m.re !== undefined))
+  await f.opened.root.waitForIdle(context)
+  await until(f.reactorsSettled)
+  const log = (await f.log())!.messages
+  const asked = log.find((m) => m.from === f.recipient.id && m.to === 1)!
+  const id = log.find((m) => m.from === 1 && m.text.startsWith('Build'))!.to as ConversationId
+  const toAsker = async () =>
+    (await f.log())!.messages.filter((m) => m.from === 1 && m.to === f.recipient.id && m.re)
+  return { asked, id, toAsker }
+}
+it('sends no failure notice for a concluded branch that reported', async () => {
+  const f = await fixture()
+  const { asked, id, toAsker } = await branchWorkedOnRequest(f)
+  const before = await toAsker()
+  await sendMessage(f.host, id, { to: '#1', text: 'Built', reply: false }, context, {
+    report: true,
+    note: false,
+  })
+  await until(f.reactorsSettled)
+  await f.opened.root.waitForIdle(context)
+  await conversationActions.conclude({ ids: [id] }, f.action())
+  await until(f.reactorsSettled)
+  await f.opened.harness.waitForIdle(context)
+  expect(await toAsker()).toEqual(before)
+  const { owners } = (await f.opened.harness.snapshot(Serving, ROOT_CONVERSATION_ID, context))!
+  expect(owners[asked.id]).toBeUndefined()
+})
+it('tells the asker a concluded branch that never reported ended without a result', async () => {
+  const f = await fixture()
+  const { asked, id, toAsker } = await branchWorkedOnRequest(f)
+  await conversationActions.conclude({ ids: [id] }, f.action())
+  await until(f.reactorsSettled)
+  await f.opened.harness.waitForIdle(context)
+  expect((await toAsker()).at(-1)).toMatchObject({
+    state: 'failed',
+    text: `Branch #${id}, which worked on your message ${asked.id}, was concluded without reporting to @ultimate; no result will come from it.`,
+  })
+})
 it("sends @ultimate's answer to a branch it concluded to the agent whose request the branch worked on", async () => {
   // danielgriesser.com: @writer asked @ultimate for a briefing, got "I've started branch #14919", and the briefing,
   // @ultimate's answer to the branch's reply after concluding it (#13859/15161), reached no one.
@@ -2083,6 +2125,56 @@ it.each(['automations.fired', 'automations.finished'])(
         text: `Result of automation A8 "ab done", which worked on your message ${asked.id}:\n\nDone`,
       }),
     ])
+  },
+)
+it.each([
+  { concluded: false, delivery: 'steer', input: true, runs: 1 },
+  { concluded: true, delivery: 'note', input: undefined, runs: 0 },
+])(
+  'delivers a result to its asker as a note only once the asker is concluded (concluded: $concluded)',
+  async ({ concluded, delivery, input, runs }) => {
+    // #71022 landed, then @ultimate's result for its earlier request woke it: it answered and stayed open.
+    const f = await fixture()
+    await f.send('@scout', 'SEND ' + JSON.stringify({ to: '#1', text: 'Run the A/B\nHOLD' }), {
+      reply: false,
+    })
+    await until(f.holding)
+    await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A8'), context)
+    f.hold.release()
+    await f.opened.root.waitForIdle(context)
+    if (concluded)
+      await f.opened.harness.commit(async (tx) => {
+        ;(await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded'] = [
+          f.recipient.id,
+        ]
+      }, context)
+    await (
+      await f.opened.root.submit(
+        {
+          type: 'input',
+          content: 'Automation A8 "ab done" fired: AB-DONE',
+          entry: {
+            kind: 'automations.fired',
+            data: { id: 'A8', name: 'ab done', text: 'AB-DONE' },
+          },
+        },
+        context,
+      )
+    ).wait(context)
+    const routed = async () =>
+      (await f.log())!.messages.find((m) => m.to === f.recipient.id && m.routed !== undefined)
+    await until(async () => (await routed())?.state === 'delivered')
+    await f.recipient.waitForIdle(context)
+    const { id, text } = (await routed())!
+    expect(text).toContain('Result of automation A8')
+    const view = await f.recipient.context(context)
+    const entry = view.entries.find(
+      (e) => e.kind === 'board.message' && (e.data as { id?: number }).id === id,
+    )!
+    expect([entry.data, entry.input]).toEqual([expect.objectContaining({ delivery }), input])
+    expect(view.entries.filter((e) => e.id > entry.id && e.kind === 'pi.assistant')).toHaveLength(
+      runs,
+    )
   },
 )
 it("routes the answer of a run an automation woke to the branches whose report the automation's creating run read", async () => {

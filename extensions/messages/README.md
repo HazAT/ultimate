@@ -57,7 +57,8 @@ report.**
 - **Results to the asker.** A branch, waking automation or reply-expected `tell` started by @ultimate can own a request.
   New work takes it over if the run owes the request, reads its current owner's output or hears from its asker (their
   newest open request). Only the current owner's result goes back. A branch's result is final once it is concluded;
-  local askers receive a normal early answer and then a one-way result.
+  local askers receive a normal early answer and then a one-way result. A local asker that is concluded by then (a
+  branch that landed) gets the result, or the notice that none will come, as a note, so it stays concluded.
 - **Everything else wakes:** reply-enabled messages and one-way messages from anyone who is not the recipient's child or
   branch.
 
