@@ -1054,10 +1054,17 @@ it.each([
 
 it('parses summary JSON wrapped in a single markdown code fence', async () => {
   const fenced = (text: string) =>
-    generateSummary({} as Models, 'Request', new AbortController().signal, true, {
-      model: luna,
-      response: { provider: luna.provider, model: luna.id, stopReason: 'stop', text },
-    }, 'intent')
+    generateSummary(
+      {} as Models,
+      'Request',
+      new AbortController().signal,
+      true,
+      {
+        model: luna,
+        response: { provider: luna.provider, model: luna.id, stopReason: 'stop', text },
+      },
+      'intent',
+    )
   const summary = JSON.stringify({
     title: 'Improve the sidebar',
     summary: 'Renders ``` fences and {nested braces} inside summary text.',
