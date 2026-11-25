@@ -398,7 +398,7 @@ export const Dictation = definePoint<
 >('ultimate.dictation')
 /**
  * What a prompt box's record control gets, beside its attach button: `draft` is the box's draft key (boxes showing one
- * conversation share it; a box without one is keyed by its name), `attach` adds recorded files to that box like a drop (as `source`, `recording` by default; a
+ * conversation share it; a box without one is keyed by its `name`, so give such boxes distinct names), `attach` adds recorded files to that box like a drop (as `source`, `recording` by default; a
  * recording waits for a send in flight, then attaches even to a busy box) and resolves once their uploads settle, false
  * when the box refused them or moved to another draft meanwhile, and
  * `recording` turns the box's hairline red while true. Nothing shows while nothing provides it.
@@ -480,7 +480,7 @@ export interface PromptBoxProps {
   ref?: (element: HTMLTextAreaElement) => void
   /**
    * With `value`/`onValue`: whether a file is still uploading, for an owner whose own button sends; hold the send until
-   * it is false. A box that unmounts reports false once.
+   * it is false. A box that unmounts while uploading reports false.
    */
   onUploading?: (busy: boolean) => void
 }

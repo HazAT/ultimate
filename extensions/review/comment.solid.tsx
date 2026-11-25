@@ -54,7 +54,7 @@ export function Composer(props: {
         draft={undefined}
         label="Review line comment"
         minimal
-        name="the review comment"
+        name={`the review comment on ${location(props.comment)} (${props.comment.side})`}
         onKeyDown={(event) => {
           if (event.key !== 'Escape') return false
           props.onCancel()
