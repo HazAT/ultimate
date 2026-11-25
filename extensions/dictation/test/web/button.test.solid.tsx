@@ -84,6 +84,7 @@ beforeEach(({ onTestFinished }) => {
   vi.stubGlobal('isSecureContext', true)
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
   vi.stubGlobal('MediaRecorder', FakeRecorder)
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
   vi.stubGlobal('Blob', NodeBlob)
   clientStore.start()
   onTestFinished(() => clientStore.stop())

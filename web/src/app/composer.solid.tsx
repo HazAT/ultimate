@@ -228,7 +228,7 @@ function DraftComposer(props: { dock?: boolean }) {
         dictation={target()?.dictation}
         draft={target()?.draft}
         id={`composer-input-${target()?.draft}`}
-        name="the new conversation"
+        name={target()?.name ?? 'the new conversation'}
         onSubmit={(input) => redirected(target()!, input)}
         placeholder={target()?.placeholder ?? ''}
         ready={target()?.ready}
@@ -309,7 +309,8 @@ function ComposerEditor(props: { dock?: boolean }) {
     return true
   }
 
-  const label = () => (id() === undefined ? 'the conversation' : `conversation #${id()}`)
+  const label = () =>
+    target()?.name ?? (id() === undefined ? 'the conversation' : `conversation #${id()}`)
   const status = () => <Slot fallback={failed} name="composer.status" />
 
   return (

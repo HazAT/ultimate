@@ -1,4 +1,4 @@
-import { flush } from 'solid-js'
+import { createSignal, flush, Show } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { PromptBox } from '@/sdk/solid'
@@ -28,8 +28,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 class FakeRecorder extends EventTarget {
   static isTypeSupported = () => true
-  start() {}
+  state = 'inactive'
+  start() {
+    this.state = 'recording'
+  }
   stop() {
+    this.state = 'inactive'
     this.dispatchEvent(new Event('stop'))
   }
 }
@@ -63,8 +67,9 @@ const sink = () => ({
   finish: vi.fn<DictationSink['finish']>(async () => {}),
 })
 
-function mount(plain: DictationSink, main: DictationSink) {
+function mount(plain: DictationSink, main: DictationSink, voice?: DictationSink) {
   const submit = () => Promise.resolve()
+  const [open, setOpen] = createSignal(false)
   const container = renderSolid(() => (
     <>
       <DictationShortcuts />
@@ -84,10 +89,19 @@ function mount(plain: DictationSink, main: DictationSink) {
           dictation={main}
         />
       </div>
+      <Show when={open()}>
+        <PromptBox
+          draft={undefined}
+          name="Voice dock"
+          placeholder=""
+          onSubmit={submit}
+          dictation={voice}
+        />
+      </Show>
     </>
   ))
   const [plainEditor, mainEditor] = Array.from(container.querySelectorAll('textarea'))
-  return { plainEditor, mainEditor }
+  return { container, plainEditor, mainEditor, openVoice: () => setOpen(true) }
 }
 
 function key(type: 'keydown' | 'keyup') {
@@ -149,6 +163,28 @@ it('wakes the fallback before recording when no prompt box is focused', async ()
   expect(fallback.finish).toHaveBeenCalledOnce()
   expect(plain.recording).not.toHaveBeenCalled()
   expect(main.recording).not.toHaveBeenCalled()
+})
+
+it('the Voice dock can stop a take started by the unfocused shortcut', async () => {
+  const plain = sink()
+  const main = sink()
+  const voice = { ...sink(), signal: new AbortController().signal }
+  const { container, openVoice } = mount(plain, main, voice)
+  setFallback({ sink: voice, wake: openVoice })
+  await press()
+  const stop = container.querySelector<HTMLButtonElement>(
+    'button[aria-label="Stop recording for Voice dock"]',
+  )
+  expect(stop).not.toBeNull()
+  expect(container.querySelectorAll('button[data-dictation-cancel]')).toHaveLength(1)
+  stop!.click()
+  await vi.advanceTimersByTimeAsync(0)
+  flush()
+  expect(voice.finish).toHaveBeenCalledOnce()
+  expect(plain.finish).not.toHaveBeenCalled()
+  expect(main.finish).not.toHaveBeenCalled()
+  await release()
+  expect(voice.finish).toHaveBeenCalledOnce()
 })
 
 it('focuses and records into the main composer when neither focus nor fallback selects a box', async () => {

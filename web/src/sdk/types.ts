@@ -162,6 +162,8 @@ export type ComposerRenderer = Component<SolidComposerProps>
 /** Where a `ComposerRedirect` sends what the composer inside it submits, and what its empty composer says. */
 export interface ComposerTarget {
   placeholder: string
+  /** Names the redirected prompt box in its controls' labels. */
+  name?: string
   /** `images` are the pasted ones, given only to a target with `images: true`; any other refuses them. */
   send: (text: string, images: readonly { data: string; mimeType: string }[]) => Promise<unknown>
   images?: true
@@ -387,6 +389,8 @@ export type DictationTake = { blob: Blob; seconds: number; spoke: boolean; envel
 
 /** Receives microphone takes instead of transcribing and inserting them into a prompt box. */
 export type DictationSink = {
+  /** The lifetime of a take, read when the take claims the microphone. */
+  readonly signal?: AbortSignal
   /** The take has claimed the microphone and is preparing to record. */
   start?(): void
   /** The microphone is recording. */

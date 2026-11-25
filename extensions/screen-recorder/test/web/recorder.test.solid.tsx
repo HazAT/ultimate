@@ -5,6 +5,8 @@ import { createRoot, createSignal, flush, Show } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
+import { capture } from '../../../dictation/capture.ts'
+import { DictationShortcuts } from '../../../dictation/routing.solid.tsx'
 import { recordButton } from '../../button.solid.tsx'
 import { createScreenRecorder } from '../../capture.ts'
 
@@ -246,6 +248,42 @@ it('discards on Cancel and on Escape: nothing attaches and every track is releas
   expect(attached).toEqual([])
   expect(allStopped()).toBe(true)
   expect(released).toHaveBeenCalledTimes(2)
+})
+
+it('Escape discards the screen recording first and leaves dictation for the second Escape', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isSecureContext', true)
+  vi.stubGlobal('navigator', {
+    mediaDevices: { getUserMedia: async () => new FakeStream([new FakeTrack('audio')]) },
+  })
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
+  renderSolid(() => <DictationShortcuts />)
+  flush()
+  const { recorder } = mount({ name: 'box A', draft: 1 })
+  await press('Record the screen into box A (prompt box)')
+  vi.stubGlobal('AudioContext', undefined)
+  const sink = { cancel: vi.fn<() => void>(), finish: vi.fn<() => Promise<void>>(async () => {}) }
+  const dictation = capture.press(sink)!
+  await dictation.started
+  expect(recorder.state().phase).toBe('recording')
+  expect(capture.capturing(sink)).toBe(true)
+
+  const escape = () =>
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+  expect(escape()).toBe(false)
+  expect(recorder.state().phase).toBe('idle')
+  expect(capture.talking(sink)).toBe(true)
+  expect(sink.cancel).not.toHaveBeenCalled()
+
+  expect(escape()).toBe(false)
+  expect(capture.talking(sink)).toBe(false)
+  await capture.end()
+  expect(sink.cancel).toHaveBeenCalledOnce()
+  expect(sink.finish).not.toHaveBeenCalled()
+  expect(attached).toEqual([])
 })
 
 it('abandons a start when sharing ends during the mic prompt, or setup throws', async () => {

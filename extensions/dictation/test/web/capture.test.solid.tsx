@@ -1,11 +1,25 @@
+import { settle } from '@ui-sdk/core/testing'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createCapture } from '../../capture.ts'
 
 class FakeRecorder extends EventTarget {
   static isTypeSupported = () => true
+  static last: FakeRecorder
   mimeType = 'audio/webm'
-  start() {}
+  state = 'inactive'
+  deferStop = false
+  start() {
+    FakeRecorder.last = this
+    this.state = 'recording'
+  }
   stop() {
+    this.state = 'inactive'
+    if (!this.deferStop) this.deliverStop()
+  }
+  deliverStop(withAudio = false) {
+    this.state = 'inactive'
+    if (withAudio)
+      this.dispatchEvent(Object.assign(new Event('dataavailable'), { data: new Blob(['audio']) }))
     this.dispatchEvent(new Event('stop'))
   }
 }
@@ -13,12 +27,17 @@ class FakeRecorder extends EventTarget {
 beforeEach(() => {
   vi.stubGlobal('isSecureContext', true)
   vi.stubGlobal('MediaRecorder', FakeRecorder)
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
 })
 afterEach(() => vi.unstubAllGlobals())
 
 function testCapture() {
   const capture = createCapture(() => true)
-  const sink = { recording: vi.fn<() => void>(), finish: async () => {} }
+  const sink = {
+    recording: vi.fn<() => void>(),
+    cancel: vi.fn<() => void>(),
+    finish: vi.fn<() => Promise<void>>(async () => {}),
+  }
   const requested = Promise.withResolvers<void>()
   const mic = {
     asked: 0,
@@ -46,15 +65,15 @@ function testCapture() {
 
 it('a cancel while the mic is still starting lets a fresh press record once it has started', async () => {
   const { capture, sink } = testCapture()
-  const first = capture.press(sink)
-  const cancelled = capture.cancel()
-  const second = capture.press(sink)
-  await Promise.all([first, cancelled, second])
+  const first = capture.press(sink)!
+  const cancelled = first.cancel()
+  const second = capture.press(sink)!
+  await Promise.all([first.started, cancelled, second.started])
   expect(capture.talking()).toBe(true)
   expect(capture.capturing()).toBe(true)
   expect(capture.recording()).toBe(true)
   expect(sink.recording).toHaveBeenCalledOnce()
-  await capture.cancel()
+  await second.cancel()
   expect(capture.recording()).toBe(false)
   await capture.end()
 })
@@ -63,15 +82,15 @@ it('End skips a queued mic start and releases one already in flight', async () =
   const { capture, mic, sink, requested } = testCapture()
   const gate = Promise.withResolvers<void>()
   mic.gate = gate.promise
-  const first = capture.press(sink)
+  const first = capture.press(sink)!
   await requested
   expect(mic.acquired).toBe(1)
-  const cancelled = capture.cancel()
-  const retake = capture.press(sink)
+  const cancelled = first.cancel()
+  const retake = capture.press(sink)!
   const ended = capture.end()
   mic.gate = undefined
   gate.resolve()
-  await Promise.all([ended, first, cancelled, retake])
+  await Promise.all([ended, first.started, cancelled, retake.started])
   expect(mic).toMatchObject({ acquired: 1, live: 0 })
   expect(capture.talking()).toBe(false)
   expect(capture.recording()).toBe(false)
@@ -81,19 +100,68 @@ it('a mic start that fails after End cannot revive the retake queued behind it',
   const { capture, mic, sink, requested } = testCapture()
   const refuse = Promise.withResolvers<never>()
   mic.refuse = refuse.promise
-  const first = capture.press(sink)
+  const first = capture.press(sink)!
   await requested
   expect(mic.asked).toBe(1)
-  const cancelled = capture.cancel()
-  const retake = capture.press(sink)
+  const cancelled = first.cancel()
+  const retake = capture.press(sink)!
   const ended = capture.end()
   mic.refuse = undefined
   refuse.reject(new DOMException('Permission denied', 'NotAllowedError'))
-  await Promise.allSettled([ended, first, cancelled, retake])
+  await Promise.allSettled([ended, first.started, cancelled, retake.started])
   expect(mic).toMatchObject({ acquired: 0, live: 0 })
   expect(capture.talking()).toBe(false)
-  await capture.press(sink)
+  const next = capture.press(sink)!
+  await next.started
   expect(capture.recording()).toBe(true)
-  await capture.cancel()
+  await next.cancel()
+  await capture.end()
+})
+
+it('End discards a released Voice take without disturbing a press in another box', async () => {
+  const { capture, sink } = testCapture()
+  const session = new AbortController()
+  const voice = { ...sink, signal: session.signal }
+  const first = capture.press(voice)!
+  await first.started
+  const recorder = FakeRecorder.last
+  recorder.deferStop = true
+  const releasing = first.release()
+  const next = capture.press(sink)!
+  const ended = capture.end(voice)
+  session.abort()
+  await ended
+  expect(recorder.state).toBe('inactive')
+  expect(capture.talking(sink)).toBe(true)
+  recorder.deliverStop(true)
+  await Promise.all([releasing, next.started])
+  expect(voice.finish).not.toHaveBeenCalled()
+  expect(capture.talking(sink)).toBe(true)
+  expect(capture.capturing(sink)).toBe(true)
+  await next.cancel()
+  await capture.end()
+})
+
+it('settles a take once when the recorder stops on its own and lets the next press record', async () => {
+  const { capture, mic, sink } = testCapture()
+  const first = capture.press(sink)!
+  await first.started
+  FakeRecorder.last.deliverStop(true)
+  await settle()
+  expect(capture.talking()).toBe(false)
+  expect(capture.capturing()).toBe(false)
+  expect(mic.live).toBe(0)
+  await first.release()
+  expect(sink.finish).toHaveBeenCalledOnce()
+  expect(sink.cancel).not.toHaveBeenCalled()
+
+  const next = capture.press(sink)!
+  await next.started
+  expect(capture.capturing(sink)).toBe(true)
+  FakeRecorder.last.deliverStop()
+  await settle()
+  expect(capture.talking()).toBe(false)
+  expect(sink.finish).toHaveBeenCalledOnce()
+  expect(sink.cancel).toHaveBeenCalledOnce()
   await capture.end()
 })

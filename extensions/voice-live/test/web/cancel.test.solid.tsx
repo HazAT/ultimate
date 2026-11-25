@@ -1,15 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
+import { capture } from '../../../dictation/ui.solid.tsx'
 import {
-  cancelRecording,
   composeIn,
   dock,
   draftOf,
   endSession,
-  press,
-  release,
   settleTranscripts,
-  talking,
+  voiceSink,
 } from '../../dock.solid.tsx'
 
 const actions = vi.hoisted(() => [] as string[])
@@ -40,8 +38,12 @@ vi.mock('@/sdk/solid', async () => {
 class FakeRecorder extends EventTarget {
   static isTypeSupported = () => true
   mimeType = 'audio/webm'
-  start() {}
+  state = 'inactive'
+  start() {
+    this.state = 'recording'
+  }
   stop() {
+    this.state = 'inactive'
     this.dispatchEvent(new Event('stop'))
   }
 }
@@ -74,6 +76,11 @@ vi.stubGlobal('navigator', {
   userAgent: '',
   mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) },
 })
+
+const press = () => capture.press(voiceSink)?.started
+const release = () => capture.take(voiceSink)?.release()
+const cancelRecording = () => capture.take(voiceSink)?.cancel()
+const talking = () => capture.talking(voiceSink)
 
 beforeEach(async () => {
   await endSession()

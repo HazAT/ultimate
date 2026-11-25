@@ -495,6 +495,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
   const hot = () => (coldHeld() ? undefined : props.fork)
   const placeholder = () => `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`
   const target = (): ComposerTarget => ({
+    name: 'Voice dock',
     placeholder: placeholder(),
     images: true,
     dictation: voiceSink,
@@ -514,7 +515,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
             dictation={voiceSink}
             draft={hot() ?? COLD_DRAFT}
             minimal
-            name="voice"
+            name="Voice dock"
             onSubmit={(input) => sendTyped(input.text, input.images)}
             placeholder={`Talk (${holdKeys()}) or type…`}
             ready={() => draftOf().length > 0}

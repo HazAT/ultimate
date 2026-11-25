@@ -2,7 +2,7 @@ import { createRoot, onSettled } from 'solid-js'
 import { chordOf, useUiState } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.ts'
 import { capture } from './capture.ts'
-import type { Sink } from './capture.ts'
+import type { Sink, Take } from './capture.ts'
 import { createTalk } from './talk.ts'
 
 export const [talkMode, setTalkMode] = createRoot(() =>
@@ -14,7 +14,7 @@ export const [shortcut, setShortcut] = createRoot(() =>
 export const keyChord = (event: KeyboardEvent) =>
   event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
 
-type Target = { sink: Sink; wake?: () => void; signal?: AbortSignal; ready?: () => boolean }
+type Target = { sink: Sink; wake?: () => void; ready?: () => boolean }
 type Box = Target & { root: Element }
 
 const boxes = new Map<Element, Box>()
@@ -46,20 +46,11 @@ function route() {
 
 export function DictationShortcuts() {
   onSettled(() => {
-    let owner: { sink: Sink; take: number } | undefined
+    let owner: Take | undefined
+    const matches = (event: KeyboardEvent) => keyChord(event) === shortcut().trim().toLowerCase()
     const talk = createTalk({
       tap: () => talkMode() === 'tap',
-      talking() {
-        if (!capture.talking()) return false
-        if (owner && owner.take === capture.take(owner.sink)) return true
-        const target = route()?.target
-        if (!target) return false
-        const sink = target.sink
-        const take = capture.take(sink, target.signal)
-        if (take === undefined) return false
-        owner = { sink, take }
-        return true
-      },
+      talking: () => owner?.active() ?? false,
       async press() {
         owner = undefined
         const routed = route()
@@ -68,22 +59,17 @@ export function DictationShortcuts() {
         const { target } = routed
         if (target.ready && !target.ready()) return
         target.wake?.()
-        const { sink, signal } = target
-        const pressed = capture.press(sink, signal)
-        const take = capture.take(sink, signal)
-        if (take !== undefined) owner = { sink, take }
-        await pressed
+        owner = capture.press(target.sink)
+        await owner?.started
       },
       async release() {
         const finishing = owner
         owner = undefined
-        if (finishing && finishing.take === capture.take(finishing.sink)) {
-          await capture.release(finishing.sink)
-        }
+        await finishing?.release()
       },
-      cancel: () => capture.cancel(),
+      cancel: async () => owner?.cancel(),
       overCancel: () => false,
-      matches: (event) => keyChord(event) === shortcut().trim().toLowerCase(),
+      matches,
     })
     const listeners = new AbortController()
     const options = { capture: true, signal: listeners.signal }
@@ -95,27 +81,36 @@ export function DictationShortcuts() {
     window.addEventListener(
       'keydown',
       (event) => {
-        if (event.key === 'Escape') {
-          if (!event.repeat) {
-            escapeCancelled = capture.talking()
-            if (escapeCancelled) {
-              owner = undefined
-              talk.reset()
-              inProcess('a recording lives and ends with this open page', capture.cancel())
-            }
-          }
-          if (!escapeCancelled) return
-          event.preventDefault()
-          event.stopImmediatePropagation()
-        } else if (
-          !(
-            event.target instanceof Element &&
-            event.target.closest('[data-dictation-shortcut-recorder]')
-          ) &&
-          talk.keyDown(event)
-        ) {
-          swallow(event)
+        if (
+          event.key === 'Escape' ||
+          (event.target instanceof Element &&
+            event.target.closest('[data-dictation-shortcut-recorder]'))
+        )
+          return
+        if (talkMode() === 'tap' && !event.repeat && matches(event)) {
+          const target = route()?.target
+          owner = target && capture.take(target.sink)
         }
+        if (talk.keyDown(event)) swallow(event)
+      },
+      options,
+    )
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return
+        if (!event.repeat) {
+          const take = capture.take()
+          escapeCancelled = !!take
+          if (take) {
+            owner = undefined
+            talk.reset()
+            inProcess('a recording lives and ends with this open page', take.cancel())
+          }
+        }
+        if (!escapeCancelled) return
+        event.preventDefault()
+        event.stopImmediatePropagation()
       },
       options,
     )

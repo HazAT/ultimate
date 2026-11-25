@@ -62,25 +62,18 @@ function createMic(keepOpen: () => boolean) {
   let analyser: AnalyserNode | undefined
   const levels: number[] = []
   const listeners = new Set<() => void>()
-  let recorder: MediaRecorder | undefined
-  let chunks: Blob[] = []
-  let started = 0
-  let voiced = 0
-  let stopFrames: (() => void) | undefined
+  let recording = false
 
-  function release() {
-    stopFrames?.()
-    if (recorder && recorder.state !== 'inactive') recorder.stop()
-    recorder = undefined
+  async function release() {
     stream?.getTracks().forEach((track) => track.stop())
     stream = undefined
     analyser = undefined
     const closing = audio
     audio = undefined
-    return closing?.close()
+    await closing?.close()
   }
 
-  async function start() {
+  async function start(unexpectedStop: () => void) {
     stream ??= await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
     })
@@ -94,17 +87,39 @@ function createMic(keepOpen: () => boolean) {
       }
     }
     const mimeType = recordingMimeOrder.find((type) => MediaRecorder.isTypeSupported(type))
-    const active = new MediaRecorder(stream, mimeType ? { mimeType } : {})
-    const captured: Blob[] = []
-    chunks = captured
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+    const chunks: Blob[] = []
+    const stopped = Promise.withResolvers<{ audio: Recorded; unexpected: boolean }>()
+    let requestedStop = false
+    let stopFrames: (() => void) | undefined
+    let voiced = 0
     levels.length = 0
-    voiced = 0
-    active.addEventListener('dataavailable', ({ data }) => {
-      if (data.size) captured.push(data)
+    const started = performance.now()
+    recorder.addEventListener('dataavailable', ({ data }) => {
+      if (data.size) chunks.push(data)
     })
-    active.start()
-    recorder = active
-    started = performance.now()
+    recorder.addEventListener(
+      'stop',
+      () => {
+        stopFrames?.()
+        recording = false
+        const seconds = (performance.now() - started) / 1000
+        const unexpected = !requestedStop
+        stopped.resolve({
+          unexpected,
+          audio: {
+            blob: new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }),
+            seconds,
+            spoke: seconds >= MIN_SPOKEN_SECONDS && voiced >= MIN_VOICED_FRAMES,
+            envelope: levels.slice(),
+          },
+        })
+        if (unexpected) unexpectedStop()
+      },
+      { once: true },
+    )
+    recorder.start()
+    recording = true
     const meter = analyser
     if (meter) {
       const samples = new Float32Array(meter.fftSize)
@@ -118,33 +133,21 @@ function createMic(keepOpen: () => boolean) {
         for (const listener of listeners) listener()
       })
     }
-  }
-
-  async function stop(): Promise<Recorded | undefined> {
-    const active = recorder
-    if (!active) return undefined
-    recorder = undefined
-    stopFrames?.()
-    stopFrames = undefined
-    const stopped = new Promise<void>((resolve) =>
-      active.addEventListener('stop', () => resolve(), { once: true }),
-    )
-    active.stop()
-    await stopped
-    const seconds = (performance.now() - started) / 1000
-    if (!keepOpen()) await release()
-    return {
-      blob: new Blob(chunks, { type: active.mimeType || 'audio/webm' }),
-      seconds,
-      spoke: seconds >= MIN_SPOKEN_SECONDS && voiced >= MIN_VOICED_FRAMES,
-      envelope: levels.slice(),
+    return async () => {
+      if (recorder.state !== 'inactive') {
+        requestedStop = true
+        recorder.stop()
+      }
+      const result = await stopped.promise
+      if (result.unexpected || !keepOpen() || matchMedia('(pointer: coarse)').matches)
+        await release()
+      return result
     }
   }
 
   return {
     start,
-    stop,
-    recording: () => recorder !== undefined,
+    recording: () => recording,
     levels: () => levels as readonly number[],
     onLevel: (listener: () => void) => {
       listeners.add(listener)
@@ -154,124 +157,103 @@ function createMic(keepOpen: () => boolean) {
   }
 }
 
+export type Take = {
+  active(): boolean
+  started: Promise<void>
+  release(): Promise<void>
+  cancel(): Promise<void>
+}
+
 export function createCapture(keepOpen = () => false) {
   const mic = createMic(() => keepOpen())
-  const [active, setActive] = createSignal<{ sink: Sink; signal?: AbortSignal }>()
-  let sink: Sink | undefined
-  let lifetime: AbortSignal | undefined
-  let pressing = 0
-  let released = 0
-  let ended = 0
-  let cap: (() => void) | undefined
+  const [active, setActive] = createSignal<Sink>()
+  let current: { sink: Sink; take: Take } | undefined
+  const latest = new WeakMap<Sink, Take>()
   let micWork: Promise<unknown> = Promise.resolve()
   const onMic = <T>(work: () => Promise<T>) => {
     const run = micWork.then(work, work)
     micWork = run
     return run
   }
-  const clear = () => {
-    cap?.()
-    cap = undefined
-    setActive(undefined)
-  }
+  const onPage = (work: Promise<void>) => inProcess('the recording belongs to this page', work)
 
-  async function press(next: Sink, signal?: AbortSignal) {
-    if (pressing > released || signal?.aborted) return
+  function press(sink: Sink): Take | undefined {
+    const signal = sink.signal
+    if (current || signal?.aborted) return undefined
     const reason = unsupported()
     if (reason) {
-      next.error?.(reason)
-      return
+      sink.error?.(reason)
+      return undefined
     }
-    const mine = ++pressing
-    sink = next
-    lifetime = signal
-    next.start?.()
-    let started: boolean
-    try {
-      started = await onMic(async () => {
-        if (released >= mine) return false
-        try {
-          await mic.start()
-        } catch (failure) {
-          await mic.release()
-          throw failure
-        }
-        if (released < mine) {
-          cap = deadline(MAX_RECORDING_MS, () =>
-            inProcess('the recording belongs to this page', release(next)),
-          )
-        }
-        return true
+    let stopMic: Awaited<ReturnType<typeof mic.start>> | undefined
+    let cap: (() => void) | undefined
+    const abort = () => onPage(take.cancel())
+    const clear = () => {
+      current = undefined
+      setActive(undefined)
+      signal?.removeEventListener('abort', abort)
+      cap?.()
+      cap = undefined
+    }
+    const discard = () => {
+      if (latest.get(sink) === take) sink.cancel?.()
+    }
+    async function stop(send: boolean) {
+      if (!take.active()) return
+      clear()
+      const result = await onMic(async () => {
+        const finishMic = stopMic
+        stopMic = undefined
+        return finishMic?.()
       })
-    } catch (failure) {
-      if (pressing !== mine) return
-      released = mine
-      sink = undefined
-      next.cancel?.()
-      if (!signal?.aborted) next.error?.(micFailure(failure))
-      return
+      if (!send || signal?.aborted || !result || (result.unexpected && !result.audio.blob.size))
+        discard()
+      else await sink.finish(result.audio, latest.get(sink) !== take)
     }
-    if (released >= mine) {
-      if (!started && (pressing === mine || sink !== next)) next.cancel?.()
-      return
+    const take: Take = {
+      active: () => current?.take === take,
+      release: () => stop(true),
+      cancel: () => stop(false),
+      started: onMic(async () => {
+        if (!take.active()) return
+        try {
+          stopMic = await mic.start(() => onPage(take.release()))
+        } catch (failure) {
+          if (take.active()) {
+            clear()
+            discard()
+          }
+          if (!signal?.aborted && latest.get(sink) === take) sink.error?.(micFailure(failure))
+          await mic.release()
+          return
+        }
+        if (!take.active()) return
+        cap = deadline(MAX_RECORDING_MS, () => onPage(take.release()))
+        setActive(sink)
+        sink.recording?.()
+      }),
     }
-    setActive({ sink: next, signal })
-    next.recording?.()
-  }
-
-  async function cancel(owner?: Sink) {
-    if (owner && owner !== sink) return
-    const take = pressing
-    const cancelled = sink
-    released = take
-    clear()
-    await onMic(() => mic.stop())
-    if (pressing === take) sink = undefined
-    if (sink !== cancelled) cancelled?.cancel?.()
-  }
-
-  async function release(owner?: Sink) {
-    if (owner && owner !== sink) return
-    const take = pressing
-    const finishing = sink
-    const signal = lifetime
-    released = take
-    clear()
-    const recorded = await onMic(() => mic.stop())
-    const current = pressing === take
-    if (current) sink = undefined
-    if (!recorded || take <= ended || signal?.aborted) return
-    await finishing?.finish(recorded, !current && sink === finishing)
+    current = { sink, take }
+    latest.set(sink, take)
+    signal?.addEventListener('abort', abort, { once: true })
+    sink.start?.()
+    return take
   }
 
   async function end(owner?: Sink) {
-    if (owner && sink && owner !== sink) return
-    const cancelled = sink
-    released = pressing
-    ended = pressing
-    sink = undefined
-    clear()
-    await onMic(async () => mic.release())
-    if (sink !== cancelled) cancelled?.cancel?.()
+    if (owner && current && owner !== current.sink) return
+    await Promise.all([current?.take.cancel(), onMic(mic.release)])
   }
 
-  const take = (owner?: Sink, signal?: AbortSignal) =>
-    pressing > released && (!owner || owner === sink) && (!signal || signal === lifetime)
-      ? pressing
-      : undefined
-
+  const take = (owner?: Sink) => (!owner || owner === current?.sink ? current?.take : undefined)
   return {
     press,
-    release,
-    cancel,
     end,
     take,
-    talking: (owner?: Sink, signal?: AbortSignal) => take(owner, signal) !== undefined,
-    capturing: (owner?: Sink, signal?: AbortSignal) => {
-      const current = active()
-      return (
-        !!current && (!owner || owner === current.sink) && (!signal || signal === current.signal)
-      )
+    talking: (owner?: Sink) => take(owner) !== undefined,
+    capturing: (owner?: Sink) => {
+      const sink = active()
+      return !!sink && (!owner || owner === sink)
     },
     recording: mic.recording,
     levels: mic.levels,

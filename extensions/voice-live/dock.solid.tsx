@@ -89,7 +89,7 @@ export const dock = createRoot(() => {
   const player: Player = createPlayer({
     rate,
     enabled: speak,
-    listening: capture.recording,
+    listening,
     frame: animationFrames,
     engine: () => (openaiOn() ? openai : system),
   })
@@ -117,7 +117,7 @@ export const dock = createRoot(() => {
     setOpen,
     phase,
     setPhase,
-    capturing: () => capture.capturing(voiceSink),
+    capturing: listening,
     status,
     setStatus,
     local,
@@ -134,7 +134,7 @@ export const dock = createRoot(() => {
     hold: (value: typeof held) => (held = value),
     pulse(on: boolean) {
       stopPulse?.()
-      stopPulse = on ? every(1600, () => !capture.recording() && cues.thinking()) : undefined
+      stopPulse = on ? every(1600, () => !listening() && cues.thinking()) : undefined
     },
   }
 })
@@ -213,7 +213,7 @@ export function settleTranscripts(
 
 export const voiceOpen = () => dock.open()
 export const setVoiceOpen = (open: boolean) => {
-  if (!open && talking()) void cancelRecording()
+  if (!open) void capture.take(voiceSink)?.cancel()
   dock.setOpen(open)
 }
 export const playerState = createRoot(() => {
@@ -263,7 +263,14 @@ function markCut() {
   return hintFor(reply.key, reply.text, cut)
 }
 
+function listening() {
+  return capture.capturing(voiceSink)
+}
+
 export const voiceSink: Sink = {
+  get signal() {
+    return live.signal
+  },
   start() {
     dock.setError(undefined)
     const paused = dock.player.pause()
@@ -284,17 +291,9 @@ export const voiceSink: Sink = {
   finish: finishRecording,
 }
 
-export const talking = () => capture.talking(voiceSink)
-export const press = () => capture.press(voiceSink, live.signal)
-export const release = () => capture.release(voiceSink)
-export const cancelRecording = () => capture.cancel(voiceSink)
-
 export function registerVoiceFallback() {
   setFallback({
     sink: voiceSink,
-    get signal() {
-      return live.signal
-    },
     wake: () => {
       if (!voiceOpen()) setVoiceOpen(true)
     },
@@ -734,7 +733,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         !latest.answered &&
         started.has(latest.key) &&
         dock.pending() === latest.key &&
-        !capture.recording()
+        !listening()
       ) {
         trace.fail('stopped')
         dock.pulse(false)
@@ -747,7 +746,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         dock.player.load(latest.key, [], latest.busy)
         if (sentences.length) {
           dock.pulse(false)
-          if (!capture.recording()) dock.cues.firstWord()
+          if (!listening()) dock.cues.firstWord()
           trace.start('voice')
         }
       }

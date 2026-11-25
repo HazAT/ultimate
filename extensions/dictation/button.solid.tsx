@@ -15,7 +15,7 @@ import {
 import type { Dictation } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import { base64, capture, unsupported } from './capture.ts'
-import type { Sink } from './capture.ts'
+import type { Sink, Take } from './capture.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 import { registerBox, talkMode } from './routing.solid.tsx'
 import { DictationSettings } from './settings.solid.tsx'
@@ -52,6 +52,9 @@ export function VoiceButton(props: DictationProps) {
     | { conversation: ConversationId; insert: (text: string) => void; source: string }
     | undefined
   const defaultSink: Sink = {
+    get signal() {
+      return lifetime.signal
+    },
     start() {
       pending = { conversation: id() ?? ROOT, insert: props.insert, source: 'app' }
       setError(undefined)
@@ -67,17 +70,16 @@ export function VoiceButton(props: DictationProps) {
     },
   }
   const sink = () => props.sink ?? defaultSink
-  const taking = () => capture.talking(sink(), lifetime.signal)
-  const recording = () => capture.capturing(sink(), lifetime.signal)
+  const take = () => capture.take(sink())
+  const recording = () => capture.capturing(sink())
   const started = createMemo(() => (recording() ? Date.now() : undefined))
   const now = useNow(250, recording)
 
   createEffect(
     () => [id(), sink()] as const,
-    ([, owner]) => {
+    () => {
       if (lifetime.signal.aborted) lifetime = new AbortController()
       return () => {
-        if (capture.talking(owner, lifetime.signal)) void capture.cancel(owner)
         lifetime.abort()
         pending = undefined
       }
@@ -89,7 +91,7 @@ export function VoiceButton(props: DictationProps) {
       if (!active) return undefined
       level(0)
       const unsubscribe = capture.onLevel(() => {
-        if (capture.capturing(owner, lifetime.signal)) level(capture.levels().at(-1) ?? 0)
+        if (capture.capturing(owner)) level(capture.levels().at(-1) ?? 0)
       })
       return () => {
         unsubscribe()
@@ -138,40 +140,31 @@ export function VoiceButton(props: DictationProps) {
       get sink() {
         return sink()
       },
-      get signal() {
-        return lifetime.signal
-      },
       ready,
     })
   })
 
-  async function pressMic() {
-    if (!capture.talking() && ready()) await capture.press(sink(), lifetime.signal)
+  function pressMic() {
+    return !capture.talking() && ready() ? capture.press(sink()) : undefined
   }
 
-  function release(source: string) {
-    if (!taking()) return Promise.resolve()
+  async function release(owner: Take | undefined, source: string) {
+    if (!owner?.active()) return
     if (pending) pending.source = source
-    return capture.release(sink())
+    await owner.release()
   }
 
   let pointer: number | undefined
-  let pointerTake: number | undefined
-  const isPointerTake = () =>
-    pointerTake !== undefined && pointerTake === capture.take(sink(), lifetime.signal)
+  let pointerTake: Take | undefined
   const touch = createTalk({
     tap: () => talkMode() === 'tap',
-    talking: isPointerTake,
+    talking: () => pointerTake?.active() ?? false,
     press: async () => {
-      if (taking()) return
-      const pressed = pressMic()
-      pointerTake = capture.take(sink(), lifetime.signal)
-      await pressed
+      pointerTake = pressMic()
+      await pointerTake?.started
     },
-    release: async () => {
-      if (isPointerTake()) await release('person')
-    },
-    cancel: () => capture.cancel(sink()),
+    release: () => release(pointerTake, 'person'),
+    cancel: async () => pointerTake?.cancel(),
     overCancel: (event) =>
       row.contains(
         document
@@ -236,7 +229,8 @@ export function VoiceButton(props: DictationProps) {
                   (event.pointerType === 'touch' || event.pointerType === 'pen')
                 )
                   return undefined
-                return taking() ? release(details.source) : pressMic()
+                const owner = take()
+                return owner ? release(owner, details.source) : pressMic()?.started
               }}
               onPointerDown={startTouch}
               size={null}
@@ -261,7 +255,7 @@ export function VoiceButton(props: DictationProps) {
             aria-label={`Cancel dictation into ${props.name}`}
             class={`${buttonSize} text-muted-foreground`}
             data-dictation-cancel
-            onClick={() => (taking() ? capture.cancel(sink()) : undefined)}
+            onClick={() => take()?.cancel()}
             onPointerDown={keepEditorFocus}
             size={null}
             title="Cancel"
@@ -280,7 +274,7 @@ export function VoiceButton(props: DictationProps) {
                 : `Stop and transcribe into ${props.name}`
             }
             class={`${stopSize} bg-error text-white hover:bg-error/90`}
-            onClick={(_event, details) => release(details.source)}
+            onClick={(_event, details) => release(take(), details.source)}
             onPointerDown={keepEditorFocus}
             size={null}
             title={props.sink ? 'Stop recording' : 'Stop and transcribe'}

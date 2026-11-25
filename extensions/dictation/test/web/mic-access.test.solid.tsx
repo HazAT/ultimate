@@ -22,20 +22,21 @@ it('a press refused before the mic leaves capture usable for the next press', as
   const capture = createCapture()
   const sink = testSink()
   vi.stubGlobal('isSecureContext', false)
-  await capture.press(sink)
+  await capture.press(sink)?.started
   expect(sink.error).toHaveBeenLastCalledWith(
     'Voice needs HTTPS: open Ultimate over its tailnet URL',
   )
   expect(capture.talking()).toBe(false)
 
   const getUserMedia = denyingBrowser('Mozilla/5.0 (X11; Linux x86_64)')
-  await capture.press(sink)
+  const take = capture.press(sink)!
+  await take.started
   expect(getUserMedia).toHaveBeenCalledOnce()
   expect(sink.error).toHaveBeenLastCalledWith(
     'Microphone access is blocked: allow it in the browser’s site settings',
   )
   expect(capture.talking()).toBe(false)
-  await capture.release()
+  await take.release()
   expect(sink.finish).not.toHaveBeenCalled()
 })
 
@@ -43,7 +44,7 @@ it('names the app’s web view when it denies the mic', async () => {
   const capture = createCapture()
   const sink = testSink()
   denyingBrowser('Mozilla/5.0 (Linux; Android 16; Pixel; wv) AppleWebKit/537.36')
-  await capture.press(sink)
+  await capture.press(sink)?.started
   expect(sink.error).toHaveBeenLastCalledWith(
     'Microphone denied: this app must declare and grant the microphone to its web view',
   )
