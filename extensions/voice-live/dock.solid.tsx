@@ -194,6 +194,12 @@ export const playerState = createRoot(() => {
 const patchLocal = (key: string, change: Partial<Local>) =>
   dock.setLocal((all) => ({ ...all, [key]: { ...all[key], ...change } }))
 
+export const retire = (key: string) =>
+  dock.setLocal(({ [key]: { optimistic: _stored, images: _shown, ...kept }, ...rest }) => ({
+    ...rest,
+    [key]: kept,
+  }))
+
 let generating = false
 const replying = () => generating || dock.phase() === 'thinking' || dock.phase() === 'sending'
 
@@ -482,6 +488,7 @@ async function sendTurn(input: {
         { signal },
       )
       patchLocal(key, { conversation: sent.conversation })
+      if (!sent.dropped) retire(key)
       if (dock.pending() !== key) {
         if (sent.dropped) dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
         return !sent.dropped
@@ -567,19 +574,6 @@ export function turnsIn(state: ReturnType<ReturnType<typeof useConversation>>) {
         optimistic: true,
       })
   return { turns, busy: state.busy }
-}
-
-export function retireStored(turns: readonly TurnView[]) {
-  const stored = turns.filter((turn) => !turn.optimistic && dock.local()[turn.key]?.optimistic)
-  if (!stored.length) return
-  dock.setLocal((all) => {
-    const next = { ...all }
-    for (const { key } of stored) {
-      const { optimistic: _sent, images: _shown, ...kept } = next[key]
-      next[key] = kept
-    }
-    return next
-  })
 }
 
 export function imagesOf(entry: EntryRecord) {

@@ -21,7 +21,6 @@ import {
   imagesOf,
   playerState,
   replyOf,
-  retireStored,
   setActivity,
   settleTranscripts,
   turnsIn,
@@ -74,7 +73,7 @@ const answer = '[data-from="assistant"]'
 
 function useSpokenReply(key: () => string, turnRow: () => Element | undefined) {
   const conversation = useConversation()
-  const spoken = () => playerState().key === key()
+  const spoken = createMemo(() => playerState().key === key())
   const sentences = createMemo(() => {
     if (!spoken()) return []
     const state = conversation()
@@ -358,10 +357,6 @@ export function Voicing(props: { fork: ConversationId }) {
     },
   )
   onCleanup(() => setActivity({ done: 0 }))
-  createEffect(
-    () => turns().turns,
-    (all) => retireStored(all),
-  )
   useSpeaking(turns)
   return null
 }
