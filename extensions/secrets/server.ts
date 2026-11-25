@@ -64,11 +64,15 @@ export const actions: Record<string, ExtensionAction> = {
     const input = args as { name?: unknown; value?: unknown } | null
     validateName(input?.name)
     validateValue(input?.value)
-    return writeSecret(host.userHome, input.name, input.value)
+    const written = await writeSecret(host.userHome, input.name, input.value)
+    await host.modelRuntime.refresh({ allowNetwork: false })
+    return written
   }),
   delete: implementAction(DeleteAction, async (args, { host }) => {
     const input = args as { name?: unknown } | null
     validateName(input?.name)
-    return writeSecret(host.userHome, input.name)
+    const written = await writeSecret(host.userHome, input.name)
+    await host.modelRuntime.refresh({ allowNetwork: false })
+    return written
   }),
 }

@@ -35,6 +35,7 @@ minimumReleaseAgeExclude:
 # Pi upstream: @earendil-works/pi-durable@1.6.0 dist/harness/compaction.js: a compaction summary may use the model's output limit, as pi-coding-agent's has since pi #9512, instead of 0.8 × reserveTokens, which reasoning used up. Drop when Pi Durable sizes summaries the same way.
 # patches/@earendil-works__chord@1.6.0.patch and patches/@earendil-works__pi-durable@1.6.0.patch: pnpm errors when a versioned patch no longer matches.
 # Pi upstream: @earendil-works/pi-ai@1.6.0 dist/api/constrained-sampling.js — getGrammarToolInput replays a recorded grammar tool call without its string input as its JSON instead of throwing, which failed every later request of the conversation. Drop when upstream replays such calls.
+# Pi upstream: @earendil-works/pi-coding-agent@1.6.0 dist/core/model-runtime.js — ModelRuntime.create() passes an authContext option to createModels, so provider keys in Ultimate's Secrets resolve like environment variables (lib/secrets.ts secretsAuthContext). Drop when upstream accepts an authContext.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 (d5b5e04c314d3452d357174d16d10dda34daa2d2) src/claude-cli.ts — rebuild replay cache markers within Claude's four-block limit; word a response that ends without Claude Code's own error so pi-ai retries it ("stream ended without"), with stderr as detail only (#562356); accept the bare-string first user message Claude Code sends when replaying a history that starts with "/"; src/stream.ts — resolve a tool named without its MCP prefix instead of ending the turn, and parse a streaming tool call's partial arguments; src/transcript.ts — define later tools inline (inline-tools beta) instead of falling back to one merged system prompt after a tool redefinition. Drop when upstream fixes this.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — drain waits remove error listeners, and turn and discovery stdin absorb write errors without a pending drain. Drop when upstream fixes this.
 # Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts — useSpawn() sets how Claude Code's processes start (lib/spawn.ts). Drop when upstream accepts a spawn function.
@@ -53,4 +54,5 @@ patchedDependencies:
   '@earendil-works/chord@1.6.0': patches/@earendil-works__chord@1.6.0.patch
   '@earendil-works/pi-ai@1.6.0': patches/@earendil-works__pi-ai@1.6.0.patch
   '@earendil-works/pi-claude-code@0.1.0': patches/@earendil-works__pi-claude-code@0.1.0.patch
+  '@earendil-works/pi-coding-agent@1.6.0': patches/@earendil-works__pi-coding-agent@1.6.0.patch
   '@earendil-works/pi-durable@1.6.0': patches/@earendil-works__pi-durable@1.6.0.patch

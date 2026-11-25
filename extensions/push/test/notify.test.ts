@@ -28,7 +28,10 @@ vi.mock('../push.ts', () => ({
     return { status: 201, gone: false }
   },
 }))
-vi.mock('../../../lib/secrets.ts', () => ({ readSecret: () => Promise.resolve('private-key') }))
+vi.mock('../../../lib/secrets.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/secrets.ts')>()),
+  readSecret: () => Promise.resolve('private-key'),
+}))
 
 const opened: OpenHost[] = []
 afterEach(async () => {
