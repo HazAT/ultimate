@@ -1,4 +1,4 @@
-import { readdir, readFile, rm } from 'node:fs/promises'
+import { readdir, readFile, realpath, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
@@ -398,6 +398,7 @@ export async function agentRoots(ultimateRoot: string, projectRoot: string, user
   )
   const trust = readDecision(projectRoot, userHome)
   const projectAgents = join(projectRoot, '.ultimate/agents')
+  const projectIsUserHome = (await realpath(projectRoot)) === (await realpath(userHome))
   const errors: AgentDiscovery['errors'] = [
     ...extensions.flatMap((extension) =>
       extension.error === undefined
@@ -428,7 +429,9 @@ export async function agentRoots(ultimateRoot: string, projectRoot: string, user
       .filter((extension) => extension.files.includes('agents'))
       .map((extension) => ({ source: 'builtin' as const, path: join(extension.path, 'agents') })),
     { source: 'user' as const, path: join(userHome, '.ultimate/agents') },
-    ...(trust.decision === true ? [{ source: 'project' as const, path: projectAgents }] : []),
+    ...(trust.decision === true && !projectIsUserHome
+      ? [{ source: 'project' as const, path: projectAgents }]
+      : []),
   ]
   return Object.assign(roots, { errors })
 }

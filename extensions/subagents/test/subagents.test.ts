@@ -1779,6 +1779,23 @@ describe('subagents', () => {
     })
     expect(found.replaced).toEqual([])
   })
+  it('applies an overlay once when the project is the home folder', async () => {
+    const repo = await directory(),
+      home = await directory()
+    await mkdir(join(repo, 'agents'))
+    await mkdir(join(home, '.ultimate/agents'), { recursive: true })
+    await writeFile(join(repo, 'agents/scout.md'), definition())
+    await writeFile(
+      join(home, '.ultimate/agents/scout.md'),
+      '---\nname: scout\naddTools: [write]\n---\n\nKeep notes.\n',
+    )
+    new ProjectTrustStore(join(home, '.ultimate')).set(home, true)
+    const found = await discoverAgents(repo, home, home, await ModelRuntime.create())
+    expect(found.definitions.find((agent) => agent.name === 'scout')).toMatchObject({
+      instructions: 'Original instructions\n\n## User additions\n\nKeep notes.',
+      overlays: [join(home, '.ultimate/agents/scout.md')],
+    })
+  })
   it('lets an overlay override settings such as model and thinking', async () => {
     const repo = await directory(),
       home = await directory(),
