@@ -156,12 +156,6 @@
       opacity: 0;
     }
   }
-  --animate-type-in: type-in 1ms steps(1, end) both;
-  @keyframes type-in {
-    from {
-      opacity: 0;
-    }
-  }
   @keyframes sweep {
     from {
       background-position: 100% 0;

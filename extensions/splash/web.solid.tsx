@@ -20,7 +20,30 @@ const readinessDeadlineMs = 8000
 const typeInStartMs = 200
 const typeInLetterMs = 45
 const exitMs = 160
-const wordmark = ['U', 'L', 'T', 'I', 'M', 'A', 'T', 'E']
+const wordmark = 'ULTIMATE'
+
+function Typed(props: { text: string }) {
+  let word: HTMLSpanElement | undefined
+  onSettled(() => {
+    if (!word || matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
+    const letters = props.text.length
+    const typing = word.animate(
+      [{ width: '0ch' }, { width: `calc(${letters}ch + ${letters} * 0.3em)` }],
+      {
+        delay: typeInStartMs,
+        duration: letters * typeInLetterMs,
+        easing: `steps(${letters}, end)`,
+        fill: 'backwards',
+      },
+    )
+    return () => typing.cancel()
+  })
+  return (
+    <span class="inline-block overflow-hidden whitespace-nowrap" ref={word}>
+      {props.text}
+    </span>
+  )
+}
 const held = new URLSearchParams(location.search).has('splash')
 function handOver(text: string) {
   const conversation = getState().view?.conversation.id
@@ -63,7 +86,11 @@ function Cursor() {
     if (!cursor || matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
     const blink = cursor.animate(
       [{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0, offset: 0.5 }, { opacity: 0 }],
-      { duration: 1060, iterations: Infinity },
+      {
+        delay: typeInStartMs + wordmark.length * typeInLetterMs,
+        duration: 1060,
+        iterations: Infinity,
+      },
     )
     return () => blink.cancel()
   })
@@ -76,8 +103,7 @@ function Cursor() {
   )
 }
 
-function Prompt(props: { onInput: (text: string) => void }) {
-  const [typed, setTyped] = createSignal('')
+function Prompt() {
   let box: HTMLDivElement | undefined
   onSettled(() => box?.querySelector('input')?.focus({ preventScroll: true }))
   return (
@@ -91,18 +117,13 @@ function Prompt(props: { onInput: (text: string) => void }) {
       <Input
         aria-label="Start typing while Ultimate loads"
         class="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[12px] caret-brand shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
-        onValueChange={(text) => {
-          setTyped(text)
-          props.onInput(text)
-        }}
         placeholder="start typing, it carries over"
-        value={typed()}
       />
     </div>
   )
 }
 
-function Boot(props: { onInput: (text: string) => void }) {
+function Boot() {
   const connection = useConnection()
   const system = useSystem()
   const extensions = useExtensions()
@@ -130,16 +151,7 @@ function Boot(props: { onInput: (text: string) => void }) {
         aria-hidden="true"
         class="flex items-center text-[13px] font-semibold tracking-[0.3em] text-brand"
       >
-        <For each={wordmark}>
-          {(letter, index) => (
-            <span
-              class="animate-type-in motion-reduce:animate-none"
-              style={{ 'animation-delay': `${typeInStartMs + index() * typeInLetterMs}ms` }}
-            >
-              {letter}
-            </span>
-          )}
-        </For>
+        <Typed text={wordmark} />
         <Cursor />
       </div>
       <div
@@ -163,7 +175,7 @@ function Boot(props: { onInput: (text: string) => void }) {
           )}
         </For>
       </div>
-      <Prompt onInput={(text) => props.onInput(text)} />
+      <Prompt />
     </div>
   )
 }
@@ -171,12 +183,13 @@ function Boot(props: { onInput: (text: string) => void }) {
 function Loading(props: { onDone: () => void }) {
   const ready = useReady()
   let overlay: HTMLDivElement | undefined
-  let typed = ''
   const leaving = createMemo(() => !held && ready().ready)
   createEffect(leaving, (leave) => {
     if (!overlay) return undefined
     if (!leave) return keepKeysInside(overlay)
-    const text = typed
+    const input = overlay.querySelector('input')
+    if (input) input.readOnly = true
+    const text = input?.value ?? ''
     void firstRender.then(() => handOver(text))
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
       props.onDone()
@@ -199,11 +212,7 @@ function Loading(props: { onDone: () => void }) {
     >
       <progress aria-busy="true" aria-label="Loading Ultimate" aria-live="polite" class="sr-only" />
       <div class="flex w-full justify-center">
-        <Boot
-          onInput={(text) => {
-            typed = text
-          }}
-        />
+        <Boot />
       </div>
     </div>
   )
