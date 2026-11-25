@@ -58,7 +58,7 @@ card, on another control or in the panel, whose cards take no global keys.
 
 What the user picked and typed on a card lives in durable UI state, by message (`ext.questions.cards`), so leaving a
 surface for another, a reload or another window or device shows it again where they left it; it goes as soon as the
-message settles (answered, dismissed, or settled for them by @ultimate).
+message settles (answered, dismissed, superseded, or settled for them by @ultimate).
 
 ## Where open questions wait
 
