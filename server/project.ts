@@ -1,7 +1,9 @@
-import { basename, join } from 'node:path'
-import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { basename, isAbsolute, join, resolve } from 'node:path'
+import { mkdir, readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
 import { alive, readOwner } from '../lib/lock.ts'
+import { projectHome } from '../lib/project-paths.ts'
 import { debounce } from '../lib/timers.ts'
 import { rebuiltOnOpen, meansNone } from '../lib/errors.ts'
 
@@ -37,6 +39,52 @@ async function readJson<T>(path: string): Promise<T | undefined> {
     return undefined
   }
 }
+const localHomeFile = (home: string) => createHash('sha256').update(home).digest('hex') + '.json'
+const absolutePath = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  value.length <= 4096 &&
+  !value.includes('\0') &&
+  isAbsolute(value) &&
+  resolve(value) === value
+
+export async function registerLocalHome(userHome: string, home: string, root: string) {
+  home = resolve(home)
+  root = resolve(root)
+  if (!absolutePath(home) || !absolutePath(root)) throw new Error('Invalid local project paths')
+  if (home === resolve(projectHome(root, userHome))) return
+  const directory = join(userHome, '.ultimate/local-homes')
+  await mkdir(directory, { recursive: true })
+  await atomicJson(join(directory, localHomeFile(home)), JSON.stringify({ home, root }))
+}
+
+async function localHomes(userHome: string) {
+  const directory = join(userHome, '.ultimate/local-homes')
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
+  const homes = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        const record = await readJson<{ home?: unknown; root?: unknown }>(
+          join(directory, entry.name),
+        )
+        if (
+          !absolutePath(record?.home) ||
+          !absolutePath(record?.root) ||
+          entry.name !== localHomeFile(record.home)
+        )
+          return []
+        const project = await readJson<{ root?: unknown; name?: unknown }>(
+          join(record.home, 'project.json'),
+        )
+        return project?.root === record.root && project.name === basename(record.root)
+          ? [record.home]
+          : []
+      }),
+  )
+  return homes.flat()
+}
+
 export async function projects(userHome: string, currentHome: string): Promise<ProjectInfo[]> {
   const directory = join(userHome, '.ultimate/projects')
   const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
@@ -44,7 +92,13 @@ export async function projects(userHome: string, currentHome: string): Promise<P
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(directory, entry.name))
   if (!homes.includes(currentHome)) homes.push(currentHome)
-  return Promise.all(
+  const local = new Set<string>()
+  for (const home of await localHomes(userHome))
+    if (!homes.some((known) => resolve(known) === home)) {
+      homes.push(home)
+      local.add(home)
+    }
+  const listed = await Promise.all(
     homes.toSorted().map(async (home) => {
       const project = await readJson<{ root: string; name: string; openedAt: number }>(
         join(home, 'project.json'),
@@ -62,6 +116,16 @@ export async function projects(userHome: string, currentHome: string): Promise<P
           (await readJson<ProjectConversation[]>(join(home, 'conversations.json'))) ?? [],
       }
     }),
+  )
+  return listed.filter(
+    (item) =>
+      !local.has(item.home) ||
+      item.current ||
+      item.running ||
+      !listed.some(
+        (other) =>
+          other.root === item.root && (!local.has(other.home) || other.current || other.running),
+      ),
   )
 }
 
