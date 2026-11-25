@@ -53,6 +53,10 @@ function SentFile(props: { file: AttachedFile; at?: number }) {
       uploads().filter((value) => value !== undefined),
       props.file.mimeType,
     )
+  const preview = createMemo(() => {
+    const line = props.file.line
+    return line ? upload()?.preview?.(line) : undefined
+  })
   const uploaded = () => uploadedAt(props.file.path) ?? props.at
   const gone = () => {
     const kept = upload()?.keptMs
@@ -62,6 +66,7 @@ function SentFile(props: { file: AttachedFile; at?: number }) {
   return (
     <FileChip
       gone={gone()}
+      image={gone() ? undefined : preview()?.()}
       mimeType={props.file.mimeType}
       name={props.file.name}
       note={
@@ -74,11 +79,30 @@ function SentFile(props: { file: AttachedFile; at?: number }) {
   )
 }
 
-export function UserText(props: { text: string; class?: string }) {
+export function UserText(props: { text: string; class?: string; at?: number }) {
+  const parts = createMemo(() => splitAttachments(props.text))
   return (
-    <p class={cn('break-words whitespace-pre-wrap', props.class)}>
-      <MentionText text={props.text} />
-    </p>
+    <Show
+      when={parts().files.length}
+      fallback={
+        <p class={cn('break-words whitespace-pre-wrap', props.class)}>
+          <MentionText text={props.text} />
+        </p>
+      }
+    >
+      <div class={cn('flex flex-col gap-2', props.class)}>
+        <Show when={parts().text}>
+          {(text) => (
+            <p class="break-words whitespace-pre-wrap">
+              <MentionText text={text()} />
+            </p>
+          )}
+        </Show>
+        <div class="flex flex-wrap gap-2">
+          <For each={parts().files}>{(file) => <SentFile at={props.at} file={file} />}</For>
+        </div>
+      </div>
+    </Show>
   )
 }
 

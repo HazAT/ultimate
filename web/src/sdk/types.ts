@@ -362,7 +362,8 @@ export type UploadSource = 'paste' | 'drop' | 'file' | 'recording'
  * (`attachments`). `upload` stores the file, may report a short `status` and a `progress` from 0 to 1 while it
  * works, stops when `signal` aborts (the chip was removed), and resolves with what the prompt references: `path`, the
  * prompt `line` when the provider writes its own (otherwise the standard attached-file line), the chip's `note`, and
- * an `image` URL the chip shows instead of its file icon (a video's first frame).
+ * an `image` URL the chip shows instead of its file icon (a video's first frame). `preview`, called while a sent
+ * message's chip renders, reads the image for a `line` the provider wrote, so sent chips show it too.
  * Files up to `maxBytes` attach, and the host keeps them `keptMs`. Without a provider only images attach.
  */
 export const FileUpload = definePoint<
@@ -378,6 +379,7 @@ export const FileUpload = definePoint<
           signal: AbortSignal
         },
       ) => Promise<{ path: string; line?: string; note?: string; image?: string }>
+      preview?: (line: string) => Accessor<string | undefined>
       maxBytes: number
       keptMs: number
     }
