@@ -1,10 +1,9 @@
 import { X } from '@lucide/solid'
 import { createSignal, For, onCleanup, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
-import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { FileChip } from '@/components/file-chip.solid.tsx'
 import { typeLabel } from '@/components/file-kind.ts'
-import { fitImage } from '@/components/image-resize.ts'
+import { fitImage, thumbnail } from '@/components/image-resize.ts'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { errorMessage, formatBytes } from '../sdk/hooks.ts'
 import type { FileUpload } from '../sdk/hooks.ts'
@@ -18,10 +17,33 @@ export type Upload = NonNullable<typeof FileUpload.value>
 
 const limit = (bytes: number) => formatBytes(bytes).replace('.0 ', ' ')
 const inFlight = new Map<string, AbortController>()
+const keptFileThumbnails = 40
+const uploadingThumbnails = new Map<string, Promise<Blob | undefined>>()
+const uploadedThumbnails = new Map<string, Promise<Blob | undefined>>()
+const fileThumbnail = (file: DraftFile) =>
+  uploadingThumbnails.get(file.id) ?? uploadedThumbnails.get(file.path)
+const imageThumbnails = new WeakMap<PastedImage, Promise<Blob | undefined>>()
+const noThumbnail = (failure: unknown) => {
+  console.warn('Could not make a thumbnail', failure)
+  return undefined
+}
+
+function imageThumbnail(image: PastedImage) {
+  let made = imageThumbnails.get(image)
+  if (!made) {
+    made = fetch(`data:${image.mimeType};base64,${image.data}`)
+      .then((response) => response.blob())
+      .then(thumbnail)
+      .catch(noThumbnail)
+    imageThumbnails.set(image, made)
+  }
+  return made
+}
 
 export function cancelUpload(id: string) {
   inFlight.get(id)?.abort(new Error('Removed'))
   inFlight.delete(id)
+  uploadingThumbnails.delete(id)
 }
 
 export function createAttach(options: {
@@ -56,6 +78,8 @@ export function createAttach(options: {
     ])
     const controller = new AbortController()
     inFlight.set(id, controller)
+    const small = mimeType.startsWith('image/') ? thumbnail(file).catch(noThumbnail) : undefined
+    if (small) uploadingThumbnails.set(id, small)
     return upload
       .upload(file, {
         source,
@@ -64,9 +88,17 @@ export function createAttach(options: {
         signal: controller.signal,
       })
       .then(
-        ({ path, line, note, image }) =>
-          change(id, { path, line, note, image, progress: undefined }),
+        ({ path, line, note, image }) => {
+          if (small && path) {
+            uploadedThumbnails.set(path, small)
+            if (uploadedThumbnails.size > keptFileThumbnails)
+              uploadedThumbnails.delete(uploadedThumbnails.keys().next().value!)
+          }
+          change(id, { path, line, note, image, progress: undefined })
+          uploadingThumbnails.delete(id)
+        },
         (failure: unknown) => {
+          uploadingThumbnails.delete(id)
           options.setFiles((current) => current.filter((item) => item.id !== id))
           if (!controller.signal.aborted) options.setError(`${name}: ${errorMessage(failure)}`)
         },
@@ -191,24 +223,16 @@ export function Attached(props: {
       <div class="flex flex-wrap gap-2 px-3 pt-3">
         <For each={props.images}>
           {(image, index) => (
-            <div class="relative w-38 rounded-md border border-border/80 bg-terminal p-1">
-              <ToolImage
-                alt={`Pasted image ${index() + 1}`}
-                class="flex h-24 w-full items-center justify-center border-0 [&_img]:max-h-24"
-                image={image}
-              />
-              <Show when={image.note}>
-                {(note) => (
-                  <p
-                    class="mt-1 pb-0.5 text-center text-[11px] leading-4 text-muted-foreground"
-                    title={note()}
-                  >
-                    <For each={note().split(' · ')}>
-                      {(line) => <span class="block whitespace-nowrap">{line}</span>}
-                    </For>
-                  </p>
-                )}
-              </Show>
+            <FileChip
+              mimeType={image.mimeType}
+              name={`Image ${index() + 1}`}
+              note={
+                image.note ??
+                `${formatBytes(Math.floor((image.data.length * 3) / 4))} · ${typeLabel('', image.mimeType)}`
+              }
+              thumbnail={imageThumbnail(image)}
+              title={image.note}
+            >
               <Button
                 aria-label={`Remove image ${index() + 1}${props.name ? ` from ${props.name}` : ''}`}
                 class={removeClass}
@@ -219,7 +243,7 @@ export function Attached(props: {
               >
                 <X class="size-3" />
               </Button>
-            </div>
+            </FileChip>
           )}
         </For>
         <For each={props.files} keyed={(file) => file.id}>
@@ -227,6 +251,7 @@ export function Attached(props: {
             <FileChip
               busy={!attached(file())}
               image={file().image}
+              thumbnail={fileThumbnail(file())}
               mimeType={file().mimeType}
               name={file().name}
               note={
