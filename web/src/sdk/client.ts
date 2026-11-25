@@ -164,7 +164,7 @@ store.subscribe(() => {
 
   document
     .querySelector('meta[name=theme-color]')
-    ?.setAttribute('content', ui.theme === 'dark' ? '#111112' : '#f9fafb')
+    ?.setAttribute('content', ui.theme === 'dark' ? '#0e0e10' : '#f2f3f5')
 })
 
 const compactFailures = new Set<string>()
