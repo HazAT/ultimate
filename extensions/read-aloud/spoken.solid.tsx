@@ -6,13 +6,13 @@ import { speech } from './voice.solid.tsx'
 const highlight = createHighlight(speech)
 
 export function useSpokenText(
-  element: () => Element | undefined,
+  elements: () => readonly Element[],
   spoken: () => SpokenText | undefined,
 ) {
   let tracked: ReturnType<typeof highlight.track> | undefined
   createEffect(spoken, (now) => {
     if (!now && !tracked) return
-    tracked ??= highlight.track(element)
+    tracked ??= highlight.track(elements)
     tracked.update(now)
   })
   onCleanup(() => tracked?.dispose())

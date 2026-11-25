@@ -27,8 +27,8 @@ lightly rewritten for listening.
   rewritten section; the speaker streams each section's sentences into the player as it arrives. The last 200
   sections are cached in memory, so a replay is quick; a restart clears it.
 - **The highlight** (`highlight.ts`, `useSpokenText` in `ui.solid.tsx`) marks the part being spoken in any message,
-  with the CSS Custom Highlight API: no wrappers in the message's DOM. A message gives its root element and its parts
-  in order; each part is found in the rendered text by its letters and digits, so Markdown marks, links and list
+  with the CSS Custom Highlight API: no wrappers in the message's DOM. A message gives its root elements (one, or every
+  message of a voice reply in order) and its parts in order; each part is found in the rendered text by its letters and digits, so Markdown marks, links and list
   bullets do not matter, and found again whenever the message's DOM changes (while it streams). Voice replies are
   spoken as written, so their parts are sentences, and the player's sentence maps to its place in the reply
   (`Sentence.at`), which stays right when sentences were skipped (Speak replies turned on mid-reply). The speaker's rewrite changes the

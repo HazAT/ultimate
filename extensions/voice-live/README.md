@@ -45,23 +45,29 @@ collect mode (optional), each with what to do when it is missing.
    input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
    conversation are on screen. The session stays hot until it hands off or End: after a handoff the next turn
    concludes it and forks @ultimate afresh; End concludes it and deletes the session's recordings.
-5. **Replies** stream from the fork's live partial. Each finished sentence is spoken through read-aloud's page-wide
+5. **The transcript** in the panel is the core one (`ConversationTranscript` in its compact `dock` column, scoped to
+   the fork), so its own entries show and the history it forked from does not: replies, thinking, every tool call
+   with its extension's card (`video_ask` included), attachment chips and message actions all come from the core. Your
+   turns are `voice.turn` entries, drawn by voice's one turn renderer wherever the fork is read (the panel, the main
+   transcript, a side chat): length and waveform, "transcribing…", a failure, screenshots and "sent as your answer".
+   A turn shows the moment you send it: until the server stores it, voice draws it in the fork's `transcript.end`.
+6. **Replies** stream from the fork's live partial. Each finished sentence is spoken through read-aloud's page-wide
    speech player (`extensions/read-aloud/README.md`), with the shared Speech setting (voice, speed) that Voice settings
    shows; read-aloud's highlight marks the sentence being read and plays any sentence on click. Starting a read-aloud elsewhere stops voice's reply, and a new voice
-   reply stops a read-aloud. Folded, the status line shows the whole paragraph being read with that sentence
-   highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips by
-   sentence or paragraph; each reply has replay. Thinking shows open while the model
-   thinks and folds once the reply has played.
-6. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
+   reply stops a read-aloud. The highlight follows the spoken sentence across every message of that turn's reply,
+   since a reply with tool calls spans several. Folded, the status line shows the whole paragraph being read with that
+   sentence highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips
+   by sentence or paragraph; each reply message's speaker plays it again.
+7. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
    A press while it speaks pauses at once. With real speech it cuts: speech stops, the running turn is stopped
    (`stop`) and the rest of that reply stays silent. Without speech it resumes where it paused.
-7. **The UI and codemode**: voice may use `codemode` (its scripts reach `tools.action`) and a `ui` tool that drives the
+8. **The UI and codemode**: voice may use `codemode` (its scripts reach `tools.action`) and a `ui` tool that drives the
    user's own page. `ui {op: query | act | snapshot}` records the request on the fork's `voice.ui` document and parks
    durably; the voice panel in the user's page runs it on the page's ui-sdk bridge (`pageAgent()` from `@/sdk/solid`)
    and answers with `ui-answer`, which signals the parked call with the result. With no answer within 15 s the call
-   fails with a clear message. The prompt has voice say each action in one short line before it runs it, and the reply
-   lists every tool call it made, each with a checkmark.
-8. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
+   fails with a clear message. The prompt has voice say each action in one short line before it runs it; the folded
+   status line names the call running now.
+9. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
    @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With
    `attachments`, the images the user pasted into the session's turns (the latest four) go along with it. With `to`, it
    goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`), as a

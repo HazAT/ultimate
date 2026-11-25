@@ -1,29 +1,18 @@
-import { AudioLinesIcon, ChevronRight, Mic, SquareArrowOutUpRightIcon } from '@lucide/solid'
+import { AudioLinesIcon, ChevronRight, SquareArrowOutUpRightIcon } from '@lucide/solid'
 import { For, Show } from 'solid-js'
-import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
-import {
-  Card,
-  defineWebExtension,
-  MessageActions,
-  provide,
-  renderEntry,
-  switchConversation,
-  useDocOf,
-  UserText,
-} from '@/sdk/solid'
+import { Card, defineWebExtension, provide, renderEntry, switchConversation } from '@/sdk/solid'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
-import { VoiceForkDoc } from './refs.ts'
 import { KEYS, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
 import { VoicePanel, VoiceToggle } from './panel.solid.tsx'
 import { VoiceRow, voiceForks } from './row.solid.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.solid.tsx'
-import { timeOf } from './turns.solid.tsx'
+import { PendingTurns, StoredTurn } from './turns.solid.tsx'
 
 const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
   const data = () => props.entry.data
@@ -87,41 +76,13 @@ const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
   )
 })
 
-const TurnRow = renderEntry(VoiceTurnEntry, function TurnRow(props) {
-  const data = () => props.entry.data
-  const fork = useDocOf(() => props.entry.conversationId, VoiceForkDoc)
-  const said = () => {
-    if (data().route !== 'audio') return data().text
-    const clips = data().clips ?? (data().audio ? [data().audio!] : [])
-    const heard = clips.map((clip) => fork()?.transcripts?.[clip]).filter(Boolean)
-    return [heard.join(' '), data().text].filter(Boolean).join('\n\n')
-  }
-  const text = () => said() || data().text || '(no transcript)'
-  return (
-    <Message class="group/message mt-3 first:mt-0" from="user">
-      <MessageContent>
-        <Show when={data().audio}>
-          <span class="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground tabular-nums">
-            <Mic class="size-3" />
-            {data().seconds?.toFixed(1)} s
-          </span>
-        </Show>
-        <UserText at={timeOf(props.entry)} text={text()} />
-      </MessageContent>
-      <MessageActions
-        class="-mt-1 justify-end"
-        entry={props.entry}
-        text={text()}
-        timestamp={timeOf(props.entry)}
-      />
-    </Message>
-  )
-})
+const TurnRow = renderEntry(VoiceTurnEntry, StoredTurn)
 
 export default defineWebExtension({
   slots: {
     'titlebar.right': [VoiceToggle],
     overlay: [VoicePanel],
+    'transcript.end': [PendingTurns],
   },
   entries: {
     'voice.handoff': HandoffCard,

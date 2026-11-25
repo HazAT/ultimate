@@ -20,9 +20,10 @@ export { estimate, splitReply, splitSentences } from './speech.ts'
 /** One spoken sentence: its text, paragraph, word starts and its place in its reply (`at`). */
 export type { Sentence } from './speech.ts'
 /**
- * Mark what the player speaks in a rendered message: `useSpokenText(element, spoken)` with the message's root element
- * and, while it has a source, `{ key, spans, span?, play? }`. `spans` are the message's parts in order (its
- * sentences, or its sections), found in the element's text: its `.markdown` blocks when it has any, else all of it.
+ * Mark what the player speaks in a rendered message: `useSpokenText(elements, spoken)` with the message's root elements
+ * (one message, or every message of a reply in order) and, while it has a source, `{ key, spans, span?, play? }`.
+ * `spans` are the message's parts in order (its sentences, or its sections), found in the elements' text: each one's
+ * `.markdown` blocks when it has any, else all of it. Changes under the elements' parents find them again.
  * `span(item)` maps the player's item to a span, by default the sentence's place in its reply (`Sentence.at`). The span
  * being spoken carries the `read-aloud` CSS highlight; with `play`, a click on a span calls `play(span)` while
  * the player holds this source (its bar shows), never to start one.

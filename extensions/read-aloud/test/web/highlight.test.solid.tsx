@@ -50,25 +50,35 @@ const { sentences } = splitReply([{ text: reply, final: true }])
 const spoken = () => [...(highlights.get('read-aloud') ?? [])].map(String)
 
 function mount(play: (span: number) => void) {
-  const [element, setElement] = createSignal<HTMLElement>()
+  const [first, setFirst] = createSignal<HTMLElement>()
+  const [second, setSecond] = createSignal<HTMLElement>()
   renderSolid(() => {
-    useSpokenText(element, () => ({
-      key: 'reply',
-      spans: sentences.map((sentence) => sentence.text),
-      play,
-    }))
+    useSpokenText(
+      () => [first(), second()].filter((element) => element !== undefined),
+      () => ({
+        key: 'reply',
+        spans: sentences.map((sentence) => sentence.text),
+        play,
+      }),
+    )
     return (
-      <div class="markdown" ref={setElement}>
-        <p>
-          One muted. Two is <strong>bold</strong> here. Three follows.
-        </p>
-      </div>
+      <>
+        <div class="markdown" ref={setFirst}>
+          <p>
+            One muted. Two is <strong>bold</strong> here.
+          </p>
+        </div>
+        <div data-tool-call-id="call-1">One muted.</div>
+        <div class="markdown" ref={setSecond}>
+          <p>Three follows.</p>
+        </div>
+      </>
     )
   })
   flush()
 }
 
-it('marks the sentence the player speaks, by its place when sentences were skipped; a click plays from a sentence only while the player has the reply', async () => {
+it('marks the sentence the player speaks across the reply’s messages, by its place when sentences were skipped; a click plays from a sentence only while the player has the reply', async () => {
   const play = vi.fn<(span: number) => void>()
   mount(play)
   speech.load('reply', [sentences[0]], true)
@@ -103,10 +113,13 @@ it('a repeated sentence spoken after its twin was muted marks its own place', ()
   const repeated = splitReply([{ text: 'Start. Again. Again.', final: true }]).sentences
   const [element, setElement] = createSignal<HTMLElement>()
   renderSolid(() => {
-    useSpokenText(element, () => ({
-      key: 'repeat',
-      spans: repeated.map((sentence) => sentence.text),
-    }))
+    useSpokenText(
+      () => (element() ? [element()!] : []),
+      () => ({
+        key: 'repeat',
+        spans: repeated.map((sentence) => sentence.text),
+      }),
+    )
     return (
       <p ref={setElement}>
         Start. Again. <em>Again.</em>

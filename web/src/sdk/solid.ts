@@ -220,6 +220,11 @@ export { useProvided } from './contribution.solid.tsx'
 /** Building blocks of surfaces; see docs/extensions/surfaces.md. */
 export { Header } from '../app/header.solid.tsx'
 export { Conversation, Dock, Panels, Sidebar, StatusLine } from '../app/shell.solid.tsx'
+/**
+ * The transcript of the scoped or shown conversation alone, without its prompt box; `dock` uses the narrow column side
+ * chats use. Only the conversation's own entries show, so a fork hides the history it inherited.
+ */
+export { Transcript as ConversationTranscript } from '../app/transcript.solid.tsx'
 /** The prompt box of the scoped or shown conversation alone, without its transcript; wrap it in `ComposerRedirect` to send elsewhere. */
 export { Composer } from '../app/composer.solid.tsx'
 /**

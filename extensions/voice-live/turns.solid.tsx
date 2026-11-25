@@ -1,43 +1,35 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
-import { Check, ChevronRight, MessageCircleReply, Mic, Play } from '@lucide/solid'
+import { MessageCircleReply, Mic } from '@lucide/solid'
 import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
-import { Markdown } from '@/components/markdown/markdown.solid.tsx'
-import { Button } from '@/components/ui/button.solid.tsx'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible.solid.tsx'
 import {
   api,
-  cn,
-  column,
   errorMessage,
   MessageActions,
   pageAgent,
+  ROOT,
   useConversation,
+  useConversationId,
   useDocOf,
   UserText,
 } from '@/sdk/solid'
-import { nextTurn } from '../../lib/timers.ts'
 import { capture, drawWave } from '../dictation/ui.solid.tsx'
 import {
   dock,
+  imagesOf,
   playerState,
   replyOf,
   setActivity,
   settleTranscripts,
+  turnsIn,
   useSpeaking,
   useTurns,
 } from './dock.solid.tsx'
-import type { TurnView } from './dock.solid.tsx'
-import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
+import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceSessionDoc, VoiceUiDoc } from './refs.ts'
 import type { VoiceFork, VoiceTurn, VoiceUiCall } from './refs.ts'
 import { splitReply, useSpokenText } from '../read-aloud/ui.solid.tsx'
-import type { Sentence } from '../read-aloud/ui.solid.tsx'
 
 const short = (key: string) => key.slice(0, 8)
 
@@ -76,20 +68,71 @@ export function saidIn(
   return data.text || undefined
 }
 
-function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined }) {
+const row = '[data-entry-id]'
+const answer = '[data-from="assistant"]'
+
+function useSpokenReply(key: () => string, turnRow: () => Element | undefined) {
+  const conversation = useConversation()
+  const spoken = () => playerState().key === key()
+  const sentences = createMemo(() => {
+    if (!spoken()) return []
+    const state = conversation()
+    const turn = turnsIn(state).turns.find((each) => each.key === key())
+    if (!turn) return []
+    const parts = replyOf(turn).parts
+    return splitReply(state.busy ? parts : parts.map((part) => ({ ...part, final: true })))
+      .sentences
+  })
+  const replies = () => {
+    const rows: Element[] = []
+    for (let next = turnRow()?.nextElementSibling; next; next = next.nextElementSibling) {
+      if (next.querySelector('[data-voice-turn]')) break
+      if (next.matches(answer) || next.querySelector(answer)) rows.push(next)
+    }
+    return rows
+  }
+  useSpokenText(replies, () =>
+    spoken()
+      ? {
+          key: key(),
+          spans: sentences().map((sentence) => sentence.text),
+          play: (index) => {
+            dock.player.load(key(), sentences(), conversation().busy)
+            dock.player.play(index)
+          },
+        }
+      : undefined,
+  )
+}
+
+export function VoiceTurnView(props: {
+  turn: { key: string; data: VoiceTurn; images: readonly { data: string; mimeType: string }[] }
+  record?: EntryRecord
+  conversation: ConversationId | undefined
+}) {
   const data = () => props.turn.data
+  const fork = useDocOf(() => props.conversation, VoiceForkDoc)
   const local = () => dock.local()[props.turn.key]
   const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
-  const said = () =>
-    saidIn(data(), audio(), !!props.turn.record, props.fork?.transcripts ?? undefined)
+  const said = () => saidIn(data(), audio(), !!props.record, fork()?.transcripts ?? undefined)
   const failed = () => {
     const recording = audio()
-    return local()?.failed ?? (recording ? props.fork?.failed?.[recording] : undefined)
+    return local()?.failed ?? (recording ? fork()?.failed?.[recording] : undefined)
   }
+  const [element, setElement] = createSignal<HTMLElement>()
+  useSpokenReply(
+    () => props.turn.key,
+    () => element()?.closest(row) ?? undefined,
+  )
   return (
-    <Message class="group/message mt-3 first:mt-0" data-voice-turn={props.turn.key} from="user">
+    <Message
+      class="group/message mt-3 first:mt-0"
+      data-voice-turn={props.turn.key}
+      from="user"
+      ref={setElement}
+    >
       <MessageContent>
-        <Show when={data().audio}>
+        <Show when={data().audio || data().answered}>
           <div class="flex min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
             <Show when={data().answered}>
               <span class="inline-flex shrink-0 items-center gap-1 text-brand">
@@ -142,10 +185,7 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
             }
           >
             {(text) => (
-              <UserText
-                at={props.turn.record ? timeOf(props.turn.record) : undefined}
-                text={text()}
-              />
+              <UserText at={props.record ? timeOf(props.record) : undefined} text={text()} />
             )}
           </Show>
         </Show>
@@ -162,7 +202,7 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
           </div>
         </Show>
       </MessageContent>
-      <Show when={props.turn.record}>
+      <Show when={props.record}>
         {(record) => (
           <MessageActions
             class="-mt-1 justify-end"
@@ -176,43 +216,34 @@ function YourTurn(props: { turn: TurnView; fork: VoiceFork | null | undefined })
   )
 }
 
-function Thought(props: { turn: TurnView; text: string; streaming: boolean; finished: boolean }) {
-  const [open, setOpen] = createSignal(true)
-  const [touched, setTouched] = createSignal(false)
-  createEffect(
-    () => props.finished,
-    (done) => {
-      if (done && !touched()) setOpen(false)
-    },
+export function StoredTurn(props: { entry: EntryRecord & { data: VoiceTurn } }) {
+  const turn = createMemo(() => ({
+    key: props.entry.data.key,
+    data: props.entry.data,
+    images: imagesOf(props.entry),
+  }))
+  return (
+    <VoiceTurnView conversation={props.entry.conversationId} record={props.entry} turn={turn()} />
+  )
+}
+
+export function PendingTurns() {
+  const id = useConversationId()
+  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+  const conversation = useConversation()
+  const pending = createMemo(() =>
+    id() !== undefined && id() === session()?.id
+      ? turnsIn(conversation()).turns.filter((turn) => turn.optimistic)
+      : [],
   )
   return (
-    <Collapsible
-      bind={[
-        open,
-        (next) => {
-          setTouched(true)
-          setOpen(next)
-        },
-      ]}
-      class="group/reasoning not-prose"
-    >
-      <CollapsibleTrigger
-        aria-label={`Thinking for turn ${short(props.turn.key)}`}
-        class="flex items-center gap-1.5 font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-        data-ui="transcript-meta"
-      >
-        <ChevronRight
-          aria-hidden="true"
-          class="size-3 transition-transform group-data-open/reasoning:rotate-90"
-        />
-        <Show when={props.streaming} fallback={<span>Thought</span>}>
-          <Shimmer>Thinking…</Shimmer>
-        </Show>
-      </CollapsibleTrigger>
-      <CollapsibleContent class="mt-1.5 max-h-64 overflow-y-auto border-l-2 border-border pl-3 text-[13px] text-muted-foreground italic">
-        <Markdown streaming={props.streaming} text={props.text} />
-      </CollapsibleContent>
-    </Collapsible>
+    <For each={pending()} keyed={(turn) => turn.key}>
+      {(turn) => (
+        <div class="empty-row" data-voice-pending={turn().key}>
+          <VoiceTurnView conversation={id()} turn={turn()} />
+        </div>
+      )}
+    </For>
   )
 }
 
@@ -234,129 +265,6 @@ function actionLine(name: string, args: Record<string, unknown>) {
   if (name === 'codemode') return 'run a script'
   const first = Object.values(args).find((value) => typeof value === 'string')
   return first ? first.split('\n')[0].slice(0, 80) : ''
-}
-
-function Actions(props: { turn: TurnView }) {
-  const calls = createMemo(() =>
-    [...props.turn.replies, ...(props.turn.live ? [props.turn.live] : [])].flatMap((message) =>
-      message.content.flatMap((part) =>
-        part.type === 'toolCall'
-          ? [{ id: part.id, name: part.name, line: actionLine(part.name, part.arguments) }]
-          : [],
-      ),
-    ),
-  )
-  return (
-    <Show when={calls().length}>
-      <ul
-        class="flex flex-col gap-0.5 font-mono text-[11px] text-muted-foreground"
-        data-voice-actions
-      >
-        <For each={calls()}>
-          {(call) => (
-            <li class="flex min-w-0 items-center gap-1.5">
-              <Check class="size-3 shrink-0 text-success" />
-              <span class="shrink-0 text-foreground/80">{call.name}</span>
-              <span class="truncate">{call.line}</span>
-            </li>
-          )}
-        </For>
-      </ul>
-    </Show>
-  )
-}
-
-function Reply(props: { turn: TurnView; busy: boolean; last: boolean }) {
-  const reply = createMemo(() => replyOf(props.turn))
-  const streaming = () => props.busy && props.last
-  const sentences = createMemo(() =>
-    splitReply(
-      streaming() ? reply().parts : reply().parts.map((part) => ({ ...part, final: true })),
-    ),
-  )
-  const paragraphs = createMemo(() => {
-    const groups: Sentence[][] = []
-    for (const sentence of sentences().sentences) {
-      const previous = groups.at(-1)
-      if (previous && previous[0].paragraph === sentence.paragraph) previous.push(sentence)
-      else groups.push([sentence])
-    }
-    return groups
-  })
-  const finished = createMemo(
-    () =>
-      !streaming() &&
-      !(playerState().key === props.turn.key && (playerState().playing || playerState().paused)),
-  )
-  const loadAndPlay = (index: number) => {
-    dock.player.load(props.turn.key, sentences().sentences, streaming())
-    dock.player.play(index)
-  }
-  const [text, setText] = createSignal<HTMLElement>()
-  useSpokenText(text, () => ({
-    key: props.turn.key,
-    spans: sentences().sentences.map((sentence) => sentence.text),
-    play: loadAndPlay,
-  }))
-  const thinkingNow = () => streaming() && !reply().text.trim()
-  return (
-    <Show when={reply().thought.trim() || reply().text.trim() || reply().calls}>
-      <Message class="group/message gap-3" data-voice-reply={props.turn.key} from="assistant">
-        <Show when={reply().thought.trim()}>
-          <Thought
-            finished={finished()}
-            streaming={thinkingNow()}
-            text={reply().thought.trim()}
-            turn={props.turn}
-          />
-        </Show>
-        <Show when={reply().text.trim()}>
-          <div class="markdown" ref={setText}>
-            <For each={paragraphs()}>
-              {(group, at) => (
-                <p>
-                  {group.map((sentence) => sentence.text.trim()).join(' ')}{' '}
-                  <Show when={at() === paragraphs().length - 1 && sentences().pending}>
-                    <span class="text-muted-foreground">{sentences().pending}</span>
-                  </Show>
-                </p>
-              )}
-            </For>
-            <Show when={!paragraphs().length && sentences().pending}>
-              <p class="text-muted-foreground">{sentences().pending}</p>
-            </Show>
-          </div>
-        </Show>
-        <Actions turn={props.turn} />
-        <Show when={finished() && (sentences().sentences.length || props.turn.answer)}>
-          <div class="flex min-w-0 items-center gap-2">
-            <Show when={sentences().sentences.length}>
-              <Button
-                aria-label={`Replay turn ${short(props.turn.key)}`}
-                class="h-auto shrink-0 gap-1 rounded p-0.5 font-mono text-[11px] font-normal text-muted-foreground/70 hover:text-foreground [&_svg]:size-3"
-                onClick={() => loadAndPlay(0)}
-                size={null}
-                title="Play this reply again"
-                variant={null}
-              >
-                <Play /> replay
-              </Button>
-            </Show>
-            <Show when={props.turn.answer}>
-              {(answer) => (
-                <MessageActions
-                  class="min-w-0 flex-nowrap overflow-hidden whitespace-nowrap"
-                  entry={answer()}
-                  text={reply().text}
-                  timestamp={timeOf(answer())}
-                />
-              )}
-            </Show>
-          </div>
-        </Show>
-      </Message>
-    </Show>
-  )
 }
 
 const page = crypto.randomUUID()
@@ -451,37 +359,4 @@ export function Voicing(props: { fork: ConversationId }) {
   onCleanup(() => setActivity({ done: 0 }))
   useSpeaking(turns)
   return null
-}
-
-export function Session(props: { fork: ConversationId }) {
-  const view = useTurns()
-  const fork = useDocOf(() => props.fork, VoiceForkDoc)
-  let log: HTMLDivElement | undefined
-  createEffect(
-    () => {
-      const last = view().turns.at(-1)
-      return view().turns.length + (last ? replyOf(last).text.length : 0)
-    },
-    () => nextTurn(() => log?.scrollTo({ top: log.scrollHeight })),
-  )
-  return (
-    <div class="relative min-h-0 flex-1 overflow-y-hidden" role="log">
-      <div class="h-full w-full overflow-y-auto" ref={log}>
-        <div class={cn(column(true), 'flex flex-col gap-3 pt-5 pb-6')} data-voice-transcript>
-          <For each={view().turns} keyed={(turn) => turn.key}>
-            {(turn, index) => (
-              <>
-                <YourTurn fork={fork()} turn={turn()} />
-                <Reply
-                  busy={view().busy}
-                  last={index() === view().turns.length - 1}
-                  turn={turn()}
-                />
-              </>
-            )}
-          </For>
-        </div>
-      </div>
-    </div>
-  )
 }

@@ -538,43 +538,45 @@ export type TurnView = {
 
 export function useTurns() {
   const state = useConversation()
-  const partial = createMemo(() => state().live.generation?.message as AssistantMessage | undefined)
-  return createMemo(() => {
-    const turns: TurnView[] = []
-    for (const entry of state().entries) {
-      if (entry.kind === 'voice.turn') {
-        const data = entry.data as VoiceTurn
-        turns.push({ key: data.key, data, images: imagesOf(entry), record: entry, replies: [] })
-      } else if (entry.kind === 'pi.assistant' && turns.length) {
-        const message = entry.model?.[0]
-        if (message?.role === 'assistant') {
-          turns.at(-1)!.replies.push(message)
-          turns.at(-1)!.answer = entry
-        }
-      }
-    }
-    const last = turns.at(-1)
-    if (last && state().busy && partial()) last.live = partial()
-    const stored = new Set(turns.map((turn) => turn.key))
-    const here = state().id
-    for (const [key, local] of Object.entries(dock.local()))
-      if (
-        local.optimistic &&
-        !stored.has(key) &&
-        (local.conversation === undefined || local.conversation === here)
-      )
-        turns.push({
-          key,
-          data: local.optimistic,
-          images: local.images ?? [],
-          replies: [],
-          optimistic: true,
-        })
-    return { turns, busy: state().busy }
-  })
+  return createMemo(() => turnsIn(state()))
 }
 
-function imagesOf(entry: EntryRecord) {
+export function turnsIn(state: ReturnType<ReturnType<typeof useConversation>>) {
+  const partial = state.live.generation?.message as AssistantMessage | undefined
+  const turns: TurnView[] = []
+  for (const entry of state.entries) {
+    if (entry.kind === 'voice.turn') {
+      const data = entry.data as VoiceTurn
+      turns.push({ key: data.key, data, images: imagesOf(entry), record: entry, replies: [] })
+    } else if (entry.kind === 'pi.assistant' && turns.length) {
+      const message = entry.model?.[0]
+      if (message?.role === 'assistant') {
+        turns.at(-1)!.replies.push(message)
+        turns.at(-1)!.answer = entry
+      }
+    }
+  }
+  const last = turns.at(-1)
+  if (last && state.busy && partial) last.live = partial
+  const stored = new Set(turns.map((turn) => turn.key))
+  const here = state.id
+  for (const [key, local] of Object.entries(dock.local()))
+    if (
+      local.optimistic &&
+      !stored.has(key) &&
+      (local.conversation === undefined || local.conversation === here)
+    )
+      turns.push({
+        key,
+        data: local.optimistic,
+        images: local.images ?? [],
+        replies: [],
+        optimistic: true,
+      })
+  return { turns, busy: state.busy }
+}
+
+export function imagesOf(entry: EntryRecord) {
   const message = entry.model?.[0]
   return message?.role === 'user' && Array.isArray(message.content)
     ? message.content.flatMap((part) =>

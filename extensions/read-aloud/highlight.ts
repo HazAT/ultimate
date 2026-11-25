@@ -7,7 +7,7 @@ export type SpokenText = {
   play?: (span: number) => void
 }
 
-type Tracked = { element: () => Element | null | undefined; now?: SpokenText }
+type Tracked = { elements: () => readonly Element[]; now?: SpokenText }
 
 type Source = {
   state: { get: () => PlayerState; subscribe: (listener: () => void) => () => void }
@@ -41,20 +41,26 @@ const within = (node: Element, selector: string, root: Element) => {
   return !!found && found !== root && root.contains(found)
 }
 
-function rendered(root: Element) {
+function rendered(roots: readonly Element[]) {
   const points: { node: Text; offset: number }[] = []
   let text = ''
-  const prose = root.matches('.markdown') || !root.querySelector('.markdown')
-  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
-    const parent = node.parentElement
-    if (!parent || (!prose && !within(parent, '.markdown', root))) continue
-    if (within(parent, skipped, root)) continue
-    for (const match of node.data.matchAll(letter))
-      for (let unit = 0; unit < match[0].length; unit++) {
-        text += match[0][unit]
-        points.push({ node, offset: match.index + unit })
-      }
+  for (const root of roots) {
+    const prose = root.matches('.markdown') || !root.querySelector('.markdown')
+    const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    for (
+      let node = walker.nextNode() as Text | null;
+      node;
+      node = walker.nextNode() as Text | null
+    ) {
+      const parent = node.parentElement
+      if (!parent || (!prose && !within(parent, '.markdown', root))) continue
+      if (within(parent, skipped, root)) continue
+      for (const match of node.data.matchAll(letter))
+        for (let unit = 0; unit < match[0].length; unit++) {
+          text += match[0][unit]
+          points.push({ node, offset: match.index + unit })
+        }
+    }
   }
   return { text, points }
 }
@@ -74,14 +80,14 @@ function locate(text: string, span: string, from: number) {
   return [start, end] as const
 }
 
-export function rangesIn(root: Element, spans: readonly string[]) {
-  const { text, points } = rendered(root)
+export function rangesIn(roots: readonly Element[], spans: readonly string[]) {
+  const { text, points } = rendered(roots)
   let from = 0
   return spans.map((span) => {
     const at = locate(text, span, from)
     if (!at) return undefined
     from = at[1]
-    const range = root.ownerDocument.createRange()
+    const range = new Range()
     range.setStart(points[at[0]].node, points[at[0]].offset)
     const end = points[at[1] - 1]
     const after = /^[^\s\p{L}\p{N}]*/u.exec(end.node.data.slice(end.offset + 1))![0]
@@ -94,36 +100,47 @@ const LINE_GAP = 4
 const inside = (rect: DOMRect, x: number, y: number) =>
   x >= rect.left && x <= rect.right && y >= rect.top - LINE_GAP && y <= rect.bottom + LINE_GAP
 
-const attached = (range: Range, root: Element) =>
+const attached = (range: Range, roots: readonly Element[]) =>
   [range.startContainer, range.endContainer].every(
-    (node) => node.nodeType === Node.TEXT_NODE && root.contains(node),
+    (node) => node.nodeType === Node.TEXT_NODE && roots.some((root) => root.contains(node)),
   )
+
+const same = (a: readonly Element[], b: readonly Element[]) =>
+  a.length === b.length && a.every((element, at) => element === b[at])
 
 export function createHighlight(player: Source) {
   const tracked = new Set<Tracked>()
   const cached = new WeakMap<
     Tracked,
-    { root: Element; content: string; spans: readonly string[]; ranges: (Range | undefined)[] }
+    {
+      roots: readonly Element[]
+      content: string
+      spans: readonly string[]
+      ranges: (Range | undefined)[]
+    }
   >()
   let page: { current: Highlight; hover: Highlight; observer: MutationObserver } | undefined
   let shown = ''
-  let watched: Element | undefined
+  let watched: readonly Element[] = []
+
+  const connected = (each: Tracked) => each.elements().filter((root) => root.isConnected)
 
   const ranges = (each: Tracked) => {
-    const root = each.element()
+    const roots = connected(each)
     const spans = each.now?.spans ?? []
-    if (!root?.isConnected || !spans.length) return []
-    const content = root.textContent ?? ''
+    if (!roots.length || !spans.length) return []
+    const content = roots.map((root) => root.textContent).join('\n')
     const known = cached.get(each)
     if (
-      known?.root === root &&
+      known &&
+      same(known.roots, roots) &&
       known.content === content &&
       known.spans === spans &&
-      known.ranges.every((range) => !range || attached(range, root))
+      known.ranges.every((range) => !range || attached(range, roots))
     )
       return known.ranges
-    const fresh = rangesIn(root, spans)
-    cached.set(each, { root, content, spans, ranges: fresh })
+    const fresh = rangesIn(roots, spans)
+    cached.set(each, { roots, content, spans, ranges: fresh })
     return fresh
   }
 
@@ -132,11 +149,14 @@ export function createHighlight(player: Source) {
     const now = player.state.get()
     const on = (now.playing || now.paused) && now.index >= 0
     const spoken = on ? [...tracked].find((each) => each.now?.key === now.key) : undefined
-    const root = spoken?.element() ?? undefined
-    if (root !== watched) {
+    const parents = [
+      ...new Set((spoken ? connected(spoken) : []).map((root) => root.parentElement ?? root)),
+    ]
+    if (!same(parents, watched)) {
       page.observer.disconnect()
-      watched = root
-      if (root) page.observer.observe(root, { subtree: true, childList: true, characterData: true })
+      watched = parents
+      for (const parent of parents)
+        page.observer.observe(parent, { subtree: true, childList: true, characterData: true })
       force = true
     }
     const shape = spoken ? `${now.key}\n${now.index}` : ''
@@ -156,11 +176,11 @@ export function createHighlight(player: Source) {
     const now = player.state.get()
     if (!now.playing && !now.paused && !now.streaming) return undefined
     const candidates = [...tracked].filter((each) => {
-      const root = each.element()
+      const root = each.elements().find((element) => element.contains(target))
       return (
         each.now?.play &&
         each.now.key === now.key &&
-        root?.contains(target) &&
+        root &&
         !within(target, `a, button, input, textarea, ${skipped}`, root)
       )
     })
@@ -206,9 +226,9 @@ export function createHighlight(player: Source) {
   }
 
   return {
-    track(element: () => Element | null | undefined) {
+    track(elements: () => readonly Element[]) {
       if (!page) start()
-      const each: Tracked = { element }
+      const each: Tracked = { elements }
       tracked.add(each)
       return {
         update(now: SpokenText | undefined) {

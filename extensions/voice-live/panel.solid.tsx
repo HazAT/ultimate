@@ -22,6 +22,7 @@ import {
   cn,
   Composer,
   ComposerRedirect,
+  ConversationTranscript,
   composerDraft,
   PromptBox,
   formatKeys,
@@ -62,7 +63,7 @@ import {
 import { StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { PlaybackBar, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
-import { Session, Voicing, Waveform } from './turns.solid.tsx'
+import { Voicing, Waveform } from './turns.solid.tsx'
 
 const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground pointer-coarse:size-9'
@@ -666,7 +667,7 @@ export function VoicePanel() {
           >
             {(open) => (
               <ScopedConversation id={open()}>
-                <Session fork={open()} />
+                <ConversationTranscript dock />
               </ScopedConversation>
             )}
           </Show>

@@ -40,7 +40,10 @@ export function readAloudAction(player: Player) {
     const [button, setButton] = createSignal<HTMLElement>()
     const spans = createMemo(() => sections(props.text))
     useSpokenText(
-      () => button()?.closest(message) ?? undefined,
+      () => {
+        const root = button()?.closest(message)
+        return root ? [root] : []
+      },
       () => {
         const key = status() ? reading()?.key : undefined
         const { conversationId, id } = props.entry
