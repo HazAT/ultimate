@@ -360,3 +360,30 @@ it('keeps a ready video and its icon when no frame was written', async () => {
   expect(video?.thumbnail).toBeUndefined()
   expect(await actions.thumbnail({ id }, f.action)).toBeNull()
 })
+
+it('replaces an upload Google failed to process, and an expired one without deleting it', async () => {
+  const { fake } = google({ expiresIn: -hour })
+  let failed = false
+  const f = await fixture(succeeds, (call) => {
+    if (call.method === 'GET' && !failed) {
+      failed = true
+      return gemini(200, {
+        name: 'files/f1',
+        uri: 'u',
+        state: 'FAILED',
+        error: { message: 'bad codec' },
+      })
+    }
+    return fake(call)
+  })
+  const id = await f.upload(Buffer.from('original clip'))
+  await f.prepared(id)
+  await expect(actions.ask({ id, question: 'One' }, f.action)).rejects.toThrow('bad codec')
+  expect((await f.state())?.videos[id]?.parts?.[0].remote).toBeUndefined()
+  await actions.ask({ id, question: 'Two' }, f.action)
+  await actions.ask({ id, question: 'Three' }, f.action)
+  expect(f.calls.filter((call) => call.path === '/upload/v1beta/files')).toHaveLength(3)
+  expect(f.calls.filter((call) => call.method === 'DELETE').map((call) => call.path)).toEqual([
+    '/v1beta/files/f1',
+  ])
+})

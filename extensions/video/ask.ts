@@ -57,6 +57,13 @@ function uploaded(
         part.remote = remote
         return true
       }, context)
+    const forget = (name: string) =>
+      host.harness().commit(async (tx) => {
+        const part = (await tx.doc(VideosState, ROOT_CONVERSATION_ID)).videos[video.id]?.parts?.[
+          index
+        ]
+        if (part?.remote?.name === name) delete part.remote
+      }, context)
     const removed = async (name: string) => {
       await client.remove(name, signal)
       return new Error('Video was removed while the question was running')
@@ -65,7 +72,7 @@ function uploaded(
     if (!current?.file) throw new Error('Video was removed while the question was running')
     let remote = current.remote
     if (remote && remote.expiresAt <= Date.now() + REUSE_MARGIN_MS) {
-      await client.remove(remote.name, signal)
+      if (remote.expiresAt > Date.now()) await client.remove(remote.name, signal)
       remote = undefined
     }
     if (!remote) {
@@ -78,7 +85,17 @@ function uploaded(
       if (!(await record(remote))) throw await removed(remote.name)
     }
     if (remote.active) return remote
-    const active = { ...(await client.active(remote.name, signal)), active: true }
+    const pending = remote
+    const active = {
+      ...(await client.active(pending.name, signal).catch(async (error: unknown) => {
+        if (error instanceof GeminiError && error.status === 422) {
+          await client.remove(pending.name, signal)
+          await forget(pending.name)
+        }
+        throw error
+      })),
+      active: true,
+    }
     if (!(await record(active))) throw await removed(active.name)
     return active
   })
