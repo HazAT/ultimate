@@ -30,6 +30,12 @@ const followUp = (id: number): InboxItem => ({
   mode: 'followUp',
   content: `follow-up ${id}`,
 })
+const message = (id: number, mode: 'steer' | 'followUp' = 'steer'): InboxItem => ({
+  id: id as InboxItem['id'],
+  mode,
+  content: `Message from #5:\nagent ${id}`,
+  entry: { kind: 'message', data: { from: 5 } },
+})
 const image = { data: 'QUJD', mimeType: 'image/png' }
 
 describe('previewParts', () => {
@@ -90,6 +96,13 @@ describe('withdrawQueuedSteer', () => {
     expect(api.cancelSubmission).toHaveBeenCalledWith(3, 7)
     expect(api.cancelSubmission).toHaveBeenCalledTimes(1)
   })
+  it("merges into the user's last steer and leaves an agent's queued steer alone", async () => {
+    const api = accepting()
+    await expect(
+      withdrawQueuedSteer(api, 7 as ConversationId, [steer(1), message(2)]),
+    ).resolves.toEqual({ text: 'steer 1', images: [] })
+    expect(api.cancelSubmission.mock.calls).toEqual([[1, 7]])
+  })
   it('merges nothing without a queued steer', async () => {
     const api = accepting()
     await expect(
@@ -116,19 +129,22 @@ it('mergedSteer joins the texts on a new line and keeps both inputs’ images in
 })
 
 describe('recallQueued', () => {
-  it('cancels every queued input and returns steers before follow-ups', async () => {
+  it("recalls the user's queued steers, or their follow-ups when no steer waits, never an agent's input", async () => {
+    const queue = [message(1), followUp(2), steer(3), message(4, 'followUp'), steer(5), followUp(6)]
     const api = accepting()
-    const recalled = await recallQueued(api, 7 as ConversationId, [
-      followUp(1),
-      steer(2),
-      followUp(3),
-    ])
-    expect(recalled.map((input) => input.text)).toEqual(['steer 2', 'follow-up 1', 'follow-up 3'])
-    expect(api.cancelSubmission.mock.calls.map(([id]) => id)).toEqual([2, 1, 3])
+    const steers = await recallQueued(api, 7 as ConversationId, queue)
+    expect(steers.map((input) => input.text)).toEqual(['steer 3', 'steer 5'])
+    expect(api.cancelSubmission.mock.calls.map(([id]) => id)).toEqual([3, 5])
+    const followUps = await recallQueued(
+      accepting(),
+      7 as ConversationId,
+      queue.filter((item) => item.mode !== 'steer' || item.entry),
+    )
+    expect(followUps.map((input) => input.text)).toEqual(['follow-up 2', 'follow-up 6'])
   })
   it('leaves out an input the run took meanwhile', async () => {
-    const recalled = await recallQueued(taken([2]), 7 as ConversationId, [steer(2), followUp(3)])
-    expect(recalled.map((input) => input.text)).toEqual(['follow-up 3'])
+    const recalled = await recallQueued(taken([2]), 7 as ConversationId, [steer(2), steer(3)])
+    expect(recalled.map((input) => input.text)).toEqual(['steer 3'])
   })
 })
 

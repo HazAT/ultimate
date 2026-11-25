@@ -45,6 +45,7 @@ import { getDraft, restoreDraft, storedText } from './drafts.ts'
 import { PromptBox } from './prompt-box.solid.tsx'
 import {
   atFirstLine,
+  isUserPrompt,
   mergedSteer,
   previewParts,
   recallQueued,
@@ -166,11 +167,13 @@ function Inbox(props: { items: readonly InboxItem[] }) {
             }}
           </For>
         </div>
-        <div class="mt-0.5 flex justify-end text-[11px] text-muted-foreground/70 pointer-coarse:hidden">
-          <span>
-            <Kbd>↑</Kbd> edit queued
-          </span>
-        </div>
+        <Show when={queued().some(isUserPrompt)}>
+          <div class="mt-0.5 flex justify-end text-[11px] text-muted-foreground/70 pointer-coarse:hidden">
+            <span>
+              <Kbd>↑</Kbd> edit queued
+            </span>
+          </div>
+        </Show>
         <Show when={error()}>
           <p class="mt-1 text-error">{error()}</p>
         </Show>
@@ -252,7 +255,7 @@ function ComposerEditor(props: { dock?: boolean }) {
   const loading = createMemo(() => conversation().loading)
   const busy = createMemo(() => conversation().busy)
   const inbox = createMemo(() => conversation().inbox)
-  const queued = createMemo(() => inbox().filter((item) => item.mode !== 'write'))
+  const recallable = createMemo(() => inbox().some(isUserPrompt))
   const draft = createMemo(() => getDraft(id()))
   const [placeholder, setPlaceholder] = createSignal<string>()
   const talk = useProvided(DictationShortcut, () => null)
@@ -300,7 +303,7 @@ function ComposerEditor(props: { dock?: boolean }) {
     if (loading() || current.get().sending || conversationId === undefined) return
     current.set({ sending: true, error: undefined })
     try {
-      const recalled = await recallQueued(api, conversationId, queued())
+      const recalled = await recallQueued(api, conversationId, inbox())
       restoreDraft(current, recalledText(current.get().text, recalled))
       current.set({
         images: [...current.get().images, ...recalled.flatMap((input) => input.images)],
@@ -313,7 +316,7 @@ function ComposerEditor(props: { dock?: boolean }) {
   }
 
   function recallOnUp(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
-    if (event.key !== 'ArrowUp' || target() || queued().length === 0) return false
+    if (event.key !== 'ArrowUp' || target() || !recallable()) return false
     const { value: typed, selectionStart } = event.currentTarget
     if (!atFirstLine(typed, selectionStart)) return false
     event.preventDefault()

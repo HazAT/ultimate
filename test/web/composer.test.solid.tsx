@@ -193,6 +193,39 @@ it('withdraws a queued steer into the next steer, and restores both when the sub
   })
 })
 
+it("keeps an agent's queued message out of the user's steer and out of ↑", async () => {
+  const agentMessage = {
+    id: 230,
+    mode: 'steer',
+    content: 'Message from #5:\nbuild finished',
+    entry: { kind: 'message', data: { from: 5 } },
+  }
+  await show(23, {
+    'pi.live': { run: { taskId: 2, inputs: [], turns: 0 } },
+    'pi.inbox': {
+      items: [agentMessage, { id: 231, mode: 'followUp', content: 'my follow-up' }],
+    },
+  })
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  await act([
+    { ref: 'Prompt for conversation #23', action: 'setValue', args: ['my steer'] },
+    { ref: 'Send prompt to conversation #23', action: 'press' },
+  ])
+  expect(harness.posts.map(({ path, body }) => [path, body])).toEqual([
+    ['/api/conversations/23/submit', { text: 'my steer', whenBusy: 'steer', images: [] }],
+  ])
+  container
+    .querySelector('#composer-input')!
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+  await settle()
+  flush()
+  expect(harness.posts.at(-1)?.path).toBe('/api/conversations/23/inbox/231/cancel')
+  expect(harness.posts.some(({ path }) => path.includes('/inbox/230/'))).toBe(false)
+  expect(getDraft(23).get().text).toBe('my follow-up')
+})
+
 it('shows a draft another tab changed while the composer was away, and sends that text', async () => {
   await show(13)
   renderSolid(() => <Composer />)

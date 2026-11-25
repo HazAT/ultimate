@@ -42,6 +42,8 @@ export function previewParts(
 
 export const atFirstLine = (value: string, caret: number) => !value.slice(0, caret).includes('\n')
 
+export const isUserPrompt = (item: InboxItem) => item.mode !== 'write' && item.entry === undefined
+
 const takenByRunBeforeWithdrawal = (failure: unknown) =>
   failure instanceof HttpError && failure.status === 409
 
@@ -50,7 +52,7 @@ export async function withdrawQueuedSteer(
   conversationId: ConversationId,
   items: readonly InboxItem[],
 ): Promise<QueuedInput | undefined> {
-  const previous = items.findLast((item) => item.mode === 'steer')
+  const previous = items.findLast((item) => item.mode === 'steer' && isUserPrompt(item))
   if (!previous) return undefined
   try {
     await api.cancelSubmission(previous.id, conversationId)
@@ -71,12 +73,11 @@ export async function recallQueued(
   conversationId: ConversationId,
   items: readonly InboxItem[],
 ): Promise<QueuedInput[]> {
-  const steersBeforeFollowUps = [
-    ...items.filter((item) => item.mode === 'steer'),
-    ...items.filter((item) => item.mode === 'followUp'),
-  ]
+  const prompts = items.filter(isUserPrompt)
+  const mode = prompts.some((item) => item.mode === 'steer') ? 'steer' : 'followUp'
+  const oneQueue = prompts.filter((item) => item.mode === mode)
   const recovered = await Promise.all(
-    steersBeforeFollowUps.map(async (item) => {
+    oneQueue.map(async (item) => {
       try {
         await api.cancelSubmission(item.id, conversationId)
       } catch (failure) {
