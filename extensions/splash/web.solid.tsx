@@ -1,82 +1,110 @@
 import { TriangleAlertIcon, XIcon } from '@lucide/solid'
-import { createSignal, For, onSettled, Show, untrack } from 'solid-js'
+import { createRoot, createSignal, For, onSettled, Show, untrack } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import { Input } from '@/components/ui/input.solid.tsx'
 import {
   defineWebExtension,
+  composerDraft,
+  fillComposer,
   resumed,
+  uncoveredComposer,
   useConnection,
   useExtensions,
   useReady,
   useSystem,
 } from '@/sdk/solid'
+import { firstRender } from '@/sdk/resume.ts'
 
 const readinessDeadlineMs = 8000
+const held = new URLSearchParams(location.search).has('splash')
+const [typed, setTyped] = createRoot(() => createSignal(''))
 
-type Variant = 'boot' | 'cursor' | 'line'
-const variants: readonly Variant[] = ['boot', 'cursor', 'line']
-const variantKey = 'ultimate.splash-variant'
-const held = new URLSearchParams(location.search).get('splash')
-if (held && (variants as readonly string[]).includes(held)) localStorage.setItem(variantKey, held)
-const variant = (): Variant => {
-  const stored = localStorage.getItem(variantKey)
-  return (variants as readonly string[]).includes(stored ?? '') ? (stored as Variant) : 'boot'
+function handOver() {
+  const text = typed()
+  const composer = uncoveredComposer()
+  if (!text || !(composer instanceof HTMLTextAreaElement)) return
+  const conversation = Number(composer.dataset.conversation)
+  if (!Number.isInteger(conversation)) return
+  const draft = composerDraft(conversation).text
+  const joined = draft ? `${draft}\n${text}` : text
+  fillComposer(conversation, joined)
+  composer.focus()
+  requestAnimationFrame(() => composer.setSelectionRange(joined.length, joined.length))
 }
 
-const stillMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
-
-function Cursor(props: { class?: string }) {
+function Cursor() {
   let cursor: HTMLSpanElement | undefined
   onSettled(() => {
-    if (!cursor || stillMotion()) return undefined
+    if (!cursor || matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
     const blink = cursor.animate(
       [{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0, offset: 0.5 }, { opacity: 0 }],
       { duration: 1060, iterations: Infinity },
     )
     return () => blink.cancel()
   })
-  return <span aria-hidden="true" class={props.class ?? 'bg-brand'} ref={cursor} />
+  return (
+    <span
+      aria-hidden="true"
+      class="ml-0.5 inline-block h-[1.05em] w-[0.6em] bg-brand"
+      ref={cursor}
+    />
+  )
 }
 
-function useBoot() {
+function Prompt() {
+  let box: HTMLDivElement | undefined
+  onSettled(() => box?.querySelector('input')?.focus({ preventScroll: true }))
+  return (
+    <div class="mt-4 flex items-center gap-2 text-left" ref={box}>
+      <span aria-hidden="true" class="text-brand">
+        ›
+      </span>
+      <Input
+        aria-label="Start typing while Ultimate loads"
+        class="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[12px] caret-brand shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
+        onValueChange={setTyped}
+        placeholder="start typing, it carries over"
+        value={typed()}
+      />
+    </div>
+  )
+}
+
+function Boot() {
   const connection = useConnection()
   const system = useSystem()
   const extensions = useExtensions()
-  const ready = useReady()
   const loaded = () => extensions().filter((record) => !record.loading).length
-  return {
-    connected: () => connection().status === 'open',
-    system,
-    total: () => extensions().length,
-    loaded,
-    fraction: () => (extensions().length ? loaded() / extensions().length : 0),
-    ready: () => ready().ready,
-  }
-}
-
-function BootLog() {
-  const boot = useBoot()
   const rows = () => [
-    { label: 'stream', value: boot.connected() ? 'open' : 'connecting', done: boot.connected() },
+    {
+      label: 'stream',
+      value: connection().status === 'open' ? 'open' : 'connecting',
+      done: connection().status === 'open',
+    },
     {
       label: 'host',
-      value: boot.system()
-        ? `${boot.system()!.machine.hostname} · gen ${boot.system()!.process.generation}`
-        : '…',
-      done: boot.system() !== undefined,
+      value: system() ? `${system()!.machine.hostname} · gen ${system()!.process.generation}` : '…',
+      done: system() !== undefined,
     },
     {
       label: 'ext',
-      value: boot.total() ? `${boot.loaded()}/${boot.total()}` : '…',
-      done: boot.total() > 0 && boot.loaded() === boot.total(),
+      value: extensions().length ? `${loaded()}/${extensions().length}` : '…',
+      done: extensions().length > 0 && loaded() === extensions().length,
     },
   ]
   return (
     <div class="w-full max-w-md font-mono text-[12px]">
-      <div class="flex items-center text-[13px] font-semibold tracking-[0.3em] text-brand">
+      <div
+        aria-hidden="true"
+        class="flex items-center text-[13px] font-semibold tracking-[0.3em] text-brand"
+      >
         ULTIMATE
-        <Cursor class="ml-0.5 inline-block h-[1.05em] w-[0.6em] bg-brand" />
+        <Cursor />
       </div>
-      <div class="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left">
+      <div
+        aria-hidden="true"
+        class="mt-5 grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1 border-t border-border/70 pt-4 text-left"
+      >
         <For each={rows()}>
           {(row) => (
             <>
@@ -88,58 +116,18 @@ function BootLog() {
           )}
         </For>
       </div>
-    </div>
-  )
-}
-
-function WordmarkCursor() {
-  const boot = useBoot()
-  return (
-    <div class="flex flex-col items-start font-mono">
-      <div class="flex items-center text-[13px] font-semibold tracking-[0.3em] text-brand">
-        ULTIMATE
-        <Cursor class="ml-0.5 inline-block h-[1.05em] w-[0.6em] bg-brand" />
-      </div>
-      <div class="mt-2 h-px w-full overflow-hidden bg-border/60">
-        <div
-          class="h-full origin-left bg-brand/70 transition-transform duration-150 motion-reduce:transition-none"
-          style={{ transform: `scaleX(${boot.fraction()})` }}
-        />
-      </div>
-    </div>
-  )
-}
-
-function BottomLine() {
-  const boot = useBoot()
-  const text = () =>
-    !boot.connected()
-      ? 'connecting'
-      : !boot.system()
-        ? 'reading system'
-        : `gen ${boot.system()!.process.generation} · ext ${boot.loaded()}/${boot.total() || '…'}`
-  return (
-    <div class="fixed inset-x-0 bottom-0 flex h-7 items-center gap-2 border-t border-border/70 px-3 font-mono text-[10px] text-muted-foreground/70">
-      <span class="font-semibold tracking-[0.3em] text-brand">ULTIMATE</span>
-      <span>{text()}</span>
-      <Cursor class="inline-block h-[1.1em] w-[0.55em] bg-muted-foreground/60" />
+      <Prompt />
     </div>
   )
 }
 
 function Loading() {
-  const shown = variant()
+  onSettled(() => () => void firstRender.then(handOver))
   return (
-    <div
-      class="pointer-events-none fixed inset-0 z-[60] grid place-items-center bg-background"
-      data-splash=""
-    >
+    <div class="fixed inset-0 z-[60] grid place-items-center bg-background" data-splash="">
       <progress aria-busy="true" aria-label="Loading Ultimate" aria-live="polite" class="sr-only" />
-      <div
-        aria-hidden="true"
-        class="flex w-full justify-center animate-fade-in [animation-delay:200ms] motion-reduce:animate-none"
-      >
-        {shown === 'boot' ? <BootLog /> : shown === 'cursor' ? <WordmarkCursor /> : <BottomLine />}
+      <div class="flex w-full animate-fade-in justify-center [animation-delay:200ms] motion-reduce:animate-none">
+        <Boot />
       </div>
     </div>
   )
@@ -150,7 +138,7 @@ function Overlay() {
   const fresh = !untrack(() => ready().ready) && !resumed && !navigator.webdriver
   return (
     <Show
-      when={(fresh || held !== null) && (held !== null || !ready().ready)}
+      when={held || (fresh && !ready().ready)}
       fallback={
         <Show when={ready().timedOut}>
           <Late />
