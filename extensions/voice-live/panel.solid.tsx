@@ -789,7 +789,7 @@ export function VoicePanel() {
   )
   const [folded, setFolded] = useExtensionUiState('folded', false)
   const drag = (event: PointerEvent & { currentTarget: HTMLElement }) => {
-    if (phone() || (event.target as HTMLElement).closest('button')) return
+    if (phone() || (event.target as HTMLElement).closest('button, [popover]')) return
     const panel = event.currentTarget.closest<HTMLElement>('[data-voice-panel]')!
     const box = panel.getBoundingClientRect()
     const right = window.innerWidth - box.right
