@@ -70,7 +70,7 @@ export function StatusLine() {
           </>
         }
       >
-        <div class="flex min-w-0 flex-1 items-center gap-3 overflow-hidden whitespace-nowrap">
+        <div class="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
           <ComposerStatusTarget />
           <Slot fallback={inlineFailure} name="statusline.left" phone />
           <Slot fallback={inlineFailure} name="statusline.right" phone />
@@ -83,7 +83,7 @@ export function StatusLine() {
 
 function ComposerStatusTarget() {
   const target = (
-    <div class="flex min-w-0 shrink items-center gap-3 overflow-hidden empty:hidden" />
+    <div class="flex min-w-0 shrink items-center gap-3 empty:hidden" />
   ) as HTMLDivElement
   createRenderEffect(
     () => target,
