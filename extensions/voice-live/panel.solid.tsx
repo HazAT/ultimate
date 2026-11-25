@@ -3,21 +3,14 @@ import {
   Check,
   LoaderCircle,
   CircleDashed,
-  ChevronLeft,
-  ChevronRight,
   Maximize2,
   Minimize2,
-  Pause,
-  Play,
   Settings2,
-  SkipBack,
-  SkipForward,
   SquareArrowOutUpRight,
   X,
 } from '@lucide/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { JSX } from '@solidjs/web'
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, For, onSettled, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
@@ -46,7 +39,6 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
-import { every } from '../../lib/timers.ts'
 import { shortcut, talkMode } from '../dictation/ui.solid.tsx'
 import {
   activity,
@@ -68,14 +60,12 @@ import {
   voiceSink,
 } from './dock.solid.tsx'
 import { StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
-import { estimate, speech, VOICES } from '../read-aloud/ui.solid.tsx'
+import { PlaybackBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Session, Voicing, Waveform } from './turns.solid.tsx'
 
 const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground pointer-coarse:size-9'
-const rowButton =
-  'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
 const keys = () => formatKeys(KEYS)[0].join('+')
 const holdKeys = () => formatKeys(shortcut())[0].join('+')
 const tap = () => talkMode() === 'tap'
@@ -307,76 +297,12 @@ function SpeechVoice() {
 }
 
 function PlaybackStrip() {
-  const state = playerState
-  const [now, setNow] = createSignal(Date.now())
-  createEffect(
-    () => state().playing,
-    (on) => (on ? every(200, () => setNow(Date.now())) : undefined),
-  )
-  const progress = createMemo(() => {
-    const list = dock.player.items()
-    const current = list[state().index]
-    if (!current) return { done: 0, total: 1, paragraphs: 1, paragraph: 0 }
-    const total = list.reduce((sum, item) => sum + estimate(item.text, speech.rate()), 0)
-    const done =
-      list
-        .slice(0, state().index)
-        .reduce((sum, item) => sum + estimate(item.text, speech.rate()), 0) +
-      (state().playing
-        ? Math.min(estimate(current.text, speech.rate()), (now() - state().startedAt) / 1000)
-        : 0)
-    return {
-      done,
-      total,
-      paragraphs: new Set(list.map((item) => item.paragraph)).size,
-      paragraph: current.paragraph,
-    }
-  })
-  const step = (label: string, icon: JSX.Element, run: () => void) => (
-    <Button
-      aria-label={label}
-      class={rowButton}
-      onClick={() => run()}
-      size={null}
-      title={label}
-      variant={null}
-    >
-      {icon}
-    </Button>
-  )
   return (
-    <Show when={state().playing || state().paused}>
-      <div
-        class="relative flex min-w-0 items-center gap-2 overflow-hidden rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1 font-mono text-[11px] text-muted-foreground"
-        data-voice-playback
-      >
-        <AudioLines class="size-3.5 shrink-0 text-brand" />
-        <span class="min-w-0 truncate tabular-nums">
-          {state().paused ? 'Paused' : 'Speaking'} · ¶ {progress().paragraph + 1}/
-          {progress().paragraphs}
-          {state().streaming ? '+' : ''} · {state().index + 1}/{dock.player.items().length} · ~
-          {Math.max(0, Math.round(progress().total - progress().done))} s
-          {state().streaming ? ' · still writing' : ''}
-        </span>
-        <span class="ml-auto flex shrink-0 items-center gap-1">
-          {step('Previous paragraph', <SkipBack />, () => dock.player.paragraph(-1))}
-          {step('Previous sentence', <ChevronLeft />, () => dock.player.sentence(-1))}
-          {step(
-            state().playing ? 'Pause speech' : 'Resume speech',
-            state().playing ? <Pause /> : <Play />,
-            () => dock.player.toggle(),
-          )}
-          {step('Next sentence', <ChevronRight />, () => dock.player.sentence(1))}
-          {step('Next paragraph', <SkipForward />, () => dock.player.paragraph(1))}
-        </span>
-        <i
-          aria-hidden="true"
-          class="absolute bottom-0 left-0 h-px bg-brand/70 transition-[width] duration-200 ease-linear"
-          style={{
-            width: `${Math.min(100, (progress().done / progress().total) * 100)}%`,
-          }}
-        />
-      </div>
+    <Show when={playerState().playing || playerState().paused}>
+      <PlaybackBar
+        status={playerState().paused ? 'Paused' : 'Speaking'}
+        toggle={() => dock.player.toggle()}
+      />
     </Show>
   )
 }

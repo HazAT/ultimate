@@ -29,5 +29,11 @@ export type { Sentence } from './speech.ts'
 export { useSpokenText } from './spoken.solid.tsx'
 /** What a message being read gives the highlight. */
 export type { SpokenText } from './highlight.ts'
+/**
+ * The one playback bar for the page's player: `status` (Speaking, Reading, Paused…), then paragraph, sentence and time
+ * left, the speed, skip by paragraph or sentence, `toggle` (pause or resume), and `stop` when given. `onShow` makes the
+ * status a link to the source; `loading` shows a spinner on the toggle; `error` colours the icon and titles the bar.
+ */
+export { PlaybackBar } from './bar.solid.tsx'
 /** The voices the OpenAI voice offers. */
 export { VOICES } from './voices.ts'

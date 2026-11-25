@@ -1,7 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { LoaderCircle, Pause, Play, Square, Volume2 } from '@lucide/solid'
-import { createEffect, createSignal, Match, Show, Switch } from 'solid-js'
-import { Button } from '@/components/ui/button.solid.tsx'
+import { createEffect, createSignal, Show } from 'solid-js'
 import {
   cn,
   column,
@@ -14,6 +12,7 @@ import {
   useExternal,
 } from '@/sdk/solid'
 import type { SolidComposerProps } from '@/sdk/solid'
+import { PlaybackBar } from './bar.solid.tsx'
 import type { Reading } from './player.solid.tsx'
 import { SpeechStatusAction } from './refs.ts'
 import { speech } from './voice.solid.tsx'
@@ -25,11 +24,6 @@ type Player = {
   resume: () => void
   stop: () => void
 }
-
-const speeds = [1, 1.1, 1.25, 1.5, 1.75, 2, 0.8]
-
-const rowButton =
-  'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
 
 export function readingStrip(player: Player) {
   return function ReadingStrip(props: SolidComposerProps) {
@@ -74,73 +68,22 @@ export function readingStrip(player: Player) {
             const playing = () => current().status === 'playing'
             return (
               <div class={cn(column(props.dock), 'pb-1.5')} data-read-aloud-strip={current().entry}>
-                <div
-                  class="flex min-w-0 items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1 font-mono text-[11px] text-muted-foreground"
-                  title={current().error}
-                >
-                  <Volume2
-                    class={cn('size-3.5 shrink-0', current().error ? 'text-error' : 'text-brand')}
-                  />
-                  <Button
-                    aria-label={`Show message #${current().conversation}/${current().entry}`}
-                    class="h-auto min-w-0 justify-start truncate p-0 font-mono text-[11px] font-normal text-muted-foreground hover:text-foreground"
-                    onClick={goToMessage}
-                    size={null}
-                    title="Show the message"
-                    variant={null}
-                  >
-                    {current().error
+                <PlaybackBar
+                  error={current().error}
+                  loading={current().status === 'loading'}
+                  onShow={goToMessage}
+                  status={
+                    current().error
                       ? 'Could not read'
                       : current().status === 'loading'
                         ? 'Preparing'
                         : current().status === 'paused'
                           ? 'Paused'
-                          : 'Reading'}{' '}
-                    <span class="underline decoration-muted-foreground/40 underline-offset-2">
-                      #{current().conversation}/{current().entry}
-                    </span>
-                  </Button>
-                  <Button
-                    aria-label="Reading speed"
-                    class="ml-auto h-auto shrink-0 rounded px-1 font-mono text-[11px] font-normal text-muted-foreground tabular-nums transition-colors hover:text-foreground"
-                    onClick={() =>
-                      speech.setRate(speeds[(speeds.indexOf(speech.rate()) + 1) % speeds.length])
-                    }
-                    size={null}
-                    title="Reading speed"
-                    variant={null}
-                  >
-                    {speech.rate()}×
-                  </Button>
-                  <Button
-                    aria-label={playing() ? 'Pause reading' : 'Resume reading'}
-                    class={rowButton}
-                    disabled={current().status === 'loading'}
-                    onClick={() => (playing() ? player.pause() : player.resume())}
-                    size={null}
-                    title={playing() ? 'Pause' : 'Resume'}
-                    variant={null}
-                  >
-                    <Switch fallback={<Play />}>
-                      <Match when={current().status === 'loading'}>
-                        <LoaderCircle class="motion-safe:animate-spin" />
-                      </Match>
-                      <Match when={playing()}>
-                        <Pause />
-                      </Match>
-                    </Switch>
-                  </Button>
-                  <Button
-                    aria-label="Stop reading"
-                    class={rowButton}
-                    onClick={() => player.stop()}
-                    size={null}
-                    title="Stop"
-                    variant={null}
-                  >
-                    <Square />
-                  </Button>
-                </div>
+                          : 'Reading'
+                  }
+                  stop={player.stop}
+                  toggle={() => (playing() ? player.pause() : player.resume())}
+                />
               </div>
             )
           }}
