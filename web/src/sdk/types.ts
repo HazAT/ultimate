@@ -383,7 +383,7 @@ export const FileUpload = definePoint<
 >('ultimate.fileUpload')
 
 /**
- * What a prompt box's dictation control gets (`voice` provides it, a mic button): `name` names the box for the control's
+ * What a prompt box's dictation control gets (`dictation` provides it, a mic button): `name` names the box for the control's
  * agent label, `conversation` is the box's conversation or undefined for a draft-only box, `insert` puts words into that
  * same box at its cursor, and `level` drives the box's hairline with the live voice level, 0 to 1, until `undefined`
  * ends dictation. No control while nothing provides it.

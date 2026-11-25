@@ -30,7 +30,7 @@ function failure(status: number, detail: string | undefined) {
   return `Transcription failed (HTTP ${status})${detail ? `: ${detail}` : ''}`
 }
 
-export default defineExtension({ name: 'voice' })
+export default defineExtension({ name: 'dictation' })
 
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host, signal }) =>

@@ -14,11 +14,11 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import type { Dictation } from '@/sdk/solid'
-import { meansNone } from '../../lib/errors.ts'
 import { deadline } from '../../lib/timers.ts'
+import { base64, capture, unsupported } from './capture.ts'
+import type { Sink } from './capture.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 
-const recordingMimeOrder = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
 const buttonSize = 'size-7 rounded-md pointer-coarse:size-9'
 const stopSize =
   'size-6 rounded-md pointer-coarse:size-9 pointer-fine:group-data-minimal/keel:size-5'
@@ -26,63 +26,11 @@ const keepEditorFocus = (event: PointerEvent) => event.preventDefault()
 
 type DictationProps = NonNullable<typeof Dictation.input>
 
-type Recording = {
-  stream: MediaStream
-  audio?: AudioContext
-  started: number
-  stop: (source?: string) => void
-}
-
-function blockedMicrophone(reason: string) {
-  const android = /Android/.test(navigator.userAgent)
-  if (reason === 'Permission denied by system')
-    return android
-      ? 'Android blocks the mic for Chrome: allow it in Settings → Apps → Chrome → Permissions'
-      : 'The system blocks the mic for this browser: allow it in the system’s privacy settings'
-  if (android)
-    return 'Mic blocked for this site: allow it in Chrome → Settings → Site settings → Microphone'
-  return 'Microphone access is blocked: allow it in the browser’s site settings'
-}
-
-function unsupported() {
-  if (!window.isSecureContext) return 'Voice needs HTTPS: open Ultimate over its tailnet URL'
-  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined')
-    return 'This browser cannot record audio'
-  return undefined
-}
-
-async function base64(blob: Blob) {
-  const bytes = new Uint8Array(await blob.arrayBuffer())
-  let binary = ''
-  for (let at = 0; at < bytes.length; at += 0x8000)
-    binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
-  return btoa(binary)
-}
+type Recording = { started: number; stop(source: string): void }
 
 const clock = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
-}
-
-function measure(recording: Recording, report: (level: number) => void) {
-  const { audio, stream } = recording
-  if (!audio) return undefined
-  const analyser = audio.createAnalyser()
-  analyser.fftSize = 256
-  const source = audio.createMediaStreamSource(stream)
-  source.connect(analyser)
-  const samples = new Uint8Array(analyser.fftSize)
-  let frame = requestAnimationFrame(function draw() {
-    analyser.getByteTimeDomainData(samples)
-    let sum = 0
-    for (const sample of samples) sum += ((sample - 128) / 128) ** 2
-    report(Math.min(1, Math.sqrt(sum / samples.length) * 4))
-    frame = requestAnimationFrame(draw)
-  })
-  return () => {
-    cancelAnimationFrame(frame)
-    source.disconnect()
-  }
 }
 
 export function VoiceButton(props: DictationProps) {
@@ -99,24 +47,29 @@ export function VoiceButton(props: DictationProps) {
   const [transcribing, setTranscribing] = createSignal(false)
   const [error, setError] = createSignal<string>()
   const now = useNow(250, () => !!recording())
-  let capture: AbortController | undefined
+  let pending: { sink: Sink; lifetime: AbortController } | undefined
 
   function cancelCapture() {
-    capture?.abort()
-    capture = undefined
-  }
-  createEffect(id, () => {
+    const take = pending
+    pending = undefined
     setRecording(undefined)
-    return cancelCapture
-  })
-  createEffect(recording, (active) => active && deadline(5 * 60_000, () => active.stop()))
+    if (take) {
+      take.lifetime.abort()
+      void capture.cancel(take.sink)
+    }
+  }
+  createEffect(id, () => cancelCapture)
   createEffect(
     () => [recording(), props.level] as const,
     ([active, level]) => {
-      level(active ? 0 : undefined)
-      const stopMeasuring = active ? measure(active, level) : undefined
+      if (!active) return undefined
+      const sink = pending?.sink
+      level(0)
+      const unsubscribe = capture.onLevel(() => {
+        if (sink && capture.capturing(sink)) level(capture.levels().at(-1) ?? 0)
+      })
       return () => {
-        stopMeasuring?.()
+        unsubscribe()
         level(undefined)
       }
     },
@@ -146,71 +99,42 @@ export function VoiceButton(props: DictationProps) {
     }
   }
 
-  async function start() {
+  function start() {
+    if (pending || capture.talking()) return undefined
     const conversation = id() ?? ROOT
     const insert = props.insert
-    capture = new AbortController()
-    const { signal } = capture
-    setError(undefined)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      })
-      const releaseStream = () => {
-        for (const track of stream.getTracks()) track.stop()
-      }
-      if (signal.aborted) return releaseStream()
-      signal.addEventListener('abort', releaseStream, { once: true })
-
-      const type = recordingMimeOrder.find((candidate) => MediaRecorder.isTypeSupported(candidate))
-      const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
-      const audio = typeof AudioContext === 'undefined' ? undefined : new AudioContext()
-      const chunks: Blob[] = []
-      let source = 'app'
-      const stop = (requestedBy = 'app') => {
-        if (recorder.state === 'inactive') return
-        source = requestedBy
-        recorder.stop()
-      }
-      const collect = ({ data }: BlobEvent) => {
-        if (data.size) chunks.push(data)
-      }
-      const finish = () => {
-        cancelCapture()
-        setRecording(undefined)
-        if (chunks.length) {
-          const blob = new Blob(chunks, {
-            type: recorder.mimeType || type || 'audio/webm',
-          })
-          void transcribe(conversation, blob, source, insert)
-        }
-      }
-      signal.addEventListener(
-        'abort',
-        () => {
-          stop()
-          audio?.close().catch(meansNone)
-        },
-        { once: true },
-      )
-      recorder.addEventListener('dataavailable', collect, { signal })
-      recorder.addEventListener('stop', finish, { signal, once: true })
-      audio?.resume().catch(meansNone)
-      recorder.start(1000)
-      setRecording({ stream, audio, started: Date.now(), stop })
-    } catch (failure) {
-      if (signal.aborted) return
-      cancelCapture()
-      const { name, message } =
-        failure instanceof DOMException ? failure : { name: '', message: '' }
-      setError(
-        name === 'NotAllowedError'
-          ? blockedMicrophone(message)
-          : name === 'NotFoundError'
-            ? 'No microphone found'
-            : `Could not start recording: ${errorMessage(failure)}`,
-      )
+    const lifetime = new AbortController()
+    let source = 'app'
+    const clear = () => {
+      pending = undefined
+      setRecording(undefined)
     }
+    const sink: Sink = {
+      start() {
+        pending = { sink, lifetime }
+        setError(undefined)
+      },
+      recording: () => {
+        setRecording({
+          started: Date.now(),
+          stop(requestedBy) {
+            if (!capture.talking(sink)) return
+            source = requestedBy
+            void capture.release(sink)
+          },
+        })
+      },
+      cancel() {
+        if (pending?.sink === sink) clear()
+      },
+      error: setError,
+      async finish({ blob }) {
+        if (pending?.sink !== sink) return
+        clear()
+        if (blob.size) await transcribe(conversation, blob, source, insert)
+      },
+    }
+    return capture.press(sink, lifetime.signal)
   }
 
   function pressMic() {
@@ -270,10 +194,7 @@ export function VoiceButton(props: DictationProps) {
           <Button
             aria-label={`Cancel dictation into ${props.name}`}
             class={`${buttonSize} text-muted-foreground`}
-            onClick={() => {
-              cancelCapture()
-              setRecording(undefined)
-            }}
+            onClick={cancelCapture}
             onPointerDown={keepEditorFocus}
             size={null}
             title="Cancel"

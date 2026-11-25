@@ -3,6 +3,7 @@ import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, ROOT, useConversations, useDocOf } from '@/sdk/solid'
+import { capture } from '../dictation/ui.solid.tsx'
 import { dock, playerState, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
 import { VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 
@@ -17,12 +18,7 @@ const sway = `@keyframes voice-row-sway {
 
 function Level(props: { live: Live }) {
   const [level, setLevel] = createSignal(0)
-  onSettled(() =>
-    dock.mic.onLevel(() => {
-      const levels = dock.mic.levels()
-      setLevel(levels[levels.length - 1] ?? 0)
-    }),
-  )
+  onSettled(() => capture.onLevel(() => setLevel(capture.levels().at(-1) ?? 0)))
   return (
     <span aria-hidden="true" class="flex h-3 w-3 shrink-0 items-center justify-center gap-[2px]">
       <style>{sway}</style>

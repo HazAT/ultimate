@@ -5,9 +5,9 @@ import { actionRef } from '../../shared/extension-api.ts'
 export type VoiceStatus = { available: true } | { available: false; reason: string }
 
 /** No arguments → whether an OpenAI API key exists to transcribe with. */
-export const StatusAction = actionRef<null, VoiceStatus>('voice', 'status')
+export const StatusAction = actionRef<null, VoiceStatus>('dictation', 'status')
 /** `{ audio: base64, mimeType }` → the transcribed text. Fails with a message the composer shows as is. */
 export const TranscribeAction = actionRef<{ audio: string; mimeType: string }, { text: string }>(
-  'voice',
+  'dictation',
   'transcribe',
 )

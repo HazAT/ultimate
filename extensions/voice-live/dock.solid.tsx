@@ -4,9 +4,15 @@ import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
 import { api, composerDraft, errorMessage, ROOT, useConversation, useUiState } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
+import {
+  animationFrames,
+  base64,
+  capture,
+  MIN_SPOKEN_SECONDS,
+  talkMode,
+} from '../dictation/ui.solid.tsx'
+import type { Recorded, Sink } from '../dictation/ui.solid.tsx'
 import { createCues } from './cues.ts'
-import { base64, createMic, micFailure, unsupported } from './recorder.ts'
-import type { Recorded } from './recorder.ts'
 import {
   DiscardAction,
   EndAction,
@@ -32,14 +38,6 @@ import type { Trace } from './trace.ts'
 
 export const KEYS = 'mod+shift+v'
 export const CANCEL_LABEL = 'Cancel recording'
-const frame = (fn: () => void) => {
-  let handle = requestAnimationFrame(function tick() {
-    fn()
-    handle = requestAnimationFrame(tick)
-  })
-  return () => cancelAnimationFrame(handle)
-}
-
 type Image = { data: string; mimeType: string }
 export type Phase = 'idle' | 'recording' | 'sending' | 'thinking' | 'speaking' | 'done' | 'error'
 type Local = {
@@ -57,18 +55,14 @@ export const dock = createRoot(() => {
   const [cuesOn, setCuesOn] = useUiState('ext.voice-live.cues', true)
   const [rate, setRate] = useUiState('ext.voice-live.rate', 1.15)
   const [open, setOpen] = useUiState('ext.voice-live.open', false)
-  const [holdKeys, setHoldKeys] = useUiState('ext.voice-live.hold', 'mod+shift+space')
   const [collect, setCollect] = useUiState('ext.voice-live.collect', false)
-  const [talkMode, setTalkMode] = useUiState<'hold' | 'tap'>('ext.voice-live.talk', 'hold')
   const [phase, setPhase] = createSignal<Phase>('idle')
-  const [capturing, setCapturing] = createSignal(false)
   const [status, setStatus] = createSignal<string | undefined>()
   const [local, setLocal] = createSignal<Record<string, Local>>({})
   const [cuts, setCuts] = createSignal<Cut[]>([])
   const [error, setError] = createSignal<string | undefined>()
   const [pending, setPending] = createSignal<string | undefined>()
   const cues = createCues(cuesOn)
-  const mic = createMic(frame)
   const [voice, setVoice] = useUiState<'system' | 'openai'>('ext.voice-live.voice', 'system')
   const [openaiVoice, setOpenaiVoice] = useUiState('ext.voice-live.openai-voice', 'cedar')
   const [keyed, setKeyed] = createSignal<boolean | undefined>()
@@ -95,8 +89,8 @@ export const dock = createRoot(() => {
   const player: Player = createPlayer({
     rate,
     enabled: speak,
-    listening: mic.recording,
-    frame,
+    listening: capture.recording,
+    frame: animationFrames,
     engine: () => (openaiOn() ? openai : system),
   })
   createEffect(openaiOn, () => player.switched())
@@ -117,18 +111,13 @@ export const dock = createRoot(() => {
     openaiOn,
     openaiVoice,
     setOpenaiVoice,
-    holdKeys,
-    setHoldKeys,
     collect,
     setCollect,
-    talkMode,
-    setTalkMode,
     open,
     setOpen,
     phase,
     setPhase,
-    capturing,
-    setCapturing,
+    capturing: () => capture.capturing(voiceSink),
     status,
     setStatus,
     local,
@@ -140,13 +129,12 @@ export const dock = createRoot(() => {
     pending,
     setPending,
     cues,
-    mic,
     player,
     held: () => held,
     hold: (value: typeof held) => (held = value),
     pulse(on: boolean) {
       stopPulse?.()
-      stopPulse = on ? every(1600, () => !mic.recording() && cues.thinking()) : undefined
+      stopPulse = on ? every(1600, () => !capture.recording() && cues.thinking()) : undefined
     },
   }
 })
@@ -166,6 +154,7 @@ const waiting = new Map<string, Set<Waiter>>()
 const sending = new Set<string>()
 const forks = new Map<ConversationId, Readonly<VoiceFork>>()
 let session: ConversationId | undefined
+capture.setKeepOpen(() => session !== undefined)
 export const COLD_DRAFT = 'voice-live.cold'
 export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
   !!cold.text.trim() || cold.images.length > 0 || cold.files > 0
@@ -274,65 +263,31 @@ function markCut() {
   return hintFor(reply.key, reply.text, cut)
 }
 
-let pressing = 0
-let released = 0
-
-let micWork: Promise<unknown> = Promise.resolve()
-const onMic = <T,>(work: () => Promise<T>) => {
-  const run = micWork.then(work, work)
-  micWork = run
-  return run
-}
-
-export const talking = () => pressing > released
-
-export async function press() {
-  if (pressing > released) return
-  const reason = unsupported()
-  if (reason) {
-    dock.setError(reason)
-    return
-  }
-  const mine = ++pressing
-  dock.setError(undefined)
-  const paused = dock.player.pause()
-  dock.hold({
-    busy:
-      paused || !!dock.held()?.busy || dock.phase() === 'thinking' || dock.phase() === 'sending',
-  })
-  let started: boolean
-  try {
-    started = await onMic(async () => {
-      if (released >= mine) return false
-      await dock.mic.start()
-      return true
+const voiceSink: Sink = {
+  start() {
+    dock.setError(undefined)
+    const paused = dock.player.pause()
+    dock.hold({
+      busy:
+        paused || !!dock.held()?.busy || dock.phase() === 'thinking' || dock.phase() === 'sending',
     })
-  } catch (failure) {
-    if (pressing !== mine) return
-    released = mine
-    restore()
-    dock.setError(micFailure(failure) ?? errorMessage(failure))
-    return
-  }
-  if (released >= mine) {
-    if (!started && pressing === mine) restore()
-    return
-  }
-  dock.setCapturing(true)
-  dock.setPhase('recording')
-  dock.setStatus(
-    dock.held()?.busy ? 'Recording · say something to interrupt' : 'Recording · I hear you',
-  )
-  dock.cues.press()
+  },
+  recording() {
+    dock.setPhase('recording')
+    dock.setStatus(
+      dock.held()?.busy ? 'Recording · say something to interrupt' : 'Recording · I hear you',
+    )
+    dock.cues.press()
+  },
+  cancel: restore,
+  error: dock.setError,
+  finish: finishRecording,
 }
 
-export async function cancelRecording() {
-  const take = pressing
-  released = take
-  dock.setCapturing(false)
-  await onMic(() => dock.mic.stop())
-  if (pressing === take) restore()
-}
+export const talking = () => capture.talking(voiceSink)
+export const press = () => capture.press(voiceSink, live.signal)
+export const release = () => capture.release(voiceSink)
+export const cancelRecording = () => capture.cancel(voiceSink)
 
 function restore() {
   const held = dock.held()
@@ -345,15 +300,9 @@ function restore() {
   dock.setStatus(undefined)
 }
 
-export async function release() {
-  const take = pressing
-  released = take
-  const { signal } = live
-  dock.setCapturing(false)
-  const recorded = await onMic(() => dock.mic.stop())
-  if (!recorded || signal.aborted) return
+async function finishRecording(recorded: Recorded, retaking: boolean) {
   const held = dock.held()
-  if (pressing === take) dock.hold(undefined)
+  if (!retaking) dock.hold(undefined)
   if (!recorded.spoke) {
     if (playerState().paused) {
       dock.player.resume()
@@ -362,8 +311,8 @@ export async function release() {
     } else {
       dock.setPhase(held?.busy ? 'thinking' : 'idle')
       dock.setStatus(
-        recorded.seconds < 0.6
-          ? dock.talkMode() === 'tap'
+        recorded.seconds < MIN_SPOKEN_SECONDS
+          ? talkMode() === 'tap'
             ? 'Too short: tap again when you are done'
             : 'Too short: hold while you talk'
           : 'Heard nothing: check the mic?',
@@ -389,7 +338,7 @@ async function collectClip(recorded: Recorded) {
       RecordAction,
       {
         audio,
-        mimeType: recorded.blob.type,
+        mimeType: recorded.blob.type.split(';')[0],
         collect: { seconds: recorded.seconds, envelope: recorded.envelope },
         ...(owner !== undefined ? { session: owner } : {}),
       },
@@ -566,7 +515,7 @@ async function sendTurn(input: {
       dock.setKeyed(status.transcribes)
       trace.label('model', status.model.split('/')[0])
       const audio = input.recorded ? await base64(input.recorded.blob) : undefined
-      const mimeType = input.recorded?.blob.type ?? ''
+      const mimeType = input.recorded?.blob.type.split(';')[0] ?? ''
       const recorded = audio
         ? await api.action(
             RecordAction,
@@ -772,7 +721,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         !latest.answered &&
         started.has(latest.key) &&
         dock.pending() === latest.key &&
-        !dock.mic.recording()
+        !capture.recording()
       ) {
         trace.fail('stopped')
         dock.pulse(false)
@@ -785,7 +734,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         dock.player.load(latest.key, [], latest.busy)
         if (sentences.length) {
           dock.pulse(false)
-          if (!dock.mic.recording()) dock.cues.firstWord()
+          if (!capture.recording()) dock.cues.firstWord()
           trace.start('voice')
         }
       }
@@ -828,10 +777,9 @@ export function endSession() {
 }
 
 function endLocally() {
-  released = pressing
+  void capture.end(voiceSink)
   dock.hold(undefined)
   dock.player.stop()
-  void onMic(async () => dock.mic.release())
   live.abort(new Error('The voice session ended'))
   live = new AbortController()
   session = undefined
@@ -840,7 +788,6 @@ function endLocally() {
   dock.setPending(undefined)
   dock.setLocal({})
   dock.setCuts([])
-  dock.setCapturing(false)
   dock.setPhase('idle')
   dock.setStatus(undefined)
 }

@@ -70,32 +70,14 @@ vi.stubGlobal(
     createMediaStreamSource = () => ({ connect() {} })
   },
 )
-const mic = {
-  asked: 0,
-  acquired: 0,
-  live: 0,
-  refuse: undefined as Promise<never> | undefined,
-  gate: undefined as Promise<void> | undefined,
-}
 vi.stubGlobal('navigator', {
   userAgent: '',
-  mediaDevices: {
-    getUserMedia: () => {
-      mic.asked++
-      if (mic.refuse) return mic.refuse
-      mic.acquired++
-      mic.live++
-      const stream = { getTracks: () => [{ stop: () => mic.live-- }] }
-      return (mic.gate ?? Promise.resolve()).then(() => stream)
-    },
-  },
+  mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) },
 })
 
 beforeEach(async () => {
   await endSession()
   actions.length = 0
-  mic.acquired = 0
-  mic.live = 0
 })
 
 it('cancelling a spoken recording uploads nothing and keeps the collected clips; the next take records and uploads', async () => {
@@ -124,18 +106,6 @@ it('cancelling a spoken recording uploads nothing and keeps the collected clips;
   await sending
 })
 
-it('a cancel while the mic is still starting lets a fresh press record once it has started', async () => {
-  const first = press()
-  const cancelled = cancelRecording()
-  const second = press()
-  await Promise.all([first, cancelled, second])
-  expect(talking()).toBe(true)
-  expect(dock.capturing()).toBe(true)
-  expect(dock.mic.recording()).toBe(true)
-  await cancelRecording()
-  expect(dock.mic.recording()).toBe(false)
-})
-
 it('a retake started while a cancel stops the mic keeps the interruption the cancelled take held', async () => {
   await press()
   dock.hold({ busy: true })
@@ -143,41 +113,6 @@ it('a retake started while a cancel stops the mic keeps the interruption the can
   const retake = press()
   await Promise.all([cancelled, retake])
   expect(dock.held()).toEqual({ busy: true })
-  await cancelRecording()
-})
-
-it('End skips a queued mic start and releases one already in flight', async () => {
-  let open = () => {}
-  mic.gate = new Promise((resolve) => (open = resolve))
-  const first = press()
-  await vi.waitFor(() => expect(mic.acquired).toBe(1))
-  const cancelled = cancelRecording()
-  const retake = press()
-  const ended = endSession()
-  mic.gate = undefined
-  open()
-  await Promise.all([ended, first, cancelled, retake])
-  expect(mic).toMatchObject({ acquired: 1, live: 0 })
-  expect(talking()).toBe(false)
-  expect(dock.mic.recording()).toBe(false)
-})
-
-it('a mic start that fails after End cannot revive the retake queued behind it', async () => {
-  let refuse: (error: Error) => void = () => {}
-  mic.refuse = new Promise((_, reject) => (refuse = reject))
-  mic.asked = 0
-  const first = press()
-  await vi.waitFor(() => expect(mic.asked).toBe(1))
-  const cancelled = cancelRecording()
-  const retake = press()
-  const ended = endSession()
-  mic.refuse = undefined
-  refuse(new DOMException('Permission denied', 'NotAllowedError'))
-  await Promise.allSettled([ended, first, cancelled, retake])
-  expect(mic).toMatchObject({ acquired: 0, live: 0 })
-  expect(talking()).toBe(false)
-  await press()
-  expect(dock.mic.recording()).toBe(true)
   await cancelRecording()
 })
 

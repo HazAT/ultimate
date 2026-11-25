@@ -32,6 +32,7 @@ import {
   UserText,
 } from '@/sdk/solid'
 import { every, nextTurn } from '../../lib/timers.ts'
+import { capture, drawWave } from '../dictation/ui.solid.tsx'
 import {
   dock,
   playerState,
@@ -42,7 +43,6 @@ import {
   useTurns,
 } from './dock.solid.tsx'
 import type { TurnView } from './dock.solid.tsx'
-import { drawWave } from './recorder.ts'
 import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceUiDoc } from './refs.ts'
 import type { VoiceFork, VoiceUiCall } from './refs.ts'
 import { splitReply } from './speech.ts'
@@ -67,7 +67,7 @@ export function Waveform(props: { envelope?: readonly number[]; live?: boolean; 
   )
   onSettled(() => {
     if (!props.live) return undefined
-    return dock.mic.onLevel(() => canvas && drawWave(canvas, dock.mic.levels(), color(), true))
+    return capture.onLevel(() => canvas && drawWave(canvas, capture.levels(), color(), true))
   })
   return <canvas aria-hidden="true" class={props.class} height={56} ref={canvas} width={440} />
 }

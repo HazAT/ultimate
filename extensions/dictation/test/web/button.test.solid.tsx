@@ -12,6 +12,7 @@ import { spliced } from '../../../../web/src/app/queued.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'
 import { events } from '@/sdk/solid'
 import { VoiceButton } from '../../button.solid.tsx'
+import { capture } from '../../capture.ts'
 import type { VoiceStatus } from '../../refs.ts'
 
 const harness = vi.hoisted(() => ({
@@ -28,9 +29,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const subscriptions = (harness.server = fakeSubscriptions(harness.sources))
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
-    if (path === '/api/extensions/voice/actions/status')
+    if (path === '/api/extensions/dictation/actions/status')
       return Response.json({ result: harness.status })
-    if (path === '/api/extensions/voice/actions/transcribe') {
+    if (path === '/api/extensions/dictation/actions/transcribe') {
       harness.transcribe(
         JSON.parse(init?.body as string),
         new Headers(init?.headers).get('x-ultimate-source'),
@@ -189,6 +190,31 @@ it('records for an agent and transcribes into the same composer, leaving the edi
     'agent',
   )
   expect(inserted).toEqual(['hello from the mic'])
+})
+
+it('keeps a plain box’s microphone after Stop only while keepOpen is true', async () => {
+  await mount(14, { available: true })
+  const record = async () => {
+    await press('Dictate into conversation #14')
+    await press('Stop and transcribe into conversation #14')
+  }
+
+  await record()
+  expect(stopTrack).toHaveBeenCalledOnce()
+
+  capture.setKeepOpen(() => true)
+  try {
+    await record()
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+    expect(stopTrack).toHaveBeenCalledOnce()
+    await record()
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+    expect(stopTrack).toHaveBeenCalledOnce()
+  } finally {
+    await capture.end()
+    capture.setKeepOpen(() => false)
+  }
+  expect(stopTrack).toHaveBeenCalledTimes(2)
 })
 
 it('releases a late microphone stream without transcribing after a conversation switch', async () => {

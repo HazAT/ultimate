@@ -142,8 +142,8 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is a smal
   args keeps the args its key was made from. A poll that pauses while the tab is hidden is `every: () => (visible() ?
   ms : undefined)` on a visibility signal, refetching when the tab is shown (`extensions/projects/rail.solid.tsx`).
 - **Many owners, one lifetime:** a recording, a capture or a subscription that several handlers and effects must end
-  hangs off one `AbortController`: listeners take its `signal`, the effect keyed on what ends it calls `abort()`
-  (`extensions/voice/button.solid.tsx`), instead of a ref mirroring state for a cleanup to read.
+  hangs off one `AbortController`: listeners take its `signal`, and the effect keyed on what ends it calls `abort()`
+  instead of a ref mirroring state for a cleanup to read.
 - **The conversation's model:** `useAgent()`, not a whole conversation replica.
 - **Formatting:** `formatAgo`, `formatDuration`, `formatTime`, `formatBytes`, `formatTokens`, `plural`, `shortenPath`,
   `elidePath` and `prettyName` come from `@/sdk/solid`; a shared `.ts` helper takes `formatAgo` and `plural` from

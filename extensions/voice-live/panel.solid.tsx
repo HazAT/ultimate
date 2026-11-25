@@ -48,6 +48,7 @@ import {
 } from '@/sdk/solid'
 import type { ComposerTarget } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
+import { createTalk, setShortcut, setTalkMode, shortcut, talkMode } from '../dictation/ui.solid.tsx'
 import {
   activity,
   cancelRecording,
@@ -70,7 +71,6 @@ import {
   talking,
   voiceOpen,
 } from './dock.solid.tsx'
-import { createTalk } from './talk.ts'
 import { StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { VOICES } from './voices.ts'
 import { estimate } from './speech.ts'
@@ -82,11 +82,11 @@ const iconButton =
 const rowButton =
   'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
 const keys = () => formatKeys(KEYS)[0].join('+')
-const holdKeys = () => formatKeys(dock.holdKeys())[0].join('+')
-const tap = () => dock.talkMode() === 'tap'
+const holdKeys = () => formatKeys(shortcut())[0].join('+')
+const tap = () => talkMode() === 'tap'
 const talkVerb = () => (tap() ? 'tap' : 'hold')
 const talkLabel = () => (tap() ? 'Tap to talk' : 'Hold to talk')
-const parseHold = () => dock.holdKeys().trim().toLowerCase()
+const parseHold = () => shortcut().trim().toLowerCase()
 const keyChord = (event: KeyboardEvent) =>
   event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
 
@@ -378,7 +378,7 @@ function Settings() {
           </label>
           <div class="flex items-center justify-between gap-3">
             Talk
-            <SegmentedControl aria-label="Talk mode" bind={[dock.talkMode, dock.setTalkMode]}>
+            <SegmentedControl aria-label="Talk mode" bind={[talkMode, setTalkMode]}>
               <SegmentedControlItem value="hold">Hold</SegmentedControlItem>
               <SegmentedControlItem value="tap">Tap</SegmentedControlItem>
             </SegmentedControl>
@@ -463,7 +463,7 @@ function ShortcutRecorder() {
     const hasKey = !['mod', 'ctrl', 'alt', 'shift'].includes(chord.split('+').at(-1)!)
     const hasModifier = chord.includes('+')
     if (!hasKey || !hasModifier) return
-    dock.setHoldKeys(chord)
+    setShortcut(chord)
     setListening(false)
   }
   return (

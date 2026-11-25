@@ -200,7 +200,7 @@ Only the shown conversation's composer takes typing shortcuts
 The box inside the composer is `PromptBox` (from `@/sdk/solid`), usable on its own wherever a person writes a prompt: it
 takes a `draft` key (kept through reloads), a `name` for its controls, a `placeholder`, `onSubmit(input)` (a rejection
 keeps the draft and shows the error) and `accepts` (inline `images`, uploaded `files`). It owns paste and drop,
-attachment chips, the `Dictation` control (the `voice` extension's mic, which writes into that same box), the
+attachment chips, the `Dictation` control (the `dictation` extension's mic, which writes into that same box), the
 `PromptRecorder` slot and the hairline along its bottom: brand while focused, a sweep while `running`, the voice level
 while dictating, red while recording. The composer adds steer and queue, stop, ↑ to recall queued input, the
 `composer.toolbar` and `composer.status` slots.

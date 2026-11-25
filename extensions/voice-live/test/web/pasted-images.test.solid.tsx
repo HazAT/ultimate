@@ -5,6 +5,7 @@ import { parseConversationId } from '../../../../lib/ids.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { composerDraft, getDraft } from '../../../../web/src/app/drafts.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'
+import { capture } from '../../../dictation/ui.solid.tsx'
 import {
   COLD_DRAFT,
   composeIn,
@@ -198,7 +199,7 @@ it('a turn after a recording that opened the session belongs to that session', a
     spoke: true,
     envelope: [],
   }
-  vi.spyOn(dock.mic, 'stop').mockResolvedValueOnce(recorded)
+  vi.spyOn(capture, 'release').mockImplementationOnce(async (sink) => sink?.finish(recorded, false))
   await release()
   await settle()
   expect(harness.turns).toEqual([expect.objectContaining({ session: 41 })])
