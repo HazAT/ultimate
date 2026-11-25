@@ -17,6 +17,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import {
+  Provided,
   ROOT,
   api,
   cn,
@@ -32,10 +33,13 @@ import {
 } from '@/sdk/solid'
 import type { ActionRef } from '../../shared/extension-api.ts'
 import { OverviewDoc } from '../conversations/refs.ts'
-import { FeatureTag, hiddenConversationIds } from '../conversations/ui.solid.tsx'
+import {
+  ConversationTaskChip,
+  FeatureTag,
+  hiddenConversationIds,
+} from '../conversations/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
 import { Address } from '../messages/ui.solid.tsx'
-import { TaskChip, useTaskOf } from '../plan/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import { groups, meaning } from './kinds.ts'
 import { DescribeAction, StartedAction } from './refs.ts'
@@ -280,7 +284,6 @@ function TaskRow(props: { task: TaskGraphNode; tree: TaskTree; place: Place }) {
 
 function ConversationRow(props: { id: ConversationId; tree: TaskTree; place: Place }) {
   const current = useConversationId()
-  const link = useTaskOf(() => props.id)
   const shown = () => current() === props.id
   const summary = () => props.tree.tree().summaries.get(props.id)
   const title = () => summary()?.title || summary()?.label || 'Untitled conversation'
@@ -323,7 +326,13 @@ function ConversationRow(props: { id: ConversationId; tree: TaskTree; place: Pla
             </span>
           </span>
         </Button>
-        <Show when={link()}>{(task) => <TaskChip class="ml-1.5 self-center" task={task()} />}</Show>
+        <span class="contents [&>button]:ml-1.5 [&>button]:self-center">
+          <Provided
+            input={{ conversation: props.id, on: `task row #${props.id}` }}
+            last
+            point={ConversationTaskChip}
+          />
+        </span>
       </div>
       <For each={tasks()} keyed={(task) => task.id}>
         {(task, index) => <TaskRow task={task()} tree={props.tree} place={below()[index()]} />}

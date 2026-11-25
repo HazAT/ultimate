@@ -37,6 +37,7 @@ import { ConversationsApi } from '../conversations/api.ts'
 import { Family } from '../models/api.ts'
 import { Branch } from '../lineage/api.ts'
 import { Standing } from '../subagents/api.ts'
+import { VideoApi } from '../video/api.ts'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
 import {
   EndAction,
@@ -865,7 +866,7 @@ export default function voiceExtension(host: ExtensionHost) {
               model: [
                 {
                   role: 'user' as const,
-                  content: voicePrompt(conversationId, fork.of),
+                  content: voicePrompt(conversationId, fork.of, !!host.want(VideoApi)),
                   timestamp: Date.now(),
                 },
               ],

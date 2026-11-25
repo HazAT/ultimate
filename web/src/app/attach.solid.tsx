@@ -117,7 +117,7 @@ export function createAttach(options: {
     return { sent, problems: [...tooLarge].map((bytes) => `Files up to ${limit(bytes)} attach.`) }
   }
 
-  async function attach(dropped: readonly File[], source: UploadSource = 'file') {
+  async function attach(dropped: readonly File[], source: UploadSource = 'file', refused?: string) {
     const busyBoxRefuses = source !== 'recording' && (pending || options.disabled())
     if (busyBoxRefuses) return false
     const uploads = options.uploads()
@@ -130,6 +130,7 @@ export function createAttach(options: {
     const accepted = supported.slice(0, Math.max(0, maxImages - options.images().length))
     const uploading = sendAll(others, source)
     const problems = [
+      ...(refused ? [refused] : []),
       ...uploading.problems,
       ...(supported.length < files.length ? ['Only PNG, JPEG, WebP and GIF images attach.'] : []),
       ...(accepted.length < supported.length ? [`Attach up to ${maxImages} images.`] : []),
@@ -169,20 +170,34 @@ export function createAttach(options: {
       event.preventDefault()
       return
     }
-    const files = Array.from(event.clipboardData?.items ?? [])
-      .filter((item) => item.kind === 'file' && accepts(item))
-      .flatMap((item) => {
-        const file = item.getAsFile()
-        return file ? [file] : []
-      })
-    if (!files.length) return
+    const items = Array.from(event.clipboardData?.items ?? []).filter(
+      (item) => item.kind === 'file',
+    )
+    const files = items.filter(accepts).flatMap((item) => {
+      const file = item.getAsFile()
+      return file ? [file] : []
+    })
+    const refused = refusal(items)
+    if (!files.length) return refused && options.setError(refused)
     event.preventDefault()
-    await attach(files, 'paste')
+    await attach(files, 'paste', refused)
   }
 
   async function drop(event: DragEvent) {
-    const files = Array.from(event.dataTransfer?.files ?? []).filter(accepts)
-    if (files.length) await attach(files, 'drop')
+    const dropped = Array.from(event.dataTransfer?.files ?? [])
+    const files = dropped.filter(accepts)
+    const refused = refusal(dropped)
+    if (files.length) await attach(files, 'drop', refused)
+    else if (refused) options.setError(refused)
+  }
+
+  function refusal(items: readonly { type: string }[]) {
+    if (items.every(accepts)) return undefined
+    const kinds = [
+      ...(options.inlineImages() ? ['images'] : []),
+      ...options.uploads().flatMap((upload) => (upload.accepts ? [`${upload.accepts}s`] : [])),
+    ].map((kind) => kind.replace('/', ''))
+    return kinds.length ? `Only ${kinds.join(' and ')} attach.` : 'Files do not attach here.'
   }
 
   return { paste, drop, attach, reading, busy: () => pending }

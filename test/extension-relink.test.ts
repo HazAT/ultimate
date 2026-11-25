@@ -90,3 +90,82 @@ export default { name: 'linked' }
     await server.close()
   }
 })
+
+it('unloads an extension when a folder it requires is removed, and loads it when it is back', async () => {
+  const home = await temp()
+  homes.push(home)
+  const projectRoot = join(home, 'project')
+  await mkdir(projectRoot)
+  const extensions = join(home, '.ultimate/extensions')
+  await mkdir(join(extensions, 'base'), { recursive: true })
+  await writeFile(join(extensions, 'base/server.ts'), "export default { name: 'base' }\n")
+  await mkdir(join(extensions, 'top'), { recursive: true })
+  await writeFile(join(extensions, 'top/api.ts'), "export const requires = ['base']\n")
+  await writeFile(
+    join(extensions, 'top/server.ts'),
+    "export const actions = { which: () => 'top' }\nexport default { name: 'top' }\n",
+  )
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot,
+    userHome: home,
+    home: join(home, 'state'),
+  })
+  try {
+    const top = () => server.extensions.info().find((entry) => entry.name === 'top')
+    expect(top()?.enabled).toBe(true)
+    await rm(join(extensions, 'base'), { recursive: true })
+    await until(() => top()?.enabled === false)
+    expect(server.extensions.action('top', 'which')).toBeUndefined()
+    await mkdir(join(extensions, 'base'))
+    await writeFile(join(extensions, 'base/server.ts'), "export default { name: 'base' }\n")
+    await until(() => top()?.enabled === true)
+    expect(await server.extensions.action('top', 'which')?.({}, {} as never)).toBe('top')
+  } finally {
+    await server.close()
+  }
+})
+
+it('keeps a saved enable of an extension waiting on a requirement, and installs one whose broken declaration is fixed', async () => {
+  const home = await temp()
+  homes.push(home)
+  const projectRoot = join(home, 'project')
+  await mkdir(projectRoot)
+  const extensions = join(home, '.ultimate/extensions')
+  const settings = join(home, '.ultimate/settings.json')
+  await mkdir(join(extensions, 'base'), { recursive: true })
+  await writeFile(join(extensions, 'base/server.ts'), "export default { name: 'base' }\n")
+  for (const name of ['top', 'fixed']) {
+    await mkdir(join(extensions, name), { recursive: true })
+    await writeFile(
+      join(extensions, name, 'server.ts'),
+      `export const actions = { which: () => '${name}' }\nexport default { name: '${name}' }\n`,
+    )
+  }
+  await writeFile(join(extensions, 'top/api.ts'), "export const requires = ['base']\n")
+  await writeFile(join(extensions, 'fixed/api.ts'), 'export const requires = names\n')
+  await writeFile(settings, JSON.stringify({ extensions: { disable: ['base', 'top'] } }))
+  const server = await fauxServer({
+    ultimateRoot: resolve('.'),
+    projectRoot,
+    userHome: home,
+    home: join(home, 'state'),
+  })
+  try {
+    const info = (name: string) => server.extensions.info().find((entry) => entry.name === name)
+    expect(info('top')).toMatchObject({ enabled: false })
+    expect(info('top')?.offForMissing).toBeUndefined()
+    await writeFile(settings, JSON.stringify({ extensions: { disable: ['base'] } }))
+    await until(() => !!info('top')?.offForMissing)
+    expect(info('top')).toMatchObject({ enabled: false, offForMissing: ['base'] })
+    await writeFile(settings, JSON.stringify({ extensions: { disable: ['base', 'top'] } }))
+    await until(() => !info('top')?.offForMissing)
+
+    expect(info('fixed')?.server?.error).toContain('export const requires must be an array')
+    await writeFile(join(extensions, 'fixed/api.ts'), 'export const requires = []\n')
+    await until(() => !info('fixed')?.server?.error)
+    expect(await server.extensions.action('fixed', 'which')?.({}, {} as never)).toBe('fixed')
+  } finally {
+    await server.close()
+  }
+})

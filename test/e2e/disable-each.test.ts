@@ -50,11 +50,19 @@ it('knows optional extensions and the core tier', () => {
   expect(core).toEqual(expect.arrayContaining(['conversations', 'subagents', 'workspaces']))
 })
 
+/** What turning each required built-in off keeps off with it: the default-on built-ins that declare `requires`. */
+const keptOff: Record<string, string[]> = {
+  questions: ['inbox'],
+  system: ['ui'],
+}
+
 it.concurrent.each(optional)('boots cleanly with %s disabled', async (name) => {
   const state = await boot([name])
   expect(state.enabled).not.toContain(name)
   expect(state.errors).toEqual([])
-  expect(state.diagnostics).toEqual([])
+  expect(state.diagnostics).toEqual(
+    (keptOff[name] ?? []).map((other) => `${other} stays off: it requires ${name}, which is off`),
+  )
   expect(state.missing).toEqual([])
   expect(state.tools).toContain('bash')
 })

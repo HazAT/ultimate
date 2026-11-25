@@ -435,6 +435,54 @@ it('keeps a user or project replacement of a core built-in core, over extensions
   expect(find('lineage')).toMatchObject({ source: 'project', core: true, enabled: true })
 })
 
+it('keeps voice-live off with a diagnostic while dictation, which it requires, is off', async () => {
+  const { server } = await fixture(
+    JSON.stringify({ extensions: { enable: ['voice-live'], disable: ['dictation'] } }),
+  )
+  const info = (name: string) => server.extensions.info().find((entry) => entry.name === name)
+  expect(info('voice-live')).toMatchObject({
+    enabled: false,
+    requires: ['dictation', 'read-aloud'],
+  })
+  expect(info('read-aloud')).toMatchObject({ enabled: true })
+  expect(server.system.current().extensionDiagnostics).toEqual([
+    'voice-live stays off: it requires dictation, which is off',
+  ])
+})
+
+it('keeps a chain of user extensions off behind a disabled requirement, and refuses a declaration it cannot read', async () => {
+  const home = await temp()
+  homes.push(home)
+  const projectRoot = join(home, 'project')
+  await mkdir(projectRoot)
+  await mkdir(join(home, '.ultimate'), { recursive: true })
+  await writeFile(
+    join(home, '.ultimate/settings.json'),
+    JSON.stringify({ extensions: { disable: ['chain-base'] } }),
+  )
+  const apis = {
+    'chain-base': '',
+    'chain-middle': 'export const requires: string[] = ["chain-base"]\n',
+    'chain-top': "export const requires = ['chain-middle'] as const\n",
+    'chain-unread': 'export const requires = names\n',
+    'chain-aliased': "const names = ['chain-base']\nexport { names as requires }\n",
+  }
+  for (const [name, api] of Object.entries(apis)) {
+    await mkdir(join(home, '.ultimate/extensions', name), { recursive: true })
+    await writeFile(join(home, '.ultimate/extensions', name, 'api.ts'), api)
+  }
+  const discovered = await discoverExtensions(resolve('.'), projectRoot, home)
+  const find = (name: string) => discovered.find((entry) => entry.name === name)
+  expect(find('chain-middle')).toMatchObject({ enabled: false, missing: ['chain-base'] })
+  expect(find('chain-top')).toMatchObject({ enabled: false, missing: ['chain-middle'] })
+  expect(find('chain-unread')?.error).toContain(
+    'export const requires must be an array of extension names as string literals',
+  )
+  expect(find('chain-aliased')?.error).toContain(
+    'declare requires as `export const requires = [...]`',
+  )
+})
+
 it('enables every built-in by default except the default-off ones', async () => {
   const home = await temp()
   homes.push(home)

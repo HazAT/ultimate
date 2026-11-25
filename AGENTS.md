@@ -127,21 +127,22 @@ found in the wild) gets its reason in its commit message and a regression test t
 Each rule and what enforces it. A new check proves in its test that it fails on a real past mistake; a rule leaves the
 table once its mistake can no longer happen.
 
-| Rule                                                                     | Enforced by                                                         |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Time is never a stand-in for an event; timers only through named helpers | `ultimate/no-raw-timer`, `lib/timers.ts`                            |
-| Extensions meet only at contracts; the core tier runs without the rest   | `ultimate/api-only-imports`, `ultimate/core-tier-deps`, `pnpm deps` |
-| Contract files hold only documented contracts, named for their owner     | `ultimate/api-file-shape`, `ultimate/api-naming`                    |
-| Extension UI reaches the server only through the SDK                     | `ultimate/no-raw-stream`                                            |
-| No swallowed errors                                                      | `ultimate/no-silent-catch`                                          |
-| Product code explains itself; comments only document contracts           | `ultimate/no-comments`                                              |
-| A call is replay-safe only when a rerun cannot do harm                   | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
-| Server work is a durable task, or says why a crash loses nothing         | `ultimate/no-unowned-work`, `lib/effect.ts`, `lib/errors.ts`        |
-| Fast tests are in-process, deterministic and keep the default timeout    | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
-| One polling helper in tests                                              | `ultimate/no-local-test-polling`                                    |
-| A switch over a union names every case                                   | `typescript/switch-exhaustiveness-check`                            |
-| Pi couplings are listed and marked                                       | `scripts/pi-upstream.ts`                                            |
-| No dead code, shims, slop or tests that restate the implementation       | the review team (`reviewer-simplicity`)                             |
+| Rule                                                                        | Enforced by                                                         |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Time is never a stand-in for an event; timers only through named helpers    | `ultimate/no-raw-timer`, `lib/timers.ts`                            |
+| Extensions meet only at contracts; the core tier runs without the rest      | `ultimate/api-only-imports`, `ultimate/core-tier-deps`, `pnpm deps` |
+| An optional extension declares the optional ones whose browser code it runs | `ultimate/declared-requires`, discovery's `requires`                |
+| Contract files hold only documented contracts, named for their owner        | `ultimate/api-file-shape`, `ultimate/api-naming`                    |
+| Extension UI reaches the server only through the SDK                        | `ultimate/no-raw-stream`                                            |
+| No swallowed errors                                                         | `ultimate/no-silent-catch`                                          |
+| Product code explains itself; comments only document contracts              | `ultimate/no-comments`                                              |
+| A call is replay-safe only when a rerun cannot do harm                      | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
+| Server work is a durable task, or says why a crash loses nothing            | `ultimate/no-unowned-work`, `lib/effect.ts`, `lib/errors.ts`        |
+| Fast tests are in-process, deterministic and keep the default timeout       | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
+| One polling helper in tests                                                 | `ultimate/no-local-test-polling`                                    |
+| A switch over a union names every case                                      | `typescript/switch-exhaustiveness-check`                            |
+| Pi couplings are listed and marked                                          | `scripts/pi-upstream.ts`                                            |
+| No dead code, shims, slop or tests that restate the implementation          | the review team (`reviewer-simplicity`)                             |
 
 Reject slop and jargon: keep code and explanations direct, minimal, and grounded in evidence. No backward-compatibility
 shims or speculative fallbacks; move forward and update callers. Commit tests for a feature's core path and one

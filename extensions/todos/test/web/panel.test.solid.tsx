@@ -68,7 +68,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { TodoList } from '../../panel.solid.tsx'
 
 const agent = createAgent()
@@ -90,6 +90,9 @@ const control = (label: string, component: string) => {
 it('lets an agent tick the right one of two same-text to-dos, add one for @ultimate and start one, each sent as the agent’s', async ({
   onTestFinished,
 }) => {
+  await registry.setLoaders({
+    'extensions/inbox/web.solid.tsx': async () => ({ default: {} }),
+  })
   store.start()
   onTestFinished(() => store.stop())
   harness.sources[0].open()

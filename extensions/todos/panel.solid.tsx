@@ -1,6 +1,6 @@
 import type { JSX } from '@solidjs/web'
 import { Check, ChevronRight, Inbox, Play, Plus } from '@lucide/solid'
-import { For, Show, createMemo, createSignal } from 'solid-js'
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
 import {
@@ -21,6 +21,7 @@ import {
   showSurface,
   switchConversation,
   useDocOf,
+  useEnabled,
   useExtensionUiState,
   useNow,
   writingAs,
@@ -34,9 +35,21 @@ const waits = 'text-amber-700 dark:text-amber-300'
 const webOrObsidianLinkWithoutClosingPunctuation =
   /((?:https?|obsidian):\/\/[^\s<>()]*[^\s<>().,;:!?'"])/
 
-export function TodoList() {
+function InboxWaiting(props: { count: (count: number) => void }) {
   const { entries, failures } = Waiting()
-  const inbox = () => entries().length
+  createEffect(
+    () => entries().length,
+    (count) => {
+      props.count(count)
+    },
+  )
+  onCleanup(() => props.count(0))
+  return failures
+}
+
+export function TodoList() {
+  const inboxOn = useEnabled('inbox')
+  const [inbox, setInbox] = createSignal(0)
   const doc = useDocOf(() => ROOT, TodosDoc)
   const now = useNow(60_000)
   const [error, setError] = createSignal<string>()
@@ -100,7 +113,9 @@ export function TodoList() {
       <Show when={error()}>
         <p class="px-3 pt-1.5 font-mono text-[11px] break-words text-error">{error()}</p>
       </Show>
-      {failures}
+      <Show when={inboxOn()}>
+        <InboxWaiting count={setInbox} />
+      </Show>
       <Show
         when={inbox() + open().length > 0}
         fallback={

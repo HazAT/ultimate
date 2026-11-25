@@ -2,7 +2,7 @@ import { createRoot, createSignal } from 'solid-js'
 import { errorMessage } from '@/sdk/solid'
 import type { DictationSink, DictationTake } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.ts'
-import { deadline } from '../../lib/timers.ts'
+import { animationFrames, deadline } from '../../lib/timers.ts'
 
 const recordingMimeOrder = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg', 'audio/webm']
 const MAX_RECORDING_MS = 5 * 60_000
@@ -46,14 +46,6 @@ export async function base64(blob: Blob) {
   for (let at = 0; at < bytes.length; at += 0x8000)
     binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
   return btoa(binary)
-}
-
-export function animationFrames(fn: () => void) {
-  let handle = requestAnimationFrame(function tick() {
-    fn()
-    handle = requestAnimationFrame(tick)
-  })
-  return () => cancelAnimationFrame(handle)
 }
 
 function createMic(keepOpen: () => boolean) {

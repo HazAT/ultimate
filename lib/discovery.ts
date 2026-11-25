@@ -10,6 +10,7 @@ import type { Source } from './project-paths.ts'
 import { useProjectSetup } from './project-setup.ts'
 import { extensionSettings } from './extension-settings.ts'
 import { coreTier, defaultOff } from '../shared/extension-api.ts'
+import { declaredExtensions } from './declared.ts'
 
 const sourceOrder = { builtin: 0, user: 1, project: 2 }
 
@@ -50,6 +51,7 @@ export async function discoverExtensions(
       source: Source
       files: string[]
       core?: true
+      requires?: string[]
       error?: string
     }
   >()
@@ -71,10 +73,9 @@ export async function discoverExtensions(
         if (!(await stat(path)).isDirectory()) continue
         const files = await readdir(path)
         const coreBelongsToBuiltinName = root.source === 'builtin' || builtinCore.has(entry.name)
-        const core =
-          coreBelongsToBuiltinName &&
-          files.includes('api.ts') &&
-          coreTier.test(await readFile(join(path, 'api.ts'), 'utf8'))
+        const api = files.includes('api.ts') ? await readFile(join(path, 'api.ts'), 'utf8') : ''
+        const core = coreBelongsToBuiltinName && coreTier.test(api)
+        const { requires } = declaredExtensions(api, join(path, 'api.ts'))
         if (core && root.source === 'builtin') builtinCore.add(entry.name)
         winners.set(entry.name, {
           name: entry.name,
@@ -83,6 +84,7 @@ export async function discoverExtensions(
           source: root.source,
           files,
           ...(core ? { core } : {}),
+          ...(requires.length ? { requires } : {}),
         })
       } catch (error) {
         winners.set(entry.name, {
@@ -105,7 +107,18 @@ export async function discoverExtensions(
         entry.core ||
         (overrides.get(entry.name) ??
           !(entry.source === 'builtin' && defaultOff.includes(entry.name))),
+      missing: [] as string[],
     }))
     .toSorted(compareExtensions)
+  const on = (name: string) => entries.some((entry) => entry.name === name && entry.enabled)
+  for (let changed = true; changed;) {
+    changed = false
+    for (const entry of entries) {
+      const missing = (entry.requires ?? []).filter((name) => !on(name))
+      if (!entry.enabled || entry.core || !missing.length) continue
+      Object.assign(entry, { enabled: false, missing })
+      changed = true
+    }
+  }
   return Object.assign(entries, { settings })
 }

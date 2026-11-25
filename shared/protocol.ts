@@ -84,6 +84,8 @@ export interface ExtensionInfo {
   name: string
   enabled: boolean
   core?: AlwaysEnabledCore
+  requires?: string[]
+  offForMissing?: string[]
   source: 'builtin' | 'user' | 'project'
   replaces?: 'builtin'
   layer: 'default' | 'user' | 'project' | 'folder'
