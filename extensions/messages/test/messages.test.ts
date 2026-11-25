@@ -2127,6 +2127,56 @@ it.each(['automations.fired', 'automations.finished'])(
     ])
   },
 )
+it.each([
+  { concluded: false, delivery: 'steer', input: true, runs: 1 },
+  { concluded: true, delivery: 'note', input: undefined, runs: 0 },
+])(
+  'delivers a result to its asker as a note only once the asker is concluded (concluded: $concluded)',
+  async ({ concluded, delivery, input, runs }) => {
+    // #71022 landed, then @ultimate's result for its earlier request woke it: it answered and stayed open.
+    const f = await fixture()
+    await f.send('@scout', 'SEND ' + JSON.stringify({ to: '#1', text: 'Run the A/B\nHOLD' }), {
+      reply: false,
+    })
+    await until(f.holding)
+    await f.opened.harness.commit((tx) => f.service().owed(tx, ROOT_CONVERSATION_ID, 'A8'), context)
+    f.hold.release()
+    await f.opened.root.waitForIdle(context)
+    if (concluded)
+      await f.opened.harness.commit(async (tx) => {
+        ;(await tx.doc(UiState, ROOT_CONVERSATION_ID))['ext.conversations.concluded'] = [
+          f.recipient.id,
+        ]
+      }, context)
+    await (
+      await f.opened.root.submit(
+        {
+          type: 'input',
+          content: 'Automation A8 "ab done" fired: AB-DONE',
+          entry: {
+            kind: 'automations.fired',
+            data: { id: 'A8', name: 'ab done', text: 'AB-DONE' },
+          },
+        },
+        context,
+      )
+    ).wait(context)
+    const routed = async () =>
+      (await f.log())!.messages.find((m) => m.to === f.recipient.id && m.routed !== undefined)
+    await until(async () => (await routed())?.state === 'delivered')
+    await f.recipient.waitForIdle(context)
+    const { id, text } = (await routed())!
+    expect(text).toContain('Result of automation A8')
+    const view = await f.recipient.context(context)
+    const entry = view.entries.find(
+      (e) => e.kind === 'board.message' && (e.data as { id?: number }).id === id,
+    )!
+    expect([entry.data, entry.input]).toEqual([expect.objectContaining({ delivery }), input])
+    expect(view.entries.filter((e) => e.id > entry.id && e.kind === 'pi.assistant')).toHaveLength(
+      runs,
+    )
+  },
+)
 it("routes the answer of a run an automation woke to the branches whose report the automation's creating run read", async () => {
   // #626775: @ultimate read the branch's reply, made check-back A3 and told it to hold; the branch held (an echo). A3's
   // run answered with the A/B result in prose, which reached no one, and the branch waited 44 minutes.
