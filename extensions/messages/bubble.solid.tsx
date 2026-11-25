@@ -195,6 +195,7 @@ function AttachedAnswer(props: { answer: Message; question: Message }) {
       </div>
       <Show when={!dismissed() || via()}>
         <UserText
+          at={props.answer.at}
           class="mt-1.5 rounded-md border border-border/70 bg-secondary/60 px-3 py-2 text-[13px] leading-relaxed"
           text={props.answer.text}
         />
