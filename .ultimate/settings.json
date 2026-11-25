@@ -5,7 +5,7 @@
       "review": { "model": "openai-codex/gpt-6.2-astra", "thinking": "high" },
       "fast": { "model": "openai-codex/gpt-6.2-sol" },
       "adversarial": {
-        "model": "antigravity/gemini-4-neon-high",
+        "model": "claude-code/claude-sonnet-5-5",
         "thinking": "high",
         "color": "teal"
       }

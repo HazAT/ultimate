@@ -64,7 +64,7 @@ import { voicePrompt } from './prompt.ts'
 import { createRealtimeVoice } from './openai-voice.ts'
 import { MAX_SPOKEN, VOICES } from './voices.ts'
 
-const DEFAULT_MODEL = { provider: 'antigravity', modelId: 'gemini-4-neon-low' }
+const DEFAULT_MODEL = { provider: 'claude-code', modelId: 'claude-sonnet-5-5' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const PLACEHOLDER = '(no transcript yet)'
 const TRANSCRIBE_TIMEOUT_MS = 65_000
@@ -448,15 +448,12 @@ export const actions = {
               ready: true,
               detail: hearsAudio(model)
                 ? `${name}: hears your voice directly`
-                : `${name}: reads the transcript (Gemini Neon hears your voice directly)`,
+                : `${name}: reads the transcript`,
             }
           : {
               ready: false,
               detail: `${name} has no login`,
-              fix:
-                model.provider === 'antigravity'
-                  ? 'Recommended: Gemini 4 Neon through Antigravity. Sign in with `agy` on this machine, or pick another model in the voice settings.'
-                  : 'Log in to its provider, or pick another model in the voice settings.',
+              fix: 'Log in to its provider, or pick another model in the voice settings.',
             },
         transcription: transcribes
           ? {
