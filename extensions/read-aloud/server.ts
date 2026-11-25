@@ -31,7 +31,7 @@ Return only the text to speak, as plain prose with paragraphs, no Markdown.`
 export const userActions = ['speak']
 
 function sectionCache(host: ExtensionHost) {
-  return host.resource('read-aloud.spoken-sections', () => new Map<string, string>())
+  return host.resource('read-aloud.prepared-sections', () => new Map<string, string>())
 }
 
 async function rewrite(host: ExtensionHost, markdown: string, signal: AbortSignal) {

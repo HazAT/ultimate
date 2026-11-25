@@ -1,5 +1,6 @@
 import { createRoot, createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
+import { speech } from '../../../read-aloud/ui.solid.tsx'
 import { sendTyped, dock, useSpeaking } from '../../dock.solid.tsx'
 import type { TurnView } from '../../dock.solid.tsx'
 
@@ -68,7 +69,7 @@ const reply = (key: string, text: string): TurnView => ({
   ],
 })
 
-it('cutting in stops the earlier reply’s speech and its send, and what it streams next stays silent', async () => {
+it('cutting in stops the earlier reply’s speech and its turn, and what it streams next stays silent', async () => {
   const first = sendTyped('first')
   await vi.waitFor(() => expect(harness.turns).toHaveLength(1))
   const [firstKey] = Object.keys(dock.local())
@@ -87,20 +88,36 @@ it('cutting in stops the earlier reply’s speech and its send, and what it stre
   await vi.waitFor(() => expect(harness.turns).toHaveLength(2))
   expect(harness.stops).toBe(1)
   expect(dock.pending()).not.toBe(firstKey)
-  expect(harness.sent[1].hint).toBeUndefined()
 
   setView({
     turns: [reply(firstKey, 'The first point is short. The second one. A third arrives late.')],
     busy: false,
   })
   flush()
-  console.log(
-    'DEBUG',
-    JSON.stringify(said),
-    JSON.stringify(dock.player.state.get()),
-    Object.keys(dock.local()),
-  )
   harness.turns[1]({ conversation: 7, route: 'text' })
   await second
   expect(said).toEqual(['The first point is short.'])
+
+  setView({ turns: [reply(dock.pending()!, 'Still streaming. More')], busy: true })
+  flush()
+  speech.load('read-aloud:elsewhere', [], true)
+  dock.setPhase('speaking')
+  const elsewhere = sendTyped('cutting in while another source speaks')
+  await vi.waitFor(() => expect(harness.turns).toHaveLength(3))
+  expect(harness.stops).toBe(2)
+  harness.turns[2]({ conversation: 7, route: 'text' })
+  await elsewhere
+  expect(speech.state.get()).toMatchObject({ key: 'read-aloud:elsewhere', streaming: true })
+  speech.stop()
+
+  const third = sendTyped('a cut-in during a send that answers late')
+  await vi.waitFor(() => expect(harness.turns).toHaveLength(4))
+  const fourth = sendTyped('and another before it answers')
+  await vi.waitFor(() => expect(harness.turns).toHaveLength(5))
+  harness.turns[3]({ conversation: 7, route: 'text' })
+  await third
+  harness.turns[4]({ conversation: 7, route: 'text' })
+  await fourth
+  expect(dock.phase()).toBe('thinking')
+  expect(harness.stops).toBe(4)
 })

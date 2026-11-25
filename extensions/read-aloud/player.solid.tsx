@@ -11,18 +11,27 @@ export type Reading = {
   error?: string
 }
 
-type Source = { key: string; conversation: ConversationId; entry: number; text: string }
+type Source = {
+  key: string
+  conversation: ConversationId
+  entry: number
+  text: string
+  preparing: AbortController
+}
 
 let source: Source | undefined
+let attempts = 0
 const listeners = new Set<() => void>()
 const changed = () => {
   for (const listener of listeners) listener()
-  if ('mediaSession' in navigator)
-    navigator.mediaSession.playbackState = !current()
-      ? 'none'
-      : current()!.status === 'paused'
-        ? 'paused'
-        : 'playing'
+  if (!('mediaSession' in navigator)) return
+  const reading = current()
+  navigator.mediaSession.playbackState = !reading
+    ? 'none'
+    : reading.status === 'paused'
+      ? 'paused'
+      : 'playing'
+  if (!reading) clearMediaSession()
 }
 speech.state.subscribe(changed)
 speech.failure.subscribe(changed)
@@ -48,20 +57,26 @@ export function current(): Reading | undefined {
 }
 
 export function read(conversation: ConversationId, entry: number, text: string) {
-  source = { key: `read-aloud:${conversation}/${entry}`, conversation, entry, text }
+  source?.preparing.abort()
+  const key = `read-aloud:${conversation}/${entry}:${++attempts}`
+  source = { key, conversation, entry, text, preparing: new AbortController() }
   speech.warm()
-  speech.load(source.key, [], true)
+  speech.load(key, [], true)
   setUpMediaSession()
-  void prepare(source.key, text)
+  void prepare(source)
 }
 
-async function prepare(key: string, text: string) {
-  const ours = () => speech.state.get().key === key
+async function prepare({ key, text, preparing }: Source) {
+  const ours = () => !preparing.signal.aborted && speech.state.get().key === key
   const parts: { text: string; final: boolean }[] = []
   let pushed = 0
   try {
     for (let section = 0, sections = 1; section < sections && ours(); section++) {
-      const prepared = await api.action(PrepareAction, { text, section })
+      const prepared = await api.action(
+        PrepareAction,
+        { text, section },
+        { signal: preparing.signal },
+      )
       sections = prepared.sections
       if (!ours()) return
       parts.push({ text: prepared.spoken, final: true })
@@ -77,18 +92,28 @@ async function prepare(key: string, text: string) {
   }
 }
 
-export const pause = () => void speech.pause()
+export function pause() {
+  if (current()) speech.pause()
+}
 
 export function resume() {
   const reading = current()
-  if (reading?.error && source) read(source.conversation, source.entry, source.text)
+  if (!reading || !source) return
+  if (reading.error) read(source.conversation, source.entry, source.text)
   else speech.resume()
 }
 
 export function stop() {
   if (current()) speech.stop()
+  source?.preparing.abort()
   source = undefined
   changed()
+}
+
+function clearMediaSession() {
+  navigator.mediaSession.metadata = null
+  for (const action of ['play', 'pause', 'stop'] as const)
+    navigator.mediaSession.setActionHandler(action, null)
 }
 
 function setUpMediaSession() {

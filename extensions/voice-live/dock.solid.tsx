@@ -49,7 +49,7 @@ const player = {
   toggle: () => speech.toggle(),
   load(key: string, sentences: readonly Sentence[], streaming: boolean) {
     loaded.add(key)
-    speech.load(key, sentences, streaming)
+    speech.load(key, sentences, streaming, listening)
   },
   streaming: (on: boolean) => owned() && speech.streaming(on),
   pause: () => owned() && speech.pause(),
@@ -197,6 +197,9 @@ export const playerState = createRoot(() => {
 const patchLocal = (key: string, change: Partial<Local>) =>
   dock.setLocal((all) => ({ ...all, [key]: { ...all[key], ...change } }))
 
+let generating = false
+const replying = () => generating || dock.phase() === 'thinking' || dock.phase() === 'sending'
+
 function listening() {
   return capture.capturing(voiceSink)
 }
@@ -207,10 +210,10 @@ export const voiceSink: Sink = {
   },
   start() {
     dock.setError(undefined)
-    const paused = dock.player.pause()
+    const speaking = ours().playing
+    dock.player.pause()
     dock.hold({
-      busy:
-        paused || !!dock.held()?.busy || dock.phase() === 'thinking' || dock.phase() === 'sending',
+      busy: speaking || !!dock.held()?.busy || replying(),
     })
   },
   recording() {
@@ -250,7 +253,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
   const held = dock.held()
   if (!retaking) dock.hold(undefined)
   if (!recorded.spoke) {
-    if (playerState().paused) {
+    if (ours().paused) {
       dock.player.resume()
       dock.setPhase('speaking')
       dock.setStatus('Not enough audio · kept going')
@@ -298,11 +301,11 @@ async function collectClip(recorded: Recorded) {
       const clips = held.filter((clip) => chosen.has(clip.audio))
       const judged = held.length === chosen.size && held.every((clip) => !sending.has(clip.audio))
       if (intent.answered && !judged) {
-        if (playerState().paused) dock.player.resume()
+        if (ours().paused) dock.player.resume()
       } else if (clips.length === chosen.size)
         await sendDraft(intent.send, '', intent.answered ? 'answer' : true, clips)
       else dock.setStatus('The collected clips changed · press Enter to send')
-    } else if (playerState().paused) dock.player.resume()
+    } else if (ours().paused) dock.player.resume()
   } catch (failure) {
     if (!signal.aborted) dock.setError(errorMessage(failure))
   }
@@ -318,14 +321,10 @@ export async function sendDraft(
 ) {
   clips = clips.filter((clip) => !sending.has(clip.audio))
   if (!clips.length && !typed.trim() && !images?.length) return
-  const busy =
-    playerState().playing ||
-    playerState().paused ||
-    dock.phase() === 'thinking' ||
-    dock.phase() === 'sending'
+  const busy = ours().playing || ours().paused || replying()
   const interrupted = busy && delivery === 'steer'
   if (interrupted) dock.player.pause()
-  else if (playerState().paused) dock.player.resume()
+  else if (ours().paused) dock.player.resume()
   await sendTurn({
     clips: [...clips],
     typed: typed.trim(),
@@ -343,8 +342,7 @@ export async function sendTyped(text: string, images: readonly Image[] = []) {
   const free = draftOf().filter((clip) => !sending.has(clip.audio))
   if (free.length) return sendDraft('steer', text, false, free, true, images)
   if (!text.trim() && !images.length) return
-  const interrupted =
-    playerState().playing || dock.phase() === 'thinking' || dock.phase() === 'sending'
+  const interrupted = ours().playing || replying()
   dock.player.pause()
   await sendTurn({ typed: text.trim(), images, interrupted, fromComposer: true })
 }
@@ -598,7 +596,6 @@ export function replyOf(turn: TurnView) {
     parts,
     text: messages.map(textOf).filter(Boolean).join('\n\n'),
     thought: messages.map(thoughtOf).filter(Boolean).join('\n\n'),
-    tokens: turn.replies.reduce((sum, message) => sum + (message.usage?.reasoning ?? 0), 0),
     calls: messages.some((message) => message.content.some((part) => part.type === 'toolCall')),
   }
 }
@@ -625,6 +622,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
     (latest) => {
       if (!latest) return
       if (!latest.local) return
+      generating = latest.busy && dock.pending() === latest.key
       const { sentences } = splitReply(
         latest.busy ? latest.parts : latest.parts.map((part) => ({ ...part, final: true })),
       )
@@ -641,28 +639,28 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         dock.setStatus('Stopped · your turn')
       }
       if (!sentences.length && (latest.busy || !latest.answered)) return
+      if (dock.pending() !== latest.key) return
       if (spoken?.key !== latest.key) {
         spoken = { key: latest.key, count: 0 }
-        if (dock.speak()) dock.player.load(latest.key, [], latest.busy)
         if (sentences.length) {
           dock.pulse(false)
           if (!listening()) dock.cues.firstWord()
         }
       }
-      if (dock.pending() !== latest.key) return
-      for (const sentence of sentences.slice(spoken.count)) dock.player.push(latest.key, sentence)
+      const fresh = sentences.slice(spoken.count)
       spoken.count = Math.max(spoken.count, sentences.length)
+      if (dock.speak() && fresh.length && ours().key !== latest.key)
+        dock.player.load(latest.key, [], latest.busy)
+      if (dock.speak()) for (const sentence of fresh) dock.player.push(latest.key, sentence)
       if (!latest.busy) {
         dock.player.streaming(false)
         if (!latest.text.trim()) dock.pulse(false)
-        void (playerState().key === latest.key ? dock.player.idle() : Promise.resolve()).then(
-          () => {
-            if (dock.phase() === 'recording' || dock.pending() !== latest.key) return
-            dock.cues.done()
-            dock.setPhase('done')
-            dock.setStatus('Your turn')
-          },
-        )
+        void (ours().key === latest.key ? dock.player.idle() : Promise.resolve()).then(() => {
+          if (dock.phase() === 'recording' || dock.pending() !== latest.key) return
+          dock.cues.done()
+          dock.setPhase('done')
+          dock.setStatus('Your turn')
+        })
       }
     },
   )
@@ -683,6 +681,7 @@ export function endSession() {
 
 function endLocally() {
   void capture.end(voiceSink)
+  generating = false
   dock.hold(undefined)
   dock.player.stop()
   live.abort(new Error('The voice session ended'))

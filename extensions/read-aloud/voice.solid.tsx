@@ -1,6 +1,6 @@
 import { createEffect, createRoot, createSignal } from 'solid-js'
 import { api, errorMessage, ROOT, useUiState } from '@/sdk/solid'
-import { animationFrames, capture } from '../dictation/ui.solid.tsx'
+import { animationFrames } from '../dictation/ui.solid.tsx'
 import { cell } from '../../lib/cell.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
 import { SpeakAction } from './refs.ts'
@@ -39,18 +39,25 @@ export const speech = createRoot(() => {
     },
   })
   const system = systemVoice()
+  let holding = () => false
   const player = createPlayer({
     rate,
     enabled: () => true,
-    listening: () => capture.capturing(),
+    listening: () => holding(),
     frame: animationFrames,
     engine: () => (openaiOn() ? openai : system),
   })
   createEffect(openaiOn, () => player.switched())
   return {
     ...player,
-    load(key: string, sentences: readonly Sentence[], streaming: boolean) {
+    load(
+      key: string,
+      sentences: readonly Sentence[],
+      streaming: boolean,
+      hold: () => boolean = () => false,
+    ) {
       failure.set(undefined)
+      holding = hold
       player.load(key, sentences, streaming)
     },
     failure,
