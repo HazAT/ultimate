@@ -34,7 +34,7 @@ Saving either settings file reconnects every server. OAuth is not supported yet:
 
 Every agent that inherits tools gets `mcp`, and @ultimate lists it in `agents/ultimate.md`. Agents with an explicit `tools` list add it there.
 
-Calls are `replay: 'unsafe'`: a call interrupted by a restart is reported as interrupted, never sent again. A call times out after 10 minutes without progress from the server. A call the server refuses with HTTP 429 (rate limited), or one the agent aborts, comes back as a tool error and keeps the connection.
+Calls are `replay: 'unsafe'`: a call interrupted by a restart is reported as interrupted, never sent again. A call times out after 10 minutes without progress from the server. A call the server refuses with HTTP 429 (rate limited), or one the agent aborts, comes back as a tool error and keeps the connection. When the 429's body names a wait of at most 30 seconds ("Wait 4 seconds", "retry after 2s"), the call waits that long and is sent once more first; the server refused the first one, so it never ran.
 
 ## Lifecycle
 

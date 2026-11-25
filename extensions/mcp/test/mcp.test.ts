@@ -15,8 +15,10 @@ afterEach(async () => {
 })
 
 /** A Streamable HTTP MCP server with `echo` and `shout` tools, answering only requests that carry the token. A call with
- * `{text: 'busy'}` is refused with a 429, as a rate-limited gateway does; `shout` without `text` gets invalid params. */
+ * `{text: 'busy'}` is refused with a 429, as a rate-limited gateway does, and `{text: 'slow down'}` once with a 429
+ * that names a short wait; `shout` without `text` gets invalid params. */
 let initializes = 0
+const slowDowns: number[] = []
 async function serve(token: string) {
   const server = createServer((request, response) => {
     if (request.method !== 'POST') {
@@ -36,6 +38,24 @@ async function serve(token: string) {
       const args = params.arguments ?? {}
       if (message.id === undefined) {
         response.writeHead(202).end()
+        return
+      }
+      if (args.text === 'slow down' && slowDowns.push(performance.now()) === 1) {
+        response.writeHead(429, { 'content-type': 'application/json' }).end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: message.id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: 'Rate limited. Wait 0.05 seconds before you call echo again.',
+                },
+              ],
+              isError: true,
+            },
+          }),
+        )
         return
       }
       if (args.text === 'busy') {
@@ -156,6 +176,12 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
   expect(await run({ server: 'echo', tool: 'echo', args: { text: 'hi' } })).toMatchObject({
     isError: false,
   })
+  expect(await run({ server: 'echo', tool: 'echo', args: { text: 'slow down' } })).toEqual({
+    output: [{ type: 'text', text: 'echo: slow down' }],
+    isError: false,
+  })
+  expect(slowDowns).toHaveLength(2)
+  expect(slowDowns[1] - slowDowns[0]).toBeGreaterThanOrEqual(45)
   expect(initializes).toBe(connections)
   expect(await run({ server: 'locked', tool: 'echo' })).toMatchObject({
     isError: true,

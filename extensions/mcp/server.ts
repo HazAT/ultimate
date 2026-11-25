@@ -16,7 +16,7 @@ import {
 import type { Tool } from '@earendil-works/pi-mcp'
 import { implementAction } from '../../lib/actions.ts'
 import { readSecret } from '../../lib/secrets.ts'
-import { retryAfter, type Cancel } from '../../lib/timers.ts'
+import { pace, retryAfter, type Cancel } from '../../lib/timers.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -31,6 +31,17 @@ const PROGRESS_RENEWED_CALL_TIMEOUT_MS = 10 * 60_000
 const FIRST_RETRY = 5_000
 const rateLimited = (error: unknown) => error instanceof McpHttpError && error.status === 429
 const LAST_RETRY = 5 * 60_000
+const LONGEST_RATE_LIMIT_WAIT = 30_000
+
+function shortWaitA429AsksFor(error: unknown) {
+  if (!rateLimited(error)) return undefined
+  const hint =
+    /\b(?:wait|retry after|try again in)\s+(\d+(?:\.\d+)?)\s*(?:s|secs?|seconds?)\b/i.exec(
+      (error as McpHttpError).body || (error as McpHttpError).message,
+    )
+  const ms = hint ? Number(hint[1]) * 1000 : NaN
+  return ms <= LONGEST_RATE_LIMIT_WAIT ? ms : undefined
+}
 
 type Entry =
   | { command: string; args: string[]; env: Record<string, string>; cwd?: string }
@@ -367,11 +378,18 @@ export default async function mcp(host: ExtensionHost) {
                 )
               if (!tool) return { output: [{ type: 'text', text: listing(server) }] }
               const client = server.client
-              try {
-                const result = await client.callTool(tool, args ?? {}, {
+              const call = () =>
+                client.callTool(tool, args ?? {}, {
                   signal: context.abortSignal,
                   timeoutMs: PROGRESS_RENEWED_CALL_TIMEOUT_MS,
                   onProgress: renewTimeoutOnProgress,
+                })
+              try {
+                const result = await call().catch(async (error: unknown) => {
+                  const wait = shortWaitA429AsksFor(error)
+                  if (wait === undefined) throw error
+                  await pace(wait, context.abortSignal)
+                  return call()
                 })
                 return { output: toLlmContent(result), isError: result.isError === true }
               } catch (error) {
