@@ -287,7 +287,7 @@ function PhoneMore(props: { panels: boolean }) {
 function PhoneHeader(props: { children?: JSX.Element; sidebar: boolean; panels: boolean }) {
   return (
     <header
-      class="flex h-11 shrink-0 items-center gap-0.5 border-b border-border/70 bg-sidebar px-1"
+      class="flex h-11 shrink-0 items-center gap-0.5 border-b border-border/70 bg-sidebar px-1 [.native-cutout_&]:pr-[max(0.25rem,var(--titlebar-right))] [.native-cutout_&]:pl-(--titlebar-left)"
       data-ui="conversation-header"
     >
       <Show when={props.sidebar}>

@@ -237,7 +237,7 @@
     --inset-bottom: 0px;
   }
   /* A native app (web/src/sdk/native.ts) that hides the status bar sets native-cutout: the title bar takes the top
-     strip, stepping around the camera hole by the width the app measured. */
+     strip (the phone's top bar does the same in its own classes), stepping around the camera hole by the width the app measured. */
   .native-cutout [data-ui='titlebar'] {
     padding-left: var(--titlebar-left);
     padding-right: max(0.75rem, var(--titlebar-right));
