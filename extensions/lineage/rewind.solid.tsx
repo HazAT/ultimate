@@ -25,7 +25,6 @@ import {
   useDocOf,
   writingAs,
 } from '@/sdk/solid'
-import { AcpSessionDoc } from '../../shared/acp.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { RewoundEntry, RewoundDependentEntry } from './entries.ts'
 import { RewindAction, RewindPreviewAction, RootsDoc } from './refs.ts'
@@ -215,14 +214,13 @@ export function GoBackAction(props: { entry: EntryRecord }) {
   const roots = useDocOf(() => ROOT, RootsDoc)
   const shown = useConversationId()
   const conversation = useConversationSummary(shown)
-  const acp = useDocOf(shown, AcpSessionDoc)
   const [open, setOpen] = createSignal(false)
   return (
     <Show
       when={
         shown() === props.entry.conversationId &&
-        !acp()?.status &&
-        conversation()?.label !== 'acp' &&
+        conversation() &&
+        !conversation()?.external &&
         roots()?.roots.includes(props.entry.conversationId) === false
       }
     >

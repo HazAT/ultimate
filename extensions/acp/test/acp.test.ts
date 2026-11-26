@@ -180,7 +180,7 @@ it('settles a concluded prompt before its reconnect finishes preparing the workt
   expect(session.status).toBe('running')
   concluded.add(ID)
   const hold = await stop([ID])
-  expect(session.status).toBe('idle')
+  expect(session.status).toBe('offline')
   expect(entries.map((entry) => entry.kind)).toEqual(['pi.user', 'pi.assistant'])
   expect(entries[1].model?.[0]).toMatchObject({ stopReason: 'aborted', errorMessage: 'Stopped' })
   hold[Symbol.dispose]()

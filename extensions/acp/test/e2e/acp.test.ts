@@ -5,10 +5,10 @@ import { lstat, mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { AcpSessionState as Session } from '../../../../lib/acp-session.ts'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import { fauxServer, post, temp, until } from '../../../../test/helpers.ts'
+import { Session } from '../../updates.ts'
 
 it('streams the fake ACP agent, binds approval to the request, and saves output before shutdown or conclusion', async () => {
   vi.stubEnv('ULTIMATE_AGY_COMMAND', fileURLToPath(new URL('../fake-agy.mjs', import.meta.url)))

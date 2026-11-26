@@ -3,6 +3,7 @@ import { defineDoc } from '@earendil-works/pi-durable'
 export const Metadata = defineDoc<{
   title?: string
   label?: string
+  external?: string
   inputTitle?: string
   inputAt?: number
   answerAt?: number

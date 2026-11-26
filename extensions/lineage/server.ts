@@ -83,7 +83,6 @@ import { rewindActions, rewindTask } from './rewind.ts'
 import type { RootEvent } from './types.ts'
 import { compareUrl } from '../../lib/compare.ts'
 import { hasLogin, hostDefault } from '../../lib/agents.ts'
-import { AcpSessionState } from '../../lib/acp-session.ts'
 import { admitCompaction } from '../../lib/compaction.ts'
 import { githubRepo } from '../../lib/project-identity.ts'
 import { safeToRerun } from '../../lib/replay.ts'
@@ -1419,7 +1418,7 @@ export default function lineageExtension(host: ExtensionHost) {
         async execute({ instructions }, api, ctx) {
           const id = api.conversationId
           const compactionWithWake = async (tx: Tx) => {
-            if ((await tx.doc(AcpSessionState, id)).status)
+            if ((await tx.doc(host.metadata, id)).external)
               throw new Error('ACP conversations cannot be compacted')
             const subagentWouldLoseWakeReport = (await tx.conversation(id))?.owner
             if (subagentWouldLoseWakeReport)

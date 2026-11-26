@@ -9,7 +9,6 @@ import {
 import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { AcpSessionState as Session } from '../../lib/acp-session.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { inProcess } from '../../lib/errors.ts'
@@ -27,7 +26,7 @@ import {
   PromptAction,
   StartAction,
 } from './refs.ts'
-import type { AcpSession, PermissionAsk } from '../../shared/acp.ts'
+import type { AcpSession, PermissionAsk } from './refs.ts'
 import { connectRpc, RpcError } from './rpc.ts'
 import type { Json, Rpc } from './rpc.ts'
 import {
@@ -36,6 +35,7 @@ import {
   apply,
   configOptions,
   record,
+  Session,
   settleTurn,
   str,
   Turn,
@@ -136,7 +136,7 @@ export function makeClient(host: ExtensionHost) {
     await commit(async (tx) => {
       const session = await tx.doc(Session, id)
       if (session.status !== 'running') return
-      session.status = 'idle'
+      session.status = 'offline'
       delete session.permission
       await settleTurn(tx, id)
       await appendAssistant(tx, id, [], 'aborted', 'Stopped')
@@ -361,7 +361,11 @@ export function makeClient(host: ExtensionHost) {
           model: null,
           compaction: { enabled: false },
         })
-        Object.assign(await tx.doc(host.metadata, created), { title: agentName, label: 'acp' })
+        Object.assign(await tx.doc(host.metadata, created), {
+          title: agentName,
+          label: 'acp',
+          external: 'antigravity',
+        })
         await conversations.setAutomaticSummaries(tx, created, false)
         Object.assign(await tx.doc(Session, created), {
           status: 'connecting',

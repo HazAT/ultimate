@@ -55,7 +55,7 @@ import { ModelPicker } from '../../../models/picker.solid.tsx'
 import { modelDialogs } from '../../../models/ui.solid.tsx'
 import { actions } from '../../../../web/src/sdk/actions.ts'
 import { registry, store } from '../../../../web/src/sdk/client.ts'
-import type { AcpSession } from '../../../../shared/acp.ts'
+import type { AcpSession } from '../../refs.ts'
 import web, { AcpComposer, LiveTail } from '../../web.solid.tsx'
 
 const server = fakeSubscriptions(harness.sources)

@@ -38,8 +38,6 @@ import type { SolidComposerProps, ToolCallView } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import { parseConversationId } from '../../lib/ids.ts'
-import { AcpSessionDoc as SessionDoc } from '../../shared/acp.ts'
-import type { AcpSession, ConfigOption, PermissionAsk } from '../../shared/acp.ts'
 import { ExternalSpeaker } from '../messages/ui.solid.tsx'
 import { PickerRows } from '../models/ui.solid.tsx'
 import { AntigravityMark } from './mark.solid.tsx'
@@ -49,10 +47,11 @@ import {
   ConfigAction,
   PermitAction,
   PromptAction,
+  SessionDoc,
   StartAction,
   TurnDoc,
 } from './refs.ts'
-import type { LiveTool } from './refs.ts'
+import type { AcpSession, ConfigOption, LiveTool, PermissionAsk } from './refs.ts'
 
 const toolbarButton =
   'inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1.5 font-mono text-[11.5px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground'
