@@ -64,6 +64,7 @@ class FakeRecorder extends EventTarget {
   }
   stop() {
     this.state = 'inactive'
+    elapsed += takeMs
     queueMicrotask(() => {
       this.dispatchEvent(Object.assign(new Event('dataavailable'), { data: new Blob(['audio']) }))
       this.dispatchEvent(new Event('stop'))
@@ -71,6 +72,8 @@ class FakeRecorder extends EventTarget {
   }
 }
 
+let takeMs = 0
+let elapsed = 0
 const agent = createAgent()
 const stopTrack = vi.fn<() => void>()
 const microphone = async () => ({ getTracks: () => [{ stop: stopTrack }] })
@@ -86,6 +89,10 @@ beforeEach(({ onTestFinished }) => {
   vi.stubGlobal('MediaRecorder', FakeRecorder)
   vi.stubGlobal('matchMedia', () => ({ matches: false }))
   vi.stubGlobal('Blob', NodeBlob)
+  takeMs = 2000
+  const now = performance.now.bind(performance)
+  const clock = vi.spyOn(performance, 'now').mockImplementation(() => now() + elapsed)
+  onTestFinished(() => clock.mockRestore())
   clientStore.start()
   onTestFinished(() => clientStore.stop())
   harness.sources[0].open()
@@ -198,6 +205,16 @@ it('records for an agent and transcribes into the same composer, leaving the edi
     'agent',
   )
   expect(inserted).toEqual(['hello from the mic'])
+})
+
+it('uploads no take shorter than the spoken minimum and says it was too short', async () => {
+  const container = await mount(16, { available: true })
+  takeMs = 100
+  await press('Dictate into conversation #16')
+  await press('Stop and transcribe into conversation #16')
+  expect(harness.transcribe).not.toHaveBeenCalled()
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe('Too short to transcribe')
+  expect(inserted).toEqual([])
 })
 
 it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation settings', async () => {
