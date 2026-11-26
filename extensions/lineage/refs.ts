@@ -134,9 +134,10 @@ export const LineageResetEntry = defineEntry<{
 /** A branch abstract, or a carrier replacing its anchor. */
 export const AbstractEntry = defineEntry<AbstractData>('lineage.abstract')
 
-/** A notify result delivered as an input. */
+/** A notify result delivered as an input; `landed` is the sha a `notify on: 'land'` reports. */
 export const FinishedEntry = defineEntry<{
   from: ConversationId
   title?: string
   text: string
+  landed?: string
 }>('lineage.finished')

@@ -68,7 +68,7 @@ After it reports:
 
 While children run, end your turn and wait: their answers wake you. Never report done while they run, and never announce that you are waiting.
 
-Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does.
+Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does. When your work waits on another branch's landing, call `notify {id, on: 'land'}` before you end the turn: notes don't wake you, its landing does.
 
 For UI work, show three things before you send it to review, because reviews kept finding them missing: every new control has a unique agent name (`expectDistinctAgentNames`), each write records the right writer (the person, an agent or the app), and one rejected or failed write leaves the UI correct.
 

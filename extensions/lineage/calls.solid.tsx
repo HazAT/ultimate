@@ -240,7 +240,7 @@ export function NotifyCall(props: SolidToolProps) {
               </Button>
             )}
           </Show>
-          <span class="shrink-0">finishes</span>
+          <span class="shrink-0">{props.call.args.on === 'land' ? 'lands' : 'finishes'}</span>
           <Show when={props.call.args.wake === false}>
             <span class="ml-auto shrink-0 text-[11px]" title="Leaves a note instead of waking">
               <span class="hidden sm:inline">as a note, </span>no wake-up

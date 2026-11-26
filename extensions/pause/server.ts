@@ -65,7 +65,7 @@ const HELD_WAIT_PHASES: Record<string, string[]> = {
   'ultimate.automation-run': ['deliver'],
   'board.delivery': ['deliver', 'reply'],
   'board.settle': ['observe'],
-  'lineage.notify': ['wait'],
+  'lineage.notify': ['wait', 'waitForLanding'],
 }
 export const passive = (record: { kind: string; state: unknown }) => {
   const phase = (record.state as { checkpoint?: { phase?: string } }).checkpoint?.phase

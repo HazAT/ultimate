@@ -72,6 +72,10 @@ export function meaning(
         ? { group: 'background', text: 'Reporting back from', who: facts?.conversation }
         : { group: 'waiting', text: 'Waiting on subagent', who: facts?.conversation }
     case 'lineage.notify':
+      if (phase === 'waitForLanding')
+        return { group: 'waiting', text: 'Watching until it lands', who: facts?.conversation }
+      if (phase === 'deliverLanding')
+        return { group: 'background', text: 'Telling that it landed', who: facts?.conversation }
       return phase === 'wait'
         ? { group: 'waiting', text: 'Watching until it finishes', who: facts?.conversation }
         : { group: 'background', text: 'Telling that it finished', who: facts?.conversation }

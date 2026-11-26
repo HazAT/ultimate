@@ -34,7 +34,11 @@ documents, tools and model-facing text.
 - **Notify.** `notify { id, wake? }` waits until the target and its subagents are idle, then delivers `#id finished ·
   <title>` with its last own answer (at most 1500 characters): as a follow-up (`lineage.finished`), or with
   `wake: false` as a note. Calling again for the same id replaces the pending request; an answer already delivered
-  waits for the target's next one.
+  waits for the target's next one. `on: 'land'` waits instead until branch `id`'s workspace records a landing (at once
+  if it already did) and delivers `#id landed · <title>` with the target branch and sha (`lineage.finished` with
+  `landed`), or `#id concluded` when it was concluded without landing. It is checked on each `workspaces.landed` and
+  `conversations.concluded` event, survives restarts, and ends without delivering when the waiting conversation is
+  concluded.
 - **Catch-up on resume.** When an idle top-level conversation gets input, a note about new target commits goes in
   before it. A branch hears only of other conversations' commits that touch files it changed ("N new commits on main
   overlap your checkout", with conversation trailers and paths) and an isolate's behind count; other commits bring it

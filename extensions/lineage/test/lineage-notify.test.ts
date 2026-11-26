@@ -1,10 +1,14 @@
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, it } from 'vitest'
 import { leaveNote, Notified } from '../server.ts'
+import { Workspaces } from '../../workspaces/workspaces.ts'
+import { SubmissionLanded } from '../../workspaces/api.ts'
+import { emit } from '../../../server/events.ts'
 import { context } from '../../../server/harness.ts'
 import { until } from '../../../test/helpers.ts'
 import {
@@ -18,6 +22,7 @@ import {
   servers,
   textOf,
 } from './lineage-fixture.ts'
+import type { Server } from './lineage-fixture.ts'
 
 it('wakes the caller once when the conversation it waits on finishes', async () => {
   const { server, release } = await notifyFixture()
@@ -186,6 +191,99 @@ it('a deliver resumed after a restart finds the note it left under its task id',
   expect(
     (await reopened.harness.snapshot(Notified, ROOT_CONVERSATION_ID, context))?.answers[other.id],
   ).toBe(1)
+})
+
+async function landWorkspace(server: Server, id: ConversationId, sha: string) {
+  await server.harness.commit(async (tx) => {
+    const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+    index.items[String(id)] = {
+      path: `/worktrees/${id}`,
+      branch: `ultimate/${id}`,
+      base: 'main',
+      source: '/project',
+      target: 'main',
+      state: 'ready',
+      landed: sha,
+    }
+    await emit(tx, SubmissionLanded, {
+      submission: `s${id}`,
+      conversationId: id,
+      at: 1 as never,
+      sha,
+      base: '0000000',
+      target: 'main',
+      lander: ROOT_CONVERSATION_ID,
+      divergence: 'None',
+      title: 'Dependency',
+      commits: [],
+      commitCount: 1,
+      paths: [],
+    })
+  }, context)
+}
+
+it('wakes the caller once when the branch it depends on lands, across a reopen', async () => {
+  const { server, home } = await notifyFixture()
+  const dependency = await second(server)
+  await ask(server, dependency.id, 'Built it')
+  await ask(
+    server,
+    ROOT_CONVERSATION_ID,
+    `NOTIFY ${JSON.stringify({ id: dependency.id, on: 'land' })}`,
+  )
+  await server.root.waitForIdle(context)
+  // Finishing is not landing: the request waits through the dependency's answer.
+  expect((await pendingNotifies(server)).map((task) => task.input)).toEqual([
+    { target: dependency.id, wake: true, on: 'land' },
+  ])
+
+  await server.close()
+  servers.splice(servers.indexOf(server), 1)
+  const { server: reopened } = await notifyFixture(home)
+  expect(await pendingNotifies(reopened)).toHaveLength(1)
+  await landWorkspace(reopened, dependency.id, 'abc1234def')
+  await until(async () => (await pendingNotifies(reopened)).length === 0)
+  await reopened.root.waitForIdle(context)
+  const view = await reopened.root.context(context)
+  const landed = view.entries.filter((entry) => entry.kind === 'lineage.finished')
+  expect(landed.map((entry) => entry.data)).toEqual([
+    {
+      from: dependency.id,
+      title: 'Built it',
+      text: 'Landed on main at abc1234def.',
+      landed: 'abc1234def',
+    },
+  ])
+  expect(textOf(landed[0].model?.[0]?.content)).toBe(
+    `#${dependency.id} landed · Built it\n\nLanded on main at abc1234def.`,
+  )
+  // The wake started a run.
+  expect(view.entries.at(-1)!.kind).toBe('pi.assistant')
+})
+
+it('drops a landing request when the waiting branch is concluded', async () => {
+  const { server } = await notifyFixture()
+  const waiting = await second(server)
+  const dependency = await second(server)
+  await ask(server, waiting.id, `NOTIFY ${JSON.stringify({ id: dependency.id, on: 'land' })}`)
+  const pendingOf = async () =>
+    (
+      await server.harness.commit(
+        (tx) => tx.scanTasks({ conversationId: waiting.id, kind: 'lineage.notify' }, 50),
+        context,
+      )
+    ).items.filter((task) => task.state.status !== 'terminal')
+  expect(await pendingOf()).toHaveLength(1)
+  await server.extensions.invoke(
+    'conversations',
+    'conclude',
+    { ids: [waiting.id] },
+    new AbortController().signal,
+  )
+  await until(async () => (await pendingOf()).length === 0)
+  await landWorkspace(server, dependency.id, 'fff0000')
+  await waiting.waitForIdle(context)
+  expect(await kinds(server, waiting.id)).not.toContain('lineage.finished')
 })
 
 it('keeps one pending notify per target and delivers it once across a reopen', async () => {
