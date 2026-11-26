@@ -102,11 +102,11 @@ export function makeClient(host: ExtensionHost) {
     })
   }
 
-  async function markOffline(tx: Tx, id: ConversationId) {
+  async function markOffline(tx: Tx, id: ConversationId, turnStarted = true) {
     const session = await tx.doc(Session, id)
     session.status = 'offline'
     delete session.permission
-    await settleTurn(tx, id)
+    if (turnStarted) await settleTurn(tx, id)
   }
 
   function cancelAgent(agent: Live) {
@@ -180,7 +180,9 @@ export function makeClient(host: ExtensionHost) {
     })
     for (const id of ids) {
       const status = (await host.harness().snapshot(Session, id, context))?.status
-      if (status && status !== 'offline') await commit((tx) => markOffline(tx, id))
+      if (!status || status === 'offline') continue
+      const turnStarted = (await host.harness().snapshot(Turn, id, context)) !== undefined
+      await commit((tx) => markOffline(tx, id, turnStarted))
     }
     closed = false
   })

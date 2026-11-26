@@ -474,7 +474,7 @@ export async function createApi(
       for (const change of publication.changes)
         if (change.type === 'document' && change.kind === 'change' && change.conversationId === id)
           created.add(change.record.kind)
-      if (delivered) followCreatedDocs()
+      if (delivered && created.size) queueMicrotask(followCreatedDocs)
     })
     const stop = async () => {
       stopped = true
@@ -533,6 +533,7 @@ export async function createApi(
       })
     }
     function followCreatedDocs() {
+      if (stopped) return
       for (const kind of created) {
         const token = absent.get(kind)
         if (!token) continue
@@ -548,6 +549,7 @@ export async function createApi(
                 watches.push(watch)
                 follow(kind, watch)
               }
+              if (!absent.size) stopNoticingCreations()
             })
             .catch((error: unknown) =>
               connection.send('notice', {

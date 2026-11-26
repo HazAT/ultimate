@@ -270,6 +270,10 @@ export async function prepareHarness(options: HostOptions) {
             env: processHelperExecutionEnv,
             onReport: (report) =>
               options.report?.({ level: 'error', message: reportMessage(report) }),
+            conversationCreated: async (tx, conversation) => {
+              if (conversation.parent)
+                await tx.retireDoc(UiStateBeforeLatestHistory, conversation.id)
+            },
           },
           context,
         )
