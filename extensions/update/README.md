@@ -73,5 +73,5 @@ The lander fast-forwards the host's checkout itself. A landing that changes only
 
 Each update records a durable event, emitted in its own commit right after the change, because the clone lives outside storage. A crash in between loses the event, not the update.
 
-- `update.applied`: `{ root, from, to, commits, layers, install }`, for an update that moved the clone.
+- `update.applied`: `{ root, from, to, commits, layers, needsRestart, install }`, for an update that moved the clone; `needsRestart` is true when it changed `server/`, `shared/`, `patches/` or `pnpm-lock.yaml` (`lib/layers.ts`).
 - `update.refused`: `{ root, reason }`.

@@ -42,7 +42,14 @@ export const TRIGGER_EVENTS: TriggerEvent[] = [
     description: 'Provider login changed',
     fields: { provider: 'Provider name' },
   },
-  { name: 'update.applied', description: 'An update was applied', fields: {} },
+  {
+    name: 'update.applied',
+    description: 'An update was applied',
+    fields: {
+      needsRestart:
+        'true when it changed the clone’s core (server/, shared/, patches/, pnpm-lock.yaml)',
+    },
+  },
   { name: 'update.refused', description: 'An update was refused', fields: {} },
   {
     name: 'cloud.backup',

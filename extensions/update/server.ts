@@ -29,6 +29,7 @@ import {
   summaryFor,
   withLock,
 } from './clone.ts'
+import { needsRestart } from '../../lib/layers.ts'
 import { Applied, CheckAction, MergeAction, Refused, StateAction, UpdateAction } from './refs.ts'
 import type { UpdateResult, UpdateState } from './refs.ts'
 import { UpdateApi } from './api.ts'
@@ -406,7 +407,8 @@ async function apply(
   }
   const files =
     moved.before === moved.after ? '' : await git('diff', '--name-only', moved.before, moved.after)
-  const layers = layersOf(files.split('\n').filter(Boolean))
+  const paths = files.split('\n').filter(Boolean)
+  const layers = layersOf(paths)
   const { install, installError } = await installPackages(host)
   const result = {
     ok: true as const,
@@ -425,6 +427,7 @@ async function apply(
       to: moved.after,
       commits: moved.behind,
       layers,
+      needsRestart: needsRestart(paths),
       install,
     })
   }
