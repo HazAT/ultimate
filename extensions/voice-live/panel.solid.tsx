@@ -50,7 +50,9 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
-import { capture, shortcut, talkMode } from '../dictation/ui.solid.tsx'
+import type { JSX } from '@solidjs/web'
+import { shortcut, talkMode } from '../dictation/ui.solid.tsx'
+import { ModeSwitch, TalkBar } from './talk.solid.tsx'
 import {
   activity,
   COLD_DRAFT,
@@ -91,24 +93,24 @@ export function SheetComposer(props: SolidComposerProps) {
           <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
         }
       >
-        <div class="flex items-end">
-          <div class="min-w-0 flex-1">{props.core}</div>
-          <Button
-            aria-label="Talk to voice"
-            class="mr-3 mb-3 flex size-14 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-lg shadow-brand/30 active:scale-95"
-            data-voice-talk
-            onClick={() => {
-              setVoiceOpen(true)
-              capture.press(voiceSink)
-            }}
-            size={null}
-            variant={null}
-          >
-            <AudioLines class="size-6" />
-          </Button>
-        </div>
+        <TalkOrType onTalk={() => setVoiceOpen(true)}>{props.core}</TalkOrType>
       </Show>
     </Show>
+  )
+}
+
+function TalkOrType(props: { onTalk?: () => void; children: JSX.Element; dock?: boolean }) {
+  return (
+    <div class="flex flex-col">
+      <div class={cn('flex justify-end pb-1.5', props.dock ? 'px-4' : 'px-3')}>
+        <ModeSwitch onToggle={dock.setTalking} talking={dock.talking()} />
+      </div>
+      <Show when={dock.talking()} fallback={props.children}>
+        <div class={cn('pb-2', props.dock ? 'px-4' : 'px-3')}>
+          <TalkBar onTalk={props.onTalk} />
+        </div>
+      </Show>
+    </div>
   )
 }
 
@@ -513,17 +515,29 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
       fallback={
         <footer class="flex shrink-0 flex-col gap-1 px-2 pb-2">
           <VoiceLine words />
-          <PromptBox
-            accepts={{ images: true }}
-            conversation={hot()}
-            dictation={voiceSink}
-            draft={hot() ?? COLD_DRAFT}
-            minimal
-            name="Voice dock"
-            onSubmit={(input) => sendTyped(input.text, input.images)}
-            placeholder={`Talk (${holdKeys()}) or type…`}
-            ready={() => draftOf().length > 0}
-          />
+          <Show
+            when={!dock.talking()}
+            fallback={
+              <div class="flex items-center gap-2">
+                <div class="min-w-0 flex-1">
+                  <TalkBar />
+                </div>
+                <ModeSwitch onToggle={dock.setTalking} talking />
+              </div>
+            }
+          >
+            <PromptBox
+              accepts={{ images: true }}
+              conversation={hot()}
+              dictation={voiceSink}
+              draft={hot() ?? COLD_DRAFT}
+              minimal
+              name="Voice dock"
+              onSubmit={(input) => sendTyped(input.text, input.images)}
+              placeholder={`Talk (${holdKeys()}) or type…`}
+              ready={() => draftOf().length > 0}
+            />
+          </Show>
         </footer>
       }
     >
@@ -533,22 +547,24 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
           <Collected fork={props.fork} />
           <VoiceLine />
         </div>
-        <Show
-          when={hot()}
-          fallback={
-            <ComposerRedirect value={target}>
-              <Composer dock />
-            </ComposerRedirect>
-          }
-        >
-          {(fork) => (
-            <ScopedConversation id={fork()}>
+        <TalkOrType dock>
+          <Show
+            when={hot()}
+            fallback={
               <ComposerRedirect value={target}>
                 <Composer dock />
               </ComposerRedirect>
-            </ScopedConversation>
-          )}
-        </Show>
+            }
+          >
+            {(fork) => (
+              <ScopedConversation id={fork()}>
+                <ComposerRedirect value={target}>
+                  <Composer dock />
+                </ComposerRedirect>
+              </ScopedConversation>
+            )}
+          </Show>
+        </TalkOrType>
       </footer>
     </Show>
   )
