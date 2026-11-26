@@ -81,6 +81,7 @@ export async function createWeb(options: {
   home: string
   watch: Watch
   before: () => Promise<unknown>
+  held: () => boolean
   pages: () => number
   changed: () => void
   notice: (message: string) => void
@@ -183,6 +184,10 @@ export async function createWeb(options: {
     const brokenFolders: string[] = []
     let result: WebBuildResult
     for (;;) {
+      if (options.held()) {
+        stale = true
+        return
+      }
       const request: WebBuildRequest = {
         ultimateRoot,
         projectRoot,
@@ -251,6 +256,10 @@ export async function createWeb(options: {
       broken: brokenFolders,
       retired: {},
     }
+    if (options.held()) {
+      stale = true
+      return
+    }
     const switched = manifest?.id !== id
     if (manifest && switched) retired.set(manifest.id, Date.now())
     retired.delete(id)
@@ -277,6 +286,7 @@ export async function createWeb(options: {
         await mkdir(folder, { recursive: true })
         while (stale && !closing.signal.aborted) {
           await options.before()
+          if (options.held()) break
           stale = false
           changedFiles = [...pending]
           pending = new Set()
@@ -375,6 +385,11 @@ export async function createWeb(options: {
     async handle(request: IncomingMessage, response: ServerResponse) {
       if (stale || !manifest) await buildUntilFreshSerially()
       const bundleForEntireRequest = manifest
+      if (!bundleForEntireRequest && options.held()) {
+        response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' })
+        response.end('Ultimate is restarting onto a new core; reload in a moment.')
+        return
+      }
       if (!bundleForEntireRequest) {
         response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
         response.end('The web UI did not build; the notices name the error.')

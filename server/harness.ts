@@ -42,6 +42,7 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { createBuild } from './build.ts'
+import { backUpChaptersBeforeSwap } from './swap-backup.ts'
 import { spawn } from '../lib/spawn.ts'
 import { delegatedCore, isolateWork, workMemoryMax, workSpawn } from '../lib/cgroup.ts'
 import { applyHttpProxySettings, configureHttpDispatcher } from './http.ts'
@@ -213,7 +214,7 @@ export async function prepareHarness(options: HostOptions) {
     extensionOrders,
     extensionSources,
     faux,
-    async open(resume = true) {
+    async open(resume = true, swappedIn = false) {
       const core = delegatedCore()
       if (core) await isolateWork(core, () => workMemoryMax(projectRoot, userHome))
       const coreStartForStaleOwnerCheck = identify(process.pid)
@@ -237,6 +238,7 @@ export async function prepareHarness(options: HostOptions) {
           projectRoot,
           projectName(projectRoot, await projectSettings(projectRoot, userHome)),
         )
+        if (swappedIn) await backUpChaptersBeforeSwap(home)
         await finishChapterSwitch(home, async (file) => {
           const created = await openNodeSqliteStorage(file)
           await created.close(context)
