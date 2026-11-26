@@ -41,8 +41,9 @@ async function fixture(onRequest?: (text: string, home: string) => Promise<void>
   const home = await temp('ultimate-agent-')
   homes.push(home)
   const root = await sourceCopy(home)
-  // The repository's coordinator overlay pins a Claude Code model no test can run; tests pin their own.
+  // The repository's overlays pin a Claude Code model no test can run and append its own rules; tests write their own.
   await rm(join(root, '.ultimate/agents/coordinator.md'))
+  await rm(join(root, '.ultimate/agents/ultimate.md'))
   await mkdir(join(home, '.ultimate/agents'), { recursive: true })
   await writeFile(
     join(home, '.ultimate/agents/dice.md'),
