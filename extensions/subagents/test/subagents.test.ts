@@ -29,13 +29,19 @@ import {
   InboxDoc,
   LiveDoc,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Extension, Task, ToolRegistration } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  Extension,
+  Task,
+  ToolRegistration,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { obj } from '@earendil-works/pi-schema'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import { emit } from '../../../server/events.ts'
 import type { OpenHost } from '../../../server/harness.ts'
@@ -555,6 +561,36 @@ it('wait uses stored answer identity even when it differs from the configured pr
     provider: 'faux',
     modelId: 'faux-1',
   })
+})
+
+it('wait does not read older pages once it finds the latest answer', async () => {
+  const f = await fixture()
+  await call(f.opened, { action: 'start', agent: 'scout', task: 'Older answer' })
+  const [{ conversationId }] = await children(f.opened)
+  const { harness } = f.opened
+  await harness.commit(async (tx) => {
+    for (let i = 0; i < 256; i++) await tx.appendEntry(conversationId, { kind: 'test.history' })
+    await tx.appendEntry(AssistantEntry, conversationId, {
+      model: [fauxAssistantMessage('Latest answer')],
+    })
+  }, context)
+  const prototype = await harness.commit(async (tx) => {
+    const firstPage = await tx.scanEntries({ conversationId }, 256)
+    expect(firstPage.next).toBeDefined()
+    expect(AssistantEntry.is(firstPage.items[0])).toBe(true)
+    return Object.getPrototypeOf(tx) as Tx
+  }, context)
+  const scan = vi.spyOn(prototype, 'scanEntries')
+  try {
+    expect((await call(f.opened, { action: 'wait', id: conversationId })).text).toContain(
+      'Latest answer',
+    )
+    expect(
+      scan.mock.calls.filter(([query]) => query.conversationId === conversationId),
+    ).toHaveLength(1)
+  } finally {
+    scan.mockRestore()
+  }
 })
 
 it('attributes durable instructions and reports across reopen and forks, never human lookalikes', async () => {
@@ -1168,19 +1204,38 @@ describe('turns without an answer', () => {
       const [action] = await childActions()
       expect(action.status).toBeUndefined()
       expect(await reports(f.opened)).toHaveLength(0)
+      await call(f.opened, {
+        action: 'message',
+        id: child.conversationId,
+        text: 'second parent request',
+        background: true,
+      })
+      const [, newer] = await childActions()
+      expect(newer.status).toBeUndefined()
       held.release()
-      await harness.waitForTask(action.reporter, context)
-      expect((await childActions())[0].status).toBe('interrupted')
-      await expect(
-        until(async () => (await reports(f.opened)).length > 0, 1000),
-      ).resolves.toBeUndefined()
-      expect((await reports(f.opened)).map((report) => report.data)).toMatchObject([
-        {
-          body: 'Returned model: faux/faux-1\nChild: continue before settlement',
-          sender: child.conversationId,
-          failed: false,
-        },
+      await Promise.all(
+        [action, newer].map(({ reporter }) => harness.waitForTask(reporter, context)),
+      )
+      expect((await childActions()).slice(0, 2).map(({ status }) => status)).toEqual([
+        'interrupted',
+        'done',
       ])
+      await expect(
+        until(async () => (await reports(f.opened)).length >= 2, 1000),
+      ).resolves.toBeUndefined()
+      const delivered = (await reports(f.opened)).map((report) => report.data)
+      expect(delivered).toHaveLength(2)
+      expect(delivered).toEqual(
+        expect.arrayContaining(
+          ['continue before settlement', 'second parent request'].map((text) =>
+            expect.objectContaining({
+              body: `Returned model: faux/faux-1\nChild: ${text}`,
+              sender: child.conversationId,
+              failed: false,
+            }),
+          ),
+        ),
+      )
     } finally {
       held.release()
     }
