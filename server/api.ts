@@ -283,6 +283,8 @@ export async function createApi(
       signal,
       spec.conversation === undefined ? undefined : parseConversationId(spec.conversation),
       'ui',
+      undefined,
+      { source: 'app' },
     )
   })
   let onGraph = () => {}

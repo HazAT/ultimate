@@ -123,7 +123,7 @@ function Tree() {
     for (const id of rootIds()) visit(id)
     return data
       .topLevel()
-      .filter((c) => open.has(c.id))
+      .filter((c) => open.has(c.id) || (c.label === 'acp' && !data.hidden().has(c.id)))
       .map((c) => c.id)
   })
   const starters = mapArray(flights, (id) => {

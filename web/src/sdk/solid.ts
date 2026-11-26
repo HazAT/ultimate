@@ -236,6 +236,7 @@ export { Composer } from '../app/composer.solid.tsx'
  * picks inline images and uploaded files.
  */
 export { PromptBox } from '../app/prompt-box.solid.tsx'
+export { ToolCallBlock } from '../app/tool-call.solid.tsx'
 /** An extension's failure, inline or as a block with a report button, as the shell shows it. */
 export { ErrorCard } from '../app/error-card.solid.tsx'
 /** A contribution's `icon` (a panel's, a surface's) with `class`. */

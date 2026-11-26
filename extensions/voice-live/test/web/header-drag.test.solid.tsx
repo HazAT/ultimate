@@ -10,7 +10,7 @@ import { VoicePanel } from '../../panel.solid.tsx'
 const ui = vi.hoisted(() => ({ folded: false }))
 vi.mock('@/sdk/solid', async (original) => ({
   ...(await original<typeof import('@/sdk/solid')>()),
-  useAction: () => ({ data: () => ({ model: 'antigravity/gemini-4-neon-low' }), refetch() {} }),
+  useAction: () => ({ data: () => ({ model: 'google/gemini-4-neon' }), refetch() {} }),
   useDocOf: () => () => undefined,
   useEvent: () => undefined,
   useExtensionUiState: (key: string, initial: unknown) =>

@@ -6,4 +6,6 @@ export { ModelRow } from './model-row.solid.tsx'
 export { ModelSelect } from './model-select.solid.tsx'
 export { FamilyDot, useFamilies } from './readers.solid.tsx'
 /** The provider login and model picker dialog IDs, for Get ready's focus handoff. */
-export { dialogs as modelDialogs } from './state.ts'
+export { dialogs as modelDialogs, openPicker } from './state.ts'
+/** Groups of extra choices in the picker, with an optional adjacent secondary action. */
+export { PickerRows } from './points.ts'

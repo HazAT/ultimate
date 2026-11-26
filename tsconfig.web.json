@@ -67,6 +67,7 @@
     "extensions/recall/types.ts",
     "extensions/conversations/summary-model-ref.ts",
     "extensions/models/state.ts",
+    "extensions/models/points.ts",
     "extensions/models/family-state.ts",
     "extensions/models/switches.ts",
     "extensions/context/breakdown.ts",
