@@ -236,42 +236,36 @@ it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation 
   await expectDistinctAgentNames(agent)
 })
 
-it('plays the start and stop cues in a plain box only while Sound cues is on', async () => {
+it('plays the start and stop cues in a plain box only while Sound cues is on', async ({
+  onTestFinished,
+}) => {
+  onTestFinished(() => setSoundCues(true))
   const container = await mount(16, { available: true })
   const button = (label: string) =>
     container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
   const take = async () => {
+    vi.mocked(startCue).mockClear()
+    vi.mocked(stopCue).mockClear()
     button('Dictate into conversation #16').click()
     await settle()
     flush()
-    expect(startCue).toHaveBeenCalledOnce()
+    const started = vi.mocked(startCue).mock.calls.length
     expect(stopCue).not.toHaveBeenCalled()
     button('Stop and transcribe into conversation #16').click()
     await settle()
     flush()
+    return [started, vi.mocked(stopCue).mock.calls.length]
   }
-  await take()
-  expect(stopCue).toHaveBeenCalledOnce()
+  expect(await take()).toEqual([1, 1])
 
-  const cues = 'Dictation sound cues for conversation #16'
   await agent.act({
     steps: [
       { ref: 'Dictation settings for conversation #16', action: 'setOpen', args: [true] },
-      { ref: cues, action: 'setChecked', args: [false] },
+      { ref: 'Dictation sound cues for conversation #16', action: 'setChecked', args: [false] },
     ],
   })
-  vi.mocked(startCue).mockClear()
-  vi.mocked(stopCue).mockClear()
-  button('Dictate into conversation #16').click()
-  await settle()
-  flush()
-  button('Stop and transcribe into conversation #16').click()
-  await settle()
-  flush()
-  expect(startCue).not.toHaveBeenCalled()
-  expect(stopCue).not.toHaveBeenCalled()
+  expect(await take()).toEqual([0, 0])
   expect(inserted).toEqual(['hello from the mic', 'hello from the mic'])
-  setSoundCues(true)
 })
 
 it('keeps a plain box’s microphone after Stop only while keepOpen is true', async () => {

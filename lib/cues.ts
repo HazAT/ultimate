@@ -7,6 +7,7 @@ export function tone(
   type: OscillatorType,
   delay = 0,
 ) {
+  if (typeof AudioContext === 'undefined') return
   context ??= new AudioContext()
   const at = context.currentTime + delay
   const oscillator = context.createOscillator()
