@@ -276,7 +276,9 @@ export function workspaces(host: Host) {
     const checkout = await isolatable(host.projectRoot)
     const { source, target } = 'source' in checkout ? checkout : {}
     const path =
-      source && target && (await landerCheckout(host.home, source, await host.projectSettings()))
+      source &&
+      target &&
+      (await landerCheckout(host.home, source, await host.projectSettings(), serializeSourceWrites))
     await host.harness().commit(async (tx) => {
       const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
       const landers: ConversationId[] = []
@@ -1029,25 +1031,28 @@ export function workspaces(host: Host) {
       }
     },
     async discard(id: ConversationId, context: Context) {
-      await idle(id, context)
-      const workspace = await get(id, context)
-      if (!workspace) throw new Error('Conversation has no workspace')
-      if (workspace.state === 'preparing') throw new Error('Workspace is preparing')
-      if (workspace.state !== 'removed') {
-        using external = await host.want(ExternalSessions)?.stop([id])
-        void external
-        if (await listedBySource(workspace))
-          await removeCheckoutWithoutForce(
-            await host.projectSettings(),
-            workspace.source,
-            workspace.path,
-            treeName(workspace.branch),
-          )
-        await host.harness().commit(async (tx) => {
-          ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].state = 'removed'
-        }, context)
-      }
-      return { text: `Discarded isolate; kept branch ${workspace.branch}.` }
+      const record = await get(id, context)
+      if (!record) throw new Error('Conversation has no workspace')
+      return serializeSourceWrites(record.source, async () => {
+        const workspace = (await get(id, context))!
+        await idle(id, context)
+        if (workspace.state === 'preparing') throw new Error('Workspace is preparing')
+        if (workspace.state !== 'removed') {
+          using external = await host.want(ExternalSessions)?.stop([id])
+          void external
+          if (await listedBySource(workspace))
+            await removeCheckoutWithoutForce(
+              await host.projectSettings(),
+              workspace.source,
+              workspace.path,
+              treeName(workspace.branch),
+            )
+          await host.harness().commit(async (tx) => {
+            ;(await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].state = 'removed'
+          }, context)
+        }
+        return { text: `Discarded isolate; kept branch ${workspace.branch}.` }
+      })
     },
     async stats(context: Context): Promise<WorkspaceStats> {
       const items = Object.values(
