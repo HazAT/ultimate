@@ -328,6 +328,7 @@ export function PromptBox(props: PromptBoxProps) {
             <DropdownMenuContent
               align="end"
               finalFocus="none"
+              onMouseDown={(event: MouseEvent) => event.preventDefault()}
               onPointerDown={(event: PointerEvent) => event.preventDefault()}
               side="top"
             >
