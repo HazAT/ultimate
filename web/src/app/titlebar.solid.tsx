@@ -11,11 +11,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { showSurface, useExtensions, useStore, useSystem } from '../sdk/hooks.ts'
+import { showSurface, useExtensions, useStore, useSystem, useViewport } from '../sdk/hooks.ts'
 import { actions } from '../sdk/actions.ts'
 import { Contribution, ContributedIcon, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'
-import { inlineFailure } from './header.solid.tsx'
+import { inlineFailure, useHeaderShown } from './header.solid.tsx'
 import { Shortcut } from './palette.solid.tsx'
 import { isPreview, projectName } from './project.ts'
 import { sidebarWidthBeyondPhone as alignSurfaceTabsWithSidebar } from './shell.solid.tsx'
@@ -232,48 +232,52 @@ function SurfaceItems() {
 }
 
 export function TitleBar() {
+  const viewport = useViewport()
+  const header = useHeaderShown()
   return (
-    <div
-      class="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground"
-      data-ui="titlebar"
-    >
-      <div class="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
-        <div
-          class={cn(
-            'flex min-w-0 items-center gap-2 overflow-hidden pr-3 pl-3 md:shrink-0 md:pr-2',
-            alignSurfaceTabsWithSidebar,
-          )}
-        >
-          <Brand />
-          <Project />
-          <Slot fallback={inlineFailure} name="titlebar.left" />
+    <Show when={viewport() !== 'phone' || !header()}>
+      <div
+        class="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground"
+        data-ui="titlebar"
+      >
+        <div class="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
+          <div
+            class={cn(
+              'flex min-w-0 items-center gap-2 overflow-hidden pr-3 pl-3 md:shrink-0 md:pr-2',
+              alignSurfaceTabsWithSidebar,
+            )}
+          >
+            <Brand />
+            <Project />
+            <Slot fallback={inlineFailure} name="titlebar.left" />
+          </div>
+          <div class="flex shrink-0 items-center pl-2">
+            <SurfaceItems />
+          </div>
         </div>
-        <div class="flex shrink-0 items-center pl-2">
-          <SurfaceItems />
+        <div class="flex shrink-0 items-center gap-3 whitespace-nowrap">
+          <Slot fallback={inlineFailure} name="titlebar.right" />
+          <Button
+            aria-label="Command palette"
+            class="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
+            onClick={actions.openPalette}
+            size="sm"
+            variant="ghost"
+          >
+            commands
+            <Shortcut keys="mod+k" />
+          </Button>
+          <Button
+            aria-label="Show commands"
+            class="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
+            onClick={actions.openPalette}
+            size="icon"
+            variant="ghost"
+          >
+            <CommandIcon aria-hidden="true" class="size-3.5" />
+          </Button>
         </div>
       </div>
-      <div class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-        <Slot fallback={inlineFailure} name="titlebar.right" />
-        <Button
-          aria-label="Command palette"
-          class="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
-          onClick={actions.openPalette}
-          size="sm"
-          variant="ghost"
-        >
-          commands
-          <Shortcut keys="mod+k" />
-        </Button>
-        <Button
-          aria-label="Show commands"
-          class="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
-          onClick={actions.openPalette}
-          size="icon"
-          variant="ghost"
-        >
-          <CommandIcon aria-hidden="true" class="size-3.5" />
-        </Button>
-      </div>
-    </div>
+    </Show>
   )
 }

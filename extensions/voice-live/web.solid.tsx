@@ -11,7 +11,7 @@ const TurnRow = renderEntry(VoiceTurnEntry, StoredTurn)
 
 export default defineWebExtension({
   slots: {
-    'titlebar.right': [VoiceToggle],
+    'titlebar.right': [{ component: VoiceToggle, phone: true }],
     overlay: [VoicePanel],
     'transcript.end': [PendingTurns],
   },
