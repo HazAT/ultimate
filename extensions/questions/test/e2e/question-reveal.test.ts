@@ -99,14 +99,15 @@ async function setup() {
   return { server, branch, other, asked, browser }
 }
 
-/** How far a card's top sits below the strip's bottom, once both show. */
+/** How far a card's top sits below the pinned strip's bottom, or below the transcript's top on a phone, which pins no strip. */
 const gap = (page: Page, id: number) =>
   page.evaluate((message) => {
     const card = document.querySelector(`[data-message-outgoing="${message}"]`)
     const strip = document.querySelector('[data-ui="pinned-prompt"]')
-    return card && strip
-      ? card.getBoundingClientRect().top - strip.getBoundingClientRect().bottom
-      : Number.NaN
+    const top = strip
+      ? strip.getBoundingClientRect().bottom
+      : document.querySelector('[data-ui="transcript"]')?.parentElement?.getBoundingClientRect().top
+    return card && top !== undefined ? card.getBoundingClientRect().top - top : Number.NaN
   }, id)
 
 /**

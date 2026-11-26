@@ -11,7 +11,16 @@ import {
   X,
 } from '@lucide/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { createEffect, createMemo, For, onSettled, Show } from 'solid-js'
+import {
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  For,
+  onCleanup,
+  onSettled,
+  Show,
+} from 'solid-js'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
@@ -22,6 +31,7 @@ import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
   api,
   cn,
+  column,
   Composer,
   ComposerRedirect,
   ConversationTranscript,
@@ -41,8 +51,10 @@ import {
   useSurface,
   useViewport,
 } from '@/sdk/solid'
-import type { ComposerTarget } from '@/sdk/solid'
-import { shortcut, talkMode } from '../dictation/ui.solid.tsx'
+import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
+import type { JSX } from '@solidjs/web'
+import { DictationOptions, shortcut, talkMode } from '../dictation/ui.solid.tsx'
+import { ModeSwitch, TalkBar } from './talk.solid.tsx'
 import {
   activity,
   COLD_DRAFT,
@@ -68,6 +80,48 @@ import type { ModelPick } from '../models/ui.solid.tsx'
 import { PlaybackBar, SOUND_BLOCKED, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Voicing, Waveform } from './turns.solid.tsx'
+import { REST, settle, type Snap } from './sheet.ts'
+
+const FULL_TOP = 36
+const [sheetRoom, setSheetRoom] = createRoot(() => createSignal(0))
+
+export function SheetComposer(props: SolidComposerProps) {
+  const viewport = useViewport()
+  return (
+    <Show when={!props.dock} fallback={props.core}>
+      <Show
+        when={!voiceOpen()}
+        fallback={
+          <Show when={viewport() === 'phone'} fallback={props.core}>
+            <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
+          </Show>
+        }
+      >
+        <TalkOrType onTalk={() => setVoiceOpen(true)}>{props.core}</TalkOrType>
+      </Show>
+    </Show>
+  )
+}
+
+function TalkOrType(props: { onTalk?: () => void; children: JSX.Element; dock?: boolean }) {
+  return (
+    <Show
+      when={dock.talking()}
+      fallback={
+        <div class="flex flex-col">
+          <div class={cn('flex justify-end pb-1.5', column(props.dock))}>
+            <ModeSwitch onToggle={dock.setTalking} talking={false} />
+          </div>
+          {props.children}
+        </div>
+      }
+    >
+      <div class={cn('pb-2', column(props.dock))}>
+        <TalkBar onTalk={props.onTalk} settings={<Settings name="Talk bar settings" />} />
+      </div>
+    </Show>
+  )
+}
 
 const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground pointer-coarse:size-9'
@@ -76,12 +130,12 @@ const holdKeys = () => formatKeys(shortcut())[0].join('+')
 const tap = () => talkMode() === 'tap'
 const talkVerb = () => (tap() ? 'tap' : 'hold')
 
-const recording = () => dock.capturing()
+const capturing = () => dock.capturing()
+const recording = () => capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
 
 function Status(props: { class?: string }) {
-  const text = () =>
-    dock.error() ?? (audible() && dock.status() === 'Speaking' ? undefined : dock.status())
+  const text = () => dock.error() ?? (speaking() ? undefined : dock.status())
   return (
     <output
       class={cn(
@@ -167,14 +221,15 @@ function Unblock() {
 function VoiceLine(props: { words?: boolean }) {
   const spoken = () => props.words && (playerState().playing || playerState().paused)
   const blocked = () => playerState().blocked
+  const listening = () => capturing() && !dock.talking()
   const shown = () =>
     blocked() ||
-    recording() ||
+    listening() ||
     spoken() ||
     !!activity().current ||
-    !!dock.error() ||
-    !!(dock.status() && !(audible() && dock.status() === 'Speaking')) ||
-    draftOf().length > 0
+    (!!dock.error() && !dock.talking()) ||
+    !!(dock.status() && !speaking() && !dock.talking()) ||
+    (draftOf().length > 0 && !(dock.talking() && capturing()))
   return (
     <Show when={shown()}>
       <div
@@ -182,13 +237,20 @@ function VoiceLine(props: { words?: boolean }) {
         data-voice-line
       >
         <Show
-          when={recording()}
+          when={listening()}
           fallback={
             <Show
               when={!blocked() && spoken()}
               fallback={
                 <Show when={!blocked()} fallback={<Unblock />}>
-                  <Show when={activity().current} fallback={<Status class="flex-1" />}>
+                  <Show
+                    when={activity().current}
+                    fallback={
+                      <Show when={!dock.talking()}>
+                        <Status class="flex-1" />
+                      </Show>
+                    }
+                  >
                     <Working />
                   </Show>
                 </Show>
@@ -218,17 +280,20 @@ const glow = `@keyframes voice-glow {
 }`
 
 const audible = () => playerState().playing
+const speaking = () =>
+  dock.status() === 'Speaking' && (playerState().playing || playerState().paused)
 
-function Settings() {
+function Settings(props: { name?: string }) {
+  const name = () => props.name ?? 'Voice settings'
   return (
     <Popover>
-      <PopoverTrigger aria-label="Voice settings" class={iconButton} title="Voice settings">
+      <PopoverTrigger aria-label={name()} class={iconButton} title="Voice settings">
         <Settings2 class="size-4" />
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="Voice settings options"
-        class="w-64 p-0 font-mono text-[11.5px]"
+        aria-label={`${name()} options`}
+        class="max-h-[70dvh] w-64 overflow-y-auto p-0 font-mono text-[11.5px]"
         side="top"
       >
         <div class="px-3 pt-2.5 pb-1 section-label">Voice</div>
@@ -268,6 +333,7 @@ function Settings() {
             <Toggle aria-label="Collect until send" bind={[dock.collect, dock.setCollect]} />
           </label>
         </div>
+        <DictationOptions name={props.name ?? 'Voice'} />
       </PopoverContent>
     </Popover>
   )
@@ -401,11 +467,20 @@ function Collected(props: { fork: ConversationId | undefined }) {
 
 function SetupList() {
   const status = useAction(StatusAction, null, { conversation: ROOT })
+  const useDefault = async () => {
+    await api.action(PickAction, { model: null }, { conversationId: ROOT })
+    await status.refetch()
+  }
   const items = () => {
-    const setup = status.data()?.setup
+    const data = status.data()
+    const setup = data?.setup
     return setup
       ? [
-          { label: 'Voice model', ...setup.model },
+          {
+            label: 'Model',
+            ...setup.model,
+            ...(data.source === 'picked' ? { reset: true } : {}),
+          },
           { label: 'Transcription', ...setup.transcription },
           { label: 'Hands-free send', ...setup.handsFree },
         ]
@@ -433,6 +508,17 @@ function SetupList() {
                 </span>
                 <Show when={item.fix}>
                   <span class="text-muted-foreground">{item.fix}</span>
+                </Show>
+                <Show when={'reset' in item}>
+                  <Button
+                    aria-label="Use default"
+                    class="h-6 self-start rounded-md px-2 font-mono text-[11px] font-normal"
+                    onClick={useDefault}
+                    size={null}
+                    variant="outline"
+                  >
+                    Use default
+                  </Button>
                 </Show>
               </span>
             </li>
@@ -475,7 +561,11 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
     (notify) => composerDraft(COLD_DRAFT).subscribe(notify),
   )
   const hot = () => (coldHeld() ? undefined : props.fork)
-  const placeholder = () => `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`
+  const viewport = useViewport()
+  const placeholder = () =>
+    viewport() === 'phone'
+      ? `Type, paste, or ${talkVerb()} to talk…`
+      : `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`
   const target = (): ComposerTarget => ({
     name: 'Voice dock',
     placeholder: placeholder(),
@@ -491,17 +581,25 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
       fallback={
         <footer class="flex shrink-0 flex-col gap-1 px-2 pb-2">
           <VoiceLine words />
-          <PromptBox
-            accepts={{ images: true }}
-            conversation={hot()}
-            dictation={voiceSink}
-            draft={hot() ?? COLD_DRAFT}
-            minimal
-            name="Voice dock"
-            onSubmit={(input) => sendTyped(input.text, input.images)}
-            placeholder={`Talk (${holdKeys()}) or type…`}
-            ready={() => draftOf().length > 0}
-          />
+          <Show
+            when={!dock.talking()}
+            fallback={<TalkBar settings={<Settings name="Talk bar settings" />} />}
+          >
+            <PromptBox
+              accepts={{ images: true }}
+              conversation={hot()}
+              dictation={voiceSink}
+              draft={hot() ?? COLD_DRAFT}
+              minimal
+              name="Voice dock"
+              onSubmit={(input) => sendTyped(input.text, input.images)}
+              placeholder={`Talk (${holdKeys()}) or type…`}
+              ready={() => draftOf().length > 0}
+            />
+            <div class="flex justify-end">
+              <ModeSwitch onToggle={dock.setTalking} talking={false} />
+            </div>
+          </Show>
         </footer>
       }
     >
@@ -511,22 +609,24 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
           <Collected fork={props.fork} />
           <VoiceLine />
         </div>
-        <Show
-          when={hot()}
-          fallback={
-            <ComposerRedirect value={target}>
-              <Composer dock />
-            </ComposerRedirect>
-          }
-        >
-          {(fork) => (
-            <ScopedConversation id={fork()}>
+        <TalkOrType dock>
+          <Show
+            when={hot()}
+            fallback={
               <ComposerRedirect value={target}>
                 <Composer dock />
               </ComposerRedirect>
-            </ScopedConversation>
-          )}
-        </Show>
+            }
+          >
+            {(fork) => (
+              <ScopedConversation id={fork()}>
+                <ComposerRedirect value={target}>
+                  <Composer dock />
+                </ComposerRedirect>
+              </ScopedConversation>
+            )}
+          </Show>
+        </TalkOrType>
       </footer>
     </Show>
   )
@@ -556,7 +656,7 @@ export function VoicePanel() {
     ([on, conversation, title]) => {
       const showing = on === 'agent' ? conversation : undefined
       setScreen({
-        text: `Daniel's screen: the ${on} surface${
+        text: `The user's screen: the ${on} surface${
           showing !== undefined
             ? `, showing conversation #${showing}${title ? ` "${title}"` : ''}`
             : ''
@@ -571,9 +671,89 @@ export function VoicePanel() {
     right: number
     bottom: number
   } | null>('corner', null)
-  const [folded, setFolded] = useExtensionUiState('folded', false)
+  const [desktopFolded, setDesktopFolded] = useExtensionUiState('folded', false)
+  const [snapped, setSnap] = useExtensionUiState<Snap>('sheet', 'rest')
+  const snap = () => snapped() as Snap
+  const [dragged, setDragged] = createSignal<number>()
+  const folded = () => (phone() ? snap() === 'folded' : desktopFolded())
+  const setFolded = (fold: boolean) =>
+    phone() ? setSnap(fold ? 'folded' : 'rest') : setDesktopFolded(fold)
+  let sheet: HTMLElement | undefined
+  let observer: ResizeObserver | undefined
+  onCleanup(() => observer?.disconnect())
+  const measure = (element: HTMLElement) => {
+    observer?.disconnect()
+    observer = new ResizeObserver(() => {
+      const line = document.querySelector<HTMLElement>('[data-ui="status-line"]')
+      const room = element.offsetHeight - (line?.offsetHeight ?? 0)
+      setSheetRoom(Math.max(0, Math.min(room, window.innerHeight * REST)))
+    })
+    observer.observe(element)
+  }
+  let swiped = false
+  let endSwipe: (() => void) | undefined
+  onCleanup(() => endSwipe?.())
+  const swipe = (event: PointerEvent & { currentTarget: HTMLElement }) => {
+    swiped = false
+    if (
+      (event.target as HTMLElement).closest('button:not([data-voice-grabber]), [popover], textarea')
+    )
+      return
+    const handle = event.currentTarget
+    const finger = event.pointerId
+    endSwipe?.()
+    const start = sheet!.offsetHeight
+    const full = sheet!.getBoundingClientRect().bottom - FULL_TOP
+    const y = event.clientY
+    let last = { y, at: event.timeStamp }
+    let velocity = 0
+    let moving = false
+    const move = (next: PointerEvent) => {
+      if (next.pointerId !== finger) return
+      const pulled = y - next.clientY
+      if (!moving && Math.abs(pulled) < 6) return
+      if (!moving) handle.setPointerCapture(next.pointerId)
+      moving = true
+      swiped = true
+      const span = next.timeStamp - last.at
+      if (span > 0) velocity = (last.y - next.clientY) / span
+      last = { y: next.clientY, at: next.timeStamp }
+      setDragged(Math.max(72, Math.min(full, start + pulled)))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      endSwipe = undefined
+    }
+    const up = (next: PointerEvent) => {
+      if (next.pointerId !== finger) return
+      stop()
+      const height = dragged()
+      setDragged(undefined)
+      if (!moving || height === undefined) return
+      const heights = {
+        folded: 120,
+        rest: window.innerHeight * REST,
+        full,
+      }
+      setSnap(settle(snap(), height, start, velocity, heights))
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    endSwipe = stop
+  }
+  const sheetHeight = () => {
+    const px = dragged()
+    if (px !== undefined) return `${px}px`
+    if (snap() === 'folded') return undefined
+    if (snap() === 'full') return `calc(100dvh - env(safe-area-inset-top) - ${FULL_TOP}px)`
+    return `${REST * 100}dvh`
+  }
   const drag = (event: PointerEvent & { currentTarget: HTMLElement }) => {
-    if (phone() || (event.target as HTMLElement).closest('button, [popover]')) return
+    if (phone()) return swipe(event)
+    if ((event.target as HTMLElement).closest('button, [popover]')) return
     const panel = event.currentTarget.closest<HTMLElement>('[data-voice-panel]')!
     const box = panel.getBoundingClientRect()
     const right = window.innerWidth - box.right
@@ -595,7 +775,8 @@ export function VoicePanel() {
   }
   const style = () => {
     const at = place()
-    if (phone() || !at) return undefined
+    if (phone()) return { height: sheetHeight() }
+    if (!at) return undefined
     const height = folded() ? '6rem' : 'min(44rem, 100vh - 5rem)'
     return {
       right: `min(${at.right}px, 100vw - min(36rem, 46vw) - 0.5rem)`,
@@ -609,9 +790,11 @@ export function VoicePanel() {
         class={cn(
           'pointer-events-auto fixed z-40 flex flex-col overflow-hidden border border-border bg-background shadow-2xl shadow-black/40',
           phone()
-            ? folded()
-              ? 'right-3 bottom-[calc(9rem+env(safe-area-inset-bottom))] left-3 rounded-xl'
-              : 'inset-x-0 top-11 bottom-0 rounded-t-2xl border-b-0'
+            ? cn(
+                dragged() === undefined &&
+                  'transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                'inset-x-0 bottom-0 rounded-t-2xl border-x-0 border-b-0 border-t-brand/40 pb-[env(safe-area-inset-bottom)] has-[textarea:focus]:pb-0',
+              )
             : folded()
               ? 'right-4 bottom-4 w-[min(26rem,46vw)] rounded-xl'
               : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
@@ -619,13 +802,36 @@ export function VoicePanel() {
         )}
         data-voice-folded={folded() || undefined}
         data-voice-panel
+        data-voice-sheet={phone() ? snap() : undefined}
         data-voice-speaking={audible() || undefined}
+        ref={(element) => {
+          sheet = element
+          measure(element)
+        }}
         style={style()}
       >
         <style>{glow}</style>
+        <Show when={phone()}>
+          <div
+            class="flex h-5 shrink-0 touch-none items-center justify-center select-none"
+            onPointerDown={drag}
+          >
+            <Button
+              aria-label={snap() === 'full' ? 'Shrink voice' : 'Expand voice'}
+              class="flex h-5 w-16 items-center justify-center"
+              data-voice-grabber
+              onClick={() => !swiped && setSnap(snap() === 'full' ? 'rest' : 'full')}
+              size={null}
+              variant={null}
+            >
+              <span class="h-1 w-9 rounded-full bg-muted-foreground/40" />
+            </Button>
+          </div>
+        </Show>
         <header
           class={cn(
-            'flex h-10 shrink-0 touch-none items-center gap-2 border-b border-border/60 px-3 select-none',
+            'flex shrink-0 touch-none items-center gap-2 border-b border-border/60 px-3 select-none',
+            phone() ? 'h-9' : 'h-10',
             !phone() && 'cursor-grab active:cursor-grabbing',
             folded() && 'border-b-0',
           )}
@@ -703,7 +909,7 @@ export function VoicePanel() {
           <Show
             when={id()}
             fallback={
-              <div class="flex flex-1 flex-col items-center justify-center gap-1.5 px-10 text-center">
+              <div class="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-10 py-4 text-center *:first:mt-auto *:last:mb-auto">
                 <AudioLines class="mb-1 size-5 text-brand" />
                 <p class="text-[14px] text-foreground">Think out loud with @ultimate</p>
                 <p class="max-w-sm text-[13px] text-muted-foreground">
@@ -735,7 +941,7 @@ export function VoiceToggle() {
     <Button
       aria-label={voiceOpen() ? 'Hide voice' : 'Open voice'}
       class={cn(
-        'flex h-6 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground',
+        'flex h-6 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground max-md:size-9 max-md:justify-center max-md:px-0',
         session()?.id !== undefined && 'text-brand',
       )}
       onClick={() => setVoiceOpen(!voiceOpen())}
@@ -747,7 +953,7 @@ export function VoiceToggle() {
       <Show when={session()?.id !== undefined}>
         <span class="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
       </Show>
-      voice
+      <span class="max-md:hidden">voice</span>
     </Button>
   )
 }

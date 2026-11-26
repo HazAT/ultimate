@@ -257,12 +257,16 @@ function ComposerEditor(props: { dock?: boolean }) {
   const draft = createMemo(() => getDraft(id()))
   const [placeholder, setPlaceholder] = createSignal<string>()
   const talk = useProvided(DictationShortcut, () => null)
-  const idlePlaceholder = () =>
-    talk()
-      ? `Ask Ultimate anything, paste a screenshot, or ${talk()} to dictate…`
-      : 'Ask Ultimate anything or paste a screenshot…'
   const models = useModels()
   const viewport = useViewport()
+  const idlePlaceholder = () => {
+    const shortcut = talk()
+    if (viewport() === 'phone')
+      return shortcut ? `Type, paste, or ${shortcut.gesture} to dictate…` : 'Type or paste…'
+    return shortcut
+      ? `Ask Ultimate anything, paste a screenshot, or ${shortcut.gesture} ${shortcut.keys} to dictate…`
+      : 'Ask Ultimate anything or paste a screenshot…'
+  }
   const foldTarget = useExternal(statusTarget, subscribeStatusTarget)
   const foldStatus = createMemo(() =>
     viewport() === 'phone' && scoped === null && !props.dock ? foldTarget() : null,

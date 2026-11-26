@@ -25,7 +25,7 @@ While the clone is behind, the status line shows `↓ 5 new · update` (`↓ 5 n
   - a changed lockfile or patch also needs `pnpm install`;
   - bin needs a supervisor restart.
 
-**Update now** runs the update. After an update that needs a restart, the item reads `updated · restart`, and the popover offers **Restart now** (the core swap, as `core changed · restart` does). Every Ultimate on the clone shows it once packages were installed after it started, or once the clone's `HEAD` differs in `server/` or `shared/` from the commit it started from (a landing or another Ultimate's update), also when another one updated. While `pnpm-lock.yaml` differs from the installed packages, the item reads `install owed` and offers **Retry pnpm install**.
+**Update now** runs the update. After an update that needs a restart, the item reads `updated · restart`, and the popover offers **Restart now** (the core swap, as `core changed · restart` does). Every Ultimate on the clone shows it once packages were installed after it started, or once `server/` or `shared/` on disk differ from what its core booted with (`host.coreChanged()`, the test that also holds reloads: a landing, another Ultimate's update or an edit), also when another one updated. While `pnpm-lock.yaml` differs from the installed packages, the item reads `install owed` and offers **Retry pnpm install**.
 
 One case restarts by itself: an extension's server facet that fails to load (`host.onLoadError`) while the running core is stale by the same test (core changed or packages installed since boot). It most likely needs the new core, so the host restarts at once through the core swap, busy agents included, and their work resumes in the new process. A notice says `Restarting: <extension> failed to load after a core change`. Facets failing in one reload cause one restart, and none starts within 10 minutes of the last automatic one (`update-auto-restart.json` in the home), so a restart that does not help never loops. A facet that fails while the core is current is a bug and stays a load error.
 
@@ -67,7 +67,9 @@ When the install fails, the item reads `install owed`, extensions and the web bu
 
 ## After a landing
 
-The lander fast-forwards the host's checkout itself. A landing that changes only `patches/` or `pnpm-lock.yaml` touches no file the extension watcher reloads for, so on each `workspaces.landed` the extension runs the step above at once. The item then reads `updated · restart`, and the landing card says "Needs restart." (`needsRestart` in `lib/layers.ts`, the rule `layersOf` shares): packages a process already imported stay loaded, so only a restart runs the new ones. The landing itself restarts nothing; previews never install.
+The lander fast-forwards the host's checkout itself. A landing that changes only `patches/` or `pnpm-lock.yaml` touches no file the extension watcher reloads for, so on each `workspaces.landed` the extension runs the step above at once. The landing card says "Needs restart." (`needsRestart` in `lib/layers.ts`, the rule `layersOf` shares) when it changed `server/`, `shared/`, a patch or the lockfile.
+
+Then, once the install is done, the extension restarts the host through the core swap when the core is stale by the test above (`Restarting: a landing changed the core`). Until then the core holds every extension reload and web rebuild (`docs/running.md`), so the old process never runs extension code written for the new core. A swap that fails its type-check keeps the old core serving its old code and leaves a notice. Previews never install or restart.
 
 ## Events
 

@@ -24,6 +24,7 @@ import { ignoring, isMissing, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { Profile, Standing } from '../subagents/api.ts'
 import type { BuildNote, Landing } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const order = -100
 
@@ -33,7 +34,7 @@ const LastRunBuildAndInstructionHashes = defineDoc<{
   files?: Record<string, string>
 }>({
   kind: 'prompt.build',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

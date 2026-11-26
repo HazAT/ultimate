@@ -12,6 +12,8 @@ const harness = vi.hoisted(() => ({
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
   posts: [] as { path: string; body: unknown; source: string | null }[],
   failSubmit: false,
+  wide: false,
+  viewportListeners: new Set<() => void>(),
 }))
 vi.mock('../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../web/src/sdk/store.ts')
@@ -57,7 +59,7 @@ import { Composer } from '../../web/src/app/composer.solid.tsx'
 import { Dock, StatusLine } from '../../web/src/app/shell.solid.tsx'
 import { registry, store, uiState } from '../../web/src/sdk/client.ts'
 import { Button } from '../../web/src/components/ui/button.solid.tsx'
-import { ComposerRedirect, Dictation, provide } from '../../web/src/sdk/solid.ts'
+import { ComposerRedirect, Dictation, DictationShortcut, provide } from '../../web/src/sdk/solid.ts'
 import type { ComposerTarget, SolidInboxProps } from '../../web/src/sdk/solid.ts'
 
 const faux = { provider: 'faux', id: 'faux-1', available: true }
@@ -67,11 +69,15 @@ beforeEach(({ onTestFinished }) => {
   harness.sources.length = 0
   harness.posts.length = 0
   harness.failSubmit = false
+  harness.wide = false
   localStorage.clear()
   vi.stubGlobal('matchMedia', () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
+    get matches() {
+      return harness.wide
+    },
+    addEventListener: (_: string, listener: () => void) => harness.viewportListeners.add(listener),
+    removeEventListener: (_: string, listener: () => void) =>
+      harness.viewportListeners.delete(listener),
   }))
   store.start()
   onTestFinished(() => store.stop())
@@ -335,6 +341,33 @@ it('keeps a typed draft per conversation across a switch', async () => {
   expect(container.querySelector<HTMLTextAreaElement>('#composer-input')!.value).toBe(
     'half a thought',
   )
+})
+
+it('names the dictation gesture and keys on a desktop, and only a short gesture hint on a phone', async () => {
+  await registry.setLoaders({
+    '/extensions/dictate/web.solid.tsx': async () => ({
+      default: {
+        provides: [provide(DictationShortcut, () => () => ({ gesture: 'hold', keys: 'Ctrl+\\' }))],
+      },
+    }),
+  })
+  await show(23)
+  harness.wide = false
+  for (const listener of harness.viewportListeners) listener()
+  const container = renderSolid(() => <Composer />)
+  await settle()
+  flush()
+  const placeholder = () => container.querySelector('textarea')?.getAttribute('placeholder')
+  expect(placeholder()).toBe('Type, paste, or hold to dictate…')
+  harness.wide = true
+  for (const listener of harness.viewportListeners) listener()
+  flush()
+  expect(placeholder()).toBe(
+    'Ask Ultimate anything, paste a screenshot, or hold Ctrl+\\ to dictate…',
+  )
+  harness.wide = false
+  for (const listener of harness.viewportListeners) listener()
+  await registry.setLoaders({})
 })
 
 it('moves the phone status into the status line when both mount together', async () => {

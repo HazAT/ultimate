@@ -121,15 +121,13 @@ store.subscribe(() => {
   const { shared, ui, system } = store.getState()
   if (system && !registry.getReady().ready) registry.receiveSystem()
 
-  if (system?.web.id && bundle && system.web.id !== bundle) {
-    if (switching) return
+  if (!switching && system?.web.id && bundle && system.web.id !== bundle) {
     switching = true
     sessionStorage.setItem(
       switchKey,
       JSON.stringify({ at: Date.now(), changed: system.web.changed }),
     )
     deadline(reloadNoticeMs, reloadUnlessHeld)
-    return
   }
 
   const process = system && `${system.process.pid}:${system.process.generation}`

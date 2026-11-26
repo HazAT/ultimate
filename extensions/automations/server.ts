@@ -67,12 +67,13 @@ import type {
 } from './types.ts'
 import { isSlug, STANDING } from './types.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 export type { Automation, Run } from './types.ts'
 export { launchHandshake } from './supervisor.ts'
 type Ledger = { next: number; automations: Record<string, Automation> }
 export const Automations = defineDoc<Ledger>({
   kind: 'ultimate.automations',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 3,
   scope: 'session',
   initial: () => ({ next: 1, automations: {} }),
@@ -98,7 +99,7 @@ export const Automations = defineDoc<Ledger>({
 type Change = { result: JsonValue; abort?: TaskId; effect?: Effect; stop?: ConversationId }
 const ReceiptsByToolCallId = defineDoc<Record<string, Partial<Change>>>({
   kind: 'ultimate.automation-receipts',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'task',
   initial: () => ({}),

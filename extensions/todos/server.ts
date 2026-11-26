@@ -17,6 +17,7 @@ import { Standing } from '../subagents/api.ts'
 import { TodosApi } from './api.ts'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const DONE_LIMIT = 50
 const TEXT_CHARS = 300
@@ -25,7 +26,7 @@ const KEY_CHARS = 200
 
 export const Todos = defineDoc<{ next: number; items: Todo[] }>({
   kind: TodosDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -34,7 +35,7 @@ export const Todos = defineDoc<{ next: number; items: Todo[] }>({
 })
 const LastOpenListCommittedWithInput = defineDoc<{ key?: string }>({
   kind: 'todos.seen',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -43,7 +44,7 @@ const LastOpenListCommittedWithInput = defineDoc<{ key?: string }>({
 })
 const OldestFirstIdempotencyReceipts = defineDoc<{ keys: { key: string; todo: Todo }[] }>({
   kind: 'todos.keys',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -76,13 +77,12 @@ export async function add(tx: Tx, text: unknown, owner: unknown, key?: unknown):
     throw new Error(`text must be at most ${TEXT_CHARS} characters`)
   if (!OWNERS.includes(owner as Todo['owner']))
     throw new Error("owner must be 'user' or 'ultimate'")
+  return append(tx, { text: text.trim(), owner: owner as Todo['owner'] })
+}
+
+async function append(tx: Tx, item: Pick<Todo, 'text' | 'owner'>): Promise<Todo> {
   const todos = await tx.doc(Todos, ROOT_CONVERSATION_ID)
-  const todo: Todo = {
-    id: todos.next++,
-    text: text.trim(),
-    owner: owner as Todo['owner'],
-    at: Date.now(),
-  }
+  const todo: Todo = { ...item, id: todos.next++, at: Date.now() }
   todos.items.push(todo)
   return copyTodoBeyondTransaction(todo)
 }
@@ -173,6 +173,11 @@ export default function todosExtension(host: ExtensionHost) {
   host.implement(TodosApi, {
     add: ({ text, owner, key }) =>
       host.harness().commit((tx) => add(tx, text, owner, key), context),
+    listOpen: async (tx) =>
+      (await tx.doc(Todos, ROOT_CONVERSATION_ID)).items
+        .filter((item) => item.done === undefined)
+        .map(({ text, owner }) => ({ text, owner })),
+    addCarried: append,
   })
   return defineExtension({
     name: 'todos',

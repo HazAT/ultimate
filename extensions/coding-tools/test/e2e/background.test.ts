@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
@@ -8,6 +8,7 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import type { createBashTool } from '@earendil-works/pi-durable/tools'
 import codingTools from '../../server.ts'
 import { sweepEarlierProcesses } from '../../background.ts'
+import { BackgroundEndedEntry } from '../../refs.ts'
 import { context } from '../../../../server/harness.ts'
 import { groupAlive, groupTarget, spawnGroup, stopGroup } from '../../../../lib/process-group.ts'
 import { fauxServer, post, removeTemp, temp, until } from '../../../../test/helpers.ts'
@@ -76,6 +77,34 @@ it('starts a command in its own group, logs its output and stops by the returned
   await until(async () => !(await groupsOf(server, id)).some((file) => file.endsWith('.pid')))
 })
 
+it('tells the conversation once, with its exit code and log tail, when a background command ends', async () => {
+  const server = await boot()
+  const id = await create(server)
+  const go = join(directory, 'go')
+  await background(
+    server,
+    id,
+    `until [ -e '${go}' ]; do sleep 0.05; done; seq 1 30; echo failing >&2; exit 3`,
+  )
+  await writeFile(go, '')
+  const handle = (await server.harness.conversation(id, context))!
+  const ended = async () =>
+    (await handle.context(context)).entries.filter(
+      (entry: { kind: string }) => entry.kind === 'coding-tools.background-ended',
+    )
+  await until(async () => (await ended()).length === 1)
+  const [entry] = await ended()
+  if (!BackgroundEndedEntry.is(entry)) throw new Error('Not a background-ended entry')
+  expect(entry.data).toMatchObject({ exitCode: 3, signal: null })
+  expect(entry.data.tail.split('\n')).toEqual([
+    ...Array.from({ length: 19 }, (_, i) => String(i + 12)),
+    'failing',
+  ])
+  expect(JSON.stringify(entry.model)).toContain('exited with code 3')
+  await until(async () => !(await groupsOf(server, id)).some((file) => file.endsWith('.pid')))
+  expect(await ended()).toHaveLength(1)
+})
+
 it('concluding stops the groups started before it, and a resumed conversation keeps its new ones', async () => {
   const server = await boot()
   const [concluded, other] = [await create(server), await create(server)]
@@ -95,6 +124,7 @@ it('stops the new group when the commit that records it fails', async () => {
   const home = join(directory, 'direct')
   const bash = codingTools({
     home,
+    harness: undefined as never,
     images: undefined as never,
     need: (() => ({ concludedIn: async () => new Set() })) as never,
     notice: () => {},

@@ -29,13 +29,19 @@ import {
   InboxDoc,
   LiveDoc,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Extension, Task, ToolRegistration } from '@earendil-works/pi-durable'
+import type {
+  ConversationId,
+  Extension,
+  Task,
+  ToolRegistration,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { obj } from '@earendil-works/pi-schema'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import { emit } from '../../../server/events.ts'
 import type { OpenHost } from '../../../server/harness.ts'
@@ -190,6 +196,7 @@ async function fixture(
       onClose: () => {},
       onLoadError: () => {},
       onBeforeLoad: () => {},
+      coreChanged: () => false,
       harness: () => opened!.harness,
       system: () => {
         throw new Error('Not used')
@@ -413,6 +420,29 @@ it('names the definitions when start omits agent, for every argument shape seen 
   expect(await children(f.opened)).toHaveLength(0)
 })
 
+it('starts a definition with a named deferred tool loaded', async () => {
+  const tool = defineTool({
+    name: 'deferred_tool',
+    description: 'A tool loaded only when requested',
+    deferred: true,
+    parameters: obj({}),
+    execute: async () => ({ output: [] }),
+  })
+  const f = await fixture(defineExtension({ name: 'fixture', tools: [tool] }))
+  await writeFile(
+    join(f.ultimateRoot, 'agents/scout.md'),
+    definition().replace('tools: [read, bash]', 'tools: [read, deferred_tool]'),
+  )
+  const parent = await f.opened.root.agent(context)
+  expect(parent.tools.map(({ name }) => name)).not.toContain(tool.name)
+  expect(parent.deferred.map(({ name }) => name)).toContain(tool.name)
+  const result = await call(f.opened, { action: 'start', agent: 'scout', task: 'Start scout' })
+  expect(result.text).toContain('Child: Start scout')
+  const [{ conversationId }] = await children(f.opened)
+  const child = (await f.opened.harness.conversation(conversationId, context))!
+  expect((await child.agent(context)).tools.map(({ name }) => name)).toContain(tool.name)
+})
+
 it('makes an agent on the fly from the call, read-only without a worktree, and refuses a model without a login', async () => {
   const f = await fixture()
   const noLogin = await call(f.opened, {
@@ -532,6 +562,36 @@ it('wait uses stored answer identity even when it differs from the configured pr
     provider: 'faux',
     modelId: 'faux-1',
   })
+})
+
+it('wait does not read older pages once it finds the latest answer', async () => {
+  const f = await fixture()
+  await call(f.opened, { action: 'start', agent: 'scout', task: 'Older answer' })
+  const [{ conversationId }] = await children(f.opened)
+  const { harness } = f.opened
+  await harness.commit(async (tx) => {
+    for (let i = 0; i < 256; i++) await tx.appendEntry(conversationId, { kind: 'test.history' })
+    await tx.appendEntry(AssistantEntry, conversationId, {
+      model: [fauxAssistantMessage('Latest answer')],
+    })
+  }, context)
+  const prototype = await harness.commit(async (tx) => {
+    const firstPage = await tx.scanEntries({ conversationId }, 256)
+    expect(firstPage.next).toBeDefined()
+    expect(AssistantEntry.is(firstPage.items[0])).toBe(true)
+    return Object.getPrototypeOf(tx) as Tx
+  }, context)
+  const scan = vi.spyOn(prototype, 'scanEntries')
+  try {
+    expect((await call(f.opened, { action: 'wait', id: conversationId })).text).toContain(
+      'Latest answer',
+    )
+    expect(
+      scan.mock.calls.filter(([query]) => query.conversationId === conversationId),
+    ).toHaveLength(1)
+  } finally {
+    scan.mockRestore()
+  }
 })
 
 it('attributes durable instructions and reports across reopen and forks, never human lookalikes', async () => {
@@ -1126,6 +1186,107 @@ describe('turns without an answer', () => {
     await resumed.harness.waitForIdle(context)
     expect(await reports(resumed)).toHaveLength(1)
   })
+  it('reports a child continuation that answered before its interrupted reporter settled', async () => {
+    const held = { ...gate(), entered: false, phase: 'settled' }
+    const f = await gatedFixture(held)
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    const { harness } = f.opened
+    const handle = (await harness.conversation(child.conversationId, context))!
+    const childActions = async () =>
+      Object.values((await harness.snapshot(Subagents, f.opened.root.id, context))!.actions)
+    try {
+      await until(() => f.holding.has(child.conversationId))
+      await handle.abort(context)
+      await until(() => held.entered)
+      const answer = await (
+        await handle.submit({ type: 'input', content: 'continue before settlement' }, context)
+      ).wait(context)
+      expect(answer.status).toBe('done')
+      const [action] = await childActions()
+      expect(action.status).toBeUndefined()
+      expect(await reports(f.opened)).toHaveLength(0)
+      await call(f.opened, {
+        action: 'message',
+        id: child.conversationId,
+        text: 'second parent request',
+        background: true,
+      })
+      const [, newer] = await childActions()
+      expect(newer.status).toBeUndefined()
+      held.release()
+      await Promise.all(
+        [action, newer].map(({ reporter }) => harness.waitForTask(reporter, context)),
+      )
+      expect((await childActions()).slice(0, 2).map(({ status }) => status)).toEqual([
+        'interrupted',
+        'done',
+      ])
+      await expect(
+        until(async () => (await reports(f.opened)).length >= 2, 1000),
+      ).resolves.toBeUndefined()
+      const delivered = (await reports(f.opened)).map((report) => report.data)
+      expect(delivered).toHaveLength(2)
+      expect(delivered).toEqual(
+        expect.arrayContaining(
+          ['continue before settlement', 'second parent request'].map((text) =>
+            expect.objectContaining({
+              body: `Returned model: faux/faux-1\nChild: ${text}`,
+              sender: child.conversationId,
+              failed: false,
+            }),
+          ),
+        ),
+      )
+    } finally {
+      held.release()
+    }
+  })
+  it('reports a continuation that answered before its interrupted reporter settled, across a restart after a newer message', async () => {
+    const held = { ...gate(), entered: false, phase: 'settled' }
+    const f = await gatedFixture(held)
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    const handle = (await f.opened.harness.conversation(child.conversationId, context))!
+    try {
+      await until(() => f.holding.has(child.conversationId))
+      await handle.abort(context)
+      await until(() => held.entered)
+      await (
+        await handle.submit({ type: 'input', content: 'continue before settlement' }, context)
+      ).wait(context)
+      await call(f.opened, {
+        action: 'message',
+        id: child.conversationId,
+        text: 'second parent request',
+        background: true,
+      })
+      await f.opened.close()
+      hosts.splice(hosts.indexOf(f.opened), 1)
+      const resumed = await f.reopen()
+      held.release()
+      const pending = Object.values(
+        (await resumed.harness.snapshot(Subagents, resumed.root.id, context))!.actions,
+      )
+      await Promise.all(
+        pending.map(({ reporter }) => resumed.harness.waitForTask(reporter, context)),
+      )
+      await expect(
+        until(async () => (await reports(resumed)).length >= 2, 1000),
+      ).resolves.toBeUndefined()
+      await resumed.harness.waitForIdle(context)
+      expect((await reports(resumed)).map((report) => report.data)).toEqual(
+        expect.arrayContaining(
+          ['continue before settlement', 'second parent request'].map((text) =>
+            expect.objectContaining({ body: `Returned model: faux/faux-1\nChild: ${text}` }),
+          ),
+        ),
+      )
+      expect(await reports(resumed)).toHaveLength(2)
+    } finally {
+      held.release()
+    }
+  })
   it('keeps a child-side stop when the parent stops the child during the report, and reports the next answer', async () => {
     const held = { ...gate(), entered: false }
     const f = await gatedFixture(held)
@@ -1653,9 +1814,7 @@ describe('subagents', () => {
     expect(agent.extensions.map((extension) => extension.name)).not.toContain('subagents')
     expect(agent.tools.map((tool) => tool.name).toSorted()).toEqual(['bash', 'read'])
     expect(await opened.harness.snapshot(Subagents, childId, context)).toBeUndefined()
-    expect(await opened.harness.snapshot(UiState, childId, context)).toEqual({
-      'subagents.selected': opened.root.id,
-    })
+    expect(await opened.harness.snapshot(UiState, childId, context)).toBeUndefined()
     expect(await opened.harness.snapshot(Metadata, childId, context)).toMatchObject({
       label: 'scout',
       title: 'fork task',

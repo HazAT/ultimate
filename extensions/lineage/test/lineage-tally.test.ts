@@ -3,7 +3,7 @@ import { CompactionTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable
 import type { TaskId } from '@earendil-works/pi-durable'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import { context } from '../../../server/harness.ts'
-import { fauxServer, post, seedTally, sourceCopy, temp } from '../../../test/helpers.ts'
+import { fauxServer, post, seedTally, sourceCopy, temp, until } from '../../../test/helpers.ts'
 
 it('compacts a tally once at a time with the root focus and the given instructions', async () => {
   const home = await temp()
@@ -61,6 +61,45 @@ it('compacts a tally once at a time with the root focus and the given instructio
     expect(JSON.stringify((await server.root.context(context)).messages)).toContain('Root summary')
   } finally {
     finishCompact.resolve()
+    await server.close()
+  }
+})
+
+it('aborts the summary model call when compaction is aborted', async () => {
+  const home = await temp()
+  const server = await fauxServer({ ultimateRoot: await sourceCopy(home), home, userHome: home })
+  const started = Promise.withResolvers<AbortSignal | undefined>()
+  const finish = Promise.withResolvers<void>()
+  let abort: ReturnType<typeof server.harness.abortTask> | undefined
+  try {
+    await server.harness.commit(async (tx) => {
+      for (let n = 0; n < 8; n++)
+        await tx.appendEntry(server.root.id, {
+          kind: 'pi.user',
+          model: [{ role: 'user', content: `Part ${n} ${'word '.repeat(4000)}`, timestamp: n }],
+        })
+    }, context)
+    server.host.faux!.setResponses([
+      async (_transcript, options) => {
+        const signal = options?.signal
+        started.resolve(signal)
+        await Promise.race([
+          finish.promise,
+          new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve())),
+        ])
+        return fauxAssistantMessage('Summary')
+      },
+    ])
+    const id = await server.root.compact(undefined, context)
+    const signal = await started.promise
+    abort = server.harness.abortTask(id, context)
+    await until(async () => (await server.harness.getTask(id, context))?.abortRequested === true)
+    expect(signal?.aborted).toBe(true)
+    await abort
+    expect((await server.harness.waitForTask(id, context)).state.outcome.status).toBe('aborted')
+  } finally {
+    finish.resolve()
+    await abort
     await server.close()
   }
 })

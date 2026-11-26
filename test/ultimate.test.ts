@@ -41,8 +41,9 @@ async function fixture(onRequest?: (text: string, home: string) => Promise<void>
   const home = await temp('ultimate-agent-')
   homes.push(home)
   const root = await sourceCopy(home)
-  // The repository's coordinator overlay pins a Claude Code model no test can run; tests pin their own.
+  // The repository's overlays pin a Claude Code model no test can run and append its own rules; tests write their own.
   await rm(join(root, '.ultimate/agents/coordinator.md'))
+  await rm(join(root, '.ultimate/agents/ultimate.md'))
   await mkdir(join(home, '.ultimate/agents'), { recursive: true })
   await writeFile(
     join(home, '.ultimate/agents/dice.md'),
@@ -316,12 +317,13 @@ it('starts a lineage branch with a message input and caller attribution, returns
       (m) =>
         m.from === branch &&
         m.to === ultimate &&
-        m.text === `Tool result: Branch #${sameTree.to} started; message ${sameTree.id} sent.`,
+        m.text ===
+          `Tool result: Branch #${sameTree.to} · Same tree started; message ${sameTree.id} sent.`,
     ),
   )
   await until(async () =>
     (await entries(f.server, ultimate)).some((entry) =>
-      JSON.stringify(entry).includes(`Branch #${sameTree.to} started`),
+      JSON.stringify(entry).includes(`Branch #${sameTree.to} · Same tree started`),
     ),
   )
   await f.server.harness.commit(async (tx) => {

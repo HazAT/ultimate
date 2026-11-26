@@ -6,7 +6,7 @@ export default defineWebExtension({
   slots: {
     sidebar: Conversations,
     'titlebar.brand': [UltimateWordmark],
-    'titlebar.left': [{ component: UltimateButton, order: 100 }],
+    'titlebar.left': [{ component: UltimateButton, order: 100, phone: true }],
     overlay: [Seen],
   },
 })

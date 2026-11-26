@@ -10,6 +10,8 @@ import { Standing } from '../subagents/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import type { RequestedEntry } from './refs.ts'
 import type { Seed } from './types.ts'
+import { Next } from './next.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const AUTOMATION_NAME = 'Dream before compaction'
 export const CONDITION = { metric: 'context' as const, of: '@ultimate', above: 70 }
@@ -28,7 +30,7 @@ function discardLegacySeedDeletion(value: unknown) {
 
 export const BuiltInDoc = defineDoc<{ id?: string; deleted?: true }>({
   kind: 'dream.after-compaction',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 2,
   migrate: discardLegacySeedDeletion,
   scope: 'conversation',
@@ -39,7 +41,7 @@ export const BuiltInDoc = defineDoc<{ id?: string; deleted?: true }>({
 
 export const PauseDoc = defineDoc<{ id?: string; deleted?: true }>({
   kind: 'dream.after-pause',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -67,6 +69,9 @@ export const hoursOf = (ms: number) => `${Math.round(ms / 3600_000)} h`
 
 export const DREAM_ASK =
   'Dream now: follow "For @ultimate" in the clone\'s extensions/dream/DREAM.md. Write your handoff into the dream branch\'s prompt in this turn, while your context still holds everything, and start that branch. If a dream branch is already running, say so in one line and do nothing else.'
+
+const PARK_ASK =
+  'The user decides when to dream: an Inbox item asks them now. Follow "Asked" in the clone\'s extensions/dream/DREAM.md: write your handoff now, while your context still holds everything, park it with dream\'s `park {handoff}` action, and end your turn with one line. Start no dream branch.'
 
 export async function ensureAutomation(host: ExtensionHost) {
   if (!host.extensions().some((item) => item.name === 'automations' && item.enabled)) return
@@ -127,23 +132,25 @@ export async function fired(host: ExtensionHost, tx: Tx, id: string, fire: numbe
     builtIn.doc === PauseDoc && condition && automation
       ? Date.now() - (condition.inputAt ?? automation.createdAt)
       : undefined
-  const data: RequestedEntry = {
-    automation: {
-      id,
-      name: automation?.name ?? builtIn.name,
-      ...(pause !== undefined ? { pause } : {}),
-    },
+  const asked = {
+    id,
+    name: automation?.name ?? builtIn.name,
+    ...(pause !== undefined ? { pause } : {}),
   }
+  const next = await tx.doc(Next, ROOT_CONVERSATION_ID)
+  if (next.ask) return
+  next.ask = { at: Date.now(), automation: asked }
+  const data: RequestedEntry = { automation: asked }
   await host.need(ConversationsApi).submitAfter(tx, ultimate, {
     type: 'write',
-    requestId: `dream.requested:${id}:${fire}`,
+    requestId: `dream.asked:${id}:${fire}`,
     entry: {
-      kind: 'dream.requested',
+      kind: 'dream.asked',
       data,
       model: [
         {
           role: 'user',
-          content: `Your context passed the threshold of automation ${id} "${data.automation!.name}"${pause !== undefined ? ` while the user has been away ${hoursOf(pause)}` : ''}. ${DREAM_ASK}`,
+          content: `Your context passed the threshold of automation ${id} "${asked.name}"${pause !== undefined ? ` while the user has been away ${hoursOf(pause)}` : ''}. ${PARK_ASK}`,
           timestamp: Date.now(),
         },
       ],

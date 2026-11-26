@@ -17,6 +17,7 @@ import { isOpen } from '../../lib/message-state.ts'
 import { branchesReadThisRun, remoteLabel, senderName, serve } from './addresses.ts'
 import { dropped } from './outcomes.ts'
 import { delivery } from './delivery.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 type PendingRemoteAnswer = {
   message: Message
@@ -30,7 +31,7 @@ const UnprunedRemoteReceipts = defineDoc<{
   told: Record<string, PendingRemoteAnswer>
 }>({
   kind: 'board.remote',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

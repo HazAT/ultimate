@@ -21,13 +21,10 @@ For older failures and model errors, also read conversation entries and `watchdo
 
 ### Start
 
-A dream starts when it is asked for, all the same way:
+A dream starts only when the user chooses it:
 
 - the user tells you to dream ("start dreaming", "let's dream", "time for a dream");
-- the user pressed Dream (a `dream.requested` input);
-- a built-in automation fired: "Dream before compaction" when your context passed its threshold (70% by default), or
-  "Dream after a pause" at 50% after the user was away 8 hours (its fire wakes you, and a `dream.requested` entry
-  beside it carries the ask).
+- the user pressed Dream, or Start on the dream ask (a `dream.requested` input).
 
 If a dream branch is already running, say so in one line and do nothing else. Otherwise, in that same turn, while your
 context still holds everything, write your **handoff**: what you worked on, what is still open (branches, questions,
@@ -41,6 +38,21 @@ Start one branch with `branch`, the handoff in its prompt:
 
 Name the memory slugs the user cares about most in it, always including the memory about the user (`about-<name>`).
 Then end your turn with one line to the user. Other work may keep running: the dream only reads.
+
+When the input carries a handoff you parked (below), start from it: add what changed since, and put the result in the
+branch's prompt.
+
+### Asked
+
+A built-in automation firing never starts a dream: "Dream before compaction" (your context passed 70% by default) and
+"Dream after a pause" (50% after the user was away 8 hours) open an Inbox item that asks the user "Start dreaming
+now?", with what is running and your context. Its fire wakes you with a `dream.asked` entry. In that turn write the
+same handoff as above and park it with dream's `park {handoff}` action (at most 12,000 characters), so compaction
+cannot lose it; start no branch, and end with one line. The user presses Start, Later (when nothing's running, in 2 h,
+tomorrow morning) or Skip; past 85% context the item warns that compaction is near, and nothing starts by itself. Only
+during a hands-off goal may you press Start in the user's place (dream's `start` action), and only while no other
+conversation is running; record it with `goal decide` like any other. Otherwise never call `start`, `later` or
+`skip`.
 
 ### Decide
 

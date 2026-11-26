@@ -30,12 +30,13 @@ import { Standing } from '../subagents/api.ts'
 import { TailscaleApi } from '../tailscale/api.ts'
 import { CheckAction } from './refs.ts'
 import type { SetupIssue } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const LOGIN = { label: 'Log in', command: 'auth.login' }
 
 const LastWarningsCommittedWithInput = defineDoc<{ key?: string }>({
   kind: 'setup.seen',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -79,7 +80,7 @@ async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
   if (!loggedIn(host)) return undefined
   const status = await host.need(ConversationsApi).summaryModelStatus()
   const fix = { label: 'Choose', command: 'conversations.summary-model' }
-  const uses = 'Titles, codemode step lines and question cards'
+  const uses = 'Titles, summaries, reply summaries and codemode step lines'
   if (status.problem === 'invalid')
     return {
       area: 'Summary model',
@@ -93,7 +94,7 @@ async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
       area: 'Summary model',
       status: 'warn',
       summary: `${status.configured}: no login here`,
-      impact: `${uses} are off: every message wakes the agent.`,
+      impact: `${uses} are off.`,
       fix,
     }
   const using = `${status.model!.provider}/${status.model!.id}`

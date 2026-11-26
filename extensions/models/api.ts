@@ -6,6 +6,7 @@ import { defineDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import { FamilyDoc } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 export { LoginChanged } from './refs.ts'
 
 /**
@@ -15,7 +16,7 @@ export { LoginChanged } from './refs.ts'
  */
 export const Family = defineDoc<{ name: string | null }>({
   kind: FamilyDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

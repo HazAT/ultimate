@@ -44,6 +44,11 @@ composer renderers), `commands.md`, `documents.md`, `surfaces.md`, `actions.md`,
   `web/src/components/ui`, read the `solid-ui` skill for patterns and imports.
 - Use actions, not `fetch`, to reach your own server. Reach another extension only through its `api.ts` (server)
   or its `refs.ts` and `ui.solid.tsx` (browser).
+- An optional extension that runs another optional extension's browser code declares it in its `api.ts`:
+  `export const requires = ['other']` when it can't work without it (discovery keeps it off and says why), or
+  `export const wants = ['other']` when it works without it and hides the part that needs it while
+  `useEnabled('other')` (from `@/sdk/solid`) says it is off. Lint's `ultimate/declared-requires` fails on an
+  undeclared one; `docs/extensions/core-tier.md` has the details.
 - Ids (surface, command, dialog) start with the extension name.
 - Prompt sections stay stable between turns; anything that changes goes in a `beforeInput` note.
 - An outcome a user waits for gets a card that matches existing ones (`extensions/subagents/messages.solid.tsx`,

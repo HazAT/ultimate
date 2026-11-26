@@ -15,6 +15,7 @@ afterEach(() => vi.unstubAllEnvs())
 
 const inertHost = {
   home: '',
+  harness: undefined as never,
   images: undefined as never,
   need: (() => ({})) as ExtensionHost['need'],
   notice: () => {},

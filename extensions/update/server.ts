@@ -62,18 +62,13 @@ const installedSince = (root: string, processStartedAtMs: number) =>
     () => false,
   )
 
-export async function coreChangedSince(git: Git, processBootHead: string | undefined) {
-  if (!processBootHead) return false
-  const changedCorePathsOrNoEvidence = await git(
-    'diff',
-    '--name-only',
-    processBootHead,
-    'HEAD',
-    '--',
-    'server',
-    'shared',
-  ).catch(() => '')
-  return changedCorePathsOrNoEvidence !== ''
+async function restartAfterCoreLanding(
+  host: Pick<ExtensionHost, 'restart' | 'notice'>,
+  stale: () => Promise<boolean>,
+) {
+  if (!(await stale())) return
+  host.notice('Restarting: a landing changed the core')
+  host.notice(`Restart after landing failed: ${await host.restart(async () => {})}`)
 }
 
 export const AUTO_RESTART_PAUSE = 10 * 60_000
@@ -186,14 +181,14 @@ export default function update(host: ExtensionHost) {
   host.want(PauseApi)
   host.implement(UpdateApi, { state: () => locallyRefreshedState(host) })
   const shared = reloadSharedState(host)
-  processBootHead(host)
   if (sharesHostCloneAsPreview()) return defineExtension({ name: 'update' })
   const lastFile = join(host.home, 'update-auto-restart.json')
   const pending = host.resource<{ current?: Promise<void> }>('update.auto-restart', () => ({}))
+  const stale = async () =>
+    host.coreChanged() ||
+    (await installedSince(host.ultimateRoot, Date.parse(host.system().process.startedAt)))
   const onLoadError = restartOnStaleLoad({
-    stale: async () =>
-      (await installedSince(host.ultimateRoot, Date.parse(host.system().process.startedAt))) ||
-      (await coreChangedSince(gitIn(host.ultimateRoot), await processBootHead(host).head)),
+    stale,
     restart: () => host.restart(async () => {}),
     notice: (message) => host.notice(message),
     last: {
@@ -221,12 +216,11 @@ export default function update(host: ExtensionHost) {
     'install-landed',
     [SubmissionLanded],
     async () => {
-      const backgroundInstall = loadable(host)
       rebuiltOnOpen(
-        'onBeforeLoad installs an owed lockfile again',
-        backgroundInstall.catch((error: unknown) =>
-          host.notice(`Install after landing: ${String(error)}`),
-        ),
+        'onBeforeLoad installs an owed lockfile again, and a new core boots on the landed code',
+        loadable(host)
+          .then(() => restartAfterCoreLanding(host, stale))
+          .catch((error: unknown) => host.notice(`After landing: ${String(error)}`)),
       )
     },
     { from: 'now' },
@@ -263,11 +257,6 @@ const reloadSharedState = (host: ExtensionHost) =>
     recover: undefined,
     latest: undefined,
     updated: undefined,
-  }))
-
-const processBootHead = (host: ExtensionHost) =>
-  host.resource('update.boot-head', () => ({
-    head: gitIn(host.ultimateRoot)('rev-parse', 'HEAD').catch(meansNone),
   }))
 
 const cloneWideUpdateLock = (root: string) => gitPath(gitIn(root), root, 'ultimate-update.lock')
@@ -327,9 +316,7 @@ async function refresh(host: ExtensionHost, fetchAndSummarizeUnderLock: boolean,
     ...(error ? { error } : {}),
     ...(repo && remoteHead ? { compare: compareUrl(repo, head, remoteHead) } : {}),
     install: !!shared.failed || (await installOwed(root)),
-    restart:
-      (await installedSince(root, startedAt)) ||
-      (await coreChangedSince(git, await processBootHead(host).head)),
+    restart: host.coreChanged() || (await installedSince(root, startedAt)),
     ...(shared.updated ? { updated: shared.updated } : {}),
   }
   if (!shared.latest.refused) delete shared.latest.refused

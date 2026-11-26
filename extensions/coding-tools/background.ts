@@ -3,17 +3,18 @@ import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { Tx } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, writeFileSync } from 'node:fs'
-import { mkdir, readdir, rm } from 'node:fs/promises'
+import { mkdir, open, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isMissing, inProcess } from '../../lib/errors.ts'
 import { readPidFile, spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export type Started = { conversation: ConversationId; name: string }
 
 export const BackgroundGroups = defineDoc<{ started: Record<string, string[]> }>({
   kind: 'coding-tools.background',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -70,6 +71,35 @@ export async function startBackground(
     log,
     started: { conversation, name },
     stop: () => stopGroup(pid, { pidFile, leader: group }),
+    exited: group.ended.then(() => ({
+      exitCode: group.child.exitCode,
+      signal: group.child.signalCode,
+    })),
+  }
+}
+
+export async function logTail(path: string, lines = 20, chars = 4000) {
+  let file
+  try {
+    file = await open(path)
+  } catch (error) {
+    if (isMissing(error)) return ''
+    throw error
+  }
+  try {
+    const { size } = await file.stat()
+    const start = Math.max(0, size - chars * 4)
+    const { buffer, bytesRead } = await file.read(
+      Buffer.alloc(size - start),
+      0,
+      size - start,
+      start,
+    )
+    const kept = buffer.subarray(0, bytesRead).toString('utf8').trimEnd().split('\n')
+    if (start > 0 && kept.length > 1) kept.shift()
+    return kept.slice(-lines).join('\n').slice(-chars)
+  } finally {
+    await file.close()
   }
 }
 

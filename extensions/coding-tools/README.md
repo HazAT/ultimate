@@ -32,6 +32,14 @@ Concluding emits `conversations.concluded` with the conversation and every conve
 effect that stops them and removes their files, so a resumed conversation keeps what it started since. Each open stops the groups an earlier process recorded, so a restart ends every background process; the agent starts it
 again. A pid is signalled only while its pid file still names it with the start time it recorded.
 
+When a background group ends on its own or is killed, the process that started it writes one
+`coding-tools.background-ended` entry (`refs.ts`) to the conversation, keyed by the group's name: the command, the
+exit code or signal, the log path and its last 20 lines. The entry carries model text, so it is placed at the next
+boundary like a note: the agent reads it with its next input instead of polling the log. It wakes nobody and is
+skipped once the conversation is concluded. The watch is the group's own `ended` promise, nothing durable: a restart
+stops every background group anyway, so no exit outlives the process to report. The transcript shows it as a
+collapsed `&` card with the exit status, opening on the log tail.
+
 Any running bash call can be cancelled from its card (the × next to its timer): the user-only action
 `cancel {callId}` (`refs.ts`) records the call in the conversation's durable `coding-tools.cancelled` document, which
 every bash call watches like the inbox above, so a cancel reaches a call started before an extension reload. The call

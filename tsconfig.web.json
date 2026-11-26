@@ -110,6 +110,7 @@
     "extensions/dictation/capture.ts",
     "extensions/dictation/talk.ts",
     "extensions/voice-live/cues.ts",
+    "extensions/voice-live/sheet.ts",
     "extensions/read-aloud/speech.ts",
     "extensions/read-aloud/highlight.ts",
     "extensions/read-aloud/text.ts",

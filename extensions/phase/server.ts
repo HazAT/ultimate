@@ -18,6 +18,7 @@ import { isInput } from '../../lib/entries.ts'
 import { phaseState } from './state.ts'
 import type { Phase, PhaseState } from './types.ts'
 import { PhasesDoc } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const question = {
   type: 'choice',
@@ -57,7 +58,7 @@ export const criterionQuestion = (criterion: OpenCriterion) =>
 export type { Phase } from './types.ts'
 export const Phases = defineDoc<PhaseState>({
   kind: PhasesDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

@@ -355,8 +355,11 @@ export function useAction<Args, T>(
   const scope = useContext(ConversationScope)
   const scoped = options.conversation ?? scope
   const read = createMemo(() => {
-    const { view, requested } = state()
-    const conversation = scoped ?? view?.conversation.id ?? requested ?? ROOT
+    let conversation = scoped
+    if (conversation == null) {
+      const { view, requested } = state()
+      conversation = view?.conversation.id ?? requested ?? ROOT
+    }
     return reads.get(ref.extension, ref.name, args, conversation)
   })
   const [current, setCurrent] = createSignal<ReadState>(() => read().get())

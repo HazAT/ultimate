@@ -5,11 +5,12 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { SessionDoc, TurnDoc } from './refs.ts'
 import type { AcpSession, ConfigOption, LiveTool, LiveTurn } from './refs.ts'
 import { fileLinksAsPaths, mergeToolUpdate, toolCall, toolResult } from './tools.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const agentName = 'Antigravity'
 export const Session = defineDoc<Partial<AcpSession>>({
   kind: SessionDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -18,7 +19,7 @@ export const Session = defineDoc<Partial<AcpSession>>({
 })
 export const Turn = defineDoc<LiveTurn>({
   kind: TurnDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

@@ -5,8 +5,9 @@ for @ultimate and the dream branch, is in [DREAM.md](DREAM.md); this file is the
 
 A dream is ordinary work; code keeps only which branch is the dream, so its end can show the user Fall asleep:
 
-1. **Asked for.** The user tells @ultimate to dream, presses **Dream** (Memory surface header or ⌘K "Dream…"; user-only
-   `start` gives @ultimate a `dream.requested` input), or a built-in automation fires (below).
+1. **Asked for.** The user tells @ultimate to dream, or presses **Dream** (Memory surface header or ⌘K "Dream…") or
+   **Start** on the dream ask a built-in opened (below): `start` gives @ultimate a `dream.requested` input, with the
+   ask's parked handoff when there is one, and closes the ask.
 2. **Dreamed.** In that turn @ultimate writes its handoff into the prompt of one dream branch, which runs the six
    passes as `dream-pass` subagents (`agents/dream-pass.md`) and answers with its journal and a `Decisions:` block.
    The `dream-branch` reactor reads each `lineage.branched` event, from the start of the log: a branch @ultimate
@@ -33,14 +34,26 @@ thresholds are edited there, pausing one stops its dreams, deleting one is remem
 and a new chapter makes them again as the seed carried them (`builtIn`, `builtInPause`: paused stays paused, and an
 edited threshold, pause or cooldown stays edited; a seed without a condition gets the defaults above). A lost
 create's receipt is found by name and trigger target, never by threshold or subscribers, so none is made twice. As
-any condition, each fires once, re-arms 10 points below its threshold and waits an hour between fires. A chapter
-dreams automatically once: after a dream branch was marked or a chapter prepared (`dream.next.dream` or `prepared`),
-dream holds both through the `automations.hold` extension point, so a crossing neither wakes @ultimate nor asks for a
-dream. The Dream button still does; the next chapter starts with an empty `dream.next`.
+any condition, each fires once, re-arms 10 points below its threshold and waits an hour between fires.
 
-A fire's own input wakes @ultimate; reactor `dream/requested` adds a passive `dream.requested` entry beside it (request
-id `dream.requested:<automation>:<fire>`), which says what a dream is and where its workflow lives, so the fire costs
-one turn.
+A fire starts no dream: it opens `dream.next.ask { at, automation }` and wakes @ultimate with a `dream.asked` entry,
+in which it writes its handoff and parks it with `park {handoff}` (`ask.handoff`, `parked`), so a compaction before
+the user answers loses nothing. The ask is an Inbox item (`ask.solid.tsx`, `InboxItems`), "Start dreaming now?": what
+a dream does, how many conversations are running, @ultimate's context (amber "compaction soon" from 85%) and whether
+the handoff is parked, with **Start dreaming now**, **Later** (user-only `later`: `{ idle: true }` hides it while any
+conversation but @ultimate's is busy, `{ until }` until then: in 2 h, tomorrow 9:00) and **Skip this time** (user-only
+`skip` closes it). `start` stays callable by @ultimate, which presses it in the user's place only during a hands-off
+goal, as DREAM.md says; its `dream.requested` entry then says so (`agent`). A dream branch marked as the dream closes
+the ask too.
+
+A chapter asks once: while an ask is open, and after a dream branch was marked or a chapter prepared
+(`dream.next.dream` or `prepared`), dream holds both through the `automations.hold` extension point, so a crossing
+neither wakes @ultimate nor opens an ask. A skipped ask opens again at the next fire. The Dream button still starts
+one; the next chapter starts with an empty `dream.next`.
+
+A fire's own input wakes @ultimate; reactor `dream/requested` opens the ask (unless one is already open) and adds a
+passive `dream.asked` entry beside it (request id `dream.asked:<automation>:<fire>`), which asks @ultimate to park its
+handoff, so the fire costs one turn.
 
 ## Chapters
 
@@ -71,7 +84,8 @@ questions, and enabled automations and scripts, with counts. The built-in dream 
 seed says only whether each was enabled, and the new chapter makes its own. Conversation docs are read through the
 host's exported tokens; both trigger kinds are read through the single automations list action. Enabled schedule
 records keep name, optional prompt, schedule and run profile, but no subscribers: conversation ids do not survive a
-chapter. Schedules without a prompt become recreation to-dos.
+chapter. Schedules without a prompt become recreation to-dos. To-dos are read and added through the optional
+`TodosApi`: without it the seed still applies and wakes @ultimate, but no to-dos are read or added.
 
 On open, dream applies a chapter's seed in one commit with `dream.seed.applied` on conversation 1: memories keep
 their sources, to-dos get fresh ids, questions become user-owned to-dos naming the old chapter and message id, and the
@@ -116,7 +130,7 @@ restart never returns: the new host opens the requested chapter.
 
 ## Actions
 
-`refs.ts` holds the document and actions: `start`, `ready`, `dismiss`, `asleep`, `switch` (user-only), `prepare`,
-`chapters`, and `stats`,
+`refs.ts` holds the document and actions: `ready`, `dismiss`, `asleep`, `switch`, `later`, `skip` (user-only), `start`
+(@ultimate presses it only during a hands-off goal), `park`, `prepare`, `chapters`, and `stats`,
 which reads tool calls from `<home>/trace.sqlite` read-only: calls, failures and mean duration per tool, the 20 most
 frequent errors (each with its two newest calls as `#<conversation>/<entry>`), and enabled tools never called in the trace's window (7 days or 200k rows).

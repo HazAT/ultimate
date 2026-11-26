@@ -23,10 +23,11 @@ import type {
   RateLimit,
   RunningTask,
 } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const State = defineDoc<PauseDocState>({
   kind: PauseDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -246,8 +247,9 @@ async function holdRetryOrRelease(host: Host, limit: RateLimit) {
   try {
     await holdAndRecordPause(host, limit)
   } catch (error) {
-    sharedPauseFlag(host).paused = false
-    host.harness().release()
+    const { paused } = await read(host)
+    sharedPauseFlag(host).paused = paused
+    if (!paused) host.harness().release()
     throw error
   }
   await writePauseLimitOnce(host, await read(host))

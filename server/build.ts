@@ -21,6 +21,8 @@ function hash(root: string, paths: string[]) {
   return digest.digest('hex')
 }
 export function createBuild(root: string) {
+  const sources = () => hash(root, [...files(root, 'server'), ...files(root, 'shared')])
+  const bootSources = sources()
   const core = hash(root, [
     ...files(root, 'server'),
     ...files(root, 'shared'),
@@ -35,6 +37,7 @@ export function createBuild(root: string) {
   const history: BuildInfo['history'] = []
   return {
     current: () => value,
+    coreChanged: () => sources() !== bootSources,
     extension(name: string, path = join(root, 'extensions', name)) {
       extensions[name] = hash(
         path,

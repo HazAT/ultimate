@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { defineDoc, defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
 import { rebuiltOnOpen, meansNone, settled } from '../../lib/errors.ts'
 import {
@@ -23,29 +23,24 @@ import {
   AsleepAction,
   ChaptersAction,
   DismissAction,
-  DreamDoc,
+  LaterAction,
+  ParkAction,
   PrepareAction,
   ReadyAction,
+  SkipAction,
   StartAction,
   StatsAction,
   SwitchAction,
 } from './refs.ts'
-import type { Dream, Prepared, Sleep, ToolStats } from './refs.ts'
+import type { Ask, Prepared, RequestedEntry, Sleep, ToolStats } from './refs.ts'
+import { Next } from './next.ts'
 import { busyElsewhere } from './types.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from './seed.ts'
 import { BuiltInDoc, builtInOf, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
 
-export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>({
-  kind: DreamDoc.kind,
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({}),
-})
+export { Next }
 export const docs = [Next, SeedState, BuiltInDoc, PauseDoc]
-export const userActions = ['start', 'ready', 'dismiss', 'asleep', 'switch']
+export const userActions = ['ready', 'dismiss', 'asleep', 'switch', 'later', 'skip']
 
 const REQUEST_LOOKBACK_ENTRIES = 200
 
@@ -74,6 +69,7 @@ export async function branched(
   const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
   if (requested === undefined || requested <= (doc.dream?.requested ?? 0)) return
   doc.dream = { branch: id, requested, at }
+  delete doc.ask
 }
 
 const LEARNED_LINES = 3
@@ -284,6 +280,22 @@ function resetPreparationSleep(doc: { sleep?: Sleep }) {
   delete doc.sleep
 }
 
+function startText(ask: Ask | undefined, agent: boolean) {
+  const who = agent
+    ? 'You pressed Start on the dream ask.'
+    : ask
+      ? 'The user pressed Start on the dream ask.'
+      : 'The user pressed Dream.'
+  if (!ask?.handoff) return `${who} ${DREAM_ASK}`
+  return `${who} Dream now: follow "For @ultimate" in the clone's extensions/dream/DREAM.md, starting from the handoff you parked ${new Date(ask.parked!).toISOString()} (below). Add what changed since, and start the dream branch with it in its prompt in this turn. If a dream branch is already running, say so in one line and do nothing else.\n\nParked handoff:\n${ask.handoff}`
+}
+
+async function openAsk(tx: Tx) {
+  const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+  if (!doc.ask) throw new Error('No dream ask is open')
+  return doc
+}
+
 export const actions = {
   chapters: implementAction(ChaptersAction, async (_args, { host }) => {
     const { active, chapters } = await readChapters(host.home)
@@ -308,20 +320,57 @@ export const actions = {
   asleep: implementAction(AsleepAction, async (args, { host }) =>
     withChapterChangeLock(host, () => fallAsleep(host, fields(args))),
   ),
-  start: implementAction(StartAction, async (_args, { host }) => {
+  start: implementAction(StartAction, async (_args, { host, by }) => {
     const ultimate = await ultimateOf(host)
+    const agent = by.source === 'agent'
     await host.harness().commit(async (tx) => {
+      const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+      const ask = doc.ask ? detachOverlay(doc.ask) : undefined
+      delete doc.ask
+      const data: RequestedEntry = {
+        ...(ask ? { automation: ask.automation } : {}),
+        ...(agent ? { agent: true as const } : {}),
+      }
       await ultimate.submit(tx, {
         type: 'input',
         requestId: `dream.requested:${Date.now()}`,
-        content: `The user pressed Dream. ${DREAM_ASK}`,
-        entry: { kind: 'dream.requested', data: {} },
+        content: startText(ask, agent),
+        entry: { kind: 'dream.requested', data },
         whenBusy: 'followUp',
       })
     }, context)
     host.harness().resume()
     return { requested: true as const }
   }),
+  park: implementAction(ParkAction, async (args, { host }) =>
+    host.harness().commit(async (tx) => {
+      const doc = await openAsk(tx)
+      const parked = Date.now()
+      doc.ask!.handoff = text(fields(args).handoff, 'handoff', HANDOFF_CHARS)
+      doc.ask!.parked = parked
+      return { parked }
+    }, context),
+  ),
+  later: implementAction(LaterAction, async (args, { host }) =>
+    host.harness().commit(async (tx) => {
+      const input = fields(args)
+      const snooze =
+        input.idle === true
+          ? { idle: true as const }
+          : typeof input.until === 'number' && Number.isFinite(input.until)
+            ? { until: input.until }
+            : undefined
+      if (!snooze) throw new Error('later takes { until } in epoch ms or { idle: true }')
+      ;(await openAsk(tx)).ask!.snooze = snooze
+      return snooze
+    }, context),
+  ),
+  skip: implementAction(SkipAction, async (_args, { host }) =>
+    host.harness().commit(async (tx) => {
+      delete (await openAsk(tx)).ask
+      return { skipped: true as const }
+    }, context),
+  ),
   ready: implementAction(ReadyAction, async (_args, { host }) => {
     const ultimate = await ultimateOf(host)
     const asked = await host.harness().commit(async (tx) => {
@@ -428,8 +477,8 @@ export default function dream(host: ExtensionHost) {
   host.implement(Hold, {
     held: async (tx, id) => {
       const next = await tx.doc(Next, ROOT_CONVERSATION_ID)
-      const chapterDreamedOrPrepared = !!next.dream || !!next.prepared
-      return chapterDreamedOrPrepared && !!(await builtInOf(tx, id))
+      const dreamedPreparedOrAsking = !!next.dream || !!next.prepared || !!next.ask
+      return dreamedPreparedOrAsking && !!(await builtInOf(tx, id))
     },
   })
   host.react('dream-branch', [Branched], (tx, event) =>

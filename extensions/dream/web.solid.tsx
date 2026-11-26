@@ -17,6 +17,7 @@ import {
   useModels,
 } from '@/sdk/solid'
 import type { EntryRecord } from '@/sdk/solid'
+import { InboxItems } from '../inbox/ui.solid.tsx'
 import { MemoryHeader } from '../lineage/ui.solid.tsx'
 import { StandingDoc, talkToUltimate } from '../subagents/ui.solid.tsx'
 import {
@@ -33,7 +34,8 @@ import { MorningCard } from './morning.solid.tsx'
 import { DreamDialog, dreamDialog } from './modal.solid.tsx'
 import { AwakeSection, useAwake } from './awake.solid.tsx'
 import { AwakeDialog, DreamStatus, NextDialog } from './pinned.solid.tsx'
-import { ReadyCard, RequestedCard } from './requested.solid.tsx'
+import { AskedCard, ReadyCard, RequestedCard } from './requested.solid.tsx'
+import { useAskItems } from './ask.solid.tsx'
 import { DreamDoc } from './refs.ts'
 import { PreparedCard } from './sleep.solid.tsx'
 
@@ -156,6 +158,7 @@ function WakeUp() {
 export default defineWebExtension({
   entries: {
     'dream.requested': RequestedCard,
+    'dream.asked': AskedCard,
     'dream.ready': ReadyCard,
     'dream.prepared': attention(PreparedCard),
     'dream.chapter': MorningCard,
@@ -176,5 +179,5 @@ export default defineWebExtension({
     { id: 'dream.open', title: 'Dream…', run: (context) => context.open(dreamDialog) },
     { id: 'dream.chapters', title: 'Chapters…', run: (context) => context.open(chaptersDialog) },
   ],
-  provides: [provide(MemoryHeader, DreamButton)],
+  provides: [provide(MemoryHeader, DreamButton), provide(InboxItems, useAskItems)],
 })
