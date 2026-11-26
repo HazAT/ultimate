@@ -21,7 +21,7 @@ async function backUp(home: string, chapter: string, database: string) {
   await mkdir(folder, { recursive: true })
   const prefix = `pre-swap-${chapter}-`
   const copy = join(folder, `${prefix}${Date.now()}.sqlite`)
-  const unfinished = `${copy}.partial`
+  const unfinished = join(folder, `${prefix}unfinished.sqlite`)
   await rm(unfinished, { force: true })
   vacuum(database, unfinished)
   await rename(unfinished, copy)

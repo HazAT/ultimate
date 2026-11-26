@@ -23,7 +23,8 @@ import { watchRoots } from './watch-roots.ts'
 import { actionExec } from './actions.ts'
 import type { ExtensionAction } from './actions.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve } from 'node:path'
+import { corePath } from '../lib/layers.ts'
 import type { ViteDevServer } from 'vite-plus'
 import type { ConversationSummary, ExtensionInfo, SystemInfo } from '../shared/protocol.ts'
 import type { PreparedHost } from './harness.ts'
@@ -73,6 +74,7 @@ export type ExtensionHost = Pick<
   onClose(cleanup: () => Promise<void>): void
   onLoadError(callback: (name: string, error: string) => void): void
   onBeforeLoad(callback: () => Promise<void>): void
+  coreChanged(): boolean
   harness(): Harness
   system(): SystemInfo
   conversations(): ConversationSummary[]
@@ -396,6 +398,7 @@ export async function loadExtensions(
     onClose: (cleanup) => cleanups.add(cleanup),
     onLoadError: (callback) => loadErrorListeners.add(callback),
     onBeforeLoad: (callback) => beforeLoad.add(callback),
+    coreChanged: () => host.builds.coreChanged(),
     ultimateRoot: host.ultimateRoot,
     projectRoot: host.projectRoot,
     userHome: host.userHome,
@@ -446,24 +449,16 @@ export async function loadExtensions(
             : {}),
         }))
     },
-    setProjectDecision: async (local) => {
-      if (heldForNewCore())
-        throw new Error('The core changed on disk: decide on project trust after the restart')
-      new ProjectTrustStore(join(host.userHome, '.ultimate')).set(
-        decisionRoot(host.projectRoot),
-        local,
-      )
-      await extensionHost.reloadExtensions()
-    },
-    reloadExtensions: async () => {
-      const work = chain
-        .then(() => (closed ? undefined : prepareLoadBestEffort()))
-        .then(() => (closed || heldForNewCore() ? undefined : reloadSettings()))
-      const recoveredQueueForLaterReloads = work.catch(() => changed())
-      chain = recoveredQueueForLaterReloads
-      await work
-      await rebuildWeb()
-    },
+    setProjectDecision: (local) =>
+      reloadSettingsNow(() => {
+        if (heldForNewCore())
+          throw new Error('The core changed on disk: decide on project trust after the restart')
+        new ProjectTrustStore(join(host.userHome, '.ultimate')).set(
+          decisionRoot(host.projectRoot),
+          local,
+        )
+      }),
+    reloadExtensions: () => reloadSettingsNow(() => {}),
     doc: findDoc,
     metadata: Metadata,
   }
@@ -476,6 +471,19 @@ export async function loadExtensions(
       ),
     )
   let chain = Promise.resolve()
+  async function reloadSettingsNow(beforeReload: () => void) {
+    const work = chain
+      .then(() => (closed ? undefined : prepareLoadBestEffort()))
+      .then(() => {
+        if (closed) return undefined
+        beforeReload()
+        return heldForNewCore() ? undefined : reloadSettings()
+      })
+    const recoveredQueueForLaterReloads = work.catch(() => changed())
+    chain = recoveredQueueForLaterReloads
+    await work
+    await rebuildWeb()
+  }
   let heldNoticeShown = false
   let fullReloadOwed = false
   function heldForNewCore() {
@@ -493,7 +501,7 @@ export async function loadExtensions(
         if (closed || heldForNewCore()) return undefined
         if (!fullReloadOwed) return work()
         fullReloadOwed = false
-        return reload()
+        return reload().then(rebuildWeb)
       })
       .catch((error: unknown) => {
         notice(`Extension reload failed: ${String(error)}`)
@@ -665,6 +673,11 @@ export async function loadExtensions(
             )
             .map((entry) => `${entry.tool.name} is already provided by ${entry.extension.name}`)
           if (sameLayerToolConflicts.length) throw new Error(sameLayerToolConflicts.join('; '))
+          if (heldForNewCore()) {
+            await dispose(facetHost)
+            records.set(name, record)
+            continue
+          }
           host.registry.install(trace.tools(extension))
           const previousHost = facetHosts.get(name)
           facetHosts.set(name, facetHost)
@@ -761,6 +774,10 @@ export async function loadExtensions(
       file.includes('/node_modules/')
     )
       return
+    if (fullReloadOwed && corePath(relative(host.ultimateRoot, file))) {
+      enqueue(async () => {})
+      return
+    }
     if (settingsFiles.includes(resolve(file))) {
       enqueue(reloadSettings)
       return
