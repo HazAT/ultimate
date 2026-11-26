@@ -75,6 +75,7 @@ const VOICE_TOOLS = [
   'web_search',
   'web_fetch',
   'video_ask',
+  'bash',
   'codemode',
   'action',
   'ui',
@@ -952,7 +953,7 @@ export default function voiceExtension(host: ExtensionHost) {
           if (fork.ended) return { block: 'This voice session has ended' }
           if (VOICE_TOOLS.includes(call.name)) return undefined
           return {
-            block: `Voice mode reads, drives the UI and hands off: ${call.name} is blocked. Use voice_handoff to ask @ultimate to do it.`,
+            block: `Voice mode reads, runs commands, drives the UI and hands off: ${call.name} is blocked. Use voice_handoff to ask @ultimate to do it.`,
           }
         },
       }),

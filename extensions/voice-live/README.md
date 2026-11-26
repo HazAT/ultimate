@@ -41,7 +41,7 @@ collect mode (optional), each with what to do when it is missing.
    sidebar's lists (`Unlisted`); while a session is open, one live row under @ultimate (`UnderUltimate`) shows it
    instead, with a small level that follows the mic while you talk and sways while voice speaks; clicking it shows or
    hides the panel. It keeps the fork's tools and adds
-   `voice_handoff` and `ui`; `beforeTool` lets it only read (read, memory, web search and fetch), run codemode, drive the UI and hand off: no bash, no file edits.
+   `voice_handoff` and `ui`; `beforeTool` lets it only read (read, memory, web search and fetch), run bash for quick checks and operations, run codemode, drive the UI and hand off: no file edits.
    Its first input carries the voice-mode prompt (`prompt.ts`) as a hidden `conversations.identity` entry; each later
    input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
    conversation are on screen. The session stays hot until it hands off or End: after a handoff the next turn

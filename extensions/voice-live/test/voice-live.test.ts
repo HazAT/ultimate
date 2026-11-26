@@ -460,7 +460,16 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   })
   const blockedResult = f.requests.at(-1)!.messages.at(-1)!
   expect(blockedResult.role).toBe('toolResult')
-  expect(JSON.stringify(blockedResult)).toContain('Voice mode reads, drives the UI and hands off')
+  expect(JSON.stringify(blockedResult)).toContain('Voice mode reads, runs commands, drives the UI')
+
+  await f.turn({
+    key: 'bash',
+    text: `CALL ${JSON.stringify({ name: 'bash', args: { command: 'echo voice-ran-bash' } })}`,
+    session: blocked.id,
+  })
+  const bashResult = f.requests.at(-1)!.messages.at(-1)!
+  expect(bashResult.role).toBe('toolResult')
+  expect(JSON.stringify(bashResult)).toContain('voice-ran-bash')
 
   await f.turn({
     key: 'video',
