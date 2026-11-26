@@ -6,7 +6,7 @@ import type { Sink, Take } from './capture.ts'
 import { createTalk } from './talk.ts'
 
 export const [talkMode, setTalkMode] = createRoot(() =>
-  useUiState<'hold' | 'tap'>('ext.dictation.talk', 'hold'),
+  useUiState<'hold' | 'tap'>('ext.dictation.talk', 'tap'),
 )
 export const [shortcut, setShortcut] = createRoot(() =>
   useUiState('ext.dictation.shortcut', 'mod+shift+space'),

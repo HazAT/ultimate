@@ -15,7 +15,7 @@ import { VoiceButton } from '../../button.solid.tsx'
 import { capture } from '../../capture.ts'
 import type { VoiceStatus } from '../../refs.ts'
 import { startCue, stopCue } from '../../../../lib/cues.ts'
-import { setSoundCues, talkMode } from '../../routing.solid.tsx'
+import { setSoundCues, setTalkMode, talkMode } from '../../routing.solid.tsx'
 
 vi.mock('../../../../lib/cues.ts', () => ({
   startCue: vi.fn<() => void>(),
@@ -206,7 +206,11 @@ it('records for an agent and transcribes into the same composer, leaving the edi
   expect(inserted).toEqual(['hello from the mic'])
 })
 
-it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation settings', async () => {
+it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation settings', async ({
+  onTestFinished,
+}) => {
+  setTalkMode('hold')
+  onTestFinished(() => setTalkMode('tap'))
   const container = await mount(15, { available: true })
   const mic = 'Dictate into conversation #15'
   const stop = 'Stop and transcribe into conversation #15'
