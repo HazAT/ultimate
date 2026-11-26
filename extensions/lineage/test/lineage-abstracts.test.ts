@@ -317,6 +317,26 @@ it('leaves a note in an idle conversation without starting a run', async () => {
     context,
   )
   expect(tasks).toEqual([])
+  // A #id names a conversation from three digits on, like the transcript's links.
+  const owner = await server.harness.commit(async (tx) => {
+    let id = other.id
+    while (id < 100) id = (await tx.createConversation({ ownership: { kind: 'ownerless' } })).id
+    ;(await tx.doc(Metadata, id)).title = 'Schema work'
+    return id
+  }, context)
+  const named = await note.execute(
+    { to: other.id, text: `#${owner} owns it; issue #4711 tracks it.` },
+    { conversationId: ROOT_CONVERSATION_ID } as Parameters<typeof note.execute>[1],
+    context,
+  )
+  expect(textOf(named.output)).toBe(`Left a note in #${other.id}.\nNamed: #${owner} Schema work.`)
+  await expect(
+    note.execute(
+      { to: other.id, text: 'Ask #604158 about it.' },
+      { conversationId: ROOT_CONVERSATION_ID } as Parameters<typeof note.execute>[1],
+      context,
+    ),
+  ).rejects.toThrow('#604158 is not a conversation; nothing was sent.')
 })
 
 it('notifies with the branch’s own answer, never one it inherited', async () => {

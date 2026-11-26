@@ -328,7 +328,7 @@ function Catchup(props: { text: string }) {
 
 export function NoteCall(props: SolidToolProps) {
   const destination = () => {
-    const left = /^Left a note in #(\d+)\.$/.exec(props.call.output)
+    const left = /^Left a note in #(\d+)\.$/m.exec(props.call.output)
     const to = left ? Number(left[1]) : props.call.args.to
     return typeof to === 'number'
       ? parseConversationId(to)

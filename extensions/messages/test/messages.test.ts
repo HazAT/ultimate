@@ -422,6 +422,30 @@ it('wakes an idle recipient and returns one typed reply; one-way messages return
   ])
   expect(JSON.stringify(sent)).not.toContain('One way')
 })
+it('refuses a message naming a #id that is no conversation, and names the titles of real ones', async () => {
+  const f = await fixture()
+  // A #id names a conversation from three digits on, like the transcript's links.
+  const named = await f.opened.harness.commit(async (tx) => {
+    let id = f.recipient.id
+    while (id < 100) id = (await tx.createConversation({ ownership: { kind: 'ownerless' } })).id
+    ;(await tx.doc(Metadata, id)).title = 'Tiered redesign'
+    return id
+  }, context)
+  const lastResult = async () =>
+    JSON.stringify(
+      (await f.opened.root.context(context)).entries.findLast((e) => e.kind === 'pi.tool-result')
+        ?.model,
+    )
+  // The branch tool returned another id in the same round: the guess names no conversation.
+  await f.send(`#${f.recipient.id}`, 'The redesign is #604042.', { reply: false })
+  expect(await lastResult()).toContain('#604042 is not a conversation; nothing was sent.')
+  expect((await f.log())!.messages).toHaveLength(0)
+  await f.send(`#${f.recipient.id}`, `The redesign is #${named}, see PR #3290.`, {
+    reply: false,
+  })
+  expect((await f.log())!.messages).toHaveLength(1)
+  expect(await lastResult()).toContain(`sent.\\nNamed: #${named} Tiered redesign.`)
+})
 it('records a one-way input answer without returning it to the sender', async () => {
   const f = await fixture()
   await f.send(String(f.recipient.id), 'One-way update', { reply: false })
