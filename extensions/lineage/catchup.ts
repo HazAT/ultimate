@@ -237,21 +237,48 @@ export function catchupPreparation(
         : undefined
     prepared.set(id, { since: since ?? '', main, ...(text ? { text } : {}) })
   }
-  return { prepare, take: (id: ConversationId) => prepared.get(id) }
+  const preparing = new Map<ConversationId, Promise<void>>()
+  const prepareOnce = (id: ConversationId, ctx: Context) => {
+    if (!preparing.has(id))
+      preparing.set(
+        id,
+        prepare(id, ctx).finally(() => preparing.delete(id)),
+      )
+    return preparing.get(id)!
+  }
+  return {
+    prepare: prepareOnce,
+    async place(
+      placement: { conversationId: ConversationId; tx: NoteBaselineAndInputCommitTogether },
+      ctx: Context,
+    ) {
+      const placed = await catchup(placement, prepared.get(placement.conversationId))
+      if (placed !== 'unprepared') return placed
+      inProcess(
+        'an input placed without preparation keeps the baseline, so the next input catches up',
+        prepareOnce(placement.conversationId, ctx).catch((error: unknown) => {
+          host.notice(
+            `Could not prepare the catch-up for #${placement.conversationId}: ${String(error)}`,
+          )
+        }),
+      )
+      return undefined
+    },
+  }
 }
 
 type NoteBaselineAndInputCommitTogether = Tx
 
 // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
-export async function catchup(
+async function catchup(
   placement: { conversationId: ConversationId; tx: NoteBaselineAndInputCommitTogether },
   prepared: CatchupPlacedOnlyWhileBaselineHolds | undefined,
 ) {
   const { tx, conversationId } = placement
   const record = await tx.conversation(conversationId)
-  if (!record || record.owner || !prepared) return undefined
+  if (!record || record.owner) return undefined
   const alwaysAdvancedBaseline = await tx.doc(Seen, conversationId)
-  if ((alwaysAdvancedBaseline.main ?? '') !== prepared.since) return undefined
+  if (!prepared || (alwaysAdvancedBaseline.main ?? '') !== prepared.since) return 'unprepared'
   const commits = prepared.text
   alwaysAdvancedBaseline.main = prepared.main.sha
   if (!alwaysAdvancedBaseline.at || commits) alwaysAdvancedBaseline.at = Date.now()

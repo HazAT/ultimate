@@ -30,7 +30,8 @@ import {
 import type { SaveFamilies } from './refs.ts'
 import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
-import { confirmMissingLogin, fallback } from './fallback.ts'
+import { checkLogin, fallback } from './fallback.ts'
+import type { LoginChecks } from './fallback.ts'
 import { inProcess } from '../../lib/errors.ts'
 
 type MutableJson<T> = T extends readonly (infer U)[]
@@ -259,7 +260,7 @@ export const actions = {
 
 export default function models(host: ExtensionHost) {
   const live = liveFlows(host)
-  const confirmedMissingLogins = host.resource('models.missing-logins', () => new Set<string>())
+  const loginChecks = host.resource('models.login-checks', (): LoginChecks => new Map())
   host.onOpen(async () => {
     await host.harness().commit(async (tx) => {
       const { flows } = await tx.doc(Logins, ROOT_CONVERSATION_ID)
@@ -277,10 +278,10 @@ export default function models(host: ExtensionHost) {
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         prepareInput: async ({ conversationId }, ctx) => {
           const agent = await host.harness().snapshot(AgentDoc, conversationId, ctx)
-          await confirmMissingLogin(host, agent?.model, confirmedMissingLogins)
+          await checkLogin(host, agent?.model, loginChecks)
         },
         beforeInput: (_input, { tx, conversationId }) =>
-          fallback(host, tx, conversationId, confirmedMissingLogins),
+          fallback(host, tx, conversationId, loginChecks),
       }),
     ],
   })

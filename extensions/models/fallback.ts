@@ -27,26 +27,32 @@ function needsCheck(host: ExtensionHost, model: Ref | undefined): model is Ref {
   )
 }
 
-export async function confirmMissingLogin(
-  host: ExtensionHost,
-  model: Ref | undefined,
-  confirmed: Set<string>,
-) {
-  if (!needsCheck(host, model)) return
-  if (await loginIsPresentOrUnconfirmed(host, model.provider)) confirmed.delete(model.provider)
-  else confirmed.add(model.provider)
+export type LoginChecks = Map<string, { snapshot: readonly unknown[]; missing: boolean }>
+
+async function loginMissing(host: ExtensionHost, provider: string, checks: LoginChecks) {
+  const snapshot = host.modelRuntime.getAvailableSnapshot()
+  const checked = checks.get(provider)
+  if (checked?.snapshot === snapshot) return checked.missing
+  const missing = !(await loginIsPresentOrUnconfirmed(host, provider))
+  checks.set(provider, { snapshot, missing })
+  return missing
+}
+
+export async function checkLogin(host: ExtensionHost, model: Ref | undefined, checks: LoginChecks) {
+  if (needsCheck(host, model)) await loginMissing(host, model.provider, checks)
 }
 
 export async function fallback(
   host: ExtensionHost,
   tx: Tx,
   conversationId: ConversationId,
-  confirmedMissing: ReadonlySet<string>,
+  checks: LoginChecks,
 ): Promise<{ entries: EntryDraft[] } | undefined> {
   const agent = await tx.doc(AgentDoc, conversationId)
   const runtime = host.modelRuntime
   const from = agent.model
-  if (!needsCheck(host, from) || !confirmedMissing.has(from.provider)) return undefined
+  if (!needsCheck(host, from) || !(await loginMissing(host, from.provider, checks)))
+    return undefined
   const fresh = runtime.getAvailableSnapshot()
   const requiresSubscriptionReplacement = providerDeclaresSubscriptionAuth(host, from.provider)
   const preservesSubscriptionBilling = (provider: string) =>

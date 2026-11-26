@@ -103,46 +103,49 @@ const noLandingsFromUnavailableHistory = () => []
 
 const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 16)
 
-async function instructionFiles(host: ExtensionHost, own: readonly string[]) {
+async function cloneInstructionPaths(host: ExtensionHost) {
   const markdownPathsOrNone = async (folder: string) =>
     (await readdir(join(host.ultimateRoot, folder)).catch(() => [] as string[]))
       .filter((name) => name.endsWith('.md'))
       .map((name) => join(host.ultimateRoot, folder, name))
-  const hashesByAbsolutePath: Record<string, string> = {}
-  const clone = [
+  return [
     join(host.ultimateRoot, 'AGENTS.md'),
     ...(await markdownPathsOrNone('docs')),
     ...(await markdownPathsOrNone('agents')),
   ]
-  for (const path of clone) {
-    const text = await readFile(path, 'utf8').catch(ignoring(isMissing))
-    if (text !== undefined) hashesByAbsolutePath[path] = digest(text)
-  }
-  const context = loadProjectContextFiles({
-    cwd: host.projectRoot,
-    agentDir: join(host.userHome, '.ultimate'),
-  })
-  for (const file of context) hashesByAbsolutePath[file.path] = digest(file.content)
-  const removedFileText = () => ''
-  for (const path of own)
-    hashesByAbsolutePath[path] = digest(await readFile(path, 'utf8').catch(removedFileText))
+}
+
+const projectContext = (host: ExtensionHost) =>
+  loadProjectContextFiles({ cwd: host.projectRoot, agentDir: join(host.userHome, '.ultimate') })
+
+async function instructionPaths(host: ExtensionHost, own: readonly string[]) {
   const contextFolders = []
   for (let folder = host.projectRoot; ; folder = dirname(folder)) {
     contextFolders.push(folder)
     if (dirname(folder) === folder) break
   }
-  return {
-    value: hashesByAbsolutePath,
-    paths: [
-      join(host.ultimateRoot, 'docs'),
-      join(host.ultimateRoot, 'agents'),
-      join(host.userHome, '.ultimate'),
-      ...contextFolders,
-      ...clone,
-      ...context.map((file) => file.path),
-      ...own,
-    ],
+  return [
+    join(host.ultimateRoot, 'docs'),
+    join(host.ultimateRoot, 'agents'),
+    join(host.userHome, '.ultimate'),
+    ...contextFolders,
+    ...(await cloneInstructionPaths(host)),
+    ...projectContext(host).map((file) => file.path),
+    ...own,
+  ]
+}
+
+async function instructionHashes(host: ExtensionHost, own: readonly string[]) {
+  const hashesByAbsolutePath: Record<string, string> = {}
+  for (const path of await cloneInstructionPaths(host)) {
+    const text = await readFile(path, 'utf8').catch(ignoring(isMissing))
+    if (text !== undefined) hashesByAbsolutePath[path] = digest(text)
   }
+  for (const file of projectContext(host)) hashesByAbsolutePath[file.path] = digest(file.content)
+  const removedFileText = () => ''
+  for (const path of own)
+    hashesByAbsolutePath[path] = digest(await readFile(path, 'utf8').catch(removedFileText))
+  return hashesByAbsolutePath
 }
 
 function instructionReads(host: ExtensionHost) {
@@ -153,10 +156,11 @@ function instructionReads(host: ExtensionHost) {
     host.modelRuntime,
   )
   let own: readonly string[] = []
-  const files = fileMemo(
-    () => instructionFiles(host, own),
-    () => own.join('\0'),
-  )
+  const files = fileMemo({
+    paths: () => instructionPaths(host, own),
+    read: () => instructionHashes(host, own),
+    key: () => own.join('\0'),
+  })
   return async () => {
     const definition = (await discovered()).definitions.find(
       (candidate) => candidate.name === 'ultimate',
@@ -244,15 +248,15 @@ async function definitionSkills(
 
 export default function prompt(host: ExtensionHost) {
   const instructions = instructionReads(host)
-  const cloneHead = fileMemo(async () => ({
-    value: await git(host.ultimateRoot, 'rev-parse', 'HEAD').catch(meansNone),
-    paths: await refFiles(host.ultimateRoot).catch((): string[] => []),
-  }))
+  const cloneHead = fileMemo({
+    paths: () => refFiles(host.ultimateRoot).catch((): string[] => []),
+    read: () => git(host.ultimateRoot, 'rev-parse', 'HEAD').catch(meansNone),
+  })
   const landedByRange = new Map<string, Promise<Landing[]>>()
   const landedBetween = (from: string, to: string) => {
     const range = `${from}..${to}`
     if (!landedByRange.has(range)) {
-      landedByRange.clear()
+      if (landedByRange.size >= 8) landedByRange.delete(landedByRange.keys().next().value!)
       landedByRange.set(
         range,
         landings(host.ultimateRoot, from, to, host.conversations()).catch(

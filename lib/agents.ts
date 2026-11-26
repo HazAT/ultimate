@@ -442,12 +442,20 @@ export async function discoveryPaths(ultimateRoot: string, projectRoot: string, 
       (await readdir(path).catch((): string[] => [])).map((name) => join(path, name)),
     ),
   )
+  const extensionFolders = (
+    await Promise.all(
+      discoveryRoots(ultimateRoot, projectRoot, userHome).map(async ({ path }) => {
+        const folder = join(path, 'extensions')
+        const names = await readdir(folder).catch((): string[] => [])
+        return [folder, ...names.map((name) => join(folder, name))]
+      }),
+    )
+  ).flat()
   return [
     ...roots.map((root) => root.path),
     ...files.flat(),
-    ...discoveryRoots(ultimateRoot, projectRoot, userHome).map((root) =>
-      join(root.path, 'extensions'),
-    ),
+    ...extensionFolders,
+    ...extensionFolders.flatMap((folder) => [join(folder, 'api.ts'), join(folder, 'agents')]),
     join(projectRoot, '.ultimate/agents'),
     join(userHome, '.ultimate/settings.json'),
     join(projectRoot, '.ultimate/settings.json'),
@@ -464,18 +472,16 @@ export function cachedDiscovery(
 ) {
   let snapshot: readonly unknown[] | undefined
   let snapshots = 0
-  return fileMemo(
-    async () => ({
-      paths: await discoveryPaths(ultimateRoot, projectRoot, userHome),
-      value: await discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
-    }),
-    () => {
+  return fileMemo({
+    paths: () => discoveryPaths(ultimateRoot, projectRoot, userHome),
+    read: () => discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
+    key: () => {
       const replacedWhenModelsOrLoginsChange = modelRuntime.getAvailableSnapshot()
       if (replacedWhenModelsOrLoginsChange !== snapshot) snapshots++
       snapshot = replacedWhenModelsOrLoginsChange
       return String(snapshots)
     },
-  )
+  })
 }
 
 export async function discoverAgents(

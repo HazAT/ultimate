@@ -201,7 +201,8 @@ it('keeps a finished answer when a hook refuses or throws for the follow-up queu
       hooks: [
         hook(GenerationTask, {
           refuseInput: () => (ended ? 'this conversation has ended' : undefined),
-          beforeInput: () => {
+          beforeInput: async (_input, { tx, conversationId }) => {
+            ;(await tx.doc(Placed, conversationId)).count++
             if (throwing) throw new Error('note failed')
             return undefined
           },
@@ -257,6 +258,7 @@ it('keeps a finished answer when a hook refuses or throws for the follow-up queu
       { type: 'input', content: 'thrown', whenBusy: 'followUp' },
       context,
     )
+    const placedBeforeThrow = (await f.harness.snapshot(Placed, f.root.id, context))?.count
     throwing = true
     gate.resolve()
     expect(await third.wait(context)).toMatchObject({ status: 'done' })
@@ -265,6 +267,8 @@ it('keeps a finished answer when a hook refuses or throws for the follow-up queu
       reason: 'refused',
       detail: 'note failed',
     })
+    // The throwing placement's writes roll back with it: a note it would have placed is not marked as placed.
+    expect((await f.harness.snapshot(Placed, f.root.id, context))?.count).toBe(placedBeforeThrow)
     throwing = false
     await (await f.root.submit({ type: 'input', content: 'last' }, context)).wait(context)
     expect(await answers()).toEqual([
@@ -273,6 +277,57 @@ it('keeps a finished answer when a hook refuses or throws for the follow-up queu
       'first answer',
       'after throw',
     ])
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
+it('refuses a steer queued before its conversation refuses input, at the tool round that would place it', async () => {
+  const home = await temp()
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  const gate = Promise.withResolvers<void>()
+  let held = false
+  let ended = false
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      hooks: [
+        hook(GenerationTask, {
+          refuseInput: () => (ended ? 'this conversation has ended' : undefined),
+        }),
+      ],
+    }),
+  )
+  prepared.faux!.setResponses([
+    async () => {
+      held = true
+      await gate.promise
+      return fauxAssistantMessage([fauxToolCall('unknown', {})], { stopReason: 'toolUse' })
+    },
+    fauxAssistantMessage('answer'),
+  ])
+  const f = await prepared.open()
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => held)
+    const steer = await f.root.submit(
+      { type: 'input', content: 'steer', whenBusy: 'steer' },
+      context,
+    )
+    ended = true
+    gate.resolve()
+    expect(await steer.wait(context)).toMatchObject({ status: 'unanswered', reason: 'refused' })
+    expect(await first.wait(context)).toMatchObject({ status: 'done' })
+    const users = (await f.root.context(context)).messages.flatMap((message) =>
+      message.role === 'user' ? [message.content] : [],
+    )
+    expect(users).toEqual(['first'])
   } finally {
     gate.resolve()
     await f.close()

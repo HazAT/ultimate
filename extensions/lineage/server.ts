@@ -78,7 +78,7 @@ import {
   memoryIndex,
   memoryText,
 } from './memory.ts'
-import { catchup, catchupPreparation, Seen, seedSeen, watchSeen } from './catchup.ts'
+import { catchupPreparation, Seen, seedSeen, watchSeen } from './catchup.ts'
 import { rewindActions, rewindTask } from './rewind.ts'
 import type { RootEvent } from './types.ts'
 import { compareUrl } from '../../lib/compare.ts'
@@ -1244,9 +1244,9 @@ export default function lineageExtension(host: ExtensionHost) {
       hook(GenerationTask, {
         refuseInput: (_input, api) => tallyRefusal(api.tx, api.conversationId),
         prepareInput: ({ conversationId }, ctx) => catchups.prepare(conversationId, ctx),
-        beforeInput: async (_input, api) => {
+        beforeInput: async (_input, api, ctx) => {
           if (await isSideChat(host, api.tx, api.conversationId)) return undefined
-          return catchup(api, catchups.take(api.conversationId))
+          return catchups.place(api, ctx)
         },
       }),
       hook(CompactionTask, {
