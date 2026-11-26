@@ -76,13 +76,12 @@ export async function add(tx: Tx, text: unknown, owner: unknown, key?: unknown):
     throw new Error(`text must be at most ${TEXT_CHARS} characters`)
   if (!OWNERS.includes(owner as Todo['owner']))
     throw new Error("owner must be 'user' or 'ultimate'")
+  return append(tx, { text: text.trim(), owner: owner as Todo['owner'] })
+}
+
+async function append(tx: Tx, item: Pick<Todo, 'text' | 'owner'>): Promise<Todo> {
   const todos = await tx.doc(Todos, ROOT_CONVERSATION_ID)
-  const todo: Todo = {
-    id: todos.next++,
-    text: text.trim(),
-    owner: owner as Todo['owner'],
-    at: Date.now(),
-  }
+  const todo: Todo = { ...item, id: todos.next++, at: Date.now() }
   todos.items.push(todo)
   return copyTodoBeyondTransaction(todo)
 }
@@ -173,6 +172,11 @@ export default function todosExtension(host: ExtensionHost) {
   host.implement(TodosApi, {
     add: ({ text, owner, key }) =>
       host.harness().commit((tx) => add(tx, text, owner, key), context),
+    listOpen: async (tx) =>
+      (await tx.doc(Todos, ROOT_CONVERSATION_ID)).items
+        .filter((item) => item.done === undefined)
+        .map(({ text, owner }) => ({ text, owner })),
+    addCarried: append,
   })
   return defineExtension({
     name: 'todos',

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ConversationId, JsonObject, Tx } from '@earendil-works/pi-durable'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { fallbackModel, summaryModelStatus } from '../../conversations/summary-model.ts'
 import { check, noteFor } from '../server.ts'
 import type { SetupIssue } from '../refs.ts'
@@ -10,6 +10,7 @@ import { writeSecret } from '../../secrets/store.ts'
 import { removeTemps, temp } from '../../../test/helpers.ts'
 
 afterEach(removeTemps)
+afterEach(() => vi.unstubAllEnvs())
 
 const model = (provider: string, id: string, cost = 1) => ({
   provider,
@@ -121,6 +122,7 @@ async function checkHost(options: { logins: string[]; oauth?: string[]; openaiBa
 }
 
 it('warns about a fallback, agent models without a login and a missing secret, warnings first', async () => {
+  vi.stubEnv('PARALLEL_API_KEY', undefined)
   const issues = await check(await checkHost({ logins: ['openrouter'] }))
   const warnings = issues.filter((issue) => issue.status === 'warn')
   expect(warnings.map((issue) => issue.area)).toEqual(['Summary model', 'Agent models', 'Secrets'])
@@ -137,6 +139,15 @@ it('warns about a fallback, agent models without a login and a missing secret, w
   expect(issues.findIndex((issue) => issue.status !== 'warn')).toBe(3)
 })
 
+it('accepts a secret supplied through the environment', async () => {
+  vi.stubEnv('PARALLEL_API_KEY', 'test-key')
+  const issues = await check(await checkHost({ logins: ['openrouter'] }))
+  expect(issues.find((issue) => issue.area === 'Secrets')).toMatchObject({
+    status: 'ok',
+    summary: 'all set',
+  })
+})
+
 it('keeps the other areas when one throws synchronously', async () => {
   const host = await checkHost({ logins: ['openrouter'] })
   const issues = await check({
@@ -150,6 +161,8 @@ it('keeps the other areas when one throws synchronously', async () => {
 })
 
 it("lets a provider's configured auth stand in for the secret that names it", async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', undefined)
+  vi.stubEnv('OTHER_API_KEY', undefined)
   const host = await checkHost({ logins: ['openrouter', 'typesafe'] })
   const secrets = [
     { name: 'TYPESAFE_API_KEY', description: '', provider: 'typesafe' },
@@ -173,6 +186,7 @@ it("lets a provider's configured auth stand in for the secret that names it", as
 })
 
 it("lets an openai API key stand in for dictation's OPENAI_API_KEY, but not an OAuth login", async () => {
+  vi.stubEnv('OPENAI_API_KEY', undefined)
   const dictation = {
     name: 'dictation',
     enabled: true,
@@ -201,6 +215,7 @@ it("lets an openai API key stand in for dictation's OPENAI_API_KEY, but not an O
 })
 
 it('warns only about the login on a fresh install, and offers default-on secrets as optional', async () => {
+  vi.stubEnv('OPENAI_API_KEY', undefined)
   const host = await checkHost({ logins: [] })
   const dictation = {
     name: 'dictation',

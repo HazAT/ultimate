@@ -13,7 +13,7 @@ import type { ActionContext } from '../../../server/actions.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
-import { Todos } from '../../todos/server.ts'
+import todosExtension, { Todos } from '../../todos/server.ts'
 import { Standing, SubagentsApi } from '../../subagents/api.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
 import type { Automation } from '../../automations/types.ts'
@@ -22,14 +22,14 @@ import dream, { Next } from '../server.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from '../seed.ts'
 import { CloudApi } from '../../cloud/api.ts'
 import type { CloudService, LastBackup } from '../../cloud/api.ts'
-import { openers, temp, until, eventHost } from '../../../test/helpers.ts'
+import { apis, openers, temp, until, eventHost } from '../../../test/helpers.ts'
 
 const openedHosts: OpenHost[] = []
 afterEach(async () => {
   for (const opened of openedHosts.splice(0)) await opened.close()
 })
 
-async function fixture() {
+async function fixture({ todos = true } = {}) {
   const home = await temp('ultimate-dream-seed-')
   const prepared = await prepareHarness({
     ultimateRoot: home,
@@ -40,9 +40,8 @@ async function fixture() {
   let opened: OpenHost
   const lifecycle = openers()
   let scripts: (Seed['scripts'][number] & { enabled: boolean })[] = []
-  /** A faked `CloudApi`: never the real Worker. */
-  let cloud: CloudService | undefined
-  const tokens = [...lineageDocs, Messages, Todos, Next]
+  const services = apis()
+  const tokens = [...lineageDocs, Messages, Next]
   const resources = new Map<string, unknown>()
   const invoke = vi.fn<ExtensionHost['invoke']>(async (extension, action, args) => {
     if (extension !== 'automations' || !['list', 'create', 'describe'].includes(action))
@@ -69,7 +68,7 @@ async function fixture() {
     },
     metadata: Metadata,
     ...eventHost(() => opened.harness, 'automations'),
-    implement: () => {},
+    implement: services.implement,
     onClose: () => {},
     projectSetup: async () => ({ decision: false }),
     extensions: () => [{ name: 'subagents', enabled: true }],
@@ -79,7 +78,7 @@ async function fixture() {
     onOpen: lifecycle.onOpen,
     react: () => {},
     notice: () => {},
-    want: (api: { name: string }) => (api.name === CloudApi.name ? cloud : undefined),
+    want: services.want,
     need: () => ({
       residents: async () => [{ name: 'ultimate', description: '' }],
       standing: async () =>
@@ -96,6 +95,7 @@ async function fixture() {
     invoke,
   } as unknown as ExtensionHost
   prepared.registry.install(automations(host))
+  if (todos) prepared.registry.install(todosExtension(host))
   prepared.registry.install(dream(host))
   const open = async () => {
     opened = await prepared.open(false)
@@ -130,7 +130,8 @@ async function fixture() {
       scripts = items
     },
     cloud: (service: CloudService | undefined) => {
-      cloud = service
+      if (service) services.implement(CloudApi, service)
+      else services.provided.delete(CloudApi.name)
     },
     async source() {
       // Fall asleep is prepared in @ultimate's conversation: it exists before the seed is built.
@@ -151,12 +152,14 @@ async function fixture() {
           // A valid slug that a plain object would shadow with its prototype's.
           constructor: { kind: 'fact', line: 'Builds', body: 'Constructors.', updated: 30 },
         }
-        const todos = await tx.doc(Todos, ROOT_CONVERSATION_ID)
-        todos.items.push(
-          { id: 1, text: 'Keep this', owner: 'ultimate', at: 1 },
-          { id: 2, text: 'Finished', owner: 'user', at: 1, done: 2 },
-        )
-        todos.next = 3
+        if (todos) {
+          const list = await tx.doc(Todos, ROOT_CONVERSATION_ID)
+          list.items.push(
+            { id: 1, text: 'Keep this', owner: 'ultimate', at: 1 },
+            { id: 2, text: 'Finished', owner: 'user', at: 1, done: 2 },
+          )
+          list.next = 3
+        }
         const board = await tx.doc(Messages, ROOT_CONVERSATION_ID)
         for (const [id, state] of [
           [100, 'delivered'],
@@ -491,44 +494,30 @@ it('keeps a running chapter change when a facet reload runs onOpen again', async
   expect((await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))!.sleep).toEqual(sleep)
 })
 
-it('rolls back the entire application when a required document is unavailable', async () => {
-  const f = await fixture()
+it('seeds a chapter without the optional to-dos extension', async () => {
+  const f = await fixture({ todos: false })
   await f.source()
   const seed = await buildSeed(f.host, PREPARED)
-  await writeSeed(join(f.home, 'chapters', 'retry'), seed)
+  expect(seed.todos).toEqual([])
+  expect(seed.questions).toHaveLength(2)
+  await writeSeed(join(f.home, 'chapters', 'without-todos'), seed)
   await f.close()
-  await requestChapter(f.home, 'retry')
-  const resolve = f.host.doc.bind(f.host)
-  f.host.doc = (kind) => (kind === 'todos' ? undefined : resolve(kind))
-  await expect(f.open()).rejects.toThrow('Chapter seed needs document todos')
-  expect(
-    (await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))?.applied,
-  ).toBeUndefined()
-  expect(
-    (await f.harness.snapshot(resolve('lineage.memory')!, ROOT_CONVERSATION_ID, context))
-      ?.memories ?? {},
-  ).toEqual({})
-  const ultimate = (await f.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate
-  expect(
-    await f.harness.commit(
-      (tx) => tx.submissionByRequest(ultimate, 'dream.chapter:retry'),
-      context,
-    ),
-  ).toBeUndefined()
-  f.host.doc = resolve
-  await applySeed(f.host)
-  expect(
-    (await f.harness.snapshot(resolve('lineage.memory')!, ROOT_CONVERSATION_ID, context))!.memories,
-  ).toEqual(seed.memories)
+  await requestChapter(f.home, 'without-todos')
+  await f.open()
+  const memory = f.host.doc('lineage.memory')!
+  expect((await f.harness.snapshot(memory, ROOT_CONVERSATION_ID, context))!.memories).toEqual(
+    seed.memories,
+  )
   expect(
     (await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))!.applied,
   ).toBeGreaterThan(0)
-  expect(
-    await f.harness.commit(
-      (tx) => tx.submissionByRequest(ultimate, 'dream.chapter:retry'),
-      context,
-    ),
-  ).toMatchObject({ type: 'input' })
+  const ultimate = (await f.harness.snapshot(Standing, ROOT_CONVERSATION_ID, context))!.ultimate
+  const conversation = (await f.harness.conversation(ultimate, context))!
+  await conversation.waitForIdle(context)
+  const view = await conversation.context(context)
+  expect(view.entries.find((entry) => entry.kind === 'dream.chapter')?.data).toMatchObject({
+    name: 'without-todos',
+  })
 })
 
 it('merges root memories by updated, maps automation options, and rejects duplicate schedule names', async () => {

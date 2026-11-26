@@ -16,7 +16,7 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Harness } from '@earendil-works/pi-durable'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import type { ActionContext } from '../../../server/actions.ts'
@@ -428,6 +428,43 @@ it('pauses on the first rate-limited answer: the run waits in its retry, fails n
     /^Paused for \d+(ms|\.\ds) \(faux rate limited [\w-]+\); the run continued after Play\.$/,
   )
   expect(await cards()).toHaveLength(1)
+})
+
+it('keeps a manual pause when recording a rate limit fails', async () => {
+  const f = await fixture()
+  const started = Promise.withResolvers<void>()
+  const finish = Promise.withResolvers<void>()
+  f.prepared.faux!.setResponses([
+    async () => {
+      started.resolve()
+      await finish.promise
+      return fauxAssistantMessage('', { stopReason: 'error', errorMessage: limit })
+    },
+    () => fauxAssistantMessage([fauxText('done')]),
+  ])
+  const { root, harness } = await f.open()
+  const submission = await root.submit({ type: 'input', content: 'go' }, context)
+  await started.promise
+  await f.action('pause')
+  const failure = new Error('Cannot record rate limit')
+  const commit = vi.spyOn(harness, 'commit').mockRejectedValueOnce(failure)
+  const reported = Promise.withResolvers<void>()
+  const log = vi.spyOn(console, 'error').mockImplementation((message, error) => {
+    if (message === 'pause: pausing for a rate limit failed:' && error === failure)
+      reported.resolve()
+  })
+  try {
+    finish.resolve()
+    await reported.promise
+    expect(await f.action('state')).toMatchObject({ paused: true })
+    expect((await harness.inspect(context)).scheduling).toBe('paused')
+    expect(f.paused()).toBe(true)
+    await f.action('play')
+    expect((await submission.wait(context)).status).toBe('done')
+  } finally {
+    commit.mockRestore()
+    log.mockRestore()
+  }
 })
 
 it('does not pause again for the rate limit that ends its run: the failure reaches the watchdog without another Play', async () => {

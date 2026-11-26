@@ -267,6 +267,29 @@ it('gives @ultimate no commit catch-up: its landing cards already name each land
   ).toEqual([])
 })
 
+it('does not put commit catch-up notes in an ownerless fork of @ultimate', async () => {
+  const f = await catchupFixture()
+  const main = await f.server.harness.createConversation(
+    {
+      ownership: { kind: 'ownerless' },
+      agent: { model: (await f.server.root.agent(context)).model },
+    },
+    context,
+  )
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = main.id
+  }, context)
+  await ask(f.server, main.id, 'first work')
+  const at = (await main.context(context)).entries.at(-1)!.id
+  const fork = await main.fork(at, { ownership: { kind: 'ownerless' } }, context)
+  await ask(f.server, fork.id, 'first voice input')
+  repoGit(f.projectRoot, 'commit', '--allow-empty', '-m', 'Landed meanwhile')
+  await ask(f.server, fork.id, 'second voice input')
+  expect(
+    (await fork.context(context)).entries.filter((entry) => entry.kind === 'lineage.note'),
+  ).toEqual([])
+})
+
 it('keeps a catch-up exactly once when reopened during the first request', async () => {
   const f = await catchupFixture()
   await ask(f.server, ROOT_CONVERSATION_ID, 'first work')

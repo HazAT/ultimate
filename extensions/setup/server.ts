@@ -79,7 +79,7 @@ async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
   if (!loggedIn(host)) return undefined
   const status = await host.need(ConversationsApi).summaryModelStatus()
   const fix = { label: 'Choose', command: 'conversations.summary-model' }
-  const uses = 'Titles, codemode step lines and question cards'
+  const uses = 'Titles, summaries, reply summaries and codemode step lines'
   if (status.problem === 'invalid')
     return {
       area: 'Summary model',
@@ -93,7 +93,7 @@ async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
       area: 'Summary model',
       status: 'warn',
       summary: `${status.configured}: no login here`,
-      impact: `${uses} are off: every message wakes the agent.`,
+      impact: `${uses} are off.`,
       fix,
     }
   const using = `${status.model!.provider}/${status.model!.id}`
@@ -203,7 +203,11 @@ async function secretsArea(host: AreaHost): Promise<SetupIssue[]> {
     if (!extension.enabled || !extension.server || extension.server.error) continue
     const missing = extension.layer === 'default' ? optional : chosen
     for (const { name, provider } of extension.server.secrets ?? [])
-      if (!set.has(name) && !(provider && providerKeyStandsIn(host.modelRuntime, provider)))
+      if (
+        !set.has(name) &&
+        !process.env[name] &&
+        !(provider && providerKeyStandsIn(host.modelRuntime, provider))
+      )
         missing.set(name, [...(missing.get(name) ?? []), extension.name])
   }
   for (const name of chosen.keys()) optional.delete(name)

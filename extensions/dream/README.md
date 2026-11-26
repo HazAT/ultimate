@@ -71,7 +71,8 @@ questions, and enabled automations and scripts, with counts. The built-in dream 
 seed says only whether each was enabled, and the new chapter makes its own. Conversation docs are read through the
 host's exported tokens; both trigger kinds are read through the single automations list action. Enabled schedule
 records keep name, optional prompt, schedule and run profile, but no subscribers: conversation ids do not survive a
-chapter. Schedules without a prompt become recreation to-dos.
+chapter. Schedules without a prompt become recreation to-dos. To-dos are read and added through the optional
+`TodosApi`: without it the seed still applies and wakes @ultimate, but no to-dos are read or added.
 
 On open, dream applies a chapter's seed in one commit with `dream.seed.applied` on conversation 1: memories keep
 their sources, to-dos get fresh ids, questions become user-owned to-dos naming the old chapter and message id, and the

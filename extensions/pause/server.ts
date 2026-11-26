@@ -246,8 +246,9 @@ async function holdRetryOrRelease(host: Host, limit: RateLimit) {
   try {
     await holdAndRecordPause(host, limit)
   } catch (error) {
-    sharedPauseFlag(host).paused = false
-    host.harness().release()
+    const { paused } = await read(host)
+    sharedPauseFlag(host).paused = paused
+    if (!paused) host.harness().release()
     throw error
   }
   await writePauseLimitOnce(host, await read(host))
