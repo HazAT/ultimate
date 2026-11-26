@@ -8,8 +8,8 @@ const path = join(folder, 'test-suites.lock')
 const waitBeforeEachReportMs = 30_000
 
 /**
- * Two whole suites at once went over the machine's memory budget and the kernel killed them, so a whole-suite run
- * (`ULTIMATE_WHOLE_SUITE`, set by scripts/test.ts) holds this lock in Vitest's own process for as long as it runs.
+ * Two whole suites at once went over the machine's memory budget and the kernel killed them, so a run of a quarter of a
+ * suite or more (`ULTIMATE_WHOLE_SUITE`, set by scripts/test.ts) holds this lock in Vitest's own process for as long as it runs.
  */
 export default async function oneWholeSuiteAtATime() {
   if (!process.env.ULTIMATE_WHOLE_SUITE) return undefined
