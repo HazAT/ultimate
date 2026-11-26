@@ -15,7 +15,7 @@ export function ModeSwitch(props: { talking: boolean; onToggle: (talking: boolea
   return (
     <Toggle
       aria-label={`Prompt box ${props.talking ? 'talks to voice' : 'types'} · switch`}
-      class="group/voice-mode relative h-6 gap-0 rounded-full bg-muted/60 p-0.5 font-mono text-[10.5px] font-normal data-pressed:bg-muted/60 data-pressed:text-inherit"
+      class="group/voice-mode relative h-5 gap-0 rounded-full bg-muted/60 p-0.5 font-mono text-[10.5px] font-normal data-pressed:bg-muted/60 data-pressed:text-inherit"
       data-ui="voice-mode-switch"
       onPressedChange={(pressed) => props.onToggle(pressed)}
       pressed={props.talking}
@@ -78,25 +78,13 @@ export function TalkBar(props: { onTalk?: () => void }) {
           ? 'Tap to talk'
           : 'Hold to talk'
   return (
-    <div class="flex items-center gap-2" data-voice-talk-bar ref={bar}>
-      <Show when={recording()}>
-        <Button
-          aria-label="Cancel talking"
-          class="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
-          data-voice-talk-cancel
-          onClick={() => capture.take(voiceSink)?.cancel()}
-          size={null}
-          variant={null}
-        >
-          <X class="size-5" />
-        </Button>
-      </Show>
+    <div class="relative flex items-center" data-voice-talk-bar ref={bar}>
       <Button
         aria-label={recording() ? 'Send what you said' : 'Talk to voice'}
         class={cn(
-          'relative flex h-12 min-w-0 flex-1 touch-none items-center justify-center gap-2 overflow-hidden rounded-full border font-mono text-[12px] font-normal transition-colors select-none',
+          'flex h-11 min-w-0 flex-1 touch-none items-center justify-center gap-2 overflow-hidden rounded-full border px-4 font-mono text-[12px] font-normal transition-colors select-none',
           recording()
-            ? 'border-error/50 bg-error/10 text-error'
+            ? 'border-error/40 bg-error/10 pl-12 text-error'
             : 'border-brand/40 bg-brand/10 text-brand active:bg-brand/20',
         )}
         data-voice-talk
@@ -126,11 +114,22 @@ export function TalkBar(props: { onTalk?: () => void }) {
             </>
           }
         >
-          <span class="size-2 shrink-0 animate-pulse-dot rounded-full bg-error" />
-          <Waveform class="h-6 min-w-0 flex-1" live />
-          <span class="shrink-0 pr-2 text-[11px]">{label()}</span>
+          <Waveform class="h-5 min-w-0 flex-1" live />
+          <span class="shrink-0 text-[11px]">{label()}</span>
         </Show>
       </Button>
+      <Show when={recording()}>
+        <Button
+          aria-label="Cancel talking"
+          class="absolute top-1.5 left-1.5 flex size-8 items-center justify-center rounded-full bg-background/70 text-muted-foreground hover:text-foreground"
+          data-voice-talk-cancel
+          onClick={() => capture.take(voiceSink)?.cancel()}
+          size={null}
+          variant={null}
+        >
+          <X class="size-4" />
+        </Button>
+      </Show>
     </div>
   )
 }

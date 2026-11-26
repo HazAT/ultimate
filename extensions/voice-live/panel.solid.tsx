@@ -31,6 +31,7 @@ import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
   api,
   cn,
+  column,
   Composer,
   ComposerRedirect,
   ConversationTranscript,
@@ -87,11 +88,13 @@ const [sheetRoom, setSheetRoom] = createRoot(() => createSignal(0))
 export function SheetComposer(props: SolidComposerProps) {
   const viewport = useViewport()
   return (
-    <Show when={viewport() === 'phone' && !props.dock} fallback={props.core}>
+    <Show when={!props.dock} fallback={props.core}>
       <Show
         when={!voiceOpen()}
         fallback={
-          <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
+          <Show when={viewport() === 'phone'} fallback={props.core}>
+            <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
+          </Show>
         }
       >
         <TalkOrType onTalk={() => setVoiceOpen(true)}>{props.core}</TalkOrType>
@@ -103,11 +106,11 @@ export function SheetComposer(props: SolidComposerProps) {
 function TalkOrType(props: { onTalk?: () => void; children: JSX.Element; dock?: boolean }) {
   return (
     <div class="flex flex-col">
-      <div class={cn('flex justify-end pb-1.5', props.dock ? 'px-4' : 'px-3')}>
+      <div class={cn('flex justify-end pb-1.5', column(props.dock))}>
         <ModeSwitch onToggle={dock.setTalking} talking={dock.talking()} />
       </div>
       <Show when={dock.talking()} fallback={props.children}>
-        <div class={cn('pb-2', props.dock ? 'px-4' : 'px-3')}>
+        <div class={cn('pb-2', column(props.dock))}>
           <TalkBar onTalk={props.onTalk} />
         </div>
       </Show>
@@ -122,7 +125,8 @@ const holdKeys = () => formatKeys(shortcut())[0].join('+')
 const tap = () => talkMode() === 'tap'
 const talkVerb = () => (tap() ? 'tap' : 'hold')
 
-const recording = () => dock.capturing()
+const capturing = () => dock.capturing()
+const recording = () => capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
 
 function Status(props: { class?: string }) {
@@ -213,13 +217,18 @@ function Unblock() {
 function VoiceLine(props: { words?: boolean }) {
   const spoken = () => props.words && (playerState().playing || playerState().paused)
   const blocked = () => playerState().blocked
+  const listening = () => capturing() && !dock.talking()
   const shown = () =>
     blocked() ||
-    recording() ||
+    listening() ||
     spoken() ||
     !!activity().current ||
     !!dock.error() ||
-    !!(dock.status() && !(audible() && dock.status() === 'Speaking')) ||
+    !!(
+      dock.status() &&
+      !(audible() && dock.status() === 'Speaking') &&
+      !(dock.talking() && (capturing() || working()))
+    ) ||
     draftOf().length > 0
   return (
     <Show when={shown()}>
@@ -228,7 +237,7 @@ function VoiceLine(props: { words?: boolean }) {
         data-voice-line
       >
         <Show
-          when={recording()}
+          when={listening()}
           fallback={
             <Show
               when={!blocked() && spoken()}
