@@ -16,10 +16,16 @@ export function watchRoots(roots: string[], appeared: (root: string) => void) {
         watcher?.close()
         for (;;) {
           try {
-            watcher = watch(ancestor, () => {
+            const directory = ancestor
+            const current = watch(directory, () => {
               if (!closed) attach()
             })
-            watchedAncestor = ancestor
+            current.on('error', (error) => {
+              console.error(`Cannot watch ${directory}:`, error)
+              current.close()
+            })
+            watcher = current
+            watchedAncestor = directory
             break
           } catch (error) {
             if (!isMissing(error)) throw error

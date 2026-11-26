@@ -104,7 +104,14 @@ function captureForNextPage() {
   }
   const html = view.innerHTML
   const css = [...document.styleSheets]
-    .flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText))
+    .flatMap((sheet) => {
+      try {
+        return [...sheet.cssRules].map((rule) => rule.cssText)
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'SecurityError') return []
+        throw error
+      }
+    })
     .join('\n')
   try {
     sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), html, css }))
@@ -155,7 +162,10 @@ export function rendered() {
 }
 
 addEventListener('pagehide', () => {
-  captureForNextPage()
-  keepPlace()
+  try {
+    captureForNextPage()
+  } finally {
+    keepPlace()
+  }
 })
 if (previousPageCover) deadline(unrenderedCoverLimitMs, uncover)

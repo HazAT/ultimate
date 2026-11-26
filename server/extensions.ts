@@ -796,11 +796,16 @@ export async function loadExtensions(
   const structure = ['add', 'unlink', 'addDir', 'unlinkDir'] as const
   const watchRemovals = (directory: string) => {
     try {
-      return watchDirectory(directory, (_event, name) => {
+      const watcher = watchDirectory(directory, (_event, name) => {
         if (closed || !name || records.get(name)?.path !== join(directory, name)) return
         if (lstatSync(join(directory, name), { throwIfNoEntry: false })) return
         enqueue(() => reload(new Set([name])))
       })
+      watcher.on('error', (error) => {
+        console.error(`Cannot watch ${directory}:`, error)
+        watcher.close()
+      })
+      return watcher
     } catch (error) {
       if (!isMissing(error)) throw error
       return undefined
