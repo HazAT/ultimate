@@ -352,11 +352,11 @@
   }
 }
 
-/* A touch keyboard on an unfolded foldable leaves about 320 px: the title bar and the status line give way to the
-   transcript until the keyboard closes. */
+/* A touch keyboard on an unfolded foldable leaves about 320 px: the conversation header and the status line give way
+   to the transcript until the keyboard closes. The title bar stays: it holds the surface tabs (Agent, Inbox, …). */
 @media (pointer: coarse) and (width >= 45rem) and (height < 30rem) {
   .safe-area:has(textarea:focus, input:focus, [contenteditable]:focus)
-    :is([data-ui='titlebar'], [data-ui='conversation-header'], .status-line) {
+    :is([data-ui='conversation-header'], .status-line) {
     display: none;
   }
 }

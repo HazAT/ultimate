@@ -105,6 +105,11 @@ it('keeps the page and the transcript within a 375 px phone', async () => {
     [783, 320, 0, 783],
     [412, 800, 0, 412],
   ])
+
+  // The unfolded keyboard left no way to switch surface: typing hid the title bar with the Agent and Inbox tabs.
+  await page.setViewportSize({ width: 783, height: 320 })
+  await page.locator('textarea').first().focus()
+  expect(await page.locator('[data-ui="titlebar"]').isVisible()).toBe(true)
 })
 
 // Unfolding a Pixel Fold and folding it back rewrapped a long answer and left the reader thousands of pixels away from
