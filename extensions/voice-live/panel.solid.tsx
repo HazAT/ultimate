@@ -135,8 +135,7 @@ const recording = () => capturing()
 const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
 
 function Status(props: { class?: string }) {
-  const text = () =>
-    dock.error() ?? (audible() && dock.status() === 'Speaking' ? undefined : dock.status())
+  const text = () => dock.error() ?? (speaking() ? undefined : dock.status())
   return (
     <output
       class={cn(
@@ -229,7 +228,7 @@ function VoiceLine(props: { words?: boolean }) {
     spoken() ||
     !!activity().current ||
     !!dock.error() ||
-    !!(dock.status() && !(audible() && dock.status() === 'Speaking') && !dock.talking()) ||
+    !!(dock.status() && !speaking() && !dock.talking()) ||
     draftOf().length > 0
   return (
     <Show when={shown()}>
@@ -274,6 +273,8 @@ const glow = `@keyframes voice-glow {
 }`
 
 const audible = () => playerState().playing
+const speaking = () =>
+  dock.status() === 'Speaking' && (playerState().playing || playerState().paused)
 
 function Settings() {
   return (
@@ -565,7 +566,9 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
     >
       <footer class="flex shrink-0 flex-col gap-1.5 pt-1">
         <div class="flex flex-col gap-1.5 px-4">
-          <PlaybackStrip />
+          <Show when={!dock.talking()}>
+            <PlaybackStrip />
+          </Show>
           <Collected fork={props.fork} />
           <VoiceLine />
         </div>
