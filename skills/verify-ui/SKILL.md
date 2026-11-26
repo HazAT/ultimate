@@ -31,6 +31,9 @@ Never claim a UI change works without an image of it.
   what it saw: a control, state or event that takes longer is a bug to report, not a wait to raise. Only a model turn
   (`idle`, `quiet` or `{entry: 'assistant'}` after a `send`) passes `timeoutMs`, at most `120000`. Never sleep in an
   `eval` (`setTimeout`): wait with `until`.
+- After a load, a reload or an open, wait for the control you need (`{until: {ui: 'Open voice'}}`) before acting on
+  it or calling anything stuck: a control that is not there yet is a read too early, not a bug. Only a failed `until`
+  is evidence.
 - `click`, `fill` and `press` only when that interaction itself is under test, scoped to its card:
   `[data-entry-id="42"] button:has-text("Retry")`.
 - `eval` reads what no control holds (transcript text, layout, styles); one expression, or an async IIFE for
