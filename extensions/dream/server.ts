@@ -282,7 +282,7 @@ function resetPreparationSleep(doc: { sleep?: Sleep }) {
 
 function startText(ask: Ask | undefined, agent: boolean) {
   const who = agent
-    ? "You pressed Start in the user's place during their hands-off goal, while nothing was running."
+    ? 'You pressed Start on the dream ask.'
     : ask
       ? 'The user pressed Start on the dream ask.'
       : 'The user pressed Dream.'

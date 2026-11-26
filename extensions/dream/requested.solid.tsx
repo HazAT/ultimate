@@ -22,10 +22,8 @@ function triggerText(automation: NonNullable<RequestedEntry['automation']>) {
 }
 
 function requestText(data: RequestedEntry | undefined) {
-  if (data?.agent) return 'I pressed Start for you during your hands-off goal'
-  return data?.automation
-    ? `you pressed Start · ${triggerText(data.automation)}`
-    : 'you pressed Dream'
+  if (!data?.automation) return 'you pressed Dream'
+  return `${data.agent ? 'I pressed Start · ' : ''}${triggerText(data.automation)}`
 }
 
 export function RequestedCard(props: { entry: EntryRecord }) {

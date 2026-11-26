@@ -136,7 +136,9 @@ export async function fired(host: ExtensionHost, tx: Tx, id: string, fire: numbe
     name: automation?.name ?? builtIn.name,
     ...(pause !== undefined ? { pause } : {}),
   }
-  ;(await tx.doc(Next, ROOT_CONVERSATION_ID)).ask = { at: Date.now(), automation: asked }
+  const next = await tx.doc(Next, ROOT_CONVERSATION_ID)
+  if (next.ask) return
+  next.ask = { at: Date.now(), automation: asked }
   const data: RequestedEntry = { automation: asked }
   await host.need(ConversationsApi).submitAfter(tx, ultimate, {
     type: 'write',

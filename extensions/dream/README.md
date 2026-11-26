@@ -51,9 +51,9 @@ A chapter asks once: while an ask is open, and after a dream branch was marked o
 neither wakes @ultimate nor opens an ask. A skipped ask opens again at the next fire. The Dream button still starts
 one; the next chapter starts with an empty `dream.next`.
 
-A fire's own input wakes @ultimate; reactor `dream/requested` adds a passive `dream.requested` entry beside it (request
-id `dream.requested:<automation>:<fire>`), which says what a dream is and where its workflow lives, so the fire costs
-one turn.
+A fire's own input wakes @ultimate; reactor `dream/requested` opens the ask (unless one is already open) and adds a
+passive `dream.asked` entry beside it (request id `dream.asked:<automation>:<fire>`), which asks @ultimate to park its
+handoff, so the fire costs one turn.
 
 ## Chapters
 
@@ -129,7 +129,7 @@ restart never returns: the new host opens the requested chapter.
 
 ## Actions
 
-`refs.ts` holds the document and actions: `start`, `ready`, `dismiss`, `asleep`, `switch` (user-only), `prepare`,
-`chapters`, and `stats`,
+`refs.ts` holds the document and actions: `ready`, `dismiss`, `asleep`, `switch`, `later`, `skip` (user-only), `start`
+(@ultimate presses it only during a hands-off goal), `park`, `prepare`, `chapters`, and `stats`,
 which reads tool calls from `<home>/trace.sqlite` read-only: calls, failures and mean duration per tool, the 20 most
 frequent errors (each with its two newest calls as `#<conversation>/<entry>`), and enabled tools never called in the trace's window (7 days or 200k rows).

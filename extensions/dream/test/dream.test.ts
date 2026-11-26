@@ -26,6 +26,7 @@ import {
   AUTOMATION_NAME,
   BuiltInDoc,
   ensureAutomation,
+  fired,
   PAUSE_NAME,
   PauseDoc,
 } from '../built-ins.ts'
@@ -298,9 +299,24 @@ it("asks the user on a built-in's fire instead of dreaming, and Start launches @
   await until(async () => (await f.requests()).length === 2)
   expect((await f.requests())[1].type).toBe('input')
   expect(await f.lastAsk()).toContain('Open: three branches.')
-  expect(await f.lastAsk()).toContain('in the user')
+  expect(await f.lastAsk()).toContain('"agent":true')
   expect(await ask()).toBeUndefined()
   await expect(actions.skip(null, f.call)).rejects.toThrow('No dream ask is open')
+})
+
+it('keeps the open ask when a second fire passed the hold before the first one opened it', async () => {
+  const f = await fixture()
+  const id = (await f.own())!
+  const pause = (await f.ownPause())!
+  // Both fires were queued past the hold; their reactors run one after the other.
+  f.host.harness().resume()
+  await f.harness.commit((tx) => fired(f.host, tx, id, 1), context)
+  await f.harness.commit((tx) => fired(f.host, tx, pause, 1), context)
+  expect((await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.ask?.automation.id).toBe(
+    id,
+  )
+  await until(async () => (await f.requests()).length === 1)
+  expect(await f.requests()).toEqual([{ requestId: `dream.asked:${id}:1`, type: 'write' }])
 })
 
 it('dreams once per chapter: neither built-in fires after a dream ran in it', async () => {

@@ -59,7 +59,7 @@ const runningText = (running: number) =>
 
 export function useAskItems() {
   const state = useAskState()
-  const pane = <AskPane />
+  const pane = <AskPane state={state} />
   return createMemo((): InboxItem[] => {
     const ask = state.ask()
     if (!ask || state.hidden()) return []
@@ -83,9 +83,10 @@ export function useAskItems() {
   })
 }
 
-function AskPane() {
-  const state = useAskState()
-  return <Show when={state.ask()}>{(ask) => <AskBody ask={ask()} state={state} />}</Show>
+function AskPane(props: { state: ReturnType<typeof useAskState> }) {
+  return (
+    <Show when={props.state.ask()}>{(ask) => <AskBody ask={ask()} state={props.state} />}</Show>
+  )
 }
 
 function AskBody(props: { ask: Ask; state: ReturnType<typeof useAskState> }) {
