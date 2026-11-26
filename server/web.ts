@@ -184,6 +184,10 @@ export async function createWeb(options: {
     const brokenFolders: string[] = []
     let result: WebBuildResult
     for (;;) {
+      if (options.held()) {
+        stale = true
+        return
+      }
       const request: WebBuildRequest = {
         ultimateRoot,
         projectRoot,

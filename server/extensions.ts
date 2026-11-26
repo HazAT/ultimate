@@ -449,15 +449,18 @@ export async function loadExtensions(
             : {}),
         }))
     },
-    setProjectDecision: (local) =>
-      reloadSettingsNow(() => {
+    setProjectDecision: async (local) => {
+      await reloadSettingsNow(() => {
         if (heldForNewCore())
           throw new Error('The core changed on disk: decide on project trust after the restart')
         new ProjectTrustStore(join(host.userHome, '.ultimate')).set(
           decisionRoot(host.projectRoot),
           local,
         )
-      }),
+      })
+      if (heldForNewCore())
+        throw new Error('Project trust is saved; it takes effect after the restart to the new core')
+    },
     reloadExtensions: () => reloadSettingsNow(() => {}),
     doc: findDoc,
     metadata: Metadata,
