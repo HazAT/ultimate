@@ -22,7 +22,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branches, WorkspacesApi } from '../workspaces/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { LineageApi, Replies } from '../lineage/api.ts'
-import { Judgements, Messages, MessagesApi } from './api.ts'
+import { Judgements, Messages, MessagesApi, Passive } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.ts'
 import { CallerAction, SettleAction } from './refs.ts'
@@ -47,7 +47,7 @@ import {
   tellTask,
   tell,
 } from './remote.ts'
-import { branchTool } from './branch.ts'
+import { branchTool, startBranch } from './branch.ts'
 import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 export { gist, openQuestionsNote } from './questions.ts'
@@ -252,6 +252,17 @@ export default function messages(host: ExtensionHost) {
         await retireOutput(host, tx, by, `landing:${result}`, 'The landing card was not delivered')
     },
     submitLanding: async (tx, to, input, id, result) => {
+      if (await host.want(Passive)?.isPassive(tx, to.id)) {
+        await to.submit(tx, {
+          type: 'write',
+          requestId: input.requestId,
+          entry: {
+            ...(input.entry ?? { kind: 'pi.user' }),
+            model: [{ role: 'user', content: input.content, timestamp: Date.now() }],
+          },
+        })
+        return
+      }
       await submitOutput(host, tx, to, input, { kind: 'branch', id }, `#${id}`, `landing:${result}`)
     },
   })
@@ -276,6 +287,7 @@ export default function messages(host: ExtensionHost) {
       ),
     dismiss: (messageId, ctx, device, call) => dismiss(host, messageId, ctx, { device, call }),
     send: (from, input, requestId, ctx) => send(host, from, input, ctx, { requestId }),
+    branch: (from, input, requestId, ctx) => startBranch(host, from, input, requestId, ctx),
     tell: (from, input, ctx) => tell(host, from, input, ctx),
     owed: (tx, to, automation) => owed(host, tx, to, automation),
     submitFire: (tx, to, input, { id, name }) =>

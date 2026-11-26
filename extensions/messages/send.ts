@@ -3,7 +3,7 @@ import type { Context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
-import { AskedCalls, Messages, MessageSent } from './api.ts'
+import { AskedCalls, Messages, MessageSent, Passive } from './api.ts'
 import type { Message, Question } from './api.ts'
 import type { Judged, Via } from './refs.ts'
 import { checkQuestions, gist, openQuestion } from './questions.ts'
@@ -116,10 +116,11 @@ export async function send(
     : await senderName(host, from, ctx)
   const toLabel = await senderName(host, to, ctx)
   const branchStarter = from === 'user' ? await starterOf(host, to, ctx) : starter
-  const watcherId =
-    branchStarter !== undefined && Object.values(standing ?? {}).includes(branchStarter)
-      ? branchStarter
-      : primaryId
+  const branchStarterIsWatcher =
+    branchStarter !== undefined &&
+    (Object.values(standing ?? {}).includes(branchStarter) ||
+      (await host.want(Passive)?.label(branchStarter, ctx)) !== undefined)
+  const watcherId = branchStarterIsWatcher ? branchStarter : primaryId
   const watcher =
     watcherId === undefined ? undefined : await host.harness().conversation(watcherId, ctx)
   return host.harness().commit(async (tx) => {

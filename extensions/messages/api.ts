@@ -109,13 +109,26 @@ export type MessagesService = {
     device?: Device,
     call?: { taskId: TaskId; callId: string },
   ): Promise<number>
-  /** Send a one-way message from conversation `from` to `to` (`#id`, `@name` or `user`), once per `requestId`. */
+  /** Send a message from conversation `from` to `to` (`#id`, `@name` or `user`), once per `requestId`. */
   send(
     from: ConversationId,
-    input: { to: string; text: string; reply: false },
+    input: { to: string; text: string; reply?: boolean; steer?: boolean },
     requestId: string,
     ctx: Context,
   ): Promise<number>
+  /** Start a coordinator branch from `from` on `input.root` (or the project's only root) and send its prompt. */
+  branch(
+    from: ConversationId,
+    input: {
+      prompt: string
+      title?: string
+      root?: ConversationId
+      family?: string
+      isolated?: boolean
+    },
+    requestId: string,
+    ctx: Context,
+  ): Promise<{ id: ConversationId; message: number }>
   /**
    * From the primary agent's conversation `from`, message another project's primary agent (on `machine`, else where it
    * runs): only that Ultimate receives it. With `reply`, its answer returns here as a reply. Returns this log's id of the
@@ -171,6 +184,15 @@ export type JudgeService = {
 }
 /** The extension point that judges whether a branch's answer wakes its starter; classify provides it. `want` it. */
 export const Judge = defineApi<JudgeService>()('messages.judge')
+
+export type PassiveService = {
+  /** Whether conversation `id` receives deliveries as written entries instead of waking a model run. */
+  isPassive(tx: Tx, id: ConversationId): Promise<boolean>
+  /** Display label for passive conversation `id` in delivered prompts, or undefined when `id` is not passive. */
+  label(id: ConversationId, ctx: Context): Promise<string | undefined>
+}
+/** Conversations that collect messages, replies and landings without running a model turn; orchestrator provides it. `want` it. */
+export const Passive = defineApi<PassiveService>()('messages.passive')
 
 /** Messages between conversations; core, so `need` it. */
 export const MessagesApi = defineApi<MessagesService>()('messages')

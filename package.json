@@ -2,12 +2,16 @@
   "name": "ultimate",
   "private": true,
   "bin": {
-    "ultimate": "bin/ultimate.ts"
+    "ultimate": "bin/ultimate.ts",
+    "ultimate-mcp": "scripts/mcp.ts",
+    "ultimate-orch": "scripts/orch.ts"
   },
   "type": "module",
   "scripts": {
     "dev": "node server/main.ts",
     "start": "node bin/ultimate.ts",
+    "orch": "node scripts/orch.ts",
+    "mcp": "node scripts/mcp.ts",
     "check": "vp check && node scripts/deps.ts && node scripts/pi-upstream.ts",
     "deps": "node scripts/deps.ts",
     "weigh": "node scripts/weigh.ts",

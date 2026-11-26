@@ -23,7 +23,7 @@ import type { LandingOutput, Owner, Serves } from './addresses.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { locate, postAction } from '../../lib/remote.ts'
-import { Messages, MessageSent } from './api.ts'
+import { Messages, MessageSent, Passive } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
 import { append, terminal } from './log.ts'
@@ -113,7 +113,11 @@ export function delivery(host: ExtensionHost) {
           : body
         const deduplicatedPlacementRequestId = `board:${m.id}`
         const branch = typeof m.from === 'number' ? m.from : undefined
-        const draft: SubmissionDraft = task.input.note
+        const passive = await host
+          .harness()
+          .commit((tx) => host.want(Passive)?.isPassive(tx, m.to as ConversationId) ?? false, ctx)
+        const writeOnly = task.input.note || passive
+        const draft: SubmissionDraft = writeOnly
           ? {
               type: 'write',
               requestId: deduplicatedPlacementRequestId,
@@ -200,10 +204,10 @@ export function delivery(host: ExtensionHost) {
             if ('entry' in placement && placement.entry !== undefined)
               stored.entry = placement.entry
           }
-          if (task.input.note) return terminal
+          if (writeOnly) return terminal
           return notified ? asleepUntilSettled({ phase: 'settled' as const }) : undefined
         }, ctx)
-        if (task.input.note || notified) return
+        if (writeOnly || notified) return
         const admittedBeforeNotify = await receipt.wait(ctx)
         await runtime.commit(async (tx) => {
           await signalSettled(tx, task.id, admittedBeforeNotify)
@@ -439,7 +443,15 @@ export function delivery(host: ExtensionHost) {
               }
           await runtime.commit(async (tx) => {
             if (sender) {
-              if (draft.type === 'input' && typeof m.from === 'number')
+              const passive =
+                (await host.want(Passive)?.isPassive(tx, m.to as ConversationId)) ?? false
+              if (passive && draft.type === 'input')
+                await sender.submit(tx, {
+                  type: 'write',
+                  requestId: deduplicatedReplyRequestId,
+                  entry: { ...entry, model: [{ role: 'user', content, timestamp: Date.now() }] },
+                })
+              else if (draft.type === 'input' && typeof m.from === 'number')
                 await submitOutput(
                   host,
                   tx,

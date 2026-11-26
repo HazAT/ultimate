@@ -15,7 +15,7 @@ import type { DeliveredMessage } from './refs.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
 import type { Remote, Serves } from './refs.ts'
-import { Messages } from './api.ts'
+import { Messages, Passive } from './api.ts'
 import { Roots, Tally } from '../lineage/api.ts'
 import { isOpen } from '../../lib/message-state.ts'
 
@@ -240,7 +240,9 @@ export async function senderName(
   if (typeof id !== 'number') return 'another Ultimate'
   const index = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
   const name = Object.keys(index ?? {}).find((candidate) => index?.[candidate] === id)
-  return `#${id}${name ? ` (@${name})` : ''}`
+  if (name) return `#${id} (@${name})`
+  const passive = await host.want(Passive)?.label(id, ctx)
+  return `#${id}${passive ? ` (${passive})` : ''}`
 }
 export async function resolveRecipient(
   host: ExtensionHost,
