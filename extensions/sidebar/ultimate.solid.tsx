@@ -1,3 +1,4 @@
+import { Pause } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
@@ -87,7 +88,7 @@ export function UltimateButton() {
           aria-current={active() ? 'page' : undefined}
           aria-label={`Open @ultimate on mobile (${label()})`}
           class={cn(
-            'flex h-5 shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-[11.5px] font-normal transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
+            'flex size-9 shrink-0 items-center justify-center rounded-md text-[11.5px] font-normal transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
             active() && 'text-foreground',
           )}
           data-ui="ultimate-button"
@@ -98,22 +99,18 @@ export function UltimateButton() {
           <AgentMark
             name="ultimate"
             presence={
-              working()
-                ? 'working'
-                : state() === 'waits'
-                  ? 'waiting'
+              state() === 'waits'
+                ? 'waiting'
+                : state() === 'working'
+                  ? 'working'
                   : state() === 'awaiting'
                     ? 'awaiting'
                     : undefined
             }
             size="sm"
           />
-          @ultimate
-          <Show when={state() === 'working' && word() !== 'working'}>
-            <span class="text-brand">{word()}</span>
-          </Show>
-          <Show when={state() === 'paused' || state() === 'waits'}>
-            <span class={stateTone[state()]}>{state() === 'waits' ? waiting() : 'paused'}</span>
+          <Show when={state() === 'paused'}>
+            <Pause aria-hidden="true" class={cn('-ml-0.5 size-3', stateTone.paused)} />
           </Show>
         </TooltipTrigger>
         <TooltipContent>Talk to @ultimate · {label()}</TooltipContent>

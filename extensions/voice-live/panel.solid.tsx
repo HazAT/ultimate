@@ -735,7 +735,7 @@ export function VoiceToggle() {
     <Button
       aria-label={voiceOpen() ? 'Hide voice' : 'Open voice'}
       class={cn(
-        'flex h-6 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground',
+        'flex h-6 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground max-md:size-9 max-md:justify-center max-md:px-0',
         session()?.id !== undefined && 'text-brand',
       )}
       onClick={() => setVoiceOpen(!voiceOpen())}
@@ -747,7 +747,7 @@ export function VoiceToggle() {
       <Show when={session()?.id !== undefined}>
         <span class="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
       </Show>
-      voice
+      <span class="max-md:hidden">voice</span>
     </Button>
   )
 }

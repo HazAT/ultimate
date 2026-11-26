@@ -38,6 +38,11 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 vi.mock('../../../../web/src/sdk/resume.ts', () => ({ covered: () => false }))
+vi.stubGlobal('matchMedia', () => ({
+  matches: true,
+  addEventListener() {},
+  removeEventListener() {},
+}))
 
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
 import { createTranscriptFrame, Transcript } from '../../../../web/src/sdk/solid.ts'
