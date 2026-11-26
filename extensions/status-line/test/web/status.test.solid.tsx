@@ -37,6 +37,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
 })
 
+vi.stubGlobal('matchMedia', () => ({
+  matches: true,
+  addEventListener() {},
+  removeEventListener() {},
+}))
+
 import { store } from '../../../../web/src/sdk/client.ts'
 import { Connection, Context, GlobalUsage, Tokens } from '../../status.solid.tsx'
 
