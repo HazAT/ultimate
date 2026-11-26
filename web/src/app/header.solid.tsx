@@ -34,7 +34,7 @@ import { useExternal } from '../sdk/page.ts'
 import { HOME, panelItems, slotItems, surfaceItems } from '../sdk/registry.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
 import { Shortcut } from './palette.solid.tsx'
-import { projectName } from './project.ts'
+import { projectTitle } from './project.ts'
 
 export function IconButton(props: {
   label: string
@@ -246,7 +246,7 @@ function PhoneMore(props: { panels: boolean }) {
         align="end"
         class="flex w-64 max-w-[calc(100vw-1rem)] flex-col gap-0.5 p-1.5 font-mono text-[12px]"
       >
-        <Show when={projectName(system())}>
+        <Show when={projectTitle(system())}>
           {(name) => (
             <span class="truncate px-2 pt-1 pb-1.5 section-label" title={system()?.project.root}>
               {name()}
@@ -299,11 +299,18 @@ function PhoneHeader(props: { children?: JSX.Element; sidebar: boolean; panels: 
         <CurrentSurfaceIcon />
         <ChevronDown aria-hidden="true" class="size-3 opacity-60" />
       </SurfaceMenu>
-      <div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-1">
-        <Show when={props.children !== undefined} fallback={<Trail />}>
+      <Show
+        when={props.children !== undefined}
+        fallback={
+          <div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-1">
+            <Trail />
+          </div>
+        }
+      >
+        <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pl-1 [scrollbar-width:none]">
           {props.children}
-        </Show>
-      </div>
+        </div>
+      </Show>
       <div class="flex shrink-0 items-center gap-0.5">
         <Slot fallback={inlineFailure} name="header.right" />
         <Slot fallback={inlineFailure} name="titlebar.left" phone />

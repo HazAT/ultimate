@@ -1,4 +1,5 @@
-import { createMemo } from 'solid-js'
+import { Pause } from '@lucide/solid'
+import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import { useProvided, cn, ParkedRuns, ROOT, useDocOf, useTasks } from '@/sdk/solid'
@@ -10,6 +11,7 @@ import {
   conversationState,
   conversationWait,
   emptyMessages,
+  stateTone,
   stateWord,
   useUnderway,
   waitLabel,
@@ -97,16 +99,19 @@ export function UltimateButton() {
           <AgentMark
             name="ultimate"
             presence={
-              working()
-                ? 'working'
-                : state() === 'waits'
-                  ? 'waiting'
+              state() === 'waits'
+                ? 'waiting'
+                : state() === 'working'
+                  ? 'working'
                   : state() === 'awaiting'
                     ? 'awaiting'
                     : undefined
             }
             size="sm"
           />
+          <Show when={state() === 'paused'}>
+            <Pause aria-hidden="true" class={cn('-ml-0.5 size-3', stateTone.paused)} />
+          </Show>
         </TooltipTrigger>
         <TooltipContent>Talk to @ultimate · {label()}</TooltipContent>
       </Tooltip>

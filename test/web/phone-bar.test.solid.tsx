@@ -57,7 +57,7 @@ it('folds the title bar into the surface header on a phone', async () => {
   const header = container.querySelector('[data-ui="conversation-header"]')!
   expect(container.querySelector('[data-ui="titlebar"]')).toBeNull()
   expect(header.querySelector('[data-phone-item]')).not.toBeNull()
-  expect(container.querySelector('[data-tucked-item]')).toBeNull()
+  expect(document.querySelector('[data-tucked-item]')).toBeNull()
 
   await settle()
   const ref = (label: string) => agent.snapshot().find((entry) => entry.label === label)!.ref
