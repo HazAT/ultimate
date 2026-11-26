@@ -47,7 +47,7 @@ vi.stubGlobal(
 
 const { read, resume, stop, current, playSection, sectionOf } =
   await import('../../player.solid.tsx')
-const { BLOCKED, speech } = await import('../../voice.solid.tsx')
+const { speech } = await import('../../voice.solid.tsx')
 const conversation = 5 as ConversationId
 
 it('a section prepared after Stop, or for an earlier read of the same message, never plays', async () => {
@@ -109,14 +109,15 @@ it('a tap primes the system voice, and a voice the browser refuses waits paused 
   said.length = 0
   prepares.length = 0
   dispatchEvent(new Event('pointerdown'))
-  expect(said).toEqual([''])
+  expect(said).toEqual([' '])
   read(conversation, 4, 'Blocked.')
   prepares[0].resolve({ sections: 1, spoken: 'Blocked here.' })
   await vi.waitFor(() => expect(said.at(-1)).toBe('Blocked here.'))
   utterances.at(-1)!.listeners.get('error')!({ error: 'not-allowed' })
-  expect(current()).toMatchObject({ entry: 4, status: 'paused', error: BLOCKED })
+  expect(current()).toMatchObject({ entry: 4, status: 'paused', blocked: true })
+  expect(current()?.error).toBeUndefined()
   resume()
-  expect(current()).toMatchObject({ entry: 4, status: 'playing' })
+  expect(current()).toMatchObject({ entry: 4, status: 'playing', blocked: false })
   expect(said.at(-1)).toBe('Blocked here.')
   expect(prepares).toHaveLength(1)
   stop()

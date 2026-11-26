@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest'
-import { clauses, createPlayer, fetchedVoice, isBlocked, splitReply } from '../speech.ts'
+import { clauses, createPlayer, fetchedVoice, splitReply } from '../speech.ts'
 import { until } from '../../../test/helpers.ts'
 
-function fakeVoice(options: { rejectPlay?: boolean } = {}) {
+function fakeVoice(options: { refuse?: () => Error | undefined } = {}) {
   let selected: 'openai' | 'system' = 'openai'
   const spoken: string[] = []
   const system = {
@@ -19,7 +19,8 @@ function fakeVoice(options: { rejectPlay?: boolean } = {}) {
     paused: true,
     played: [] as [string, number][],
     play: async () => {
-      if (options.rejectPlay) throw new DOMException('Needs a user gesture', 'NotAllowedError')
+      const refused = options.refuse?.()
+      if (refused) throw refused
       audio.paused = false
       audio.played.push([audio.src, audio.playbackRate])
       listeners.get('playing')?.()
@@ -150,7 +151,9 @@ it('cutting in stops playback at once and aborts the queued and prefetching requ
 })
 
 it('a clip that cannot play stops the reply and aborts the clauses and sentence still being read', async () => {
-  const { player, requests, failures } = fakeVoice({ rejectPlay: true })
+  const { player, requests, failures } = fakeVoice({
+    refuse: () => new Error('The audio could not play'),
+  })
   const reply =
     'Your starter is ready when it doubles within a few hours of feeding, smells pleasantly tangy and shows bubbles all through the jar. Then bake. '
   player.load('turn', splitReply([{ text: reply, final: true }]).sentences, false)
@@ -164,7 +167,45 @@ it('a clip that cannot play stops the reply and aborts the clauses and sentence 
     [' smells pleasantly tangy and shows bubbles all through the jar.', true],
   ])
   expect(player.state.get()).toMatchObject({ playing: false })
-  expect(isBlocked(failures[0])).toBe(true)
+})
+
+it('a play the browser refuses before a tap waits paused and blocked, and ▶ plays that sentence', async () => {
+  let gesture = false
+  const { player, request, audio, failures } = fakeVoice({
+    refuse: () => (gesture ? undefined : new DOMException('Needs a gesture', 'NotAllowedError')),
+  })
+  player.load('turn', splitReply([{ text: 'One. Two.', final: true }]).sentences, false)
+  player.play(0)
+  await flush()
+  request('One.').resolve('data:one')
+  await until(() => player.state.get().blocked)
+  expect(player.state.get()).toMatchObject({ index: 0, playing: false, paused: true })
+  expect(failures).toEqual([])
+  gesture = true
+  player.resume()
+  await until(() => audio.played.length === 1)
+  expect(player.state.get()).toMatchObject({ index: 0, playing: true, blocked: false })
+})
+
+it('a refusal from a sentence that was cut off never pauses the one playing now', () => {
+  const refusals: (() => void)[] = []
+  const player = createPlayer({
+    rate: () => 1,
+    enabled: () => true,
+    listening: () => false,
+    frame: () => () => {},
+    engine: () => ({
+      say: (_text, _rate, events) => void refusals.push(events.blocked),
+      halt() {},
+      reset() {},
+    }),
+  })
+  player.load('a', splitReply([{ text: 'One.', final: true }]).sentences, false)
+  player.play(0)
+  player.load('b', splitReply([{ text: 'Two.', final: true }]).sentences, false)
+  player.play(0)
+  refusals[0]()
+  expect(player.state.get()).toMatchObject({ key: 'b', playing: true, blocked: false })
 })
 
 it('a tap unlocks the one audio element that later sentences play through, without cutting off a clip', async () => {

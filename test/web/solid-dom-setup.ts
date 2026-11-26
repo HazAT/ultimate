@@ -10,6 +10,8 @@ Element.prototype.scrollIntoView = function () {}
 Element.prototype.checkVisibility = () => true
 Element.prototype.getClientRects = () => [] as unknown as DOMRectList
 document.elementFromPoint = () => null
+HTMLMediaElement.prototype.play = () => Promise.resolve()
+HTMLMediaElement.prototype.pause = () => {}
 document.elementsFromPoint = () => []
 globalThis.ResizeObserver ??= class {
   observe() {}

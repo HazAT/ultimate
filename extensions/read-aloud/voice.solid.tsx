@@ -5,7 +5,7 @@ import { cell } from '../../lib/cell.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
 import { SpeakAction } from './refs.ts'
 import type { OpenAiVoice } from './refs.ts'
-import { createPlayer, fetchedVoice, isBlocked, systemVoice, systemVoices } from './speech.ts'
+import { createPlayer, fetchedVoice, systemVoice, systemVoices } from './speech.ts'
 import type { Sentence } from './speech.ts'
 import { VOICES } from './voices.ts'
 
@@ -36,19 +36,11 @@ export const speech = createRoot(() => {
     },
     audio: new Audio(),
     failed: (error) => {
-      if (isBlocked(error)) return blocked()
       failure.set({ key: player.state.get().key, message: `OpenAI voice: ${errorMessage(error)}` })
       player.stop()
     },
   })
-  const blocked = () => {
-    failure.set({ key: player.state.get().key, message: BLOCKED })
-    player.pause()
-  }
-  const system = systemVoice(blocked)
-  const unblocked = () => {
-    if (failure.get()?.message === BLOCKED) failure.set(undefined)
-  }
+  const system = systemVoice()
   let holding = () => false
   const player = createPlayer({
     rate,
@@ -59,7 +51,14 @@ export const speech = createRoot(() => {
   })
   createEffect(openaiOn, () => player.switched())
   for (const type of ['pointerdown', 'pointerup', 'keydown'] as const)
-    addEventListener(type, player.unlock, { capture: true })
+    addEventListener(
+      type,
+      () => {
+        openai.unlock?.()
+        system.unlock?.()
+      },
+      { capture: true },
+    )
   return {
     ...player,
     load(
@@ -71,18 +70,6 @@ export const speech = createRoot(() => {
       failure.set(undefined)
       holding = hold
       player.load(key, sentences, streaming)
-    },
-    resume() {
-      unblocked()
-      player.resume()
-    },
-    toggle() {
-      unblocked()
-      player.toggle()
-    },
-    play(index: number) {
-      unblocked()
-      player.play(index)
     },
     failure,
     voice,

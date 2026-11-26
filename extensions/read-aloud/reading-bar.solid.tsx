@@ -21,7 +21,7 @@ export function ReadingBar(props: {
       name={props.name}
       onShow={props.onShow}
       status={
-        props.reading.error === BLOCKED
+        props.reading.blocked
           ? BLOCKED
           : props.reading.error
             ? 'Could not read'

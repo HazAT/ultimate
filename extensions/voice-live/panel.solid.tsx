@@ -5,6 +5,7 @@ import {
   CircleDashed,
   Maximize2,
   Minimize2,
+  Play,
   Settings2,
   SquareArrowOutUpRight,
   X,
@@ -64,7 +65,7 @@ import {
 import { PickAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { PickControl } from '../models/ui.solid.tsx'
 import type { ModelPick } from '../models/ui.solid.tsx'
-import { PlaybackBar, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
+import { PlaybackBar, SOUND_BLOCKED, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Voicing, Waveform } from './turns.solid.tsx'
 
@@ -148,9 +149,26 @@ function Working() {
   )
 }
 
+function Unblock() {
+  return (
+    <Button
+      aria-label="Play the voice dock's reply"
+      class="h-6 min-w-0 justify-start gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-brand hover:bg-brand/10"
+      onClick={() => speech.resume()}
+      size={null}
+      variant={null}
+    >
+      <Play class="size-3 shrink-0" />
+      <span class="truncate">{SOUND_BLOCKED}</span>
+    </Button>
+  )
+}
+
 function VoiceLine(props: { words?: boolean }) {
   const spoken = () => props.words && (playerState().playing || playerState().paused)
+  const blocked = () => props.words && playerState().blocked
   const shown = () =>
+    blocked() ||
     recording() ||
     spoken() ||
     !!activity().current ||
@@ -167,10 +185,12 @@ function VoiceLine(props: { words?: boolean }) {
           when={recording()}
           fallback={
             <Show
-              when={spoken()}
+              when={!blocked() && spoken()}
               fallback={
-                <Show when={activity().current} fallback={<Status class="flex-1" />}>
-                  <Working />
+                <Show when={!blocked()} fallback={<Unblock />}>
+                  <Show when={activity().current} fallback={<Status class="flex-1" />}>
+                    <Working />
+                  </Show>
                 </Show>
               }
             >
@@ -309,7 +329,9 @@ function PlaybackStrip() {
     >
       <PlaybackBar
         name="Voice dock"
-        status={playerState().paused ? 'Paused' : 'Speaking'}
+        status={
+          playerState().blocked ? SOUND_BLOCKED : playerState().paused ? 'Paused' : 'Speaking'
+        }
         toggle={() => speech.toggle()}
       />
     </Show>

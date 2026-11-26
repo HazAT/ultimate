@@ -18,6 +18,7 @@ export type PlayerState = {
   charIndex: number
   playing: boolean
   paused: boolean
+  blocked: boolean
   streaming: boolean
   startedAt: number
 }
@@ -83,6 +84,7 @@ export type SpeechEvents = {
   start: (seconds?: number) => void
   boundary: (charIndex: number) => void
   end: () => void
+  blocked: () => void
 }
 
 export type SpeechEngine = {
@@ -104,7 +106,7 @@ export const systemVoices = () => {
 export const isBlocked = (error: unknown) =>
   error instanceof Error && error.name === 'NotAllowedError'
 
-export function systemVoice(blocked: () => void): SpeechEngine {
+export function systemVoice(): SpeechEngine {
   let primed = false
   return {
     say(text, rate, events) {
@@ -118,14 +120,16 @@ export function systemVoice(blocked: () => void): SpeechEngine {
       })
       utterance.addEventListener('end', events.end)
       utterance.addEventListener('error', (event) =>
-        event.error === 'not-allowed' ? blocked() : events.end(),
+        event.error === 'not-allowed' ? events.blocked() : events.end(),
       )
       speechSynthesis.speak(utterance)
     },
     unlock() {
       if (primed || !('speechSynthesis' in globalThis) || speechSynthesis.speaking) return
-      primed = true
-      speechSynthesis.speak(new SpeechSynthesisUtterance(''))
+      const silence = new SpeechSynthesisUtterance(' ')
+      silence.volume = 0
+      silence.addEventListener('end', () => (primed = true))
+      speechSynthesis.speak(silence)
     },
     halt: () => globalThis.speechSynthesis?.cancel(),
     reset: () => globalThis.speechSynthesis?.cancel(),
@@ -245,6 +249,7 @@ export function fetchedVoice(options: {
       if (fetched.get(text)?.parts === parts) fetched.delete(text)
       events.end()
     } catch (error) {
+      if (mine === turn && isBlocked(error)) return events.blocked()
       if (fetched.get(text)?.parts === parts) drop(text)
       if (mine !== turn) return
       options.failed(error)
@@ -291,6 +296,7 @@ export function createPlayer(options: {
     charIndex: -1,
     playing: false,
     paused: false,
+    blocked: false,
     streaming: false,
     startedAt: 0,
   })
@@ -313,7 +319,7 @@ export function createPlayer(options: {
     if (!item) return
     if (options.listening()) {
       engine.halt()
-      publish({ index, charIndex: -1, playing: false, paused: true })
+      publish({ index, charIndex: -1, playing: false, paused: true, blocked: false })
       return
     }
     const mine = ++token
@@ -349,8 +355,13 @@ export function createPlayer(options: {
       if (items[index + 1]) play(index + 1)
       else publish({ playing: false, charIndex: -1 })
     }
-    publish({ index, charIndex: -1, playing: true, paused: false, startedAt })
-    engine.say(item.text, rate, { start, boundary, end: finished })
+    const blocked = () => {
+      if (mine !== token) return
+      halt()
+      publish({ charIndex: -1, playing: false, paused: true, blocked: true })
+    }
+    publish({ index, charIndex: -1, playing: true, paused: false, blocked: false, startedAt })
+    engine.say(item.text, rate, { start, boundary, end: finished, blocked })
     prefetchNext()
   }
 
@@ -383,12 +394,20 @@ export function createPlayer(options: {
       drop()
       if (state.get().key === key) {
         items = [...sentences]
-        publish({ index: -1, charIndex: -1, streaming })
+        publish({ index: -1, charIndex: -1, blocked: false, streaming })
         return
       }
       release()
       items = [...sentences]
-      publish({ key, index: -1, charIndex: -1, playing: false, paused: false, streaming })
+      publish({
+        key,
+        index: -1,
+        charIndex: -1,
+        playing: false,
+        paused: false,
+        blocked: false,
+        streaming,
+      })
     },
     push(key: string, sentence: Sentence) {
       if (!options.enabled() || state.get().key !== key) return
@@ -398,7 +417,6 @@ export function createPlayer(options: {
       else prefetchNext()
     },
     play,
-    unlock: () => options.engine().unlock?.(),
     switched() {
       const now = state.get()
       if (now.playing) play(Math.max(0, now.index))
@@ -424,7 +442,7 @@ export function createPlayer(options: {
     },
     stop() {
       drop()
-      publish({ playing: false, paused: false, streaming: false, charIndex: -1 })
+      publish({ playing: false, paused: false, blocked: false, streaming: false, charIndex: -1 })
     },
     sentence(step: number) {
       if (items.length) play(Math.min(items.length - 1, Math.max(0, state.get().index + step)))
