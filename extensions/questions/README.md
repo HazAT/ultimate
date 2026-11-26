@@ -24,7 +24,7 @@ type Question = {
 ```
 
 The tool refuses, naming the question: no questions, a choice or multi with fewer than two options or repeated labels
-or keys, an option that is "Something else"/"Other" (the card adds it), a scale without an ascending range of at most
+or keys, an option that is "Something else"/"Other"/"Reply in my own words" (the card adds it), a scale without an ascending range of at most
 10 steps, and repeated question texts or refs. Fields that do not apply to a kind are dropped, text is trimmed.
 `questions` goes only with a reply-expected message to `user`.
 
@@ -39,7 +39,8 @@ with a line listing it by its questions (see [Messages](../messages/README.md)).
 Under the outgoing `message` card in the asker's transcript, through messages’ `MessageAnswers` point. One question is
 open at a time; the others fold to a line with their answer (`1b drop them`) or “not answered”, and a dot per question
 shows progress. Kinds: `choice` (one option), `multi` (any), `confirm` (Yes/No), `scale` (numbered steps with end
-labels) and `text` (a field); options offer “Something else…” with an inline field, and an option's Markdown `preview`
+labels) and `text` (a field); options open with “Reply in my own words…” and its inline field (picked with nothing
+typed, the question stays unanswered), and an option's Markdown `preview`
 shows beside the options for the hovered or chosen one. Recommended options (@ultimate's picks, also on a branch's card) carry a “my pick” chip and
 come already chosen: the card opens with them in its draft, on the first question without a pick. Under the questions,
 a note field is always there: whatever it holds goes after the answer lines, or on its own (“Send note”), and never
@@ -50,7 +51,7 @@ advance in steps. Dismiss closes the message without an answer. Beside it, the `
 (`CardActions`) takes another extension's control: side-chat's **Talk it through**. A card in a layer marked
 `data-receded` (a transcript behind a side chat's sheet) takes no keys. A message without questions gets a one-line answer
 field (sent as a Reply to that message) and Dismiss. On desktop, 1–9 or an option's letter (`y`/`n` for Yes/No, `o`
-for Something else) chooses, ↑/↓ moves between questions, Enter goes to the next question while one is unanswered,
+for Reply in my own words) chooses, ↑/↓ moves between questions, Enter goes to the next question while one is unanswered,
 and sends from the last one or once all are answered; ⇧Enter sends at once, like a held Send; `/` focuses the note field, where Enter sends and
 ⇧Enter breaks a line; Esc clears an answer, leaves the note field or, while Undo fills, undoes (so does `u`; Enter sends at once). Only the shown
 conversation's newest open card takes these keys; they leave alone input/textarea editing and keys pressed in another

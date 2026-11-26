@@ -76,7 +76,7 @@ export function choices(question: CardQuestion): Choice[] {
           { label: 'No', key: 'n' },
         ]
       : (question.options ?? [])),
-    { label: 'Something else…', custom: true },
+    { label: 'Reply in my own words…', custom: true },
   ]
 }
 

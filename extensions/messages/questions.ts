@@ -38,7 +38,7 @@ export const questionsParameter = arr(
   }),
   {
     description:
-      'With to: user, the decisions the message asks, shown as its answer card: choice (one option), multi (any), confirm (yes/no), text (typed), scale (min–max with end labels). The card adds "Something else…" and a note field itself.',
+      'With to: user, the decisions the message asks, shown as its answer card: choice (one option), multi (any), confirm (yes/no), text (typed), scale (min–max with end labels). The card adds "Reply in my own words…" (shown first) and a note field itself.',
   },
 )
 
@@ -77,8 +77,14 @@ export function checkQuestions(questions: Question[]): Question[] {
         throw new Error(`${where} repeats an option label`)
       const keys = options.flatMap((o) => (o.key ? [o.key] : []))
       if (new Set(keys).size !== keys.length) throw new Error(`${where} repeats an option key`)
-      if (options.some((o) => /^(something else|other)[.…]*$/i.test(o.label)))
-        throw new Error(`${where}: the card offers "Something else…" itself; leave that option out`)
+      if (
+        options.some((o) =>
+          /^(something else|other|(just )?(reply )?in (my|your) own words)[.…]*$/i.test(o.label),
+        )
+      )
+        throw new Error(
+          `${where}: the card offers "Reply in my own words…" itself; leave that option out`,
+        )
       kept.options = options
     } else if (question.kind === 'scale') {
       const scale = question.scale
