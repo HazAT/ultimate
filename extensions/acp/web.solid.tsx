@@ -38,7 +38,7 @@ import type { SolidComposerProps, ToolCallView } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import { parseConversationId } from '../../lib/ids.ts'
-import { ExternalSpeaker } from '../messages/ui.solid.tsx'
+import { ExternalSpeaker, SpeakerBadge } from '../messages/ui.solid.tsx'
 import { PickerRows } from '../models/ui.solid.tsx'
 import { AntigravityMark } from './mark.solid.tsx'
 import {
@@ -215,17 +215,29 @@ export function LiveTail() {
   const turn = useDoc(TurnDoc)
   const active = () => session()?.status === 'running' || session()?.status === 'connecting'
   const open = () => turn()?.open
+  const modelName = () => {
+    const selected = session()?.config?.find((option) => option.category === 'model')
+    return selected?.options.find((choice) => choice.value === selected.value)?.name
+  }
   return (
     <Show when={active() && id()} keyed>
       {(conversation) => (
-        <div class={[column(), 'flex flex-col gap-3']}>
+        <div class="flex flex-col gap-3">
           <Show when={open()?.type === 'thinking'}>
             <Reasoning label={`Thinking in Antigravity #${conversation}`} streaming>
               {open()?.text ?? ''}
             </Reasoning>
           </Show>
           <Show when={open()?.type === 'text'}>
-            <Message from="assistant">
+            <Message class="gap-3" from="assistant">
+              <div class="flex min-h-6 items-center font-mono text-[11px]">
+                <SpeakerBadge
+                  icon={AntigravityMark}
+                  name="antigravity"
+                  role={modelName() && `· ${modelName()}`}
+                  title="Antigravity"
+                />
+              </div>
               <MessageContent>
                 <Markdown streaming text={open()?.text ?? ''} />
               </MessageContent>
