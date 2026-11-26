@@ -9,7 +9,7 @@ export type Viewport = 'phone' | 'tablet' | 'desktop'
 let queries: { tablet: MediaQueryList; desktop: MediaQueryList } | undefined
 const media = () =>
   (queries ??= {
-    tablet: matchMedia('(min-width: 768px)'),
+    tablet: matchMedia('(min-width: 720px)'),
     desktop: matchMedia('(min-width: 1024px)'),
   })
 

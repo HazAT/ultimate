@@ -49,7 +49,10 @@ export function Reading(props: { entry: Entry; now: number; phone: boolean; onBa
     switchConversation(conversation)
   }
   return (
-    <div class="flex min-h-0 flex-1 flex-col" data-inbox-item={message()?.id ?? props.entry.key}>
+    <div
+      class="flex min-h-0 min-w-0 flex-1 flex-col"
+      data-inbox-item={message()?.id ?? props.entry.key}
+    >
       <Show when={props.phone}>
         <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 px-2">
           <Button

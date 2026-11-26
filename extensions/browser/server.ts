@@ -187,6 +187,12 @@ export default function browserExtension(host: ExtensionHost) {
       }),
     ),
     height: opt(int({ minimum: 1, description: 'Viewport height in CSS pixels; default 900.' })),
+    touch: opt(
+      bool({
+        description:
+          'Emulate a touch phone or tablet: pointer: coarse, and a layout viewport that widens to fit a too-wide page as Android Chrome does.',
+      }),
+    ),
     timeoutMs: opt(
       int({ minimum: 1, description: 'Limit per step, load and capture; default 30000.' }),
     ),
@@ -240,6 +246,14 @@ export default function browserExtension(host: ExtensionHost) {
                 }),
               }),
               obj({ press: str() }),
+              obj({
+                resize: arr(int({ minimum: 1 }), {
+                  minItems: 2,
+                  maxItems: 2,
+                  description:
+                    '[width, height]: resize the viewport without reloading, as a fold, a rotation or a touch keyboard does.',
+                }),
+              }),
               obj({ wait: str({ description: 'A selector to wait for.' }) }),
               obj({
                 eval: str({
@@ -326,6 +340,10 @@ export default function browserExtension(host: ExtensionHost) {
                 else if ('fill' in step)
                   await one(step.fill[0], page.locator(step.fill[0]).fill(step.fill[1]))
                 else if ('press' in step) await guard(page.keyboard.press(step.press))
+                else if ('resize' in step)
+                  await guard(
+                    page.setViewportSize({ width: step.resize[0], height: step.resize[1] }),
+                  )
                 else if ('wait' in step) await one(step.wait, page.locator(step.wait).waitFor())
                 else if ('send' in step || 'until' in step || 'ui' in step) {
                   const waitForLoadedSdk = () =>
@@ -457,6 +475,7 @@ export default function browserExtension(host: ExtensionHost) {
       path?: string
       width?: number
       height?: number
+      touch?: boolean
       theme?: 'light' | 'dark'
       timeoutMs?: number
     },
@@ -545,6 +564,8 @@ export default function browserExtension(host: ExtensionHost) {
         coldLaunchAndPageSetupMs,
         browser.newContext({
           viewport: { width: args.width ?? 1440, height: args.height ?? 900 },
+          hasTouch: args.touch,
+          isMobile: args.touch,
           colorScheme: args.theme,
         }),
       )
