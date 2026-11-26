@@ -4,7 +4,7 @@ import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { capture, createTalk, talkMode } from '../dictation/ui.solid.tsx'
-import { dock, voiceSink } from './dock.solid.tsx'
+import { dock, playerState, voiceSink } from './dock.solid.tsx'
 import { Waveform } from './turns.solid.tsx'
 
 const touchLike = (event: PointerEvent) =>
@@ -71,21 +71,48 @@ export function TalkBar(props: { onTalk?: () => void }) {
     recording()
       ? talkMode() === 'tap'
         ? 'Tap to send'
-        : 'Release to send · slide to ✕ to cancel'
-      : busy()
-        ? `${dock.status() ?? 'Thinking…'} · ${talkMode() === 'tap' ? 'tap' : 'hold'} to cut in`
+        : 'Release to send'
+      : busy() || playerState().playing
+        ? `${talkMode() === 'tap' ? 'tap' : 'hold'} to cut in`
         : talkMode() === 'tap'
           ? 'Tap to talk'
           : 'Hold to talk'
+  const status = () =>
+    playerState().playing
+      ? 'Speaking'
+      : playerState().paused
+        ? 'Paused'
+        : busy()
+          ? (dock.status() ?? 'Thinking…')
+          : undefined
   return (
-    <div class="relative flex items-center" data-voice-talk-bar ref={bar}>
+    <div
+      class={cn(
+        'relative flex h-12 items-center gap-1 overflow-hidden rounded-lg border bg-card pr-1.5 transition-colors',
+        recording()
+          ? 'border-error/40 bg-error/5'
+          : 'border-border focus-within:border-foreground/25',
+      )}
+      data-voice-talk-bar
+      ref={bar}
+    >
+      <Show when={recording()}>
+        <Button
+          aria-label="Cancel talking"
+          class="ml-1.5 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          data-voice-talk-cancel
+          onClick={() => capture.take(voiceSink)?.cancel()}
+          size={null}
+          variant={null}
+        >
+          <X class="size-4" />
+        </Button>
+      </Show>
       <Button
         aria-label={recording() ? 'Send what you said' : 'Talk to voice'}
         class={cn(
-          'flex h-11 min-w-0 flex-1 touch-none items-center justify-center gap-2 overflow-hidden rounded-full border px-4 font-mono text-[12px] font-normal transition-colors select-none',
-          recording()
-            ? 'border-error/40 bg-error/10 pl-12 text-error'
-            : 'border-brand/40 bg-brand/10 text-brand active:bg-brand/20',
+          'flex h-full min-w-0 flex-1 touch-none items-center justify-start gap-2 font-mono text-[12px] font-normal select-none',
+          recording() ? 'pr-2 text-error' : 'px-3 text-muted-foreground active:bg-accent/40',
         )}
         data-voice-talk
         onClick={(event) => {
@@ -109,7 +136,15 @@ export function TalkBar(props: { onTalk?: () => void }) {
           when={recording()}
           fallback={
             <>
-              <AudioLines class="size-4 shrink-0" />
+              <AudioLines class="size-4 shrink-0 text-brand" />
+              <Show when={status()}>
+                {(text) => (
+                  <span class="shrink-0 text-brand">
+                    {text()}
+                    <span class="text-muted-foreground/60"> · </span>
+                  </span>
+                )}
+              </Show>
               <span class="truncate">{label()}</span>
             </>
           }
@@ -118,17 +153,8 @@ export function TalkBar(props: { onTalk?: () => void }) {
           <span class="shrink-0 text-[11px]">{label()}</span>
         </Show>
       </Button>
-      <Show when={recording()}>
-        <Button
-          aria-label="Cancel talking"
-          class="absolute top-1.5 left-1.5 flex size-8 items-center justify-center rounded-full bg-background/70 text-muted-foreground hover:text-foreground"
-          data-voice-talk-cancel
-          onClick={() => capture.take(voiceSink)?.cancel()}
-          size={null}
-          variant={null}
-        >
-          <X class="size-4" />
-        </Button>
+      <Show when={!recording()}>
+        <ModeSwitch onToggle={dock.setTalking} talking />
       </Show>
     </div>
   )

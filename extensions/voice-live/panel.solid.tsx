@@ -105,16 +105,21 @@ export function SheetComposer(props: SolidComposerProps) {
 
 function TalkOrType(props: { onTalk?: () => void; children: JSX.Element; dock?: boolean }) {
   return (
-    <div class="flex flex-col">
-      <div class={cn('flex justify-end pb-1.5', column(props.dock))}>
-        <ModeSwitch onToggle={dock.setTalking} talking={dock.talking()} />
-      </div>
-      <Show when={dock.talking()} fallback={props.children}>
-        <div class={cn('pb-2', column(props.dock))}>
-          <TalkBar onTalk={props.onTalk} />
+    <Show
+      when={dock.talking()}
+      fallback={
+        <div class="flex flex-col">
+          <div class={cn('flex justify-end pb-1.5', column(props.dock))}>
+            <ModeSwitch onToggle={dock.setTalking} talking={false} />
+          </div>
+          {props.children}
         </div>
-      </Show>
-    </div>
+      }
+    >
+      <div class={cn('pb-2', column(props.dock))}>
+        <TalkBar onTalk={props.onTalk} />
+      </div>
+    </Show>
   )
 }
 
@@ -224,11 +229,7 @@ function VoiceLine(props: { words?: boolean }) {
     spoken() ||
     !!activity().current ||
     !!dock.error() ||
-    !!(
-      dock.status() &&
-      !(audible() && dock.status() === 'Speaking') &&
-      !(dock.talking() && (capturing() || working()))
-    ) ||
+    !!(dock.status() && !(audible() && dock.status() === 'Speaking') && !dock.talking()) ||
     draftOf().length > 0
   return (
     <Show when={shown()}>
@@ -546,17 +547,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
       fallback={
         <footer class="flex shrink-0 flex-col gap-1 px-2 pb-2">
           <VoiceLine words />
-          <Show
-            when={!dock.talking()}
-            fallback={
-              <div class="flex items-center gap-2">
-                <div class="min-w-0 flex-1">
-                  <TalkBar />
-                </div>
-                <ModeSwitch onToggle={dock.setTalking} talking />
-              </div>
-            }
-          >
+          <Show when={!dock.talking()} fallback={<TalkBar />}>
             <PromptBox
               accepts={{ images: true }}
               conversation={hot()}
