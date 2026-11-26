@@ -11,7 +11,9 @@ session starts on (`pick`), in an open session it sets that session's, and the n
 its closest one. The voice model is a per-project pick: each project's root keeps its own.
 
 The empty voice panel shows this setup as a checklist from `status`: the voice model's login, OpenAI transcription (required) and Jev for hands-free send in
-collect mode (optional), each with what to do when it is missing.
+collect mode (optional), each with what to do when it is missing. The model line says where it comes from (`picked`,
+`from settings` or `default`) and reads "model removed" when that model no longer exists; a stored pick offers
+**Use default**, which clears it (`pick` with `model: null`).
 
 ## Flow
 

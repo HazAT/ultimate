@@ -116,7 +116,16 @@ export const Session = defineDoc<VoiceSession>({
   initial: () => ({}),
 })
 
-export const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; ended?: true }>({
+type ModelSource = 'picked' | 'settings' | 'default'
+
+export const Fork = defineDoc<
+  VoiceFork & {
+    seen?: EntryId
+    introduced?: true
+    ended?: true
+    opened?: { model: string; source: ModelSource }
+  }
+>({
   kind: 'voice.fork',
   checkpointWhen: checkpointEvery(100),
   version: 1,
@@ -143,16 +152,24 @@ export const docs = [Session, Fork, Ui]
 export const hearsAudio = (model: { provider: string; modelId: string }) =>
   /gemini/i.test(model.modelId)
 
-async function voiceModel(host: ExtensionHost) {
-  const picked = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.model
-  const settings = await readSettings(userSettingsPath(host.userHome))
-  const configured = picked ?? (settings.voice as { model?: unknown } | undefined)?.model
-  if (typeof configured === 'string' && configured.includes('/')) {
-    const [provider, ...rest] = configured.split('/')
-    return { provider, modelId: rest.join('/') }
-  }
-  return DEFAULT_MODEL
+const parseModel = (value: unknown) => {
+  if (typeof value !== 'string' || !value.includes('/')) return undefined
+  const [provider, ...rest] = value.split('/')
+  return { provider, modelId: rest.join('/') }
 }
+
+async function voiceModelSource(host: ExtensionHost) {
+  const picked = parseModel(
+    (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.model,
+  )
+  if (picked) return { model: picked, source: 'picked' as const }
+  const settings = await readSettings(userSettingsPath(host.userHome))
+  const configured = parseModel((settings.voice as { model?: unknown } | undefined)?.model)
+  if (configured) return { model: configured, source: 'settings' as const }
+  return { model: DEFAULT_MODEL, source: 'default' as const }
+}
+
+const SOURCE_LABEL = { picked: 'picked', settings: 'from settings', default: 'default' }
 
 const recordings = (host: ExtensionHost, session: ConversationId) =>
   join(host.home, 'voice', String(session))
@@ -252,11 +269,16 @@ async function checkBranch(
     throw new Error(`#${id} is concluded`)
 }
 
+const modelName = (model: { provider: string; modelId: string }) =>
+  `${model.provider}/${model.modelId}`
+
 function keepModel(
   session: VoiceSession,
+  fork: { opened?: { model: string } },
   agent: { model?: { provider: string; modelId: string }; thinkingLevel?: ModelThinkingLevel },
 ) {
-  if (agent.model) session.model = `${agent.model.provider}/${agent.model.modelId}`
+  if (agent.model && modelName(agent.model) !== fork.opened?.model)
+    session.model = modelName(agent.model)
   if (agent.thinkingLevel) session.thinking = agent.thinkingLevel
 }
 
@@ -279,25 +301,34 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
   const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
   if (main === undefined) throw new Error('@ultimate is not available')
   const answer = await lastSettledInputAnswer(host, main, context)
-  const configured = await voiceModel(host)
+  const configured = await voiceModelSource(host)
   return host.harness().commit(async (tx) => {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
     const current = session.id === undefined ? undefined : await tx.doc(Fork, session.id)
     const open = current !== undefined && !current.ended
     if (expected !== undefined && (!open || session.id !== expected))
       throw new Error('This voice session ended; send again')
-    let model = configured
+    let model = configured.model
+    let source = configured.source
     if (open && !current.handedOff) return session.id!
     const at = await answerIncludingClosingToolResults(tx, main, answer)
     if (open) {
       current.ended = true
       const handedOff = await tx.doc(AgentDoc, session.id!)
-      keepModel(session, handedOff)
-      model = handedOff.model ?? configured
+      keepModel(session, current, handedOff)
+      if (handedOff.model) {
+        model = handedOff.model
+        source = modelName(model) === current.opened?.model ? current.opened.source : 'picked'
+      }
       await host.need(ConversationsApi).concludeIn(tx, [session.id!], 'user')
     }
     const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
-    Object.assign(await tx.doc(Fork, fork.id), { of: main, at, seen: at })
+    Object.assign(await tx.doc(Fork, fork.id), {
+      of: main,
+      at,
+      seen: at,
+      opened: { model: modelName(model), source },
+    })
     const agent = await tx.doc(AgentDoc, fork.id)
     agent.model = model
     agent.thinkingLevel = thinkingFor(host, model, session.thinking)
@@ -432,38 +463,56 @@ const unwrap = <T extends object>(args: unknown) =>
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host }) => {
     const session = await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context)
+    const open = session?.id
     const agent =
-      session?.id === undefined
-        ? undefined
-        : await host.harness().snapshot(AgentDoc, session.id, context)
-    const model = agent?.model ?? (await voiceModel(host))
+      open === undefined ? undefined : await host.harness().snapshot(AgentDoc, open, context)
+    const opened =
+      open === undefined ? undefined : (await host.harness().snapshot(Fork, open, context))?.opened
+    const resolved = await voiceModelSource(host)
+    const model = agent?.model ?? resolved.model
+    const source: ModelSource = !agent?.model
+      ? resolved.source
+      : modelName(agent.model) === opened?.model
+        ? opened.source
+        : 'picked'
     const thinking = agent?.thinkingLevel ?? thinkingFor(host, model, session?.thinking)
-    const available = host.modelRuntime
-      .getAvailableSnapshot()
-      .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
+    const removed = !host.modelRuntime.getModel(model.provider, model.modelId)
+    const available =
+      !removed &&
+      host.modelRuntime
+        .getAvailableSnapshot()
+        .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
     const name = `${model.provider}/${model.modelId}`
+    const label = `${name} (${SOURCE_LABEL[source]})`
+    const problem = removed ? `${label}: model removed` : `${label} has no login`
+    const fix = {
+      picked: removed
+        ? 'Use the default, or pick another model in the prompt box below.'
+        : 'Log in to its provider, use the default, or pick another model in the prompt box below.',
+      settings: removed
+        ? 'Change voice.model in ~/.ultimate/settings.json, or pick another model in the prompt box below.'
+        : 'Log in to its provider, or pick another model in the prompt box below.',
+      default: 'Log in to its provider, or pick another model in the prompt box below.',
+    }[source]
     const transcribes = !!(await openaiSecretOrNonOAuthKey(host))
     const classifies =
       !!host.want(ClassifyApi) && !!(await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
     return {
       model: name,
+      source,
       thinking,
       route: hearsAudio(model) ? ('audio' as const) : ('text' as const),
       transcribes,
-      ...(available ? {} : { reason: `${name} has no login` }),
+      ...(available ? {} : { reason: problem }),
       setup: {
         model: available
           ? {
               ready: true,
               detail: hearsAudio(model)
-                ? `${name}: hears your voice directly`
-                : `${name}: reads the transcript`,
+                ? `${label}: hears your voice directly`
+                : `${label}: reads the transcript`,
             }
-          : {
-              ready: false,
-              detail: `${name} has no login`,
-              fix: 'Log in to its provider, or pick another model in the prompt box below.',
-            },
+          : { ready: false, detail: problem, fix },
         transcription: transcribes
           ? {
               ready: true,
@@ -540,11 +589,12 @@ export const actions = {
     const { provider, modelId } = unwrap<{ provider: unknown; modelId: unknown }>(model)
     if (
       model !== undefined &&
+      model !== null &&
       (typeof provider !== 'string' ||
         typeof modelId !== 'string' ||
         !host.modelRuntime.getModel(provider, modelId))
     )
-      throw new Error('Expected model as a known { provider, modelId }')
+      throw new Error('Expected model as a known { provider, modelId }, or null for the default')
     if (thinkingLevel !== undefined && !THINKING_LEVELS.includes(thinkingLevel as never))
       throw new Error(`Expected thinkingLevel as one of ${THINKING_LEVELS.join(', ')}`)
     await host.harness().commit(async (tx) => {
@@ -553,7 +603,8 @@ export const actions = {
         throw new Error('A voice session is open: pick its model in its own prompt box')
       const picked = () => `${session.model ?? ''}:${session.thinking ?? ''}`
       const previous = picked()
-      if (model !== undefined) session.model = `${provider as string}/${modelId as string}`
+      if (model === null) delete session.model
+      else if (model !== undefined) session.model = `${provider as string}/${modelId as string}`
       if (thinkingLevel !== undefined) session.thinking = thinkingLevel as ModelThinkingLevel
       await action.uiChanged(tx, { key: 'voice-live.pick', value: picked(), previous })
     }, context)
@@ -829,7 +880,7 @@ export const actions = {
       const fork = await tx.doc(Fork, ending)
       fork.ended = true
       delete fork.draft
-      keepModel(session, await tx.doc(AgentDoc, ending))
+      keepModel(session, fork, await tx.doc(AgentDoc, ending))
       delete session.id
       delete session.of
       delete session.at

@@ -467,11 +467,20 @@ function Collected(props: { fork: ConversationId | undefined }) {
 
 function SetupList() {
   const status = useAction(StatusAction, null, { conversation: ROOT })
+  const useDefault = async () => {
+    await api.action(PickAction, { model: null }, { conversationId: ROOT })
+    await status.refetch()
+  }
   const items = () => {
-    const setup = status.data()?.setup
+    const data = status.data()
+    const setup = data?.setup
     return setup
       ? [
-          { label: 'Voice model', ...setup.model },
+          {
+            label: 'Model',
+            ...setup.model,
+            ...(data.source === 'picked' ? { reset: true } : {}),
+          },
           { label: 'Transcription', ...setup.transcription },
           { label: 'Hands-free send', ...setup.handsFree },
         ]
@@ -499,6 +508,17 @@ function SetupList() {
                 </span>
                 <Show when={item.fix}>
                   <span class="text-muted-foreground">{item.fix}</span>
+                </Show>
+                <Show when={'reset' in item}>
+                  <Button
+                    aria-label="Use default"
+                    class="h-6 self-start rounded-md px-2 font-mono text-[11px] font-normal"
+                    onClick={useDefault}
+                    size={null}
+                    variant="outline"
+                  >
+                    Use default
+                  </Button>
                 </Show>
               </span>
             </li>
