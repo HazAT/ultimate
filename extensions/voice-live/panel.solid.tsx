@@ -466,11 +466,7 @@ function Collected(props: { fork: ConversationId | undefined }) {
 }
 
 function SetupList() {
-  const session = useDocOf(() => ROOT, VoiceSessionDoc)
-  const status = useAction(StatusAction, null, {
-    conversation: ROOT,
-    on: () => [session()?.model],
-  })
+  const status = useAction(StatusAction, null, { conversation: ROOT })
   const useDefault = async () => {
     await api.action(PickAction, { model: null }, { conversationId: ROOT })
     await status.refetch()

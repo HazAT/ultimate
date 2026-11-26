@@ -116,7 +116,16 @@ export const Session = defineDoc<VoiceSession>({
   initial: () => ({}),
 })
 
-export const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; ended?: true }>({
+type ModelSource = 'picked' | 'settings' | 'default'
+
+export const Fork = defineDoc<
+  VoiceFork & {
+    seen?: EntryId
+    introduced?: true
+    ended?: true
+    opened?: { model: string; source: ModelSource }
+  }
+>({
   kind: 'voice.fork',
   checkpointWhen: checkpointEvery(100),
   version: 1,
@@ -159,8 +168,6 @@ async function voiceModelSource(host: ExtensionHost) {
   if (configured) return { model: configured, source: 'settings' as const }
   return { model: DEFAULT_MODEL, source: 'default' as const }
 }
-
-const voiceModel = async (host: ExtensionHost) => (await voiceModelSource(host)).model
 
 const SOURCE_LABEL = { picked: 'picked', settings: 'from settings', default: 'default' }
 
@@ -262,11 +269,16 @@ async function checkBranch(
     throw new Error(`#${id} is concluded`)
 }
 
+const modelName = (model: { provider: string; modelId: string }) =>
+  `${model.provider}/${model.modelId}`
+
 function keepModel(
   session: VoiceSession,
+  fork: { opened?: { model: string } },
   agent: { model?: { provider: string; modelId: string }; thinkingLevel?: ModelThinkingLevel },
 ) {
-  if (agent.model) session.model = `${agent.model.provider}/${agent.model.modelId}`
+  if (agent.model && modelName(agent.model) !== fork.opened?.model)
+    session.model = modelName(agent.model)
   if (agent.thinkingLevel) session.thinking = agent.thinkingLevel
 }
 
@@ -289,25 +301,32 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
   const main = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, context))?.ultimate
   if (main === undefined) throw new Error('@ultimate is not available')
   const answer = await lastSettledInputAnswer(host, main, context)
-  const configured = await voiceModel(host)
+  const configured = await voiceModelSource(host)
   return host.harness().commit(async (tx) => {
     const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
     const current = session.id === undefined ? undefined : await tx.doc(Fork, session.id)
     const open = current !== undefined && !current.ended
     if (expected !== undefined && (!open || session.id !== expected))
       throw new Error('This voice session ended; send again')
-    let model = configured
+    let model = configured.model
+    let source = configured.source
     if (open && !current.handedOff) return session.id!
     const at = await answerIncludingClosingToolResults(tx, main, answer)
     if (open) {
       current.ended = true
       const handedOff = await tx.doc(AgentDoc, session.id!)
-      keepModel(session, handedOff)
-      model = handedOff.model ?? configured
+      keepModel(session, current, handedOff)
+      const kept = parseModel(session.model)
+      if (kept) [model, source] = [kept, 'picked']
       await host.need(ConversationsApi).concludeIn(tx, [session.id!], 'user')
     }
     const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
-    Object.assign(await tx.doc(Fork, fork.id), { of: main, at, seen: at })
+    Object.assign(await tx.doc(Fork, fork.id), {
+      of: main,
+      at,
+      seen: at,
+      opened: { model: modelName(model), source },
+    })
     const agent = await tx.doc(AgentDoc, fork.id)
     agent.model = model
     agent.thinkingLevel = thinkingFor(host, model, session.thinking)
@@ -442,23 +461,25 @@ const unwrap = <T extends object>(args: unknown) =>
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host }) => {
     const session = await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context)
+    const open = session?.id
     const agent =
-      session?.id === undefined
-        ? undefined
-        : await host.harness().snapshot(AgentDoc, session.id, context)
+      open === undefined ? undefined : await host.harness().snapshot(AgentDoc, open, context)
+    const opened =
+      open === undefined ? undefined : (await host.harness().snapshot(Fork, open, context))?.opened
     const resolved = await voiceModelSource(host)
     const model = agent?.model ?? resolved.model
-    const source =
-      agent?.model &&
-      `${agent.model.provider}/${agent.model.modelId}` !==
-        `${resolved.model.provider}/${resolved.model.modelId}`
-        ? ('picked' as const)
-        : resolved.source
+    const source: ModelSource = !agent?.model
+      ? resolved.source
+      : modelName(agent.model) === opened?.model
+        ? opened.source
+        : 'picked'
     const thinking = agent?.thinkingLevel ?? thinkingFor(host, model, session?.thinking)
     const removed = !host.modelRuntime.getModel(model.provider, model.modelId)
-    const available = host.modelRuntime
-      .getAvailableSnapshot()
-      .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
+    const available =
+      !removed &&
+      host.modelRuntime
+        .getAvailableSnapshot()
+        .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
     const name = `${model.provider}/${model.modelId}`
     const label = `${name} (${SOURCE_LABEL[source]})`
     const problem = removed ? `${label}: model removed` : `${label} has no login`
@@ -857,7 +878,7 @@ export const actions = {
       const fork = await tx.doc(Fork, ending)
       fork.ended = true
       delete fork.draft
-      keepModel(session, await tx.doc(AgentDoc, ending))
+      keepModel(session, fork, await tx.doc(AgentDoc, ending))
       delete session.id
       delete session.of
       delete session.at

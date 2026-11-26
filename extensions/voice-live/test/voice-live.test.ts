@@ -174,7 +174,6 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
 
   await f.action('end', null)
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({
-    model: 'faux/gemini-faux',
     thinking: 'low',
     forks: [first.id],
   })
@@ -440,6 +439,13 @@ it('status says whether the model is a stored pick or from settings, and Use def
   })
   const reset = await f.action('pick', { model: null })
   expect([reset.status, reset.data.error]).toEqual([200, undefined])
+  expect(
+    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.model,
+  ).toBeUndefined()
+  expect(await status()).toMatchObject({ model: 'faux/gemini-faux', source: 'settings' })
+  await f.turn({ key: 'one', text: 'start' })
+  expect(await status()).toMatchObject({ source: 'settings' })
+  await f.action('end', null)
   expect(
     (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.model,
   ).toBeUndefined()
