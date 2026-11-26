@@ -20,9 +20,14 @@ vi.mock('@/sdk/solid', async () => {
   }
 })
 const said: string[] = []
+const utterances: { listeners: Map<string, (event: unknown) => void> }[] = []
 vi.stubGlobal('speechSynthesis', {
+  speaking: false,
   cancel() {},
-  speak: (utterance: { text: string }) => said.push(utterance.text),
+  speak: (utterance: { text: string; listeners: Map<string, (event: unknown) => void> }) => {
+    said.push(utterance.text)
+    utterances.push(utterance)
+  },
   getVoices: () => [{ name: 'Test voice' }],
   addEventListener() {},
 })
@@ -30,14 +35,18 @@ vi.stubGlobal(
   'SpeechSynthesisUtterance',
   class {
     text: string
+    listeners = new Map<string, (event: unknown) => void>()
     constructor(text: string) {
       this.text = text
     }
-    addEventListener() {}
+    addEventListener(type: string, listener: (event: unknown) => void) {
+      this.listeners.set(type, listener)
+    }
   },
 )
 
-const { read, stop, current, playSection, sectionOf } = await import('../../player.solid.tsx')
+const { read, resume, stop, current, playSection, sectionOf } =
+  await import('../../player.solid.tsx')
 const { speech } = await import('../../voice.solid.tsx')
 const conversation = 5 as ConversationId
 
@@ -92,5 +101,24 @@ it('a click on a section plays it: from where it was read, or preparing from tha
   prepares[3].resolve({ sections: 3, spoken: 'Two.' })
   await vi.waitFor(() => expect(said.at(-1)).toBe('Two.'))
   expect(sectionOf(0)).toBe(2)
+  stop()
+})
+
+it('a tap primes the system voice, and a voice the browser refuses waits paused for ▶', async () => {
+  stop()
+  said.length = 0
+  prepares.length = 0
+  dispatchEvent(new Event('pointerdown'))
+  expect(said).toEqual([' '])
+  read(conversation, 4, 'Blocked.')
+  prepares[0].resolve({ sections: 1, spoken: 'Blocked here.' })
+  await vi.waitFor(() => expect(said.at(-1)).toBe('Blocked here.'))
+  utterances.at(-1)!.listeners.get('error')!({ error: 'not-allowed' })
+  expect(current()).toMatchObject({ entry: 4, status: 'paused', blocked: true })
+  expect(current()?.error).toBeUndefined()
+  resume()
+  expect(current()).toMatchObject({ entry: 4, status: 'playing', blocked: false })
+  expect(said.at(-1)).toBe('Blocked here.')
+  expect(prepares).toHaveLength(1)
   stop()
 })

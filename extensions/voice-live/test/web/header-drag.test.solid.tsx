@@ -31,6 +31,7 @@ vi.mock('@/sdk/solid', async (original) => ({
     createSignal(key === 'folded' ? ui.folded : initial),
 }))
 vi.stubGlobal('speechSynthesis', { cancel() {}, speak() {}, getVoices: () => [] })
+vi.stubGlobal('SpeechSynthesisUtterance', EventTarget)
 vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {} }))
 
 const agent = createAgent()

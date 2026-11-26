@@ -3,6 +3,7 @@ import { useExternal } from '@/sdk/solid'
 import { PlaybackBar } from './bar.solid.tsx'
 import * as player from './player.solid.tsx'
 import type { Reading } from './player.solid.tsx'
+import { BLOCKED } from './voice.solid.tsx'
 
 type Controls = { pause: () => void; resume: () => void; stop: () => void }
 
@@ -20,13 +21,15 @@ export function ReadingBar(props: {
       name={props.name}
       onShow={props.onShow}
       status={
-        props.reading.error
-          ? 'Could not read'
-          : props.reading.status === 'loading'
-            ? 'Preparing'
-            : props.reading.status === 'paused'
-              ? 'Paused'
-              : 'Reading'
+        props.reading.blocked
+          ? BLOCKED
+          : props.reading.error
+            ? 'Could not read'
+            : props.reading.status === 'loading'
+              ? 'Preparing'
+              : props.reading.status === 'paused'
+                ? 'Paused'
+                : 'Reading'
       }
       stop={props.player.stop}
       toggle={() => (playing() ? props.player.pause() : props.player.resume())}

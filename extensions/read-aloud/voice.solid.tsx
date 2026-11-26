@@ -9,6 +9,8 @@ import { createPlayer, fetchedVoice, systemVoice, systemVoices } from './speech.
 import type { Sentence } from './speech.ts'
 import { VOICES } from './voices.ts'
 
+export const BLOCKED = 'Tap ▶ to let this page play sound'
+
 export const speech = createRoot(() => {
   const [voice, setVoice] = useUiState<'system' | 'openai'>('ext.read-aloud.voice', 'openai')
   const [storedVoice, setOpenaiVoice] = useUiState('ext.read-aloud.openai-voice', 'cedar')
@@ -32,7 +34,7 @@ export const speech = createRoot(() => {
       )
       return `data:audio/wav;base64,${audio}`
     },
-    audio: () => new Audio(),
+    audio: new Audio(),
     failed: (error) => {
       failure.set({ key: player.state.get().key, message: `OpenAI voice: ${errorMessage(error)}` })
       player.stop()
@@ -48,6 +50,15 @@ export const speech = createRoot(() => {
     engine: () => (openaiOn() ? openai : system),
   })
   createEffect(openaiOn, () => player.switched())
+  for (const type of ['pointerdown', 'pointerup', 'keydown'] as const)
+    addEventListener(
+      type,
+      () => {
+        openai.unlock?.()
+        system.unlock?.()
+      },
+      { capture: true },
+    )
   return {
     ...player,
     load(

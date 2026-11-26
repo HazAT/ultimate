@@ -186,7 +186,15 @@ const ours = () => {
   const state = dock.player.state.get()
   return state.key !== undefined && loaded.has(state.key)
     ? state
-    : { ...state, playing: false, paused: false, streaming: false, index: -1, charIndex: -1 }
+    : {
+        ...state,
+        playing: false,
+        paused: false,
+        blocked: false,
+        streaming: false,
+        index: -1,
+        charIndex: -1,
+      }
 }
 export const playerState = createRoot(() => {
   const [state, setState] = createSignal(ours())

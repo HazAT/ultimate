@@ -10,6 +10,7 @@ export type Reading = {
   conversation: ConversationId
   entry: number
   status: 'loading' | 'playing' | 'paused'
+  blocked?: boolean
   error?: string
 }
 
@@ -66,6 +67,7 @@ export function current(): Reading | undefined {
     conversation,
     entry,
     status: now.playing ? 'playing' : now.paused ? 'paused' : 'loading',
+    blocked: now.blocked,
   }
 }
 
