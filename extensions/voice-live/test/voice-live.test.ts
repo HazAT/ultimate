@@ -393,7 +393,7 @@ it('a pick in the cold prompt box is what status, the setup card and the next se
     model: 'faux/main-faux',
     thinking: 'off',
     route: 'text',
-    setup: { model: { ready: true, detail: 'faux/main-faux: reads the transcript' } },
+    setup: { model: { ready: true, detail: 'faux/main-faux (picked): reads the transcript' } },
   })
   expect((await f.action('pick', { model: { provider: 'faux', modelId: 'gone' } })).status).toBe(
     500,
@@ -423,6 +423,45 @@ it('a pick in the cold prompt box is what status, the setup card and the next se
   expect((await f.server.harness.snapshot(AgentDoc, first.id, context))?.thinkingLevel).toBe('high')
   const open = await f.action('pick', { model: { provider: 'faux', modelId: 'main-faux' } })
   expect(open.data.error).toContain('A voice session is open')
+})
+
+it('status says whether the model is a stored pick or from settings, and Use default clears the pick', async () => {
+  const f = await fixture()
+  const status = async () => (await f.action('status', null)).data.result
+  expect(await status()).toMatchObject({
+    source: 'settings',
+    setup: { model: { detail: 'faux/gemini-faux (from settings): hears your voice directly' } },
+  })
+  await f.action('pick', { model: { provider: 'faux', modelId: 'main-faux' } })
+  expect(await status()).toMatchObject({
+    model: 'faux/main-faux',
+    source: 'picked',
+    setup: { model: { detail: 'faux/main-faux (picked): reads the transcript' } },
+  })
+  const reset = await f.action('pick', { model: null })
+  expect([reset.status, reset.data.error]).toEqual([200, undefined])
+  expect(
+    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.model,
+  ).toBeUndefined()
+  expect(await status()).toMatchObject({ model: 'faux/gemini-faux', source: 'settings' })
+})
+
+it('a stored pick for a model that no longer exists reads "model removed", not "no login"', async () => {
+  const f = await fixture()
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Session, ROOT_CONVERSATION_ID)).model = 'antigravity/gone-model'
+  }, context)
+  expect((await f.action('status', null)).data.result).toMatchObject({
+    source: 'picked',
+    reason: 'antigravity/gone-model (picked): model removed',
+    setup: {
+      model: {
+        ready: false,
+        detail: 'antigravity/gone-model (picked): model removed',
+        fix: expect.stringContaining('Use the default'),
+      },
+    },
+  })
 })
 
 it('a model picked in the fork itself carries over to the next session', async () => {

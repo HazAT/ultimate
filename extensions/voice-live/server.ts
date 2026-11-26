@@ -143,16 +143,26 @@ export const docs = [Session, Fork, Ui]
 export const hearsAudio = (model: { provider: string; modelId: string }) =>
   /gemini/i.test(model.modelId)
 
-async function voiceModel(host: ExtensionHost) {
-  const picked = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.model
-  const settings = await readSettings(userSettingsPath(host.userHome))
-  const configured = picked ?? (settings.voice as { model?: unknown } | undefined)?.model
-  if (typeof configured === 'string' && configured.includes('/')) {
-    const [provider, ...rest] = configured.split('/')
-    return { provider, modelId: rest.join('/') }
-  }
-  return DEFAULT_MODEL
+const parseModel = (value: unknown) => {
+  if (typeof value !== 'string' || !value.includes('/')) return undefined
+  const [provider, ...rest] = value.split('/')
+  return { provider, modelId: rest.join('/') }
 }
+
+async function voiceModelSource(host: ExtensionHost) {
+  const picked = parseModel(
+    (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.model,
+  )
+  if (picked) return { model: picked, source: 'picked' as const }
+  const settings = await readSettings(userSettingsPath(host.userHome))
+  const configured = parseModel((settings.voice as { model?: unknown } | undefined)?.model)
+  if (configured) return { model: configured, source: 'settings' as const }
+  return { model: DEFAULT_MODEL, source: 'default' as const }
+}
+
+const voiceModel = async (host: ExtensionHost) => (await voiceModelSource(host)).model
+
+const SOURCE_LABEL = { picked: 'picked', settings: 'from settings', default: 'default' }
 
 const recordings = (host: ExtensionHost, session: ConversationId) =>
   join(host.home, 'voice', String(session))
@@ -436,34 +446,50 @@ export const actions = {
       session?.id === undefined
         ? undefined
         : await host.harness().snapshot(AgentDoc, session.id, context)
-    const model = agent?.model ?? (await voiceModel(host))
+    const resolved = await voiceModelSource(host)
+    const model = agent?.model ?? resolved.model
+    const source =
+      agent?.model &&
+      `${agent.model.provider}/${agent.model.modelId}` !==
+        `${resolved.model.provider}/${resolved.model.modelId}`
+        ? ('picked' as const)
+        : resolved.source
     const thinking = agent?.thinkingLevel ?? thinkingFor(host, model, session?.thinking)
+    const removed = !host.modelRuntime.getModel(model.provider, model.modelId)
     const available = host.modelRuntime
       .getAvailableSnapshot()
       .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
     const name = `${model.provider}/${model.modelId}`
+    const label = `${name} (${SOURCE_LABEL[source]})`
+    const problem = removed ? `${label}: model removed` : `${label} has no login`
+    const fix = {
+      picked: removed
+        ? 'Use the default, or pick another model in the prompt box below.'
+        : 'Log in to its provider, use the default, or pick another model in the prompt box below.',
+      settings: removed
+        ? 'Change voice.model in ~/.ultimate/settings.json, or pick another model in the prompt box below.'
+        : 'Log in to its provider, or pick another model in the prompt box below.',
+      default: 'Log in to its provider, or pick another model in the prompt box below.',
+    }[source]
     const transcribes = !!(await openaiSecretOrNonOAuthKey(host))
     const classifies =
       !!host.want(ClassifyApi) && !!(await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
     return {
       model: name,
+      source,
       thinking,
       route: hearsAudio(model) ? ('audio' as const) : ('text' as const),
       transcribes,
-      ...(available ? {} : { reason: `${name} has no login` }),
+      ...(available ? {} : { reason: problem }),
       setup: {
         model: available
           ? {
               ready: true,
               detail: hearsAudio(model)
-                ? `${name}: hears your voice directly`
-                : `${name}: reads the transcript`,
+                ? `${label}: hears your voice directly`
+                : `${label}: reads the transcript`,
             }
-          : {
-              ready: false,
-              detail: `${name} has no login`,
-              fix: 'Log in to its provider, or pick another model in the prompt box below.',
-            },
+          : { ready: false, detail: problem, fix },
         transcription: transcribes
           ? {
               ready: true,
@@ -540,11 +566,12 @@ export const actions = {
     const { provider, modelId } = unwrap<{ provider: unknown; modelId: unknown }>(model)
     if (
       model !== undefined &&
+      model !== null &&
       (typeof provider !== 'string' ||
         typeof modelId !== 'string' ||
         !host.modelRuntime.getModel(provider, modelId))
     )
-      throw new Error('Expected model as a known { provider, modelId }')
+      throw new Error('Expected model as a known { provider, modelId }, or null for the default')
     if (thinkingLevel !== undefined && !THINKING_LEVELS.includes(thinkingLevel as never))
       throw new Error(`Expected thinkingLevel as one of ${THINKING_LEVELS.join(', ')}`)
     await host.harness().commit(async (tx) => {
@@ -553,7 +580,8 @@ export const actions = {
         throw new Error('A voice session is open: pick its model in its own prompt box')
       const picked = () => `${session.model ?? ''}:${session.thinking ?? ''}`
       const previous = picked()
-      if (model !== undefined) session.model = `${provider as string}/${modelId as string}`
+      if (model === null) delete session.model
+      else if (model !== undefined) session.model = `${provider as string}/${modelId as string}`
       if (thinkingLevel !== undefined) session.thinking = thinkingLevel as ModelThinkingLevel
       await action.uiChanged(tx, { key: 'voice-live.pick', value: picked(), previous })
     }, context)

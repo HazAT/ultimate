@@ -133,9 +133,12 @@ export const TurnAction = actionRef<
 /** Open the session without a turn yet: forks @ultimate unless a session is open. Returns its conversation. */
 export const OpenAction = actionRef<null, { conversation: ConversationId }>('voice-live', 'open')
 
-/** The model or thinking level the next session starts on, picked in the cold prompt box; either may be left out. */
+/**
+ * The model or thinking level the next session starts on, picked in the cold prompt box; either may be left out.
+ * `model: null` clears the stored pick, so the default applies again.
+ */
 export const PickAction = actionRef<
-  { model?: { provider: string; modelId: string }; thinkingLevel?: ModelThinkingLevel },
+  { model?: { provider: string; modelId: string } | null; thinkingLevel?: ModelThinkingLevel },
   Record<string, never>
 >('voice-live', 'pick')
 
@@ -156,6 +159,8 @@ export const StatusAction = actionRef<
   null,
   {
     model: string
+    /** Where the model comes from: a pick stored in `voice.session`, `voice.model` in user settings, or the default. */
+    source: 'picked' | 'settings' | 'default'
     /** The thinking level it runs at, clamped to the model. */
     thinking: ModelThinkingLevel
     route: VoiceRoute
