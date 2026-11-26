@@ -273,6 +273,9 @@ export function PromptBox(props: PromptBoxProps) {
           class="sr-only"
           disabled={inert()}
           multiple
+          onFocus={(event) => {
+            if (event.relatedTarget === editor) editor.focus()
+          }}
           onChange={(event) => {
             const picked = Array.from(event.currentTarget.files ?? [])
             event.currentTarget.value = ''
