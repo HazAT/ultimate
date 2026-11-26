@@ -1,4 +1,4 @@
-import { createEffect, createMemo, onSettled } from 'solid-js'
+import { createContext, createEffect, createMemo, onSettled, useContext } from 'solid-js'
 import {
   api,
   cn,
@@ -9,10 +9,15 @@ import {
   useExternal,
   useModels,
   useSystem,
+  writingAs,
 } from '@/sdk/solid'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { familyColor } from '../../lib/families.ts'
-import { familiesCache, refresh, refreshFor } from './family-state.ts'
-import { FamiliesAction, FamilyDoc } from './refs.ts'
+import { familiesCache, refresh, refreshFor, thinkingOf } from './family-state.ts'
+import { FamiliesAction, FamilyDoc, SetFamilyAction } from './refs.ts'
+import type { FamilyView } from './refs.ts'
+import { notePick, thinkingDialog } from './state.ts'
+import type { ModelPick, ModelRef, PickerTarget, ThinkingLevel } from './state.ts'
 
 const fetchFamilies = () => api.action(FamiliesAction, null)
 
@@ -43,18 +48,72 @@ export function FamilyDot(props: { color: string | undefined; class?: string }) 
   )
 }
 
+export async function selectModel(
+  model: ModelRef,
+  id: ConversationId | undefined,
+  source: string,
+  family: FamilyView | null = null,
+) {
+  const level = family && thinkingOf(family)
+  await api.configure({ model, ...(level ? { thinkingLevel: level } : {}) }, id)
+  await writingAs(source, () =>
+    api.action(SetFamilyAction, { family: family?.name ?? null }, { conversationId: id }),
+  )
+  notePick()
+}
+
+export const PickContext = createContext<ModelPick | null>(null)
+
 export function useCurrentModel() {
-  const id = useConversationId()
-  const agent = useAgent()
-  const conversation = useConversation()
-  const recorded = useDoc(FamilyDoc)
+  const pick = useContext(PickContext)
+  return pick ? pickedModel(pick) : conversationModel()
+}
+
+function useCatalogModel(ref: () => ModelRef | undefined) {
   const models = useModels()
-  const ref = () => agent().model
-  const thinking = () => agent().thinkingLevel
-  const model = createMemo(() =>
+  return createMemo(() =>
     models()?.models.find(
       (candidate) => candidate.provider === ref()?.provider && candidate.id === ref()?.modelId,
     ),
   )
-  return { id, ref, model, thinking, recorded, loading: () => conversation().loading }
+}
+
+function conversationModel() {
+  const id = useConversationId()
+  const agent = useAgent()
+  const conversation = useConversation()
+  const recorded = useDoc(FamilyDoc)
+  const ref = () => agent().model
+  return {
+    dialog: () => (id() === undefined ? undefined : thinkingDialog(id())),
+    target: (): PickerTarget => id(),
+    ref,
+    model: useCatalogModel(ref),
+    thinking: () => agent().thinkingLevel,
+    recorded: () => recorded()?.name,
+    loading: () => conversation().loading,
+    select: (model: ModelRef, source: string, family: FamilyView | null = null) =>
+      selectModel(model, id(), source, family),
+    setThinking: (level: ThinkingLevel) => api.configure({ thinkingLevel: level }, id()),
+  }
+}
+
+function pickedModel(pick: ModelPick) {
+  return {
+    dialog: () => thinkingDialog(pick.name),
+    target: (): PickerTarget => pick,
+    ref: pick.ref,
+    model: useCatalogModel(pick.ref),
+    thinking: pick.thinking,
+    recorded: () => undefined,
+    loading: () => pick.ref() === undefined,
+    select: async (model: ModelRef, source: string, family: FamilyView | null = null) => {
+      const level = family && thinkingOf(family)
+      await writingAs(source, () =>
+        pick.configure({ model, ...(level ? { thinkingLevel: level } : {}) }),
+      )
+      notePick()
+    },
+    setThinking: (level: ThinkingLevel) => pick.configure({ thinkingLevel: level }),
+  }
 }

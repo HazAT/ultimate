@@ -43,6 +43,7 @@ import {
   EndAction,
   RecordAction,
   OpenAction,
+  PickAction,
   StatusAction,
   StopAction,
   DiscardAction,
@@ -80,11 +81,21 @@ const VOICE_TOOLS = [
   'voice_handoff',
 ]
 const UI_TIMEOUT_MS = 15_000
+const THINKING_LEVELS: readonly ModelThinkingLevel[] = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+]
 
 export const userActions = [
   'open',
   'record',
   'turn',
+  'pick',
   'stop',
   'end',
   'ui-claim',
@@ -418,12 +429,13 @@ const unwrap = <T extends object>(args: unknown) =>
 
 export const actions = {
   status: implementAction(StatusAction, async (_args, { host }) => {
-    const open = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-    const model =
-      (open === undefined
+    const session = await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context)
+    const agent =
+      session?.id === undefined
         ? undefined
-        : (await host.harness().snapshot(AgentDoc, open, context))?.model) ??
-      (await voiceModel(host))
+        : await host.harness().snapshot(AgentDoc, session.id, context)
+    const model = agent?.model ?? (await voiceModel(host))
+    const thinking = agent?.thinkingLevel ?? thinkingFor(host, model, session?.thinking)
     const available = host.modelRuntime
       .getAvailableSnapshot()
       .some((listed) => listed.provider === model.provider && listed.id === model.modelId)
@@ -433,6 +445,7 @@ export const actions = {
       !!host.want(ClassifyApi) && !!(await readSecret(host.userHome, 'TYPESAFE_API_KEY'))
     return {
       model: name,
+      thinking,
       route: hearsAudio(model) ? ('audio' as const) : ('text' as const),
       transcribes,
       ...(available ? {} : { reason: `${name} has no login` }),
@@ -447,7 +460,7 @@ export const actions = {
           : {
               ready: false,
               detail: `${name} has no login`,
-              fix: 'Log in to its provider, or type a first message to open a session and pick another model in its prompt box.',
+              fix: 'Log in to its provider, or pick another model in the prompt box below.',
             },
         transcription: transcribes
           ? {
@@ -518,6 +531,25 @@ export const actions = {
     }, context)
     host.harness().resume()
     return { audio: id, session }
+  }),
+  pick: implementAction(PickAction, async (args, { host }) => {
+    const { model, thinkingLevel } = unwrap<{ model: unknown; thinkingLevel: unknown }>(args)
+    const { provider, modelId } = unwrap<{ provider: unknown; modelId: unknown }>(model)
+    if (
+      model !== undefined &&
+      (typeof provider !== 'string' ||
+        typeof modelId !== 'string' ||
+        !host.modelRuntime.getModel(provider, modelId))
+    )
+      throw new Error('Expected model as a known { provider, modelId }')
+    if (thinkingLevel !== undefined && !THINKING_LEVELS.includes(thinkingLevel as never))
+      throw new Error(`Expected thinkingLevel as one of ${THINKING_LEVELS.join(', ')}`)
+    await host.harness().commit(async (tx) => {
+      const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+      if (model !== undefined) session.model = `${provider as string}/${modelId as string}`
+      if (thinkingLevel !== undefined) session.thinking = thinkingLevel as ModelThinkingLevel
+    }, context)
+    return {}
   }),
   open: implementAction(OpenAction, async (_args, { host }) => ({
     conversation: await openSession(host),

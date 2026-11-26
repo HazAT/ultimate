@@ -38,6 +38,17 @@ it('a press inside the settings popover reaches it instead of starting a drag of
   expect(captured).toEqual([header])
 })
 
+it('before a session exists, the prompt box shows the voice model chip', async () => {
+  ui.folded = false
+  const view = renderSolid(() => <VoicePanel />)
+  await settle()
+  setVoiceOpen(true)
+  flush()
+  const chip = view.querySelector('[data-ui="prompt-box"] [aria-label="Model and thinking"]')
+  expect(chip?.textContent).toContain('gemini-4-neon-low')
+  await expectDistinctAgentNames(agent)
+})
+
 it('folded, the dock is its prompt box, with a status line only while voice has something to say', async () => {
   ui.folded = true
   const view = renderSolid(() => <VoicePanel />)

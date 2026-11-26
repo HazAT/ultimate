@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { cell } from '../../lib/cell.ts'
-import type { ModelsResponse } from '../../shared/protocol.ts'
+import type { ConfigureRequest, ModelsResponse } from '../../shared/protocol.ts'
 
 type OpenContext = { open: (id: string) => void; conversationId?: ConversationId }
 
@@ -8,12 +8,23 @@ export type ModelInfo = ModelsResponse['models'][number]
 export type ProviderInfo = ModelsResponse['providers'][number]
 export type ThinkingLevel = ModelInfo['thinkingLevels'][number]
 
+export type ModelRef = NonNullable<ConfigureRequest['model']>
+export type ModelPick = {
+  name: string
+  ref: () => ModelRef | undefined
+  thinking: () => ThinkingLevel | undefined
+  configure: (change: ConfigureRequest) => Promise<unknown>
+}
+export type PickerTarget = ConversationId | ModelPick | undefined
+
 export const dialogs = { picker: 'models.picker', login: 'models.login' } as const
-export const thinkingDialog = (id: ConversationId | undefined) => `models.thinking.${id}`
+export const thinkingDialog = (id: ConversationId | string | undefined) => `models.thinking.${id}`
 
 export const picks = cell(0)
 export const notePick = () => picks.set(picks.get() + 1)
-export const pickerTarget = cell<ConversationId | undefined>(undefined)
+export const pickerTarget = cell<PickerTarget>(undefined)
+export const conversationOf = (target: PickerTarget) =>
+  typeof target === 'object' ? undefined : target
 export const loginProvider = cell<string | undefined>(undefined)
 
 export function openPicker(actions: OpenContext) {

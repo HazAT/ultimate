@@ -377,6 +377,31 @@ it('a recording or turn sent for a session that ended is refused and opens no ne
   ).toBeUndefined()
 })
 
+it('a pick in the cold prompt box is what status, the setup card and the next session use', async () => {
+  const f = await fixture()
+  const status = async () => (await f.action('status', null)).data.result
+  expect(await status()).toMatchObject({ model: 'faux/gemini-faux', thinking: 'low' })
+  const picked = await f.action('pick', {
+    model: { provider: 'faux', modelId: 'main-faux' },
+    thinkingLevel: 'high',
+  })
+  expect([picked.status, picked.data.error]).toEqual([200, undefined])
+  expect(await status()).toMatchObject({
+    model: 'faux/main-faux',
+    thinking: 'off',
+    route: 'text',
+    setup: { model: { ready: true, detail: 'faux/main-faux: reads the transcript' } },
+  })
+  expect((await f.action('pick', { model: { provider: 'faux', modelId: 'gone' } })).status).toBe(
+    500,
+  )
+  await f.action('pick', { model: { provider: 'faux', modelId: 'gemini-faux' } })
+  expect(await status()).toMatchObject({ model: 'faux/gemini-faux', thinking: 'high' })
+  const first = await f.turn({ key: 'one', text: 'start' })
+  expect(f.requests.at(-1)!.model).toBe('gemini-faux')
+  expect((await f.server.harness.snapshot(AgentDoc, first.id, context))?.thinkingLevel).toBe('high')
+})
+
 it('a model picked in the fork itself carries over to the next session', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })

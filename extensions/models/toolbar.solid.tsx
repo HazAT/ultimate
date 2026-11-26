@@ -4,29 +4,37 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
-import { api, cn, errorMessage, useDialog, useModels, writingAs } from '@/sdk/solid'
-import type { ConversationId } from '@earendil-works/pi-durable'
+import { cn, errorMessage, useDialog, useModels, writingAs } from '@/sdk/solid'
 import { familyTitle } from '../../lib/families.ts'
 import type { FamiliesView, FamilyView } from './refs.ts'
 import { familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.ts'
-import { selectModel } from './picker.solid.tsx'
-import { FamilyDot, useCurrentModel, useFamilies } from './readers.solid.tsx'
-import { dialogs, pickerTarget, thinkingDialog } from './state.ts'
-import type { ModelInfo, ThinkingLevel } from './state.ts'
+import { FamilyDot, PickContext, useCurrentModel, useFamilies } from './readers.solid.tsx'
+import { dialogs, pickerTarget } from './state.ts'
+import type { ModelInfo, ModelPick, ThinkingLevel } from './state.ts'
 
 const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground'
 const Down = () => <ChevronDown class="size-3 shrink-0 opacity-60 @max-md:hidden" />
 
+export function PickControl(props: { pick: ModelPick }) {
+  return (
+    <PickContext value={props.pick}>
+      <ModelControl />
+    </PickContext>
+  )
+}
+
+type Current = ReturnType<typeof useCurrentModel>
+
 export function ModelControl() {
   const current = useCurrentModel()
   const families = useFamilies()
   const family = createMemo(() =>
-    familyOf(families(), current.ref(), current.thinking(), current.recorded()?.name),
+    familyOf(families(), current.ref(), current.thinking(), current.recorded()),
   )
   return (
     <Show
-      when={!current.loading() && current.id()}
+      when={!current.loading() && current.dialog()}
       keyed
       fallback={
         <Button
@@ -41,8 +49,8 @@ export function ModelControl() {
         </Button>
       }
     >
-      {(conversation) => {
-        const [open, setOpen] = useDialog(thinkingDialog(conversation))
+      {(dialog) => {
+        const [open, setOpen] = useDialog(dialog)
         const writes = createWrites()
         return (
           <Popover onOpenChange={setOpen} open={open()}>
@@ -71,10 +79,10 @@ export function ModelControl() {
               side="top"
             >
               <Options
-                id={conversation}
+                current={current}
                 families={families()}
                 writes={writes}
-                current={family()?.name}
+                family={family()?.name}
                 model={current.model()}
                 modelId={current.ref()?.modelId}
                 thinking={current.thinking() ?? 'off'}
@@ -134,10 +142,10 @@ function createWrites() {
 }
 
 function Options(props: {
-  id: ConversationId
+  current: Current
   families: FamiliesView | undefined
   writes: ReturnType<typeof createWrites>
-  current: string | undefined
+  family: string | undefined
   model: ModelInfo | undefined
   modelId: string | undefined
   thinking: ThinkingLevel
@@ -152,7 +160,7 @@ function Options(props: {
 
   function openPicker(source: string) {
     const close = props.close
-    pickerTarget.set(props.id)
+    pickerTarget.set(props.current.target())
     writingAs(source, () => {
       close()
       setPicker(true)
@@ -167,10 +175,10 @@ function Options(props: {
       (entry) => entry.provider === provider && entry.id === modelId,
     )?.available
     if (available !== true) return openPicker(source)
-    const id = props.id
+    const { select } = props.current
     return props.writes.run(
       `family/${family.name}`,
-      () => selectModel({ provider, modelId }, id, source, family),
+      () => select({ provider, modelId }, source, family),
       props.close,
     )
   }
@@ -182,7 +190,7 @@ function Options(props: {
         <For each={shown()} keyed={(family) => family.name}>
           {(family) => (
             <Button
-              aria-current={family().name === props.current ? 'true' : undefined}
+              aria-current={family().name === props.family ? 'true' : undefined}
               aria-label={`${family().name} family`}
               class="flex h-7 w-full items-center justify-start gap-2 rounded-sm px-2 text-left text-[12px] font-normal"
               data-pending={pending() === `family/${family().name}` ? '' : undefined}
@@ -195,7 +203,7 @@ function Options(props: {
               <Check
                 class={cn(
                   'size-3.5 shrink-0 in-data-pending:hidden',
-                  family().name === props.current ? 'text-brand' : 'opacity-0',
+                  family().name === props.family ? 'text-brand' : 'opacity-0',
                 )}
               />
               <FamilyDot color={family().color} />
@@ -215,14 +223,11 @@ function Options(props: {
         size={null}
         variant="ghost"
       >
-        <Show
-          when={!props.current && props.modelId}
-          fallback={<Search class="size-3.5 shrink-0" />}
-        >
+        <Show when={!props.family && props.modelId} fallback={<Search class="size-3.5 shrink-0" />}>
           <Check class="size-3.5 shrink-0 text-brand" />
         </Show>
         <span class="shrink-0">Other model…</span>
-        <Show when={!props.current && props.modelId}>
+        <Show when={!props.family && props.modelId}>
           <span class="ml-auto truncate pl-3 text-[11px] text-brand">{props.modelId}</span>
         </Show>
       </Button>
@@ -238,11 +243,8 @@ function Options(props: {
                 class="w-full"
                 disabled={pending() !== undefined}
                 onValueChange={(level) => {
-                  const id = props.id
-                  if (level)
-                    void props.writes.run(`thinking/${level}`, () =>
-                      api.configure({ thinkingLevel: level }, id),
-                    )
+                  const { setThinking } = props.current
+                  if (level) void props.writes.run(`thinking/${level}`, () => setThinking(level))
                 }}
                 value={props.thinking}
               >

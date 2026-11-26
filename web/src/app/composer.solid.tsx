@@ -239,6 +239,7 @@ function DraftComposer(props: { dock?: boolean }) {
         onSubmit={(input) => redirected(target()!, input)}
         placeholder={target()?.placeholder ?? ''}
         ready={target()?.ready}
+        toolbar={target()?.toolbar}
       />
     </div>
   )

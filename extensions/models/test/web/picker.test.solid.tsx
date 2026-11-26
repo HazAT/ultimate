@@ -1,11 +1,11 @@
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush } from 'solid-js'
+import { createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { parseConversationId } from '../../../../lib/ids.ts'
-import type { ModelsResponse, StreamedView } from '../../../../shared/protocol.ts'
+import type { ConfigureRequest, ModelsResponse, StreamedView } from '../../../../shared/protocol.ts'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -38,9 +38,10 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { actions, currentContext } from '../../../../web/src/sdk/actions.ts'
 import { store } from '../../../../web/src/sdk/client.ts'
 import { ConversationScope } from '../../../../web/src/sdk/solid.ts'
+import { writerNow } from '../../../../web/src/sdk/writer.ts'
 import { LoginDialog } from '../../login.solid.tsx'
 import { ModelPicker } from '../../picker.solid.tsx'
-import { ModelControl } from '../../toolbar.solid.tsx'
+import { ModelControl, PickControl } from '../../toolbar.solid.tsx'
 import { openLogin } from '../../state.ts'
 import models from '../../web.solid.tsx'
 
@@ -286,6 +287,48 @@ it('targets the side chat from thinking controls and the picker, including after
   } finally {
     release()
   }
+})
+
+it('picks a model and thinking kept outside any conversation through the pick, not configure', async () => {
+  const changes: object[] = []
+  const [ref, setRef] = createSignal({ provider: 'faux', modelId: 'orion' })
+  const [thinking, setThinking] = createSignal<'off' | 'low' | 'high'>('low')
+  const pick = {
+    name: 'test.next',
+    ref,
+    thinking,
+    configure: async (change: ConfigureRequest) => {
+      changes.push({ ...change, by: writerNow() })
+      if (change.model) setRef(change.model)
+      if (change.thinkingLevel) setThinking(change.thinkingLevel as 'off' | 'low' | 'high')
+    },
+  }
+  const container = renderSolid(() => (
+    <>
+      <PickControl pick={pick} />
+      <ModelPicker />
+    </>
+  ))
+  await sync()
+  expect(container.querySelector('[aria-label="Model and thinking"]')?.textContent).toContain(
+    'orion·low',
+  )
+  expect(await act('Model and thinking', 'setOpen', true)).toMatchObject({ ok: true })
+  await expectDistinctAgentNames(agent)
+  expect(await act('Thinking level', 'setValue', 'high')).toMatchObject({ ok: true })
+  expect(await act('Pick another model', 'press')).toMatchObject({ ok: true })
+  expect(container.querySelector('[data-highlighted][role="option"]')?.textContent).toContain(
+    'orion',
+  )
+  expect(await act('Search model catalog', 'run', 'faux/atlas')).toMatchObject({ ok: true })
+  expect(changes).toEqual([
+    { thinkingLevel: 'high', by: 'agent' },
+    { model: { provider: 'faux', modelId: 'atlas' }, by: 'agent' },
+  ])
+  expect(writes()).toEqual([])
+  expect(container.querySelector('[aria-label="Model and thinking"]')?.textContent).toContain(
+    'atlas·high',
+  )
 })
 
 it('lets an agent start a provider login and answer a streamed secret prompt without reading it', async ({

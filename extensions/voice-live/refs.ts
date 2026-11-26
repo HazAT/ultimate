@@ -15,7 +15,7 @@ export type VoiceSession = {
   startedAt?: number
   /** Every fork voice made, so the sidebar never lists them: voice shows as one live row while a session is open. */
   forks?: ConversationId[]
-  /** The model voice uses, `provider/model`, as last picked in a session's prompt box; unset, the default. */
+  /** The model the next session starts on, `provider/model`, as last picked in a voice prompt box; unset, the default. */
   model?: string
   /** Its thinking level, likewise; unset, `low`. A model without it uses its closest level. */
   thinking?: ModelThinkingLevel
@@ -133,6 +133,12 @@ export const TurnAction = actionRef<
 /** Open the session without a turn yet: forks @ultimate unless a session is open. Returns its conversation. */
 export const OpenAction = actionRef<null, { conversation: ConversationId }>('voice-live', 'open')
 
+/** The model or thinking level the next session starts on, picked in the cold prompt box; either may be left out. */
+export const PickAction = actionRef<
+  { model?: { provider: string; modelId: string }; thinkingLevel?: ModelThinkingLevel },
+  Record<string, never>
+>('voice-live', 'pick')
+
 /** Stop the session's current reply, for an interruption. */
 export const StopAction = actionRef<null, Record<string, never>>('voice-live', 'stop')
 
@@ -150,6 +156,8 @@ export const StatusAction = actionRef<
   null,
   {
     model: string
+    /** The thinking level it runs at, clamped to the model. */
+    thinking: ModelThinkingLevel
     route: VoiceRoute
     transcribes: boolean
     reason?: string

@@ -19,6 +19,7 @@ import { Slider } from '@/components/ui/slider.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
+  api,
   cn,
   Composer,
   ComposerRedirect,
@@ -60,7 +61,9 @@ import {
   voiceOpen,
   voiceSink,
 } from './dock.solid.tsx'
-import { StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
+import { PickAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
+import { PickControl } from '../models/ui.solid.tsx'
+import type { ModelPick } from '../models/ui.solid.tsx'
 import { PlaybackBar, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Voicing, Waveform } from './turns.solid.tsx'
@@ -418,7 +421,33 @@ function SetupList() {
   )
 }
 
+function useVoicePick(): ModelPick {
+  const status = useAction(StatusAction, null, { conversation: ROOT })
+  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+  createEffect(
+    () => [session()?.id, session()?.model, session()?.thinking].join(' '),
+    () => void status.refetch(),
+  )
+  const ref = () => {
+    const model = status.data()?.model
+    if (!model) return undefined
+    const at = model.indexOf('/')
+    return { provider: model.slice(0, at), modelId: model.slice(at + 1) }
+  }
+  return {
+    name: 'voice-live.next',
+    ref,
+    thinking: () => status.data()?.thinking,
+    configure: async (change) => {
+      await api.action(PickAction, change, { conversationId: ROOT })
+      await status.refetch()
+    },
+  }
+}
+
 function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
+  const pick = useVoicePick()
+  const toolbar = () => (props.fork === undefined ? <PickControl pick={pick} /> : undefined)
   const coldHeld = useExternal(
     () => coldHolds(composerDraft(COLD_DRAFT)),
     (notify) => composerDraft(COLD_DRAFT).subscribe(notify),
@@ -432,7 +461,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
     dictation: voiceSink,
     ready: () => draftOf().length > 0,
     send: (text, images) => sendTyped(text, images),
-    ...(hot() === undefined ? { draft: COLD_DRAFT } : {}),
+    ...(hot() === undefined ? { draft: COLD_DRAFT, toolbar: toolbar() } : {}),
   })
   return (
     <Show

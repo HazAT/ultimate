@@ -46,7 +46,14 @@ import type { AuthEvent, AuthPrompt } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { meansNone } from '../../lib/errors.ts'
 import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'
-import { authLabel, dialogs, loginProvider, pickerTarget, termsOf } from './state.ts'
+import {
+  authLabel,
+  conversationOf,
+  dialogs,
+  loginProvider,
+  pickerTarget,
+  termsOf,
+} from './state.ts'
 import type { ProviderInfo } from './state.ts'
 
 type Method = {
@@ -150,7 +157,7 @@ function LoginSession(props: {
   let active: Attempt | undefined
   function start(method: Method) {
     active?.cancel()
-    active = beginLogin(method, pickerTarget.get() ?? shown())
+    active = beginLogin(method, conversationOf(pickerTarget.get()) ?? shown())
     props.onAttempt(active)
     setAttempt(active)
   }

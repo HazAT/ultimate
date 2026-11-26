@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dialog.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
-  api,
   cn,
   ConversationScope,
   errorMessage,
@@ -27,11 +26,9 @@ import {
   useModels,
   writingAs,
 } from '@/sdk/solid'
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { familyTitle } from '../../lib/families.ts'
 import { agentsPanel, familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.ts'
-import { FamilyDot, useCurrentModel, useFamilies } from './readers.solid.tsx'
-import { SetFamilyAction } from './refs.ts'
+import { FamilyDot, PickContext, useCurrentModel, useFamilies } from './readers.solid.tsx'
 import type { FamilyView } from './refs.ts'
 import {
   authLabel,
@@ -39,7 +36,6 @@ import {
   loginProvider,
   matchesEveryQueryTerm,
   modelKey,
-  notePick,
   pickerTarget,
   termsOf,
 } from './state.ts'
@@ -63,25 +59,15 @@ function rankModels(models: ModelInfo[], terms: string[]) {
     .slice(0, LIMIT)
 }
 
-export async function selectModel(
-  model: { provider: string; modelId: string },
-  id: ConversationId | undefined,
-  source: string,
-  family: FamilyView | null = null,
-) {
-  const level = family && thinkingOf(family)
-  await api.configure({ model, ...(level ? { thinkingLevel: level } : {}) }, id)
-  await writingAs(source, () =>
-    api.action(SetFamilyAction, { family: family?.name ?? null }, { conversationId: id }),
-  )
-  notePick()
-}
-
 export function ModelPicker() {
   const [open, setOpen] = useDialog(dialogs.picker)
   const target = useExternal(pickerTarget.get, pickerTarget.subscribe)
   const shown = useConversationId()
-  const scope = () => (target() === shown() ? 'shown' : (target() ?? 'shown'))
+  const scope = () => {
+    const picked = target()
+    if (typeof picked === 'object') return picked
+    return picked === shown() ? 'shown' : (picked ?? 'shown')
+  }
   return (
     <Dialog onOpenChange={setOpen} open={open()}>
       <DialogContent
@@ -94,11 +80,17 @@ export function ModelPicker() {
           setup; other models you are not logged in for open the login.
         </DialogDescription>
         <Show when={open() && scope()} keyed>
-          {(conversation) => (
-            <ConversationScope value={conversation === 'shown' ? null : conversation}>
-              <Picker close={() => setOpen(false)} />
-            </ConversationScope>
-          )}
+          {(conversation) =>
+            typeof conversation === 'object' ? (
+              <PickContext value={conversation}>
+                <Picker close={() => setOpen(false)} />
+              </PickContext>
+            ) : (
+              <ConversationScope value={conversation === 'shown' ? null : conversation}>
+                <Picker close={() => setOpen(false)} />
+              </ConversationScope>
+            )
+          }
         </Show>
       </DialogContent>
     </Dialog>
@@ -106,7 +98,7 @@ export function ModelPicker() {
 }
 
 function Picker(props: { close: () => void }) {
-  const { id, ref, thinking, recorded, loading } = useCurrentModel()
+  const { target: pickedFor, ref, thinking, recorded, loading, select } = useCurrentModel()
   const models = useModels()
   const families = useFamilies()
   const [, setLogin] = useDialog(dialogs.login)
@@ -119,7 +111,7 @@ function Picker(props: { close: () => void }) {
   const providers = createMemo(
     () => new Map(models()?.providers.map((provider) => [provider.id, provider])),
   )
-  const current = createMemo(() => familyOf(families(), ref(), thinking(), recorded()?.name)?.name)
+  const current = createMemo(() => familyOf(families(), ref(), thinking(), recorded())?.name)
   const shownFamilies = createMemo(() =>
     (families()?.families ?? []).filter((family) => {
       const target = runsOn(family)
@@ -142,7 +134,7 @@ function Picker(props: { close: () => void }) {
   }
 
   function login(provider?: string) {
-    pickerTarget.set(id())
+    pickerTarget.set(pickedFor())
     loginProvider.set(provider)
     props.close()
     setLogin(true)
@@ -167,7 +159,7 @@ function Picker(props: { close: () => void }) {
     }
     setError(undefined)
     try {
-      await selectModel(model, id(), source, family)
+      await select(model, source, family)
       writingAs(source, close)
     } catch (failure) {
       setError(errorMessage(failure))

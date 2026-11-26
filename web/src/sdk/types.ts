@@ -174,6 +174,8 @@ export interface ComposerTarget {
    * cold voice session): the composer then shows none of the scoped conversation's run, queue, toolbar or status.
    */
   draft?: string
+  /** With `draft`, the controls at the start of its prompt box's row, in place of the conversation's toolbar. */
+  toolbar?: JSX.Element
   /** `false` hides dictation; a sink replaces the box's default transcription and insertion. */
   dictation?: false | DictationSink
 }
