@@ -163,7 +163,7 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   )
   expect(audioParts).toEqual([])
   expect(JSON.stringify(later.messages)).toContain(
-    'by voice (his recording follows): what about the sidebar',
+    'by voice (their recording follows): what about the sidebar',
   )
   expect(
     later.messages.filter(
@@ -549,7 +549,7 @@ it("voice_handoff carries the user's own turns of this session in order, without
     words: ['make the sidebar quieter', 'and keep the badges', 'ship it today', call('First')],
   })
   expect(JSON.stringify(card.model)).toContain(
-    "Daniel's words in voice mode, oldest first:\\n> make the sidebar quieter\\n> and keep the badges",
+    "The user's words in voice mode, oldest first:\\n> make the sidebar quieter\\n> and keep the badges",
   )
 
   const next = await f.turn({ key: 'fresh', text: 'a new thought', session: first.id })
@@ -644,7 +644,7 @@ it('voice_handoff with `to` reaches a real branch on screen and refuses one off 
     })
   await send('elsewhere', f.main)
   expect(JSON.stringify(f.requests.at(-1)!.messages.at(-1))).toContain(
-    `#${branch.id} is not on Daniel's screen`,
+    `#${branch.id} is not on the user's screen`,
   )
   // A handoff to #964145 queued as a follow-up while it was busy; it now steers the current run.
   const busy = await (await f.server.harness.conversation(branch.id, context))!.submit(
@@ -733,7 +733,7 @@ it('a clip that completely answers the question voice just asked sends as a stee
     },
     answer: {
       state: {
-        assistantLastReply: 'echo Daniel, typed: Which one, the first or the second?',
+        assistantLastReply: 'echo The user, typed: Which one, the first or the second?',
         collectedSoFar: '',
         latestRecording: 'the second one',
       },

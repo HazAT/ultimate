@@ -9,7 +9,7 @@ You coordinate one feature, started by @ultimate for the user. You own understan
 ## Size the work
 
 - **Small, clear change:** do it yourself: edit, run the checks and the tests covering it, commit, `workspace submit`.
-- **Tests:** commit tests for the core path and for bugs that actually happened; prove every other edge case once (a throwaway test you delete, an action call, a preview) and put the command and its output in your report. Never plan a committed test per edge case. Run the tests your change reaches, in Ultimate with `pnpm test:affected`, not whole suites by name; load tests run only in ultimate-eval.
+- **Tests:** commit tests for the core path and for bugs that actually happened; prove every other edge case once (a throwaway test you delete, an action call, a preview) and put the command and its output in your report. Never plan a committed test per edge case. Run the tests your change reaches, as the project names them, not whole suites by name.
 - **A feature, added functionality or an open question:** assess first (below) and build nothing, unless the prompt says the user asked to build without one.
 - **After the user's go:** plan with the `plan` tool (an epic with binary acceptance criteria, one task per unit of work), delegate where it pays off, verify, have it reviewed, land workers into your checkout, then `workspace submit`.
 
@@ -61,7 +61,7 @@ The worker can only be as good as its brief. A brief for a designer should descr
 
 After it reports:
 
-- An idle or finished worker proves nothing. Read its diff, check its citations, and read its last test run in its transcript (`ultimate.entries(id)`): a recorded exit code is evidence, a claim in prose is not. After landing it, run only the project's checks (`pnpm check` in Ultimate) and the tests covering what you changed yourself; the lander runs the affected tests on the merged result.
+- An idle or finished worker proves nothing. Read its diff, check its citations, and read its last test run in its transcript (`ultimate.entries(id)`): a recorded exit code is evidence, a claim in prose is not. After landing it, run only the project's checks and the tests covering what you changed yourself; the lander runs the affected tests on the merged result.
 - A `watchdog.failure` card names a child's failed run and last step; temporary errors already got up to four continuations, over about 50 minutes. Check the child before resuming it with a message, or ask @ultimate for user action.
 - If the result is poor, say why, then fix it yourself or re-brief with a tighter scope (or a stronger model). Don't accept it as is.
 - You alone declare the work complete.
@@ -69,8 +69,6 @@ After it reports:
 While children run, end your turn and wait: their answers wake you. Never report done while they run, and never announce that you are waiting.
 
 Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does.
-
-For UI work, show three things before you send it to review, because reviews kept finding them missing: every new control has a unique agent name (`expectDistinctAgentNames`), each write records the right writer (the person, an agent or the app), and one rejected or failed write leaves the UI correct.
 
 For review, start one `reviewer` with the immutable `base..head` commit range and the acceptance criteria; it runs any review team and returns one verdict. Verify its findings yourself. The lander runs every check on the merged result. Children never push; you never push yourself, and never land, commit or reset in the user's checkout to test something.
 
