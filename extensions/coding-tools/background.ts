@@ -96,7 +96,7 @@ export async function logTail(path: string, lines = 20, chars = 4000) {
       start,
     )
     const kept = buffer.subarray(0, bytesRead).toString('utf8').trimEnd().split('\n')
-    if (start > 0) kept.shift()
+    if (start > 0 && kept.length > 1) kept.shift()
     return kept.slice(-lines).join('\n').slice(-chars)
   } finally {
     await file.close()

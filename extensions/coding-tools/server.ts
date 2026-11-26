@@ -13,6 +13,7 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
   type ToolExecutionApi,
+  type Tx,
   type ToolExecutionResult,
   type ToolPark,
   type ToolRegistration,
@@ -261,6 +262,14 @@ export default function codingTools(
     'emit' | 'harness' | 'home' | 'images' | 'need' | 'notice' | 'onOpen' | 'react'
   >,
 ) {
+  const concludedWithOwners = async (tx: Tx, conversation: ConversationId) => {
+    const ended = await host.need(ConversationsApi).concludedIn(tx)
+    for (let id: ConversationId | undefined = conversation; id !== undefined;) {
+      if (ended.has(id)) return true
+      id = (await tx.conversation(id))?.owner?.conversationId
+    }
+    return false
+  }
   const reportEnded = async (
     conversation: ConversationId,
     { name, command, pgid, log }: { name: string; command: string; pgid: number; log: string },
@@ -273,7 +282,7 @@ export default function codingTools(
     const handle = await harness.conversation(conversation, BACKGROUND_CONTEXT)
     if (!handle) return
     await harness.commit(async (tx) => {
-      if ((await host.need(ConversationsApi).concludedIn(tx)).has(conversation)) return
+      if (await concludedWithOwners(tx, conversation)) return
       await handle.submit(tx, {
         type: 'write',
         requestId: `background-ended:${name}`,
@@ -353,14 +362,9 @@ export default function codingTools(
           args.command,
           context.abortSignal,
         )
-        const conversations = host.need(ConversationsApi)
         const concluded = await api
           .commit(async (tx) => {
-            const ended = await conversations.concludedIn(tx)
-            for (let id: ConversationId | undefined = api.conversationId; id !== undefined;) {
-              if (ended.has(id)) return true
-              id = (await tx.conversation(id))?.owner?.conversationId
-            }
+            if (await concludedWithOwners(tx, api.conversationId)) return true
             await host.emit(tx, BackgroundStarted, started)
             return false
           }, context)
