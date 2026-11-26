@@ -203,11 +203,7 @@ async function secretsArea(host: AreaHost): Promise<SetupIssue[]> {
     if (!extension.enabled || !extension.server || extension.server.error) continue
     const missing = extension.layer === 'default' ? optional : chosen
     for (const { name, provider } of extension.server.secrets ?? [])
-      if (
-        !set.has(name) &&
-        !process.env[name] &&
-        !(provider && providerKeyStandsIn(host.modelRuntime, provider))
-      )
+      if (!set.has(name) && !(provider && providerKeyStandsIn(host.modelRuntime, provider)))
         missing.set(name, [...(missing.get(name) ?? []), extension.name])
   }
   for (const name of chosen.keys()) optional.delete(name)
