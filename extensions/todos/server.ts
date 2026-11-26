@@ -54,6 +54,13 @@ export const docs = [Todos, OldestFirstIdempotencyReceipts]
 
 const OWNERS = ['user', 'ultimate'] as const
 
+const checkedText = (text: unknown): string => {
+  if (typeof text !== 'string' || !text.trim()) throw new Error('text must be nonempty')
+  if (text.trim().length > TEXT_CHARS)
+    throw new Error(`text must be at most ${TEXT_CHARS} characters`)
+  return text.trim()
+}
+
 export async function add(tx: Tx, text: unknown, owner: unknown, key?: unknown): Promise<Todo> {
   if (key !== undefined && key !== null) {
     if (typeof key !== 'string' || !key || key.length > KEY_CHARS)
@@ -71,15 +78,13 @@ export async function add(tx: Tx, text: unknown, owner: unknown, key?: unknown):
     keys.keys.splice(0, keys.keys.length - KEY_LIMIT)
     return todo
   }
-  if (typeof text !== 'string' || !text.trim()) throw new Error('text must be nonempty')
-  if (text.trim().length > TEXT_CHARS)
-    throw new Error(`text must be at most ${TEXT_CHARS} characters`)
+  const trimmed = checkedText(text)
   if (!OWNERS.includes(owner as Todo['owner']))
     throw new Error("owner must be 'user' or 'ultimate'")
   const todos = await tx.doc(Todos, ROOT_CONVERSATION_ID)
   const todo: Todo = {
     id: todos.next++,
-    text: text.trim(),
+    text: trimmed,
     owner: owner as Todo['owner'],
     at: Date.now(),
   }
@@ -104,6 +109,15 @@ export async function mark(tx: Tx, id: unknown, done: boolean) {
     )
     todos.items = todos.items.filter((item) => !olderCompletedTodoIds.has(item.id))
   } else delete todo.done
+  return copyTodoBeyondTransaction(todo)
+}
+
+export async function update(tx: Tx, id: unknown, text: unknown) {
+  const todos = await tx.doc(Todos, ROOT_CONVERSATION_ID)
+  const todo = todos.items.find((item) => item.id === id)
+  if (!todo) throw new Error(`No to-do ${String(id)}`)
+  if (todo.done !== undefined) throw new Error(`To-do ${todo.id} is already done`)
+  todo.text = checkedText(text)
   return copyTodoBeyondTransaction(todo)
 }
 
@@ -191,9 +205,9 @@ export default function todosExtension(host: ExtensionHost) {
         name: 'todo',
         deferred: true,
         description:
-          "The project's to-dos, owned by you ('ultimate') or the user ('user'): add {text, owner}, done {id}, list. Keep open loops here, not in codemode store; the user sees and ticks them in the To-dos panel, and their open questions already show there, so never add a to-do for a question. Other projects read this list with ultimate.doc('todos', 1, {project}) and ask you to add through tools.tell.",
+          "The project's to-dos, owned by you ('ultimate') or the user ('user'): add {text, owner}, done {id}, update {id, text} for an open one, list. Keep open loops here, not in codemode store; the user sees and ticks them in the To-dos panel, and their open questions already show there, so never add a to-do for a question. Other projects read this list with ultimate.doc('todos', 1, {project}) and ask you to add through tools.tell.",
         parameters: obj({
-          action: strEnum(['add', 'done', 'list']),
+          action: strEnum(['add', 'done', 'list', 'update']),
           text: opt(str()),
           owner: opt(strEnum(['user', 'ultimate'])),
           id: opt(int({ minimum: 1 })),
@@ -212,6 +226,10 @@ export default function todosExtension(host: ExtensionHost) {
             if (args.action === 'done') {
               const todo = await mark(tx, args.id, true)
               return `Done ${todo.id}: ${todo.text}`
+            }
+            if (args.action === 'update') {
+              const todo = await update(tx, args.id, args.text)
+              return `Updated ${todo.id}: ${todo.text}`
             }
             return listText((await tx.doc(Todos, ROOT_CONVERSATION_ID)).items) ?? 'No open to-dos.'
           }, ctx)
