@@ -11,7 +11,7 @@ import {
   talkMode,
 } from '../dictation/ui.solid.tsx'
 import type { Recorded, Sink } from '../dictation/ui.solid.tsx'
-import { speech, splitReply } from '../read-aloud/ui.solid.tsx'
+import { SOUND_BLOCKED, speech, splitReply } from '../read-aloud/ui.solid.tsx'
 import type { Sentence } from '../read-aloud/ui.solid.tsx'
 import { createCues } from './cues.ts'
 import {
@@ -68,6 +68,7 @@ export const dock = createRoot(() => {
   speech.failure.subscribe(() => {
     const failure = speech.failure.get()
     if (failure?.key !== undefined && loaded.has(failure.key)) setError(failure.message)
+    else if (!failure) setError((now) => (now === SOUND_BLOCKED ? undefined : now))
   })
   let held: { busy: boolean } | undefined
   let stopPulse: (() => void) | undefined

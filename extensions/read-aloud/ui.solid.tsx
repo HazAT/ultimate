@@ -13,6 +13,8 @@
  * error with the key it stopped.
  */
 export { speech } from './voice.solid.tsx'
+/** The `failure` message while the browser refuses to play sound before a tap; the player waits paused until `resume` or `toggle`. */
+export { BLOCKED as SOUND_BLOCKED } from './voice.solid.tsx'
 /** The page's speech player and its settings. */
 export type { Speech } from './voice.solid.tsx'
 /** Split streamed reply parts, or one text, into sentences with their paragraphs; `estimate` gives a sentence's seconds. */

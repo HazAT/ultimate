@@ -1,7 +1,6 @@
 import { expect, it } from 'vitest'
-import { clauses, createPlayer, fetchedVoice, splitReply } from '../speech.ts'
+import { clauses, createPlayer, fetchedVoice, isBlocked, splitReply } from '../speech.ts'
 import { until } from '../../../test/helpers.ts'
-import type { AudioLike } from '../speech.ts'
 
 function fakeVoice(options: { rejectPlay?: boolean } = {}) {
   let selected: 'openai' | 'system' = 'openai'
@@ -12,7 +11,26 @@ function fakeVoice(options: { rejectPlay?: boolean } = {}) {
     reset: () => {},
   }
   const requests: { text: string; signal: AbortSignal; resolve: (src: string) => void }[] = []
-  const clips: (AudioLike & { listeners: Map<string, () => void>; paused: boolean })[] = []
+  const listeners = new Map<string, () => void>()
+  const audio = {
+    src: '',
+    playbackRate: 1,
+    duration: 2,
+    paused: true,
+    played: [] as [string, number][],
+    play: async () => {
+      if (options.rejectPlay) throw new DOMException('Needs a user gesture', 'NotAllowedError')
+      audio.paused = false
+      audio.played.push([audio.src, audio.playbackRate])
+      listeners.get('playing')?.()
+    },
+    pause: () => (audio.paused = true),
+    end: () => {
+      audio.paused = true
+      listeners.get('ended')?.()
+    },
+    addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+  }
   const failures: unknown[] = []
   const engine = fetchedVoice({
     load: (text, signal) =>
@@ -20,25 +38,7 @@ function fakeVoice(options: { rejectPlay?: boolean } = {}) {
         requests.push({ text, signal, resolve })
         signal.addEventListener('abort', () => reject(signal.reason), { once: true })
       }),
-    audio: () => {
-      const listeners = new Map<string, () => void>()
-      const clip = {
-        src: '',
-        playbackRate: 1,
-        duration: 2,
-        paused: true,
-        listeners,
-        play: async () => {
-          if (options.rejectPlay) throw new Error('autoplay blocked')
-          clip.paused = false
-          listeners.get('playing')?.()
-        },
-        pause: () => (clip.paused = true),
-        addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
-      }
-      clips.push(clip)
-      return clip
-    },
+    audio,
     failed: (error) => {
       failures.push(error)
       player.stop()
@@ -56,13 +56,13 @@ function fakeVoice(options: { rejectPlay?: boolean } = {}) {
     selected = to
     player.switched()
   }
-  return { player, requests, request, clips, failures, select, spoken }
+  return { player, engine, requests, request, audio, failures, select, spoken }
 }
 
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve))
 
 it('reads a streaming reply sentence by sentence, fetching the next one while the current plays', async () => {
-  const { player, requests, request, clips } = fakeVoice()
+  const { player, requests, request, audio } = fakeVoice()
   player.load('turn', [], true)
   const streamed = splitReply([{ text: 'First one. Second one. Third', final: false }])
   expect(streamed.sentences.map((sentence) => sentence.text)).toEqual([
@@ -79,23 +79,23 @@ it('reads a streaming reply sentence by sentence, fetching the next one while th
   request('First one.').resolve('data:first')
   await flush()
   await flush()
-  expect(clips.map((clip) => [clip.src, clip.playbackRate])).toEqual([['data:first', 1.25]])
+  expect(audio.played).toEqual([['data:first', 1.25]])
   expect(player.state.get()).toMatchObject({ index: 0, playing: true })
 
   request(' Second one.').resolve('data:second')
   const third = splitReply([{ text: 'First one. Second one. Third.', final: true }]).sentences[2]
   player.push('turn', third)
-  clips[0].listeners.get('ended')!()
+  audio.end()
   await flush()
   await flush()
   await flush()
-  expect(clips.map((clip) => clip.src)).toEqual(['data:first', 'data:second'])
+  expect(audio.played.map(([src]) => src)).toEqual(['data:first', 'data:second'])
   expect(requests.map((item) => item.text)).toEqual(['First one.', ' Second one.', ' Third.'])
   expect(requests.filter((item) => item.signal.aborted)).toEqual([])
 })
 
 it('a long sentence starts with its first clause while the rest is still being read', async () => {
-  const { player, requests, request, clips } = fakeVoice()
+  const { player, requests, request, audio } = fakeVoice()
   const long =
     'Your starter is ready when it doubles within a few hours of feeding, smells pleasantly tangy and shows bubbles all through the jar. '
   player.load('turn', splitReply([{ text: long, final: true }]).sentences, false)
@@ -107,25 +107,25 @@ it('a long sentence starts with its first clause while the rest is still being r
   requests[0].resolve('data:first')
   await flush()
   await flush()
-  expect(clips.map((clip) => clip.src)).toEqual(['data:first'])
+  expect(audio.played.map(([src]) => src)).toEqual(['data:first'])
   expect(requests.map((item) => item.text)).toEqual([
     'Your starter is ready when it doubles within a few hours of feeding,',
     ' smells pleasantly tangy and shows bubbles all through the jar.',
   ])
   request(' smells pleasantly tangy and shows bubbles all through the jar.').resolve('data:rest')
-  clips[0].listeners.get('ended')!()
+  audio.end()
   await flush()
   await flush()
-  expect(clips.map((clip) => clip.src)).toEqual(['data:first', 'data:rest'])
+  expect(audio.played.map(([src]) => src)).toEqual(['data:first', 'data:rest'])
   expect(player.state.get()).toMatchObject({ index: 0, playing: true })
-  clips[1].listeners.get('ended')!()
+  audio.end()
   await flush()
   await flush()
   expect(player.state.get()).toMatchObject({ playing: false })
 })
 
 it('cutting in stops playback at once and aborts the queued and prefetching requests', async () => {
-  const { player, requests, request, clips, failures } = fakeVoice()
+  const { player, requests, request, audio, failures } = fakeVoice()
   player.load('turn', [], true)
   for (const sentence of splitReply([{ text: 'One. Two. Three. ', final: false }]).sentences)
     player.push('turn', sentence)
@@ -133,18 +133,18 @@ it('cutting in stops playback at once and aborts the queued and prefetching requ
   request('One.').resolve('data:one')
   await flush()
   await flush()
-  expect(clips[0].paused).toBe(false)
+  expect(audio.paused).toBe(false)
   expect(requests.map((item) => item.text)).toEqual(['One.', ' Two.'])
 
   player.stop()
-  expect(clips[0].paused).toBe(true)
+  expect(audio.paused).toBe(true)
   expect(request(' Two.').signal.aborted).toBe(true)
   expect(player.state.get()).toMatchObject({ playing: false, paused: false })
 
   request(' Two.').resolve('data:late')
-  clips[0].listeners.get('ended')!()
+  audio.end()
   await flush()
-  expect(clips).toHaveLength(1)
+  expect(audio.played).toHaveLength(1)
   expect(requests).toHaveLength(2)
   expect(failures).toEqual([])
 })
@@ -164,18 +164,38 @@ it('a clip that cannot play stops the reply and aborts the clauses and sentence 
     [' smells pleasantly tangy and shows bubbles all through the jar.', true],
   ])
   expect(player.state.get()).toMatchObject({ playing: false })
+  expect(isBlocked(failures[0])).toBe(true)
+})
+
+it('a tap unlocks the one audio element that later sentences play through, without cutting off a clip', async () => {
+  const { player, engine, request, audio } = fakeVoice()
+  engine.unlock!()
+  expect(audio.played).toEqual([[expect.stringMatching(/^data:audio\/wav;base64,/), 1]])
+  audio.end()
+  player.load('turn', [], true)
+  for (const sentence of splitReply([{ text: 'One. Two. ', final: false }]).sentences)
+    player.push('turn', sentence)
+  await flush()
+  request('One.').resolve('data:one')
+  await until(() => audio.played.length === 2)
+  engine.unlock!()
+  expect(audio.src).toBe('data:one')
+  request(' Two.').resolve('data:two')
+  audio.end()
+  await until(() => audio.played.length === 3)
+  expect(audio.played.map(([src]) => src).slice(1)).toEqual(['data:one', 'data:two'])
 })
 
 it('switching to the system voice stops OpenAI work and reads new sentences with the system voice', async () => {
-  const { player, requests, clips, select, spoken } = fakeVoice()
+  const { player, requests, audio, select, spoken } = fakeVoice()
   player.load('turn', [], true)
   for (const sentence of splitReply([{ text: 'One. Two. ', final: false }]).sentences)
     player.push('turn', sentence)
   await until(() => requests.length === 2)
   requests[0].resolve('data:one')
-  await until(() => clips.length === 1)
+  await until(() => audio.played.length === 1)
   select('system')
-  expect(clips[0].paused).toBe(true)
+  expect(audio.paused).toBe(true)
   expect(requests.every((item) => item.signal.aborted)).toBe(true)
   expect(spoken).toEqual(['One.'])
   player.push('turn', splitReply([{ text: 'One. Two. Three. ', final: false }]).sentences[2])

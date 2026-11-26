@@ -2,7 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { api, errorMessage } from '@/sdk/solid'
 import { PrepareAction } from './refs.ts'
 import { splitReply } from './speech.ts'
-import { speech } from './voice.solid.tsx'
+import { BLOCKED, speech } from './voice.solid.tsx'
 
 export type Reading = {
   key: string
@@ -43,7 +43,8 @@ speech.state.subscribe(() => {
   changed()
 })
 speech.failure.subscribe(() => {
-  if (source && speech.failure.get()?.key === source.key) source.preparing.abort()
+  const failure = speech.failure.get()
+  if (source && failure?.key === source.key && failure.message !== BLOCKED) source.preparing.abort()
   changed()
 })
 
@@ -133,7 +134,8 @@ export function pause() {
 export function resume() {
   const reading = current()
   if (!reading || !source) return
-  if (reading.error) read(source.conversation, source.entry, source.text)
+  if (reading.error && reading.error !== BLOCKED)
+    read(source.conversation, source.entry, source.text)
   else speech.resume()
 }
 

@@ -88,6 +88,7 @@ export type SpeechEvents = {
 export type SpeechEngine = {
   say: (text: string, rate: number, events: SpeechEvents) => void
   prefetch?: (text: string) => void
+  unlock?: () => void
   halt: () => void
   reset: () => void
 }
@@ -100,23 +101,36 @@ export const systemVoices = () => {
   }
 }
 
-export const systemVoice = (): SpeechEngine => ({
-  say(text, rate, events) {
-    if (!('speechSynthesis' in globalThis)) return events.end()
-    speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = rate
-    utterance.addEventListener('start', () => events.start())
-    utterance.addEventListener('boundary', (event) => {
-      if (!event.name || event.name === 'word') events.boundary(event.charIndex)
-    })
-    utterance.addEventListener('end', events.end)
-    utterance.addEventListener('error', events.end)
-    speechSynthesis.speak(utterance)
-  },
-  halt: () => globalThis.speechSynthesis?.cancel(),
-  reset: () => globalThis.speechSynthesis?.cancel(),
-})
+export const isBlocked = (error: unknown) =>
+  error instanceof Error && error.name === 'NotAllowedError'
+
+export function systemVoice(blocked: () => void): SpeechEngine {
+  let primed = false
+  return {
+    say(text, rate, events) {
+      if (!('speechSynthesis' in globalThis)) return events.end()
+      speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = rate
+      utterance.addEventListener('start', () => events.start())
+      utterance.addEventListener('boundary', (event) => {
+        if (!event.name || event.name === 'word') events.boundary(event.charIndex)
+      })
+      utterance.addEventListener('end', events.end)
+      utterance.addEventListener('error', (event) =>
+        event.error === 'not-allowed' ? blocked() : events.end(),
+      )
+      speechSynthesis.speak(utterance)
+    },
+    unlock() {
+      if (primed || !('speechSynthesis' in globalThis) || speechSynthesis.speaking) return
+      primed = true
+      speechSynthesis.speak(new SpeechSynthesisUtterance(''))
+    },
+    halt: () => globalThis.speechSynthesis?.cancel(),
+    reset: () => globalThis.speechSynthesis?.cancel(),
+  }
+}
 
 export type AudioLike = {
   src: string
@@ -154,14 +168,21 @@ function atMost(text: string) {
   return [...parts, rest].filter((part) => part.trim())
 }
 
+const SILENCE =
+  'data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAAAAAA=='
+
 export function fetchedVoice(options: {
   load: (text: string, signal: AbortSignal) => Promise<string>
-  audio: () => AudioLike
+  audio: AudioLike
   failed: (error: unknown) => void
 }): SpeechEngine {
+  const { audio } = options
   const fetched = new Map<string, { controller: AbortController; parts: Promise<string>[] }>()
-  let playing: AudioLike | undefined
   let turn = 0
+  let unlocked = false
+  let clipEvents: Partial<Record<'playing' | 'ended' | 'error', () => void>> = {}
+  for (const type of ['playing', 'ended', 'error'] as const)
+    audio.addEventListener(type, () => clipEvents[type]?.())
   const request = (text: string) => {
     const known = fetched.get(text)
     if (known) return known.parts
@@ -184,18 +205,29 @@ export function fetchedVoice(options: {
   }
   const halt = () => {
     turn++
-    playing?.pause()
-    playing = undefined
+    if (clipEvents.ended) audio.pause()
+    clipEvents = {}
   }
-  const clip = (src: string, rate: number, started: (audio: AudioLike) => void) =>
+  const clip = (src: string, rate: number, started: () => void) =>
     new Promise<void>((resolve, reject) => {
-      const audio = (playing = options.audio())
+      const settle = () => {
+        if (clipEvents === events) clipEvents = {}
+      }
+      const events = {
+        playing: started,
+        ended: () => (settle(), resolve()),
+        error: () => (settle(), reject(new Error('The audio could not play'))),
+      }
+      clipEvents = events
       audio.src = src
       audio.playbackRate = rate
-      audio.addEventListener('playing', () => started(audio))
-      audio.addEventListener('ended', resolve)
-      audio.addEventListener('error', () => reject(new Error('The audio could not play')))
-      inProcess('audio plays on this open page only', audio.play().catch(reject))
+      inProcess(
+        'audio plays on this open page only',
+        audio
+          .play()
+          .then(() => (unlocked = true))
+          .catch((error: unknown) => clipEvents === events && (settle(), reject(error))),
+      )
     })
   async function play(text: string, rate: number, events: SpeechEvents, mine: number) {
     const parts = request(text)
@@ -204,7 +236,7 @@ export function fetchedVoice(options: {
       for (const [at, part] of parts.entries()) {
         const src = await part
         if (mine !== turn) return
-        await clip(src, rate, (audio) => {
+        await clip(src, rate, () => {
           if (at === 0 && mine === turn)
             events.start(((audio.duration / rate) * text.length) / first.length)
         })
@@ -226,6 +258,17 @@ export function fetchedVoice(options: {
       inProcess('a sentence plays only on this open page', play(text, rate, events, turn))
     },
     prefetch: (text) => void request(text),
+    unlock() {
+      if (unlocked || clipEvents.ended) return
+      audio.src = SILENCE
+      inProcess(
+        'unlocking sound concerns this open page only',
+        audio
+          .play()
+          .then(() => (unlocked = true))
+          .catch(overshadowed),
+      )
+    },
     halt,
     reset() {
       halt()
@@ -355,6 +398,7 @@ export function createPlayer(options: {
       else prefetchNext()
     },
     play,
+    unlock: () => options.engine().unlock?.(),
     switched() {
       const now = state.get()
       if (now.playing) play(Math.max(0, now.index))
