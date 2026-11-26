@@ -1,3 +1,4 @@
+import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
@@ -91,19 +92,56 @@ beforeEach(async () => {
   composeIn(parseConversationId(40))
 })
 
-it.each([false, true])(
-  'Enter during a recording stops it and sends the typed text with its transcript as one turn (collect: %s)',
-  async (collect) => {
-    dock.setCollect(collect)
-    await capture.press(voiceSink)?.started
-    speak()
-    const sent = sendTyped('look at this')
-    await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
-    expect(harness.turns).toEqual([])
-    settleTranscripts({ transcripts: { 'rec-1': 'hello there' } }, parseConversationId(40))
-    await sent
-    expect(harness.turns).toEqual([
-      expect.objectContaining({ text: 'hello there\n\nlook at this', audio: 'rec-1' }),
-    ])
-  },
-)
+const session = parseConversationId(40)
+const shot = { data: 'cG5n', mimeType: 'image/png' }
+
+it('Enter during a recording stops it and sends the typed text, the image and its transcript as one turn', async () => {
+  dock.setCollect(false)
+  await capture.press(voiceSink)?.started
+  speak()
+  const sent = sendTyped('look at this', [shot])
+  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+  expect(harness.turns).toEqual([])
+  settleTranscripts({ transcripts: { 'rec-1': 'hello there' } }, session)
+  await sent
+  expect(harness.turns).toEqual([
+    expect.objectContaining({
+      text: 'hello there\n\nlook at this',
+      audio: 'rec-1',
+      images: [shot],
+    }),
+  ])
+})
+
+it('Enter during a recording while collecting sends the collected clips, the new one and the text as one turn', async () => {
+  dock.setCollect(true)
+  flush()
+  const earlier = { audio: 'clip-0', seconds: 2 }
+  settleTranscripts({ draft: [earlier] }, session)
+  await capture.press(voiceSink)?.started
+  speak()
+  const sent = sendTyped('look at this', [shot])
+  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+  settleTranscripts(
+    { draft: [earlier], transcripts: { 'clip-0': 'first', 'rec-1': 'second' } },
+    session,
+  )
+  await sent
+  expect(harness.turns).toEqual([
+    expect.objectContaining({
+      text: 'first second\n\nlook at this',
+      clips: ['clip-0', 'rec-1'],
+      images: [shot],
+    }),
+  ])
+})
+
+it('End while Enter stops the recording sends nothing and leaves the typed text in the box', async () => {
+  dock.setCollect(false)
+  await capture.press(voiceSink)?.started
+  speak()
+  const sent = sendTyped('look at this')
+  await endSession()
+  await expect(sent).rejects.toThrow('The voice session ended')
+  expect(harness.turns).toEqual([])
+})
