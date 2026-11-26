@@ -20,6 +20,7 @@ export function bindLongPress(el: HTMLElement, enabled: () => boolean, held: () 
     start = { x: event.clientX, y: event.clientY, id: event.pointerId }
     cancel = deadline(holdMs, () => {
       stop()
+      if (!enabled()) return
       fired = true
       held()
     })
