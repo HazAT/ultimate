@@ -96,6 +96,7 @@ function conversationModel() {
     select: (model: ModelRef, source: string, family: FamilyView | null = null) =>
       selectModel(model, id(), source, family),
     setThinking: (level: ThinkingLevel) => api.configure({ thinkingLevel: level }, id()),
+    cycles: true,
   }
 }
 
@@ -109,13 +110,13 @@ function pickedModel(pick: ModelPick) {
     thinking: pick.thinking,
     recorded: () => undefined,
     loading: () => pick.ref() === undefined,
-    select: async (model: ModelRef, source: string, family: FamilyView | null = null) => {
+    select: (model: ModelRef, source: string, family: FamilyView | null = null) => {
       const level = family && thinkingOf(family)
-      await writingAs(source, () =>
+      return writingAs(source, () =>
         pick.configure({ model, ...(level ? { thinkingLevel: level } : {}) }),
       )
-      notePick()
     },
     setThinking: (level: ThinkingLevel) => pick.configure({ thinkingLevel: level }),
+    cycles: false,
   }
 }

@@ -532,7 +532,8 @@ export const actions = {
     host.harness().resume()
     return { audio: id, session }
   }),
-  pick: implementAction(PickAction, async (args, { host }) => {
+  pick: implementAction(PickAction, async (args, action) => {
+    const { host } = action
     const { model, thinkingLevel } = unwrap<{ model: unknown; thinkingLevel: unknown }>(args)
     const { provider, modelId } = unwrap<{ provider: unknown; modelId: unknown }>(model)
     if (
@@ -546,8 +547,13 @@ export const actions = {
       throw new Error(`Expected thinkingLevel as one of ${THINKING_LEVELS.join(', ')}`)
     await host.harness().commit(async (tx) => {
       const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+      if (session.id !== undefined)
+        throw new Error('A voice session is open: pick its model in its own prompt box')
+      const picked = () => `${session.model ?? ''}:${session.thinking ?? ''}`
+      const previous = picked()
       if (model !== undefined) session.model = `${provider as string}/${modelId as string}`
       if (thinkingLevel !== undefined) session.thinking = thinkingLevel as ModelThinkingLevel
+      await action.uiChanged(tx, { key: 'voice-live.pick', value: picked(), previous })
     }, context)
     return {}
   }),

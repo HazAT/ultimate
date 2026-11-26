@@ -422,12 +422,11 @@ function SetupList() {
 }
 
 function useVoicePick(): ModelPick {
-  const status = useAction(StatusAction, null, { conversation: ROOT })
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
-  createEffect(
-    () => [session()?.id, session()?.model, session()?.thinking].join(' '),
-    () => void status.refetch(),
-  )
+  const status = useAction(StatusAction, null, {
+    conversation: ROOT,
+    on: () => [session()?.id, session()?.model, session()?.thinking],
+  })
   const ref = () => {
     const model = status.data()?.model
     if (!model) return undefined
@@ -446,8 +445,9 @@ function useVoicePick(): ModelPick {
 }
 
 function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
-  const pick = useVoicePick()
-  const toolbar = () => (props.fork === undefined ? <PickControl pick={pick} /> : undefined)
+  const chip = <PickControl pick={useVoicePick()} />
+  const idle = () => !recording() && !working() && dock.phase() !== 'recording'
+  const showChip = () => props.fork === undefined && idle()
   const coldHeld = useExternal(
     () => coldHolds(composerDraft(COLD_DRAFT)),
     (notify) => composerDraft(COLD_DRAFT).subscribe(notify),
@@ -461,7 +461,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
     dictation: voiceSink,
     ready: () => draftOf().length > 0,
     send: (text, images) => sendTyped(text, images),
-    ...(hot() === undefined ? { draft: COLD_DRAFT, toolbar: toolbar() } : {}),
+    ...(hot() === undefined ? { draft: COLD_DRAFT, toolbar: showChip() ? chip : undefined } : {}),
   })
   return (
     <Show

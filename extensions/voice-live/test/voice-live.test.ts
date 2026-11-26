@@ -16,6 +16,9 @@ import { context } from '../../../server/harness.ts'
 import { Family } from '../../models/api.ts'
 import { Fork, Session, Ui } from '../server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
+import { EventFeed } from '../../../server/events.ts'
+import { ChangedEvent } from '../../../shared/events.ts'
+import { SOURCE_HEADER } from '../../../shared/protocol.ts'
 import { writeSecret } from '../../secrets/store.ts'
 
 let ultimateRoot: string
@@ -395,11 +398,31 @@ it('a pick in the cold prompt box is what status, the setup card and the next se
   expect((await f.action('pick', { model: { provider: 'faux', modelId: 'gone' } })).status).toBe(
     500,
   )
-  await f.action('pick', { model: { provider: 'faux', modelId: 'gemini-faux' } })
+  const byAgent = await fetch(`${f.server.url}/api/extensions/voice-live/actions/pick`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: f.server.url,
+      [SOURCE_HEADER]: 'agent',
+    },
+    body: JSON.stringify({
+      args: { model: { provider: 'faux', modelId: 'gemini-faux' } },
+      conversationId: f.main,
+    }),
+  })
+  expect(byAgent.status).toBe(200)
   expect(await status()).toMatchObject({ model: 'faux/gemini-faux', thinking: 'high' })
+  const changes = (
+    (await f.server.harness.snapshot(EventFeed, ROOT_CONVERSATION_ID, context))?.events ?? []
+  )
+    .filter((event) => ChangedEvent.is(event) && event.data.key === 'voice-live.pick')
+    .map((event) => (event.data as { source: string }).source)
+  expect(changes).toEqual(['person', 'agent'])
   const first = await f.turn({ key: 'one', text: 'start' })
   expect(f.requests.at(-1)!.model).toBe('gemini-faux')
   expect((await f.server.harness.snapshot(AgentDoc, first.id, context))?.thinkingLevel).toBe('high')
+  const open = await f.action('pick', { model: { provider: 'faux', modelId: 'main-faux' } })
+  expect(open.data.error).toContain('A voice session is open')
 })
 
 it('a model picked in the fork itself carries over to the next session', async () => {

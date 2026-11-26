@@ -264,18 +264,20 @@ function Options(props: {
           </>
         )}
       </Show>
-      <div class="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
-        <Show
-          when={props.writes.error()}
-          fallback={
-            <>
-              <Kbd>⇧ Tab</Kbd> cycles thinking
-            </>
-          }
-        >
-          {(message) => <span class="text-error">{message()}</span>}
-        </Show>
-      </div>
+      <Show when={props.writes.error() || props.current.cycles}>
+        <div class="mt-1 flex items-center gap-1.5 border-t border-border/70 px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
+          <Show
+            when={props.writes.error()}
+            fallback={
+              <>
+                <Kbd>⇧ Tab</Kbd> cycles thinking
+              </>
+            }
+          >
+            {(message) => <span class="text-error">{message()}</span>}
+          </Show>
+        </div>
+      </Show>
     </>
   )
 }

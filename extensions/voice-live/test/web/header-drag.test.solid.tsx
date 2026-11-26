@@ -10,7 +10,21 @@ import { VoicePanel } from '../../panel.solid.tsx'
 const ui = vi.hoisted(() => ({ folded: false }))
 vi.mock('@/sdk/solid', async (original) => ({
   ...(await original<typeof import('@/sdk/solid')>()),
-  useAction: () => ({ data: () => ({ model: 'antigravity/gemini-4-neon-low' }), refetch() {} }),
+  useAction: () => ({
+    data: () => ({ model: 'antigravity/gemini-4-neon-low', thinking: 'low' }),
+    refetch() {},
+  }),
+  useModels: () => () => ({
+    providers: [],
+    models: [
+      {
+        provider: 'antigravity',
+        id: 'gemini-4-neon-low',
+        reasoning: true,
+        thinkingLevels: ['off', 'low', 'high'],
+      },
+    ],
+  }),
   useDocOf: () => () => undefined,
   useEvent: () => undefined,
   useExtensionUiState: (key: string, initial: unknown) =>
@@ -44,9 +58,15 @@ it('before a session exists, the prompt box shows the voice model chip', async (
   await settle()
   setVoiceOpen(true)
   flush()
-  const chip = view.querySelector('[data-ui="prompt-box"] [aria-label="Voice model"]')
-  expect(chip?.textContent).toContain('gemini-4-neon-low')
+  const chip = () => view.querySelector('[data-ui="prompt-box"] [aria-label="Voice model"]')
+  expect(chip()?.textContent).toContain('gemini-4-neon-low·low')
   await expectDistinctAgentNames(agent)
+  dock.setPhase('recording')
+  flush()
+  expect(chip()).toBeNull()
+  dock.setPhase('idle')
+  flush()
+  expect(chip()).not.toBeNull()
 })
 
 it('folded, the dock is its prompt box, with a status line only while voice has something to say', async () => {
