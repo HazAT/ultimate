@@ -132,6 +132,8 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   const where = () => (brief().to === undefined ? '@ultimate' : `#${brief().to}`)
   const failed = () => props.call.status === 'error'
   const sent = () => props.call.status === 'done'
+  const error = () =>
+    [props.call.output, ...props.call.diagnostics.map((d) => d.message)].filter(Boolean).join('\n')
   return (
     <Show fallback={props.core} when={props.call.status !== 'interrupted'}>
       <Frame
@@ -153,8 +155,10 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
         }
         title={brief().title ?? ''}
       >
-        <Show when={failed()}>
-          <p class="mb-1.5 font-mono text-[11px] break-words text-error">{props.call.output}</p>
+        <Show when={failed() && error()}>
+          <p class="mb-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-error">
+            {error()}
+          </p>
         </Show>
         <p>{brief().outcome}</p>
         <Collapsible class="group/voice-brief mt-2">

@@ -41,7 +41,8 @@ it('a voice_handoff call shows what went where, opens the target, and shows a re
         call={call('call-refused', {
           args: { ...brief, to: 9 },
           status: 'error',
-          output: '#9 is not a branch on the screen',
+          output: '',
+          diagnostics: [{ severity: 'error', message: '#9 is not a branch on the screen' }],
         })}
         core={null}
       />
