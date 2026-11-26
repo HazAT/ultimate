@@ -1,14 +1,15 @@
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
-import type { ToolCallView } from '@/sdk/solid'
+import { ConversationScope, type ToolCallView } from '@/sdk/solid'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 
-const opened = vi.hoisted(() => [] as number[])
+const shown = vi.hoisted(() => [] as unknown[])
 vi.mock('@/sdk/solid', async (original) => ({
   ...(await original<typeof import('@/sdk/solid')>()),
-  switchConversation: (id: number) => opened.push(id),
+  showSurface: (surface: string) => shown.push(surface),
+  switchConversation: (id: number) => shown.push(id),
   useConversationId: () => () => 40,
   useDocOf: (_id: unknown, ref: { kind: string }) => () =>
     ref.kind === 'voice.fork' ? { of: 7 } : undefined,
@@ -30,13 +31,14 @@ const call = (id: string, patch: Partial<ToolCallView>): ToolCallView => ({
 })
 
 it('a voice_handoff call shows what went where, opens the target, and shows a refusal', async () => {
+  const branch = call('call-branch', { args: { ...brief, to: 55 }, output: 'Sent to #55.' })
   const root = renderSolid(() => (
     <>
       <HandoffCall call={call('call-ultimate', {})} core={null} />
-      <HandoffCall
-        call={call('call-branch', { args: { ...brief, to: 55 }, output: 'Sent to #55.' })}
-        core={null}
-      />
+      <HandoffCall call={branch} core={null} />
+      <ConversationScope value={40 as never}>
+        <HandoffCall call={branch} core={null} />
+      </ConversationScope>
       <HandoffCall
         call={call('call-refused', {
           args: { ...brief, to: 9 },
@@ -46,23 +48,32 @@ it('a voice_handoff call shows what went where, opens the target, and shows a re
         })}
         core={null}
       />
+      <HandoffCall
+        call={call('call-result-only', { args: {}, output: 'Sent to #55.' })}
+        core={<p data-core-card>core</p>}
+      />
     </>
   ))
   flush()
-  const [ultimate, branch, refused] = root.querySelectorAll('[data-voice-handoff]')
+  const [ultimate, sent, , refused] = root.querySelectorAll('[data-voice-handoff]')
   expect(ultimate.textContent).toContain('Omacut hangs')
   expect(ultimate.textContent).toContain('Capture its state, then fix it')
   expect(ultimate.textContent).toContain('sent to @ultimate')
-  expect(branch.textContent).toContain('sent to #55')
+  expect(sent.textContent).toContain('sent to #55')
   expect(refused.textContent).toContain('#9 is not a branch on the screen')
   expect(refused.textContent).toContain('not sent')
+  expect(root.querySelectorAll('[data-voice-handoff]')).toHaveLength(4)
+  expect(root.querySelector('[data-core-card]')).not.toBeNull()
 
   await expectDistinctAgentNames(agent)
   await agent.act({
     steps: [
-      { ref: 'Open @ultimate that handoff call-ultimate went to', action: 'press' },
-      { ref: 'Open #55 that handoff call-branch went to', action: 'press' },
+      {
+        ref: 'Open @ultimate that handoff call-ultimate went to, in the transcript',
+        action: 'press',
+      },
+      { ref: 'Open #55 that handoff call-branch went to, in the voice dock', action: 'press' },
     ],
   })
-  expect(opened).toEqual([7, 55])
+  expect(shown).toEqual(['agent', 7, 'agent', 55])
 })

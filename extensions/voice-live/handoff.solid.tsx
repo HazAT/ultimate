@@ -1,7 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { AudioLinesIcon, ChevronRight, SquareArrowOutUpRightIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
-import { For, Show } from 'solid-js'
+import { For, Show, useContext } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Collapsible,
@@ -11,7 +11,9 @@ import {
 import { ToolStatusIcon } from '@/components/ai/tool.solid.tsx'
 import {
   Card,
+  ConversationScope,
   renderEntry,
+  showSurface,
   switchConversation,
   useConversationId,
   useDocOf,
@@ -33,7 +35,7 @@ function Section(props: { label: string; items: readonly string[] | undefined })
   )
 }
 
-function Details(props: { brief: Brief }) {
+function Details(props: { brief: Partial<Brief> }) {
   return (
     <>
       <Section items={props.brief.decided} label="Decided" />
@@ -73,7 +75,10 @@ function OpenLink(props: { to: ConversationId; label: string; text: string }) {
     <Button
       aria-label={props.label}
       class="ml-auto flex gap-1 rounded-none font-mono text-[11px] font-normal hover:text-foreground"
-      onClick={() => switchConversation(props.to)}
+      onClick={() => {
+        showSurface('agent')
+        switchConversation(props.to)
+      }}
       size={null}
       title={props.label}
       variant={null}
@@ -128,6 +133,7 @@ export const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(p
 export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   const fork = useDocOf(useConversationId(), VoiceForkDoc)
   const brief = () => props.call.args as Partial<Brief> & { to?: number }
+  const place = useContext(ConversationScope) === null ? 'in the transcript' : 'in the voice dock'
   const target = () => (brief().to as ConversationId | undefined) ?? fork()?.of
   const where = () => (brief().to === undefined ? '@ultimate' : `#${brief().to}`)
   const failed = () => props.call.status === 'error'
@@ -135,45 +141,47 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   const error = () =>
     [props.call.output, ...props.call.diagnostics.map((d) => d.message)].filter(Boolean).join('\n')
   return (
-    <Show fallback={props.core} when={props.call.status !== 'interrupted'}>
-      <Frame
-        icon={sent() ? undefined : <ToolStatusIcon state={props.call.status} />}
-        id={props.call.id}
-        link={
-          <Show
-            fallback={<span class="ml-auto">{failed() ? 'not sent' : `to ${where()}`}</span>}
-            when={sent() && target()}
-          >
-            {(to) => (
-              <OpenLink
-                label={`Open ${where()} that handoff ${props.call.id} went to`}
-                text={`sent to ${where()}`}
-                to={to()}
-              />
-            )}
+    <Show fallback={props.core} when={props.call.status !== 'interrupted' && brief().title}>
+      {(title) => (
+        <Frame
+          icon={sent() ? undefined : <ToolStatusIcon state={props.call.status} />}
+          id={props.call.id}
+          link={
+            <Show
+              fallback={<span class="ml-auto">{failed() ? 'not sent' : `to ${where()}`}</span>}
+              when={sent() && target()}
+            >
+              {(to) => (
+                <OpenLink
+                  label={`Open ${where()} that handoff ${props.call.id} went to, ${place}`}
+                  text={`sent to ${where()}`}
+                  to={to()}
+                />
+              )}
+            </Show>
+          }
+          title={title()}
+        >
+          <Show when={failed() && error()}>
+            <p class="mb-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-error">
+              {error()}
+            </p>
           </Show>
-        }
-        title={brief().title ?? ''}
-      >
-        <Show when={failed() && error()}>
-          <p class="mb-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-error">
-            {error()}
-          </p>
-        </Show>
-        <p>{brief().outcome}</p>
-        <Collapsible class="group/voice-brief mt-2">
-          <CollapsibleTrigger
-            aria-label={`Brief of handoff ${props.call.id}`}
-            class="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            <ChevronRight class="size-3 transition-transform group-data-open/voice-brief:rotate-90" />
-            Brief
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <Details brief={brief() as Brief} />
-          </CollapsibleContent>
-        </Collapsible>
-      </Frame>
+          <p>{brief().outcome}</p>
+          <Collapsible class="group/voice-brief mt-2">
+            <CollapsibleTrigger
+              aria-label={`Brief of handoff ${props.call.id}, ${place}`}
+              class="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              <ChevronRight class="size-3 transition-transform group-data-open/voice-brief:rotate-90" />
+              Brief
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <Details brief={brief()} />
+            </CollapsibleContent>
+          </Collapsible>
+        </Frame>
+      )}
     </Show>
   )
 }
