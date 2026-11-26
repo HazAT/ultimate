@@ -140,6 +140,7 @@
     "lib/waits.ts",
     "lib/source-frames.ts",
     "lib/timers.ts",
+    "lib/cues.ts",
     "lib/errors.ts",
     "lib/ids.ts",
     "lib/question-cards.ts",

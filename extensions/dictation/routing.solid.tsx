@@ -6,11 +6,12 @@ import type { Sink, Take } from './capture.ts'
 import { createTalk } from './talk.ts'
 
 export const [talkMode, setTalkMode] = createRoot(() =>
-  useUiState<'hold' | 'tap'>('ext.dictation.talk', 'hold'),
+  useUiState<'hold' | 'tap'>('ext.dictation.talk', 'tap'),
 )
 export const [shortcut, setShortcut] = createRoot(() =>
   useUiState('ext.dictation.shortcut', 'mod+shift+space'),
 )
+export const [soundCues, setSoundCues] = createRoot(() => useUiState('ext.dictation.cues', true))
 export const shortcutHint = () => `${talkMode()} ${formatKeys(shortcut())[0].join('+')}`
 export const keyChord = (event: KeyboardEvent) =>
   event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
