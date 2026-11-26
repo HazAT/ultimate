@@ -141,11 +141,14 @@ it('in Tap mode a touch while another finger is down is ignored, and the next ta
   window.dispatchEvent(touch('pointerup'))
   expect(capture.talking(voiceSink)).toBe(true)
   bar().dispatchEvent(touch('pointerdown', 3))
+  bar().dispatchEvent(touch('pointerdown', 4))
+  window.dispatchEvent(touch('pointerup', 4))
   window.dispatchEvent(touch('pointerup', 3))
   await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
   settleTranscripts({ transcripts: { 'rec-1': 'hello' } }, parseConversationId(40))
   await vi.waitFor(() => expect(harness.calls.map((call) => call.name)).toContain('turn'))
   expect(harness.calls.filter((call) => call.name === 'record')).toHaveLength(1)
+  expect(capture.talking(voiceSink)).toBe(false)
   setTalkMode('hold')
 })
 
@@ -195,6 +198,15 @@ it('a cut-in whose mic fails shows the error in the bar, not the pending reply\u
   dock.setError(undefined)
   dock.setPhase('idle')
   dock.setStatus(undefined)
+})
+
+it('a recording the shortcut started shows its waveform in the bar but no cancel the bar cannot act on', async () => {
+  const view = renderSolid(() => <TalkBar />)
+  await capture.press(voiceSink)?.started
+  flush()
+  expect(view.querySelector('[data-voice-talk] canvas')).not.toBeNull()
+  expect(view.querySelector('[data-voice-talk-cancel]')).toBeNull()
+  await capture.take(voiceSink)!.cancel()
 })
 
 it('a recording too short to send says so in the bar', async () => {

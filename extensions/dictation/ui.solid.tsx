@@ -7,8 +7,6 @@ export type { Recorded } from './capture.ts'
 export type { Sink } from './capture.ts'
 /** One press of the microphone: `started` once it records, then `release` sends it or `cancel` discards it. */
 export type { Take } from './capture.ts'
-/** Bind hold and tap gestures to a microphone sink's lifecycle. */
-export { createTalk } from './talk.ts'
 
 /** Whether the talk shortcut and touch use hold-to-record or tap-to-toggle. */
 export { talkMode } from './routing.solid.tsx'

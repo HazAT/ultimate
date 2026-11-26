@@ -1,7 +1,7 @@
 import { AudioLines, Keyboard, X } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { Show } from 'solid-js'
+import { createRoot, createSignal, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { inProcess } from '../../lib/errors.ts'
@@ -12,7 +12,8 @@ import { Waveform } from './turns.solid.tsx'
 
 const touchLike = (event: PointerEvent) =>
   event.pointerType === 'touch' || event.pointerType === 'pen'
-let barTake: Take | undefined
+const [barTake, setBarTake] = createRoot(() => createSignal<Take>())
+let current: Take | undefined
 let down: number | undefined
 const onThisPage = (work: Promise<void>) =>
   inProcess('a recording lives and ends with this open page', work)
@@ -62,37 +63,47 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
   const start = () => {
     const take = capture.press(voiceSink)
     if (!take) return undefined
-    barTake = take
+    current = take
+    setBarTake(take)
     props.onTalk?.()
-    return take.started
+    return take
   }
-  const ours = () => (barTake?.active() ? barTake : undefined)
+  const ours = () => {
+    const take = barTake()
+    return recording() && take?.active() ? take : undefined
+  }
   const cancelled = (event: PointerEvent) =>
     !!document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-voice-talk-cancel]')
-  const touchDown = (event: PointerEvent) => {
-    if (!touchLike(event) || down !== undefined) return
-    event.preventDefault()
-    const take = ours()
-    if (take && talkMode() === 'tap') {
-      onThisPage(take.release())
-      return
-    }
-    if (take) return
-    if (!start()) return
-    const finger = event.pointerId
-    const pressed = barTake
+  const hold = (finger: number, onUp: (event: PointerEvent) => void) => {
     down = finger
     const end = (next: PointerEvent) => {
       if (next.pointerId !== finger) return
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', end)
       down = undefined
-      if (barTake !== pressed || !pressed?.active()) return
-      if (next.type === 'pointercancel' || cancelled(next)) onThisPage(pressed.cancel())
-      else if (talkMode() === 'hold') onThisPage(pressed.release())
+      onUp(next)
     }
     window.addEventListener('pointerup', end)
     window.addEventListener('pointercancel', end)
+  }
+  const touchDown = (event: PointerEvent) => {
+    if (!touchLike(event) || down !== undefined) return
+    event.preventDefault()
+    const take = ours()
+    if (take && talkMode() === 'tap') {
+      hold(event.pointerId, () => {})
+      onThisPage(take.release())
+      return
+    }
+    if (take) return
+    const pressed = start()
+    if (!pressed) return
+    onThisPage(pressed.started)
+    hold(event.pointerId, (next) => {
+      if (current !== pressed || !pressed.active()) return
+      if (next.type === 'pointercancel' || cancelled(next)) onThisPage(pressed.cancel())
+      else if (talkMode() === 'hold') onThisPage(pressed.release())
+    })
   }
   const label = () =>
     recording()
@@ -123,7 +134,7 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
       )}
       data-voice-talk-bar
     >
-      <Show when={recording()}>
+      <Show when={ours()}>
         <Button
           aria-label="Cancel talking"
           class="ml-1.5 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -144,7 +155,7 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
         data-voice-talk
         onClick={(event) => {
           if (event instanceof PointerEvent && touchLike(event)) return undefined
-          return ours()?.release() ?? start()
+          return ours()?.release() ?? start()?.started
         }}
         onPointerDown={touchDown}
         size={null}
