@@ -413,6 +413,29 @@ it('names the definitions when start omits agent, for every argument shape seen 
   expect(await children(f.opened)).toHaveLength(0)
 })
 
+it('starts a definition with a named deferred tool loaded', async () => {
+  const tool = defineTool({
+    name: 'deferred_tool',
+    description: 'A tool loaded only when requested',
+    deferred: true,
+    parameters: obj({}),
+    execute: async () => ({ output: [] }),
+  })
+  const f = await fixture(defineExtension({ name: 'fixture', tools: [tool] }))
+  await writeFile(
+    join(f.ultimateRoot, 'agents/scout.md'),
+    definition().replace('tools: [read, bash]', 'tools: [read, deferred_tool]'),
+  )
+  const parent = await f.opened.root.agent(context)
+  expect(parent.tools.map(({ name }) => name)).not.toContain(tool.name)
+  expect(parent.deferred.map(({ name }) => name)).toContain(tool.name)
+  const result = await call(f.opened, { action: 'start', agent: 'scout', task: 'Start scout' })
+  expect(result.text).toContain('Child: Start scout')
+  const [{ conversationId }] = await children(f.opened)
+  const child = (await f.opened.harness.conversation(conversationId, context))!
+  expect((await child.agent(context)).tools.map(({ name }) => name)).toContain(tool.name)
+})
+
 it('makes an agent on the fly from the call, read-only without a worktree, and refuses a model without a login', async () => {
   const f = await fixture()
   const noLogin = await call(f.opened, {
@@ -1124,6 +1147,43 @@ describe('turns without an answer', () => {
     const resumed = await f.reopen()
     await resumed.harness.waitForIdle(context)
     expect(await reports(resumed)).toHaveLength(1)
+  })
+  it('reports a child continuation that answered before its interrupted reporter settled', async () => {
+    const held = { ...gate(), entered: false, phase: 'settled' }
+    const f = await gatedFixture(held)
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    const { harness } = f.opened
+    const handle = (await harness.conversation(child.conversationId, context))!
+    const childActions = async () =>
+      Object.values((await harness.snapshot(Subagents, f.opened.root.id, context))!.actions)
+    try {
+      await until(() => f.holding.has(child.conversationId))
+      await handle.abort(context)
+      await until(() => held.entered)
+      const answer = await (
+        await handle.submit({ type: 'input', content: 'continue before settlement' }, context)
+      ).wait(context)
+      expect(answer.status).toBe('done')
+      const [action] = await childActions()
+      expect(action.status).toBeUndefined()
+      expect(await reports(f.opened)).toHaveLength(0)
+      held.release()
+      await harness.waitForTask(action.reporter, context)
+      expect((await childActions())[0].status).toBe('interrupted')
+      await expect(
+        until(async () => (await reports(f.opened)).length > 0, 1000),
+      ).resolves.toBeUndefined()
+      expect((await reports(f.opened)).map((report) => report.data)).toMatchObject([
+        {
+          body: 'Returned model: faux/faux-1\nChild: continue before settlement',
+          sender: child.conversationId,
+          failed: false,
+        },
+      ])
+    } finally {
+      held.release()
+    }
   })
   it('keeps a child-side stop when the parent stops the child during the report, and reports the next answer', async () => {
     const held = { ...gate(), entered: false }
