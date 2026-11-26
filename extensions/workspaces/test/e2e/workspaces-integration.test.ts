@@ -1519,6 +1519,92 @@ it.concurrent('fast-forwards the worktree that has the target checked out, past 
   expect(reports.at(-1)).toContain('overlap.txt')
   expect(await git(elsewhere, 'rev-parse', 'HEAD')).toBe(tip)
 })
+it.concurrent('preserves disjoint uncommitted .ultimate/settings.json edits across a fast-forward landing', async () => {
+  const f = await lander({})
+  await mkdir(join(f.projectRoot, '.ultimate'), { recursive: true })
+  const settingsPath = join(f.projectRoot, '.ultimate/settings.json')
+  await writeFile(settingsPath, '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 4,\n  "e": 5\n}\n')
+  await git(f.projectRoot, 'add', '.ultimate/settings.json')
+  await git(f.projectRoot, 'commit', '-qm', 'add project settings')
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  await writeFile(
+    join(workspace.path, '.ultimate/settings.json'),
+    '{\n  "a": 10,\n  "b": 2,\n  "c": 3,\n  "d": 4,\n  "e": 5\n}\n',
+  )
+  await git(workspace.path, 'commit', '-qam', 'update setting a')
+  const tip = await git(workspace.path, 'rev-parse', 'HEAD')
+  await writeFile(settingsPath, '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 4,\n  "e": 50\n}\n')
+  await writeFile(join(f.projectRoot, 'unrelated.txt'), 'keep')
+  await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed as')
+  expect(await git(f.projectRoot, 'rev-parse', 'HEAD')).toBe(tip)
+  expect(await readFile(settingsPath, 'utf8')).toBe(
+    '{\n  "a": 10,\n  "b": 2,\n  "c": 3,\n  "d": 4,\n  "e": 50\n}\n',
+  )
+  expect(await readFile(join(f.projectRoot, 'unrelated.txt'), 'utf8')).toBe('keep')
+  expect(await git(f.projectRoot, 'stash', 'list')).toBe('')
+})
+it.concurrent('rolls back cleanly when uncommitted .ultimate/settings.json edits conflict with a landing', async () => {
+  const f = await lander({})
+  await mkdir(join(f.projectRoot, '.ultimate'), { recursive: true })
+  const settingsPath = join(f.projectRoot, '.ultimate/settings.json')
+  await writeFile(settingsPath, '{\n  "a": 1,\n  "b": 2\n}\n')
+  await git(f.projectRoot, 'add', '.ultimate/settings.json')
+  await git(f.projectRoot, 'commit', '-qm', 'add project settings')
+  const base = await git(f.projectRoot, 'rev-parse', 'HEAD')
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  await writeFile(join(workspace.path, '.ultimate/settings.json'), '{\n  "a": 10,\n  "b": 2\n}\n')
+  await writeFile(join(workspace.path, 'extra.txt'), 'from branch')
+  await git(workspace.path, 'add', '.')
+  await git(workspace.path, 'commit', '-qm', 'update setting a and add extra')
+  const hostEdit = '{\n  "a": 99,\n  "b": 2\n}\n'
+  await writeFile(settingsPath, hostEdit)
+  await writeFile(join(f.projectRoot, 'unrelated.txt'), 'keep')
+  await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('refused the fast-forward')
+  expect(report).toContain('.ultimate/settings.json')
+  expect(await git(f.projectRoot, 'rev-parse', 'HEAD')).toBe(base)
+  expect(await readFile(settingsPath, 'utf8')).toBe(hostEdit)
+  expect(await readFile(join(f.projectRoot, 'unrelated.txt'), 'utf8')).toBe('keep')
+  await expect(access(join(f.projectRoot, 'extra.txt'))).rejects.toThrow('ENOENT')
+  expect(await git(f.projectRoot, 'stash', 'list')).toBe('')
+})
+it.concurrent('still refuses when another dirty file also overlaps the landing alongside .ultimate/settings.json', async () => {
+  const f = await lander({})
+  await mkdir(join(f.projectRoot, '.ultimate'), { recursive: true })
+  const settingsPath = join(f.projectRoot, '.ultimate/settings.json')
+  await writeFile(settingsPath, '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 4,\n  "e": 5\n}\n')
+  await writeFile(join(f.projectRoot, 'other.txt'), 'base\n')
+  await git(f.projectRoot, 'add', '.')
+  await git(f.projectRoot, 'commit', '-qm', 'add settings and other')
+  const base = await git(f.projectRoot, 'rev-parse', 'HEAD')
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  await writeFile(
+    join(workspace.path, '.ultimate/settings.json'),
+    '{\n  "a": 10,\n  "b": 2,\n  "c": 3,\n  "d": 4,\n  "e": 5\n}\n',
+  )
+  await writeFile(join(workspace.path, 'other.txt'), 'branch\n')
+  await git(workspace.path, 'commit', '-qam', 'update both files')
+  const hostEdit = '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 4,\n  "e": 50\n}\n'
+  await writeFile(settingsPath, hostEdit)
+  await writeFile(join(f.projectRoot, 'other.txt'), 'local\n')
+  await f.service.submit(id, 'None', context)
+  const [report] = await submitted(f, id)
+  expect(report).toContain('refused the fast-forward')
+  expect(report).toContain('other.txt')
+  expect(await git(f.projectRoot, 'rev-parse', 'HEAD')).toBe(base)
+  expect(await readFile(settingsPath, 'utf8')).toBe(hostEdit)
+  expect(await readFile(join(f.projectRoot, 'other.txt'), 'utf8')).toBe('local\n')
+  expect(await git(f.projectRoot, 'stash', 'list')).toBe('')
+})
 it.concurrent('counts checkouts by state, commits and uncommitted changes, and measures their disk once a minute', async () => {
   const f = await fixture()
   const landed = await f.create()
