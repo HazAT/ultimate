@@ -29,6 +29,7 @@ import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { Done, Escalated, Exited, Started } from './refs.ts'
+import { describeSchedule } from './schedule.ts'
 import type { Automations as Ledger } from './server.ts'
 import {
   doneText,
@@ -355,7 +356,13 @@ export function supervisor(
             ? `${brief(sub)}\nWrite and briefly test run, then use automation resume {id:"${sub.id}"}. Ending your turn before resume or escalate escalates it.`
             : kind === 'failed'
               ? `Automation ${sub.id} "${sub.name}" failed (${sub.script!.failures ?? 1} of ${FAILURE_LIMIT} in a row; the ${FAILURE_LIMIT}rd escalates by itself): ${text}\nInvestigate, fix run, and use automation resume, or automation escalate with a clear reason when it cannot work. Ending your turn without resuming escalates it.\n${sub.scope === 'project' ? `${brief(sub)}\n` : ''}Last 50 log lines:\n${await tail(sub.id)}`
-              : `Automation ${sub.id} "${sub.name}" ${kind}: ${text}`
+              : `Automation ${sub.id} "${sub.name}" ${kind}${
+                  text.trim()
+                    ? `: ${text}`
+                    : kind === 'fired' && sub.schedule
+                      ? ` (${describeSchedule(sub.schedule)})`
+                      : ''
+                }`
         const alreadyMessagedUltimate =
           kind === 'escalated'
             ? (await runtime.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
