@@ -11,10 +11,18 @@ const str = (value: unknown) => (typeof value === 'string' ? value : undefined)
 type Diff = { path: string; oldText: string; newText: string }
 
 export const fileLinksAsPaths = (text: string) =>
-  text.replace(/\[([^\]]*)\]\(file:\/\/([^)\s]+)\)/g, (_link, label: string, path: string) => {
-    const decoded = decodeURI(path)
-    return !label || decoded.endsWith(label) ? `\`${decoded}\`` : `${label} (\`${decoded}\`)`
-  })
+  text.replace(
+    /\[([^\]]*)\]\(file:\/\/([^)\s]+)\)/g,
+    (link: string, label: string, path: string) => {
+      try {
+        const decoded = decodeURI(path)
+        return !label || decoded.endsWith(label) ? `\`${decoded}\`` : `${label} (\`${decoded}\`)`
+      } catch (error) {
+        if (!(error instanceof URIError)) throw error
+        return `\`${link}\``
+      }
+    },
+  )
 
 function diffsOf(update: Record<string, unknown>): Diff[] {
   const content = Array.isArray(update.content) ? update.content : []
@@ -54,24 +62,36 @@ function pathOf(update: Record<string, unknown>, input: Record<string, unknown>)
   )
 }
 
-function commandOf(input: Record<string, unknown>, title: string) {
+function commandOf(input: Record<string, unknown>) {
   const command = input.command ?? input.CommandLine ?? input.cmd
   if (Array.isArray(command)) return command.filter((part) => typeof part === 'string').join(' ')
-  return str(command) ?? title
+  return str(command) ?? ''
 }
 
-export function toolCall(
+export function mergeToolUpdate(
+  previous: JsonObject | undefined,
   update: Record<string, unknown>,
-  previous: ToolCall | undefined,
-  agent: string,
-): ToolCall {
-  const id = String(update.toolCallId)
-  const kind = str(update.kind) ?? str(previous?.arguments.kind)
-  const title = str(update.title) ?? str(previous?.arguments.title) ?? ''
-  const raw = record(update.rawInput)
-  const input = Object.keys(raw).length ? raw : record(previous?.arguments.input)
+): JsonObject {
+  const before = previous ?? {}
+  const fields = Object.fromEntries(Object.entries(update).filter(([, value]) => value !== null))
+  return {
+    ...before,
+    ...fields,
+    content: [
+      ...(Array.isArray(before.content) ? before.content : []),
+      ...(Array.isArray(update.content) ? update.content : []),
+    ],
+    rawInput: { ...record(before.rawInput), ...record(update.rawInput) },
+  } as JsonObject
+}
+
+export function toolCall(update: JsonObject, agent: string): ToolCall {
+  const id = str(update.toolCallId) ?? ''
+  const kind = str(update.kind)
+  const title = str(update.title) ?? ''
+  const input = record(update.rawInput)
   const diffs = diffsOf(update)
-  const path = pathOf(update, input) || str(previous?.arguments.path) || ''
+  const path = pathOf(update, input)
   const base = { type: 'toolCall' as const, id }
   if (kind === 'read')
     return { ...base, name: 'read', arguments: { path, title, kind, input: input as JsonObject } }
@@ -83,9 +103,9 @@ export function toolCall(
         name: 'write',
         arguments: { path: diff.path, content: diff.newText, title, kind },
       }
-    const edits = diff
-      ? [{ oldText: diff.oldText, newText: diff.newText }]
-      : ((previous?.arguments.edits as JsonObject[] | undefined) ?? [])
+    const edits = diffs
+      .filter((one) => one.path === diff?.path)
+      .map(({ oldText, newText }) => ({ oldText, newText }))
     return {
       ...base,
       name: 'edit',
@@ -96,7 +116,7 @@ export function toolCall(
     return {
       ...base,
       name: 'bash',
-      arguments: { command: commandOf(input, title), title, kind },
+      arguments: { command: commandOf(input), title, kind },
     }
   return {
     ...base,

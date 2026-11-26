@@ -896,6 +896,8 @@ export async function createApi(
               break
             }
             case 'configure': {
+              if ((await harness.snapshot(Metadata, conversation.id, context))?.label === 'acp')
+                throw new HttpError(409, 'Set the model through Antigravity’s ACP controls')
               const configure: ConfigureRequest = {}
               if (data.model !== undefined) {
                 if (!data.model || typeof data.model !== 'object')
@@ -937,6 +939,8 @@ export async function createApi(
               break
             }
             case 'compact':
+              if ((await harness.snapshot(Metadata, conversation.id, context))?.label === 'acp')
+                throw new HttpError(409, 'ACP conversations cannot be compacted')
               if (data.instructions !== undefined && typeof data.instructions !== 'string')
                 throw new HttpError(400, 'Invalid instructions')
               json(202, {

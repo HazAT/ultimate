@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AgentDoc } from '@earendil-works/pi-durable'
 import { execFileSync } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
@@ -10,7 +10,7 @@ import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import { fauxServer, post, temp, until } from '../../../../test/helpers.ts'
 import { Session } from '../../updates.ts'
 
-it('streams the fake ACP agent into the transcript, with an explicit permission and a reconnect', async () => {
+it('streams the fake ACP agent, binds approval to the request, and saves output before shutdown or conclusion', async () => {
   vi.stubEnv('ULTIMATE_AGY_COMMAND', fileURLToPath(new URL('../fake-agy.mjs', import.meta.url)))
   const home = await temp()
   const projectRoot = join(home, 'project')
@@ -49,9 +49,10 @@ it('streams the fake ACP agent into the transcript, with an explicit permission 
       (await server.harness.commit((tx) => tx.scanEntries({ conversationId: id }, 20), context))
         .items
     await until(async () => (await session())?.status === 'idle')
+    const workspace = join(home, 'state', 'worktrees', String(id))
     expect(await server.harness.snapshot(AgentDoc, id, context)).toMatchObject({
       tools: [],
-      cwd: join(home, 'state', 'worktrees', String(id)),
+      cwd: workspace,
     })
     expect((await server.harness.snapshot(AgentDoc, id, context))?.model).toBeUndefined()
     const conversation = (await server.harness.conversation(id, context))!
@@ -64,12 +65,14 @@ it('streams the fake ACP agent into the transcript, with an explicit permission 
     )
     expect((await action('prompt', { text: 'Inspect the file' }, id)).status).toBe(200)
     await until(async () => !!(await session())?.permission)
-    expect((await session())?.permission?.options.map((option) => option.name)).toEqual([
-      'Allow once',
-      'Reject',
-    ])
+    const ask = (await session())!.permission!
+    expect(ask.options.map((option) => option.name)).toEqual(['Allow once', 'Reject'])
+    const stale = await action('permit', { request: 'previous-request', option: 'allow' }, id)
+    expect(stale.status).toBe(500)
+    expect(stale.data.error).toBe('That permission request is no longer pending')
+    expect((await session())?.permission).toEqual(ask)
     expect((await entries()).some((entry) => entry.kind === 'pi.tool-result')).toBe(false)
-    expect((await action('permit', { option: 'allow' }, id)).status).toBe(200)
+    expect((await action('permit', { request: ask.id, option: 'allow' }, id)).status).toBe(200)
     await until(async () => (await session())?.status === 'idle')
     const stored = await entries()
     expect(stored).toEqual(
@@ -78,6 +81,7 @@ it('streams the fake ACP agent into the transcript, with an explicit permission 
           kind: 'pi.assistant',
           model: [
             expect.objectContaining({
+              model: 'Gemini Flash',
               content: [{ type: 'text', text: 'Read with gemini-flash.' }],
             }),
           ],
@@ -89,13 +93,28 @@ it('streams the fake ACP agent into the transcript, with an explicit permission 
       ]),
     )
 
+    expect((await action('prompt', { text: 'Inspect the file' }, id)).status).toBe(200)
+    await until(async () => !!(await session())?.permission)
+    expect((await session())?.permission?.id).not.toBe(ask.id)
     await server.close()
     server = await open()
     await until(async () => (await session())?.status === 'offline')
+    expect(JSON.stringify(await entries())).toContain('Final output before exit.')
     expect((await action('prompt', { text: 'Continue' }, id)).status).toBe(200)
     await until(async () => (await session())?.status === 'idle')
     expect(JSON.stringify(await entries())).toContain('Fake ACP: Continue')
     expect(JSON.stringify(await entries())).not.toContain('Do not replay this')
+
+    expect((await action('prompt', { text: 'Inspect the file' }, id)).status).toBe(200)
+    await until(async () => !!(await session())?.permission)
+    const concluded = await post(server, '/api/extensions/conversations/actions/conclude', {
+      args: { ids: [id] },
+    })
+    expect(concluded.status).toBe(200)
+    expect(await session()).toMatchObject({ status: 'offline' })
+    expect((await session())?.permission).toBeUndefined()
+    expect(JSON.stringify(await entries()).match(/Final output before exit\./g)).toHaveLength(2)
+    await expect(lstat(workspace)).rejects.toMatchObject({ code: 'ENOENT' })
   } finally {
     await server.close()
   }

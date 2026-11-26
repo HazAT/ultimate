@@ -13,6 +13,7 @@ export type ConfigOption = {
 
 /** An unanswered permission with the agent's own choices. */
 export type PermissionAsk = {
+  id: string
   title: string
   options: { optionId: string; name: string; kind: string }[]
 }
@@ -37,8 +38,8 @@ export type LiveTurn = {
 /** The in-progress tool as a pi-ai `ToolCall`, and its `ToolResultMessage` when finished. */
 export type LiveTool = {
   call: JsonObject
+  data: JsonObject
   status: 'pending' | 'running' | 'done' | 'error'
-  result?: JsonObject
 }
 
 /** `acp.turn` on an ACP conversation: its streaming tail. */
@@ -54,7 +55,10 @@ export const StartAction = actionRef<{ isolated: boolean }, { id: number }>('acp
 export const PromptAction = actionRef<{ text: string }, null>('acp', 'prompt')
 /** Cancel the shown session's turn and any pending permission. User-only. */
 export const CancelAction = actionRef<null, null>('acp', 'cancel')
-/** Answer with an option id, or `null` to cancel. User-only. */
-export const PermitAction = actionRef<{ option: string | null }, null>('acp', 'permit')
+/** Answer the displayed request with an option id, or `null` to cancel. User-only. */
+export const PermitAction = actionRef<{ request: string; option: string | null }, null>(
+  'acp',
+  'permit',
+)
 /** Set a session config option. User-only. */
 export const ConfigAction = actionRef<{ option: string; value: string }, null>('acp', 'config')

@@ -1,10 +1,10 @@
 import { defineDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, JsonObject, Tx } from '@earendil-works/pi-durable'
-import type { AssistantMessage, ToolCall, ToolResultMessage } from '@earendil-works/pi-ai'
+import type { AssistantMessage, ToolCall } from '@earendil-works/pi-ai'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SessionDoc, TurnDoc } from './refs.ts'
 import type { AcpSession, ConfigOption, LiveTool, LiveTurn } from './refs.ts'
-import { fileLinksAsPaths, toolCall, toolResult } from './tools.ts'
+import { fileLinksAsPaths, mergeToolUpdate, toolCall, toolResult } from './tools.ts'
 
 export const agentName = 'Antigravity'
 export const Session = defineDoc<Partial<AcpSession>>({
@@ -68,6 +68,8 @@ export async function appendAssistant(
   errorMessage?: string,
 ) {
   const session = await tx.doc(Session, id)
+  const selected = session.config?.find((option) => option.category === 'model')
+  const model = selected?.options.find((choice) => choice.value === selected.value)?.name
   await tx.appendEntry(id, {
     kind: 'pi.assistant',
     model: [
@@ -76,8 +78,7 @@ export async function appendAssistant(
         content,
         api: 'acp',
         provider: 'acp:antigravity',
-        model:
-          session.config?.find((option) => option.category === 'model')?.value ?? 'antigravity',
+        model: model ?? agentName,
         usage: {
           input: 0,
           output: 0,
@@ -108,20 +109,18 @@ async function settleOpen(tx: Tx, id: ConversationId, turn: LiveTurn) {
 }
 
 const callOf = (tool: LiveTool) => tool.call as unknown as ToolCall
-const json = (value: ToolCall | ToolResultMessage) => value as unknown as JsonObject
 
 async function settleTool(tx: Tx, id: ConversationId, turn: LiveTurn, key: string) {
   const pending = turn.tools[key]
   if (!pending) return
   const call = callOf(pending)
-  const result = (pending.result as unknown as ToolResultMessage | undefined) ?? {
-    role: 'toolResult',
-    toolCallId: call.id,
-    toolName: call.name,
-    content: [{ type: 'text', text: 'Antigravity ended the turn before this call finished' }],
-    isError: true,
-    timestamp: Date.now(),
-  }
+  const ended = pending.status === 'done' || pending.status === 'error'
+  const result = toolResult(call, pending.data, pending.status !== 'done')
+  if (!ended)
+    result.content.push({
+      type: 'text',
+      text: 'Antigravity ended the turn before this call finished',
+    })
   delete turn.tools[key]
   turn.order = turn.order.filter((one) => one !== key)
   await appendAssistant(tx, id, [call], 'toolUse')
@@ -159,11 +158,13 @@ export async function apply(
     await settleOpen(tx, id, turn)
     const key = `tool:${update.toolCallId}`
     const known = turn.tools[key]
-    const call = toolCall(update, known && callOf(known), agentName)
-    const status = str(update.status)
+    const data = mergeToolUpdate(known?.data, update)
+    const call = toolCall(data, agentName)
+    const status = str(data.status)
     const done = status === 'completed' || status === 'failed'
     turn.tools[key] = {
-      call: json(call),
+      call: call as unknown as JsonObject,
+      data,
       status:
         status === 'failed'
           ? 'error'
@@ -172,7 +173,6 @@ export async function apply(
             : status === 'in_progress'
               ? 'running'
               : 'pending',
-      ...(done ? { result: json(toolResult(call, update, status === 'failed')) } : {}),
     }
     if (!turn.order.includes(key)) turn.order.push(key)
     if (done) await settleTool(tx, id, turn, key)

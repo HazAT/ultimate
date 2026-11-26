@@ -108,6 +108,10 @@ export type PreviewsService = {
 }
 /** The extension point the Conclude action stops previews through; instance provides it. */
 export const Previews = defineApi<PreviewsService>()('conversations.previews')
+/** Stop external sessions and prevent them from restarting until the caller disposes the hold. */
+export const ExternalSessions = defineApi<{
+  stop(ids: readonly ConversationId[]): Promise<Disposable>
+}>()('conversations.external-sessions')
 /**
  * How full a conversation's context is, on that conversation: the one measure the status line and automations' context
  * triggers read. The conversations extension keeps it; a fork starts empty until its first answer.

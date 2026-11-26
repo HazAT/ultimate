@@ -91,6 +91,48 @@ it('turns an ACP diff into an edit call whose result carries a patch for the dif
   expect(details?.patch).toContain('-hi\n+hello')
 })
 
+it('keeps an execute command, output and diffs when the last update only completes the call', async () => {
+  const { tx, entries } = fakeTx()
+  await run(
+    tx,
+    {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'exec',
+      kind: 'execute',
+      title: 'Run the tests',
+      rawInput: { command: ['pnpm', 'test'] },
+    },
+    {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'exec',
+      status: 'in_progress',
+      rawInput: { cwd: '/repo' },
+      content: [{ type: 'content', content: { type: 'text', text: 'first' } }],
+    },
+    {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'exec',
+      content: [
+        { type: 'content', content: { type: 'text', text: 'second' } },
+        { type: 'diff', path: '/repo/a.txt', oldText: 'hi\n', newText: 'hello\n' },
+      ],
+    },
+    {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'exec',
+      status: 'completed',
+    },
+  )
+  expect(entries[0].model?.[0]).toMatchObject({
+    content: [{ type: 'toolCall', name: 'bash', arguments: { command: 'pnpm test' } }],
+  })
+  expect(entries[1].model?.[0]).toMatchObject({
+    content: [{ type: 'text', text: 'first\nsecond' }],
+    details: { patch: expect.stringContaining('-hi\n+hello') },
+    isError: false,
+  })
+})
+
 it('shows file:// links, which the transcript blocks, as code paths', () => {
   expect(
     fileLinksAsPaths('See [neon.txt](file:///tmp/a%20b/neon.txt) and [the file](file:///x/y.ts).'),

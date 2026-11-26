@@ -29,6 +29,14 @@ const answer = (id, text) => {
   send({ id, result: { stopReason: 'end_turn' } })
 }
 
+process.on('SIGTERM', () => {
+  if (permission !== undefined) {
+    assert.ok(process.cwd())
+    update('agent_message_chunk', { content: { type: 'text', text: 'Final output before exit.' } })
+  }
+  process.stdout.write('', () => process.exit(0))
+})
+
 for await (const line of createInterface({ input: process.stdin })) {
   const { id, method, params, result } = JSON.parse(line)
   switch (method) {
@@ -99,6 +107,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         content: [{ type: 'content', content: { type: 'text', text: 'A note' } }],
       })
       answer(permission, `Read with ${model}.`)
+      permission = undefined
       break
     default:
       assert.fail(`Unexpected method ${method}`)

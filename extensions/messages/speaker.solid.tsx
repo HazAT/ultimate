@@ -1,12 +1,13 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
-import { cn, useConversationSummary, useDocOf } from '@/sdk/solid'
+import { cn, useConversationSummary, useDocOf, useProvided } from '@/sdk/solid'
 import { familyColor, familyTitle } from '../../lib/families.ts'
 import { AgentMark, AgentTitle } from '../conversations/ui.solid.tsx'
 import { FamilyDoc } from '../models/refs.ts'
 import { useFamilies } from '../models/ui.solid.tsx'
 import { useAccentOf } from './card-parts.solid.tsx'
+import { ExternalSpeaker } from './points.ts'
 import { useStandingName } from './standing-name.solid.tsx'
 
 const titleClass = 'font-sans text-[13px] font-semibold tracking-[-0.005em]'
@@ -32,11 +33,14 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
   const recorded = useDocOf(() => props.entry.conversationId, FamilyDoc)
   const families = useFamilies()
   const conversation = useConversationSummary(() => props.entry.conversationId)
+  const external = useProvided(ExternalSpeaker, () => props.entry)
   const family = createMemo(() => {
     const name = recorded()?.name
     return name ? families()?.families.find((item) => item.name === name) : undefined
   })
   const speaker = createMemo(() => {
+    const outside = external()
+    if (outside) return { ...outside, color: undefined }
     const item = family()
     if (item) return { name: item.name, title: familyTitle(item.name), color: item.color }
     const label = recorded() === undefined ? undefined : conversation()?.label
@@ -47,7 +51,8 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
       {(item) => {
         const color = () => familyColor(item().color)
         const title = () => item().title
-        const role = () => (family() ? conversation()?.label : undefined)
+        const role = () =>
+          external()?.model ?? (!external() && family() ? conversation()?.label : undefined)
         return (
           <span class="flex min-w-0 items-center gap-2" data-speaker={item().name}>
             <span
@@ -67,7 +72,7 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
             <Show when={role()}>
               {(label) => (
                 <span class="min-w-0 truncate text-muted-foreground/70" title={label()}>
-                  {label()}
+                  {external() ? `· ${label()}` : label()}
                 </span>
               )}
             </Show>

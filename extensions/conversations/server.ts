@@ -39,6 +39,7 @@ import { SubmitAfter, submitAfter } from './submit.ts'
 import {
   ContextUsageDoc,
   ConversationsApi,
+  ExternalSessions,
   Marks,
   Overview,
   Previews,
@@ -194,6 +195,8 @@ async function concludeAndStopOtherTrees(
     const owned = await concludeIn(host, tx, ids, from ?? 'user')
     return { tree: owned, callerWouldWaitForItself: from !== undefined && owned.has(from) }
   }, context)
+  using external = await host.want(ExternalSessions)?.stop([...tree])
+  void external
   const stopped: ConversationId[] = []
   if (!callerWouldWaitForItself) {
     const busy = new Set(
@@ -324,6 +327,7 @@ export default (host: ExtensionHost) => {
   host.want(Trees)
   host.want(Release)
   host.want(Previews)
+  host.want(ExternalSessions)
   host.implement(ConversationsApi, {
     subject: (id, caller) => subject(host, id, caller),
     concludeIn: (tx, ids, by) => concludeIn(host, tx, ids, by),

@@ -17,11 +17,12 @@ import {
   api,
   Card,
   column,
-  ConversationKind,
   defineWebExtension,
   EmptyTranscript,
+  errorMessage,
   formatTokens,
   getState,
+  notify,
   PromptBox,
   provide,
   showSurface,
@@ -30,7 +31,6 @@ import {
   useAction,
   useConversationId,
   useDoc,
-  useDialog,
   writerNow,
   writingAs,
 } from '@/sdk/solid'
@@ -38,7 +38,8 @@ import type { SolidComposerProps, ToolCallView } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ToolCall } from '@earendil-works/pi-ai'
 import { parseConversationId } from '../../lib/ids.ts'
-import { modelDialogs, openPicker, PickerRows } from '../models/ui.solid.tsx'
+import { ExternalSpeaker } from '../messages/ui.solid.tsx'
+import { PickerRows } from '../models/ui.solid.tsx'
 import {
   AvailableAction,
   CancelAction,
@@ -66,7 +67,6 @@ const statusText: Record<AcpSession['status'], string> = {
 export function AcpComposer(props: SolidComposerProps) {
   const id = useConversationId()
   const session = useDoc(SessionDoc)
-  const [, setPicker] = useDialog(modelDialogs.picker)
   const active = () => !!session()?.status && id() !== undefined
   const running = () => session()?.status === 'running'
   const connecting = () => session()?.status === 'connecting'
@@ -108,17 +108,9 @@ export function AcpComposer(props: SolidComposerProps) {
             running={running()}
             toolbar={
               <div class="flex min-w-0 items-center gap-1 overflow-x-auto">
-                <Button
-                  aria-label={`Open model picker from Antigravity #${conversation}`}
-                  class={`${toolbarButton} shrink-0 text-foreground/85`}
-                  onClick={() =>
-                    openPicker({ conversationId: conversation, open: () => setPicker(true) })
-                  }
-                  size={null}
-                  variant={null}
-                >
-                  <Bot class="size-3.5" /> Antigravity <ChevronDown class="size-3 opacity-60" />
-                </Button>
+                <span class="inline-flex shrink-0 items-center gap-1 px-1.5 font-mono text-[11.5px] text-foreground/85">
+                  <Bot class="size-3.5" /> Antigravity
+                </span>
                 <For each={session()?.config} keyed={(option) => option.id}>
                   {(option) => (
                     <ConfigPicker
@@ -161,11 +153,7 @@ function AcpEmpty(props: { conversation: ConversationId; core: JSX.Element }) {
 function ConfigPicker(props: { id: ConversationId; option: ConfigOption; disabled: boolean }) {
   const current = () => props.option.options.find((choice) => choice.value === props.option.value)
   return (
-    <DropdownMenu
-      onAction={(value) =>
-        api.action(ConfigAction, { option: props.option.id, value }, { conversationId: props.id })
-      }
-    >
+    <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`Antigravity ${props.option.name} (${props.option.id}) in #${props.id}`}
         class={toolbarButton}
@@ -176,7 +164,20 @@ function ConfigPicker(props: { id: ConversationId; option: ConfigOption; disable
         <ChevronDown class="size-3 shrink-0 opacity-60" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top">
-        <DropdownMenuRadioGroup value={props.option.value}>
+        <DropdownMenuRadioGroup
+          onValueChange={(value) =>
+            api
+              .action(
+                ConfigAction,
+                { option: props.option.id, value },
+                { conversationId: props.id },
+              )
+              .catch((failure: unknown) =>
+                notify({ level: 'error', message: errorMessage(failure) }),
+              )
+          }
+          value={props.option.value}
+        >
           <For each={props.option.options} keyed={(choice) => choice.value}>
             {(choice) => (
               <DropdownMenuRadioItem
@@ -236,8 +237,8 @@ export function LiveTail() {
               </Show>
             )}
           </For>
-          <Show when={session()?.permission}>
-            {(ask) => <Permission ask={ask()} id={conversation} />}
+          <Show when={session()?.permission} keyed>
+            {(ask) => <Permission ask={ask} id={conversation} />}
           </Show>
           <Show when={!session()?.permission && !open() && !turn()?.order.length}>
             <span class="flex items-center gap-2 font-mono text-[12px] text-muted-foreground">
@@ -271,7 +272,7 @@ function Permission(props: { ask: PermissionAsk; id: ConversationId }) {
               onClick={() =>
                 api.action(
                   PermitAction,
-                  { option: option().optionId },
+                  { request: props.ask.id, option: option().optionId },
                   { conversationId: props.id },
                 )
               }
@@ -348,9 +349,14 @@ export default defineWebExtension({
   provides: [
     provide(PickerRows, agentRows),
     provide(EmptyTranscript, AcpEmpty),
-    provide(
-      ConversationKind,
-      (conversation) => () => (conversation()?.label === 'acp' ? 'acp' : undefined),
-    ),
+    provide(ExternalSpeaker, (entry) => () => {
+      const answer = entry().model?.find((message) => message.role === 'assistant')
+      if (answer?.api !== 'acp') return undefined
+      return {
+        name: 'antigravity',
+        title: 'Antigravity',
+        ...(answer.model === 'Antigravity' ? {} : { model: answer.model }),
+      }
+    }),
   ],
 })

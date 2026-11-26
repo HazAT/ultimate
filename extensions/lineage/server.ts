@@ -937,7 +937,14 @@ function conversationArg(args: ActionInput<{ id: ConversationId }> | JsonValue) 
   return parseConversationId(value)
 }
 
-async function compactTally(tx: Tx, root: ConversationId, instructions?: string) {
+async function compactTally(
+  host: ExtensionHost,
+  tx: Tx,
+  root: ConversationId,
+  instructions?: string,
+) {
+  if ((await tx.doc(host.metadata, root)).label === 'acp')
+    throw new Error('ACP conversations cannot be compacted')
   if (!(await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(root))
     throw new Error(`#${root} is not a listed root`)
   const id = root
@@ -1074,7 +1081,9 @@ export const actions = {
     const instructions = (args as { instructions?: unknown }).instructions
     if (instructions !== undefined && typeof instructions !== 'string')
       throw new Error('instructions must be a string')
-    const taskId = await host.harness().commit((tx) => compactTally(tx, id, instructions), context)
+    const taskId = await host
+      .harness()
+      .commit((tx) => compactTally(host, tx, id, instructions), context)
     host.harness().resume()
     return { taskId }
   }),
@@ -1418,6 +1427,8 @@ export default function lineageExtension(host: ExtensionHost) {
         async execute({ instructions }, api, ctx) {
           const id = api.conversationId
           const compactionWithWake = async (tx: Tx) => {
+            if ((await tx.doc(host.metadata, id)).label === 'acp')
+              throw new Error('ACP conversations cannot be compacted')
             const subagentWouldLoseWakeReport = (await tx.conversation(id))?.owner
             if (subagentWouldLoseWakeReport)
               throw new Error(
