@@ -26,6 +26,7 @@ export {
   covered,
   fillComposer,
   focusComposer,
+  setTheme,
   getConversation,
   getState,
   insertIntoComposer,

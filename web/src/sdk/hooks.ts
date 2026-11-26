@@ -493,9 +493,16 @@ export const useViewport = once((): Accessor<Viewport> => {
   return current
 })
 
-/** Shell actions for navigation, commands, panels and composer focus. */
-export const { switchConversation, showSurface, runCommand, openPanel, closePanel, focusComposer } =
-  actions
+/** Shell actions for navigation, commands, panels, composer focus and the theme. */
+export const {
+  switchConversation,
+  showSurface,
+  runCommand,
+  openPanel,
+  closePanel,
+  focusComposer,
+  setTheme,
+} = actions
 /** The composer input a person can type into now (the main one or a side chat's); `dataset.conversation` is its conversation. */
 export { uncoveredComposer } from './actions.ts'
 /**

@@ -54,7 +54,9 @@ export async function nativeCan(capability: NativeCapability) {
  *   notifications with those tags.
  * - `share`: `takeShare` is what was shared into the app, or null; each file is fetched from its same-origin `path`,
  *   which the app serves.
- * - `theme`: the app colours the system bars from `meta[name=theme-color]` itself.
+ * - `theme`: the app colours the system bars from `meta[name=theme-color]` itself. `colorScheme` is the system's
+ *   `'dark'` or `'light'`; on a change the app dispatches a `native-color-scheme` event on `window` with it as
+ *   `detail`, and the page follows.
  *
  * The app keeps the WebView clear of the system bars and the camera cutout, so the page needs no safe-area handling.
  */
@@ -64,4 +66,5 @@ export const native = {
   pushUnsubscribe: () => call<null>('pushUnsubscribe'),
   closeNotifications: (tags: string[]) => call<null>('closeNotifications', { tags }),
   takeShare: () => call<NativeShare | null>('takeShare'),
+  colorScheme: () => call<'dark' | 'light'>('colorScheme'),
 }
