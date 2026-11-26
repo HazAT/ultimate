@@ -8,6 +8,7 @@ import { projectHome } from '../lib/project-paths.ts'
 import { acquireLock, readOwner, retireStorageOwner } from '../lib/lock.ts'
 import { deadline, pace } from '../lib/timers.ts'
 import { watch, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { closeOnWatchError } from '../lib/watch.ts'
 import { homedir } from 'node:os'
 import { watchRoots } from '../server/watch-roots.ts'
 import { join, resolve as resolvePath } from 'node:path'
@@ -548,11 +549,9 @@ const retry = () => {
 }
 function watchForRetry(directory: string) {
   const watcher = watch(directory, { recursive: true }, retry)
-  watcher.on('error', (error) => {
-    display.log('error', 'supervisor', `Cannot watch ${directory}: ${String(error)}`)
-    watcher.close()
+  return closeOnWatchError(watcher, directory, (message, error) => {
+    display.log('error', 'supervisor', `${message} ${String(error)}`)
   })
-  return watcher
 }
 const watchers = ['server', 'shared', 'extensions'].map((directory) =>
   watchForRetry(join(ultimateRoot, directory)),

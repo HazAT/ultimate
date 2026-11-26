@@ -311,15 +311,39 @@ ${fail ? 'exit 1' : ''}
   }
 }
 const runSourceWrite = <T>(_source: string, write: () => Promise<T>) => write()
-it.concurrent('serializes concurrent lander checkout creation', async () => {
+it.concurrent('queues lander checkout creation behind a source merge', async () => {
   const f = await fixture()
   const { home, projectRoot } = f
   const path = await landerPath(home, projectRoot, {})
   await git(projectRoot, 'worktree', 'remove', path)
   // Recover an unregistered directory left by an interrupted creation, too.
   await mkdir(path)
-  await writeFile(join(path, 'incomplete'), 'interrupted')
-  await Promise.all([f.service.standLander(context), f.service.standLander(context)])
+  const incomplete = join(path, 'incomplete')
+  await writeFile(incomplete, 'interrupted')
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const tip = await commit((await f.service.get(id, context))!.path)
+  const merge = await holdGit(projectRoot, 'merge')
+  const landing = f.service.land(id, context)
+  await merge.started()
+  const queue = f.host.resource('workspaces.land', () => new Map<string, Promise<unknown>>())
+  const enqueued = Promise.withResolvers<'queued'>()
+  const set = queue.set.bind(queue)
+  const spy = vi.spyOn(queue, 'set').mockImplementation((source, write) => {
+    if (source === projectRoot) enqueued.resolve('queued')
+    return set(source, write)
+  })
+  const standing = f.service.standLander(context)
+  try {
+    expect(await Promise.race([enqueued.promise, standing.then(() => 'created')])).toBe('queued')
+    expect(await readFile(incomplete, 'utf8')).toBe('interrupted')
+  } finally {
+    spy.mockRestore()
+    await merge.release()
+    await landing
+    await standing
+  }
+  expect(await git(path, 'rev-parse', 'HEAD')).toBe(tip)
   const entries = (await git(projectRoot, 'worktree', 'list', '--porcelain')).split('\n\n')
   expect(entries.filter((entry) => entry.split('\n').includes(`worktree ${path}`))).toHaveLength(1)
   expect(await readFile(join(path, 'base.txt'), 'utf8')).toBe('base')

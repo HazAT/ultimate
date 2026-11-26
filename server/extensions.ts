@@ -42,6 +42,7 @@ import { secretMetadata } from '../lib/secrets.ts'
 import { ChangedEvent } from '../shared/events.ts'
 import type { Device, UiSource } from '../shared/events.ts'
 import { inProcess, isMissing, meansNone } from '../lib/errors.ts'
+import { closeOnWatchError } from '../lib/watch.ts'
 
 export type ExtensionHost = Pick<
   PreparedHost,
@@ -801,11 +802,7 @@ export async function loadExtensions(
         if (lstatSync(join(directory, name), { throwIfNoEntry: false })) return
         enqueue(() => reload(new Set([name])))
       })
-      watcher.on('error', (error) => {
-        console.error(`Cannot watch ${directory}:`, error)
-        watcher.close()
-      })
-      return watcher
+      return closeOnWatchError(watcher, directory)
     } catch (error) {
       if (!isMissing(error)) throw error
       return undefined

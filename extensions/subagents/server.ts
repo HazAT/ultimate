@@ -847,7 +847,10 @@ export default function subagents(
     return { ...definition, runs }
   }
   const Reporter = createReporter(failures)
-  const recoverUnreportedAnswer = async (submission: SubmissionRecord) => {
+  const recoverUnreportedAnswer = async (
+    submission: SubmissionRecord,
+    settledReporter?: TaskId,
+  ) => {
     if (
       submission.type !== 'input' ||
       submission.status !== 'done' ||
@@ -878,13 +881,14 @@ export default function subagents(
           parentMessageNeedsReporter = false
       }
       if (!parentMessageNeedsReporter && !failures()?.continues(submission)) {
-        const action = childActions.at(-1)
-        if (action && action.status === undefined) return action.reporter
-        const interrupted = action?.status === 'interrupted'
-        if (
-          !action ||
-          (!['unanswered', 'failed', 'given-up'].includes(action.status ?? '') && !interrupted)
-        )
+        const action =
+          settledReporter === undefined
+            ? childActions.at(-1)
+            : childActions.find(({ reporter }) => reporter === settledReporter)
+        if (action?.status === undefined)
+          return settledReporter === undefined ? action?.reporter : undefined
+        const interrupted = action.status === 'interrupted'
+        if (!['unanswered', 'failed', 'given-up'].includes(action.status) && !interrupted)
           return undefined
         const failed = await tx.submissionByRequest(
           submission.conversationId,
@@ -981,7 +985,8 @@ export default function subagents(
               const submissions = pending.get(change.value.id)
               pending.delete(change.value.id)
               if (submissions)
-                for (const submission of submissions.values()) await recover(submission)
+                for (const submission of submissions.values())
+                  await recoverUnreportedAnswer(submission, change.value.id)
             }
           })
           .catch((error: unknown) => {
