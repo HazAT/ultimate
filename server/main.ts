@@ -258,22 +258,24 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
         reportCore({ type: 'web', state: 'ready' })
         return served
       }),
-    async close() {
-      const stopped = new Promise<void>((resolve, reject) =>
-        http.close((error) => (error ? reject(error) : resolve())),
-      )
-      if (opened) await extensions.released()
-      await api?.close()
-      await opened?.close()
-      opened = undefined
-      await extensions.close()
-      await web?.close()
-      await system?.close()
-      await vite.close()
-      reportCore({ type: 'web', state: 'stopped' })
-      http.closeAllConnections()
-      await stopped
-    },
+    close: () =>
+      serial(async () => {
+        const stopped = new Promise<void>((resolve, reject) =>
+          http.close((error) => (error ? reject(error) : resolve())),
+        )
+        if (opened) await extensions.released()
+        await api?.close()
+        api = undefined
+        await opened?.close()
+        opened = undefined
+        await extensions.close()
+        await web?.close()
+        await system?.close()
+        await vite.close()
+        reportCore({ type: 'web', state: 'stopped' })
+        http.closeAllConnections()
+        await stopped
+      }),
   }
 }
 export async function createServer(options: Partial<ServerOptions> = {}) {
@@ -345,7 +347,7 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
             }
             if (message.type === 'release') {
               await server!.release()
-              send({ type: 'released' })
+              send({ type: 'released', requestId: message.requestId })
             }
             if (message.type === 'exit') {
               await close()
