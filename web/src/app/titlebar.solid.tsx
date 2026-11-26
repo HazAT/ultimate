@@ -248,7 +248,7 @@ export function TitleBar() {
           <Project />
           <Slot fallback={inlineFailure} name="titlebar.left" />
         </div>
-        <div class="flex shrink-0 items-center pl-2">
+        <div class="flex min-w-0 items-center overflow-x-auto pl-2 [scrollbar-width:none]">
           <SurfaceItems />
         </div>
       </div>

@@ -58,7 +58,7 @@ export function StatusLine() {
       data-ui="status-line"
     >
       <Show
-        when={viewport() === 'phone'}
+        when={viewport() !== 'desktop'}
         fallback={
           <>
             <div class="flex min-w-0 flex-1 items-center gap-3 overflow-hidden whitespace-nowrap">
@@ -191,6 +191,7 @@ function Overlay(props: {
 }
 
 const MIN_CONVERSATION_WIDTH = 360
+const TABLET_REGION_SHARE = 0.32
 const regionWidths = {
   sidebar: { key: shellKeys.sidebarWidth, initial: 288, min: 224, edge: 'right' },
   panels: { key: shellKeys.panelWidth, initial: 352, min: 280, edge: 'left' },
@@ -208,7 +209,10 @@ function createRegionWidth(region: 'sidebar' | 'panels') {
     saved,
     initial,
     min,
-    max: (windowWidth) => windowWidth - MIN_CONVERSATION_WIDTH - (otherDocked() ? otherWidth() : 0),
+    max: (windowWidth) =>
+      viewport() === 'tablet'
+        ? windowWidth * TABLET_REGION_SHARE
+        : windowWidth - MIN_CONVERSATION_WIDTH - (otherDocked() ? otherWidth() : 0),
     edge: () => edge,
     save,
   })

@@ -22,7 +22,7 @@ const agent = createAgent()
 
 it('opens and closes a conversation panel from its tablet shortcut', async ({ onTestFinished }) => {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === '(min-width: 768px)',
+    matches: query === '(min-width: 720px)',
     addEventListener() {},
     removeEventListener() {},
   }))

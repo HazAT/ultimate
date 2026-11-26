@@ -450,7 +450,32 @@ function TranscriptView(props: {
     follower.place(scroll.scrollTop + move)
   }
   onSettled(() => {
+    let width = scroll.clientWidth
+    let noted: { row: Element; offset: number } | null = null
+    const noteReading = () => {
+      if (scroll.clientWidth !== width) return
+      const top = scroll.getBoundingClientRect()
+      const line = top.top + pinned.offsetHeight + 1
+      let row = document.elementFromPoint(top.left + top.width / 2, line)
+      while (row) {
+        const below = [...row.children].find((child) => child.getBoundingClientRect().bottom > line)
+        if (!below) break
+        row = below
+      }
+      if (row && content.contains(row))
+        noted = { row, offset: row.getBoundingClientRect().top - top.top }
+    }
+    const keepReadingAcrossWidth = () => {
+      if (scroll.clientWidth === width) return
+      width = scroll.clientWidth
+      const follower = scroller()
+      if (!noted?.row.isConnected || !follower || follower.following()) return
+      const moved = noted.row.getBoundingClientRect().top - scroll.getBoundingClientRect().top
+      follower.place(scroll.scrollTop + moved - noted.offset)
+    }
+    scroll.addEventListener('scroll', noteReading, { passive: true })
     const resize = new ResizeObserver(() => {
+      keepReadingAcrossWidth()
       hold()
       releaseTailOnResize?.()
     })
@@ -462,6 +487,7 @@ function TranscriptView(props: {
     for (const type of inputs) scroll.addEventListener(type, release, { passive: true })
     return () => {
       resize.disconnect()
+      scroll.removeEventListener('scroll', noteReading)
       for (const type of inputs) scroll.removeEventListener(type, release)
     }
   })

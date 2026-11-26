@@ -90,6 +90,11 @@
   --sidebar-ring: var(--ring);
 }
 
+/* An unfolded foldable (755 px portrait) is a tablet, not a stretched phone: `md:` matches `tablet` in viewport.ts. */
+@theme {
+  --breakpoint-md: 45rem;
+}
+
 @theme inline {
   --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
   --font-mono:
@@ -218,9 +223,12 @@
     color-scheme: light;
   }
   /* An app, not a page: swipes and scrolls past an end never navigate back or pull to refresh. */
+  /* Clipped sideways: on Android anything wider than the screen widens the layout viewport and zooms the whole app out,
+     leaving it stuck short and narrow. */
   html,
   body {
     overscroll-behavior: none;
+    overflow-x: clip;
   }
   html.dark {
     color-scheme: dark;
@@ -238,7 +246,7 @@
   }
   /* Installed on a phone, the status line's ends sit in from the rounded corners, so it reaches down into the
      home-indicator band: no empty strip under it, its items still 14px clear of the bottom edge and the indicator. */
-  @media (display-mode: standalone) and (width < 48rem) {
+  @media (display-mode: standalone) and (width < 45rem) {
     .status-line {
       box-sizing: content-box;
       margin-bottom: calc(-1 * var(--inset-bottom));
@@ -276,7 +284,7 @@
  * to edge as rows split by hairlines, and the composer is the one raised surface, a sheet on the status line.
  * Unlayered, so it wins over the components' utility classes; it hangs on `data-ui` hooks only.
  */
-@media (width < 48rem) {
+@media (width < 45rem) {
   [data-ui='transcript'] {
     --gutter: 0.75rem;
     padding-inline: var(--gutter);
@@ -337,6 +345,19 @@
   textarea,
   select {
     font-size: 16px;
+  }
+  /* The transcript keeps to about 70 characters a line, the width that reads at arm's length. */
+  :root {
+    --reading-width: 38rem;
+  }
+}
+
+/* A touch keyboard on an unfolded foldable leaves about 320 px: the title bar and the status line give way to the
+   transcript until the keyboard closes. */
+@media (pointer: coarse) and (width >= 45rem) and (height < 30rem) {
+  .safe-area:has(textarea:focus, input:focus, [contenteditable]:focus)
+    :is([data-ui='titlebar'], [data-ui='conversation-header'], .status-line) {
+    display: none;
   }
 }
 
