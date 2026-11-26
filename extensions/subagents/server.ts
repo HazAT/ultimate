@@ -45,6 +45,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Source } from '../../lib/project-paths.ts'
 import {
   agentRoots,
+  cachedDiscovery,
   definitionAgent,
   deleteDefinition,
   discoverAgents,
@@ -755,6 +756,12 @@ export default function subagents(
     },
   }
   host.implement(SubagentsApi, service)
+  const standingDefinitions = cachedDiscovery(
+    host.ultimateRoot,
+    host.projectRoot,
+    host.userHome,
+    host.modelRuntime,
+  )
   const refreshStanding = async (
     tx: Tx,
     id: ConversationId,
@@ -763,12 +770,7 @@ export default function subagents(
     const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
     const name = Object.keys(index).find((candidate) => index[candidate] === id)
     if (name === undefined) return
-    const discovered = await discoverAgents(
-      host.ultimateRoot,
-      host.projectRoot,
-      host.userHome,
-      host.modelRuntime,
-    ).catch(meansNone)
+    const discovered = await standingDefinitions().catch(meansNone)
     const definition = discovered?.definitions.find(
       (item) => item.name === name && item.resident === true,
     )
@@ -1026,6 +1028,9 @@ export default function subagents(
           }, context)
         },
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
+        prepareInput: async () => {
+          await standingDefinitions()
+        },
         beforeInput: async (_input, { tx, conversationId, agent }) => {
           await refreshStanding(tx, conversationId, agent)
           return stateNote(tx, conversationId, Date.now())

@@ -1,4 +1,5 @@
 import { readdir, realpath } from 'node:fs/promises'
+import { join } from 'node:path'
 import { exec } from './exec.ts'
 import { meansNone } from './errors.ts'
 
@@ -8,6 +9,16 @@ export async function git(cwd: string | GitOptions, ...args: string[]) {
   const options = typeof cwd === 'string' ? { cwd } : cwd
   const { stdout } = await exec('git', args, { timeout: 30000, maxBuffer: 1024 * 1024, ...options })
   return stdout.trim()
+}
+
+export async function refFiles(cwd: string, branch?: string) {
+  const [gitDir, common] = (
+    await git(cwd, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir')
+  ).split('\n')
+  const ref = branch
+    ? `refs/heads/${branch}`
+    : await git(cwd, 'symbolic-ref', '--quiet', 'HEAD').catch(meansNone)
+  return [join(gitDir, 'HEAD'), join(common, 'packed-refs'), ...(ref ? [join(common, ref)] : [])]
 }
 
 export const noRepository = 'Isolation needs a Git repository'

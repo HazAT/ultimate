@@ -542,9 +542,8 @@ export default function acp(host: ExtensionHost) {
     tasks: [local.StopConcluded],
     hooks: [
       hook(GenerationTask, {
-        beforeInput: async (_input, { tx, conversationId }) => {
-          if ((await tx.doc(Session, conversationId)).status) throw new Error(ownInput)
-        },
+        refuseInput: async (_input, { tx, conversationId }) =>
+          (await tx.doc(Session, conversationId)).status ? ownInput : undefined,
       }),
     ],
   })

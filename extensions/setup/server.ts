@@ -473,28 +473,27 @@ export async function noteFor(
 }
 
 export default function setup(host: ExtensionHost) {
-  const cache = host.resource('setup.check', () => ({ at: 0, issues: [] as SetupIssue[] }))
+  const cache = host.resource('setup.check', () => ({
+    at: 0,
+    issues: undefined as SetupIssue[] | undefined,
+  }))
   const burstCheckCacheMs = 30_000
-  const current = async (tx: Tx) => {
-    if (Date.now() - cache.at > burstCheckCacheMs) {
-      cache.issues = await check(
-        host,
-        <T extends JsonObject>(doc: ConversationDocToken<T>, id: ConversationId) =>
-          tx.doc(doc, id) as Promise<Readonly<T>>,
-      )
-      cache.at = Date.now()
-    }
-    return cache.issues
-  }
   return defineExtension({
     name: 'setup',
     hooks: [
       hook(GenerationTask, {
+        prepareInput: async ({ conversationId }, ctx) => {
+          const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
+          if (standing?.ultimate !== conversationId) return
+          if (Date.now() - cache.at <= burstCheckCacheMs) return
+          cache.issues = await check(host).catch(meansNone)
+          cache.at = Date.now()
+        },
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
           if (standing.ultimate !== conversationId) return undefined
-          return noteFor(tx, conversationId, await current(tx).catch(meansNone), Date.now())
+          return noteFor(tx, conversationId, cache.issues, Date.now())
         },
       }),
     ],

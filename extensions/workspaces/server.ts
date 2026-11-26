@@ -206,11 +206,11 @@ export default function workspaceExtension(host: ExtensionHost) {
         },
       }),
       hook(GenerationTask, {
-        beforeInput: async (_input, api) => {
+        refuseInput: async (_input, api) => {
           const index = await api.tx.doc(Workspaces, ROOT_CONVERSATION_ID)
-          if (Object.values(index.landerConversations).includes(api.conversationId))
-            throw new Error('The lander runs no model; its conversation is the landing log')
-          return undefined
+          return Object.values(index.landerConversations).includes(api.conversationId)
+            ? 'The lander runs no model; its conversation is the landing log'
+            : undefined
         },
       }),
     ],

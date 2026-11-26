@@ -3,7 +3,7 @@ import type { Context } from '@earendil-works/chord/context'
 import type { ConversationId, PromptInput, Tx } from '@earendil-works/pi-durable'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { formatSkillsForPrompt, loadProjectContextFiles } from '@earendil-works/pi-coding-agent'
 import {
   AgentDoc,
@@ -17,8 +17,9 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSummary } from '../../shared/protocol.ts'
-import { discoverAgents } from '../../lib/agents.ts'
-import { git } from '../../lib/git.ts'
+import { cachedDiscovery, discoverAgents } from '../../lib/agents.ts'
+import { git, refFiles } from '../../lib/git.ts'
+import { fileMemo } from '../../lib/memo.ts'
 import { ignoring, isMissing, meansNone } from '../../lib/errors.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { Profile, Standing } from '../subagents/api.ts'
@@ -102,21 +103,69 @@ const noLandingsFromUnavailableHistory = () => []
 
 const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 16)
 
-async function cloneDocs(ultimateRoot: string, files: Record<string, string>) {
+async function instructionFiles(host: ExtensionHost, own: readonly string[]) {
   const markdownPathsOrNone = async (folder: string) =>
-    (await readdir(join(ultimateRoot, folder)).catch(() => [] as string[]))
+    (await readdir(join(host.ultimateRoot, folder)).catch(() => [] as string[]))
       .filter((name) => name.endsWith('.md'))
-      .map((name) => join(ultimateRoot, folder, name))
-  const paths = [
-    join(ultimateRoot, 'AGENTS.md'),
+      .map((name) => join(host.ultimateRoot, folder, name))
+  const hashesByAbsolutePath: Record<string, string> = {}
+  const clone = [
+    join(host.ultimateRoot, 'AGENTS.md'),
     ...(await markdownPathsOrNone('docs')),
     ...(await markdownPathsOrNone('agents')),
   ]
-  for (const path of paths) {
+  for (const path of clone) {
     const text = await readFile(path, 'utf8').catch(ignoring(isMissing))
-    if (text !== undefined) files[path] = digest(text)
+    if (text !== undefined) hashesByAbsolutePath[path] = digest(text)
+  }
+  const context = loadProjectContextFiles({
+    cwd: host.projectRoot,
+    agentDir: join(host.userHome, '.ultimate'),
+  })
+  for (const file of context) hashesByAbsolutePath[file.path] = digest(file.content)
+  const removedFileText = () => ''
+  for (const path of own)
+    hashesByAbsolutePath[path] = digest(await readFile(path, 'utf8').catch(removedFileText))
+  const contextFolders = []
+  for (let folder = host.projectRoot; ; folder = dirname(folder)) {
+    contextFolders.push(folder)
+    if (dirname(folder) === folder) break
+  }
+  return {
+    value: hashesByAbsolutePath,
+    paths: [
+      join(host.ultimateRoot, 'docs'),
+      join(host.ultimateRoot, 'agents'),
+      join(host.userHome, '.ultimate'),
+      ...contextFolders,
+      ...clone,
+      ...context.map((file) => file.path),
+      ...own,
+    ],
   }
 }
+
+function instructionReads(host: ExtensionHost) {
+  const discovered = cachedDiscovery(
+    host.ultimateRoot,
+    host.projectRoot,
+    host.userHome,
+    host.modelRuntime,
+  )
+  let own: readonly string[] = []
+  const files = fileMemo(
+    () => instructionFiles(host, own),
+    () => own.join('\0'),
+  )
+  return async () => {
+    const definition = (await discovered()).definitions.find(
+      (candidate) => candidate.name === 'ultimate',
+    )
+    own = definition ? [definition.path, ...(definition.overlays ?? [])] : []
+    return { definition, files: await files() }
+  }
+}
+type InstructionReads = Awaited<ReturnType<ReturnType<typeof instructionReads>>>
 
 function shown(host: ExtensionHost, path: string) {
   const inProject = relative(host.projectRoot, path)
@@ -131,33 +180,15 @@ async function instructionChanges(
   tx: Tx,
   conversationId: ConversationId,
   seen: { files?: Record<string, string> },
+  { definition, files: hashesByAbsolutePath }: InstructionReads,
 ) {
   const name = 'ultimate'
-  if ((await tx.doc(Standing, ROOT_CONVERSATION_ID))[name] !== conversationId)
-    return { instructions: [], docs: [] }
-  const { definitions } = await discoverAgents(
-    host.ultimateRoot,
-    host.projectRoot,
-    host.userHome,
-    host.modelRuntime,
-  )
-  const definition = definitions.find((candidate) => candidate.name === name)
   const definitionDiffersFromConversation =
     definition !== undefined &&
     (await tx.doc(AgentDoc, conversationId)).instructions !== definition.instructions
   if (definitionDiffersFromConversation)
     await configure(tx, conversationId, { instructions: definition.instructions })
-  const hashesByAbsolutePath: Record<string, string> = {}
-  await cloneDocs(host.ultimateRoot, hashesByAbsolutePath)
-  for (const file of loadProjectContextFiles({
-    cwd: host.projectRoot,
-    agentDir: join(host.userHome, '.ultimate'),
-  }))
-    hashesByAbsolutePath[file.path] = digest(file.content)
   const own = definition ? [definition.path, ...(definition.overlays ?? [])] : []
-  const removedFileText = () => ''
-  for (const path of own)
-    hashesByAbsolutePath[path] = digest(await readFile(path, 'utf8').catch(removedFileText))
   const previous = seen.files
   seen.files = hashesByAbsolutePath
   const changed = previous
@@ -212,28 +243,59 @@ async function definitionSkills(
 }
 
 export default function prompt(host: ExtensionHost) {
+  const instructions = instructionReads(host)
+  const cloneHead = fileMemo(async () => ({
+    value: await git(host.ultimateRoot, 'rev-parse', 'HEAD').catch(meansNone),
+    paths: await refFiles(host.ultimateRoot).catch((): string[] => []),
+  }))
+  const landedByRange = new Map<string, Promise<Landing[]>>()
+  const landedBetween = (from: string, to: string) => {
+    const range = `${from}..${to}`
+    if (!landedByRange.has(range)) {
+      landedByRange.clear()
+      landedByRange.set(
+        range,
+        landings(host.ultimateRoot, from, to, host.conversations()).catch(
+          noLandingsFromUnavailableHistory,
+        ),
+      )
+    }
+    return landedByRange.get(range)!
+  }
   return defineExtension({
     name: 'prompt',
     hooks: [
       // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
       hook(GenerationTask, {
+        prepareInput: async ({ conversationId }, ctx) => {
+          const harness = host.harness()
+          if (
+            (await harness.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate ===
+            conversationId
+          )
+            await instructions()
+          const head = await cloneHead()
+          const from = (
+            await harness.snapshot(LastRunBuildAndInstructionHashes, conversationId, ctx)
+          )?.head
+          if (head && from && head !== from) await landedBetween(from, head)
+        },
         beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
           const build = host.build()
           const seen = await tx.doc(LastRunBuildAndInstructionHashes, conversationId)
-          const changes = await instructionChanges(host, tx, conversationId, seen)
+          const ultimate =
+            (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
+          const changes = ultimate
+            ? await instructionChanges(host, tx, conversationId, seen, await instructions())
+            : { instructions: [], docs: [] }
           const previous = seen.id
           seen.id = build.id
           const built = previous !== undefined && previous !== build.id
           let landed: Landing[] = []
           if (seen.head === undefined || built) {
-            const head = await git(host.ultimateRoot, 'rev-parse', 'HEAD').catch(meansNone)
+            const head = await cloneHead()
             if (built && head && seen.head && head !== seen.head)
-              landed = await landings(
-                host.ultimateRoot,
-                seen.head,
-                head,
-                host.conversations(),
-              ).catch(noLandingsFromUnavailableHistory)
+              landed = await landedBetween(seen.head, head)
             if (head) seen.head = head
           }
           const text = [built && buildNote(build, previous, landed), instructionNote(changes)]

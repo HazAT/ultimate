@@ -1087,6 +1087,7 @@ describe('turns without an answer', () => {
         (await f.opened.harness.snapshot(Subagents, f.opened.root.id, context))!.actions,
       ).every((action) => action.status !== undefined),
     )
+    await until(async () => (await reports(f.opened)).length === 3)
     await f.opened.harness.waitForIdle(context)
     // The follow-up ran after the one-way message's run: two distinct answers, each reported once.
     const answer = answered.status === 'done' ? answered.answer : undefined

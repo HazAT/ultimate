@@ -16,23 +16,37 @@ function usesSubscriptionNotPerToken(host: ExtensionHost, provider: string) {
   return !PAY_PER_TOKEN_PROVIDERS.has(provider) && host.modelRuntime.isUsingSubscription(provider)
 }
 
+function needsCheck(host: ExtensionHost, model: Ref | undefined): model is Ref {
+  const available = host.modelRuntime.getAvailableSnapshot()
+  const availabilitySnapshotIsUnsettled = !available.length
+  return (
+    !!model &&
+    !availabilitySnapshotIsUnsettled &&
+    !hasLogin(available, model) &&
+    !!host.modelRuntime.getProvider(model.provider)
+  )
+}
+
+export async function confirmMissingLogin(
+  host: ExtensionHost,
+  model: Ref | undefined,
+  confirmed: Set<string>,
+) {
+  if (!needsCheck(host, model)) return
+  if (await loginIsPresentOrUnconfirmed(host, model.provider)) confirmed.delete(model.provider)
+  else confirmed.add(model.provider)
+}
+
 export async function fallback(
   host: ExtensionHost,
   tx: Tx,
   conversationId: ConversationId,
+  confirmedMissing: ReadonlySet<string>,
 ): Promise<{ entries: EntryDraft[] } | undefined> {
   const agent = await tx.doc(AgentDoc, conversationId)
   const runtime = host.modelRuntime
-  const available = runtime.getAvailableSnapshot()
-  const availabilitySnapshotIsUnsettled = !available.length
-  if (!agent.model || availabilitySnapshotIsUnsettled || hasLogin(available, agent.model))
-    return undefined
   const from = agent.model
-  if (
-    !runtime.getProvider(from.provider) ||
-    (await loginIsPresentOrUnconfirmed(host, from.provider))
-  )
-    return undefined
+  if (!needsCheck(host, from) || !confirmedMissing.has(from.provider)) return undefined
   const fresh = runtime.getAvailableSnapshot()
   const requiresSubscriptionReplacement = providerDeclaresSubscriptionAuth(host, from.provider)
   const preservesSubscriptionBilling = (provider: string) =>

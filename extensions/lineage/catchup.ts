@@ -1,4 +1,4 @@
-import type { ConversationId, EntryDraft, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { onCommit } from '../../lib/commits.ts'
 import type { Context } from '@earendil-works/chord/context'
@@ -21,25 +21,18 @@ export const Seen = defineDoc<{ main?: string; at?: number }>({
 })
 
 type Main = { cwd: string; target: string; sha: string; workspace?: string }
-async function mainOf(
-  host: ExtensionHost,
-  id: ConversationId,
-  ctx: Context,
-  tx?: Tx,
-): Promise<Main | undefined> {
-  const service = host.need(WorkspacesApi)
-  const workspace = tx
-    ? (await tx.doc(service.doc, ROOT_CONVERSATION_ID)).items[String(id)]
-    : await service.get(id, ctx)
+async function mainOf(host: ExtensionHost, id: ConversationId, ctx: Context) {
+  const workspace = await host.need(WorkspacesApi).get(id, ctx)
   const cwd = workspace?.source ?? host.projectRoot
   const target =
     workspace?.target ??
     (await git(cwd, 'symbolic-ref', '--quiet', '--short', 'HEAD').catch(() => ''))
   if (!target) return undefined
   const sha = await git(cwd, 'rev-parse', '--verify', `refs/heads/${target}`).catch(meansNone)
-  return sha
+  const main: Main | undefined = sha
     ? { cwd, target, sha, ...(workspace?.state === 'ready' ? { workspace: workspace.path } : {}) }
     : undefined
+  return main
 }
 
 export async function seedSeen(tx: Tx, id: ConversationId, main: string, at: number) {
@@ -83,7 +76,7 @@ export function watchSeen(host: ExtensionHost, ctx: Context) {
 
 const lines = (output: string) => output.split('\n').filter(Boolean)
 
-async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main, tx: Tx) {
+async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main, ctx: Context) {
   if (main.workspace) {
     const base = await git(main.workspace, 'merge-base', 'HEAD', main.sha)
     return new Set([
@@ -93,6 +86,10 @@ async function changedFiles(host: ExtensionHost, id: ConversationId, main: Main,
       ),
     ])
   }
+  return host.harness().commit((tx) => editedFiles(host, tx, id, main), ctx)
+}
+
+async function editedFiles(host: ExtensionHost, tx: Tx, id: ConversationId, main: Main) {
   const cwd = (await tx.doc(AgentDoc, id)).cwd ?? host.projectRoot
   const files = new Set<string>()
   let cursor
@@ -124,7 +121,7 @@ async function catchupText(
   id: ConversationId,
   main: Main,
   since: { main: string; at?: number },
-  tx: Tx,
+  ctx: Context,
   onlyOverlaps: boolean,
 ) {
   const range = `${since.main}..${main.sha}`
@@ -140,7 +137,7 @@ async function catchupText(
   const [count, recent, changed] = await Promise.all([
     git(main.cwd, 'rev-list', '--first-parent', '--count', range).then(Number),
     onlyOverlaps ? '' : firstParentTargetLogBoundedByRows(range),
-    changedFiles(host, id, main, tx),
+    changedFiles(host, id, main, ctx),
   ])
   if (!count) return undefined
   const ownFilePathspecForBoundedMergeNames = [...changed]
@@ -201,43 +198,63 @@ async function catchupText(
   ].join('\n\n')
 }
 
+type CatchupPlacedOnlyWhileBaselineHolds = { since: string; main: Main; text?: string }
+
+export function catchupPreparation(
+  host: ExtensionHost,
+  isBranch: (tx: Tx, id: ConversationId) => Promise<boolean>,
+) {
+  const prepared = new Map<ConversationId, CatchupPlacedOnlyWhileBaselineHolds>()
+  const prepare = async (id: ConversationId, ctx: Context) => {
+    const harness = host.harness()
+    const facts = await harness.commit(async (tx) => {
+      const record = await tx.conversation(id)
+      if (!record || record.owner) return undefined
+      return {
+        branch: await isBranch(tx, id),
+        ultimate: (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === id,
+        seen: { ...(await tx.doc(Seen, id)) },
+      }
+    }, ctx)
+    prepared.delete(id)
+    if (!facts) return
+    const main = await mainOf(host, id, ctx)
+    if (!main) return
+    const since = facts.seen.main
+    const text =
+      since && since !== main.sha && !facts.ultimate
+        ? await catchupText(
+            host,
+            id,
+            main,
+            { main: since, at: facts.seen.at },
+            ctx,
+            facts.branch,
+          ).catch((error: unknown) => {
+            host.notice(`Skipped the commit catch-up for #${id}: ${String(error)}`)
+            return undefined
+          })
+        : undefined
+    prepared.set(id, { since: since ?? '', main, ...(text ? { text } : {}) })
+  }
+  return { prepare, take: (id: ConversationId) => prepared.get(id) }
+}
+
 type NoteBaselineAndInputCommitTogether = Tx
 
 // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook. Drop when Pi ships input-placement hooks.
 export async function catchup(
-  host: ExtensionHost,
-  _input: EntryDraft,
   placement: { conversationId: ConversationId; tx: NoteBaselineAndInputCommitTogether },
-  ctx: Context,
-  isBranch: (tx: Tx, id: ConversationId) => Promise<boolean>,
+  prepared: CatchupPlacedOnlyWhileBaselineHolds | undefined,
 ) {
   const { tx, conversationId } = placement
   const record = await tx.conversation(conversationId)
-  if (!record || record.owner) return undefined
-  const main = await mainOf(host, conversationId, ctx, tx)
+  if (!record || record.owner || !prepared) return undefined
   const alwaysAdvancedBaseline = await tx.doc(Seen, conversationId)
-  const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate === conversationId
-  const commits =
-    main && !ultimate && alwaysAdvancedBaseline.main && alwaysAdvancedBaseline.main !== main.sha
-      ? await catchupText(
-          host,
-          conversationId,
-          main,
-          {
-            main: alwaysAdvancedBaseline.main,
-            at: alwaysAdvancedBaseline.at,
-          },
-          tx,
-          await isBranch(tx, conversationId),
-        ).catch((error: unknown) => {
-          host.notice(`Skipped the commit catch-up for #${conversationId}: ${String(error)}`)
-          return undefined
-        })
-      : undefined
-  if (main) {
-    alwaysAdvancedBaseline.main = main.sha
-    if (!alwaysAdvancedBaseline.at || commits) alwaysAdvancedBaseline.at = Date.now()
-  }
+  if ((alwaysAdvancedBaseline.main ?? '') !== prepared.since) return undefined
+  const commits = prepared.text
+  alwaysAdvancedBaseline.main = prepared.main.sha
+  if (!alwaysAdvancedBaseline.at || commits) alwaysAdvancedBaseline.at = Date.now()
   if (!commits) return undefined
   const text = `${commits}\n\nCheck whether any of this already covers or changes what you are about to do.`
   return {

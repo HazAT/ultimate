@@ -75,19 +75,32 @@ index 54f3ef34ddf1bf85e3ad9c41bdbd216c081a476f..8a63b529154f0e896edb585fc20d3d43
                  firstKept,
              };
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
-index 56f3055ab58e51d429f91c90c9286531f3086106..68a2539dfd4c7dd7182c59d134a7c7abb3d09db2 100644
+index 56f3055ab58e51d429f91c90c9286531f3086106..0cc12a0a0a6d3eb9a876c06da384e61ea3fcab7d 100644
 --- a/dist/harness/generation.js
 +++ b/dist/harness/generation.js
-@@ -294,7 +294,7 @@ export const GenerationTask = defineTask({
+@@ -6,7 +6,7 @@ import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.j
+ import { defineTask } from "../tasks.js";
+ import { addTools, agentHooks, sectionExtension } from "./agent.js";
+ import { compactionPolicy, createCompaction, estimateContext, selectCut } from "./compaction.js";
+-import { applyBoundary, hasQueuedReset, prepareBoundary, withdrawQueuedInputs } from "./inbox.js";
++import { applyBoundary, hasQueuedReset, InboxDoc, prepareBoundary, withdrawQueuedInputs } from "./inbox.js";
+ import { cutOffCount, cutOffTooOften, endRun, LiveDoc, PROGRESS_COMMIT, salvageable, } from "./live.js";
+ import { PartialChanges } from "./partial-changes.js";
+ import { planSystemEntries, renderSections, replaySections } from "./prompt.js";
+@@ -293,9 +293,11 @@ export const GenerationTask = defineTask({
+             const outcomes = await runtime.outcomes(tasks, context);
              const continuation = outcomes.map(yieldContinuation).find((input) => input !== undefined);
              const afterRun = await asksAfterRun(runtime, context);
++            await prepareInputs(runtime, context);
              await runtime.commit(async (tx) => {
 -                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings);
-+                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings, "final", runtime.now());
                  const live = await tx.doc(LiveDoc, runtime.conversationId);
++                const at = await answerBoundary(tx, runtime, live, continuation, afterRun);
++                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings, at, runtime.now());
                  if (live.run?.taskId === runtime.taskId)
                      delete live.run.yield;
-@@ -503,7 +503,7 @@ async function prepareFailure(tx, runtime) {
+                 return concludeAnswer(tx, runtime, live, boundary, answer, continuation, afterRun);
+@@ -503,7 +505,7 @@ async function prepareFailure(tx, runtime) {
      const policy = settings.afterFailedRun;
      if (policy !== "continue")
          return { policy };
@@ -96,35 +109,78 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..68a2539dfd4c7dd7182c59d134a7c7ab
  }
  /**
   * End a failed run, settling its inputs with `settlement`, and do with the inputs queued behind it what
-@@ -739,7 +739,7 @@ async function answer(runtime, message, context) {
+@@ -737,14 +739,29 @@ async function answer(runtime, message, context) {
+         return;
+     }
      const afterRun = await asksAfterRun(runtime, context);
++    await prepareInputs(runtime, context);
      await runtime.commit(async (tx) => {
          // Queue modes are read on the Session line, when the boundary is decided.
 -        const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
-+        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, "final", runtime.now());
          const live = await tx.doc(LiveDoc, conversationId);
++        const at = await answerBoundary(tx, runtime, live, continuation, afterRun);
++        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, at, runtime.now());
          const entry = await appendAssistant(tx, conversationId, message);
          return concludeAnswer(tx, runtime, live, boundary, entry.id, continuation, afterRun);
-@@ -882,7 +882,7 @@ async function createHookTasks(tx, runtime, prepared) {
+     }, context);
+ }
++/** Let `prepareInput` hooks compute off the line what `beforeInput` reads, when the next commit may place a queued input. */
++async function prepareInputs(runtime, context) {
++    const inbox = await runtime.snapshot(InboxDoc, runtime.conversationId, context);
++    if (!inbox?.items.some((item) => item.mode !== "write"))
++        return;
++    await runtime.hooks.each("prepareInput", (hook) => hook({ conversationId: runtime.conversationId }, context));
++}
++/** The boundary `concludeAnswer()` applies: none when an `afterRun` hold keeps the queued items queued. */
++async function answerBoundary(tx, runtime, live, continuation, afterRun) {
++    const inbox = await tx.doc(InboxDoc, runtime.conversationId);
++    const holds = afterRun && live.run?.taskId === runtime.taskId && !takesContinuation(continuation, { inbox });
++    return holds ? "none" : "final";
++}
+ /**
+  * Settle an answer that stands, or take its continuation: shared by `answer()` and the `yield` phase. A continuation is
+  * taken only when the inbox holds no user item and no reset (`takesContinuation()`).
+@@ -881,8 +898,9 @@ async function createHookTasks(tx, runtime, prepared) {
+  */
  async function endAnsweredRun(runtime, answer, context) {
      const conversationId = runtime.conversationId;
++    await prepareInputs(runtime, context);
      await runtime.commit(async (tx) => {
 -        const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
 +        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, "final", runtime.now());
          const live = await tx.doc(LiveDoc, conversationId);
          const { users, first } = await applyBoundary(tx, boundary, "final", runtime.now());
          endRun(tx, live, runtime.taskId, { status: "done", answer });
-@@ -1011,7 +1011,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+@@ -1010,11 +1028,16 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+     // Read from the phase's agent, as every agent field; a `configure()` during the round applies at its end.
      const maxTurns = (await runtime.agent(context)).maxTurns;
      const afterRun = terminate && (await asksAfterRun(runtime, context));
++    await prepareInputs(runtime, context);
      await runtime.commit(async (tx) => {
 -        const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
-+        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, terminate || handoff !== undefined ? "final" : "postTools", runtime.now());
++        const live = await tx.doc(LiveDoc, conversationId);
++        const turnsSoFar = live.run?.taskId === runtime.taskId ? live.run.turns : 0;
++        const limited = !terminate && maxTurns !== undefined && turnsSoFar >= maxTurns;
++        const holds = afterRun && live.run?.taskId === runtime.taskId;
++        const at = holds ? "none" : terminate ? "final" : limited ? (runtime.settings.afterFailedRun === "continue" ? "final" : "none") : "postTools";
++        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, at, runtime.now());
          if (added.length > 0)
              await addTools(tx, conversationId, added);
-         const live = await tx.doc(LiveDoc, conversationId);
+-        const live = await tx.doc(LiveDoc, conversationId);
+         const now = runtime.now();
+         // The run's last entry so far: the newest result, or the assistant when no result has an entry.
+         let last = results.reduce((newest, id) => (id > newest ? id : newest), assistant);
+@@ -1025,7 +1048,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+             boundary.head = entry.id;
+             last = entry.id;
+         }
+-        const turns = live.run?.taskId === runtime.taskId ? live.run.turns : 0;
++        const turns = turnsSoFar;
+         const held = afterRun ? holdRun(tx, live, runtime, { reason: "terminate", answer: assistant, last }) : undefined;
+         if (held !== undefined)
+             return held;
 diff --git a/dist/harness/harness.js b/dist/harness/harness.js
-index e51d731d2a64d725a1e33b575f2c5658ff8b250b..6953f19b7ddd7e812521353642a9ffe15eef05ae 100644
+index e51d731d2a64d725a1e33b575f2c5658ff8b250b..e02c57037c82c9d1dd0be7e59d4ec90a024f1e65 100644
 --- a/dist/harness/harness.js
 +++ b/dist/harness/harness.js
 @@ -6,7 +6,7 @@ import { ResetEntry } from "../entries.js";
@@ -136,29 +192,52 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..6953f19b7ddd7e812521353642a9ffe1
  import { createCompaction } from "./compaction.js";
  import { readContext } from "./context.js";
  import { InboxDoc, withdrawAbortedInputs } from "./inbox.js";
-@@ -161,6 +161,21 @@ class HarnessImpl extends SessionImpl {
+@@ -161,6 +161,44 @@ class HarnessImpl extends SessionImpl {
              create: (target, createOptions, context) => this.#create(target, createOptions, context),
          };
      }
 +    async beforeInput(tx, conversationId, input, context) {
++        const entries = [];
++        await this.#inputHooks(tx, conversationId, context, async (handlers, api) => {
++            const result = await handlers.beforeInput?.(input, api, context);
++            entries.push(...(result?.entries ?? []));
++        });
++        return entries;
++    }
++    async prepareInput(conversationId, context) {
++        const agent = await this.resolveAgent(conversationId, undefined, context);
++        for (const { extension, handlers } of agentHooks(agent, "pi.generation")) {
++            try {
++                await handlers.prepareInput?.({ conversationId }, context);
++            }
++            catch (error) {
++                this.#report(error, { kind: "extension_error", conversationId, extension }, context);
++            }
++        }
++    }
++    async refuseInput(tx, conversationId, input, context) {
++        let refused;
++        await this.#inputHooks(tx, conversationId, context, async (handlers, api) => {
++            refused ??= await handlers.refuseInput?.(input, api, context);
++        });
++        return refused;
++    }
++    async #inputHooks(tx, conversationId, context, visit) {
 +        const snapshot = this.#options.registry.snapshot();
 +        const settings = resolveSettings(this.#hostSettings());
 +        const resolve = async (id) => resolveAgent(await tx.doc(AgentDoc, id), snapshot, settings, (error, extension) => this.#report(error, { kind: "extension_error", conversationId: id, extension }, context));
-+        const entries = [];
 +        const ran = new Set();
 +        for (let hooks; (hooks = agentHooks(await resolve(conversationId), "pi.generation").filter(({ handlers }) => !ran.has(handlers))).length > 0;) {
 +            for (const { handlers } of hooks) {
 +                ran.add(handlers);
-+                const result = await handlers.beforeInput?.(input, { conversationId, tx, agent: resolve }, context);
-+                entries.push(...(result?.entries ?? []));
++                await visit(handlers, { conversationId, tx, agent: resolve });
 +            }
 +        }
-+        return entries;
 +    }
      /** Resolve a conversation's committed `pi.agent` against `snapshot`, or the current one, and the current settings. */
      async resolveAgent(id, snapshot, context) {
          const registry = snapshot ?? this.#options.registry.snapshot();
-@@ -183,6 +198,12 @@ class HarnessImpl extends SessionImpl {
+@@ -183,6 +221,12 @@ class HarnessImpl extends SessionImpl {
          this.assertUsable();
          this.#tasks.resume();
      }
@@ -172,27 +251,29 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..6953f19b7ddd7e812521353642a9ffe1
          this.assertUsable();
          return this.#tasks.wake();
 diff --git a/dist/harness/inbox.d.ts b/dist/harness/inbox.d.ts
-index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..6744ab3a691fd2ef03258f9364ed2c4df170bdc2 100644
+index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..f3ef805b9bbb56a3924eb70adf3102dfeb808a60 100644
 --- a/dist/harness/inbox.d.ts
 +++ b/dist/harness/inbox.d.ts
-@@ -26,6 +26,7 @@ export declare const InboxDoc: import("../types.ts").ConversationDocToken<InboxS
+@@ -26,6 +26,9 @@ export declare const InboxDoc: import("../types.ts").ConversationDocToken<InboxS
  export type QueueModes = Pick<Settings, "steeringMode" | "followUpMode">;
  /** What a boundary reads before the commit's first table write, and the newest head it has seen so far. */
  export type Boundary = {
 +    readonly entries: readonly EntryDraft[];
++    /** Why a `refuseInput` hook refused the first queued input, or the error a `beforeInput` hook threw for it: the boundary settles every queued input `unanswered` instead of placing it. */
++    readonly refused?: string;
      readonly conversationId: ConversationId;
      readonly inbox: Draft<InboxState>;
      readonly steeringMode: QueueMode;
-@@ -46,7 +47,7 @@ export type BoundaryResult = {
+@@ -46,7 +49,7 @@ export type BoundaryResult = {
   * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
   * boundary at the start of their commit.
   */
 -export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes): Promise<Boundary>;
-+export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes, at: "postTools" | "final", now: number, incoming?: EntryDraft): Promise<Boundary>;
++export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes, at: "postTools" | "final" | "none", now: number, incoming?: EntryDraft): Promise<Boundary>;
  /**
   * Place the queued items a boundary selects (spec §6): every write, the first or all steers, and at `final` the first
   * or all follow-ups. A selected reset turns a `postTools` boundary into `final`. Writes are placed first and user
-@@ -56,6 +57,7 @@ export declare function prepareBoundary(tx: Tx, conversationId: ConversationId,
+@@ -56,6 +59,7 @@ export declare function prepareBoundary(tx: Tx, conversationId: ConversationId,
   */
  export declare function applyBoundary(tx: Tx, boundary: Boundary, at: "postTools" | "final", now: number): Promise<BoundaryResult>;
  /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
@@ -201,10 +282,18 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..6744ab3a691fd2ef03258f9364ed2c4d
  /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
  export declare function pickInputEntry({ kind, data }: InputEntry): JsonRepresentation<InputEntry>;
 diff --git a/dist/harness/inbox.js b/dist/harness/inbox.js
-index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..02b343cfedfe6c0ad69a9aba57af1a631c375efe 100644
+index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..a4dfe95efe3b23aa3a82d261605779ef9f897d65 100644
 --- a/dist/harness/inbox.js
 +++ b/dist/harness/inbox.js
-@@ -14,10 +14,15 @@ export const InboxDoc = defineDoc({
+@@ -1,6 +1,7 @@
+ import { copyJson } from "@earendil-works/chord/json";
+ import { defineDoc } from "../documents.js";
+ import { UserEntry } from "../entries.js";
++import { errorMessage } from "../errors.js";
+ export const InboxDoc = defineDoc({
+     kind: "pi.inbox",
+     version: 1,
+@@ -14,10 +15,29 @@ export const InboxDoc = defineDoc({
   * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
   * boundary at the start of their commit.
   */
@@ -214,24 +303,56 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..02b343cfedfe6c0ad69a9aba57af1a63
      const inbox = await tx.doc(InboxDoc, conversationId);
 +    const first = inbox.items.find(item => item.mode === "steer" || item.mode === "followUp");
 +    const input = first === undefined ? incoming : inputDraft(first.content, first.entry, now);
-+    const entries = input !== undefined && (at === "final" || hasQueuedReset(inbox.items))
-+        ? await tx.beforeInput(conversationId, input) : [];
++    const places = input !== undefined && (at === "final" || (at === "postTools" && hasQueuedReset(inbox.items)));
++    let entries = [];
++    let refused;
++    if (places && first !== undefined)
++        refused = await tx.refuseInput(conversationId, input);
++    if (places && refused === undefined) {
++        try {
++            entries = await tx.beforeInput(conversationId, input);
++        }
++        catch (error) {
++            if (first === undefined)
++                throw error;
++            refused = errorMessage(error);
++        }
++    }
      return {
 +        entries,
++        refused,
          conversationId,
          inbox,
          steeringMode: modes.steeringMode,
-@@ -61,6 +66,9 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -42,8 +62,14 @@ export async function applyBoundary(tx, boundary, at, now) {
+         return queueMode === "all" ? indexes : indexes.slice(0, 1);
+     };
+     const writes = items.flatMap((item, index) => (item.mode === "write" ? [index] : []));
+-    const users = [...pick("steer", boundary.steeringMode), ...(final ? pick("followUp", boundary.followUpMode) : [])];
++    const users = boundary.refused === undefined
++        ? [...pick("steer", boundary.steeringMode), ...(final ? pick("followUp", boundary.followUpMode) : [])]
++        : items.flatMap((item, index) => (item.mode === "write" ? [] : [index]));
+     users.sort((a, b) => a - b);
++    if (boundary.refused !== undefined) {
++        for (const index of users)
++            tx.settleSubmission(items[index].id, { status: "unanswered", reason: "refused", detail: boundary.refused });
++    }
+     // `appendEntry()` copies the drafts' values; the items are removed only afterwards.
+     let first;
+     for (const index of writes) {
+@@ -60,7 +86,10 @@ export async function applyBoundary(tx, boundary, at, now) {
+         first ??= entry.id;
      }
      const placed = [];
-     for (const index of users) {
+-    for (const index of users) {
++    for (const index of boundary.refused === undefined ? users : []) {
 +        if (placed.length === 0)
 +            for (const draft of boundary.entries)
 +                await tx.appendEntry(conversationId, draft);
          const item = items[index];
          const entry = await appendInput(tx, conversationId, item.content, item.entry, now);
          tx.placeSubmission(item.id, entry.id);
-@@ -74,10 +82,11 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -74,10 +103,11 @@ export async function applyBoundary(tx, boundary, at, now) {
  }
  /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
  export function appendInput(tx, conversationId, content, entry, now) {
@@ -326,7 +447,7 @@ index 1a6472ef7931838d30c9e418540bc225dfea315a..69139c51000d76e1b9f102169ebee648
                      catch (error) {
                          if (invocation.controller.signal.aborted)
 diff --git a/dist/harness/submissions.js b/dist/harness/submissions.js
-index 908492f520c857c8198355820ad9de96fc6ff713..1d249913ddd6d85856c08149d213f40188e5ef37 100644
+index 908492f520c857c8198355820ad9de96fc6ff713..60f993e8cc20a4818b721728b8611127f157ff5e 100644
 --- a/dist/harness/submissions.js
 +++ b/dist/harness/submissions.js
 @@ -4,7 +4,7 @@ import { createTypedSpanStarter, NOOP_TELEMETRY_CONTEXT, } from "@earendil-works
@@ -338,7 +459,29 @@ index 908492f520c857c8198355820ad9de96fc6ff713..1d249913ddd6d85856c08149d213f401
  import { LiveDoc } from "./live.js";
  import { DURABLE_TELEMETRY_SCHEMA } from "./telemetry.js";
  import { closedError, Waiters } from "./util.js";
-@@ -208,7 +208,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+@@ -33,6 +33,9 @@ export class Submissions {
+     }
+     /** Admit a submission in one commit; see `admitSubmission()`. */
+     async submit(conversationId, draft, context) {
++        // A busy conversation only queues the input; the boundary that places it prepares again.
++        if (draft.type !== "write" && (await this.#session.snapshot(LiveDoc, conversationId, context))?.run === undefined)
++            await this.#session.prepareInput(conversationId, context);
+         const { id } = await this.#traced(conversationId, draft, context, (span) => this.#session.commitWith((tx) => admitSubmission(tx, conversationId, draft, this.#now(), this.#queueModes(), span), withTelemetry(span, context)));
+         return new SubmissionHandle(id, this);
+     }
+@@ -177,6 +180,11 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+             return { id: existing.id, status: existing.status === "unanswered" ? "done" : existing.status };
+         }
+     }
++    if (draft.type === "input") {
++        const refused = await tx.refuseInput(conversationId, inputDraft(draft.content, draft.entry, now));
++        if (refused !== undefined)
++            throw new Error(refused);
++    }
+     const fields = {
+         conversationId,
+         requestId: draft.requestId,
+@@ -208,7 +216,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
          // Never queued: whether a run can continue depends on how the current one ends. Rejected before any write.
          if (busy)
              throw new ConversationBusy(conversationId);
@@ -347,7 +490,7 @@ index 908492f520c857c8198355820ad9de96fc6ff713..1d249913ddd6d85856c08149d213f401
          const { id } = await tx.createSubmission({ ...fields, type: "continue", status: "placed" });
          // Items an earlier failed run left queued (`afterFailedRun: "keep"`) are placed first and join the run. Its history
          // starts with the failed run's, so `afterRun` hooks see what that run did.
-@@ -217,7 +217,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+@@ -217,7 +225,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
          return { id, status: "placed" };
      }
      // A boundary reads the table, so it is prepared before the first table write; a busy one needs none.
@@ -356,7 +499,16 @@ index 908492f520c857c8198355820ad9de96fc6ff713..1d249913ddd6d85856c08149d213f401
      if (boundary === undefined || boundary.inbox.items.length > 0) {
          const { id } = await tx.createSubmission({
              ...fields,
-@@ -256,6 +256,8 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+@@ -242,7 +250,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+         const { users, first } = await applyBoundary(tx, boundary, "final", now);
+         if (users.length > 0)
+             await startRun(tx, conversationId, live, { inputs: users, first });
+-        return { id, status: draft.type === "write" ? "done" : users.at(-1) === id ? "placed" : "queued" };
++        return { id, status: draft.type === "write" || boundary.refused !== undefined ? "done" : users.at(-1) === id ? "placed" : "queued" };
+     }
+     if (draft.type === "write") {
+         if (isStale(boundary, draft.entry)) {
+@@ -256,6 +264,8 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
          const write = { ...fields, type: "write", status: "done", entry: entry.id };
          return { id: (await tx.createSubmission(write)).id, status: "done" };
      }
@@ -390,7 +542,7 @@ index b8508975f67dd4977f81dc1d8b99f55aaf4533ff..f06d8a7160e6a96c2ec3b2926e23b2cb
              });
              if (block !== undefined) {
 diff --git a/dist/harness/types.d.ts b/dist/harness/types.d.ts
-index 7ba2571ffb2594913c2dea1cc809f70da912b947..d204d4ef04e530053fd4522e3546e93b3abe03e7 100644
+index 7ba2571ffb2594913c2dea1cc809f70da912b947..662a3b4e5a04fb5f9f6f0ac0b61ff33bcdc7bceb 100644
 --- a/dist/harness/types.d.ts
 +++ b/dist/harness/types.d.ts
 @@ -926,6 +926,9 @@ export interface Harness extends Session {
@@ -403,17 +555,21 @@ index 7ba2571ffb2594913c2dea1cc809f70da912b947..d204d4ef04e530053fd4522e3546e93b
      /**
       * When this Session next needs a running process, from the scheduler's memory: `active` while some task can run now
       * or is running, `at` for the earliest sleep. Answers also while scheduling is paused. A host that wakes the
-@@ -1007,6 +1010,8 @@ export interface HookApi extends DocumentReader {
+@@ -1007,6 +1010,12 @@ export interface HookApi extends DocumentReader {
  export type HookResult<T> = T | undefined | Promise<T | undefined>;
  /** Hooks of the built-in generation task. */
  export interface GenerationHooks {
++    /** Off the Session line, before a commit that may place an input: compute here what `beforeInput` and `refuseInput` read, so they do no I/O on the line. Runs before an input or continue submission and before a run boundary with queued input; a throw is reported, never fails the input. */
++    prepareInput(api: { readonly conversationId: ConversationId }, context: Context): HookResult<void>;
++    /** Whether a conversation takes `input` now, read only: a reason refuses it. Runs when an input is submitted (the submit throws the reason) and before `beforeInput` at a boundary (the queued inputs settle `unanswered`, reason `refused`). */
++    refuseInput(input: EntryDraft, api: { readonly conversationId: ConversationId; readonly tx: Tx; readonly agent: (id: ConversationId) => Promise<Agent> }, context: Context): HookResult<string>;
 +    /** Before a new run’s first input is placed. Use only tx for storage access; effects commit with the input. */
 +    beforeInput(input: EntryDraft, api: { readonly conversationId: ConversationId; readonly tx: Tx; /** A conversation's agent as `tx` stores it, resolved against the current registry. */ readonly agent: (id: ConversationId) => Promise<Agent> }, context: Context): HookResult<{ readonly entries?: readonly EntryDraft[] }>;
      /** Before every request attempt, including recovery; the result is used for that request only. */
      beforeRequest(request: {
          readonly messages: readonly Message[];
 diff --git a/dist/session/session.d.ts b/dist/session/session.d.ts
-index c7843cd0c2e0a722f4aa3324d1c8cf58863a3f21..0f324c07762af0f49d64a6e752ec187247e91a64 100644
+index c7843cd0c2e0a722f4aa3324d1c8cf58863a3f21..8c1d00290ab5cd08b65359940603e4b120638334 100644
 --- a/dist/session/session.d.ts
 +++ b/dist/session/session.d.ts
 @@ -1,7 +1,7 @@
@@ -425,72 +581,85 @@ index c7843cd0c2e0a722f4aa3324d1c8cf58863a3f21..0f324c07762af0f49d64a6e752ec1872
  import { type HeadMarker } from "./conversation-tails.ts";
  import { Transaction, type TransactionScope } from "./transaction.ts";
  /**
-@@ -173,6 +173,7 @@ export declare class SessionImpl implements Session {
+@@ -173,6 +173,10 @@ export declare class SessionImpl implements Session {
       * listener. A plain Session drops them.
       */
      report(_error: unknown, _info?: ReportInfo, _context?: Context): void;
 +    protected beforeInput(tx: Transaction, id: ConversationId, input: EntryDraft, context: Context): Promise<readonly EntryDraft[]>;
++    protected refuseInput(tx: Transaction, id: ConversationId, input: EntryDraft, context: Context): Promise<string | undefined>;
++    /** Run the `prepareInput` hooks of `id`'s agent off the line, before a commit that may place an input. */
++    prepareInput(id: ConversationId, context: Context): Promise<void>;
      /**
       * Runs inside every transaction that creates or forks a conversation, after the conversation record is staged. A
       * plain Session stages nothing; a Harness stages its built-in documents.
 diff --git a/dist/session/session.js b/dist/session/session.js
-index 86978d80b597c7cd059f36ab23cd4fa115da55f5..91908faa121166a87af8bb1b4874b942f2492cd8 100644
+index 86978d80b597c7cd059f36ab23cd4fa115da55f5..3de6cc3c6916115075247c5d6e6e688954123570 100644
 --- a/dist/session/session.js
 +++ b/dist/session/session.js
-@@ -224,6 +224,7 @@ export class SessionImpl {
+@@ -224,6 +224,8 @@ export class SessionImpl {
                  if (this.#documents.get(id)?.record.id === recordId)
                      this.#dropDocument(id);
              },
 +            beforeInput: (tx, id, input, context) => this.beforeInput(tx, id, input, context),
++            refuseInput: (tx, id, input, context) => this.refuseInput(tx, id, input, context),
              conversationCreated: (tx, record) => this.conversationCreated(tx, record),
              taskDocuments: (taskId) => this.#taskDocuments.get(taskId)?.values(),
              latestEntryId: (conversationId, context) => this.latestEntryId(conversationId, context),
-@@ -570,6 +571,9 @@ export class SessionImpl {
+@@ -570,6 +572,13 @@ export class SessionImpl {
       * listener. A plain Session drops them.
       */
      report(_error, _info = LISTENER, _context) { }
 +    async beforeInput(_tx, _id, _input, _context) {
 +        return [];
 +    }
++    async refuseInput(_tx, _id, _input, _context) {
++        return undefined;
++    }
++    async prepareInput(_id, _context) { }
      /**
       * Runs inside every transaction that creates or forks a conversation, after the conversation record is staged. A
       * plain Session stages nothing; a Harness stages its built-in documents.
 diff --git a/dist/session/transaction.d.ts b/dist/session/transaction.d.ts
-index 8bdc8172d99887b77ec37991ab3538c38b8f26f4..6e43fffd5ab19aac206453f930fb2ec598bc2d4d 100644
+index 8bdc8172d99887b77ec37991ab3538c38b8f26f4..b30bb76ab151829777afe3e65a2891edaa3924ff 100644
 --- a/dist/session/transaction.d.ts
 +++ b/dist/session/transaction.d.ts
-@@ -50,6 +50,7 @@ export interface TransactionHost {
+@@ -50,6 +50,8 @@ export interface TransactionHost {
      install(document: LoadedDocument): void;
      /** Remove a retired incarnation if it is still the cached occupant of its address. */
      evict(addressId: string, recordId: DocumentId): void;
 +    beforeInput(tx: Transaction, conversationId: ConversationId, input: EntryDraft, context: Context): Promise<readonly EntryDraft[]>;
++    refuseInput(tx: Transaction, conversationId: ConversationId, input: EntryDraft, context: Context): Promise<string | undefined>;
      /** Stage writes that belong to every newly created or forked conversation, in its creating transaction. */
      conversationCreated(tx: Transaction, record: ConversationRecord): Promise<void>;
      /** The newest entry ID visible from a conversation, known from the Session's commits. */
-@@ -114,6 +115,7 @@ export declare class Transaction implements Tx {
+@@ -114,6 +116,8 @@ export declare class Transaction implements Tx {
      forkConversation(parentConversationId: ConversationId, at: EntryId, options: {
          readonly ownership: ConversationOwnership;
      }): Promise<ConversationRecord>;
 +    beforeInput(conversationId: ConversationId, input: EntryDraft): Promise<readonly EntryDraft[]>;
++    refuseInput(conversationId: ConversationId, input: EntryDraft): Promise<string | undefined>;
      appendEntry(conversationId: ConversationId, value: EntryDraft): Promise<EntryRecord>;
      appendEntry<D extends JsonValue>(token: Entry<D>, conversationId: ConversationId, value: TypedEntryDraft<NoInfer<D>>): Promise<TypedEntry<D>>;
      createTask<I, S extends {
 diff --git a/dist/session/transaction.js b/dist/session/transaction.js
-index 982db5f1c65c11082c91cb59ce6a2cba941047f1..0045cbf287f5c0b94f72302859851bd7e9078526 100644
+index 982db5f1c65c11082c91cb59ce6a2cba941047f1..8185f53effe106935cfd29bee8638a868e2119d3 100644
 --- a/dist/session/transaction.js
 +++ b/dist/session/transaction.js
-@@ -168,6 +168,9 @@ export class Transaction {
+@@ -168,6 +168,12 @@ export class Transaction {
          this.#assertOpen();
          return record;
      }
 +    beforeInput(conversationId, input) {
 +        return this.#read("beforeInput", () => this.#host.beforeInput(this, conversationId, input, this.#context));
 +    }
++    refuseInput(conversationId, input) {
++        return this.#read("refuseInput", () => this.#host.refuseInput(this, conversationId, input, this.#context));
++    }
      appendEntry(first, second, third) {
          if (typeof first === "number")
              return this.#appendEntry(first, second);
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index daaca6e107536809a827a4a2f5b5b6f1494723f8..68c9ddcd9b01f6c9686f8359d3c400060d852e6d 100644
+index daaca6e107536809a827a4a2f5b5b6f1494723f8..1b2cdda27c8fa4b72e61062601bc1b14fccbf273 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
 @@ -223,9 +223,10 @@ export type PhaseHandler<I, P, S, R, H extends object> = (task: RunningTask<I, P
@@ -515,12 +684,14 @@ index daaca6e107536809a827a4a2f5b5b6f1494723f8..68c9ddcd9b01f6c9686f8359d3c40006
      readonly id: EntryId;
      readonly conversationId: ConversationId;
      /** Application-defined entry discriminator. */
-@@ -939,6 +942,8 @@ export type CommitPublication = {
+@@ -939,6 +942,10 @@ export type CommitPublication = {
   * Session may freeze them (its caches and context ranges keep them), so mutating one can throw.
   */
  export interface Tx {
 +    /** Prepare entries before a new run’s first input; called before table writes, in the placement transaction. */
 +    beforeInput(conversationId: ConversationId, input: EntryDraft): Promise<readonly EntryDraft[]>;
++    /** The first reason a `refuseInput` hook gives for `input`, before table writes. */
++    refuseInput(conversationId: ConversationId, input: EntryDraft): Promise<string | undefined>;
      conversation(id: ConversationId): Promise<ConversationRecord | undefined>;
      entry(id: EntryId): Promise<EntryRecord | undefined>;
      /** Undefined when the entry is absent or has another kind. */

@@ -5,16 +5,18 @@ import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { Agent, AgentChange } from '@earendil-works/pi-durable'
 import { parseFrontmatter, resolveCliModel } from '@earendil-works/pi-coding-agent'
 import type { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
+import { discoveryRoots } from './project-paths.ts'
 import type { Source } from './project-paths.ts'
 import { writeTextAtomically } from './json-file.ts'
 import { isIconName, isMarkTint, markTints } from './marks.ts'
 import type { MarkTint } from './marks.ts'
 import { DEFAULT_FAMILY, definitionRuns, isFamilyName, refName, refOf } from './families.ts'
 import type { Families } from './families.ts'
-import { readFamilies } from './families-settings.ts'
+import { familiesPath, readFamilies } from './families-settings.ts'
 import { projectDecision, readDecision, useProjectSetup } from './project-setup.ts'
 import { discoverExtensions } from './discovery.ts'
 import { isMissing } from './errors.ts'
+import { fileMemo } from './memo.ts'
 
 type DeferredToolNamesWhenInheritingAll = string[]
 export interface AgentDefinition {
@@ -431,6 +433,49 @@ export async function agentRoots(ultimateRoot: string, projectRoot: string, user
     ...(trust.decision === true ? [{ source: 'project' as const, path: projectAgents }] : []),
   ]
   return Object.assign(roots, { errors })
+}
+
+export async function discoveryPaths(ultimateRoot: string, projectRoot: string, userHome: string) {
+  const roots = await agentRoots(ultimateRoot, projectRoot, userHome)
+  const files = await Promise.all(
+    roots.map(async ({ path }) =>
+      (await readdir(path).catch((): string[] => [])).map((name) => join(path, name)),
+    ),
+  )
+  return [
+    ...roots.map((root) => root.path),
+    ...files.flat(),
+    ...discoveryRoots(ultimateRoot, projectRoot, userHome).map((root) =>
+      join(root.path, 'extensions'),
+    ),
+    join(projectRoot, '.ultimate/agents'),
+    join(userHome, '.ultimate/settings.json'),
+    join(projectRoot, '.ultimate/settings.json'),
+    join(userHome, '.ultimate/trust.json'),
+    familiesPath(userHome),
+  ]
+}
+
+export function cachedDiscovery(
+  ultimateRoot: string,
+  projectRoot: string,
+  userHome: string,
+  modelRuntime: ModelRuntime,
+) {
+  let snapshot: readonly unknown[] | undefined
+  let snapshots = 0
+  return fileMemo(
+    async () => ({
+      paths: await discoveryPaths(ultimateRoot, projectRoot, userHome),
+      value: await discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
+    }),
+    () => {
+      const replacedWhenModelsOrLoginsChange = modelRuntime.getAvailableSnapshot()
+      if (replacedWhenModelsOrLoginsChange !== snapshot) snapshots++
+      snapshot = replacedWhenModelsOrLoginsChange
+      return String(snapshots)
+    },
+  )
 }
 
 export async function discoverAgents(

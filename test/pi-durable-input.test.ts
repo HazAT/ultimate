@@ -183,6 +183,102 @@ it('places hook entries before a follow-up queued while an onYield task decides'
   }
 })
 
+it('keeps a finished answer when a hook refuses or throws for the follow-up queued behind it', async () => {
+  const home = await temp()
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  let gate = Promise.withResolvers<void>()
+  let held = false
+  let ended = false
+  let throwing = false
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      hooks: [
+        hook(GenerationTask, {
+          refuseInput: () => (ended ? 'this conversation has ended' : undefined),
+          beforeInput: () => {
+            if (throwing) throw new Error('note failed')
+            return undefined
+          },
+        }),
+      ],
+    }),
+  )
+  const firstAnswer = async () => {
+    held = true
+    await gate.promise
+    return fauxAssistantMessage('first answer')
+  }
+  prepared.faux!.setResponses([
+    firstAnswer,
+    fauxAssistantMessage('after refusal'),
+    firstAnswer,
+    fauxAssistantMessage('after throw'),
+  ])
+  const f = await prepared.open()
+  const answers = async () =>
+    (await f.root.context(context)).messages.flatMap((message) =>
+      message.role === 'assistant'
+        ? message.content.flatMap((part) => (part.type === 'text' ? [part.text] : []))
+        : [],
+    )
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => held)
+    const queued = await f.root.submit(
+      { type: 'input', content: 'queued', whenBusy: 'followUp' },
+      context,
+    )
+    ended = true
+    gate.resolve()
+    expect(await first.wait(context)).toMatchObject({ status: 'done' })
+    expect(await queued.wait(context)).toMatchObject({
+      status: 'unanswered',
+      reason: 'refused',
+      detail: 'this conversation has ended',
+    })
+    await expect(f.root.submit({ type: 'input', content: 'later' }, context)).rejects.toThrow(
+      'this conversation has ended',
+    )
+    ended = false
+    await (await f.root.submit({ type: 'input', content: 'again' }, context)).wait(context)
+    expect(await answers()).toEqual(['first answer', 'after refusal'])
+
+    held = false
+    gate = Promise.withResolvers<void>()
+    const third = await f.root.submit({ type: 'input', content: 'third' }, context)
+    await until(() => held)
+    const thrown = await f.root.submit(
+      { type: 'input', content: 'thrown', whenBusy: 'followUp' },
+      context,
+    )
+    throwing = true
+    gate.resolve()
+    expect(await third.wait(context)).toMatchObject({ status: 'done' })
+    expect(await thrown.wait(context)).toMatchObject({
+      status: 'unanswered',
+      reason: 'refused',
+      detail: 'note failed',
+    })
+    throwing = false
+    await (await f.root.submit({ type: 'input', content: 'last' }, context)).wait(context)
+    expect(await answers()).toEqual([
+      'first answer',
+      'after refusal',
+      'first answer',
+      'after throw',
+    ])
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
 it('starts one run with every follow-up queued while busy, and steers join the current run', async () => {
   const home = await temp()
   const prepared = await prepareHarness({

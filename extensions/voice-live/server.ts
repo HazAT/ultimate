@@ -892,10 +892,11 @@ export default function voiceExtension(host: ExtensionHost) {
     tasks: [transcribe(host)],
     hooks: [
       hook(GenerationTask, {
+        refuseInput: async (_input, { tx, conversationId }) =>
+          (await tx.doc(Fork, conversationId)).ended ? 'This voice session has ended' : undefined,
         beforeInput: async (_input, { tx, conversationId }) => {
           const fork = await tx.doc(Fork, conversationId)
-          if (fork.of === undefined) return undefined
-          if (fork.ended) throw new Error('This voice session has ended')
+          if (fork.of === undefined || fork.ended) return undefined
           const entries = []
           const seen = fork.seen ?? fork.at!
           if (!fork.introduced) {

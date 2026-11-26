@@ -619,12 +619,18 @@ export default (host: ExtensionHost) =>
     tools: [draftAnswersTool(host)],
     hooks: [
       hook(GenerationTask, {
+        refuseInput: async (_input, { tx, conversationId }) => {
+          const side = await tx.doc(Side, conversationId)
+          if (side.of === undefined) return undefined
+          return side.ended || (await tx.doc(Ending, conversationId)).mode
+            ? `Side chat #${conversationId} has ended`
+            : undefined
+        },
         beforeInput: async (_input, { tx, conversationId }) => {
           const side = await tx.doc(Side, conversationId)
           if (side.of === undefined) return undefined
           const ending = await tx.doc(Ending, conversationId)
-          if (side.ended || ending.mode) throw new Error(`Side chat #${conversationId} has ended`)
-          if (ending.introduced) return undefined
+          if (side.ended || ending.mode || ending.introduced) return undefined
           ending.introduced = true
           return {
             entries: [
