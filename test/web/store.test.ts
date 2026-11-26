@@ -367,6 +367,31 @@ describe('web replica store', () => {
     store.stop()
   })
 
+  it('falls back to the root when the open conversation disappears during reconnect', async () => {
+    const { store, server, latest, onFallback, fetch } = setup(1000)
+    const id = 7 as ConversationId
+    store.show(id)
+    const source = latest()
+    source.open()
+    server.of(id, true)!.send('view', view([user(2, 'opened')], {}, id))
+    await tick()
+    expect(store.getState()).toMatchObject({ restored: false, view: { conversation: { id } } })
+
+    source.drop()
+    server.refuse(id, 404)
+    source.open()
+    await tick()
+    expect(store.getState().requested).toBeUndefined()
+    expect(store.getState().view).toBeUndefined()
+    expect(onFallback).toHaveBeenCalledOnce()
+    server.of(undefined, true)!.send('view', view([user(1, 'root')]))
+    expect(store.getState().view?.conversation.id).toBe(1)
+    const batches = subscriptionBatches(fetch).length
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(subscriptionBatches(fetch)).toHaveLength(batches)
+    store.stop()
+  })
+
   it('replaces the stream after an ambiguous batch failure so no watch can be orphaned', async () => {
     for (const failure of [
       'lost after the server handled it',

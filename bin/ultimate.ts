@@ -8,6 +8,7 @@ import { projectHome } from '../lib/project-paths.ts'
 import { acquireLock, readOwner, retireStorageOwner } from '../lib/lock.ts'
 import { deadline, pace } from '../lib/timers.ts'
 import { watch, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { closeOnWatchError } from '../lib/watch.ts'
 import { homedir } from 'node:os'
 import { watchRoots } from '../server/watch-roots.ts'
 import { join, resolve as resolvePath } from 'node:path'
@@ -546,14 +547,20 @@ const retry = () => {
     )
   }
 }
+function watchForRetry(directory: string) {
+  const watcher = watch(directory, { recursive: true }, retry)
+  return closeOnWatchError(watcher, directory, (message, error) => {
+    display.log('error', 'supervisor', `${message} ${String(error)}`)
+  })
+}
 const watchers = ['server', 'shared', 'extensions'].map((directory) =>
-  watch(join(ultimateRoot, directory), { recursive: true }, retry),
+  watchForRetry(join(ultimateRoot, directory)),
 )
 const projectConfig = join(projectRoot, '.ultimate')
 let configWatcher: ReturnType<typeof watch> | undefined
 const watchConfig = () => {
   configWatcher?.close()
-  configWatcher = watch(projectConfig, { recursive: true }, retry)
+  configWatcher = watchForRetry(projectConfig)
   retry()
 }
 if (existsSync(projectConfig)) watchConfig()

@@ -340,6 +340,23 @@ describe('side chats', () => {
     expect(refused.data.error).toMatch(/has effects/)
   })
 
+  it('prevents discarding a side chat after an extension action', async () => {
+    const f = await fixture()
+    const side = await f.open()
+    await f.call(side, 'codemode', {
+      code: "return await tools.action({extension: 'side-chat', action: 'open', args: {text: 'no'}})",
+    })
+    expect(JSON.stringify(await entries(f.server, side))).toContain(
+      'side-chat/open is a user-only action',
+    )
+    expect((await f.action('discard', { id: side })).data.error).toMatch(/has effects/)
+  })
+
+  it('tracks MCP calls but not listings as effects', () => {
+    expect(tracksEffect('mcp', { server: 'example' })).toBe(false)
+    expect(tracksEffect('mcp', { server: 'example', tool: 'update' })).toBe(true)
+  })
+
   it('attributes messages and notes to main, returns replies there, refuses messaging self, sends to user as itself, and leaves one provenance note', async () => {
     const f = await fixture()
     const target = await f.server.harness.createConversation(

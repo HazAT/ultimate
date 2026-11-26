@@ -581,12 +581,7 @@ export function createStore(options: StoreOptions = {}) {
       return
     }
     const requested = state.requested
-    const requestedConversationNeverOpened =
-      key === `${shownKey()}:view` &&
-      status === 404 &&
-      requested !== undefined &&
-      (!state.view || state.restored)
-    if (requestedConversationNeverOpened) {
+    if (status === 404 && requested !== undefined && key === `${shownKey()}:view`) {
       retireShownUntilReconcile()
       recentViewsWithRawSnapshots.delete(requested)
       set({ requested: undefined, view: undefined, restored: false, docs: {} })

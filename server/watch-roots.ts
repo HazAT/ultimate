@@ -1,6 +1,7 @@
 import { existsSync, watch } from 'node:fs'
 import { dirname } from 'node:path'
 import { isMissing } from '../lib/errors.ts'
+import { closeOnWatchError } from '../lib/watch.ts'
 
 export function watchRoots(roots: string[], appeared: (root: string) => void) {
   const cleanups = roots.map((root) => {
@@ -16,10 +17,12 @@ export function watchRoots(roots: string[], appeared: (root: string) => void) {
         watcher?.close()
         for (;;) {
           try {
-            watcher = watch(ancestor, () => {
+            const directory = ancestor
+            const current = watch(directory, () => {
               if (!closed) attach()
             })
-            watchedAncestor = ancestor
+            watcher = closeOnWatchError(current, directory)
+            watchedAncestor = directory
             break
           } catch (error) {
             if (!isMissing(error)) throw error

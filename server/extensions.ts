@@ -42,6 +42,7 @@ import { secretMetadata } from '../lib/secrets.ts'
 import { ChangedEvent } from '../shared/events.ts'
 import type { Device, UiSource } from '../shared/events.ts'
 import { inProcess, isMissing, meansNone } from '../lib/errors.ts'
+import { closeOnWatchError } from '../lib/watch.ts'
 
 export type ExtensionHost = Pick<
   PreparedHost,
@@ -796,11 +797,12 @@ export async function loadExtensions(
   const structure = ['add', 'unlink', 'addDir', 'unlinkDir'] as const
   const watchRemovals = (directory: string) => {
     try {
-      return watchDirectory(directory, (_event, name) => {
+      const watcher = watchDirectory(directory, (_event, name) => {
         if (closed || !name || records.get(name)?.path !== join(directory, name)) return
         if (lstatSync(join(directory, name), { throwIfNoEntry: false })) return
         enqueue(() => reload(new Set([name])))
       })
+      return closeOnWatchError(watcher, directory)
     } catch (error) {
       if (!isMissing(error)) throw error
       return undefined
