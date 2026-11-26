@@ -165,7 +165,15 @@ export async function branchesConcluded(
       pending.length > 0
     )
       return []
-    if (messages.some((m) => m.from === owner.id && m.to === starter && m.report === true)) {
+    if (
+      messages.some(
+        (m) =>
+          m.from === owner.id &&
+          m.to === starter &&
+          m.report === true &&
+          (m.state !== 'failed' || m.entry !== undefined),
+      )
+    ) {
       delete owners[request.message]
       return []
     }
