@@ -1,17 +1,15 @@
-import { AudioLines, ChevronLeft, ChevronRight, Keyboard, Pause, Play, X } from '@lucide/solid'
+import { AudioLines, Keyboard, X } from '@lucide/solid'
+import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
 import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
-import { capture, createTalk, DictationSettings, talkMode } from '../dictation/ui.solid.tsx'
-import { speech } from '../read-aloud/ui.solid.tsx'
+import { capture, createTalk, talkMode } from '../dictation/ui.solid.tsx'
 import { dock, playerState, voiceSink } from './dock.solid.tsx'
 import { Waveform } from './turns.solid.tsx'
 
 const touchLike = (event: PointerEvent) =>
   event.pointerType === 'touch' || event.pointerType === 'pen'
-const step =
-  'flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4'
 const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
 export function ModeSwitch(props: { talking: boolean; onToggle: (talking: boolean) => void }) {
@@ -52,7 +50,7 @@ export function ModeSwitch(props: { talking: boolean; onToggle: (talking: boolea
   )
 }
 
-export function TalkBar(props: { onTalk?: () => void }) {
+export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) {
   const recording = () => capture.capturing(voiceSink)
   const busy = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
   let bar!: HTMLDivElement
@@ -151,40 +149,7 @@ export function TalkBar(props: { onTalk?: () => void }) {
         </Show>
       </Button>
       <Show when={!recording()}>
-        <Show when={playerState().playing || playerState().paused}>
-          <span class="flex shrink-0 items-center" data-voice-talk-playback>
-            <Button
-              aria-label="Previous sentence in the talk bar"
-              class={step}
-              onClick={() => speech.sentence(-1)}
-              size={null}
-              variant={null}
-            >
-              <ChevronLeft />
-            </Button>
-            <Button
-              aria-label={playerState().playing ? 'Pause voice' : 'Resume voice'}
-              class={step}
-              onClick={() => speech.toggle()}
-              size={null}
-              variant={null}
-            >
-              <Show when={playerState().playing} fallback={<Play />}>
-                <Pause />
-              </Show>
-            </Button>
-            <Button
-              aria-label="Next sentence in the talk bar"
-              class={step}
-              onClick={() => speech.sentence(1)}
-              size={null}
-              variant={null}
-            >
-              <ChevronRight />
-            </Button>
-          </span>
-        </Show>
-        <DictationSettings name="the talk bar" />
+        {props.settings}
         <ModeSwitch onToggle={dock.setTalking} talking />
       </Show>
     </div>

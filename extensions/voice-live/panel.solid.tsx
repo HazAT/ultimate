@@ -53,7 +53,7 @@ import {
 } from '@/sdk/solid'
 import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
 import type { JSX } from '@solidjs/web'
-import { shortcut, talkMode } from '../dictation/ui.solid.tsx'
+import { DictationOptions, shortcut, talkMode } from '../dictation/ui.solid.tsx'
 import { ModeSwitch, TalkBar } from './talk.solid.tsx'
 import {
   activity,
@@ -117,7 +117,7 @@ function TalkOrType(props: { onTalk?: () => void; children: JSX.Element; dock?: 
       }
     >
       <div class={cn('pb-2', column(props.dock))}>
-        <TalkBar onTalk={props.onTalk} />
+        <TalkBar onTalk={props.onTalk} settings={<Settings name="Talk bar settings" />} />
       </div>
     </Show>
   )
@@ -276,16 +276,17 @@ const audible = () => playerState().playing
 const speaking = () =>
   dock.status() === 'Speaking' && (playerState().playing || playerState().paused)
 
-function Settings() {
+function Settings(props: { name?: string }) {
+  const name = () => props.name ?? 'Voice settings'
   return (
     <Popover>
-      <PopoverTrigger aria-label="Voice settings" class={iconButton} title="Voice settings">
+      <PopoverTrigger aria-label={name()} class={iconButton} title="Voice settings">
         <Settings2 class="size-4" />
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="Voice settings options"
-        class="w-64 p-0 font-mono text-[11.5px]"
+        aria-label={`${name()} options`}
+        class="max-h-[70dvh] w-64 overflow-y-auto p-0 font-mono text-[11.5px]"
         side="top"
       >
         <div class="px-3 pt-2.5 pb-1 section-label">Voice</div>
@@ -325,6 +326,7 @@ function Settings() {
             <Toggle aria-label="Collect until send" bind={[dock.collect, dock.setCollect]} />
           </label>
         </div>
+        <DictationOptions name={props.name ?? 'Voice'} />
       </PopoverContent>
     </Popover>
   )
@@ -548,7 +550,10 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
       fallback={
         <footer class="flex shrink-0 flex-col gap-1 px-2 pb-2">
           <VoiceLine words />
-          <Show when={!dock.talking()} fallback={<TalkBar />}>
+          <Show
+            when={!dock.talking()}
+            fallback={<TalkBar settings={<Settings name="Talk bar settings" />} />}
+          >
             <PromptBox
               accepts={{ images: true }}
               conversation={hot()}
@@ -566,9 +571,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
     >
       <footer class="flex shrink-0 flex-col gap-1.5 pt-1">
         <div class="flex flex-col gap-1.5 px-4">
-          <Show when={!dock.talking()}>
-            <PlaybackStrip />
-          </Show>
+          <PlaybackStrip />
           <Collected fork={props.fork} />
           <VoiceLine />
         </div>

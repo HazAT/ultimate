@@ -12,7 +12,7 @@ export { createTalk } from './talk.ts'
 export { talkMode } from './routing.solid.tsx'
 /** The keyboard chord used to talk. */
 export { shortcut } from './routing.solid.tsx'
-/** The cog that opens the talk shortcut, Hold/Tap and sound-cue settings, named for the box it sits in. */
-export { DictationSettings } from './settings.solid.tsx'
+/** The talk shortcut, Hold/Tap and sound-cue settings, for another popover to show; `name` names its controls. */
+export { DictationOptions } from './settings.solid.tsx'
 /** Route an unfocused shortcut to this sink, waking its UI before capture; `undefined` restores the main composer. */
 export { setFallback } from './routing.solid.tsx'
