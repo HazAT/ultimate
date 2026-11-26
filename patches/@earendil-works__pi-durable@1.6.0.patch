@@ -1,3 +1,49 @@
+diff --git a/dist/codemode/codemode.d.ts b/dist/codemode/codemode.d.ts
+index 05ee22665d03a4edf7f3d8aeed314cb0928f95c9..c4e1cf0cd21b53aeb4612f91330abb428725adb3 100644
+--- a/dist/codemode/codemode.d.ts
++++ b/dist/codemode/codemode.d.ts
+@@ -44,7 +44,7 @@ import type { JsonObject } from "../types.ts";
+  * Version of everything in this module that turns stored results into what a script sees: result mapping, globals,
+  * start data. Bump it when that changes, so a call started before an upgrade is not replayed by different code.
+  */
+-export declare const CODEMODE_MODULE_VERSION = 2;
++export declare const CODEMODE_MODULE_VERSION = 3;
+ export declare const CODEMODE_TOOL_NAME = "codemode";
+ /** One tool as the script sees it: `tools.<jsName>`. */
+ /**
+diff --git a/dist/codemode/codemode.js b/dist/codemode/codemode.js
+index d9a716c2b0ea8b6b10eff5fca6fd1773bf5e78e5..38e0073d28de3af0ffa1933db66043ea488e0a7b 100644
+--- a/dist/codemode/codemode.js
++++ b/dist/codemode/codemode.js
+@@ -15,7 +15,7 @@ import { DEFAULT_MAX_OUTPUT_TOKENS, formatResult } from "./output.js";
+  * Version of everything in this module that turns stored results into what a script sees: result mapping, globals,
+  * start data. Bump it when that changes, so a call started before an upgrade is not replayed by different code.
+  */
+-export const CODEMODE_MODULE_VERSION = 2;
++export const CODEMODE_MODULE_VERSION = 3;
+ export const CODEMODE_TOOL_NAME = "codemode";
+ export const CodemodeRunDoc = defineDoc({
+     kind: "pi.codemode.run",
+@@ -95,7 +95,7 @@ export function createCodemodeExtension(options) {
+ function outcomeOf(name, structured, result) {
+     const value = structured ? result.structuredOutput : textOf(result.structuredOutput);
+     if (!result.isError || (structured && value !== undefined))
+-        return { ok: true, value };
++        return { ok: true, value: structured ? value : withTruncation(value, result.diagnostics) };
+     const message = structured ? "" : value;
+     const diagnostics = result.diagnostics
+         .filter((diagnostic) => diagnostic.severity === "error")
+@@ -107,6 +107,10 @@ function outcomeOf(name, structured, result) {
+         ...(value === undefined ? {} : { properties: { structuredOutput: value } }),
+     };
+ }
++/** The text with the Harness's truncation notices after it, as the model's tool result carries them. */
++function withTruncation(text, diagnostics) {
++    return diagnostics.reduce((all, diagnostic) => (diagnostic.code === "truncated" ? `${all}\n[${diagnostic.message}]` : all), text);
++}
+ /** The text of a schema-less tool's collapsed output: a string, one image, or an array of text and image blocks. */
+ function textOf(value) {
+     if (typeof value === "string")
 diff --git a/dist/env/node.d.ts b/dist/env/node.d.ts
 index 7dc4337e83009a92045cb0b1ae4fd6a71aa86abe..7c14065c10e5a216b0f84b7cbb84681e055f5ffc 100644
 --- a/dist/env/node.d.ts
