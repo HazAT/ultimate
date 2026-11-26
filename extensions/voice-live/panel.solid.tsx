@@ -435,7 +435,7 @@ function useVoicePick(): ModelPick {
     return { provider: model.slice(0, at), modelId: model.slice(at + 1) }
   }
   return {
-    name: 'voice-live.next',
+    name: 'Voice',
     ref,
     thinking: () => status.data()?.thinking,
     configure: async (change) => {

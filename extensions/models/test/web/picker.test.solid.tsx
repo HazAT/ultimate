@@ -294,7 +294,7 @@ it('picks a model and thinking kept outside any conversation through the pick, n
   const [ref, setRef] = createSignal({ provider: 'faux', modelId: 'orion' })
   const [thinking, setThinking] = createSignal<'off' | 'low' | 'high'>('low')
   const pick = {
-    name: 'test.next',
+    name: 'Next',
     ref,
     thinking,
     configure: async (change: ConfigureRequest) => {
@@ -305,15 +305,15 @@ it('picks a model and thinking kept outside any conversation through the pick, n
   }
   const container = renderSolid(() => (
     <>
+      <ModelControl />
       <PickControl pick={pick} />
       <ModelPicker />
     </>
   ))
   await sync()
-  expect(container.querySelector('[aria-label="Model and thinking"]')?.textContent).toContain(
-    'orion·low',
-  )
-  expect(await act('Model and thinking', 'setOpen', true)).toMatchObject({ ok: true })
+  const chip = () => container.querySelector('[aria-label="Next model"]')
+  expect(chip()?.textContent).toContain('orion·low')
+  expect(await act('Next model', 'setOpen', true)).toMatchObject({ ok: true })
   await expectDistinctAgentNames(agent)
   expect(await act('Thinking level', 'setValue', 'high')).toMatchObject({ ok: true })
   expect(await act('Pick another model', 'press')).toMatchObject({ ok: true })
@@ -326,9 +326,7 @@ it('picks a model and thinking kept outside any conversation through the pick, n
     { model: { provider: 'faux', modelId: 'atlas' }, by: 'agent' },
   ])
   expect(writes()).toEqual([])
-  expect(container.querySelector('[aria-label="Model and thinking"]')?.textContent).toContain(
-    'atlas·high',
-  )
+  expect(chip()?.textContent).toContain('atlas·high')
 })
 
 it('lets an agent start a provider login and answer a streamed secret prompt without reading it', async ({

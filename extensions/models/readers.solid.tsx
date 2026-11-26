@@ -85,6 +85,7 @@ function conversationModel() {
   const recorded = useDoc(FamilyDoc)
   const ref = () => agent().model
   return {
+    label: 'Model and thinking',
     dialog: () => (id() === undefined ? undefined : thinkingDialog(id())),
     target: (): PickerTarget => id(),
     ref,
@@ -100,6 +101,7 @@ function conversationModel() {
 
 function pickedModel(pick: ModelPick) {
   return {
+    label: `${pick.name} model`,
     dialog: () => thinkingDialog(pick.name),
     target: (): PickerTarget => pick,
     ref: pick.ref,

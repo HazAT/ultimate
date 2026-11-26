@@ -44,7 +44,7 @@ it('before a session exists, the prompt box shows the voice model chip', async (
   await settle()
   setVoiceOpen(true)
   flush()
-  const chip = view.querySelector('[data-ui="prompt-box"] [aria-label="Model and thinking"]')
+  const chip = view.querySelector('[data-ui="prompt-box"] [aria-label="Voice model"]')
   expect(chip?.textContent).toContain('gemini-4-neon-low')
   await expectDistinctAgentNames(agent)
 })

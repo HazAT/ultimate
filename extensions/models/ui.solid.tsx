@@ -10,7 +10,7 @@ export { PickControl } from './toolbar.solid.tsx'
 /**
  * A model and thinking pick kept outside any conversation, such as the model the next voice session starts on: the chip
  * and the picker read `ref` and `thinking` and write through `configure` instead of a conversation's agent. `name` is
- * unique among picks and names its thinking dialog.
+ * unique among picks and names the chip (`<name> model`) and its thinking dialog.
  */
 export type { ModelPick } from './state.ts'
 /** The provider login and model picker dialog IDs, for Get ready's focus handoff. */

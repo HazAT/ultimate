@@ -55,7 +55,7 @@ export function ModelControl() {
         return (
           <Popover onOpenChange={setOpen} open={open()}>
             <PopoverTrigger
-              aria-label="Model and thinking"
+              aria-label={current.label}
               class={cn(toolbarButton, 'min-w-0 shrink')}
               title={[
                 family() ? familyTitle(family()!.name) : undefined,
@@ -74,7 +74,7 @@ export function ModelControl() {
             </PopoverTrigger>
             <PopoverContent
               align="start"
-              aria-label="Model and thinking options"
+              aria-label={`${current.label} options`}
               class="w-80 p-1 font-mono"
               side="top"
             >
