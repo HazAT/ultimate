@@ -16,7 +16,9 @@ export function bindLongPress(el: HTMLElement, enabled: () => boolean, held: () 
   const down = (event: PointerEvent) => {
     stop()
     fired = false
-    if (!enabled() || event.button !== 0 || !event.isPrimary) return
+    if (event.button !== 0 || !event.isPrimary) return
+    event.preventDefault()
+    if (!enabled()) return
     start = { x: event.clientX, y: event.clientY, id: event.pointerId }
     cancel = deadline(holdMs, () => {
       stop()
@@ -29,6 +31,7 @@ export function bindLongPress(el: HTMLElement, enabled: () => boolean, held: () 
     if (start?.id !== event.pointerId) return
     if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > slopPx) stop()
   }
+  const keepFocus = (event: MouseEvent) => event.preventDefault()
   const click = (event: MouseEvent) => {
     if (!fired) return
     fired = false
@@ -44,19 +47,19 @@ export function bindLongPress(el: HTMLElement, enabled: () => boolean, held: () 
     held()
   }
   el.addEventListener('pointerdown', down)
+  el.addEventListener('mousedown', keepFocus)
   el.addEventListener('pointermove', move)
   el.addEventListener('pointerup', stop)
   el.addEventListener('pointercancel', stop)
-  el.addEventListener('pointerleave', stop)
   el.addEventListener('click', click, true)
   el.addEventListener('contextmenu', menu)
   return () => {
     stop()
     el.removeEventListener('pointerdown', down)
+    el.removeEventListener('mousedown', keepFocus)
     el.removeEventListener('pointermove', move)
     el.removeEventListener('pointerup', stop)
     el.removeEventListener('pointercancel', stop)
-    el.removeEventListener('pointerleave', stop)
     el.removeEventListener('click', click, true)
     el.removeEventListener('contextmenu', menu)
   }

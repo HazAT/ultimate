@@ -175,9 +175,17 @@ it('queues a follow-up from a long press on send', async () => {
   const send = container.querySelector<HTMLButtonElement>(
     '[aria-label="Send prompt to conversation #9"]',
   )!
-  const touch = { bubbles: true, button: 0, isPrimary: true, pointerId: 1, pointerType: 'touch' }
+  const touch = {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    isPrimary: true,
+    pointerId: 1,
+    pointerType: 'touch',
+  }
+  container.querySelector<HTMLTextAreaElement>('#composer-input')!.focus()
   vi.useFakeTimers()
-  send.dispatchEvent(new PointerEvent('pointerdown', touch))
+  expect(send.dispatchEvent(new PointerEvent('pointerdown', touch))).toBe(false)
   vi.advanceTimersByTime(450)
   vi.useRealTimers()
   send.dispatchEvent(new PointerEvent('pointerup', touch))
@@ -185,6 +193,7 @@ it('queues a follow-up from a long press on send', async () => {
   await settle()
   flush()
   expect(submits()).toEqual([])
+  expect(document.activeElement?.id).toBe('composer-input')
   await expectDistinctAgentNames(agent)
   const items = document.querySelectorAll<HTMLElement>('[role="menu"][data-open] [role="menuitem"]')
   expect([...items].map((item) => item.textContent)).toEqual(['Steer now', 'Queue as follow-up'])

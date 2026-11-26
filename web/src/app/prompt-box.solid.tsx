@@ -47,7 +47,7 @@ const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9'
 const menuItemClass = 'pointer-coarse:min-h-11'
 const submitClass =
-  'size-7 touch-manipulation rounded-md select-none [-webkit-touch-callout:none] pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
+  'size-7 touch-none rounded-md select-none [-webkit-touch-callout:none] pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
 
 function createDraftState(props: PromptBoxProps) {
   const local = createLocalDraft()
@@ -325,7 +325,12 @@ export function PromptBox(props: PromptBoxProps) {
             onAction={(how) => send(how === 'followUp' ? 'followUp' : undefined)}
             controller={sendMenu}
           >
-            <DropdownMenuContent align="end" side="top">
+            <DropdownMenuContent
+              align="end"
+              finalFocus="none"
+              onPointerDown={(event: PointerEvent) => event.preventDefault()}
+              side="top"
+            >
               <DropdownMenuItem class={menuItemClass} value="steer">
                 <Navigation />
                 Steer now
@@ -349,7 +354,7 @@ export function PromptBox(props: PromptBoxProps) {
     releaseHold = bindLongPress(
       element,
       offersFollowUp,
-      () => void sendMenu.open({ anchor: element }),
+      () => void sendMenu.open({ anchor: element, focus: 'none' }),
     )
   }
   const sendButton = () => (
