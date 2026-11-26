@@ -128,6 +128,43 @@ it('a second finger pressing and lifting on the bar leaves the first finger\u201
   await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
 })
 
+it('in Tap mode a touch while another finger is down is ignored, and the next tap sends once', async () => {
+  const { setTalkMode } = await import('../../../dictation/routing.solid.tsx')
+  setTalkMode('tap')
+  const view = renderSolid(() => <TalkBar />)
+  const bar = () => view.querySelector('[data-voice-talk]')!
+  bar().dispatchEvent(touch('pointerdown'))
+  await vi.waitFor(() => expect(capture.capturing(voiceSink)).toBe(true))
+  speak()
+  bar().dispatchEvent(touch('pointerdown', 2))
+  window.dispatchEvent(touch('pointerup', 2))
+  window.dispatchEvent(touch('pointerup'))
+  expect(capture.talking(voiceSink)).toBe(true)
+  bar().dispatchEvent(touch('pointerdown', 3))
+  window.dispatchEvent(touch('pointerup', 3))
+  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+  settleTranscripts({ transcripts: { 'rec-1': 'hello' } }, parseConversationId(40))
+  await vi.waitFor(() => expect(harness.calls.map((call) => call.name)).toContain('turn'))
+  expect(harness.calls.filter((call) => call.name === 'record')).toHaveLength(1)
+  setTalkMode('hold')
+})
+
+it('a take started in the main box is sent from the sheet\u2019s bar after the main one unmounts', async () => {
+  const [inSheet, setInSheet] = createSignal(false)
+  const view = renderSolid(() => (
+    <Show when={inSheet()} fallback={<TalkBar onTalk={() => setInSheet(true)} />}>
+      <TalkBar />
+    </Show>
+  ))
+  ;(view.querySelector('[data-voice-talk]') as HTMLElement).click()
+  await vi.waitFor(() => expect(capture.capturing(voiceSink)).toBe(true))
+  speak()
+  ;(view.querySelector('[data-voice-talk]') as HTMLElement).click()
+  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+  settleTranscripts({ transcripts: { 'rec-1': 'hello' } }, parseConversationId(40))
+  await vi.waitFor(() => expect(harness.calls.map((call) => call.name)).toContain('turn'))
+})
+
 it('a take is sent as whoever started it, even when someone else starts the next take before it is sent', async () => {
   const { writingAs } = await import('@/sdk/solid')
   await writingAs('agent', () => capture.press(voiceSink))?.started

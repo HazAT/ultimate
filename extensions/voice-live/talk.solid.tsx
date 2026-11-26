@@ -4,13 +4,18 @@ import { cn } from 'cn'
 import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
-import { capture, createTalk, talkMode } from '../dictation/ui.solid.tsx'
+import { inProcess } from '../../lib/errors.ts'
+import { capture, talkMode } from '../dictation/ui.solid.tsx'
 import type { Take } from '../dictation/ui.solid.tsx'
 import { dock, playerState, voiceSink } from './dock.solid.tsx'
 import { Waveform } from './turns.solid.tsx'
 
 const touchLike = (event: PointerEvent) =>
   event.pointerType === 'touch' || event.pointerType === 'pen'
+let barTake: Take | undefined
+let down: number | undefined
+const onThisPage = (work: Promise<void>) =>
+  inProcess('a recording lives and ends with this open page', work)
 const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
 export function ModeSwitch(props: { talking: boolean; onToggle: (talking: boolean) => void }) {
@@ -54,25 +59,41 @@ export function ModeSwitch(props: { talking: boolean; onToggle: (talking: boolea
 export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) {
   const recording = () => capture.capturing(voiceSink)
   const busy = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
-  let held: { finger: number; take: Take } | undefined
-  const talk = createTalk({
-    tap: () => talkMode() === 'tap',
-    talking: () => held?.take.active() ?? false,
-    press: async () => {
-      const take = capture.press(voiceSink)
-      if (!take) return
-      held = { finger: pressing, take }
-      props.onTalk?.()
-      await take.started
-    },
-    release: async () => held?.take.release(),
-    cancel: async () => held?.take.cancel(),
-    overCancel: (event) =>
-      !!document
-        .elementFromPoint(event.clientX, event.clientY)
-        ?.closest('[data-voice-talk-cancel]'),
-  })
-  let pressing = -1
+  const start = () => {
+    const take = capture.press(voiceSink)
+    if (!take) return undefined
+    barTake = take
+    props.onTalk?.()
+    return take.started
+  }
+  const ours = () => (barTake?.active() ? barTake : undefined)
+  const cancelled = (event: PointerEvent) =>
+    !!document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-voice-talk-cancel]')
+  const touchDown = (event: PointerEvent) => {
+    if (!touchLike(event) || down !== undefined) return
+    event.preventDefault()
+    const take = ours()
+    if (take && talkMode() === 'tap') {
+      onThisPage(take.release())
+      return
+    }
+    if (take) return
+    if (!start()) return
+    const finger = event.pointerId
+    const pressed = barTake
+    down = finger
+    const end = (next: PointerEvent) => {
+      if (next.pointerId !== finger) return
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      down = undefined
+      if (barTake !== pressed || !pressed?.active()) return
+      if (next.type === 'pointercancel' || cancelled(next)) onThisPage(pressed.cancel())
+      else if (talkMode() === 'hold') onThisPage(pressed.release())
+    }
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+  }
   const label = () =>
     recording()
       ? talkMode() === 'tap'
@@ -107,7 +128,7 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
           aria-label="Cancel talking"
           class="ml-1.5 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           data-voice-talk-cancel
-          onClick={() => capture.take(voiceSink)?.cancel()}
+          onClick={() => ours()?.cancel()}
           size={null}
           variant={null}
         >
@@ -123,30 +144,9 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
         data-voice-talk
         onClick={(event) => {
           if (event instanceof PointerEvent && touchLike(event)) return undefined
-          if (held?.take.active()) return held.take.release()
-          const take = capture.press(voiceSink)
-          if (!take) return undefined
-          held = { finger: -1, take }
-          props.onTalk?.()
-          return take.started
+          return ours()?.release() ?? start()
         }}
-        onPointerDown={(event) => {
-          if (!touchLike(event) || held?.take.active()) return
-          pressing = event.pointerId
-          talk.pointer.onPointerDown(event)
-          const mine = held?.finger === pressing ? held : undefined
-          if (!mine) return
-          const end = (next: PointerEvent) => {
-            if (next.pointerId !== mine.finger) return
-            window.removeEventListener('pointerup', end)
-            window.removeEventListener('pointercancel', end)
-            if (held !== mine) return
-            if (next.type === 'pointerup') talk.pointer.onPointerUp(next)
-            else talk.pointer.onPointerCancel(next)
-          }
-          window.addEventListener('pointerup', end)
-          window.addEventListener('pointercancel', end)
-        }}
+        onPointerDown={touchDown}
         size={null}
         variant={null}
       >
