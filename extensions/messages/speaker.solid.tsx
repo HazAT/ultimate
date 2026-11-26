@@ -1,4 +1,5 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
+import { Dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { cn, useConversationSummary, useDocOf, useProvided } from '@/sdk/solid'
@@ -64,7 +65,9 @@ function FamilySpeaker(props: { entry: EntryRecord; core: JSX.Element }) {
                 '--tw-ring-color': `color-mix(in srgb, ${color()} 25%, transparent)`,
               }}
             >
-              {title().charAt(0)}
+              <Show when={external()?.icon} fallback={title().charAt(0)}>
+                {(icon) => <Dynamic class="size-3" component={icon()} />}
+              </Show>
             </span>
             <span class={cn(titleClass, 'min-w-0 truncate')} style={{ color: color() }}>
               {title()}

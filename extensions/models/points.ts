@@ -1,8 +1,10 @@
+import type { Component } from 'solid-js'
 import { definePoint } from '../../web/src/sdk/types.ts'
 
 export type PickerRow = {
   value: string
   title: string
+  icon?: Component<{ class?: string }>
   detail?: string
   disabled?: boolean
   confirm?: string

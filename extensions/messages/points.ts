@@ -1,4 +1,5 @@
 import type { JSX } from '@solidjs/web'
+import type { Component } from 'solid-js'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { definePoint } from '@/sdk/types.ts'
 import type { Message } from './refs.ts'
@@ -12,5 +13,5 @@ export const MessageExtras = definePoint<{ message: Message }, JSX.Element>('mes
 
 export const ExternalSpeaker = definePoint<
   EntryRecord,
-  { name: string; title: string; model?: string } | undefined
+  { name: string; title: string; model?: string; icon?: Component<{ class?: string }> } | undefined
 >('messages.external-speaker')

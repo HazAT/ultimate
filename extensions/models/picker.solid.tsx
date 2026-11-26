@@ -1,4 +1,5 @@
 import { Check, KeyRound, Layers, LogIn, Terminal } from '@lucide/solid'
+import { Dynamic } from '@solidjs/web'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import {
   Command,
@@ -282,6 +283,10 @@ function Picker(props: { close: () => void }) {
                       disabled={choice().disabled}
                       value={choice().value}
                     >
+                      <Dynamic
+                        class="size-3.5 shrink-0 text-muted-foreground"
+                        component={choice().icon}
+                      />
                       {choice().title}
                       <span class="ml-auto truncate text-[11px] text-muted-foreground">
                         {choice().detail}

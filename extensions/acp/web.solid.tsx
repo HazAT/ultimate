@@ -42,6 +42,7 @@ import { AcpSessionDoc as SessionDoc } from '../../shared/acp.ts'
 import type { AcpSession, ConfigOption, PermissionAsk } from '../../shared/acp.ts'
 import { ExternalSpeaker } from '../messages/ui.solid.tsx'
 import { PickerRows } from '../models/ui.solid.tsx'
+import { AntigravityMark } from './mark.solid.tsx'
 import {
   AvailableAction,
   CancelAction,
@@ -110,7 +111,7 @@ export function AcpComposer(props: SolidComposerProps) {
             toolbar={
               <div class="flex min-w-0 items-center gap-1 overflow-x-auto">
                 <span class="inline-flex shrink-0 items-center gap-1 px-1.5 font-mono text-[11.5px] text-foreground/85">
-                  <Bot class="size-3.5" /> Antigravity
+                  <AntigravityMark class="size-3.5" /> Antigravity
                 </span>
                 <For each={session()?.config} keyed={(option) => option.id}>
                   {(option) => (
@@ -310,6 +311,7 @@ export function agentRows(input: () => { query: string }) {
         {
           value: 'acp/antigravity',
           title: 'Antigravity',
+          icon: AntigravityMark,
           detail:
             installed === undefined
               ? 'Checking for agy…'
@@ -356,6 +358,7 @@ export default defineWebExtension({
       return {
         name: 'antigravity',
         title: 'Antigravity',
+        icon: AntigravityMark,
         ...(answer.model === 'Antigravity' ? {} : { model: answer.model }),
       }
     }),
