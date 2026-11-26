@@ -1,4 +1,4 @@
-import type { Element, ElementContent } from 'hast'
+import type { Element, ElementContent, Nodes as HastNodes, Root } from 'hast'
 import type { Code, Nodes as MdastNodes } from 'mdast'
 import { harden } from 'rehype-harden'
 import rehypeRaw from 'rehype-raw'
@@ -42,6 +42,26 @@ const hardening = {
   allowDataImages: true,
 }
 
+const schemeless = (href: unknown): href is string =>
+  typeof href === 'string' && href !== '' && !URL.canParse(href)
+
+function hardenKeepingSchemelessLinks() {
+  const hardenTree = harden(hardening)
+  return (tree: Root) => {
+    const schemelessLinks = new Map<Element, string>()
+    const collect = (node: HastNodes) => {
+      if (node.type === 'element' && node.tagName === 'a' && schemeless(node.properties.href)) {
+        schemelessLinks.set(node, node.properties.href)
+        node.properties.href = '#schemeless'
+      }
+      if ('children' in node) node.children.forEach(collect)
+    }
+    collect(tree)
+    hardenTree(tree)
+    for (const [link, href] of schemelessLinks) link.properties.href = href
+  }
+}
+
 type CompileContext = { stack: MdastNodes[] }
 type FenceToken = { start: { line: number } }
 
@@ -73,7 +93,7 @@ const toHast = unified()
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   .use(rehypeSanitize, schema)
-  .use(harden, hardening)
+  .use(hardenKeepingSchemelessLinks)
 
 const continuation = 'C1STREAMPROBE'
 
