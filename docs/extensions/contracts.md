@@ -125,7 +125,7 @@ The web core declares its own points in the SDK: `ParkedRuns`
 (pause), `RunStart` (tasks), `ConversationKind` (the title bar's kind before a title; messages names coordinator
 branches `branch · coordinator`), `ComposerPlaceholder` (what an empty composer says, the last provider that answers
 winning; conversations addresses a standing agent by its definition's `title`), `DictationShortcut` (how the talk
-shortcut is pressed, which the core's placeholder names; dictation provides it), `EmptyTranscript` (what a transcript
+shortcut is pressed, gesture and keys, which the core's placeholder names, only the gesture on a phone; dictation provides it), `EmptyTranscript` (what a transcript
 shows before its first message; each provider receives `core`, the rendering so far, to keep, wrap or replace;
 conversations shows a standing agent's mark and title), `AnswerSpeaker` (who speaks a final answer, in place of the
 core's "Final answer" heading; messages shows a standing agent's mark and title, else the conversation's model family) and
