@@ -168,25 +168,13 @@ function AskBody(props: { ask: Ask; state: ReturnType<typeof useAskState> }) {
             {failure()}
           </p>
         )}
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div class="flex flex-wrap items-center gap-2">
           <Button data-dream-ask-start onClick={start} size="sm">
             <MoonIcon class="size-3.5" />
             Start dreaming now
           </Button>
-          <span class="flex flex-wrap items-center gap-x-1 gap-y-1 font-mono text-[11px] text-muted-foreground">
-            Later:
-            <Later args={{ idle: true }} label="when nothing's running" run={run} />
-            ·
-            <Later args={() => ({ until: Date.now() + SNOOZE_MS })} label="in 2 h" run={run} />
-            ·
-            <Later
-              args={() => ({ until: tomorrowMorning(Date.now()) })}
-              label="tomorrow morning"
-              run={run}
-            />
-          </span>
           <Button
-            class="ml-auto text-muted-foreground"
+            class="text-muted-foreground"
             data-dream-ask-skip
             onClick={() => run(() => api.action(SkipAction, null))}
             size="sm"
@@ -195,6 +183,18 @@ function AskBody(props: { ask: Ask; state: ReturnType<typeof useAskState> }) {
             Skip this time
           </Button>
         </div>
+        <p class="flex flex-wrap items-center gap-x-1 gap-y-1 font-mono text-[11px] text-muted-foreground">
+          Later:
+          <Later args={{ idle: true }} label="when nothing's running" run={run} />
+          ·
+          <Later args={() => ({ until: Date.now() + SNOOZE_MS })} label="in 2 h" run={run} />
+          ·
+          <Later
+            args={() => ({ until: tomorrowMorning(Date.now()) })}
+            label="tomorrow morning"
+            run={run}
+          />
+        </p>
       </footer>
     </div>
   )
