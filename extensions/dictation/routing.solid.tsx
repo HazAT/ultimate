@@ -11,6 +11,7 @@ export const [talkMode, setTalkMode] = createRoot(() =>
 export const [shortcut, setShortcut] = createRoot(() =>
   useUiState('ext.dictation.shortcut', 'mod+shift+space'),
 )
+export const [soundCues, setSoundCues] = createRoot(() => useUiState('ext.dictation.cues', true))
 export const shortcutHint = () => `${talkMode()} ${formatKeys(shortcut())[0].join('+')}`
 export const keyChord = (event: KeyboardEvent) =>
   event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)

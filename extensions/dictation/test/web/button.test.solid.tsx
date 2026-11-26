@@ -14,7 +14,13 @@ import { events } from '@/sdk/solid'
 import { VoiceButton } from '../../button.solid.tsx'
 import { capture } from '../../capture.ts'
 import type { VoiceStatus } from '../../refs.ts'
-import { talkMode } from '../../routing.solid.tsx'
+import { startCue, stopCue } from '../../../../lib/cues.ts'
+import { setSoundCues, talkMode } from '../../routing.solid.tsx'
+
+vi.mock('../../../../lib/cues.ts', () => ({
+  startCue: vi.fn<() => void>(),
+  stopCue: vi.fn<() => void>(),
+}))
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -228,6 +234,44 @@ it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation 
   flush()
   expect(button('Talk shortcut for conversation #15')).not.toBeNull()
   await expectDistinctAgentNames(agent)
+})
+
+it('plays the start and stop cues in a plain box only while Sound cues is on', async () => {
+  const container = await mount(16, { available: true })
+  const button = (label: string) =>
+    container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+  const take = async () => {
+    button('Dictate into conversation #16').click()
+    await settle()
+    flush()
+    expect(startCue).toHaveBeenCalledOnce()
+    expect(stopCue).not.toHaveBeenCalled()
+    button('Stop and transcribe into conversation #16').click()
+    await settle()
+    flush()
+  }
+  await take()
+  expect(stopCue).toHaveBeenCalledOnce()
+
+  const cues = 'Dictation sound cues for conversation #16'
+  await agent.act({
+    steps: [
+      { ref: 'Dictation settings for conversation #16', action: 'setOpen', args: [true] },
+      { ref: cues, action: 'setChecked', args: [false] },
+    ],
+  })
+  vi.mocked(startCue).mockClear()
+  vi.mocked(stopCue).mockClear()
+  button('Dictate into conversation #16').click()
+  await settle()
+  flush()
+  button('Stop and transcribe into conversation #16').click()
+  await settle()
+  flush()
+  expect(startCue).not.toHaveBeenCalled()
+  expect(stopCue).not.toHaveBeenCalled()
+  expect(inserted).toEqual(['hello from the mic', 'hello from the mic'])
+  setSoundCues(true)
 })
 
 it('keeps a plain box’s microphone after Stop only while keepOpen is true', async () => {
