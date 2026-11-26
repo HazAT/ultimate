@@ -1,7 +1,13 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { ChevronRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { createMemo, For, mapArray, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible.solid.tsx'
 import {
   useProvided,
   cn,
@@ -32,7 +38,7 @@ import type { WorkspaceIndex } from '../workspaces/types.ts'
 import { CommitCount, Review } from '../workspaces/ui.solid.tsx'
 import type { Landing } from './landings.ts'
 import { PreviewUp } from './points.ts'
-import { ChildRow, EpicLine, RenameField, RowMenu, useRename } from './rows.solid.tsx'
+import { ChildRow, childState, EpicLine, RenameField, RowMenu, useRename } from './rows.solid.tsx'
 import { Section } from './section.solid.tsx'
 import { shell, useData, useSurface } from './state.solid.tsx'
 import type { SidebarConversation } from './state.solid.tsx'
@@ -277,19 +283,80 @@ function PhasedFlightRow(props: {
         {(activity) => <ActivityLine activity={activity()} id={props.id} />}
       </Show>
       <EpicLine id={props.id} working={data.working().get(props.id) === 'self'} />
-      <FlightChildren id={props.id} depth={0} />
+      <FlightChildren id={props.id} />
     </li>
   )
 }
 
-function FlightChildren(props: { id: ConversationId; depth: number }) {
+const descendants = (data: ReturnType<typeof useData>, id: ConversationId): ConversationId[] =>
+  (data.subagents().get(id) ?? []).flatMap((child) => [child, ...descendants(data, child)])
+
+const hiddenStates = [
+  ['working', 'working', 'text-brand'],
+  ['failed', 'failed', 'text-error'],
+] as const
+
+function FlightChildren(props: { id: ConversationId }) {
+  const data = useData()
+  const all = createMemo(() => descendants(data, props.id))
+  const open = () => data.expanded().includes(props.id)
+  const hidden = createMemo(() => {
+    const states = all().map((id) => childState(data, id))
+    return hiddenStates
+      .map(([state, word, tone]) => ({
+        word,
+        tone,
+        count: states.filter((each) => each === state).length,
+      }))
+      .filter((each) => each.count > 0)
+  })
+  return (
+    <Show when={all().length > 0}>
+      <Collapsible
+        bind={[
+          open,
+          (next) => {
+            const id = props.id
+            data.setExpanded((previous) => [
+              ...previous.filter((key) => key !== id),
+              ...(next ? [id] : []),
+            ])
+          },
+        ]}
+      >
+        <CollapsibleTrigger
+          aria-label={`Sub-agents of #${props.id}`}
+          class="group/agents mx-2 flex h-6 w-[calc(100%-1rem)] min-w-0 items-center gap-1 rounded-md pr-2 pl-[18px] font-mono text-[10.5px] text-muted-foreground outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+          data-flight-children={props.id}
+        >
+          <ChevronRight class="size-3 shrink-0 transition-transform group-data-open/agents:rotate-90" />
+          <span class="shrink-0">Sub-agents · {all().length}</span>
+          <Show when={!open()}>
+            <For each={hidden()}>
+              {(each) => (
+                <span class={cn('min-w-0 truncate', each.tone)}>
+                  · {each.count} {each.word}
+                </span>
+              )}
+            </For>
+          </Show>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <FlightRows id={props.id} depth={0} />
+        </CollapsibleContent>
+      </Collapsible>
+    </Show>
+  )
+}
+
+function FlightRows(props: { id: ConversationId; depth: number }) {
   const data = useData()
   return (
     <For each={data.subagents().get(props.id)}>
       {(id) => (
         <>
           <ChildRow id={id} depth={props.depth} />
-          <FlightChildren id={id} depth={props.depth + 1} />
+          <FlightRows id={id} depth={props.depth + 1} />
         </>
       )}
     </For>
@@ -334,9 +401,7 @@ type Activity = ActivityStats & { workers: number }
 
 function useFlightActivity(branches: () => readonly ConversationId[]) {
   const data = useData()
-  const below = (id: ConversationId): ConversationId[] =>
-    (data.subagents().get(id) ?? []).flatMap((child) => [child, ...below(child)])
-  const trees = createMemo(() => new Map(branches().map((id) => [id, below(id)])))
+  const trees = createMemo(() => new Map(branches().map((id) => [id, descendants(data, id)])))
   const keys = createMemo(() => {
     const ids = [...trees()].flatMap(([id, children]) => [id, ...children])
     return ids.length ? [ids.toSorted((a, b) => a - b).join(',')] : []

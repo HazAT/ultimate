@@ -83,8 +83,11 @@ section of the `sidebar.top` slot draws the same heading. Top to bottom:
   never on a timer. When its coordinator works its current epic itself (no task linked to a subagent), a line
   `E1 · <title>` comes first (`EpicLine`, `rows.solid.tsx`, from plan's `conversations.epic` point): its dot pulses while
   the coordinator runs, it reads `idle` between runs and `done` with a check once the epic is, and a click opens the
-  epic in the plan panel. Its subagents follow, one line each at any depth (`ChildRow`, `rows.solid.tsx`): their mark, plan
-  chip, role and `#id`, and their state word, with the latest activity or plan task on hover.
+  epic in the plan panel. Its subagents follow under a `Sub-agents · N` toggle (N counts them at any depth), folded by
+  default; folded, it adds how many of them work or failed (`· 3 working · 1 failed`). Each branch folds on its own,
+  kept in `ext.conversations.expanded` like the Earlier tree's Sub-agents groups. Unfolded, they show one line each at
+  any depth (`ChildRow`, `rows.solid.tsx`): their mark, plan chip, role and `#id`, and their state word, with the latest
+  activity or plan task on hover. While one of them is shown, its branch's row stays highlighted.
 
 Landed branches and older conversations that are neither roots nor branches live in the collapsed "Earlier · N" group,
 above "Concluded · N". There, branches nest under their source (`branchOf.conversationId`), with a hairline guide

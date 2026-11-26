@@ -565,23 +565,24 @@ export function EpicLine(props: { id: ConversationId; working: boolean }) {
   )
 }
 
+export const childState = (data: ReturnType<typeof useData>, id: ConversationId) =>
+  conversationState(
+    {
+      id,
+      kind: 'subagent',
+      runState: data.row(id)?.runState,
+      busy: data.byConversation(id).busy,
+      parked: data.parked(id),
+    },
+    data.log(),
+  )
+
 export function ChildRow(props: { id: ConversationId; depth?: number }) {
   const data = useData()
   const task = useProvided(ConversationTask, () => props.id)
   const conversation = createMemo(() => data.byConversation(props.id))
   const activity = () => data.row(props.id)?.activity
-  const state = createMemo(() =>
-    conversationState(
-      {
-        id: props.id,
-        kind: 'subagent',
-        runState: data.row(props.id)?.runState,
-        busy: conversation().busy,
-        parked: data.parked(props.id),
-      },
-      data.log(),
-    ),
-  )
+  const state = createMemo(() => childState(data, props.id))
   const working = () => state() === 'working'
   const known = () => settledState(state())
   const compact = () => props.depth !== undefined
