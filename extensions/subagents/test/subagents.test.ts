@@ -1240,6 +1240,51 @@ describe('turns without an answer', () => {
       held.release()
     }
   })
+  it('reports a continuation that answered before its interrupted reporter settled, across a restart after a newer message', async () => {
+    const held = { ...gate(), entered: false, phase: 'settled' }
+    const f = await gatedFixture(held)
+    await call(f.opened, { action: 'start', agent: 'scout', task: 'HOLD', background: true })
+    const [child] = await children(f.opened)
+    const handle = (await f.opened.harness.conversation(child.conversationId, context))!
+    try {
+      await until(() => f.holding.has(child.conversationId))
+      await handle.abort(context)
+      await until(() => held.entered)
+      await (
+        await handle.submit({ type: 'input', content: 'continue before settlement' }, context)
+      ).wait(context)
+      await call(f.opened, {
+        action: 'message',
+        id: child.conversationId,
+        text: 'second parent request',
+        background: true,
+      })
+      await f.opened.close()
+      hosts.splice(hosts.indexOf(f.opened), 1)
+      const resumed = await f.reopen()
+      held.release()
+      const pending = Object.values(
+        (await resumed.harness.snapshot(Subagents, resumed.root.id, context))!.actions,
+      )
+      await Promise.all(
+        pending.map(({ reporter }) => resumed.harness.waitForTask(reporter, context)),
+      )
+      await expect(
+        until(async () => (await reports(resumed)).length >= 2, 1000),
+      ).resolves.toBeUndefined()
+      await resumed.harness.waitForIdle(context)
+      expect((await reports(resumed)).map((report) => report.data)).toEqual(
+        expect.arrayContaining(
+          ['continue before settlement', 'second parent request'].map((text) =>
+            expect.objectContaining({ body: `Returned model: faux/faux-1\nChild: ${text}` }),
+          ),
+        ),
+      )
+      expect(await reports(resumed)).toHaveLength(2)
+    } finally {
+      held.release()
+    }
+  })
   it('keeps a child-side stop when the parent stops the child during the report, and reports the next answer', async () => {
     const held = { ...gate(), entered: false }
     const f = await gatedFixture(held)

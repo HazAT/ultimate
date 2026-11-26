@@ -882,9 +882,20 @@ export default function subagents(
           parentMessageNeedsReporter = false
       }
       if (!parentMessageNeedsReporter && !failures()?.continues(submission)) {
+        const earlierActions = []
+        for (const action of childActions) {
+          const instruction = await tx.submissionByRequest(
+            submission.conversationId,
+            `subagent:${action.reporter}`,
+          )
+          const startedAfter = instruction
+            ? instruction.id > submission.id
+            : action.status === undefined
+          if (!startedAfter) earlierActions.push(action)
+        }
         const action =
           settledReporter === undefined
-            ? childActions.at(-1)
+            ? earlierActions.at(-1)
             : childActions.find(({ reporter }) => reporter === settledReporter)
         if (action?.status === undefined)
           return settledReporter === undefined ? action?.reporter : undefined
