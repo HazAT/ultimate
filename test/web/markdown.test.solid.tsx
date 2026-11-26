@@ -212,6 +212,17 @@ it('asks before opening an external link, which has no live destination', () => 
   open.mockRestore()
 })
 
+it('links a relative path as written and still blocks a script link', () => {
+  const view = renderSolid(() => (
+    <Markdown text="[a](knowledge/a.md) [b](../b.md#h) [c](javascript:alert(1))" />
+  ))
+  flush()
+  expect(
+    [...view.querySelectorAll('button.link')].map((link) => link.getAttribute('data-href')),
+  ).toEqual(['knowledge/a.md', '../b.md#h'])
+  expect(view.textContent).toBe('a b c [blocked]')
+})
+
 it('leaves a finished message as written', () => {
   const view = renderSolid(() => (
     <Markdown text="Workers edit extensions/conversations/*, web/src/sdk." />
