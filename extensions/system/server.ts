@@ -11,6 +11,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { CallRow, CallTree } from '../../server/trace.ts'
 import { LanesAction, NavigatedAction, PollsAction, StreamAction, TreeAction } from './refs.ts'
 import type { Lane, LaneLink, LaneSpawn, SystemCall, SystemFilter, SystemRow } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const SUMMARY = 200
 const cut = (text: string) => (text.length > SUMMARY ? `${text.slice(0, SUMMARY - 1)}…` : text)
@@ -537,7 +538,7 @@ export const pollActions = ['stream', 'lanes', 'tree', 'polls']
 
 const LastView = defineDoc<{ key?: string }>({
   kind: 'system.last-view',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

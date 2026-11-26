@@ -56,10 +56,11 @@ import {
   SummariesAction,
   SummaryModelAction,
 } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const Fixed = defineDoc<{ fixed?: true }>({
   kind: 'conversations.fixed',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -71,7 +72,7 @@ export const docs = [Summaries, Overview, Fixed, ContextUsageDoc, Marks]
 
 const IdentityAtContextHead = defineDoc<{ head?: number }>({
   kind: 'conversations.identity',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

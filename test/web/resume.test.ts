@@ -84,6 +84,7 @@ class Element {
 }
 
 function page(stored?: string) {
+  const listeners = new Map<string, () => void>()
   const items = new Map<string, string>(stored ? [['ultimate.resume', stored]] : [])
   const sessionStorage = {
     getItem: (key: string) => items.get(key) ?? null,
@@ -105,7 +106,8 @@ function page(stored?: string) {
     items,
     body,
     location: { search: '' },
-    addEventListener: () => {},
+    listeners,
+    addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
   }
 }
 
@@ -139,7 +141,6 @@ describe('resuming a reload', () => {
     before.document.styleSheets.push({
       cssRules: [{ cssText: 'body { color: red; }' }],
     })
-    const listeners = new Map<string, () => void>()
     vi.stubGlobal('document', before.document)
     vi.stubGlobal('sessionStorage', before.sessionStorage)
     vi.stubGlobal('HTMLElement', Element)
@@ -151,14 +152,12 @@ describe('resuming a reload', () => {
     vi.stubGlobal('innerWidth', 1200)
     vi.stubGlobal('innerHeight', 800)
     vi.stubGlobal('location', { search: '' })
-    vi.stubGlobal('addEventListener', (type: string, listener: () => void) =>
-      listeners.set(type, listener),
-    )
+    vi.stubGlobal('addEventListener', before.addEventListener)
     const { rendered } = await import('../../web/src/sdk/resume.ts')
-    listeners.get('pagehide')!()
+    before.listeners.get('pagehide')!()
     expect(before.items.size).toBe(0)
     rendered()
-    listeners.get('pagehide')!()
+    before.listeners.get('pagehide')!()
     const stored = before.items.get('ultimate.resume')!
     // Off screen, the earlier message keeps its room but not its content.
     expect(stored).toContain('just now')
@@ -175,6 +174,52 @@ describe('resuming a reload', () => {
     const [scrolled] = view.querySelectorAll('[data-resume-scroll]')
     expect(style.textContent).toContain('body { color: red; }')
     expect(Number(scrolled.scrollTop)).toBe(420)
+  })
+
+  it('saves the readable stylesheets and reading place when a stylesheet is inaccessible', async () => {
+    const before = page()
+    before.document.styleSheets.push(
+      {
+        get cssRules(): never {
+          throw new DOMException('Cannot access rules', 'SecurityError')
+        },
+      },
+      { cssRules: [{ cssText: 'body { color: red; }' }] },
+    )
+    vi.stubGlobal('document', before.document)
+    vi.stubGlobal('sessionStorage', before.sessionStorage)
+    vi.stubGlobal('addEventListener', before.addEventListener)
+    const { rendered, keepAcrossReload } = await import('../../web/src/sdk/resume.ts')
+    keepAcrossReload('draft', () => 'unfinished')
+    rendered()
+    before.listeners.get('pagehide')!()
+    expect(JSON.parse(before.items.get('ultimate.resume') ?? 'null')).toMatchObject({
+      css: 'body { color: red; }',
+    })
+    expect(JSON.parse(before.items.get('ultimate.resume-place') ?? 'null')).toMatchObject({
+      kept: { draft: 'unfinished' },
+    })
+  })
+
+  it('saves the reading place even when cover capture throws', async () => {
+    const before = page()
+    const error = new Error('Stylesheet capture failed')
+    before.document.styleSheets.push({
+      get cssRules(): never {
+        throw error
+      },
+    })
+    vi.stubGlobal('document', before.document)
+    vi.stubGlobal('sessionStorage', before.sessionStorage)
+    vi.stubGlobal('addEventListener', before.addEventListener)
+    const { rendered, keepAcrossReload } = await import('../../web/src/sdk/resume.ts')
+    keepAcrossReload('draft', () => 'unfinished')
+    rendered()
+    expect(before.listeners.get('pagehide')).toThrow(error)
+    expect(before.items.get('ultimate.resume')).toBeUndefined()
+    expect(JSON.parse(before.items.get('ultimate.resume-place') ?? 'null')).toMatchObject({
+      kept: { draft: 'unfinished' },
+    })
   })
 
   it('starts fresh without a view, or with one stored long ago', () => {

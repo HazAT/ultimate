@@ -30,10 +30,11 @@ import { Standing } from '../subagents/api.ts'
 import { due, LEAD, TTL } from './due.ts'
 import { SetAction, StateAction, WarmDoc } from './refs.ts'
 import type { Ping, WarmDocState, WarmState } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const State = defineDoc<WarmDocState>({
   kind: WarmDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

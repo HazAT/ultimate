@@ -77,6 +77,7 @@ import {
   StandingAction,
 } from './refs.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const docs = [Subagents, Standing, Profile, Runs]
 
@@ -129,7 +130,7 @@ const Recovered = defineDoc<{ highWater?: number }>({
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   initial: () => ({}),
 })
 const textOf = (message: AssistantMessage | undefined) =>
@@ -847,21 +848,23 @@ export default function subagents(
     return { ...definition, runs }
   }
   const Reporter = createReporter(failures)
-  let recovery = Promise.resolve()
-  const recoverUnreportedAnswer = async (submission: SubmissionRecord) => {
+  const recoverUnreportedAnswer = async (
+    submission: SubmissionRecord,
+    settledReporter?: TaskId,
+  ) => {
     if (
       submission.type !== 'input' ||
       submission.status !== 'done' ||
       submission.requestId?.startsWith('subagent:')
     )
-      return 'decided'
-    return host.harness().commit(async (tx): Promise<'decided' | 'reporterUnsettled'> => {
+      return undefined
+    return host.harness().commit(async (tx): Promise<TaskId | undefined> => {
       const child = await tx.conversation(submission.conversationId)
       const parent = child?.owner?.conversationId
-      if (parent === undefined) return 'decided'
+      if (parent === undefined) return undefined
       const state = await tx.doc(Subagents, parent)
       const agent = state.agents[String(submission.conversationId)]
-      if (!agent || agent.reported.includes(submission.answer)) return 'decided'
+      if (!agent || agent.reported.includes(submission.answer)) return undefined
       const childActions = Object.values(state.actions).filter(
         (candidate) => candidate.conversationId === submission.conversationId,
       )
@@ -879,14 +882,15 @@ export default function subagents(
           parentMessageNeedsReporter = false
       }
       if (!parentMessageNeedsReporter && !failures()?.continues(submission)) {
-        const action = childActions.at(-1)
-        if (action && action.status === undefined) return 'reporterUnsettled'
-        const interrupted = action?.status === 'interrupted'
-        if (
-          !action ||
-          (!['unanswered', 'failed', 'given-up'].includes(action.status ?? '') && !interrupted)
-        )
-          return 'decided'
+        const action =
+          settledReporter === undefined
+            ? childActions.at(-1)
+            : childActions.find(({ reporter }) => reporter === settledReporter)
+        if (action?.status === undefined)
+          return settledReporter === undefined ? action?.reporter : undefined
+        const interrupted = action.status === 'interrupted'
+        if (!['unanswered', 'failed', 'given-up'].includes(action.status) && !interrupted)
+          return undefined
         const failed = await tx.submissionByRequest(
           submission.conversationId,
           `subagent:${action.reporter}`,
@@ -895,9 +899,9 @@ export default function subagents(
           failed?.status !== 'unanswered' ||
           (failed.reason === 'aborted') !== interrupted ||
           (failed.entry === undefined && !interrupted)
-        if (invalidContinuation) return 'decided'
+        if (invalidContinuation) return undefined
         const notNewerThanFailure = submission.entry <= (failed.entry ?? failed.id)
-        if (notNewerThanFailure) return 'decided'
+        if (notNewerThanFailure) return undefined
       }
       const answer = (await tx.entry(AssistantEntry, submission.answer))?.model?.[0] as
         | AssistantMessage
@@ -919,7 +923,7 @@ export default function subagents(
         answer: submission.answer,
         status: 'done',
       }
-      return 'decided'
+      return undefined
     }, BACKGROUND_CONTEXT)
   }
   host.onOpen(async (opened) => {
@@ -931,12 +935,60 @@ export default function subagents(
           .standing(name, BACKGROUND_CONTEXT)
           .catch((error: unknown) => host.notice(`Standing agent @${name}: ${String(error)}`))
     }
+    const pending = new Map<TaskId, Map<SubmissionRecord['id'], SubmissionRecord>>()
+    const recover = async (submission: SubmissionRecord) => {
+      const reporter = await recoverUnreportedAnswer(submission)
+      if (reporter === undefined) return false
+      const submissions = pending.get(reporter) ?? new Map()
+      submissions.set(submission.id, submission)
+      pending.set(reporter, submissions)
+      return true
+    }
+    let recovery = Promise.resolve().then(async () => {
+      const recovered =
+        (await host.harness().snapshot(Recovered, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))
+          ?.highWater ?? 0
+      const unseen: SubmissionRecord[] = []
+      let cursor: Cursor | undefined
+      do {
+        const page = await host.scanSubmissions(
+          { order: 'descending' },
+          50,
+          cursor,
+          BACKGROUND_CONTEXT,
+        )
+        unseen.push(...page.items.filter((submission) => submission.id > recovered))
+        cursor = (page.items.at(-1)?.id ?? 0) > recovered ? page.next : undefined
+      } while (cursor)
+      let unsettled: SubmissionRecord | undefined
+      for (const submission of unseen.toReversed()) {
+        const waitingForReporter = await recover(submission)
+        if (submission.status === 'queued' || submission.status === 'placed' || waitingForReporter)
+          unsettled ??= submission
+      }
+      await host.harness().commit(async (tx) => {
+        ;(await tx.doc(Recovered, ROOT_CONVERSATION_ID)).highWater = unsettled
+          ? unsettled.id - 1
+          : (unseen[0]?.id ?? recovered)
+      }, BACKGROUND_CONTEXT)
+    })
     const unsubscribe = onCommit(host.harness(), (publication) => {
       for (const change of publication.changes) {
-        if (change.type !== 'submission') continue
+        const reporterSettled =
+          change.type === 'task' &&
+          change.value.kind === Reporter.definition.name &&
+          change.value.state.status === 'terminal'
+        if (change.type !== 'submission' && !reporterSettled) continue
         recovery = recovery
           .then(async () => {
-            await recoverUnreportedAnswer(change.value)
+            if (change.type === 'submission') await recover(change.value)
+            else {
+              const submissions = pending.get(change.value.id)
+              pending.delete(change.value.id)
+              if (submissions)
+                for (const submission of submissions.values())
+                  await recoverUnreportedAnswer(submission, change.value.id)
+            }
           })
           .catch((error: unknown) => {
             host.notice(`Subagent answer recovery failed: ${String(error)}`)
@@ -947,35 +999,7 @@ export default function subagents(
       unsubscribe()
       await recovery
     })
-    const recovered =
-      (await host.harness().snapshot(Recovered, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))
-        ?.highWater ?? 0
-    const unseen: SubmissionRecord[] = []
-    let cursor: Cursor | undefined
-    do {
-      const page = await host.scanSubmissions(
-        { order: 'descending' },
-        50,
-        cursor,
-        BACKGROUND_CONTEXT,
-      )
-      unseen.push(...page.items.filter((submission) => submission.id > recovered))
-      cursor = (page.items.at(-1)?.id ?? 0) > recovered ? page.next : undefined
-    } while (cursor)
-    let unsettled: SubmissionRecord | undefined
-    for (const submission of unseen.toReversed()) {
-      const outcome = await recoverUnreportedAnswer(submission)
-      const revisitNextOpen =
-        submission.status === 'queued' ||
-        submission.status === 'placed' ||
-        outcome === 'reporterUnsettled'
-      if (revisitNextOpen) unsettled ??= submission
-    }
-    await host.harness().commit(async (tx) => {
-      ;(await tx.doc(Recovered, ROOT_CONVERSATION_ID)).highWater = unsettled
-        ? unsettled.id - 1
-        : (unseen[0]?.id ?? recovered)
-    }, BACKGROUND_CONTEXT)
+    await recovery
   })
   return defineExtension({
     name: 'subagents',
@@ -1168,7 +1192,8 @@ export default function subagents(
                   ).definitions
                 : undefined
             const definition = definitions && (await spawnDefinition(args, definitions))
-            if (definition?.tools?.some((name) => !parent.tools.some((tool) => tool.name === name)))
+            const parentTools = [...parent.tools, ...parent.deferred]
+            if (definition?.tools?.some((name) => !parentTools.some((tool) => tool.name === name)))
               throw new Error('Definition tools must be a subset of parent tools')
             const label = definition && (args.agent ? (args.label ?? definition.name) : args.label!)
             const isolated =
@@ -1415,10 +1440,9 @@ export default function subagents(
             let latest: EntryRecord | undefined
             do {
               const page = await tx.scanEntries({ conversationId: id }, 256, cursor)
-              for (const entry of page.items)
-                if (AssistantEntry.is(entry) && latest === undefined) latest = entry
+              latest = page.items.find((entry) => AssistantEntry.is(entry))
               cursor = page.next
-            } while (cursor !== undefined)
+            } while (!latest && cursor !== undefined)
             if (!latest) return undefined
             const agent = (await tx.doc(Subagents, api.conversationId)).agents[String(id)]
             if (!agent.reported.includes(latest.id)) agent.reported.push(latest.id)

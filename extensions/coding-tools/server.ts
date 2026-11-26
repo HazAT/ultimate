@@ -43,6 +43,7 @@ import {
   sweepEarlierProcesses,
   takeStarted,
 } from './background.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 function defaultBashTimeout() {
   const seconds = Number(process.env.ULTIMATE_BASH_TIMEOUT ?? 600)
@@ -97,7 +98,7 @@ export function changes(command: string) {
 
 const DurableCancellations = defineDoc<{ calls: Record<string, number> }>({
   kind: CancelledDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

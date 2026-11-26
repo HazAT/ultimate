@@ -2,7 +2,7 @@ import { CompactionTask, LiveDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 
 export async function compacting(tx: Tx, id: ConversationId) {
-  const unsettledStatuses = ['pending', 'running', 'waiting', 'completing'] as const
+  const unsettledStatuses = ['pending', 'running', 'waiting', 'sleeping', 'completing'] as const
   for (const status of unsettledStatuses)
     if (
       (await tx.scanTasks({ conversationId: id, kind: CompactionTask.definition.name, status }, 1))

@@ -310,33 +310,57 @@ ${fail ? 'exit 1' : ''}
     release: () => writeFile(gate, 'ready\n'),
   }
 }
-it.concurrent('serializes concurrent lander checkout creation', async () => {
-  const { home, projectRoot } = await repository()
+const runSourceWrite = <T>(_source: string, write: () => Promise<T>) => write()
+it.concurrent('queues lander checkout creation behind a source merge', async () => {
+  const f = await fixture()
+  const { home, projectRoot } = f
   const path = await landerPath(home, projectRoot, {})
+  await git(projectRoot, 'worktree', 'remove', path)
   // Recover an unregistered directory left by an interrupted creation, too.
   await mkdir(path)
-  await writeFile(join(path, 'incomplete'), 'interrupted')
-  const results = await Promise.allSettled([
-    landerCheckout(home, projectRoot, {}),
-    landerCheckout(home, projectRoot, {}),
-  ])
-  expect(results).toEqual([
-    { status: 'fulfilled', value: path },
-    { status: 'fulfilled', value: path },
-  ])
+  const incomplete = join(path, 'incomplete')
+  await writeFile(incomplete, 'interrupted')
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const tip = await commit((await f.service.get(id, context))!.path)
+  const merge = await holdGit(projectRoot, 'merge')
+  const landing = f.service.land(id, context)
+  await merge.started()
+  const queue = f.host.resource('workspaces.land', () => new Map<string, Promise<unknown>>())
+  const enqueued = Promise.withResolvers<'queued'>()
+  const set = queue.set.bind(queue)
+  const spy = vi.spyOn(queue, 'set').mockImplementation((source, write) => {
+    if (source === projectRoot) enqueued.resolve('queued')
+    return set(source, write)
+  })
+  const standing = f.service.standLander(context)
+  try {
+    expect(await Promise.race([enqueued.promise, standing.then(() => 'created')])).toBe('queued')
+    expect(await readFile(incomplete, 'utf8')).toBe('interrupted')
+  } finally {
+    spy.mockRestore()
+    await merge.release()
+    await landing
+    await standing
+  }
+  expect(await git(path, 'rev-parse', 'HEAD')).toBe(tip)
   const entries = (await git(projectRoot, 'worktree', 'list', '--porcelain')).split('\n\n')
   expect(entries.filter((entry) => entry.split('\n').includes(`worktree ${path}`))).toHaveLength(1)
   expect(await readFile(join(path, 'base.txt'), 'utf8')).toBe('base')
   expect(await readdir(path)).not.toContain('incomplete')
   // An existing checkout must be left alone, even when another tip is requested.
   await writeFile(join(path, 'keep.txt'), 'keep')
-  expect(await landerCheckout(home, projectRoot, {}, 'missing-tip')).toBe(path)
+  expect(await landerCheckout(home, projectRoot, {}, runSourceWrite, 'missing-tip')).toBe(path)
   expect(await readFile(join(path, 'keep.txt'), 'utf8')).toBe('keep')
 })
 it.concurrent('retries lander checkout creation after a failure', async () => {
   const { home, projectRoot } = await repository()
-  await expect(landerCheckout(home, projectRoot, {}, 'missing-tip')).rejects.toThrow('missing-tip')
-  expect(await landerCheckout(home, projectRoot, {})).toBe(await landerPath(home, projectRoot, {}))
+  await expect(
+    landerCheckout(home, projectRoot, {}, runSourceWrite, 'missing-tip'),
+  ).rejects.toThrow('missing-tip')
+  expect(await landerCheckout(home, projectRoot, {}, runSourceWrite)).toBe(
+    await landerPath(home, projectRoot, {}),
+  )
 })
 it.concurrent('creates through the action; setup receives ULTIMATE_SOURCE and the first model request waits for ready', async () => {
   const f = await fixture()
@@ -596,23 +620,44 @@ it.concurrent('rejects a detached source and preserves existing paths and branch
   }
 })
 
-it.concurrent('queued landing reads the current record after another workspace lands', async () => {
+it.concurrent('queues discard behind a source write', async () => {
   const f = await fixture()
   const first = await f.create()
   const second = await f.create()
   await f.service.ready(first, context)
   await f.service.ready(second, context)
   await commit((await f.service.get(first, context))!.path)
+  const { path } = (await f.service.get(second, context))!
   const merge = await holdGit(f.projectRoot, 'merge')
   const landing = f.service.land(first, context)
   await merge.started()
-  const queued = f.service.land(second, context).catch((error: Error) => error)
+  const queue = f.host.resource('workspaces.land', () => new Map<string, Promise<unknown>>())
+  const discardQueued = Promise.withResolvers<void>()
+  const landQueued = Promise.withResolvers<void>()
+  const waiting = [discardQueued, landQueued]
+  const set = queue.set.bind(queue)
+  const spy = vi.spyOn(queue, 'set').mockImplementation((source, write) => {
+    if (source === f.projectRoot) waiting.shift()?.resolve()
+    return set(source, write)
+  })
+  const discard = f.service.discard(second, context)
+  let queued: Promise<unknown> | undefined
   try {
-    await actions.discard({ id: second }, { host: f.host } as ActionContext)
+    const order = await Promise.race([
+      discardQueued.promise.then(() => 'queued'),
+      discard.then(() => 'discarded'),
+    ])
+    expect(order).toBe('queued')
+    await expect(access(path)).resolves.toBeUndefined()
+    queued = f.service.land(second, context).catch((error: Error) => error)
+    await landQueued.promise
   } finally {
+    spy.mockRestore()
     await merge.release()
+    await landing
+    await discard
   }
-  await landing
+  expect((await f.service.get(second, context))!.state).toBe('removed')
   expect(await queued).toMatchObject({ message: 'Workspace is removed' })
 })
 it.concurrent('requires nonempty divergence for submit before queuing anything', async () => {

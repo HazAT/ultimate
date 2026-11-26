@@ -1,4 +1,3 @@
-import type { Tx } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -7,17 +6,18 @@ import { readJson, writeJson } from '../../lib/json-file.ts'
 import { openQuestion } from '../../lib/message-state.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
-import type { Todo } from '../todos/refs.ts'
+import { TodosApi } from '../todos/api.ts'
 import { Memory, Roots } from '../lineage/api.ts'
 import { Messages } from '../messages/api.ts'
 import type { Automation } from '../automations/types.ts'
 import { BuiltInDoc, PauseDoc } from './built-ins.ts'
 import type { Prepared } from './refs.ts'
 import type { Seed } from './types.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const SeedState = defineDoc<{ applied?: number; automations: string[] }>({
   kind: 'dream.seed',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -50,17 +50,6 @@ const builtInOf = (item: Automation | undefined) =>
       }
     : null
 
-async function exportedDocument<T>(
-  host: ExtensionHost,
-  tx: Tx,
-  kind: string,
-  id = ROOT_CONVERSATION_ID,
-): Promise<T> {
-  const token = host.doc(kind)
-  if (!token) throw new Error(`Chapter seed needs document ${kind}`)
-  return (await tx.doc(token, id)) as unknown as T
-}
-
 const prototypeFreeMemoryIndex = () => Object.create(null) as Record<string, MemoryItem>
 const detachTransactionOverlays = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promise<Seed> {
@@ -87,9 +76,7 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
     }
     for (const slug of about)
       if (!memories[slug]) throw new Error(`Chapter seed lost user memory ${slug}`)
-    const todos = (await exportedDocument<{ items: Todo[] }>(host, tx, 'todos')).items
-      .filter((item) => item.done === undefined)
-      .map(({ text, owner }) => ({ text, owner }))
+    const todos = (await host.want(TodosApi)?.listOpen(tx)) ?? []
     const own = (await tx.doc(BuiltInDoc, ROOT_CONVERSATION_ID)).id
     const builtIn = automations.find((item) => item.id === own)
     const ownPause = (await tx.doc(PauseDoc, ROOT_CONVERSATION_ID)).id
@@ -209,27 +196,29 @@ export async function applySeed(host: ExtensionHost) {
       if (receipt.applied !== undefined) return
       const memory = await tx.doc(Memory, ROOT_CONVERSATION_ID)
       Object.assign(memory.memories, seed.memories)
-      const todos = await exportedDocument<{ next: number; items: Todo[] }>(host, tx, 'todos')
-      const carried: Seed['todos'] = [
-        ...seed.todos,
-        ...seed.questions.map(({ ref, text }) => ({
-          owner: 'user' as const,
-          text: `Open question (${seed.from.name}${ref}): ${text}`,
-        })),
-        ...seed.scripts
-          .filter((item) => item.scope !== 'project')
-          .map(({ id, name, ask, prompt, agent }) => ({
-            owner: 'ultimate' as const,
-            text: `Recreate script ${id} (${name}): ${ask}${prompt ? ` · prompt: ${prompt}${agent ? ` (agent ${agent})` : ''}` : ''}`,
+      const todos = host.want(TodosApi)
+      if (todos) {
+        const carried: Seed['todos'] = [
+          ...seed.todos,
+          ...seed.questions.map(({ ref, text }) => ({
+            owner: 'user' as const,
+            text: `Open question (${seed.from.name}${ref}): ${text}`,
           })),
-        ...seed.automations
-          .filter((item) => !portableTrigger(item))
-          .map(({ name, schedule, event, condition }) => ({
-            owner: 'ultimate' as const,
-            text: `Recreate ${schedule ? 'schedule' : event ? 'event' : 'context'} automation (${name}) with new ${condition?.of.startsWith('#') ? 'conversation target' : 'subscribers'}: ${JSON.stringify(schedule ?? event ?? condition)}`,
-          })),
-      ]
-      for (const item of carried) todos.items.push({ ...item, id: todos.next++, at: Date.now() })
+          ...seed.scripts
+            .filter((item) => item.scope !== 'project')
+            .map(({ id, name, ask, prompt, agent }) => ({
+              owner: 'ultimate' as const,
+              text: `Recreate script ${id} (${name}): ${ask}${prompt ? ` · prompt: ${prompt}${agent ? ` (agent ${agent})` : ''}` : ''}`,
+            })),
+          ...seed.automations
+            .filter((item) => !portableTrigger(item))
+            .map(({ name, schedule, event, condition }) => ({
+              owner: 'ultimate' as const,
+              text: `Recreate ${schedule ? 'schedule' : event ? 'event' : 'context'} automation (${name}) with new ${condition?.of.startsWith('#') ? 'conversation target' : 'subscribers'}: ${JSON.stringify(schedule ?? event ?? condition)}`,
+            })),
+        ]
+        for (const item of carried) await todos.addCarried(tx, item)
+      }
       await ultimate.submit(tx, {
         type: 'input',
         requestId: `dream.chapter:${host.chapter.name}`,

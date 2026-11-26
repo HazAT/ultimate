@@ -21,13 +21,14 @@ import { Standing } from '../subagents/api.ts'
 import { enqueueReminderSync as enqueue, reminderTask } from './reminder.ts'
 import { EndAction, GoalDoc, ImagesAction, StartAction } from './refs.ts'
 import type { Criterion, Decision, Ending, Goal } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const TRIES = 3
 const TEXT_CHARS = 2000
 
 export const Goals = defineDoc<{ next: number; goals: Goal[] }>({
   kind: GoalDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
