@@ -9,6 +9,7 @@ import {
 import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { AcpSessionState as Session } from '../../lib/acp-session.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { inProcess } from '../../lib/errors.ts'
@@ -26,7 +27,7 @@ import {
   PromptAction,
   StartAction,
 } from './refs.ts'
-import type { AcpSession, PermissionAsk } from './refs.ts'
+import type { AcpSession, PermissionAsk } from '../../shared/acp.ts'
 import { connectRpc, RpcError } from './rpc.ts'
 import type { Json, Rpc } from './rpc.ts'
 import {
@@ -35,7 +36,6 @@ import {
   apply,
   configOptions,
   record,
-  Session,
   settleTurn,
   str,
   Turn,
@@ -65,10 +65,11 @@ function text(args: unknown, name: string) {
   return value
 }
 
-function makeClient(host: ExtensionHost) {
+export function makeClient(host: ExtensionHost) {
   const conversations = host.need(ConversationsApi)
   const workspaces = host.need(WorkspacesApi)
   const live = new Map<ConversationId, Live>()
+  const prompts = new Map<ConversationId, { stopped: boolean }>()
   const holds = new Map<ConversationId, number>()
   let closed = true
   const commit = <T>(change: (tx: Tx) => Promise<T>) => host.harness().commit(change, context)
@@ -126,6 +127,23 @@ function makeClient(host: ExtensionHost) {
     }
   }
 
+  async function stopSession(id: ConversationId) {
+    const prompt = prompts.get(id)
+    if (prompt) prompt.stopped = true
+    const agent = live.get(id)
+    if (agent) return stopAgent(agent)
+    if (!prompt) return
+    await commit(async (tx) => {
+      const session = await tx.doc(Session, id)
+      if (session.status !== 'running') return
+      session.status = 'idle'
+      delete session.permission
+      await settleTurn(tx, id)
+      await appendAssistant(tx, id, [], 'aborted', 'Stopped')
+    })
+    if (prompts.get(id) === prompt) prompts.delete(id)
+  }
+
   async function stop(ids: readonly ConversationId[]): Promise<Disposable> {
     for (const id of ids) holds.set(id, (holds.get(id) ?? 0) + 1)
     const release = () => {
@@ -136,12 +154,7 @@ function makeClient(host: ExtensionHost) {
       }
     }
     try {
-      await Promise.all(
-        ids.map(async (id) => {
-          const agent = live.get(id)
-          if (agent) await stopAgent(agent)
-        }),
-      )
+      await Promise.all(ids.map(stopSession))
       return { [Symbol.dispose]: release }
     } catch (error) {
       release()
@@ -153,7 +166,7 @@ function makeClient(host: ExtensionHost) {
   host.onOpen(async (opened) => {
     opened.defer(async () => {
       closed = true
-      ;(await stop([...live.keys()]))[Symbol.dispose]()
+      ;(await stop([...new Set([...live.keys(), ...prompts.keys()])]))[Symbol.dispose]()
     })
     const ids = await commit(async (tx) => {
       const found: ConversationId[] = []
@@ -161,7 +174,6 @@ function makeClient(host: ExtensionHost) {
       do {
         const page = await tx.scanConversations({}, 256, cursor)
         for (const { id } of page.items) {
-          if ((await tx.doc(host.metadata, id)).label !== 'acp') continue
           const session = await tx.doc(Session, id)
           if (session.status && session.status !== 'offline') found.push(id)
         }
@@ -188,7 +200,7 @@ function makeClient(host: ExtensionHost) {
     'stop-concluded',
     [Concluded],
     async (tx, event) => {
-      const ids = event.data.conversations.filter((id) => live.has(id))
+      const ids = event.data.conversations.filter((id) => live.has(id) || prompts.has(id))
       if (!ids.length) return
       await tx.createTask(
         StopConcluded,
@@ -209,22 +221,31 @@ function makeClient(host: ExtensionHost) {
       throw new Error('This ACP conversation is concluded')
   }
 
-  async function connect(id: ConversationId) {
-    if (closed || holds.has(id)) throw new Error(offline)
+  async function connect(id: ConversationId, prompt?: { stopped: boolean }) {
+    const check = () => {
+      if (closed || holds.has(id) || prompt?.stopped) throw new Error(offline)
+    }
+    check()
     const existing = live.get(id)
     if (existing?.stopping) throw new Error(offline)
     if (existing?.sessionId) return existing
     if (existing) throw new Error('Antigravity is still connecting')
-    const workspace = await workspaces.get(id, context)
-    if (workspace && workspace.state !== 'ready')
-      throw new Error(workspace.error ?? `The worktree is ${workspace.state}`)
+    if (await workspaces.get(id, context)) {
+      const kept = await workspaces.ready(id, context)
+      check()
+      const workspace = await workspaces.get(id, context)
+      if (kept || workspace?.state !== 'ready')
+        throw new Error(
+          kept?.reason ?? workspace?.error ?? `The worktree is ${workspace?.state ?? 'missing'}`,
+        )
+    }
     const conversation = await host.harness().conversation(id, context)
     const cwd = (await conversation?.agent(context))?.cwd ?? host.projectRoot
     const previous = await commit(async (tx) => {
       await admit(tx, id)
       return (await tx.doc(Session, id)).sessionId
     })
-    if (closed || holds.has(id)) throw new Error(offline)
+    check()
     const child = spawn(command(), ['acp'], { cwd, stdio: ['pipe', 'pipe', 'ignore'] })
     const rpc = connectRpc(child.stdout, child.stdin, {
       disconnect: () => child.kill(),
@@ -350,44 +371,52 @@ function makeClient(host: ExtensionHost) {
         return created
       })
       host.harness().resume()
-      run(
-        (async () => {
-          if (isolated) await workspaces.ready(id, context)
-          await connect(id)
-        })().catch((error: unknown) => fail(id, error)),
-      )
+      run(connect(id).catch((error: unknown) => fail(id, error)))
       return { id: Number(id) }
     },
     async prompt(id: ConversationId, words: string) {
-      await commit(async (tx) => {
-        await admit(tx, id)
-        const session = await tx.doc(Session, id)
-        if (!session.status) throw new Error('This is not an ACP conversation')
-        if (session.status === 'running' || session.status === 'connecting')
-          throw new Error('Antigravity is still working')
-        await tx.appendEntry(id, {
-          kind: 'pi.user',
-          model: [{ role: 'user', content: words, timestamp: Date.now() }],
+      if (prompts.has(id)) throw new Error('Antigravity is still working')
+      const prompt = { stopped: false }
+      prompts.set(id, prompt)
+      const forget = () => {
+        if (prompts.get(id) === prompt) prompts.delete(id)
+      }
+      try {
+        await commit(async (tx) => {
+          await admit(tx, id)
+          if (prompt.stopped) throw new Error(offline)
+          const session = await tx.doc(Session, id)
+          if (!session.status) throw new Error('This is not an ACP conversation')
+          if (session.status === 'running' || session.status === 'connecting')
+            throw new Error('Antigravity is still working')
+          await tx.appendEntry(id, {
+            kind: 'pi.user',
+            model: [{ role: 'user', content: words, timestamp: Date.now() }],
+          })
+          session.status = 'running'
+          delete session.error
         })
-        session.status = 'running'
-        delete session.error
-      })
+      } catch (error) {
+        forget()
+        throw error
+      }
       let active: Live | undefined
       run(
         (async () => {
-          const agent = (active = await connect(id))
-          if (agent.stopping) throw new Error(offline)
+          const agent = (active = await connect(id, prompt))
+          if (agent.stopping || prompt.stopped) return
           const result = record(
             await agent.rpc.request('session/prompt', {
               sessionId: agent.sessionId!,
               prompt: [{ type: 'text', text: words }],
             }),
           )
-          if (agent.stopping) return
+          if (agent.stopping || prompt.stopped) return
           endPermission(agent)
           await flush(id, agent)
           const stopReason = str(result.stopReason)
           await commit(async (tx) => {
+            if (prompt.stopped) return
             const session = await tx.doc(Session, id)
             session.status = live.get(id) === agent ? 'idle' : 'offline'
             delete session.permission
@@ -401,12 +430,16 @@ function makeClient(host: ExtensionHost) {
                 stopReason === 'cancelled' ? 'Stopped' : `Stopped: ${stopReason}`,
               )
           })
-        })().catch((error: unknown) => (active?.stopping ? undefined : fail(id, error))),
+        })()
+          .catch((error: unknown) =>
+            prompt.stopped || active?.stopping ? undefined : fail(id, error),
+          )
+          .finally(forget),
       )
     },
     async cancel(id: ConversationId) {
       const agent = live.get(id)
-      if (!agent) return
+      if (!agent) return stopSession(id)
       const request = agent.permission?.ask.id
       cancelAgent(agent)
       if (!agent.sessionId) agent.child.kill()

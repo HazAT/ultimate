@@ -578,8 +578,6 @@ export function workspaces(host: Host) {
       if (!record) continue
       await serializeSourceWrites(record.source, async () => {
         if (signal?.aborted) return
-        using external = await host.want(ExternalSessions)?.stop([id])
-        void external
         const workspace = (await get(id, context))!
         if (workspace.state === 'preparing') {
           kept.push({ id, uncommitted: 0, unlanded: 0, busy: 'Workspace is preparing' })
@@ -619,6 +617,8 @@ export function workspaces(host: Host) {
           kept.push(item)
           return
         }
+        using external = await host.want(ExternalSessions)?.stop([id])
+        void external
         if (
           !present &&
           !(await lstat(workspace.source).catch((error: NodeJS.ErrnoException) => {

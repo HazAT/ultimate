@@ -62,10 +62,10 @@ function pathOf(update: Record<string, unknown>, input: Record<string, unknown>)
   )
 }
 
-function commandOf(input: Record<string, unknown>) {
+function commandOf(input: Record<string, unknown>, title: string) {
   const command = input.command ?? input.CommandLine ?? input.cmd
   if (Array.isArray(command)) return command.filter((part) => typeof part === 'string').join(' ')
-  return str(command) ?? ''
+  return str(command) ?? title
 }
 
 export function mergeToolUpdate(
@@ -77,10 +77,6 @@ export function mergeToolUpdate(
   return {
     ...before,
     ...fields,
-    content: [
-      ...(Array.isArray(before.content) ? before.content : []),
-      ...(Array.isArray(update.content) ? update.content : []),
-    ],
     rawInput: { ...record(before.rawInput), ...record(update.rawInput) },
   } as JsonObject
 }
@@ -116,7 +112,7 @@ export function toolCall(update: JsonObject, agent: string): ToolCall {
     return {
       ...base,
       name: 'bash',
-      arguments: { command: commandOf(input), title, kind },
+      arguments: { command: commandOf(input, title), title, kind },
     }
   return {
     ...base,

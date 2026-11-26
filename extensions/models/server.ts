@@ -12,6 +12,7 @@ import {
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Family, LoginChanged } from './api.ts'
+import { AcpSessionState } from '../../lib/acp-session.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import {
@@ -119,7 +120,7 @@ export const actions = {
   setDefault: implementAction(SetDefaultAction, async (args, { host, conversationId }) => {
     if (
       conversationId !== undefined &&
-      (await host.harness().snapshot(host.metadata, conversationId, context))?.label === 'acp'
+      (await host.harness().snapshot(AcpSessionState, conversationId, context))?.status
     )
       throw new Error('Set the model through Antigravity’s ACP controls')
     const change = await setDefault(host, text(args, 'model'))

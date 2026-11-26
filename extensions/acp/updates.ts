@@ -1,21 +1,14 @@
 import { defineDoc } from '@earendil-works/pi-durable'
 import type { ConversationId, JsonObject, Tx } from '@earendil-works/pi-durable'
 import type { AssistantMessage, ToolCall } from '@earendil-works/pi-ai'
+import { AcpSessionState as Session } from '../../lib/acp-session.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { SessionDoc, TurnDoc } from './refs.ts'
-import type { AcpSession, ConfigOption, LiveTool, LiveTurn } from './refs.ts'
+import type { ConfigOption } from '../../shared/acp.ts'
+import { TurnDoc } from './refs.ts'
+import type { LiveTool, LiveTurn } from './refs.ts'
 import { fileLinksAsPaths, mergeToolUpdate, toolCall, toolResult } from './tools.ts'
 
 export const agentName = 'Antigravity'
-export const Session = defineDoc<Partial<AcpSession>>({
-  kind: SessionDoc.kind,
-  checkpointWhen: () => false,
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({}),
-})
 export const Turn = defineDoc<LiveTurn>({
   kind: TurnDoc.kind,
   checkpointWhen: () => false,

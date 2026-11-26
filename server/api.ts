@@ -8,6 +8,7 @@ import type {
   TaskGraph,
 } from '@earendil-works/pi-durable'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { AcpSessionState } from '../lib/acp-session.ts'
 import { onCommit } from '../lib/commits.ts'
 import { inProcess } from '../lib/errors.ts'
 import type {
@@ -896,7 +897,7 @@ export async function createApi(
               break
             }
             case 'configure': {
-              if ((await harness.snapshot(Metadata, conversation.id, context))?.label === 'acp')
+              if ((await harness.snapshot(AcpSessionState, conversation.id, context))?.status)
                 throw new HttpError(409, 'Set the model through Antigravity’s ACP controls')
               const configure: ConfigureRequest = {}
               if (data.model !== undefined) {
@@ -939,7 +940,7 @@ export async function createApi(
               break
             }
             case 'compact':
-              if ((await harness.snapshot(Metadata, conversation.id, context))?.label === 'acp')
+              if ((await harness.snapshot(AcpSessionState, conversation.id, context))?.status)
                 throw new HttpError(409, 'ACP conversations cannot be compacted')
               if (data.instructions !== undefined && typeof data.instructions !== 'string')
                 throw new HttpError(400, 'Invalid instructions')

@@ -67,7 +67,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     case 'session/prompt': {
       const text = params.prompt[0].text
       assert.deepEqual(params, { sessionId, prompt: [{ type: 'text', text }] })
-      if (text === 'Continue') assert.equal(loaded, true)
+      if (text.startsWith('Continue')) assert.equal(loaded, true)
       if (text !== 'Inspect the file') {
         answer(id, `Fake ACP: ${text}`)
         break

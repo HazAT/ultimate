@@ -23,6 +23,7 @@
     "web/src",
     "extensions/**/*.tsx",
     ".ultimate/extensions/**/*.tsx",
+    "shared/acp.ts",
     "shared/protocol.ts",
     "shared/events.ts",
     "shared/extension-api.ts",

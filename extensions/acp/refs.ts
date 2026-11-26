@@ -2,32 +2,6 @@
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
-/** A select option Antigravity offers for the session, such as its model or mode. */
-export type ConfigOption = {
-  id: string
-  name: string
-  category?: string
-  value: string
-  options: { value: string; name: string }[]
-}
-
-/** An unanswered permission with the agent's own choices. */
-export type PermissionAsk = {
-  id: string
-  title: string
-  options: { optionId: string; name: string; kind: string }[]
-}
-
-/** The external session behind the conversation; its turns are stored as native entries. */
-export type AcpSession = {
-  sessionId?: string
-  status: 'connecting' | 'idle' | 'running' | 'offline' | 'error'
-  config: ConfigOption[]
-  permission?: PermissionAsk
-  usage?: { used: number; size: number }
-  error?: string
-}
-
 /** What is still streaming, before being stored as `pi.assistant` and `pi.tool-result` entries. */
 export type LiveTurn = {
   open?: { type: 'text' | 'thinking'; text: string }
@@ -44,8 +18,6 @@ export type LiveTool = {
 
 /** `acp.turn` on an ACP conversation: its streaming tail. */
 export const TurnDoc = docRef<LiveTurn>('acp.turn')
-/** `acp.session` is empty outside an ACP conversation. */
-export const SessionDoc = docRef<Partial<AcpSession>>('acp.session')
 
 /** Whether the Antigravity CLI is installed. Does not run the CLI. */
 export const AvailableAction = actionRef<null, boolean>('acp', 'available')

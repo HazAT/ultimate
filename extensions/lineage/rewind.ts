@@ -11,6 +11,7 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
+import { AcpSessionState } from '../../lib/acp-session.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import { git } from '../../lib/git.ts'
@@ -55,6 +56,7 @@ const SUMMARY_SYSTEM =
 
 export async function refusal(tx: Tx, id: ConversationId, at: EntryId) {
   if (!(await tx.conversation(id))) return `No conversation #${id}`
+  if ((await tx.doc(AcpSessionState, id)).status) return 'ACP conversations cannot go back.'
   if ((await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id))
     return "Roots can't go back: a root's context is its tally."
   const found = await tx.scanEntries({ conversationId: id, minEntryId: at, maxEntryId: at }, 1)

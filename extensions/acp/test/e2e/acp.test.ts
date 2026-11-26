@@ -5,10 +5,10 @@ import { lstat, mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
+import { AcpSessionState as Session } from '../../../../lib/acp-session.ts'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { SOURCE_HEADER } from '../../../../shared/protocol.ts'
 import { fauxServer, post, temp, until } from '../../../../test/helpers.ts'
-import { Session } from '../../updates.ts'
 
 it('streams the fake ACP agent, binds approval to the request, and saves output before shutdown or conclusion', async () => {
   vi.stubEnv('ULTIMATE_AGY_COMMAND', fileURLToPath(new URL('../fake-agy.mjs', import.meta.url)))
@@ -115,6 +115,15 @@ it('streams the fake ACP agent, binds approval to the request, and saves output 
     expect((await session())?.permission).toBeUndefined()
     expect(JSON.stringify(await entries()).match(/Final output before exit\./g)).toHaveLength(2)
     await expect(lstat(workspace)).rejects.toMatchObject({ code: 'ENOENT' })
+
+    const resumed = await post(server, '/api/extensions/conversations/actions/resume', {
+      args: { ids: [id] },
+    })
+    expect(resumed).toMatchObject({ status: 200, data: { result: { resumed: [id] } } })
+    expect((await action('prompt', { text: 'Continue after conclusion' }, id)).status).toBe(200)
+    await until(async () => (await session())?.status === 'idle')
+    expect((await lstat(workspace)).isDirectory()).toBe(true)
+    expect(JSON.stringify(await entries())).toContain('Fake ACP: Continue after conclusion')
   } finally {
     await server.close()
   }
