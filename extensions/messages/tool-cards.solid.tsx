@@ -151,7 +151,7 @@ export function MessageCall(props: CallProps) {
 export function BranchCall(props: CallProps) {
   const log = useDocOf(() => ROOT, MessagesDoc)
   const started = createMemo(() =>
-    /^Branch #(\d+) started; message (\d+) sent\.$/.exec(props.call.output),
+    /^Branch #(\d+)(?: · .*)? started; message (\d+) sent\.$/.exec(props.call.output),
   )
   const id = () => (started() ? parseConversationId(Number(started()?.[1])) : undefined)
   const message = createMemo(() => log()?.messages.find((m) => m.id === Number(started()?.[2])))

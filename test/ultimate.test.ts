@@ -317,12 +317,13 @@ it('starts a lineage branch with a message input and caller attribution, returns
       (m) =>
         m.from === branch &&
         m.to === ultimate &&
-        m.text === `Tool result: Branch #${sameTree.to} started; message ${sameTree.id} sent.`,
+        m.text ===
+          `Tool result: Branch #${sameTree.to} · Same tree started; message ${sameTree.id} sent.`,
     ),
   )
   await until(async () =>
     (await entries(f.server, ultimate)).some((entry) =>
-      JSON.stringify(entry).includes(`Branch #${sameTree.to} started`),
+      JSON.stringify(entry).includes(`Branch #${sameTree.to} · Same tree started`),
     ),
   )
   await f.server.harness.commit(async (tx) => {

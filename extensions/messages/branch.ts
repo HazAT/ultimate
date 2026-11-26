@@ -146,11 +146,13 @@ export const branchTool = (host: ExtensionHost) =>
               requestId: `sidechat:branch:${api.taskId}:${api.callId}`,
             },
           )
+      const title = (await host.harness().snapshot(host.metadata, parseConversationId(id), ctx))
+        ?.title
       return {
         output: [
           {
             type: 'text',
-            text: `Branch #${id} started; message ${message} sent.`,
+            text: `Branch #${id}${title ? ` · ${title}` : ''} started; message ${message} sent.`,
           },
         ],
       }
