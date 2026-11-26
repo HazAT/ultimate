@@ -9,6 +9,8 @@ import {
   cn,
   errorMessage,
   events,
+  native,
+  nativeCan,
   ROOT,
   showSurface,
   switchConversation,
@@ -31,16 +33,21 @@ import type { Subscription } from './refs.ts'
 
 type Here = {
   registration?: ServiceWorkerRegistration
-  subscription?: PushSubscription
+  native?: boolean
+  subscription?: { endpoint: string; unsubscribe(): Promise<unknown> }
   error?: string
 }
 const [here, setHere] = createRoot(() => createSignal<Here>({}))
 const update = (change: Partial<Here>) => setHere((previous) => ({ ...previous, ...change }))
 const failed = (error: unknown) => update({ error: errorMessage(error) })
 
-const json = (subscription: PushSubscription): Subscription => ({
-  ...(subscription.toJSON() as Omit<Subscription, 'origin'>),
+const json = (subscription: PushSubscriptionJSON): Subscription => ({
+  ...(subscription as Omit<Subscription, 'origin'>),
   origin: location.origin,
+})
+const nativeSubscription = ({ endpoint }: PushSubscriptionJSON) => ({
+  endpoint: endpoint!,
+  unsubscribe: native.pushUnsubscribe,
 })
 const bytes = (key: string) =>
   Uint8Array.from(atob(key.replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0))
@@ -52,10 +59,20 @@ const hasPushSupport =
   'pushManager' in ServiceWorkerRegistration.prototype &&
   'getNotifications' in ServiceWorkerRegistration.prototype
 
+async function launchNative() {
+  update({ native: true })
+  const subscription = await native.pushSubscription()
+  if (!subscription) return
+  update({ subscription: nativeSubscription(subscription) })
+  await writingAs('app', () => api.action(SubscribeAction, { subscription: json(subscription) }))
+}
+
 let launched = false
-function launch() {
+async function launch() {
   if (launched) return
   launched = true
+  if (await nativeCan('push')) return launchNative().catch(failed)
+  if (!hasPushSupport) return
   navigator.serviceWorker
     .register('/sw.js')
     .then(async (registration) => {
@@ -64,7 +81,7 @@ function launch() {
       if (!subscription || Notification.permission !== 'granted') return
       update({ subscription })
       await writingAs('app', () =>
-        api.action(SubscribeAction, { subscription: json(subscription) }),
+        api.action(SubscribeAction, { subscription: json(subscription.toJSON()) }),
       )
     })
     .catch(failed)
@@ -85,6 +102,7 @@ export function Pusher() {
   )
   const subscribedEndpoint = createMemo(() => here().subscription?.endpoint)
   const workerRegistration = createMemo(() => here().registration)
+  const nativePush = createMemo(() => here().native === true)
 
   createEffect(subscribedEndpoint, (endpoint) => {
     if (!endpoint) return undefined
@@ -108,6 +126,15 @@ export function Pusher() {
       window.removeEventListener('pagehide', hide)
     }
   })
+  createEffect(
+    () => ({ settled: settledTags(), native: nativePush() }),
+    ({ settled, native: inApp }) => {
+      if (!settled || !inApp) return
+      native
+        .closeNotifications(settled.split('\n'))
+        .catch((error: unknown) => console.warn('Closing answered notifications', error))
+    },
+  )
   createEffect(
     () => ({ settled: settledTags(), registration: workerRegistration() }),
     (state) => {
@@ -136,8 +163,8 @@ export function Pusher() {
     },
   )
   onSettled(() => {
+    void launch()
     if (!hasPushSupport) return undefined
-    launch()
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
       const url = new URL(event.data.url, location.href)
@@ -162,6 +189,7 @@ export function Pusher() {
 }
 
 function blocked() {
+  if (here().native) return undefined
   if (!hasPushSupport)
     return "This browser can't receive push notifications; install Ultimate as an app first."
   if (Notification.permission === 'denied')
@@ -172,13 +200,20 @@ function blocked() {
 async function toggle(on: boolean, source: string) {
   const { registration, subscription } = here()
   update({ error: undefined })
-  if (on && registration) {
+  if (on && here().native) {
+    const { key } = await api.action(KeyAction, null)
+    const next = await native.pushSubscribe(key)
+    await writingAs(source, () => api.action(SubscribeAction, { subscription: json(next) }))
+    update({ subscription: nativeSubscription(next) })
+  } else if (on && registration) {
     const { key } = await api.action(KeyAction, null)
     const next = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: bytes(key),
     })
-    await writingAs(source, () => api.action(SubscribeAction, { subscription: json(next) }))
+    await writingAs(source, () =>
+      api.action(SubscribeAction, { subscription: json(next.toJSON()) }),
+    )
     update({ subscription: next })
   } else if (!on && subscription) {
     await subscription.unsubscribe()
@@ -221,7 +256,9 @@ export function Bell() {
           Notifications on this device
           <Switch
             checked={on()}
-            disabled={!on() && (!here().registration || blocked() !== undefined)}
+            disabled={
+              !on() && ((!here().registration && !here().native) || blocked() !== undefined)
+            }
             onCheckedChange={(next, details) => void toggle(next, details.source).catch(failed)}
           />
         </label>

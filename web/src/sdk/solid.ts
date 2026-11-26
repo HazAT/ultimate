@@ -247,3 +247,5 @@ export { ContributedIcon } from './contribution.solid.tsx'
  */
 export { Contribution } from './contribution.solid.tsx'
 export { Provided, renderEntry, ScopedConversation, Slot } from './parts.solid.tsx'
+export { native, nativeApp, nativeCan } from './native.ts'
+export type { NativeCapability, NativeInfo, NativeShare } from './native.ts'
