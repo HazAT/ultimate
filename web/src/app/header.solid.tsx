@@ -1,7 +1,7 @@
 import { ChevronDown, Command as CommandIcon, Ellipsis, PanelLeft, PanelRight } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
-import { createMemo, createRenderEffect, createSignal, For, Show } from 'solid-js'
+import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   DropdownMenu,
@@ -329,13 +329,10 @@ export function Header(props: { children?: JSX.Element }) {
   const panels = () => panelsMounted() && panelItems(extensions()).length > 0
   const panelOpen = useRegionOpen('panels')
   const viewport = useViewport()
-  createRenderEffect(
-    () => headers,
-    (count) => {
-      count.set(count.get() + 1)
-      return () => count.set(count.get() - 1)
-    },
-  )
+  onSettled(() => {
+    headers.set(headers.get() + 1)
+    return () => headers.set(headers.get() - 1)
+  })
   return (
     <Show
       when={viewport() !== 'phone'}
