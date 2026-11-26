@@ -13,6 +13,7 @@ vi.mock('@/sdk/solid', async (original) => ({
   useAction: () => ({ data: () => ({ model: 'antigravity/gemini-4-neon-low' }), refetch() {} }),
   useDocOf: () => () => undefined,
   useEvent: () => undefined,
+  useUiState: (_key: string, initial: unknown) => createSignal<unknown>(initial),
   useExtensionUiState: (key: string, initial: unknown) =>
     createSignal(key === 'folded' ? ui.folded : initial),
 }))
