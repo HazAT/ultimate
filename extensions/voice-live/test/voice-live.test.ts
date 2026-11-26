@@ -457,6 +457,12 @@ it('a stored pick for a model that no longer exists reads "model removed", not "
   await f.server.harness.commit(async (tx) => {
     ;(await tx.doc(Session, ROOT_CONVERSATION_ID)).model = 'antigravity/gone-model'
   }, context)
+  const runtime = f.server.host.modelRuntime
+  const listed = runtime.getAvailableSnapshot()
+  vi.spyOn(runtime, 'getAvailableSnapshot').mockReturnValue([
+    ...listed,
+    { ...listed[0], provider: 'antigravity', id: 'gone-model' },
+  ])
   expect((await f.action('status', null)).data.result).toMatchObject({
     source: 'picked',
     reason: 'antigravity/gone-model (picked): model removed',
@@ -602,6 +608,28 @@ it("voice_handoff carries the user's own turns of this session in order, without
   await f.turn({ key: 'again', text: call('Second') })
   await until(async () => (await cards()).length === 2)
   expect((await cards())[1].data).toMatchObject({ words: ['a new thought', call('Second')] })
+})
+
+it('after a handoff the next fork keeps the model the session ran on, not a settings change since', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Fork, first.id)).handedOff = true
+  }, context)
+  await writeFile(
+    join(f.home, '.ultimate/settings.json'),
+    JSON.stringify({ voice: { model: 'faux/main-faux' } }),
+  )
+  const second = await f.turn({ key: 'two', text: 'next' })
+  expect(second.id).not.toBe(first.id)
+  expect(f.requests.at(-1)!.model).toBe('gemini-faux')
+  expect(
+    await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context),
+  ).not.toHaveProperty('model')
+  expect((await f.action('status', null)).data.result).toMatchObject({
+    model: 'faux/gemini-faux',
+    source: 'settings',
+  })
 })
 
 it('a request for a session that handed off and was then ended is refused and opens nothing', async () => {

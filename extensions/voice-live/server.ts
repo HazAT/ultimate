@@ -316,8 +316,10 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
       current.ended = true
       const handedOff = await tx.doc(AgentDoc, session.id!)
       keepModel(session, current, handedOff)
-      const kept = parseModel(session.model)
-      if (kept) [model, source] = [kept, 'picked']
+      if (handedOff.model) {
+        model = handedOff.model
+        source = modelName(model) === current.opened?.model ? current.opened.source : 'picked'
+      }
       await host.need(ConversationsApi).concludeIn(tx, [session.id!], 'user')
     }
     const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
