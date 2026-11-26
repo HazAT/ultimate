@@ -32,16 +32,35 @@ export type Dream = {
 }
 
 /**
- * `{ prepared?, sleep?, dream? }` on conversation 1: the next chapter @ultimate prepared, the sleep into it, and the
- * latest dream.
+ * A built-in's fire asking the user whether to dream now, open until they start, skip, or a dream branch starts:
+ * `automation` that fired; `handoff` @ultimate parked for it at `parked`; `snooze` hides it until `until` or, with
+ * `idle`, while any conversation is busy.
  */
-export const DreamDoc = docRef<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>('dream.next')
+export type Ask = {
+  at: number
+  automation: NonNullable<RequestedEntry['automation']>
+  handoff?: string
+  parked?: number
+  snooze?: { until: number } | { idle: true }
+}
 
 /**
- * A `dream.requested` entry in @ultimate's conversation: who asked for the dream, the user's Dream button or a
- * built-in automation (`pause`: how long the user had been away, ms).
+ * `{ prepared?, sleep?, dream?, ask? }` on conversation 1: the next chapter @ultimate prepared, the sleep into it, the
+ * latest dream, and the open ask to dream.
  */
-export type RequestedEntry = { automation?: { id: string; name: string; pause?: number } }
+export const DreamDoc = docRef<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream; ask?: Ask }>(
+  'dream.next',
+)
+
+/**
+ * A `dream.requested` entry in @ultimate's conversation: the dream was started, by the user's Dream button or Start on
+ * the ask of a built-in `automation` (`pause`: how long the user had been away, ms); `agent` when @ultimate pressed
+ * Start in the user's place. A `dream.asked` entry carries the same `automation` when its fire opened the ask.
+ */
+export type RequestedEntry = {
+  automation?: { id: string; name: string; pause?: number }
+  agent?: true
+}
 
 /** The new chapter's first card, including what was carried over. */
 export type ChapterEntry = {
@@ -52,8 +71,20 @@ export type ChapterEntry = {
   carried?: Seed['counts']
 }
 
-/** No arguments: ask @ultimate to dream now. User-only. */
+/**
+ * No arguments: ask @ultimate to dream now, with the open ask's parked handoff when there is one, and close the ask.
+ * @ultimate may call it only in the user's place during a hands-off goal.
+ */
 export const StartAction = actionRef<null, { requested: true }>('dream', 'start')
+/** `{ handoff }`: @ultimate parks its handoff on the open ask, for Start to launch. */
+export const ParkAction = actionRef<{ handoff: string }, { parked: number }>('dream', 'park')
+/** `{ until }` (epoch ms) or `{ idle: true }`: hide the open ask until then, or while anything runs. User-only. */
+export const LaterAction = actionRef<{ until: number } | { idle: true }, Ask['snooze']>(
+  'dream',
+  'later',
+)
+/** No arguments: close the open ask without dreaming. User-only. */
+export const SkipAction = actionRef<null, { skipped: true }>('dream', 'skip')
 /** No arguments: the user pressed Fall asleep after the dream; @ultimate is asked to prepare the chapter. User-only. */
 export const ReadyAction = actionRef<null, { asked: number }>('dream', 'ready')
 /** No arguments: the user stays in this chapter; the dream's Fall asleep cue goes. User-only. */
