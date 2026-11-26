@@ -51,7 +51,7 @@ function useAskState() {
     if (!snooze) return false
     return 'idle' in snooze ? running() > 0 : snooze.until > now()
   })
-  return { ask, running, percent, hidden }
+  return { ask, running, percent, hidden, ultimate }
 }
 
 const runningText = (running: number) =>
@@ -68,6 +68,7 @@ export function useAskItems() {
       {
         key: 'dream:ask',
         at: ask.at,
+        conversation: state.ultimate(),
         tag: 'dream',
         title: 'Start dreaming now?',
         gist: [
