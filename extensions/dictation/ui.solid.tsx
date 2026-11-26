@@ -5,6 +5,8 @@ export { base64, capture, drawWave, MIN_SPOKEN_SECONDS } from './capture.ts'
 export type { Recorded } from './capture.ts'
 /** Receives a take; `finish` is told when the same sink already owns a retake. */
 export type { Sink } from './capture.ts'
+/** One press of the microphone: `started` once it records, then `release` sends it or `cancel` discards it. */
+export type { Take } from './capture.ts'
 /** Bind hold and tap gestures to a microphone sink's lifecycle. */
 export { createTalk } from './talk.ts'
 

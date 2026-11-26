@@ -108,27 +108,56 @@ it('a hold that started in the main box ends when the finger lifts, though the b
   expect(view.querySelector('[data-voice-talk]')).toBeNull()
   await vi.waitFor(() => expect(capture.capturing(voiceSink)).toBe(true))
   speak()
-  window.dispatchEvent(touch('pointerup', 2))
-  expect(capture.talking(voiceSink)).toBe(true)
   window.dispatchEvent(touch('pointerup'))
   await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
   settleTranscripts({ transcripts: { 'rec-1': 'hello' } }, parseConversationId(40))
   await vi.waitFor(() => expect(harness.calls.map((call) => call.name)).toContain('turn'))
 })
 
-it('a take an agent starts records and sends as the agent, after the mic has shut down', async () => {
+it('a second finger pressing and lifting on the bar leaves the first finger\u2019s recording running', async () => {
+  const view = renderSolid(() => <TalkBar />)
+  const bar = () => view.querySelector('[data-voice-talk]')!
+  bar().dispatchEvent(touch('pointerdown'))
+  await vi.waitFor(() => expect(capture.capturing(voiceSink)).toBe(true))
+  speak()
+  bar().dispatchEvent(touch('pointerdown', 2))
+  window.dispatchEvent(touch('pointerup', 2))
+  expect(capture.talking(voiceSink)).toBe(true)
+  expect(harness.calls.map((call) => call.name)).not.toContain('record')
+  window.dispatchEvent(touch('pointerup'))
+  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+})
+
+it('a take is sent as whoever started it, even when someone else starts the next take before it is sent', async () => {
   const { writingAs } = await import('@/sdk/solid')
   await writingAs('agent', () => capture.press(voiceSink))?.started
   speak()
   const released = capture.take(voiceSink)!.release()
+  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+  const next = writingAs('person', () => capture.press(voiceSink))
   await vi.waitFor(() => expect(harness.calls.map((call) => call.name)).toContain('record'))
   settleTranscripts({ transcripts: { 'rec-1': 'hello' } }, parseConversationId(40))
   await released
+  await next?.cancel()
   const writes = harness.calls.filter((call) => call.name === 'record' || call.name === 'turn')
   expect(writes).toEqual([
     { name: 'record', who: 'agent' },
     { name: 'turn', who: 'agent' },
   ])
+})
+
+it('a cut-in whose mic fails shows the error in the bar, not the pending reply\u2019s Thinking', () => {
+  const view = renderSolid(() => <TalkBar />)
+  dock.setPhase('thinking')
+  dock.setStatus('Thinking\u2026')
+  dock.setError('Microphone access is blocked')
+  flush()
+  expect(view.querySelector('[data-voice-talk]')?.textContent).toContain(
+    'Microphone access is blocked',
+  )
+  dock.setError(undefined)
+  dock.setPhase('idle')
+  dock.setStatus(undefined)
 })
 
 it('a recording too short to send says so in the bar', async () => {

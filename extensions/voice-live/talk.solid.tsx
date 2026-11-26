@@ -5,6 +5,7 @@ import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { capture, createTalk, talkMode } from '../dictation/ui.solid.tsx'
+import type { Take } from '../dictation/ui.solid.tsx'
 import { dock, playerState, voiceSink } from './dock.solid.tsx'
 import { Waveform } from './turns.solid.tsx'
 
@@ -53,20 +54,25 @@ export function ModeSwitch(props: { talking: boolean; onToggle: (talking: boolea
 export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) {
   const recording = () => capture.capturing(voiceSink)
   const busy = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
+  let held: { finger: number; take: Take } | undefined
   const talk = createTalk({
     tap: () => talkMode() === 'tap',
-    talking: () => capture.talking(voiceSink),
+    talking: () => held?.take.active() ?? false,
     press: async () => {
+      const take = capture.press(voiceSink)
+      if (!take) return
+      held = { finger: pressing, take }
       props.onTalk?.()
-      await capture.press(voiceSink)?.started
+      await take.started
     },
-    release: async () => capture.take(voiceSink)?.release(),
-    cancel: async () => capture.take(voiceSink)?.cancel(),
+    release: async () => held?.take.release(),
+    cancel: async () => held?.take.cancel(),
     overCancel: (event) =>
       !!document
         .elementFromPoint(event.clientX, event.clientY)
         ?.closest('[data-voice-talk-cancel]'),
   })
+  let pressing = -1
   const label = () =>
     recording()
       ? talkMode() === 'tap'
@@ -77,16 +83,11 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
         : talkMode() === 'tap'
           ? 'Tap to talk'
           : 'Hold to talk'
-  const status = () =>
-    playerState().playing
-      ? 'Speaking'
-      : playerState().paused
-        ? 'Paused'
-        : busy()
-          ? (dock.status() ?? 'Thinking…')
-          : outcome()
-  const outcome = () => {
+  const status = () => {
     if (dock.error()) return dock.error()
+    if (playerState().playing) return 'Speaking'
+    if (playerState().paused) return 'Paused'
+    if (busy()) return dock.status() ?? 'Thinking…'
     const said = dock.status()
     return said && dock.phase() !== 'done' && dock.phase() !== 'speaking' ? said : undefined
   }
@@ -122,24 +123,29 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
         data-voice-talk
         onClick={(event) => {
           if (event instanceof PointerEvent && touchLike(event)) return undefined
-          const owner = capture.take(voiceSink)
-          if (owner) return owner.release()
+          if (held?.take.active()) return held.take.release()
+          const take = capture.press(voiceSink)
+          if (!take) return undefined
+          held = { finger: -1, take }
           props.onTalk?.()
-          return capture.press(voiceSink)?.started
+          return take.started
         }}
         onPointerDown={(event) => {
-          if (!touchLike(event)) return
-          const id = event.pointerId
+          if (!touchLike(event) || held?.take.active()) return
+          pressing = event.pointerId
+          talk.pointer.onPointerDown(event)
+          const mine = held?.finger === pressing ? held : undefined
+          if (!mine) return
           const end = (next: PointerEvent) => {
-            if (next.pointerId !== id) return
+            if (next.pointerId !== mine.finger) return
             window.removeEventListener('pointerup', end)
             window.removeEventListener('pointercancel', end)
+            if (held !== mine) return
             if (next.type === 'pointerup') talk.pointer.onPointerUp(next)
             else talk.pointer.onPointerCancel(next)
           }
           window.addEventListener('pointerup', end)
           window.addEventListener('pointercancel', end)
-          talk.pointer.onPointerDown(event)
         }}
         size={null}
         variant={null}

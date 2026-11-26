@@ -9,7 +9,6 @@ import {
   useConversation,
   useUiState,
   writerNow,
-  writingAs,
 } from '@/sdk/solid'
 type UiWho = ReturnType<typeof writerNow>
 import { every } from '../../lib/timers.ts'
@@ -233,7 +232,6 @@ export const voiceSink: Sink = {
     return live.signal
   },
   start() {
-    takenBy = writerNow()
     dock.setError(undefined)
     const speaking = ours().playing
     dock.player.pause()
@@ -274,16 +272,11 @@ function restore() {
   dock.setStatus(undefined)
 }
 
-let takenBy: UiWho = 'person'
 type Rider = { typed: string; images: readonly Image[]; taken?: true }
 let entering: Rider | undefined
 
 async function finishRecording(recorded: Recorded, retaking: boolean) {
-  const who = takenBy
-  return writingAs(who, () => finishTake(recorded, retaking, who))
-}
-
-async function finishTake(recorded: Recorded, retaking: boolean, who: UiWho) {
+  const who = writerNow()
   const held = dock.held()
   if (!retaking) dock.hold(undefined)
   if (!recorded.spoke) {
