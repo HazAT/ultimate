@@ -22,6 +22,7 @@ import type { RecallState } from './refs.ts'
 import { RecalledEntry } from './types.ts'
 import { MessageEntry } from '../entries/api.ts'
 import type { Recalled } from './types.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const FROM_PERCENT = 20
 const memoryStillFreshInPrompt = (percent: number) => percent < FROM_PERCENT
@@ -33,7 +34,7 @@ const QUERY_TOP = 5
 
 export const Recall = defineDoc<RecallState>({
   kind: RecallDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

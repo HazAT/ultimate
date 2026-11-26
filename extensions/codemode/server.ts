@@ -64,10 +64,11 @@ import {
 } from './summary.ts'
 import type { Call } from './summary.ts'
 import { MAX_MODEL_CALLS, modelCallLimits } from './models.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const RetiredStore = defineDoc({
   kind: 'codemode.store',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   fork: 'asOf',
@@ -76,7 +77,7 @@ const RetiredStore = defineDoc({
 })
 const StoreCopied = defineDoc({
   kind: 'codemode.store-copied',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'rewindable',

@@ -50,10 +50,11 @@ import {
 } from './refs.ts'
 import { StartEntry, WalkthroughEntry, ChoiceEntry } from './entries.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const Starts = defineDoc<{ roots: Record<string, ConversationId>; dismissed?: boolean }>({
   kind: StartsDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -62,7 +63,7 @@ export const Starts = defineDoc<{ roots: Record<string, ConversationId>; dismiss
 })
 const ChoiceRequests = defineDoc<{ payloads: Record<string, JsonObject> }>({
   kind: 'onboarding.choice-requests',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

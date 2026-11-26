@@ -11,6 +11,7 @@ import { ConversationsApi } from '../conversations/api.ts'
 import type { RequestedEntry } from './refs.ts'
 import type { Seed } from './types.ts'
 import { Next } from './next.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const AUTOMATION_NAME = 'Dream before compaction'
 export const CONDITION = { metric: 'context' as const, of: '@ultimate', above: 70 }
@@ -29,7 +30,7 @@ function discardLegacySeedDeletion(value: unknown) {
 
 export const BuiltInDoc = defineDoc<{ id?: string; deleted?: true }>({
   kind: 'dream.after-compaction',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 2,
   migrate: discardLegacySeedDeletion,
   scope: 'conversation',
@@ -40,7 +41,7 @@ export const BuiltInDoc = defineDoc<{ id?: string; deleted?: true }>({
 
 export const PauseDoc = defineDoc<{ id?: string; deleted?: true }>({
   kind: 'dream.after-pause',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

@@ -21,11 +21,12 @@ import type { ActionRef } from '../../../shared/extension-api.ts'
 import { errorMessage } from './format.ts'
 import type { Store } from './store.ts'
 
-/** Per-call options of `api.action`. */
+/** Per-call options of `api.action`; `who` records a writer taken before an `await` (by default, the writer of the moment). */
 export type ActionOptions = {
   conversationId?: ConversationId
   signal?: AbortSignal
   keepalive?: boolean
+  who?: UiWho
 }
 
 export type ActionArgs<Args, Options> = null extends Args
@@ -131,12 +132,16 @@ async function runExtensionAction<Args, Result>(
   request: typeof fetch,
   { extension, name }: ActionRef<Args, Result>,
   args: Args | undefined,
-  { conversationId, signal, keepalive }: ActionOptions,
+  { conversationId, signal, keepalive, who }: ActionOptions,
 ): Promise<{ result: Result; rev?: number; superseded?: true }> {
   const path = `/api/extensions/${encodeURIComponent(extension)}/actions/${encodeURIComponent(name)}`
   const body: ExtensionActionRequest = { args: args ?? null, conversationId }
   try {
-    const data = await postJson<unknown>(request, path, body, { signal, keepalive })
+    const data = await postJson<unknown>(request, path, body, {
+      signal,
+      keepalive,
+      ...(who && { who }),
+    })
     if (!validActionResponse(data)) throw new Error('Invalid action response')
     const { result, rev, superseded } = data
     return { result: result as Result, rev, superseded }

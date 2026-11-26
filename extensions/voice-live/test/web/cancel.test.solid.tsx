@@ -14,6 +14,8 @@ const actions = vi.hoisted(() => [] as string[])
 vi.mock('@/sdk/solid', async () => {
   const { createSignal } = await import('solid-js')
   return {
+    writerNow: () => 'person',
+    writingAs: <T,>(_who: unknown, write: () => T) => write(),
     api: {
       action: (ref: { name: string }) => {
         actions.push(ref.name)

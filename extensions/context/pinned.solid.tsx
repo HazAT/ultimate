@@ -149,7 +149,10 @@ function conversationPrompt(conversation: ConversationId) {
   return (
     <Show when={(!startInView() || changed()) && breakdown()}>
       {(shown) => (
-        <div class="pointer-events-auto bg-background pt-2 pb-1" data-ui="pinned-prompt">
+        <div
+          class="pointer-events-auto bg-background pt-2 pb-1 max-md:hidden"
+          data-ui="pinned-prompt"
+        >
           <Header
             bodyClassName="max-h-[min(70vh,40rem)] overflow-y-auto"
             breakdown={shown()}

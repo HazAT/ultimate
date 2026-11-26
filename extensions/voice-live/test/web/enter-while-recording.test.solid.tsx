@@ -19,6 +19,8 @@ const harness = vi.hoisted(() => ({
 vi.mock('@/sdk/solid', async () => {
   const { createSignal } = await import('solid-js')
   return {
+    writerNow: () => 'person',
+    writingAs: <T,>(_who: unknown, write: () => T) => write(),
     api: {
       action: (ref: { name: string }, args: Record<string, unknown>) => {
         if (ref.name === 'status') return Promise.resolve({ route: 'text' })

@@ -597,10 +597,7 @@ export default host => { host.resource('cleanup.process',()=>{
     )
     await post(server, '/api/ui', { ops: [{ key: 'shell.panel', value: 'settings' }] })
     const fork = await server.root.fork(entry.id, { ownership: { kind: 'ownerless' } }, context)
-    expect(await server.harness.snapshot(UiState, fork.id, context)).toEqual({
-      'shell.panel': 'tasks',
-      'ui.rev': 2,
-    })
+    expect(await server.harness.snapshot(UiState, fork.id, context)).toBeUndefined()
     expect(await server.host.uiState(context)).toEqual({ 'shell.panel': 'settings', 'ui.rev': 3 })
     await post(server, '/api/ui', { ops: [{ key: 'shell.panel', value: 'tasks' }] })
     await first.close()
@@ -1156,8 +1153,9 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(summary()).toMatchObject({ title: 'Explicit title', inputAt: 1000, answerAt: 2000 })
     await stream.close()
   })
-  it('streams extension document snapshots and deltas, with a notice for unknown kinds', async () => {
+  it('streams an absent document as its initial value without creating it, then its creation and deltas', async () => {
     const { server } = await fixture(true)
+    const counter = server.extensions.doc('test.counter')!
     const stream = await attach(server, { docs: ['test.counter', 'missing'] })
     await until(() => stream.events.some((event) => event.name === 'doc'))
     expect(stream.events.find((event) => event.name === 'doc')!.data).toEqual({
@@ -1167,17 +1165,28 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
     expect(stream.events.find((event) => event.name === 'notice')!.data).toEqual(
       expect.objectContaining({ message: 'Unknown extension document: missing' }),
     )
-    server.host.faux!.setResponses([
-      fauxAssistantMessage([fauxToolCall('increment', {})], { stopReason: 'toolUse' }),
-      fauxAssistantMessage('Incremented'),
-    ])
-    await post(server, '/api/conversations/1/submit', { text: 'increment' })
-    await server.harness.waitForIdle(context)
-    await until(() => stream.events.some((event) => event.name === 'docOps'))
-    let value = { count: 0 }
-    for (const event of stream.events)
-      if (event.name === 'docOps') value = applyImmutable(value, (event.data as { ops: Op[] }).ops)
-    expect(value).toEqual({ count: 1 })
+    expect(await server.harness.snapshot(counter, server.root.id, context)).toBeUndefined()
+    const streamed = () => {
+      let value: unknown
+      for (const event of stream.events) {
+        const data = event.data as { kind: string; value?: unknown; ops?: Op[] }
+        if (event.name === 'doc') value = data.value
+        if (event.name === 'docOps') value = applyImmutable(value as object, data.ops!)
+      }
+      return value
+    }
+    const increment = async () => {
+      server.host.faux!.setResponses([
+        fauxAssistantMessage([fauxToolCall('increment', {})], { stopReason: 'toolUse' }),
+        fauxAssistantMessage('Incremented'),
+      ])
+      await post(server, '/api/conversations/1/submit', { text: 'increment' })
+      await server.harness.waitForIdle(context)
+    }
+    await increment()
+    await until(() => (streamed() as { count: number }).count === 1)
+    await increment()
+    await until(() => (streamed() as { count: number }).count === 2)
     await stream.close()
   })
   it('watches an existing document without committing to its conversation again', async () => {
@@ -1216,6 +1225,9 @@ export const actions = { list: async (_args, ctx) => ctx.host.conversations() }`
   })
   it('carries subscriptions opened and closed on one stream in batches, each event tagged with its id', async () => {
     const { server } = await fixture(true)
+    await server.root.commit(async (tx) => {
+      await tx.doc(server.extensions.doc('test.counter')!, server.root.id)
+    }, context)
     const stream = await attach(server, { docs: ['test.counter'] })
     const { id } = stream.events.find((event) => event.name === 'stream')!.data as { id: string }
     const batch = (

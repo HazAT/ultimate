@@ -1,5 +1,5 @@
 import { createRoot, createSignal } from 'solid-js'
-import { errorMessage } from '@/sdk/solid'
+import { errorMessage, writerNow, writingAs } from '@/sdk/solid'
 import type { DictationSink, DictationTake } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.ts'
 import { animationFrames, deadline } from '../../lib/timers.ts'
@@ -168,6 +168,7 @@ export function createCapture(keepOpen = () => false) {
   function press(sink: Sink): Take | undefined {
     const signal = sink.signal
     if (current || signal?.aborted) return undefined
+    const who = writerNow()
     const reason = unsupported()
     if (reason) {
       sink.error?.(reason)
@@ -196,7 +197,7 @@ export function createCapture(keepOpen = () => false) {
       })
       if (!send || signal?.aborted || !result || (result.unexpected && !result.audio.blob.size))
         discard()
-      else await sink.finish(result.audio, latest.get(sink) !== take)
+      else await writingAs(who, () => sink.finish(result.audio, latest.get(sink) !== take))
     }
     const take: Take = {
       active: () => current?.take === take,

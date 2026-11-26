@@ -15,6 +15,7 @@ import { ClassifyApi } from './api.ts'
 import { Judge } from '../messages/api.ts'
 import { judge } from './judge.ts'
 import type { ClassifyAnswer, ClassifyService } from './api.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const secrets = [
   {
@@ -42,7 +43,7 @@ const PauseDoc = defineDoc<{ pause?: Pause }>({
   history: 'latest',
   fork: 'initial',
   initial: () => ({}),
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
 })
 const keyId = (key: string) => createHash('sha256').update(key).digest('hex').slice(0, 16)
 
