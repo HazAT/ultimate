@@ -166,7 +166,7 @@ function Unblock() {
 
 function VoiceLine(props: { words?: boolean }) {
   const spoken = () => props.words && (playerState().playing || playerState().paused)
-  const blocked = () => props.words && playerState().blocked
+  const blocked = () => playerState().blocked
   const shown = () =>
     blocked() ||
     recording() ||
