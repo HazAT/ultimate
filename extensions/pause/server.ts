@@ -23,10 +23,11 @@ import type {
   RateLimit,
   RunningTask,
 } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const State = defineDoc<PauseDocState>({
   kind: PauseDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

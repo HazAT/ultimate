@@ -41,6 +41,7 @@ import {
   ReplySummarized,
   SummaryDiscarded,
 } from './entries.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export type SummaryResult = {
   activity: string
@@ -79,7 +80,7 @@ export type SummaryState = {
 }
 export const Summaries = defineDoc<SummaryState>({
   kind: 'ultimate.conversation-summaries',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

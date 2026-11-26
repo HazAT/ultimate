@@ -1767,9 +1767,7 @@ describe('subagents', () => {
     expect(agent.extensions.map((extension) => extension.name)).not.toContain('subagents')
     expect(agent.tools.map((tool) => tool.name).toSorted()).toEqual(['bash', 'read'])
     expect(await opened.harness.snapshot(Subagents, childId, context)).toBeUndefined()
-    expect(await opened.harness.snapshot(UiState, childId, context)).toEqual({
-      'subagents.selected': opened.root.id,
-    })
+    expect(await opened.harness.snapshot(UiState, childId, context)).toBeUndefined()
     expect(await opened.harness.snapshot(Metadata, childId, context)).toMatchObject({
       label: 'scout',
       title: 'fork task',

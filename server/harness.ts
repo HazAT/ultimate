@@ -10,7 +10,8 @@ import { join } from 'node:path'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { FauxProviderHandle } from '@earendil-works/pi-ai/providers/faux'
 import { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
-import { AgentDoc, createRegistry, Harness } from '@earendil-works/pi-durable'
+import { AgentDoc, createRegistry, defineDoc, Harness } from '@earendil-works/pi-durable'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { Context } from '@earendil-works/chord/context'
 import { UiState } from '../shared/ui-state.ts'
 import { listModels } from './models.ts'
@@ -47,6 +48,12 @@ import { applyHttpProxySettings, configureHttpDispatcher } from './http.ts'
 import type { Notice } from '../shared/protocol.ts'
 
 export { context }
+
+const UiStateBeforeLatestHistory = defineDoc<Record<string, JsonValue>>({
+  ...UiState.definition,
+  history: 'rewindable',
+  fork: 'asOf',
+})
 
 export function reportMessage({ error, ...info }: Report): string {
   const parts: string[] = []
@@ -263,13 +270,29 @@ export async function prepareHarness(options: HostOptions) {
             env: processHelperExecutionEnv,
             onReport: (report) =>
               options.report?.({ level: 'error', message: reportMessage(report) }),
+            conversationCreated: async (tx, conversation) => {
+              if (conversation.parent)
+                await tx.retireDoc(UiStateBeforeLatestHistory, conversation.id)
+            },
           },
           context,
         )
         const currentDefaultRootAgent = await defaultAgentAfterRegistration()
         const root = await harness.root(context, { agent: { cwd: projectRoot } })
+        const storedUi = await storage.findDocument(
+          {
+            kind: UiState.definition.kind,
+            scope: { kind: 'conversation', conversationId: root.id },
+          },
+          'current',
+          context,
+        )
         await root.commit(async (tx) => {
-          await tx.doc(UiState, root.id)
+          if (storedUi?.history === 'rewindable') {
+            const value = { ...(await tx.doc(UiStateBeforeLatestHistory, root.id)) }
+            await tx.retireDoc(UiStateBeforeLatestHistory, root.id)
+            Object.assign(await tx.doc(UiState, root.id), value)
+          } else await tx.doc(UiState, root.id)
           Object.assign(await tx.doc(AgentDoc, root.id), currentDefaultRootAgent)
         }, context)
         active = { harness, root, storage }

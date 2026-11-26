@@ -18,6 +18,7 @@ import type { Remote, Serves } from './refs.ts'
 import { Messages } from './api.ts'
 import { Roots, Tally } from '../lineage/api.ts'
 import { isOpen } from '../../lib/message-state.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export type { Serves }
 
@@ -40,7 +41,7 @@ export const Serving = defineDoc<{
   >
 }>({
   kind: 'board.serving',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 2,
   scope: 'conversation',
   history: 'latest',
@@ -51,7 +52,7 @@ export const Serving = defineDoc<{
 
 export const EarlyReplies = defineDoc<{ pending: Record<string, { settledBy?: EntryId }> }>({
   kind: 'board.early-replies',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -191,7 +192,7 @@ export const Started = defineDoc<{
   lastRoute?: TaskId<null>
 }>({
   kind: 'board.started',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

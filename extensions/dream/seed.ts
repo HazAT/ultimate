@@ -13,10 +13,11 @@ import type { Automation } from '../automations/types.ts'
 import { BuiltInDoc, PauseDoc } from './built-ins.ts'
 import type { Prepared } from './refs.ts'
 import type { Seed } from './types.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const SeedState = defineDoc<{ applied?: number; automations: string[] }>({
   kind: 'dream.seed',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

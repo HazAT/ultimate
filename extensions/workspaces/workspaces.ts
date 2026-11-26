@@ -47,10 +47,11 @@ import type {
   WorkspaceStats,
 } from './types.ts'
 import type { KeptWork } from '../conversations/types.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const Workspaces = defineDoc<WorkspaceIndex>({
   kind: WorkspacesDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 4,
   scope: 'conversation',
   history: 'latest',

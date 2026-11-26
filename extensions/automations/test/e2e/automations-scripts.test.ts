@@ -140,6 +140,44 @@ it('starts a prompt run from script FIRE with its payload', async () => {
   expect(await record()).toMatchObject({ fires: 1, enabled: false, script: { state: 'done' } })
 })
 
+it('records a burst of output in a few commits, every line in the log, and a one-shot fires only its first FIRE', async () => {
+  const { app, folder } = sharedFixture()
+  const caller = await app.harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
+  const a = (await app.extensions.invoke(
+    'automations',
+    'create',
+    { name: 'Burst', ask: 'Watch' },
+    new AbortController().signal,
+    caller.id,
+  )) as Automation
+  await writeRun(folder(a.id), 'seq 1 2000; echo FIRE after the burst; echo FIRE again')
+  let ledgerCommits = 0
+  const observation = app.harness.observeCommits({
+    advance: (publication) => {
+      if (
+        publication.changes.some(
+          (change) =>
+            change.type === 'document' && change.record.kind === Automations.definition.kind,
+        )
+      )
+        ledgerCommits++
+    },
+    end: () => {},
+  })
+  await call(app, 'resume', a.id)
+  const record = async () => (await app.harness.snapshot(Automations, context))!.automations[a.id]
+  await until(async () => (await record()).script?.exitedAt !== undefined)
+  observation.detach()
+  expect(await record()).toMatchObject({ fires: 1, script: { state: 'done' } })
+  const log = (await readFile(join(folder(a.id), 'output.log'), 'utf8')).trimEnd().split('\n')
+  expect(log).toEqual([
+    ...Array.from({ length: 1998 }, (_, i) => String(i + 3)),
+    'FIRE after the burst',
+    'FIRE again',
+  ])
+  expect(ledgerCommits).toBeLessThan(200)
+})
+
 it('delivers FIRE once, investigates exits only in the owning agent, recovers, and escalates through Messages', async () => {
   const { userHome, home, options, app: initial } = await fixture()
   let app = initial

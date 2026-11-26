@@ -24,7 +24,10 @@ reactor's cursor with its handler's writes, so those writes happen exactly once;
 least once and must tolerate a rerun.
 
 The web SDK's `useUiState(key, initial)` stores shared durable UI state; scroll positions and drafts stay in the browser.
-The host owns `ultimate.ui` on the root conversation, persisted in SQLite and copied as of the fork entry.
+The host owns `ultimate.ui` on the root conversation, persisted in SQLite; it keeps only its latest value and a fork starts without it.
+
+A mutable document that is not rewindable sets `checkpointWhen: checkpointEvery(100)` (`shared/checkpoint.ts`): every
+100 changes it stores a complete base, which drops its older revisions, so a cold read replays at most 100 deltas.
 Each op a tab sends carries that tab's next `seq`, kept when the page-exit request copies it. `ultimate.ui-writers`
 records each tab's newest `seq` per key in the commit that writes the key, and `POST /api/ui` skips an op that is not
 newer, so a late or repeated request never rolls a key back, across restarts too. The newest 1000 entries are kept.

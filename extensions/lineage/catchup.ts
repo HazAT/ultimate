@@ -9,10 +9,11 @@ import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { Standing } from '../subagents/api.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const Seen = defineDoc<{ main?: string; at?: number }>({
   kind: 'lineage.seen',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

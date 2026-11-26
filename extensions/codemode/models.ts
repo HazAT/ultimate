@@ -1,6 +1,7 @@
 import { defineDoc, hook, ToolTask } from '@earendil-works/pi-durable'
 import type { Harness } from '@earendil-works/pi-durable'
 import { CODEMODE_TOOL_NAME } from '@earendil-works/pi-durable/codemode'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const MAX_MODEL_CALLS = 1_000
 const MODEL_TOOL_PREFIX = 'pi.codemode.models.'
@@ -13,7 +14,7 @@ const Admissions = defineDoc<{
   scope: 'task',
   version: 1,
   initial: () => ({ keys: [], usage: {} }),
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
 })
 
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
