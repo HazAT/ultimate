@@ -17,20 +17,36 @@ export function ReadyCard(props: { entry: EntryRecord }) {
   )
 }
 
-function requestText(automation: RequestedEntry['automation']) {
-  return automation
-    ? `${automation.pause !== undefined ? `you were away ${awayFor(automation.pause)}` : 'my context filled up'} · automation ${automation.id}`
-    : 'you pressed Dream'
+function triggerText(automation: NonNullable<RequestedEntry['automation']>) {
+  return `${automation.pause !== undefined ? `you were away ${awayFor(automation.pause)}` : 'my context filled up'} · automation ${automation.id}`
+}
+
+function requestText(data: RequestedEntry | undefined) {
+  if (!data?.automation) return 'you pressed Dream'
+  return `${data.agent ? 'I pressed Start · ' : ''}${triggerText(data.automation)}`
 }
 
 export function RequestedCard(props: { entry: EntryRecord }) {
-  const automation = () => (props.entry.data as RequestedEntry | undefined)?.automation
+  const data = () => props.entry.data as RequestedEntry | undefined
   return (
-    <Card data-dream-requested={automation()?.id ?? 'user'}>
+    <Card data-dream-requested={data()?.automation?.id ?? 'user'}>
       <p class="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
         <MoonIcon class="size-3.5 text-brand" />
         <span class="text-foreground">Time to dream</span>
-        <span>{requestText(automation())}</span>
+        <span>{requestText(data())}</span>
+      </p>
+    </Card>
+  )
+}
+
+export function AskedCard(props: { entry: EntryRecord }) {
+  const automation = () => (props.entry.data as RequestedEntry | undefined)?.automation
+  return (
+    <Card data-dream-asked={automation()?.id}>
+      <p class="flex flex-wrap items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <MoonIcon class="size-3.5 text-brand/70" />
+        <span class="text-foreground">Dream?</span>
+        <span>{automation() ? `${triggerText(automation()!)} · ` : ''}asked you in the Inbox</span>
       </p>
     </Card>
   )

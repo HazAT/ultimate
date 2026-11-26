@@ -26,6 +26,7 @@ import {
   AUTOMATION_NAME,
   BuiltInDoc,
   ensureAutomation,
+  fired,
   PAUSE_NAME,
   PauseDoc,
 } from '../built-ins.ts'
@@ -156,7 +157,18 @@ async function fixture() {
     usage,
     requests,
     settle: () => until(events.settled),
-    call: { host, conversationId: ultimate } as unknown as ActionContext,
+    call: { host, conversationId: ultimate, by: { source: 'person' } } as unknown as ActionContext,
+    agentCall: {
+      host,
+      conversationId: ultimate,
+      by: { source: 'agent' },
+    } as unknown as ActionContext,
+    /** @ultimate's newest `dream.*` entry, its model text included. */
+    lastAsk: () =>
+      harness.commit(async (tx) => {
+        const page = await tx.scanEntries({ conversationId: ultimate }, 50)
+        return JSON.stringify(page.items.find((entry) => entry.kind.startsWith('dream.')))
+      }, context),
     action: (name: keyof typeof automationActions, args: JsonValue = {}) =>
       automationActions[name](args, {
         host,
@@ -262,19 +274,49 @@ it('makes the built-ins again in a new chapter with the conditions the user edit
   })
 })
 
-it("asks @ultimate to dream on a built-in's fire, beside the fire's own wake-up, once per fire", async () => {
+it("asks the user on a built-in's fire instead of dreaming, and Start launches @ultimate's parked handoff", async () => {
   const f = await fixture()
   const id = (await f.own())!
+  const pause = (await f.ownPause())!
+  const ask = async () => (await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.ask
   f.host.harness().resume()
   await f.usage(71)
   await f.settle()
-  // The fire's own input wakes @ultimate; the dream ask is a passive write in that run, so it costs one turn.
+  // The fire opens the ask; @ultimate is asked only to park its handoff, in the fire's own run.
   await until(async () => (await f.requests()).length === 1)
-  expect(await f.requests()).toEqual([{ requestId: `dream.requested:${id}:1`, type: 'write' }])
-  // Still above: no second fire, no second ask.
-  await f.usage(75)
-  await until(async () => (await f.record(id)).condition?.value === 75)
-  expect(await f.requests()).toHaveLength(1)
+  expect(await f.requests()).toEqual([{ requestId: `dream.asked:${id}:1`, type: 'write' }])
+  expect(await f.lastAsk()).toContain('park {handoff}')
+  expect(await ask()).toMatchObject({ automation: { id, name: AUTOMATION_NAME } })
+  // While it is open, neither built-in asks again.
+  expect(await f.harness.commit((tx) => f.host.need(Hold).held(tx, pause), context)).toBe(true)
+  expect(await actions.park({ handoff: 'Open: three branches.' }, f.call)).toMatchObject({
+    parked: expect.any(Number),
+  })
+  await actions.later({ idle: true }, f.call)
+  expect((await ask())?.snooze).toEqual({ idle: true })
+  // Start, here by @ultimate in the user's place, sends the parked handoff and closes the ask.
+  expect(await actions.start(null, f.agentCall)).toEqual({ requested: true })
+  await until(async () => (await f.requests()).length === 2)
+  expect((await f.requests())[1].type).toBe('input')
+  expect(await f.lastAsk()).toContain('Open: three branches.')
+  expect(await f.lastAsk()).toContain('"agent":true')
+  expect(await ask()).toBeUndefined()
+  await expect(actions.skip(null, f.call)).rejects.toThrow('No dream ask is open')
+})
+
+it('keeps the open ask when a second fire passed the hold before the first one opened it', async () => {
+  const f = await fixture()
+  const id = (await f.own())!
+  const pause = (await f.ownPause())!
+  // Both fires were queued past the hold; their reactors run one after the other.
+  f.host.harness().resume()
+  await f.harness.commit((tx) => fired(f.host, tx, id, 1), context)
+  await f.harness.commit((tx) => fired(f.host, tx, pause, 1), context)
+  expect((await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.ask?.automation.id).toBe(
+    id,
+  )
+  await until(async () => (await f.requests()).length === 1)
+  expect(await f.requests()).toEqual([{ requestId: `dream.asked:${id}:1`, type: 'write' }])
 })
 
 it('dreams once per chapter: neither built-in fires after a dream ran in it', async () => {
@@ -298,7 +340,7 @@ it('dreams once per chapter: neither built-in fires after a dream ran in it', as
 
 it("asks @ultimate to dream on the user's Dream, prepares the next chapter, and replaces it", async () => {
   const f = await fixture()
-  expect(userActions).toEqual(['start', 'ready', 'dismiss', 'asleep', 'switch'])
+  expect(userActions).toEqual(['ready', 'dismiss', 'asleep', 'switch', 'later', 'skip'])
   expect(await actions.start(null, f.call)).toEqual({ requested: true })
   await until(async () => (await f.requests()).length === 1)
   expect((await f.requests())[0].type).toBe('input')
