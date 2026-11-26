@@ -1,6 +1,11 @@
 import { defineWebExtension } from '@/sdk/solid'
-import { Chip } from './chip.solid.tsx'
+import { BranchChip, UltimateChip } from './chip.solid.tsx'
 
 export default defineWebExtension({
-  slots: { 'statusline.right': [{ component: Chip, order: -1 }] },
+  slots: {
+    'statusline.right': [
+      { component: BranchChip, order: -2 },
+      { component: UltimateChip, order: -1 },
+    ],
+  },
 })

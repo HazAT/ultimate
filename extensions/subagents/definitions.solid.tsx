@@ -38,6 +38,7 @@ import {
   useFamilies,
 } from '../models/ui.solid.tsx'
 import {
+  CacheField,
   Field,
   inputClass,
   InstructionsEditor,
@@ -52,7 +53,15 @@ import {
   DeleteDefinitionAction,
   SaveDefinitionAction,
 } from './refs.ts'
-import type { DefinitionFields, Discovery, ModelRef, Scope, Shown, Source } from './refs.ts'
+import type {
+  CachePolicy,
+  DefinitionFields,
+  Discovery,
+  ModelRef,
+  Scope,
+  Shown,
+  Source,
+} from './refs.ts'
 
 export const definitionDialog = 'subagents.definition'
 const shownKey = 'definition'
@@ -98,6 +107,7 @@ interface Draft {
   isolate: 'none' | 'worktree'
   fast: boolean
   summaries: boolean
+  cache: CachePolicy
   instructions: string
 }
 const draftOf = (definition?: Shown['definition'], name = ''): Draft => ({
@@ -113,6 +123,7 @@ const draftOf = (definition?: Shown['definition'], name = ''): Draft => ({
   isolate: definition?.isolate ?? 'none',
   fast: definition?.fast ?? false,
   summaries: definition?.summaries ?? true,
+  cache: definition?.cache ?? {},
   instructions: definition?.instructions ?? '',
 })
 
@@ -137,6 +148,7 @@ const frontmatterOf = (draft: Draft): DefinitionFields => {
     ...(draft.isolate === 'worktree' ? { isolate: 'worktree' } : {}),
     ...(draft.fast ? { fast: true } : {}),
     ...(draft.summaries ? {} : { summaries: false }),
+    ...(Object.keys(draft.cache).length ? { cache: { ...draft.cache } } : {}),
   }
 }
 
@@ -540,6 +552,11 @@ function DefinitionForm(props: {
             }
             value={draft.summaries}
             onChange={(summaries) => set({ summaries })}
+          />
+          <CacheField
+            onChange={(cache) => set({ cache })}
+            standing={draft.resident}
+            value={draft.cache}
           />
           <Field
             label="Isolate"

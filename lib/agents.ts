@@ -19,6 +19,13 @@ import { isMissing } from './errors.shared.ts'
 import { fileMemo } from './memo.ts'
 
 type DeferredToolNamesWhenInheritingAll = string[]
+export interface CachePolicy {
+  warm?: boolean
+  minutes?: number
+  shortMinutes?: number
+  compact?: boolean
+  compactTokens?: number
+}
 export interface AgentDefinition {
   name: string
   description: string
@@ -39,6 +46,7 @@ export interface AgentDefinition {
   title?: string
   icon?: string
   tint?: MarkTint
+  cache?: CachePolicy
   overlays?: string[]
 }
 export function previewModel(env: NodeJS.ProcessEnv = process.env) {
@@ -235,7 +243,39 @@ const fields = new Set([
   'title',
   'icon',
   'tint',
+  'cache',
 ])
+
+const cacheKeys = {
+  warm: 'boolean',
+  minutes: 'number',
+  shortMinutes: 'number',
+  compact: 'boolean',
+  compactTokens: 'number',
+} as const satisfies Record<keyof CachePolicy, 'boolean' | 'number'>
+
+export function parseCache(cache: unknown): CachePolicy {
+  if (!cache || typeof cache !== 'object' || Array.isArray(cache))
+    throw new Error(`cache must be a mapping of ${Object.keys(cacheKeys).join(', ')}`)
+  for (const [key, value] of Object.entries(cache)) {
+    if (!Object.hasOwn(cacheKeys, key)) throw new Error(`Unknown cache field: ${key}`)
+    const kind = cacheKeys[key as keyof CachePolicy]
+    const valid =
+      kind === 'boolean'
+        ? typeof value === 'boolean'
+        : typeof value === 'number' && Number.isFinite(value) && value >= 0
+    if (!valid)
+      throw new Error(
+        `cache.${key} must be ${kind === 'boolean' ? 'a boolean' : 'a number of at least 0'}`,
+      )
+  }
+  return cache
+}
+
+const cacheMapping = (cache: CachePolicy) =>
+  `{ ${Object.entries(cache)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join(', ')} }`
 
 function parseSettings(frontmatter: Record<string, unknown>): Partial<
   Pick<
@@ -252,6 +292,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     | 'title'
     | 'icon'
     | 'tint'
+    | 'cache'
   >
 > & {
   model?: string
@@ -270,6 +311,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
     title,
     icon,
     tint,
+    cache,
   } = frontmatter
   if (family !== undefined && (typeof family !== 'string' || !isFamilyName(family)))
     throw new Error('family must be a family name: lowercase letters, digits and -')
@@ -300,6 +342,7 @@ function parseSettings(frontmatter: Record<string, unknown>): Partial<
   if (tint !== undefined && !isMarkTint(tint))
     throw new Error(`tint must be one of ${markTints.join(', ')}`)
   return {
+    ...(cache !== undefined ? { cache: parseCache(cache) } : {}),
     ...(description !== undefined ? { description: description.trim() } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(thinking ? { thinking: thinking as ModelThinkingLevel } : {}),
@@ -520,6 +563,9 @@ export async function discoverAgents(
           definitions.set(overlay.name, {
             ...(familyReplacesEarlierPin ? unpinned : base),
             ...overlay.settings,
+            ...(overlay.settings.cache
+              ? { cache: { ...base.cache, ...overlay.settings.cache } }
+              : {}),
             ...(overlay.settings.denyTools
               ? {
                   denyTools: [
@@ -577,6 +623,7 @@ export interface DefinitionFields {
   title?: string
   icon?: string
   tint?: MarkTint
+  cache?: CachePolicy
 }
 
 const toolList = (tools: string[]) => {
@@ -616,6 +663,9 @@ export function serializeDefinition(
     ...(frontmatter.title ? [`title: ${scalar(frontmatter.title)}`] : []),
     ...(frontmatter.icon ? [`icon: ${scalar(frontmatter.icon)}`] : []),
     ...(frontmatter.tint ? [`tint: ${frontmatter.tint}`] : []),
+    ...(frontmatter.cache && Object.keys(frontmatter.cache).length
+      ? [`cache: ${cacheMapping(frontmatter.cache)}`]
+      : []),
   ]
   return `---\n${lines.join('\n')}\n---\n\n${instructions.trim()}\n`
 }
@@ -697,6 +747,12 @@ export async function saveOverlay(
   if (form.title && form.title !== base.title) settings.push(`title: ${scalar(form.title)}`)
   if (form.icon && form.icon !== base.icon) settings.push(`icon: ${scalar(form.icon)}`)
   if (form.tint && form.tint !== base.tint) settings.push(`tint: ${form.tint}`)
+  const cacheChanges = Object.fromEntries(
+    Object.entries(form.cache ?? {}).filter(
+      ([key, value]) => base.cache?.[key as keyof CachePolicy] !== value,
+    ),
+  )
+  if (Object.keys(cacheChanges).length) settings.push(`cache: ${cacheMapping(cacheChanges)}`)
   if (form.skills?.join() !== base.skills?.join()) {
     if (!form.skills) throw cannot('give every skill back')
     settings.push(`skills: ${toolList(form.skills)}`)

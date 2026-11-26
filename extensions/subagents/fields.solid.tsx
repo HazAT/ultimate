@@ -2,13 +2,13 @@ import type { JSX } from '@solidjs/web'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Checkbox } from '@/components/ui/checkbox.solid.tsx'
-import { Textarea } from '@/components/ui/input.solid.tsx'
+import { Input, Textarea } from '@/components/ui/input.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs.solid.tsx'
 import type { ModelsResponse } from '@/sdk/solid'
 import { cn } from '@/sdk/solid'
-import type { ModelRef } from './refs.ts'
+import type { CachePolicy, ModelRef } from './refs.ts'
 
 export function Field(props: {
   label: string
@@ -45,6 +45,93 @@ export function ToggleField(props: {
           onCheckedChange={(value) => props.onChange(value)}
         />
       </label>
+    </Field>
+  )
+}
+
+function CacheNumber(props: {
+  label: string
+  value: number | undefined
+  placeholder: string
+  onChange: (value: number | undefined) => void
+}) {
+  return (
+    <label class="flex items-center gap-2 text-[12px] text-muted-foreground">
+      <span class="flex-1">{props.label}</span>
+      <Input
+        aria-label={props.label}
+        class="w-28 text-right tabular-nums"
+        min={0}
+        onValueChange={(value) => {
+          const next = value === '' ? Number.NaN : Number(value)
+          props.onChange(Number.isFinite(next) && next >= 0 ? next : undefined)
+        }}
+        placeholder={props.placeholder}
+        type="number"
+        value={props.value === undefined ? '' : String(props.value)}
+      />
+    </label>
+  )
+}
+
+export function CacheField(props: {
+  value: CachePolicy
+  standing: boolean
+  onChange: (value: CachePolicy) => void
+}) {
+  const set = <K extends keyof CachePolicy>(key: K, next: CachePolicy[K]) => {
+    const { [key]: _old, ...rest } = props.value
+    props.onChange(next === undefined ? rest : { ...rest, [key]: next })
+  }
+  return (
+    <Field
+      label="Prompt cache"
+      hint={
+        props.standing
+          ? 'Counts from your last input; the cache lifetime comes from the model. Its dreams compact it, so it is not compacted before cold.'
+          : 'Branch coordinators count from their last request; the cache lifetime comes from the model. Subagents are not warmed.'
+      }
+    >
+      <div class="flex flex-col gap-1.5 rounded-md border border-border/80 bg-background px-2 py-1.5">
+        <label class="flex items-center justify-between text-[13px]">
+          Keep warm while idle
+          <Switch
+            aria-label="Keep warm"
+            checked={props.value.warm ?? false}
+            onCheckedChange={(warm) => set('warm', warm)}
+          />
+        </label>
+        <CacheNumber
+          label="Warm for (min)"
+          onChange={(minutes) => set('minutes', minutes)}
+          placeholder="30"
+          value={props.value.minutes}
+        />
+        <CacheNumber
+          label="On caches under an hour (min)"
+          onChange={(minutes) => set('shortMinutes', minutes)}
+          placeholder="same"
+          value={props.value.shortMinutes}
+        />
+        <Show when={!props.standing}>
+          <label class="flex items-center justify-between text-[13px]">
+            Compact before it goes cold
+            <Switch
+              aria-label="Compact before cold"
+              checked={props.value.compact ?? false}
+              onCheckedChange={(compact) => set('compact', compact)}
+            />
+          </label>
+        </Show>
+        <Show when={!props.standing && props.value.compact}>
+          <CacheNumber
+            label="Compact from (tokens)"
+            onChange={(tokens) => set('compactTokens', tokens)}
+            placeholder="150000"
+            value={props.value.compactTokens}
+          />
+        </Show>
+      </div>
     </Field>
   )
 }
