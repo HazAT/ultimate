@@ -1,7 +1,7 @@
 import type { ConversationId, GenerationHooks, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { expect, it } from 'vitest'
-import todosExtension, { add, DONE_LIMIT, mark, noteFor, Todos } from '../server.ts'
+import todosExtension, { add, DONE_LIMIT, mark, noteFor, Todos, update } from '../server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import type { TodosService } from '../api.ts'
 
@@ -73,6 +73,24 @@ it('ticks and reopens a to-do, keeping only the newest done ones', async () => {
   await expect(mark(tx, 999, true)).rejects.toThrow('No to-do 999')
 })
 
+it('updates an open to-do in place, refusing unknown ids, bad text and done ones', async () => {
+  const { tx } = fakeTx()
+  const added = await add(tx, 'Log in at the old address', 'ultimate')
+  const updated = await update(tx, added.id, '  Log in at the new address  ')
+  expect(updated).toMatchObject({
+    id: added.id,
+    text: 'Log in at the new address',
+    owner: added.owner,
+    at: added.at,
+  })
+  expect(await list(tx)).toEqual([updated])
+  await expect(update(tx, 999, 'Nope')).rejects.toThrow('No to-do 999')
+  await expect(update(tx, added.id, ' ')).rejects.toThrow('nonempty')
+  await expect(update(tx, added.id, 'x'.repeat(301))).rejects.toThrow('at most 300')
+  await mark(tx, added.id, true)
+  await expect(update(tx, added.id, 'Too late')).rejects.toThrow('already done')
+})
+
 it('tells @ultimate the open list only when it changed', async () => {
   const { tx } = fakeTx()
   const content = async () => (await noteFor(tx, ULTIMATE, 0))?.entries[0].model[0].content
@@ -81,6 +99,11 @@ it('tells @ultimate the open list only when it changed', async () => {
   await add(tx, 'Theirs', 'user')
   expect(await content()).toBe(
     "Open to-dos (todo tool: done when finished):\nYours:\n- 1: Mine\nThe user's:\n- 2: Theirs",
+  )
+  expect(await content()).toBeUndefined()
+  await update(tx, 1, 'Mine, now cheaper')
+  expect(await content()).toBe(
+    "Open to-dos (todo tool: done when finished):\nYours:\n- 1: Mine, now cheaper\nThe user's:\n- 2: Theirs",
   )
   expect(await content()).toBeUndefined()
   await mark(tx, 1, true)
@@ -107,8 +130,11 @@ it("keeps the todo tool to @ultimate and the note to @ultimate's inputs", async 
   expect(await run(ULTIMATE, { action: 'add', text: 'Ship it', owner: 'user' })).toEqual({
     output: [{ type: 'text', text: 'Added 1 for user: Ship it' }],
   })
+  expect(await run(ULTIMATE, { action: 'update', id: 1, text: 'Ship it today' })).toEqual({
+    output: [{ type: 'text', text: 'Updated 1: Ship it today' }],
+  })
   expect(await run(ULTIMATE, { action: 'list' })).toEqual({
-    output: [{ type: 'text', text: "The user's:\n- 1: Ship it" }],
+    output: [{ type: 'text', text: "The user's:\n- 1: Ship it today" }],
   })
   const hooks = extension.hooks![0].handlers as GenerationHooks
   const before = (conversationId: ConversationId) =>

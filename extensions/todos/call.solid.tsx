@@ -18,7 +18,7 @@ export function TodoCall(props: SolidToolProps) {
   const action = () => words(props.call.args.action)
   const owner = () => words(props.call.args.owner)
   const todoText = () => {
-    if (action() === 'add') return words(props.call.args.text)
+    if (action() === 'add' || action() === 'update') return words(props.call.args.text)
     const id = props.call.args.id
     return (
       /^Done \d+: ([^]*)$/.exec(props.call.output)?.[1] ??
@@ -28,7 +28,13 @@ export function TodoCall(props: SolidToolProps) {
     )
   }
   const verb = () =>
-    action() === 'add' ? 'Added a to-do' : action() === 'done' ? 'Done' : 'Listed to-dos'
+    action() === 'add'
+      ? 'Added a to-do'
+      : action() === 'done'
+        ? 'Done'
+        : action() === 'update'
+          ? 'Updated a to-do'
+          : 'Listed to-dos'
   return (
     <Show
       when={props.call.status !== 'error' && props.call.status !== 'interrupted'}
