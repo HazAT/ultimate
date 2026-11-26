@@ -274,13 +274,10 @@ describe('server reload', () => {
     )
     expect(server.host.build().extensions.counter).toBe(loaded)
     await rm(join(options.ultimateRoot, 'shared/landed.ts'))
-    await writeFile(
-      join(options.ultimateRoot, 'extensions/counter/value.ts'),
-      "export const value = 'newer'",
-    )
-    // Chokidar can coalesce consecutive writes to the same path; deliver this change explicitly.
-    server.vite.watcher.emit('change', join(options.ultimateRoot, 'extensions/counter/value.ts'))
     await until(() => server.host.build().extensions.counter !== loaded)
+    const installed = server.host.registry.snapshot().extension('counter')!
+    const section = installed.sections![0]
+    expect(await section.render({} as Parameters<typeof section.render>[0], context)).toBe('new')
     await stream.close()
   })
   it('loads no extension while an onBeforeLoad callback still waits, such as for an install', async () => {

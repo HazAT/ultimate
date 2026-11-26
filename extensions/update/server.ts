@@ -78,17 +78,11 @@ export async function coreChangedSince(git: Git, processBootHead: string | undef
 
 export async function restartAfterCoreLanding(
   host: Pick<ExtensionHost, 'restart' | 'notice'>,
-  install: Promise<void>,
   stale: () => Promise<boolean>,
 ) {
-  try {
-    await install
-    if (!(await stale())) return
-    host.notice('Restarting: a landing changed the core')
-    host.notice(`Restart after landing failed: ${await host.restart(async () => {})}`)
-  } catch (error) {
-    host.notice(`Restart after landing: ${String(error)}`)
-  }
+  if (!(await stale())) return
+  host.notice('Restarting: a landing changed the core')
+  host.notice(`Restart after landing failed: ${await host.restart(async () => {})}`)
 }
 
 export const AUTO_RESTART_PAUSE = 10 * 60_000
@@ -237,16 +231,11 @@ export default function update(host: ExtensionHost) {
     'install-landed',
     [SubmissionLanded],
     async () => {
-      const backgroundInstall = loadable(host)
       rebuiltOnOpen(
-        'onBeforeLoad installs an owed lockfile again',
-        backgroundInstall.catch((error: unknown) =>
-          host.notice(`Install after landing: ${String(error)}`),
-        ),
-      )
-      rebuiltOnOpen(
-        'a new core boots on the landed code',
-        restartAfterCoreLanding(host, backgroundInstall, stale),
+        'onBeforeLoad installs an owed lockfile again, and a new core boots on the landed code',
+        loadable(host)
+          .then(() => restartAfterCoreLanding(host, stale))
+          .catch((error: unknown) => host.notice(`After landing: ${String(error)}`)),
       )
     },
     { from: 'now' },

@@ -447,6 +447,8 @@ export async function loadExtensions(
         }))
     },
     setProjectDecision: async (local) => {
+      if (heldForNewCore())
+        throw new Error('The core changed on disk: decide on project trust after the restart')
       new ProjectTrustStore(join(host.userHome, '.ultimate')).set(
         decisionRoot(host.projectRoot),
         local,
@@ -475,17 +477,24 @@ export async function loadExtensions(
     )
   let chain = Promise.resolve()
   let heldNoticeShown = false
+  let fullReloadOwed = false
   function heldForNewCore() {
     if (!host.builds.coreChanged()) return false
     if (!heldNoticeShown)
       notice('The core changed on disk: extension reloads wait for the restart to the new core')
     heldNoticeShown = true
+    fullReloadOwed = true
     return true
   }
   function enqueue(work: () => Promise<void>) {
     chain = chain
       .then(() => (closed ? undefined : prepareLoadBestEffort()))
-      .then(() => (closed || heldForNewCore() ? undefined : work()))
+      .then(() => {
+        if (closed || heldForNewCore()) return undefined
+        if (!fullReloadOwed) return work()
+        fullReloadOwed = false
+        return reload()
+      })
       .catch((error: unknown) => {
         notice(`Extension reload failed: ${String(error)}`)
         return changed()
@@ -605,6 +614,10 @@ export async function loadExtensions(
         readme,
         facets: { server: files.includes('server.ts'), web: webFacet(files) !== undefined },
         ...(previous?.server ? { server: previous.server } : {}),
+      }
+      if (enabled && record.facets.server && (!servers || servers.has(name)) && heldForNewCore()) {
+        records.set(name, record)
+        continue
       }
       if (enabled && record.facets.server && (!servers || servers.has(name))) {
         const facetHost = scope(name)

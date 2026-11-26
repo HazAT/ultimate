@@ -21,13 +21,13 @@ function hash(root: string, paths: string[]) {
   return digest.digest('hex')
 }
 export function createBuild(root: string) {
-  const coreHash = () =>
-    hash(root, [
-      ...files(root, 'server'),
-      ...files(root, 'shared'),
-      ...['package.json', 'pnpm-lock.yaml'].filter((path) => existsSync(join(root, path))),
-    ])
-  const core = coreHash()
+  const sources = () => hash(root, [...files(root, 'server'), ...files(root, 'shared')])
+  const bootSources = sources()
+  const core = hash(root, [
+    ...files(root, 'server'),
+    ...files(root, 'shared'),
+    ...['package.json', 'pnpm-lock.yaml'].filter((path) => existsSync(join(root, path))),
+  ])
   const generation = Number(process.env.ULTIMATE_GENERATION ?? 1)
   let previous: BuildInfo | undefined = process.env.ULTIMATE_PREVIOUS_BUILD
     ? JSON.parse(process.env.ULTIMATE_PREVIOUS_BUILD)
@@ -37,7 +37,7 @@ export function createBuild(root: string) {
   const history: BuildInfo['history'] = []
   return {
     current: () => value,
-    coreChanged: () => coreHash() !== core,
+    coreChanged: () => sources() !== bootSources,
     extension(name: string, path = join(root, 'extensions', name)) {
       extensions[name] = hash(
         path,

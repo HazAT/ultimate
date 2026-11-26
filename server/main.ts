@@ -255,7 +255,8 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     go: (activationError?: string) =>
       serial(async () => {
         processInfo.activationError = activationError
-        const served = await openExtensionsThenServeApi(await host.open(false))
+        const swappedIn = !!process.env.ULTIMATE_PREVIOUS_BUILD && activationError === undefined
+        const served = await openExtensionsThenServeApi(await host.open(false, swappedIn))
         reportCore({ type: 'web', state: 'ready' })
         return served
       }),
