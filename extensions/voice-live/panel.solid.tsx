@@ -50,7 +50,7 @@ import {
   useViewport,
 } from '@/sdk/solid'
 import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
-import { shortcut, talkMode } from '../dictation/ui.solid.tsx'
+import { capture, shortcut, talkMode } from '../dictation/ui.solid.tsx'
 import {
   activity,
   COLD_DRAFT,
@@ -76,15 +76,38 @@ import type { ModelPick } from '../models/ui.solid.tsx'
 import { PlaybackBar, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Voicing, Waveform } from './turns.solid.tsx'
-import { REST, settle, type Snap, type Variant, VARIANTS } from './sheet.ts'
+import { REST, settle, type Snap } from './sheet.ts'
 
+const FULL_TOP = 36
 const [sheetRoom, setSheetRoom] = createRoot(() => createSignal(0))
 
 export function SheetComposer(props: SolidComposerProps) {
   const viewport = useViewport()
   return (
-    <Show when={viewport() === 'phone' && voiceOpen() && !props.dock} fallback={props.core}>
-      <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
+    <Show when={viewport() === 'phone' && !props.dock} fallback={props.core}>
+      <Show
+        when={!voiceOpen()}
+        fallback={
+          <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
+        }
+      >
+        <div class="flex items-end">
+          <div class="min-w-0 flex-1">{props.core}</div>
+          <Button
+            aria-label="Talk to voice"
+            class="mr-3 mb-3 flex size-14 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-lg shadow-brand/30 active:scale-95"
+            data-voice-talk
+            onClick={() => {
+              setVoiceOpen(true)
+              capture.press(voiceSink)
+            }}
+            size={null}
+            variant={null}
+          >
+            <AudioLines class="size-6" />
+          </Button>
+        </div>
+      </Show>
     </Show>
   )
 }
@@ -572,9 +595,7 @@ export function VoicePanel() {
   } | null>('corner', null)
   const [desktopFolded, setDesktopFolded] = useExtensionUiState('folded', false)
   const [snapped, setSnap] = useExtensionUiState<Snap>('sheet', 'rest')
-  const [picked, setVariant] = useExtensionUiState<Variant>('variant', 'a')
   const snap = () => snapped() as Snap
-  const variant = () => picked() as Variant
   const [dragged, setDragged] = createSignal<number>()
   const folded = () => (phone() ? snap() === 'folded' : desktopFolded())
   const setFolded = (fold: boolean) =>
@@ -587,7 +608,7 @@ export function VoicePanel() {
     observer = new ResizeObserver(() => {
       const line = document.querySelector<HTMLElement>('[data-ui="status-line"]')
       const room = element.offsetHeight - (line?.offsetHeight ?? 0)
-      setSheetRoom(Math.max(0, Math.min(room, window.innerHeight * REST.c)))
+      setSheetRoom(Math.max(0, Math.min(room, window.innerHeight * REST)))
     })
     observer.observe(element)
   }
@@ -600,7 +621,7 @@ export function VoicePanel() {
       return
     const handle = event.currentTarget
     const start = sheet!.offsetHeight
-    const full = sheet!.getBoundingClientRect().bottom - fullTop()
+    const full = sheet!.getBoundingClientRect().bottom - FULL_TOP
     const y = event.clientY
     let last = { y, at: event.timeStamp }
     let velocity = 0
@@ -625,23 +646,21 @@ export function VoicePanel() {
       if (!moving || height === undefined) return
       const heights = {
         folded: 120,
-        rest: window.innerHeight * REST[variant()],
+        rest: window.innerHeight * REST,
         full,
       }
-      setSnap(settle(variant(), snap(), height, start, velocity, heights))
+      setSnap(settle(snap(), height, start, velocity, heights))
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
   }
-  const fullTop = () => (variant() === 'c' ? 48 : 36)
   const sheetHeight = () => {
     const px = dragged()
     if (px !== undefined) return `${px}px`
     if (snap() === 'folded') return undefined
-    if (snap() === 'full')
-      return `calc(100dvh - env(safe-area-inset-top) - ${fullTop()}px${variant() === 'c' ? ' - 0.5rem' : ''})`
-    return `${REST[variant()] * 100}dvh`
+    if (snap() === 'full') return `calc(100dvh - env(safe-area-inset-top) - ${FULL_TOP}px)`
+    return `${REST * 100}dvh`
   }
   const drag = (event: PointerEvent & { currentTarget: HTMLElement }) => {
     if (phone()) return swipe(event)
@@ -677,13 +696,6 @@ export function VoicePanel() {
   }
   return (
     <Show when={voiceOpen()}>
-      <Show when={phone() && variant() === 'c' && snap() === 'full'}>
-        <div
-          aria-hidden="true"
-          class="pointer-events-auto fixed inset-0 z-40 bg-black/50"
-          onClick={() => setSnap('rest')}
-        />
-      </Show>
       <section
         aria-label="Voice"
         class={cn(
@@ -692,10 +704,7 @@ export function VoicePanel() {
             ? cn(
                 dragged() === undefined &&
                   'transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
-                variant() === 'c'
-                  ? 'inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] rounded-2xl has-[textarea:focus]:bottom-2'
-                  : 'inset-x-0 bottom-0 rounded-t-2xl border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)] has-[textarea:focus]:pb-0',
-                variant() === 'b' && 'border-t-brand/40',
+                'inset-x-0 bottom-0 rounded-t-2xl border-x-0 border-b-0 border-t-brand/40 pb-[env(safe-area-inset-bottom)] has-[textarea:focus]:pb-0',
               )
             : folded()
               ? 'right-4 bottom-4 w-[min(26rem,46vw)] rounded-xl'
@@ -715,7 +724,7 @@ export function VoicePanel() {
         <style>{glow}</style>
         <Show when={phone()}>
           <div
-            class="relative flex h-5 shrink-0 touch-none items-center justify-center select-none"
+            class="flex h-5 shrink-0 touch-none items-center justify-center select-none"
             onPointerDown={drag}
           >
             <Button
@@ -728,19 +737,6 @@ export function VoicePanel() {
             >
               <span class="h-1 w-9 rounded-full bg-muted-foreground/40" />
             </Button>
-            <SegmentedControl
-              aria-label="Sheet variant (preview)"
-              bind={[variant, setVariant]}
-              class="absolute top-0.5 right-2 h-4 text-[10px]"
-            >
-              <For each={VARIANTS}>
-                {(name) => (
-                  <SegmentedControlItem class="h-4 px-1.5 text-[10px] uppercase" value={name}>
-                    {name}
-                  </SegmentedControlItem>
-                )}
-              </For>
-            </SegmentedControl>
           </div>
         </Show>
         <header

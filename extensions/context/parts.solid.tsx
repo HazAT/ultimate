@@ -401,7 +401,7 @@ export function Header(props: {
   return (
     <Collapsible
       class={cn(
-        'group/context @container rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px]',
+        'group/context @container rounded-md border border-border/70 bg-card/40 font-mono text-[11.5px] max-md:hidden',
         props.class,
       )}
       data-context-header={props.breakdown.start?.id ?? 'start'}
