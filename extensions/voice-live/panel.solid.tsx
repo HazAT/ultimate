@@ -534,7 +534,11 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
     (notify) => composerDraft(COLD_DRAFT).subscribe(notify),
   )
   const hot = () => (coldHeld() ? undefined : props.fork)
-  const placeholder = () => `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`
+  const viewport = useViewport()
+  const placeholder = () =>
+    viewport() === 'phone'
+      ? `Type, paste, or ${talkVerb()} the mic to talk…`
+      : `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`
   const target = (): ComposerTarget => ({
     name: 'Voice dock',
     placeholder: placeholder(),
