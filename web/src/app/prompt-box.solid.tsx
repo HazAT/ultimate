@@ -209,6 +209,10 @@ export function PromptBox(props: PromptBoxProps) {
 
   let editor: HTMLTextAreaElement | undefined
   const keep = keepKeyboard(() => editor)
+  const keepOn = (frame: HTMLElement) => {
+    frame.addEventListener('pointerdown', keep)
+    frame.addEventListener('mousedown', keep)
+  }
   onSettled(() => {
     if (props.autofocus && !touchKeyboard()) editor?.focus()
   })
@@ -434,8 +438,7 @@ export function PromptBox(props: PromptBoxProps) {
             data-minimal
             data-signal={signal()}
             data-ui="prompt-box"
-            onMouseDown={keep}
-            onPointerDown={keep}
+            ref={keepOn}
             onDragOver={(event) => {
               if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
             }}
@@ -463,8 +466,7 @@ export function PromptBox(props: PromptBoxProps) {
         data-signal={signal()}
         data-ui="prompt-box"
         onDrop={dropped}
-        onMouseDown={keep}
-        onPointerDown={keep}
+        ref={keepOn}
       >
         {chips()}
         {textarea()}
