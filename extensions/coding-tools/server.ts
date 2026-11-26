@@ -13,6 +13,7 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
   type ToolExecutionApi,
+  type Tx,
   type ToolExecutionResult,
   type ToolPark,
   type ToolRegistration,
@@ -30,12 +31,19 @@ import { git } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { watchSteer } from '../../lib/steer.ts'
-import { BackgroundStarted, CancelAction, CancelledDoc, Committed } from './refs.ts'
+import {
+  BackgroundEndedEntry,
+  BackgroundStarted,
+  CancelAction,
+  CancelledDoc,
+  Committed,
+} from './refs.ts'
 import { Concluded, ConversationsApi } from '../conversations/api.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import {
   BackgroundGroups,
   dropHostNodeEnv,
+  logTail,
   recordStarted,
   startBackground,
   type Started,
@@ -44,6 +52,7 @@ import {
   takeStarted,
 } from './background.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
+import { inProcess } from '../../lib/errors.ts'
 
 function defaultBashTimeout() {
   const seconds = Number(process.env.ULTIMATE_BASH_TIMEOUT ?? 600)
@@ -248,8 +257,43 @@ async function madeCommits(path: string, conversation: ConversationId) {
 }
 
 export default function codingTools(
-  host: Pick<ExtensionHost, 'emit' | 'home' | 'images' | 'need' | 'notice' | 'onOpen' | 'react'>,
+  host: Pick<
+    ExtensionHost,
+    'emit' | 'harness' | 'home' | 'images' | 'need' | 'notice' | 'onOpen' | 'react'
+  >,
 ) {
+  const concludedWithOwners = async (tx: Tx, conversation: ConversationId) => {
+    const ended = await host.need(ConversationsApi).concludedIn(tx)
+    for (let id: ConversationId | undefined = conversation; id !== undefined;) {
+      if (ended.has(id)) return true
+      id = (await tx.conversation(id))?.owner?.conversationId
+    }
+    return false
+  }
+  const reportEnded = async (
+    conversation: ConversationId,
+    { name, command, pgid, log }: { name: string; command: string; pgid: number; log: string },
+    { exitCode, signal }: { exitCode: number | null; signal: string | null },
+  ) => {
+    const tail = await logTail(log)
+    const how = signal ? `was ended by ${signal}` : `exited with code ${exitCode}`
+    const content = `Background process group ${pgid} ${how}: ${command}\nLog: ${log}\n${tail ? `Last lines:\n${tail}` : '(no output)'}`
+    const harness = host.harness()
+    const handle = await harness.conversation(conversation, BACKGROUND_CONTEXT)
+    if (!handle) return
+    await harness.commit(async (tx) => {
+      if (await concludedWithOwners(tx, conversation)) return
+      await handle.submit(tx, {
+        type: 'write',
+        requestId: `background-ended:${name}`,
+        entry: {
+          kind: BackgroundEndedEntry.kind,
+          data: { command, pgid, exitCode, signal, log, tail },
+          model: [{ role: 'user', content, timestamp: Date.now() }],
+        },
+      })
+    }, BACKGROUND_CONTEXT)
+  }
   host.onOpen(() =>
     sweepEarlierProcesses(host.home).catch((error: unknown) =>
       host.notice(`Stopping background processes an earlier Ultimate left: ${String(error)}`),
@@ -301,7 +345,7 @@ export default function codingTools(
     background: opt(
       bool({
         description:
-          'For servers and other long-running processes: start the command in its own process group and return at once with the group id, a log file of its output and the command that stops it. Do not add & yourself. Ultimate stops it when this conversation concludes or Ultimate restarts.',
+          'For servers, test runs and other long-running processes: start the command in its own process group and return at once with the group id, a log file of its output and the command that stops it. Do not add & yourself. When it ends, its exit code and the last lines of its log arrive with your next input: do not poll or sleep on the log to wait for it. Ultimate stops it when this conversation concludes or Ultimate restarts.',
       }),
     ),
   })
@@ -311,21 +355,16 @@ export default function codingTools(
     async execute({ interruptible, background, ...args }, api, context) {
       if (background) {
         if (!api.env) throw new Error('No execution environment is configured')
-        const { pgid, log, started, stop } = await startBackground(
+        const { pgid, log, started, stop, exited } = await startBackground(
           host,
           api.conversationId,
           api.env.cwd,
           args.command,
           context.abortSignal,
         )
-        const conversations = host.need(ConversationsApi)
         const concluded = await api
           .commit(async (tx) => {
-            const ended = await conversations.concludedIn(tx)
-            for (let id: ConversationId | undefined = api.conversationId; id !== undefined;) {
-              if (ended.has(id)) return true
-              id = (await tx.conversation(id))?.owner?.conversationId
-            }
+            if (await concludedWithOwners(tx, api.conversationId)) return true
             await host.emit(tx, BackgroundStarted, started)
             return false
           }, context)
@@ -337,6 +376,20 @@ export default function codingTools(
           await stop()
           throw new Error('This conversation is concluded; its background processes are stopped')
         }
+        inProcess(
+          'a restart stops the group itself, so no exit outlives the process to report',
+          exited
+            .then((outcome) =>
+              reportEnded(
+                api.conversationId,
+                { name: started.name, command: args.command, pgid, log },
+                outcome,
+              ),
+            )
+            .catch((error: unknown) =>
+              host.notice(`Reporting the end of background group ${pgid}: ${String(error)}`),
+            ),
+        )
         const output = `Started in the background as process group ${pgid}.\nOutput: ${log}\nStop it with: kill -- -${pgid}`
         return {
           output: [{ type: 'text', text: output }],

@@ -1,5 +1,6 @@
 /** Coding tools in the browser: the event each commit made through the bash tool records. Browser-safe. */
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { defineEntry } from '@earendil-works/pi-durable'
 import { defineEvent } from '../../shared/events.ts'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
@@ -19,6 +20,20 @@ export const CancelAction = actionRef<{ callId: string }, null>('coding-tools', 
 export const BackgroundStarted = defineEvent<{ conversation: ConversationId; name: string }>(
   'coding-tools.background-started',
 )
+
+/**
+ * A background group this conversation started ended: its `command`, `pgid`, the shell's `exitCode` (or the `signal`
+ * that ended it) and the last lines of its `log`. Written once per group, with the model text, so the agent reads it
+ * with its next input and does not poll the log.
+ */
+export const BackgroundEndedEntry = defineEntry<{
+  command: string
+  pgid: number
+  exitCode: number | null
+  signal: string | null
+  log: string
+  tail: string
+}>('coding-tools.background-ended')
 
 /**
  * Conversation `conversation` made commit `sha` (full) through the bash tool, in repository `repo` (its main
