@@ -1,5 +1,5 @@
 export type Snap = 'folded' | 'rest' | 'full'
-export const REST = 0.34
+export const REST = 0.5
 
 const ORDER: readonly Snap[] = ['folded', 'rest', 'full']
 
