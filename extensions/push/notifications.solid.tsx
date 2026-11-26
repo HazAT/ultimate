@@ -163,7 +163,7 @@ export function Pusher() {
     },
   )
   onSettled(() => {
-    void launch()
+    launch().catch(failed)
     if (!hasPushSupport) return undefined
     const opened = (event: MessageEvent<{ type?: string; url?: string }>) => {
       if (event.data?.type !== 'ultimate:open' || !event.data.url) return
