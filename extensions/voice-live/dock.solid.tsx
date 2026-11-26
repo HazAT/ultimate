@@ -252,6 +252,9 @@ function restore() {
   dock.setStatus(undefined)
 }
 
+type Rider = { typed: string; images: readonly Image[]; taken?: true }
+let rider: Rider | undefined
+
 async function finishRecording(recorded: Recorded, retaking: boolean) {
   const held = dock.held()
   if (!retaking) dock.hold(undefined)
@@ -272,16 +275,41 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
     }
     return
   }
+  const riding = rider
+  rider = undefined
+  if (riding) riding.taken = true
   if (dock.collect()) {
-    await collectClip(recorded)
+    await collectClip(recorded, riding)
     return
   }
-  await sendTurn({ recorded, interrupted: !!held?.busy })
+  await sendTurn({
+    recorded,
+    interrupted: !!held?.busy,
+    ...(riding ? { typed: riding.typed.trim(), images: riding.images, fromComposer: true } : {}),
+  })
 }
 
-async function collectClip(recorded: Recorded) {
+async function collectClip(recorded: Recorded, riding?: Rider) {
   const { signal } = live
   const owner = session
+  if (riding) {
+    dock.setPhase('sending')
+    dock.setStatus('Sending your voice…')
+    const free = draftOf().filter((clip) => !sending.has(clip.audio))
+    const { audio: kept } = await api.action(
+      RecordAction,
+      {
+        audio: await base64(recorded.blob),
+        mimeType: recorded.blob.type.split(';')[0],
+        collect: { seconds: recorded.seconds, envelope: recorded.envelope },
+        ...(owner !== undefined ? { session: owner } : {}),
+      },
+      { signal },
+    )
+    const clip = { audio: kept, seconds: recorded.seconds, envelope: recorded.envelope }
+    await sendDraft('steer', riding.typed, false, [...free, clip], true, riding.images)
+    return
+  }
   dock.setPhase('idle')
   dock.setStatus('Collecting · say "send it" or press Enter')
   try {
@@ -342,6 +370,17 @@ export async function sendDraft(
 export const discardDraft = () => api.action(DiscardAction, null)
 
 export async function sendTyped(text: string, images: readonly Image[] = []) {
+  const take = capture.take(voiceSink)
+  if (take) {
+    const riding: Rider = { typed: text, images }
+    rider = riding
+    try {
+      await take.release()
+    } finally {
+      if (rider === riding) rider = undefined
+    }
+    if (riding.taken) return
+  }
   const free = draftOf().filter((clip) => !sending.has(clip.audio))
   if (free.length) return sendDraft('steer', text, false, free, true, images)
   if (!text.trim() && !images.length) return
