@@ -81,6 +81,7 @@ export async function createWeb(options: {
   home: string
   watch: Watch
   before: () => Promise<unknown>
+  held: () => boolean
   pages: () => number
   changed: () => void
   notice: (message: string) => void
@@ -277,6 +278,7 @@ export async function createWeb(options: {
         await mkdir(folder, { recursive: true })
         while (stale && !closing.signal.aborted) {
           await options.before()
+          if (options.held() && manifest) break
           stale = false
           changedFiles = [...pending]
           pending = new Set()

@@ -456,7 +456,7 @@ export async function loadExtensions(
     reloadExtensions: async () => {
       const work = chain
         .then(() => (closed ? undefined : prepareLoadBestEffort()))
-        .then(() => (closed ? undefined : reloadSettings()))
+        .then(() => (closed || heldForNewCore() ? undefined : reloadSettings()))
       const recoveredQueueForLaterReloads = work.catch(() => changed())
       chain = recoveredQueueForLaterReloads
       await work
@@ -474,10 +474,18 @@ export async function loadExtensions(
       ),
     )
   let chain = Promise.resolve()
+  let heldNoticeShown = false
+  function heldForNewCore() {
+    if (!host.builds.coreChanged()) return false
+    if (!heldNoticeShown)
+      notice('The core changed on disk: extension reloads wait for the restart to the new core')
+    heldNoticeShown = true
+    return true
+  }
   function enqueue(work: () => Promise<void>) {
     chain = chain
       .then(() => (closed ? undefined : prepareLoadBestEffort()))
-      .then(() => (closed ? undefined : work()))
+      .then(() => (closed || heldForNewCore() ? undefined : work()))
       .catch((error: unknown) => {
         notice(`Extension reload failed: ${String(error)}`)
         return changed()
@@ -868,6 +876,7 @@ export async function loadExtensions(
     trace: trace.reader,
     restartRefusal: preparationError,
     prepareLoadBestEffort,
+    heldForNewCore,
     async opened() {
       trace.open()
       open = true

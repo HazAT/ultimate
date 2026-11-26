@@ -254,6 +254,35 @@ describe('server reload', () => {
   })
   // Landing c16450c (2026-11-09) changed a patch together with the extension using it: the extension hot-reloaded while
   // pnpm install was still relinking the package and failed with "useExchangeTap is not a function".
+  // Landing e58fea8 changed shared/ui-state.ts with extensions that read it: they hot-reloaded into the old core with the
+  // new document definition, every read of the stored document threw, and a lander and a subagent reporter faulted.
+  it('holds extension reloads once the core changed on disk, until the new core loads them', async () => {
+    const { server, options } = await fixture(true)
+    const stream = await attach(server)
+    const loaded = server.host.build().extensions.counter
+    await writeFile(join(options.ultimateRoot, 'shared/landed.ts'), 'export const landed = 1\n')
+    await writeFile(
+      join(options.ultimateRoot, 'extensions/counter/value.ts'),
+      "export const value = 'new'",
+    )
+    await until(() =>
+      stream.events.some(
+        (event) =>
+          event.name === 'notice' &&
+          (event.data as { message: string }).message.includes('reloads wait'),
+      ),
+    )
+    expect(server.host.build().extensions.counter).toBe(loaded)
+    await rm(join(options.ultimateRoot, 'shared/landed.ts'))
+    await writeFile(
+      join(options.ultimateRoot, 'extensions/counter/value.ts'),
+      "export const value = 'newer'",
+    )
+    // Chokidar can coalesce consecutive writes to the same path; deliver this change explicitly.
+    server.vite.watcher.emit('change', join(options.ultimateRoot, 'extensions/counter/value.ts'))
+    await until(() => server.host.build().extensions.counter !== loaded)
+    await stream.close()
+  })
   it('loads no extension while an onBeforeLoad callback still waits, such as for an install', async () => {
     const install = { installed: true, waiting: 0, finish: () => {} }
     ;(globalThis as { testInstall?: typeof install }).testInstall = install

@@ -42,6 +42,7 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { createBuild } from './build.ts'
+import { backUpBeforeSwap } from './swap-backup.ts'
 import { spawn } from '../lib/spawn.ts'
 import { delegatedCore, isolateWork, workMemoryMax, workSpawn } from '../lib/cgroup.ts'
 import { applyHttpProxySettings, configureHttpDispatcher } from './http.ts'
@@ -242,6 +243,7 @@ export async function prepareHarness(options: HostOptions) {
           await created.close(context)
         })
         chapter = await activeChapter(home)
+        if (process.env.ULTIMATE_PREVIOUS_BUILD) await backUpBeforeSwap(home, chapter.database)
         storage = await openNodeSqliteStorage(chapter.database)
         harness = await Harness.open(
           storage,

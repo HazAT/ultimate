@@ -76,6 +76,21 @@ export async function coreChangedSince(git: Git, processBootHead: string | undef
   return changedCorePathsOrNoEvidence !== ''
 }
 
+export async function restartAfterCoreLanding(
+  host: Pick<ExtensionHost, 'restart' | 'notice'>,
+  install: Promise<void>,
+  stale: () => Promise<boolean>,
+) {
+  try {
+    await install
+    if (!(await stale())) return
+    host.notice('Restarting: a landing changed the core')
+    host.notice(`Restart after landing failed: ${await host.restart(async () => {})}`)
+  } catch (error) {
+    host.notice(`Restart after landing: ${String(error)}`)
+  }
+}
+
 export const AUTO_RESTART_PAUSE = 10 * 60_000
 
 export function restartOnStaleLoad(options: {
@@ -190,10 +205,11 @@ export default function update(host: ExtensionHost) {
   if (sharesHostCloneAsPreview()) return defineExtension({ name: 'update' })
   const lastFile = join(host.home, 'update-auto-restart.json')
   const pending = host.resource<{ current?: Promise<void> }>('update.auto-restart', () => ({}))
+  const stale = async () =>
+    (await installedSince(host.ultimateRoot, Date.parse(host.system().process.startedAt))) ||
+    (await coreChangedSince(gitIn(host.ultimateRoot), await processBootHead(host).head))
   const onLoadError = restartOnStaleLoad({
-    stale: async () =>
-      (await installedSince(host.ultimateRoot, Date.parse(host.system().process.startedAt))) ||
-      (await coreChangedSince(gitIn(host.ultimateRoot), await processBootHead(host).head)),
+    stale,
     restart: () => host.restart(async () => {}),
     notice: (message) => host.notice(message),
     last: {
@@ -227,6 +243,10 @@ export default function update(host: ExtensionHost) {
         backgroundInstall.catch((error: unknown) =>
           host.notice(`Install after landing: ${String(error)}`),
         ),
+      )
+      rebuiltOnOpen(
+        'a new core boots on the landed code',
+        restartAfterCoreLanding(host, backgroundInstall, stale),
       )
     },
     { from: 'now' },
