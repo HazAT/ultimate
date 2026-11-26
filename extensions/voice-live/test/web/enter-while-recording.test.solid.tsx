@@ -6,19 +6,24 @@ import {
   composeIn,
   dock,
   endSession,
+  sendDraft,
   sendTyped,
   settleTranscripts,
   voiceSink,
 } from '../../dock.solid.tsx'
 
-const harness = vi.hoisted(() => ({ turns: [] as Record<string, unknown>[] }))
+const harness = vi.hoisted(() => ({
+  turns: [] as Record<string, unknown>[],
+  record: undefined as Promise<void> | undefined,
+}))
 vi.mock('@/sdk/solid', async () => {
   const { createSignal } = await import('solid-js')
   return {
     api: {
       action: (ref: { name: string }, args: Record<string, unknown>) => {
         if (ref.name === 'status') return Promise.resolve({ route: 'text' })
-        if (ref.name === 'record') return Promise.resolve({ audio: 'rec-1', session: 40 })
+        if (ref.name === 'record')
+          return Promise.resolve(harness.record).then(() => ({ audio: 'rec-1', session: 40 }))
         if (ref.name === 'turn') {
           harness.turns.push(args)
           return Promise.resolve({ conversation: 40 })
@@ -89,6 +94,7 @@ const speak = () => {
 beforeEach(async () => {
   await endSession()
   harness.turns.length = 0
+  harness.record = undefined
   composeIn(parseConversationId(40))
 })
 
@@ -120,8 +126,12 @@ it('Enter during a recording while collecting sends the collected clips, the new
   settleTranscripts({ draft: [earlier] }, session)
   await capture.press(voiceSink)?.started
   speak()
+  let uploaded = () => {}
+  harness.record = new Promise((resolve) => (uploaded = resolve))
   const sent = sendTyped('look at this', [shot])
   await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+  await sendDraft('followUp')
+  uploaded()
   settleTranscripts(
     { draft: [earlier], transcripts: { 'clip-0': 'first', 'rec-1': 'second' } },
     session,

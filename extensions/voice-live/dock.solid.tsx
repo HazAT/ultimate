@@ -253,7 +253,7 @@ function restore() {
 }
 
 type Rider = { typed: string; images: readonly Image[]; taken?: true }
-let rider: Rider | undefined
+let entering: Rider | undefined
 
 async function finishRecording(recorded: Recorded, retaking: boolean) {
   const held = dock.held()
@@ -275,13 +275,13 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
     }
     return
   }
-  const riding = rider
-  rider = undefined
+  const riding = entering
   if (riding) riding.taken = true
   if (dock.collect()) {
     await collectClip(recorded, riding)
     return
   }
+  entering = undefined
   await sendTurn({
     recorded,
     interrupted: !!held?.busy,
@@ -292,8 +292,6 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
 async function collectClip(recorded: Recorded, riding?: Rider) {
   const { signal } = live
   const owner = session
-  const earlier = riding ? draftOf().filter((clip) => !sending.has(clip.audio)) : []
-  for (const clip of earlier) sending.add(clip.audio)
   dock.setPhase('idle')
   dock.setStatus(riding ? 'Sending your voice…' : 'Collecting · say "send it" or press Enter')
   let kept: string
@@ -314,10 +312,10 @@ async function collectClip(recorded: Recorded, riding?: Rider) {
     if (!riding) return
     dock.setStatus(undefined)
     throw signal.aborted ? signal.reason : failure
-  } finally {
-    for (const clip of earlier) sending.delete(clip.audio)
   }
   if (riding) {
+    entering = undefined
+    const earlier = draftOf().filter((clip) => clip.audio !== kept)
     const clip = { audio: kept, seconds: recorded.seconds, envelope: recorded.envelope }
     await sendDraft('steer', riding.typed, false, [...earlier, clip], true, riding.images)
     return
@@ -349,6 +347,7 @@ export async function sendDraft(
   fromComposer = false,
   images?: readonly Image[],
 ) {
+  if (entering) return
   clips = clips.filter((clip) => !sending.has(clip.audio))
   if (!clips.length && !typed.trim() && !images?.length) return
   const busy = ours().playing || ours().paused || replying()
@@ -373,11 +372,11 @@ export async function sendTyped(text: string, images: readonly Image[] = []) {
   if (take) {
     const { signal } = live
     const riding: Rider = { typed: text, images }
-    rider = riding
+    entering = riding
     try {
       await take.release()
     } finally {
-      if (rider === riding) rider = undefined
+      if (entering === riding) entering = undefined
     }
     signal.throwIfAborted()
     if (riding.taken) return
