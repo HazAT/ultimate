@@ -325,6 +325,8 @@ export async function loadExtensions(
     device?: Device,
     source: UiSource = { source: 'person' },
   ) {
+    if (caller === 'agent' && userActions.get(name)?.includes(action))
+      throw new Error(`${name}/${action} is a user-only action`)
     const table = actions.get(name)
     const fn = table && Object.hasOwn(table, action) ? table[action] : undefined
     if (!fn) throw new Error(`Unknown extension action: ${name}/${action}`)
@@ -341,6 +343,7 @@ export async function loadExtensions(
         host: facetHosts.get(name)!,
         conversationId,
         ...(device ? { device } : {}),
+        by,
         uiChanged: async (tx, change) => {
           const data = uiChange(by, { ...change, conversation: conversationId })
           if (data) await log.emit(tx, ChangedEvent, data)
@@ -361,11 +364,8 @@ export async function loadExtensions(
     )
   }
   const extensionHost: ExtensionHost = {
-    invoke: async (name, action, args, signal, conversationId) => {
-      if (userActions.get(name)?.includes(action))
-        throw new Error(`${name}/${action} is a user-only action`)
-      return invoke(name, action, args, signal, conversationId, 'agent')
-    },
+    invoke: (name, action, args, signal, conversationId) =>
+      invoke(name, action, args, signal, conversationId, 'agent'),
     emit: log.emit,
     react: () => {
       throw new Error('Reactors require a facet scope')

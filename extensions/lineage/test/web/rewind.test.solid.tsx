@@ -91,6 +91,10 @@ it('lets an agent preview and go back to a message only in the shown non-root co
   expect(buttons()).toEqual([])
   await settle()
   server.of(ROOT)!.send('doc', { kind: RootsDoc.kind, value: { roots: [ROOT] } })
+  sources[0].send('conversations', [
+    { id: ROOT, busy: false },
+    { id: conversation, busy: false },
+  ])
   flush()
   expect(buttons().map((button) => button.getAttribute('data-lineage-go-back'))).toEqual([
     '11',
@@ -116,4 +120,8 @@ it('lets an agent preview and go back to a message only in the shown non-root co
   await press('Confirm go back')
   expect(rewind).toHaveBeenCalledExactlyOnceWith({ conversation, at, summarize: false }, 'agent')
   expect(dialog()).toBeNull()
+
+  sources[0].send('conversations', [{ id: conversation, busy: false, external: 'antigravity' }])
+  flush()
+  expect(buttons()).toEqual([])
 })

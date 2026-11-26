@@ -432,7 +432,7 @@ export const Dictation = definePoint<
   JSX.Element
 >('ultimate.dictation')
 /**
- * How the talk shortcut is pressed, gesture and keys (`dictation` provides it: `hold Ctrl+Shift+Space`), for the main
+ * How the talk shortcut is pressed, gesture and keys (`dictation` provides it: `tap Ctrl+Shift+Space`), for the main
  * composer's placeholder. While nothing provides it, the placeholder leaves it out.
  */
 export const DictationShortcut = definePoint<null, string | undefined>('ultimate.dictationShortcut')

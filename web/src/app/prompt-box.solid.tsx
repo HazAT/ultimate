@@ -272,20 +272,22 @@ export function PromptBox(props: PromptBoxProps) {
   const controls = () => (
     <>
       {attachButton()}
-      <Provided
-        input={{
-          name: props.name,
-          draft: props.draft ?? `box:${props.name}`,
-          attach: async (picked: readonly File[], source: UploadSource = 'recording') => {
-            const target = draft()
-            const settled = await sent(target, gone)
-            return settled && mounted && draft() === target && attach.attach(picked, source)
-          },
-          recording: setRecording,
-        }}
-        last
-        point={PromptRecorder}
-      />
+      <Show when={canAttach()}>
+        <Provided
+          input={{
+            name: props.name,
+            draft: props.draft ?? `box:${props.name}`,
+            attach: async (picked: readonly File[], source: UploadSource = 'recording') => {
+              const target = draft()
+              const settled = await sent(target, gone)
+              return settled && mounted && draft() === target && attach.attach(picked, source)
+            },
+            recording: setRecording,
+          }}
+          last
+          point={PromptRecorder}
+        />
+      </Show>
       <Show when={props.dictation !== false && !props.disabled}>
         <Provided
           input={{

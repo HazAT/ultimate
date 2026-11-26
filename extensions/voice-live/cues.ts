@@ -1,19 +1,4 @@
-let context: AudioContext | undefined
-
-function tone(frequency: number, seconds: number, gain: number, type: OscillatorType, delay = 0) {
-  context ??= new AudioContext()
-  const at = context.currentTime + delay
-  const oscillator = context.createOscillator()
-  const volume = context.createGain()
-  oscillator.type = type
-  oscillator.frequency.value = frequency
-  volume.gain.setValueAtTime(0, at)
-  volume.gain.linearRampToValueAtTime(gain, at + 0.01)
-  volume.gain.exponentialRampToValueAtTime(0.0001, at + seconds)
-  oscillator.connect(volume).connect(context.destination)
-  oscillator.start(at)
-  oscillator.stop(at + seconds + 0.02)
-}
+import { startCue, stopCue, tone } from '../../lib/cues.ts'
 
 const pentatonic = [523.3, 587.3, 659.3, 784, 880, 1046.5, 1174.7, 1318.5]
 
@@ -22,8 +7,8 @@ export function createCues(enabled: () => boolean) {
     if (enabled()) sound()
   }
   return {
-    press: () => play(() => (tone(660, 0.08, 0.05, 'sine'), tone(880, 0.1, 0.04, 'sine', 0.06))),
-    send: () => play(() => (tone(880, 0.08, 0.05, 'sine'), tone(660, 0.12, 0.04, 'sine', 0.06))),
+    press: () => play(startCue),
+    send: () => play(stopCue),
     steer: () => play(() => (tone(740, 0.06, 0.05, 'sine'), tone(740, 0.06, 0.04, 'sine', 0.09))),
     stage: (index: number) =>
       play(() => tone(pentatonic[index % pentatonic.length], 0.12, 0.015, 'triangle')),

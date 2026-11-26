@@ -19,8 +19,8 @@ for (const key of Object.keys(process.env))
 // concurrent tests never see them come back. Inside a preview ULTIMATE_MODEL would otherwise override every model a test
 // expects (#537493: test/default-model.test.ts, which imports no helpers, failed a preview's suite).
 for (const key of Object.keys(process.env)) if (key.startsWith('ULTIMATE_')) delete process.env[key]
-// Nor the machine's real Antigravity CLI, which would reach Google with the user's login: tests that need agy stub it.
-process.env.PI_ANTIGRAVITY_COMMAND = join(testTmpdir, 'no-agy')
+// Never use the machine's agy login: tests that need ACP stub its command.
+process.env.ULTIMATE_AGY_COMMAND = join(testTmpdir, 'no-agy')
 // Test servers, and the previews they start, must never publish on this machine's tailnet: they find no Tailscale CLI.
 process.env.TAILSCALE_COMMAND = join(testTmpdir, 'no-tailscale')
 // No background `git maintenance run --auto --detach` after test commits: Git 2.54 runs it after a source

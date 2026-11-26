@@ -4,7 +4,16 @@ import { Button, buttonVariants } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { cn, formatKeys } from '@/sdk/solid'
-import { keyChord, setShortcut, setTalkMode, shortcut, talkMode } from './routing.solid.tsx'
+import { Switch } from '@/components/ui/switch.solid.tsx'
+import {
+  keyChord,
+  setShortcut,
+  setSoundCues,
+  setTalkMode,
+  shortcut,
+  soundCues,
+  talkMode,
+} from './routing.solid.tsx'
 
 export function DictationSettings(props: { name: string }) {
   return (
@@ -42,6 +51,13 @@ export function DictationSettings(props: { name: string }) {
           <div class="flex items-center justify-between gap-3">
             Talk shortcut
             <ShortcutRecorder name={props.name} />
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            Sound cues
+            <Switch
+              aria-label={`Dictation sound cues for ${props.name}`}
+              bind={[soundCues, setSoundCues]}
+            />
           </div>
         </div>
       </PopoverContent>

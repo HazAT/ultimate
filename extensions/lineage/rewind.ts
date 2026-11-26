@@ -53,8 +53,9 @@ const EVENTS_PER_PAGE = 5000
 const SUMMARY_SYSTEM =
   'Summarize the part of a coding conversation the user set aside by going back to an earlier point. The agent will continue from that earlier point and reads this summary instead. In short Markdown bullets: what was tried, decided and achieved, what is unfinished. Preserve exact file paths, names and errors. Do not continue the conversation; output only the summary.'
 
-export async function refusal(tx: Tx, id: ConversationId, at: EntryId) {
+async function refusal(host: ExtensionHost, tx: Tx, id: ConversationId, at: EntryId) {
   if (!(await tx.conversation(id))) return `No conversation #${id}`
+  if ((await tx.doc(host.metadata, id)).external) return 'ACP conversations cannot go back.'
   if ((await tx.doc(Roots, ROOT_CONVERSATION_ID)).roots.includes(id))
     return "Roots can't go back: a root's context is its tally."
   const found = await tx.scanEntries({ conversationId: id, minEntryId: at, maxEntryId: at }, 1)
@@ -388,7 +389,7 @@ export function rewindTask(host: ExtensionHost) {
           const text = noteText(id, at, found, summary)
           await runtime.commit(async (tx) => {
             const refused =
-              (await refusal(tx, id, at)) ??
+              (await refusal(host, tx, id, at)) ??
               (await refuseMovedContextBeforeWrites(tx, id, revision))
             if (refused) throw new Error(refused)
             const entry = await tx.appendEntry(id, {
@@ -480,7 +481,7 @@ export const rewindActions = {
     const { id, at } = point(args)
     const summaryModel = !!(await host.need(ConversationsApi).summaryModel())
     const empty = { steps: 0, files: [], commits: [], dependents: [], summaryModel }
-    const refused = await host.harness().commit((tx) => refusal(tx, id, at), context)
+    const refused = await host.harness().commit((tx) => refusal(host, tx, id, at), context)
     if (refused) return { ...empty, refused }
     const { plan } = await contextViewsAndRevision(host, id, at, context)
     if (!plan.edits.length) return { ...empty, refused: nothing }
@@ -494,7 +495,7 @@ export const rewindActions = {
     const { id, at } = point(args)
     const summarize = (args as { summarize?: unknown }).summarize === true
     const task = await host.harness().commit(async (tx) => {
-      const refused = await refusal(tx, id, at)
+      const refused = await refusal(host, tx, id, at)
       if (refused) throw new Error(refused)
       return tx.createTask(
         rewindTask(host),

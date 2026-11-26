@@ -24,7 +24,7 @@ import { UiState } from '../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
 import { actionExec } from '../../../server/actions.ts'
 import { currentAnswer, exchangeUser } from '../summary.ts'
-import { Overview } from '../api.ts'
+import { Overview, Previews, Release } from '../api.ts'
 import { Concluded } from '../refs.ts'
 import { EventLog } from '../../../server/events.ts'
 import { Branch } from '../../lineage/api.ts'
@@ -635,19 +635,23 @@ it('conclude merges concurrent additions, deduplicates ids and returns kept chec
     harness: () => server.harness,
     emit: async () => {},
     metadata: Metadata,
-    want: () => ({
-      isRoot: async () => false,
-      release: async (ids: number[]) => {
-        released.push(ids)
-        return kept
-      },
-      stop: async () => [],
-    }),
+    want: (api: { name: string }) => {
+      if (api.name === Previews.name) return { stop: async () => [] }
+      if (api.name === Release.name)
+        return {
+          release: async (ids: number[]) => {
+            released.push(ids)
+            return kept
+          },
+        }
+      return undefined
+    },
   } as unknown as ExtensionHost
   const ctx = {
     host,
     signal: new AbortController().signal,
     exec: actionExec('.', new AbortController().signal),
+    by: { source: 'person' as const },
     uiChanged: async () => undefined,
   }
   const results = await Promise.all([

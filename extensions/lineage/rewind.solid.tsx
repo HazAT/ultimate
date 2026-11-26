@@ -21,6 +21,7 @@ import {
   switchConversation,
   useAction,
   useConversationId,
+  useConversationSummary,
   useDocOf,
   writingAs,
 } from '@/sdk/solid'
@@ -212,11 +213,14 @@ function GoBackDialog(props: { entry: EntryRecord; onClose: () => void }) {
 export function GoBackAction(props: { entry: EntryRecord }) {
   const roots = useDocOf(() => ROOT, RootsDoc)
   const shown = useConversationId()
+  const conversation = useConversationSummary(shown)
   const [open, setOpen] = createSignal(false)
   return (
     <Show
       when={
         shown() === props.entry.conversationId &&
+        conversation() &&
+        !conversation()?.external &&
         roots()?.roots.includes(props.entry.conversationId) === false
       }
     >

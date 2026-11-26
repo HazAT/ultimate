@@ -11,15 +11,15 @@ const ui = vi.hoisted(() => ({ folded: false }))
 vi.mock('@/sdk/solid', async (original) => ({
   ...(await original<typeof import('@/sdk/solid')>()),
   useAction: () => ({
-    data: () => ({ model: 'antigravity/gemini-4-neon-low', thinking: 'low' }),
+    data: () => ({ model: 'google/gemini-4-neon', thinking: 'low' }),
     refetch() {},
   }),
   useModels: () => () => ({
     providers: [],
     models: [
       {
-        provider: 'antigravity',
-        id: 'gemini-4-neon-low',
+        provider: 'google',
+        id: 'gemini-4-neon',
         reasoning: true,
         thinkingLevels: ['off', 'low', 'high'],
       },
@@ -59,7 +59,7 @@ it('before a session exists, the prompt box shows the voice model chip', async (
   setVoiceOpen(true)
   flush()
   const chip = () => view.querySelector('[data-ui="prompt-box"] [aria-label="Voice model"]')
-  expect(chip()?.textContent).toContain('gemini-4-neon-low·low')
+  expect(chip()?.textContent).toContain('gemini-4-neon·low')
   await expectDistinctAgentNames(agent)
   dock.setPhase('recording')
   flush()

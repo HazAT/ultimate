@@ -57,6 +57,7 @@ export interface ConversationSummary {
   branchOf?: { conversationId: ConversationId; at: EntryId }
   ownerTaskId?: TaskId
   label?: string
+  external?: string
   title?: string
   cwd?: string
   busy: boolean

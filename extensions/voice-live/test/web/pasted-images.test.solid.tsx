@@ -40,7 +40,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       harness.asked++
       await harness.status
       init?.signal?.throwIfAborted()
-      return Response.json({ result: { model: 'faux/voice', route: harness.route } })
+      return Response.json({
+        result: { model: 'faux/voice', thinking: 'low', route: harness.route },
+      })
     }
     if (path === '/api/extensions/voice-live/actions/turn') {
       harness.turns.push(JSON.parse(init?.body as string).args)

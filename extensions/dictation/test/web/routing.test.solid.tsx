@@ -39,6 +39,7 @@ class FakeRecorder extends EventTarget {
 }
 
 beforeEach(async () => {
+  setTalkMode('hold')
   vi.stubGlobal('isSecureContext', true)
   vi.stubGlobal('MediaRecorder', FakeRecorder)
   vi.stubGlobal('matchMedia', () => ({
@@ -56,6 +57,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  setTalkMode('tap')
   await capture.end()
   setFallback(undefined)
   vi.useRealTimers()
@@ -148,11 +150,8 @@ it('records into the focused prompt box and finishes there even if focus moves b
   expect(wake).not.toHaveBeenCalled()
 })
 
-it('a second tap finishes the shortcut-owned take after focus moves to another box', async ({
-  onTestFinished,
-}) => {
+it('a second tap finishes the shortcut-owned take after focus moves to another box', async () => {
   setTalkMode('tap')
-  onTestFinished(() => setTalkMode('hold'))
   const plain = sink()
   const main = sink()
   const { plainEditor, mainEditor } = mount(plain, main)

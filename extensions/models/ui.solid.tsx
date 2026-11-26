@@ -15,3 +15,5 @@ export { PickControl } from './toolbar.solid.tsx'
 export type { ModelPick } from './state.ts'
 /** The provider login and model picker dialog IDs, for Get ready's focus handoff. */
 export { dialogs as modelDialogs } from './state.ts'
+/** Groups of extra choices in the picker, with an optional adjacent secondary action. */
+export { PickerRows } from './points.ts'

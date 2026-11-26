@@ -8,7 +8,9 @@ Dictation: a mic button in every prompt box records speech and puts its transcri
   Escape cancels. Recordings stop themselves after 5 minutes.
 - **Talk shortcut** (Ctrl/⌘+Shift+Space by default) goes to the focused prompt box. With none focused, it talks to
   Voice if enabled; otherwise it focuses the main composer and dictates there. The cog next to any mic changes
-  the page-wide shortcut and Hold/Tap mode. It also provides the SDK's `DictationShortcut` point (`hold Ctrl+Shift+Space`),
+  the page-wide shortcut, Hold/Tap mode (Tap by default) and **Sound cues** (on by default, `ext.dictation.cues`): a soft rising
+  tone when recording starts and a falling one when it stops. The tones live in `lib/cues.ts`; Voice mode plays the same
+  ones under its own Sound cues switch. It also provides the SDK's `DictationShortcut` point (`tap Ctrl+Shift+Space`),
   which the main composer's placeholder names.
 - **Recording** uses `MediaRecorder`: `audio/webm` (Opus) in Chrome and Firefox, `audio/mp4` in Safari, including the
   installed iOS home-screen app. The page shares one microphone across prompt boxes and Voice mode. It releases the

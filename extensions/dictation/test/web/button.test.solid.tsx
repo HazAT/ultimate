@@ -14,7 +14,13 @@ import { events } from '@/sdk/solid'
 import { VoiceButton } from '../../button.solid.tsx'
 import { capture } from '../../capture.ts'
 import type { VoiceStatus } from '../../refs.ts'
-import { talkMode } from '../../routing.solid.tsx'
+import { startCue, stopCue } from '../../../../lib/cues.ts'
+import { setSoundCues, setTalkMode, talkMode } from '../../routing.solid.tsx'
+
+vi.mock('../../../../lib/cues.ts', () => ({
+  startCue: vi.fn<() => void>(),
+  stopCue: vi.fn<() => void>(),
+}))
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -200,7 +206,11 @@ it('records for an agent and transcribes into the same composer, leaving the edi
   expect(inserted).toEqual(['hello from the mic'])
 })
 
-it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation settings', async () => {
+it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation settings', async ({
+  onTestFinished,
+}) => {
+  setTalkMode('hold')
+  onTestFinished(() => setTalkMode('tap'))
   const container = await mount(15, { available: true })
   const mic = 'Dictate into conversation #15'
   const stop = 'Stop and transcribe into conversation #15'
@@ -228,6 +238,38 @@ it('toggles with mouse clicks in Hold mode and exposes uniquely named dictation 
   flush()
   expect(button('Talk shortcut for conversation #15')).not.toBeNull()
   await expectDistinctAgentNames(agent)
+})
+
+it('plays the start and stop cues in a plain box only while Sound cues is on', async ({
+  onTestFinished,
+}) => {
+  onTestFinished(() => setSoundCues(true))
+  const container = await mount(16, { available: true })
+  const button = (label: string) =>
+    container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+  const take = async () => {
+    vi.mocked(startCue).mockClear()
+    vi.mocked(stopCue).mockClear()
+    button('Dictate into conversation #16').click()
+    await settle()
+    flush()
+    const started = vi.mocked(startCue).mock.calls.length
+    expect(stopCue).not.toHaveBeenCalled()
+    button('Stop and transcribe into conversation #16').click()
+    await settle()
+    flush()
+    return [started, vi.mocked(stopCue).mock.calls.length]
+  }
+  expect(await take()).toEqual([1, 1])
+
+  await agent.act({
+    steps: [
+      { ref: 'Dictation settings for conversation #16', action: 'setOpen', args: [true] },
+      { ref: 'Dictation sound cues for conversation #16', action: 'setChecked', args: [false] },
+    ],
+  })
+  expect(await take()).toEqual([0, 0])
+  expect(inserted).toEqual(['hello from the mic', 'hello from the mic'])
 })
 
 it('keeps a plain box’s microphone after Stop only while keepOpen is true', async () => {

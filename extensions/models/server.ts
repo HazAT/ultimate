@@ -117,6 +117,11 @@ export const actions = {
     return null
   }),
   setDefault: implementAction(SetDefaultAction, async (args, { host, conversationId }) => {
+    if (
+      conversationId !== undefined &&
+      (await host.harness().snapshot(host.metadata, conversationId, context))?.external
+    )
+      throw new Error('Set the model through Antigravity’s ACP controls')
     const change = await setDefault(host, text(args, 'model'))
     if (conversationId !== undefined)
       await host.harness().commit(async (tx) => {

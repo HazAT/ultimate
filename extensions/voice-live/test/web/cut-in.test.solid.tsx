@@ -15,7 +15,7 @@ vi.mock('@/sdk/solid', async () => {
     api: {
       action: (ref: { name: string }, args: Record<string, unknown>) => {
         if (ref.name === 'status')
-          return Promise.resolve({ model: 'antigravity/gemini-4-neon-low', route: 'audio' })
+          return Promise.resolve({ model: 'google/gemini-4-neon', thinking: 'low', route: 'audio' })
         if (ref.name === 'stop') harness.stops++
         if (ref.name !== 'turn') return Promise.resolve({})
         harness.sent.push(args)

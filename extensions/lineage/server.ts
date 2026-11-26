@@ -1418,6 +1418,8 @@ export default function lineageExtension(host: ExtensionHost) {
         async execute({ instructions }, api, ctx) {
           const id = api.conversationId
           const compactionWithWake = async (tx: Tx) => {
+            if ((await tx.doc(host.metadata, id)).external)
+              throw new Error('ACP conversations cannot be compacted')
             const subagentWouldLoseWakeReport = (await tx.conversation(id))?.owner
             if (subagentWouldLoseWakeReport)
               throw new Error(
