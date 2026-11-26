@@ -169,19 +169,19 @@ export function makeClient(host: ExtensionHost) {
       ;(await stop([...new Set([...live.keys(), ...prompts.keys()])]))[Symbol.dispose]()
     })
     const ids = await commit(async (tx) => {
-      const found: ConversationId[] = []
+      const all: ConversationId[] = []
       let cursor: Cursor | undefined
       do {
         const page = await tx.scanConversations({}, 256, cursor)
-        for (const { id } of page.items) {
-          const session = await tx.doc(Session, id)
-          if (session.status && session.status !== 'offline') found.push(id)
-        }
+        all.push(...page.items.map(({ id }) => id))
         cursor = page.next
       } while (cursor !== undefined)
-      return found
+      return all
     })
-    for (const id of ids) await commit((tx) => markOffline(tx, id))
+    for (const id of ids) {
+      const status = (await host.harness().snapshot(Session, id, context))?.status
+      if (status && status !== 'offline') await commit((tx) => markOffline(tx, id))
+    }
     closed = false
   })
 

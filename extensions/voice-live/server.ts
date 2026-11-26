@@ -62,6 +62,7 @@ import type {
   VoiceUi,
 } from './refs.ts'
 import { voicePrompt } from './prompt.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const DEFAULT_MODEL = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
@@ -107,7 +108,7 @@ export const userActions = [
 
 export const Session = defineDoc<VoiceSession>({
   kind: 'voice.session',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -117,7 +118,7 @@ export const Session = defineDoc<VoiceSession>({
 
 export const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; ended?: true }>({
   kind: 'voice.fork',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -127,7 +128,7 @@ export const Fork = defineDoc<VoiceFork & { seen?: EntryId; introduced?: true; e
 
 export const Ui = defineDoc<VoiceUi>({
   kind: 'voice.ui',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

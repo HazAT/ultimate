@@ -17,6 +17,7 @@ import { Standing } from '../subagents/api.ts'
 import { TodosApi } from './api.ts'
 import { AddAction, DoneAction, ReopenAction, TodosDoc } from './refs.ts'
 import type { Todo } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const DONE_LIMIT = 50
 const TEXT_CHARS = 300
@@ -25,7 +26,7 @@ const KEY_CHARS = 200
 
 export const Todos = defineDoc<{ next: number; items: Todo[] }>({
   kind: TodosDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -34,7 +35,7 @@ export const Todos = defineDoc<{ next: number; items: Todo[] }>({
 })
 const LastOpenListCommittedWithInput = defineDoc<{ key?: string }>({
   kind: 'todos.seen',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -43,7 +44,7 @@ const LastOpenListCommittedWithInput = defineDoc<{ key?: string }>({
 })
 const OldestFirstIdempotencyReceipts = defineDoc<{ keys: { key: string; todo: Todo }[] }>({
   kind: 'todos.keys',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

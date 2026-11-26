@@ -34,10 +34,11 @@ import type { Dream, Prepared, Sleep, ToolStats } from './refs.ts'
 import { busyElsewhere } from './types.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from './seed.ts'
 import { BuiltInDoc, builtInOf, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const Next = defineDoc<{ prepared?: Prepared; sleep?: Sleep; dream?: Dream }>({
   kind: DreamDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

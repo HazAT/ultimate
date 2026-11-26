@@ -51,10 +51,11 @@ import {
 } from './refs.ts'
 import type { QuestionSide, SideChat, SideChatIndex, SideChatSummary } from './refs.ts'
 import { SideChatSummaryEntry } from './entries.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const Side = defineDoc<Partial<SideChat>>({
   kind: SideChatDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -63,7 +64,7 @@ export const Side = defineDoc<Partial<SideChat>>({
 })
 export const Index = defineDoc<SideChatIndex>({
   kind: SideChatsDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -72,7 +73,7 @@ export const Index = defineDoc<SideChatIndex>({
 })
 const Ending = defineDoc<{ mode?: 'discarded' | 'injected'; task?: TaskId; introduced?: boolean }>({
   kind: 'sidechat.ending',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -81,7 +82,7 @@ const Ending = defineDoc<{ mode?: 'discarded' | 'injected'; task?: TaskId; intro
 })
 export const QuestionSides = defineDoc<{ sides: QuestionSide[] }>({
   kind: QuestionSidesDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -431,7 +432,7 @@ async function openOnQuestion(host: ExtensionHost, messageId: number) {
 
 const DraftReceipts = defineDoc<{ calls: string[] }>({
   kind: 'sidechat.draft-receipts',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'task',
   initial: () => ({ calls: [] }),

@@ -17,6 +17,7 @@ import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { JudgementsDoc, MessagesDoc } from './refs.ts'
 import type { Judged, Question, Remote, Via } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 /** One message as the log stores it. */
 export type Message = {
@@ -61,7 +62,7 @@ export type Message = {
  */
 export const AskedCalls = defineDoc<{ calls: string[] }>({
   kind: 'board.asked-calls',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -71,7 +72,7 @@ export const AskedCalls = defineDoc<{ calls: string[] }>({
 /** Every message between conversations and the user, on the root conversation. */
 export const Messages = defineDoc<{ messages: Message[]; next: number }>({
   kind: MessagesDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -147,7 +148,7 @@ export type { Question, Serves } from './refs.ts'
 /** The judge's verdict on each of a branch's final answers, by answer entry, on the branch; never trimmed. */
 export const Judgements = defineDoc<{ answers: Record<number, Judged> }>({
   kind: JudgementsDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

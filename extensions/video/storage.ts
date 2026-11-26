@@ -21,6 +21,7 @@ import type { Google } from './gemini.ts'
 import { KEPT_MS } from './limits.ts'
 import { VideoReady, VideosDoc } from './refs.ts'
 import type { Video, Videos } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const VideosState = defineDoc<Videos>({
   kind: VideosDoc.kind,
@@ -28,7 +29,7 @@ export const VideosState = defineDoc<Videos>({
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   initial: () => ({ videos: {}, threads: {} }),
 })
 

@@ -77,6 +77,7 @@ import {
   StandingAction,
 } from './refs.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const docs = [Subagents, Standing, Profile, Runs]
 
@@ -129,7 +130,7 @@ const Recovered = defineDoc<{ highWater?: number }>({
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   initial: () => ({}),
 })
 const textOf = (message: AssistantMessage | undefined) =>

@@ -5,11 +5,12 @@
 import { defineDoc } from '@earendil-works/pi-durable'
 import { SummariesDoc } from './refs.ts'
 import type { Summaries } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 /** The one-line summaries of a conversation's codemode calls, by call id. */
 export const SummaryDoc = defineDoc<Summaries>({
   kind: SummariesDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -22,7 +23,7 @@ export const SummaryDoc = defineDoc<Summaries>({
  */
 export const PendingDoc = defineDoc<{ calls: string[] }>({
   kind: 'codemode.summaries-pending',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

@@ -30,12 +30,13 @@ import { Standing } from '../subagents/api.ts'
 import { TailscaleApi } from '../tailscale/api.ts'
 import { CheckAction } from './refs.ts'
 import type { SetupIssue } from './refs.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 const LOGIN = { label: 'Log in', command: 'auth.login' }
 
 const LastWarningsCommittedWithInput = defineDoc<{ key?: string }>({
   kind: 'setup.seen',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

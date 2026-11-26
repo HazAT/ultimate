@@ -86,6 +86,7 @@ import { hasLogin, hostDefault } from '../../lib/agents.ts'
 import { admitCompaction } from '../../lib/compaction.ts'
 import { githubRepo } from '../../lib/project-identity.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export type BranchImage = { data: string; mimeType: string }
 
@@ -571,7 +572,7 @@ function landingNote(landing: LandedData) {
 
 export const Notified = defineDoc<{ answers: Record<string, EntryId | 0> }>({
   kind: 'lineage.notified',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -581,7 +582,7 @@ export const Notified = defineDoc<{ answers: Record<string, EntryId | 0> }>({
 
 const NotifyReceipts = defineDoc<{ calls: Record<string, TaskId[]> }>({
   kind: 'lineage.notify-receipts',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'task',
   initial: () => ({ calls: {} }),
@@ -609,7 +610,7 @@ export type BranchInput = PromptInput & {
 
 const WokenReceipt = defineDocFamily<{ task?: TaskId }, null>({
   kind: 'lineage.woken-receipt',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   family: true,
   scope: 'conversation',
@@ -620,7 +621,7 @@ const WokenReceipt = defineDocFamily<{ task?: TaskId }, null>({
 
 export const BranchReceipts = defineDoc<{ branches: Record<string, ConversationId> }>({
   kind: 'lineage.branch-receipts',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'task',
   initial: () => ({ branches: {} }),

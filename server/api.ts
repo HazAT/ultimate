@@ -1,6 +1,7 @@
 import { parseConversationId, parseEntryId, offsetEntryId } from '../lib/ids.ts'
 import type {
   ConversationId,
+  ConversationDocToken,
   Cursor,
   DocumentWatch,
   JsonObject,
@@ -463,9 +464,21 @@ export async function createApi(
     const conversation = await harness.conversation(id, context)
     if (!conversation) throw new HttpError(404, 'Unknown conversation')
     const docs: { kind: string; watch: DocumentWatch<JsonObject> }[] = []
+    const absent = new Map<string, ConversationDocToken<JsonObject>>()
+    const created = new Set<string>()
     const unknown: string[] = []
     const watches: { stop(): Promise<unknown> }[] = []
+    let delivered = false
+    let stopped = false
+    const stopNoticingCreations = onCommit(harness, (publication) => {
+      for (const change of publication.changes)
+        if (change.type === 'document' && change.kind === 'change' && change.conversationId === id)
+          created.add(change.record.kind)
+      if (delivered) followCreatedDocs()
+    })
     const stop = async () => {
+      stopped = true
+      stopNoticingCreations()
       await Promise.all(watches.map((watch) => watch.stop()))
     }
     let live: Awaited<ReturnType<typeof conversation.watch>> | undefined
@@ -476,18 +489,13 @@ export async function createApi(
           unknown.push(kind)
           continue
         }
-        let watch = await harness.watchDoc(token, id, context)
-        if (!watch) {
-          await conversation.commit(async (tx) => {
-            await tx.doc(token, id)
-          }, context)
-          watch = await harness.watchDoc(token, id, context)
-        }
+        const watch = await harness.watchDoc(token, id, context)
         if (watch) {
           docs.push({ kind, watch })
           watches.push(watch)
-        }
+        } else absent.set(kind, token)
       }
+      if (!absent.size) stopNoticingCreations()
       if (withView) {
         live = await conversation.watch(context, { min: liveViewMinimumEntries })
         watches.push(live)
@@ -515,15 +523,46 @@ export async function createApi(
           if (call.kind === 'value') send('ops', call.ops)
         })
       }
-      for (const doc of docs) {
-        send('doc', { kind: doc.kind, value: doc.watch.value })
-        doc.watch.start(async (call) => {
-          if (call.kind === 'value') send('docOps', { kind: doc.kind, ops: call.ops })
-        })
+      for (const doc of docs) follow(doc.kind, doc.watch)
+      for (const [kind, token] of absent) send('doc', { kind, value: token.definition.initial() })
+    }
+    function follow(kind: string, watch: DocumentWatch<JsonObject>) {
+      send('doc', { kind, value: watch.value })
+      watch.start(async (call) => {
+        if (call.kind === 'value') send('docOps', { kind, ops: call.ops })
+      })
+    }
+    function followCreatedDocs() {
+      for (const kind of created) {
+        const token = absent.get(kind)
+        if (!token) continue
+        absent.delete(kind)
+        inProcess(
+          'a document watch belongs to this event stream',
+          harness
+            .watchDoc(token, id, context)
+            .then(async (watch) => {
+              if (!watch) absent.set(kind, token)
+              else if (stopped) await watch.stop()
+              else {
+                watches.push(watch)
+                follow(kind, watch)
+              }
+            })
+            .catch((error: unknown) =>
+              connection.send('notice', {
+                level: 'error',
+                message: `Could not watch ${kind}: ${String(error)}`,
+              }),
+            ),
+        )
       }
+      created.clear()
     }
     try {
       deliverSnapshotsThenOps()
+      delivered = true
+      followCreatedDocs()
     } catch (error) {
       connection.subscriptions.delete(streamUniqueId)
       await stop()

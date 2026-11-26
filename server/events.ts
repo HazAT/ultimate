@@ -18,13 +18,14 @@ import type {
 import { Metadata } from './metadata.ts'
 import { traceContext } from './trace.ts'
 import type { CallTrace } from './trace.ts'
+import { checkpointEvery } from '../shared/checkpoint.ts'
 
 export const EventLog = defineDoc<{
   conversation?: ConversationId
   cursors: Record<string, EntryId>
 }>({
   kind: 'ultimate.events',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -34,7 +35,7 @@ export const EventLog = defineDoc<{
 
 export const EventFeed = defineDoc<{ events: EventRecord[] }>({
   kind: EVENT_FEED,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

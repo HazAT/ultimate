@@ -9,11 +9,12 @@ import { defineApi } from '../../shared/extension-api.ts'
 import { MemoryDoc, RootsDoc, TallyDoc } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
 import type { BranchInput, leaveNote, rootOf, startBranch, TallyState } from './server.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 /** The project's roots, each the top of one conversation tree; a fresh project's first conversation is its first. */
 export const Roots = defineDoc<{ roots: ConversationId[] }>({
   kind: RootsDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -24,7 +25,7 @@ export const Roots = defineDoc<{ roots: ConversationId[] }>({
 /** A root's tally bookkeeping (see `TallyDoc`); `since` is set once the root became a tally. */
 export const Tally = defineDoc<TallyState>({
   kind: TallyDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -35,7 +36,7 @@ export const Tally = defineDoc<TallyState>({
 /** A root's project memory by slug (see `MemoryDoc`). */
 export const Memory = defineDoc<{ memories: Record<string, MemoryItem> }>({
   kind: MemoryDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
@@ -51,7 +52,7 @@ export type BranchState = { from: ConversationId; at: EntryId; intent: string; b
  */
 export const Branch = defineDoc<{ branch?: BranchState }>({
   kind: 'lineage.branch',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

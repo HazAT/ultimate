@@ -31,6 +31,7 @@ import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
 import { fallback } from './fallback.ts'
 import { inProcess } from '../../lib/errors.ts'
+import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 type MutableJson<T> = T extends readonly (infer U)[]
   ? MutableJson<U>[]
@@ -48,7 +49,7 @@ export type LoginFlow = {
 }
 export const Logins = defineDoc<{ flows: Record<string, LoginFlow> }>({
   kind: LoginDoc.kind,
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',

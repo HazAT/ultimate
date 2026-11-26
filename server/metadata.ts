@@ -1,4 +1,5 @@
 import { defineDoc } from '@earendil-works/pi-durable'
+import { checkpointEvery } from '../shared/checkpoint.ts'
 
 export const Metadata = defineDoc<{
   title?: string
@@ -9,7 +10,7 @@ export const Metadata = defineDoc<{
   answerAt?: number
 }>({
   kind: 'ultimate.metadata',
-  checkpointWhen: () => false,
+  checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
