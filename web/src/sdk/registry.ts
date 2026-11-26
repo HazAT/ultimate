@@ -46,6 +46,7 @@ export interface SlotItem {
   version: number
   component: Component
   phone: boolean
+  wide: boolean
 }
 export interface PanelItem extends PanelContribution {
   extension: string
@@ -96,12 +97,17 @@ const objectOf =
     isObject(value) && !Array.isArray(value) && Object.values(value).every(item)
 const isContribution: Check = (value) =>
   isFunction(value) ||
-  fields({ component: isComponent, order: optional(isNumber), phone: optional(isBoolean) })(value)
+  fields({
+    component: isComponent,
+    order: optional(isNumber),
+    phone: optional(isBoolean),
+    wide: optional(isBoolean),
+  })(value)
 
 const shapes: Record<keyof WebExtension, [Check, string]> = {
   slots: [
     objectOf((value) => isContribution(value) || arrayOf(isContribution)(value)),
-    'an object of slot name → a component, { component, order?, phone? }, or an array of them',
+    'an object of slot name → a component, { component, order?, phone?, wide? }, or an array of them',
   ],
   panels: [
     arrayOf(
@@ -312,8 +318,8 @@ function normalize(value: Contribution | readonly Contribution[] | undefined) {
   const list: readonly Contribution[] = Array.isArray(value) ? value : [value as Contribution]
   return list.map((item) =>
     typeof item === 'function'
-      ? { component: item, order: 0, phone: false }
-      : { order: 0, phone: false, ...item },
+      ? { component: item, order: 0, phone: false, wide: false }
+      : { order: 0, phone: false, wide: false, ...item },
   )
 }
 
@@ -327,6 +333,7 @@ export function slotItems(records: readonly ExtensionRecord[], slot: SlotName): 
         component: item.component,
         order: item.order ?? 0,
         phone: item.phone ?? false,
+        wide: item.wide ?? false,
       })),
     )
     .toSorted((a, b) => a.order - b.order)
