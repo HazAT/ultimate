@@ -622,7 +622,7 @@ export function VoicePanel() {
     ([on, conversation, title]) => {
       const showing = on === 'agent' ? conversation : undefined
       setScreen({
-        text: `Daniel's screen: the ${on} surface${
+        text: `The user's screen: the ${on} surface${
           showing !== undefined
             ? `, showing conversation #${showing}${title ? ` "${title}"` : ''}`
             : ''

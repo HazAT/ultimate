@@ -46,7 +46,7 @@ the new chapter's first backup after it; missing, off, local-only or satellite c
 
 ## Cloud backups
 
-The Worker lives in the private repository `HazAT/ultimate-fleet` and is deployed from there. Every `/sync/*` route
+The Worker lives in its own repository and is deployed from there. Every `/sync/*` route
 needs `Authorization: Bearer <ULTIMATE_CLOUD_TOKEN>`; `<p>` is the SHA-256 hex of the project key:
 
 - `PUT|GET /sync/snapshots/<p>/<id>/<name>`: the encrypted objects of one backup (`snapshot.ts`).

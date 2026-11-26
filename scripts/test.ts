@@ -25,6 +25,10 @@ const sharedByEveryTest =
 const reachedThroughBundleOrProcess = /^(web|scripts)\//
 const extensionSource = /^extensions\/[^/]+\/(?!test\/)/
 const bootsEveryExtension = 'test/e2e/disable-each.test.ts'
+const readersOf: [RegExp, string][] = [
+  [/^(\.ultimate\/)?skills\//, 'test/skills.test.ts'],
+  [/^(\.ultimate\/)?agents\//, 'test/ultimate.test.ts'],
+]
 const e2eFile = /(^|\/)test\/e2e\//
 const testFile = /\.test\.(ts|solid\.tsx)$/
 
@@ -59,6 +63,13 @@ export function extensionFolders(paths: string[], cwd: string) {
   return [...folders]
 }
 
+function changesCoreTier(paths: string[], cwd: string) {
+  const changed = paths.filter((path) => extensionSource.test(path))
+  if (!changed.length) return false
+  const graph = extensionGraph(join(cwd, 'extensions'))
+  return changed.some((path) => graph.get(path.split('/')[1])?.core)
+}
+
 const lines = (text: string) => text.split('\0').filter(Boolean)
 
 const gitList = async (cwd: string, ...args: string[]) =>
@@ -88,6 +99,10 @@ async function testsNaming(cwd: string, paths: string[]) {
   })
 }
 
+async function browserTests(cwd: string) {
+  return gitList(cwd, 'grep', '-l', '-z', '-F', 'playwright-core', '--', 'test/e2e/*.test.ts')
+}
+
 async function testsIn(cwd: string, folder: string) {
   const listed = await gitList(
     cwd,
@@ -107,6 +122,8 @@ export async function selectByPath(cwd: string, paths: string[]) {
   for (const folder of extensionFolders(paths, cwd))
     for (const file of await testsIn(cwd, folder)) files.add(file)
   if (paths.some((path) => extensionSource.test(path))) files.add(bootsEveryExtension)
+  if (changesCoreTier(paths, cwd)) for (const file of await browserTests(cwd)) files.add(file)
+  for (const [path, reader] of readersOf) if (paths.some((p) => path.test(p))) files.add(reader)
   for (const path of paths) if (testFile.test(path)) files.add(path)
   return [...files].filter((file) => existsSync(join(cwd, file)))
 }
@@ -147,21 +164,23 @@ function run([command, ...args]: string[], env = process.env) {
   })
 }
 
-export async function narrows(suite: Suite, args: string[]) {
-  if (args.includes('--help') || args.includes('-h')) return true
+export const heavy = (selected: number, every: number) => selected * 4 >= every
+
+export async function locks(suite: Suite, args: string[], selected?: number) {
+  if (args.includes('--help') || args.includes('-h')) return false
   const { filter } = parseCLI(['vitest', ...args])
-  if (!filter.length) return false
+  if (!filter.length) return true
   const cwd = process.cwd()
-  const [selected, every] = await Promise.all([
-    vitestList(cwd, suite, filter),
+  const [count, every] = await Promise.all([
+    selected ?? vitestList(cwd, suite, filter).then((files) => files.length),
     vitestList(cwd, suite, []),
   ])
-  return selected.length < every.length
+  return heavy(count, every.length)
 }
 
-async function runSuite(suite: Suite, args: string[]) {
-  const whole = !(await narrows(suite, args))
-  return run([...commands[suite], ...args], whole ? wholeSuiteEnv : process.env)
+async function runSuite(suite: Suite, args: string[], selected?: number) {
+  const lock = await locks(suite, args, selected)
+  return run([...commands[suite], ...args], lock ? wholeSuiteEnv : process.env)
 }
 
 async function affected(base: string | undefined) {
@@ -178,7 +197,9 @@ async function affected(base: string | undefined) {
     )
   for (const suite of suites) {
     if (!whole.includes(suite) && !files[suite].size) continue
-    const code = await runSuite(suite, whole.includes(suite) ? [] : [...files[suite]])
+    const code = whole.includes(suite)
+      ? await runSuite(suite, [])
+      : await runSuite(suite, [...files[suite]], files[suite].size)
     if (code) return code
   }
   return 0
