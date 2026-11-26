@@ -177,6 +177,34 @@ describe('resuming a reload', () => {
     expect(Number(scrolled.scrollTop)).toBe(420)
   })
 
+  it('saves the readable stylesheets and reading place when a stylesheet is inaccessible', async () => {
+    const before = page()
+    before.document.styleSheets.push(
+      {
+        get cssRules(): never {
+          throw new DOMException('Cannot access rules', 'SecurityError')
+        },
+      },
+      { cssRules: [{ cssText: 'body { color: red; }' }] },
+    )
+    const listeners = new Map<string, () => void>()
+    vi.stubGlobal('document', before.document)
+    vi.stubGlobal('sessionStorage', before.sessionStorage)
+    vi.stubGlobal('addEventListener', (type: string, listener: () => void) =>
+      listeners.set(type, listener),
+    )
+    const { rendered, keepAcrossReload } = await import('../../web/src/sdk/resume.ts')
+    keepAcrossReload('draft', () => 'unfinished')
+    rendered()
+    listeners.get('pagehide')!()
+    expect(JSON.parse(before.items.get('ultimate.resume') ?? 'null')).toMatchObject({
+      css: 'body { color: red; }',
+    })
+    expect(JSON.parse(before.items.get('ultimate.resume-place') ?? 'null')).toMatchObject({
+      kept: { draft: 'unfinished' },
+    })
+  })
+
   it('starts fresh without a view, or with one stored long ago', () => {
     const none = page()
     runInNewContext(paint, none)

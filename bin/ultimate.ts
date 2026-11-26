@@ -546,14 +546,22 @@ const retry = () => {
     )
   }
 }
+function watchForRetry(directory: string) {
+  const watcher = watch(directory, { recursive: true }, retry)
+  watcher.on('error', (error) => {
+    display.log('error', 'supervisor', `Cannot watch ${directory}: ${String(error)}`)
+    watcher.close()
+  })
+  return watcher
+}
 const watchers = ['server', 'shared', 'extensions'].map((directory) =>
-  watch(join(ultimateRoot, directory), { recursive: true }, retry),
+  watchForRetry(join(ultimateRoot, directory)),
 )
 const projectConfig = join(projectRoot, '.ultimate')
 let configWatcher: ReturnType<typeof watch> | undefined
 const watchConfig = () => {
   configWatcher?.close()
-  configWatcher = watch(projectConfig, { recursive: true }, retry)
+  configWatcher = watchForRetry(projectConfig)
   retry()
 }
 if (existsSync(projectConfig)) watchConfig()
