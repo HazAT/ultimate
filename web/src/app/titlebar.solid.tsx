@@ -2,20 +2,12 @@ import { Command as CommandIcon } from '@lucide/solid'
 import { cn } from 'cn'
 import { createMemo, For, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { showSurface, useExtensions, useStore, useSystem } from '../sdk/hooks.ts'
+import { useExtensions, useStore, useSystem, useViewport } from '../sdk/hooks.ts'
 import { actions } from '../sdk/actions.ts'
 import { Contribution, ContributedIcon, Slot } from '../sdk/contribution.solid.tsx'
 import { HOME, slotItems, surfaceItems } from '../sdk/registry.ts'
-import { inlineFailure } from './header.solid.tsx'
+import { inlineFailure, SurfaceMenu, useHeaderShown, wordmark } from './header.solid.tsx'
 import { Shortcut } from './palette.solid.tsx'
 import { isPreview, projectName } from './project.ts'
 import { sidebarWidthBeyondPhone as alignSurfaceTabsWithSidebar } from './shell.solid.tsx'
@@ -53,9 +45,6 @@ function Project() {
     </Show>
   )
 }
-
-const wordmark =
-  'flex shrink-0 items-center gap-2 rounded-sm px-1 font-sans text-[11px] font-semibold tracking-[0.28em] text-brand'
 
 export function Wordmark(props: { onClick?: () => void; label?: string }) {
   return (
@@ -109,68 +98,26 @@ function Brand() {
           <Slot fallback={inlineFailure} name="titlebar.brand" />
         </Show>
       </span>
-      <DropdownMenu modal={false} onAction={(id) => showSurface(id)}>
-        <DropdownMenuTrigger
-          aria-label="Switch surface"
-          class={cn(
-            wordmark,
-            'transition-opacity outline-none hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring md:hidden',
+      <SurfaceMenu
+        class={cn(
+          wordmark,
+          'transition-opacity outline-none hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring md:hidden',
+        )}
+        data="wordmark"
+        label="Switch surface"
+      >
+        ULTIMATE
+        <Show when={current()?.id !== HOME && current()}>
+          {(surface) => (
+            <span class="flex items-center gap-1.5 text-[12px] font-medium tracking-normal text-foreground">
+              <Show when={surface().icon}>
+                {(icon) => <ContributedIcon class="size-3.5 text-muted-foreground" icon={icon()} />}
+              </Show>
+              {surface().title}
+            </span>
           )}
-          data-ui="wordmark"
-          title="Switch surface"
-        >
-          ULTIMATE
-          <Show when={current()?.id !== HOME && current()}>
-            {(surface) => (
-              <span class="flex items-center gap-1.5 text-[12px] font-medium tracking-normal text-foreground">
-                <Show when={surface().icon}>
-                  {(icon) => (
-                    <ContributedIcon class="size-3.5 text-muted-foreground" icon={icon()} />
-                  )}
-                </Show>
-                {surface().title}
-              </span>
-            )}
-          </Show>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" class="w-96" sideOffset={4}>
-          <DropdownMenuGroup>
-            <DropdownMenuLabel class="px-2 pt-1 pb-1.5 section-label">Surfaces</DropdownMenuLabel>
-            <For each={surfaces()} keyed={(surface) => surface.id}>
-              {(surface, index) => {
-                const active = () => surface().id === shown()
-                return (
-                  <DropdownMenuItem
-                    class="items-start gap-2.5 py-1.5"
-                    data-surface={surface().id}
-                    value={surface().id}
-                  >
-                    <ContributedIcon
-                      class={cn('mt-0.5 size-4', active() ? 'text-brand' : 'text-muted-foreground')}
-                      icon={surface().icon}
-                    />
-                    <span class="min-w-0 flex-1">
-                      <span class={cn('block text-[13px]', active() && 'text-brand')}>
-                        {surface().title}
-                      </span>
-                      <Show when={surface().description}>
-                        <span class="block truncate text-[12px] text-muted-foreground">
-                          {surface().description}
-                        </span>
-                      </Show>
-                    </span>
-                    <Show when={index() < 9}>
-                      <span class="mt-0.5 shrink-0">
-                        <Shortcut keys={`mod+${index() + 1}`} />
-                      </span>
-                    </Show>
-                  </DropdownMenuItem>
-                )
-              }}
-            </For>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </Show>
+      </SurfaceMenu>
     </>
   )
 }
@@ -232,48 +179,52 @@ function SurfaceItems() {
 }
 
 export function TitleBar() {
+  const viewport = useViewport()
+  const header = useHeaderShown()
   return (
-    <div
-      class="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground"
-      data-ui="titlebar"
-    >
-      <div class="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
-        <div
-          class={cn(
-            'flex min-w-0 items-center gap-2 overflow-hidden pr-3 pl-3 md:shrink-0 md:pr-2',
-            alignSurfaceTabsWithSidebar,
-          )}
-        >
-          <Brand />
-          <Project />
-          <Slot fallback={inlineFailure} name="titlebar.left" />
+    <Show when={viewport() !== 'phone' || !header()}>
+      <div
+        class="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground"
+        data-ui="titlebar"
+      >
+        <div class="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
+          <div
+            class={cn(
+              'flex min-w-0 items-center gap-2 overflow-hidden pr-3 pl-3 md:shrink-0 md:pr-2',
+              alignSurfaceTabsWithSidebar,
+            )}
+          >
+            <Brand />
+            <Project />
+            <Slot fallback={inlineFailure} name="titlebar.left" />
+          </div>
+          <div class="flex shrink-0 items-center pl-2">
+            <SurfaceItems />
+          </div>
         </div>
-        <div class="flex shrink-0 items-center pl-2">
-          <SurfaceItems />
+        <div class="flex shrink-0 items-center gap-3 whitespace-nowrap">
+          <Slot fallback={inlineFailure} name="titlebar.right" />
+          <Button
+            aria-label="Command palette"
+            class="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
+            onClick={actions.openPalette}
+            size="sm"
+            variant="ghost"
+          >
+            commands
+            <Shortcut keys="mod+k" />
+          </Button>
+          <Button
+            aria-label="Show commands"
+            class="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
+            onClick={actions.openPalette}
+            size="icon"
+            variant="ghost"
+          >
+            <CommandIcon aria-hidden="true" class="size-3.5" />
+          </Button>
         </div>
       </div>
-      <div class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-        <Slot fallback={inlineFailure} name="titlebar.right" />
-        <Button
-          aria-label="Command palette"
-          class="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
-          onClick={actions.openPalette}
-          size="sm"
-          variant="ghost"
-        >
-          commands
-          <Shortcut keys="mod+k" />
-        </Button>
-        <Button
-          aria-label="Show commands"
-          class="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
-          onClick={actions.openPalette}
-          size="icon"
-          variant="ghost"
-        >
-          <CommandIcon aria-hidden="true" class="size-3.5" />
-        </Button>
-      </div>
-    </div>
+    </Show>
   )
 }

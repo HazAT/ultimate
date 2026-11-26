@@ -11,6 +11,7 @@ import {
   useTranscript,
   useTranscriptElements,
   useUiState,
+  useViewport,
   writingAs,
 } from '@/sdk/solid'
 import { changeCounts, DiffBody, Header, signed } from './parts.solid.tsx'
@@ -65,7 +66,14 @@ function Unowned(props: { prompt: (conversation: ConversationId) => JSX.Element 
   )
 }
 
-export const PinnedPrompt = () => <Unowned prompt={conversationPrompt} />
+export function PinnedPrompt() {
+  const viewport = useViewport()
+  return (
+    <Show when={viewport() !== 'phone'}>
+      <Unowned prompt={conversationPrompt} />
+    </Show>
+  )
+}
 
 export const InheritedPromptStart = () => <Unowned prompt={promptStart} />
 
