@@ -141,28 +141,6 @@ function Trail() {
   )
 }
 
-function PhoneTitle() {
-  const shown = useConversation()
-  const id = useStore((state) => state.view?.conversation.id ?? state.requested)
-  const conversations = useConversations()
-  const summary = createMemo(() => conversations().find((conversation) => conversation.id === id()))
-  const kind = useProvided(ConversationKind, summary)
-  const label = () => (id() === ROOT ? 'main' : (kind() ?? summary()?.label))
-  const title = () =>
-    id() === undefined ? 'connecting…' : (summary()?.title ?? 'Untitled conversation')
-  return (
-    <>
-      <Show when={shown().busy}>
-        <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
-      </Show>
-      <Show when={label()}>
-        <span class="shrink-0 font-mono text-[12px] text-brand">{label()}</span>
-      </Show>
-      <span class="truncate text-[13px] font-medium text-foreground">{title()}</span>
-    </>
-  )
-}
-
 export function useRegion(region: 'sidebar' | 'panels') {
   return useExternal(() => layout.has(region), layout.subscribe)
 }
@@ -237,15 +215,6 @@ export function SurfaceMenu(props: {
   )
 }
 
-export type PhoneBarVariant = 'a' | 'b' | 'c'
-const PHONE_BAR_KEY = 'ultimate.phoneBar'
-const asVariant = (value: string | null): PhoneBarVariant | undefined =>
-  value === 'a' || value === 'b' || value === 'c' ? value : undefined
-const fromUrl = asVariant(new URLSearchParams(location.search).get('bar'))
-if (fromUrl) localStorage.setItem(PHONE_BAR_KEY, fromUrl)
-const phoneBarVariant: PhoneBarVariant =
-  fromUrl ?? asVariant(localStorage.getItem(PHONE_BAR_KEY)) ?? 'a'
-
 const barButton =
   'flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-open:bg-accent data-open:text-foreground'
 
@@ -258,12 +227,9 @@ function CurrentSurfaceIcon() {
   )
 }
 
-function PhoneMore(props: { surfaces: boolean; panels: boolean }) {
+function PhoneMore(props: { panels: boolean }) {
   const [open, setOpen] = createSignal(false)
   const system = useSystem()
-  const extensions = useExtensions()
-  const surfaces = createMemo(() => surfaceItems(extensions()))
-  const shown = useStore((state) => state.ui.surface?.id ?? HOME)
   const panelOpen = useRegionOpen('panels')
   const row =
     'h-9 w-full justify-start gap-2.5 rounded-md px-2 font-mono text-[12px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -286,24 +252,6 @@ function PhoneMore(props: { surfaces: boolean; panels: boolean }) {
               {name()}
             </span>
           )}
-        </Show>
-        <Show when={props.surfaces}>
-          <For each={surfaces()} keyed={(surface) => surface.id}>
-            {(surface) => (
-              <Button
-                aria-current={surface().id === shown() ? 'page' : undefined}
-                aria-label={`Show the ${surface().title} surface`}
-                class={cn(row, surface().id === shown() && 'text-brand')}
-                onClick={run(() => showSurface(surface().id))}
-                size={null}
-                variant={null}
-              >
-                <ContributedIcon class="size-4" icon={surface().icon} />
-                {surface().title}
-              </Button>
-            )}
-          </For>
-          <span class="mx-1 my-1 border-t border-border/70" />
         </Show>
         <Show when={props.panels}>
           <Button
@@ -337,11 +285,9 @@ function PhoneMore(props: { surfaces: boolean; panels: boolean }) {
 }
 
 function PhoneHeader(props: { children?: JSX.Element; sidebar: boolean; panels: boolean }) {
-  const variant = phoneBarVariant
   return (
     <header
       class="flex h-11 shrink-0 items-center gap-0.5 border-b border-border/70 bg-sidebar px-1"
-      data-phone-bar={variant}
       data-ui="conversation-header"
     >
       <Show when={props.sidebar}>
@@ -349,45 +295,20 @@ function PhoneHeader(props: { children?: JSX.Element; sidebar: boolean; panels: 
           <PanelLeft aria-hidden="true" class="size-4" />
         </IconButton>
       </Show>
-      <Show when={variant === 'a'}>
-        <SurfaceMenu class={cn(barButton, 'w-auto gap-0.5 px-1.5')} label="Switch surface">
-          <CurrentSurfaceIcon />
-          <ChevronDown aria-hidden="true" class="size-3 opacity-60" />
-        </SurfaceMenu>
-      </Show>
-      <Show
-        when={variant === 'c' && props.children === undefined}
-        fallback={
-          <>
-            <Show when={variant === 'c'}>
-              <SurfaceMenu class={cn(barButton, 'w-auto gap-0.5 px-1.5')} label="Switch surface">
-                <CurrentSurfaceIcon />
-                <ChevronDown aria-hidden="true" class="size-3 opacity-60" />
-              </SurfaceMenu>
-            </Show>
-            <div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-1">
-              <Show when={props.children !== undefined} fallback={<Trail />}>
-                {props.children}
-              </Show>
-            </div>
-          </>
-        }
-      >
-        <div class="flex min-w-0 flex-1">
-          <SurfaceMenu
-            class="flex h-9 max-w-full min-w-0 items-center gap-2 rounded-md px-1.5 outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring data-open:bg-accent"
-            label="Switch surface"
-          >
-            <PhoneTitle />
-            <ChevronDown aria-hidden="true" class="size-3 shrink-0 opacity-60" />
-          </SurfaceMenu>
-        </div>
-      </Show>
+      <SurfaceMenu class={cn(barButton, 'w-auto gap-0.5 px-1.5')} label="Switch surface">
+        <CurrentSurfaceIcon />
+        <ChevronDown aria-hidden="true" class="size-3 opacity-60" />
+      </SurfaceMenu>
+      <div class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-1">
+        <Show when={props.children !== undefined} fallback={<Trail />}>
+          {props.children}
+        </Show>
+      </div>
       <div class="flex shrink-0 items-center gap-0.5">
         <Slot fallback={inlineFailure} name="header.right" />
         <Slot fallback={inlineFailure} name="titlebar.left" phone />
         <Slot fallback={inlineFailure} name="titlebar.right" phone />
-        <PhoneMore panels={props.panels} surfaces={variant === 'b'} />
+        <PhoneMore panels={props.panels} />
       </div>
     </header>
   )
