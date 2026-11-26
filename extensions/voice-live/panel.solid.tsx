@@ -227,9 +227,9 @@ function VoiceLine(props: { words?: boolean }) {
     listening() ||
     spoken() ||
     !!activity().current ||
-    !!dock.error() ||
+    (!!dock.error() && !dock.talking()) ||
     !!(dock.status() && !speaking() && !dock.talking()) ||
-    draftOf().length > 0
+    (draftOf().length > 0 && !(dock.talking() && capturing()))
   return (
     <Show when={shown()}>
       <div
@@ -243,7 +243,14 @@ function VoiceLine(props: { words?: boolean }) {
               when={!blocked() && spoken()}
               fallback={
                 <Show when={!blocked()} fallback={<Unblock />}>
-                  <Show when={activity().current} fallback={<Status class="flex-1" />}>
+                  <Show
+                    when={activity().current}
+                    fallback={
+                      <Show when={!dock.talking()}>
+                        <Status class="flex-1" />
+                      </Show>
+                    }
+                  >
                     <Working />
                   </Show>
                 </Show>
@@ -569,6 +576,9 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
               placeholder={`Talk (${holdKeys()}) or type…`}
               ready={() => draftOf().length > 0}
             />
+            <div class="flex justify-end">
+              <ModeSwitch onToggle={dock.setTalking} talking={false} />
+            </div>
           </Show>
         </footer>
       }
@@ -661,6 +671,8 @@ export function VoicePanel() {
     observer.observe(element)
   }
   let swiped = false
+  let endSwipe: (() => void) | undefined
+  onCleanup(() => endSwipe?.())
   const swipe = (event: PointerEvent & { currentTarget: HTMLElement }) => {
     swiped = false
     if (
@@ -668,6 +680,8 @@ export function VoicePanel() {
     )
       return
     const handle = event.currentTarget
+    const finger = event.pointerId
+    endSwipe?.()
     const start = sheet!.offsetHeight
     const full = sheet!.getBoundingClientRect().bottom - FULL_TOP
     const y = event.clientY
@@ -675,6 +689,7 @@ export function VoicePanel() {
     let velocity = 0
     let moving = false
     const move = (next: PointerEvent) => {
+      if (next.pointerId !== finger) return
       const pulled = y - next.clientY
       if (!moving && Math.abs(pulled) < 6) return
       if (!moving) handle.setPointerCapture(next.pointerId)
@@ -685,10 +700,15 @@ export function VoicePanel() {
       last = { y: next.clientY, at: next.timeStamp }
       setDragged(Math.max(72, Math.min(full, start + pulled)))
     }
-    const up = () => {
+    const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
+      endSwipe = undefined
+    }
+    const up = (next: PointerEvent) => {
+      if (next.pointerId !== finger) return
+      stop()
       const height = dragged()
       setDragged(undefined)
       if (!moving || height === undefined) return
@@ -702,6 +722,7 @@ export function VoicePanel() {
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
+    endSwipe = stop
   }
   const sheetHeight = () => {
     const px = dragged()

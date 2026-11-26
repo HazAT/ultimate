@@ -53,7 +53,6 @@ export function ModeSwitch(props: { talking: boolean; onToggle: (talking: boolea
 export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) {
   const recording = () => capture.capturing(voiceSink)
   const busy = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
-  let bar!: HTMLDivElement
   const talk = createTalk({
     tap: () => talkMode() === 'tap',
     talking: () => capture.talking(voiceSink),
@@ -85,7 +84,13 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
         ? 'Paused'
         : busy()
           ? (dock.status() ?? 'Thinking…')
-          : undefined
+          : outcome()
+  const outcome = () => {
+    if (dock.error()) return dock.error()
+    const said = dock.status()
+    return said && dock.phase() !== 'done' && dock.phase() !== 'speaking' ? said : undefined
+  }
+  const failed = () => !!dock.error() || dock.phase() === 'error'
   return (
     <div
       class={cn(
@@ -95,7 +100,6 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
           : 'border-border focus-within:border-foreground/25',
       )}
       data-voice-talk-bar
-      ref={bar}
     >
       <Show when={recording()}>
         <Button
@@ -123,13 +127,20 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
           props.onTalk?.()
           return capture.press(voiceSink)?.started
         }}
-        onPointerCancel={(event) => talk.pointer.onPointerCancel(event)}
         onPointerDown={(event) => {
           if (!touchLike(event)) return
-          bar.setPointerCapture(event.pointerId)
+          const id = event.pointerId
+          const end = (next: PointerEvent) => {
+            if (next.pointerId !== id) return
+            window.removeEventListener('pointerup', end)
+            window.removeEventListener('pointercancel', end)
+            if (next.type === 'pointerup') talk.pointer.onPointerUp(next)
+            else talk.pointer.onPointerCancel(next)
+          }
+          window.addEventListener('pointerup', end)
+          window.addEventListener('pointercancel', end)
           talk.pointer.onPointerDown(event)
         }}
-        onPointerUp={(event) => talk.pointer.onPointerUp(event)}
         size={null}
         variant={null}
       >
@@ -139,7 +150,11 @@ export function TalkBar(props: { onTalk?: () => void; settings?: JSX.Element }) 
             <>
               <AudioLines class="size-4 shrink-0 text-brand" />
               <Show when={status()} fallback={<span class="truncate">{label()}</span>}>
-                {(text) => <span class="truncate text-brand">{text()}</span>}
+                {(text) => (
+                  <span class={cn('truncate', failed() ? 'text-error' : 'text-brand')}>
+                    {text()}
+                  </span>
+                )}
               </Show>
             </>
           }
