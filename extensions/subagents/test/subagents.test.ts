@@ -8,6 +8,7 @@ import {
   until,
   temp,
   removeTemp,
+  createTestExtensionHost,
 } from '../../../test/helpers.ts'
 import type { Api } from '../../../shared/extension-api.ts'
 import { awaitWithContext } from '@earendil-works/chord/context'
@@ -47,7 +48,6 @@ import { emit } from '../../../server/events.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import subagents, { actions } from '../server.ts'
 import watchdog from '../../watchdog/server.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { ChildFailures, Runs, Started, Subagents } from '../api.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import codemode from '../../codemode/server.ts'
@@ -164,15 +164,17 @@ async function fixture(
     })
   if (failures === 'watchdog')
     prepared.registry.install(
-      watchdog({
-        ...prepared,
-        harness: () => opened!.harness,
-        metadata: Metadata,
-        implement: services.implement,
-        need,
-        notice: (message: string) => errors.push(message),
-        onOpen: lifecycle.onOpen,
-      } as unknown as ExtensionHost),
+      watchdog(
+        createTestExtensionHost({
+          ...prepared,
+          harness: () => opened!.harness,
+          metadata: Metadata,
+          implement: services.implement,
+          need,
+          notice: (message: string) => errors.push(message),
+          onOpen: lifecycle.onOpen,
+        }),
+      ),
     )
   prepared.registry.install(
     codemode({

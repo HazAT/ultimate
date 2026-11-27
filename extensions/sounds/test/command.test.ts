@@ -4,8 +4,7 @@ import type { JsonObject } from '@earendil-works/pi-durable'
 import * as command from '../command.ts'
 import { actions } from '../server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
-import { temp } from '../../../test/helpers.ts'
+import { temp, createTestExtensionHost } from '../../../test/helpers.ts'
 
 const pcm = Buffer.from([0, 0, 255, 127])
 function wav({ sampleRate = 24000, channels = 1 } = {}) {
@@ -61,7 +60,7 @@ async function fixture(sounds: JsonObject = {}) {
   const getAuth = vi.fn<() => Promise<{ auth: { apiKey: string } }>>(async () => ({
     auth: { apiKey: 'test-key' },
   }))
-  const host = {
+  const host = createTestExtensionHost({
     userHome: home,
     projectSettings: async () => ({ sounds: project }),
     modelRuntime: {
@@ -71,7 +70,7 @@ async function fixture(sounds: JsonObject = {}) {
       getAllModels: () => [{ baseUrl: 'https://api.openai.com/v1' }],
       getAuth,
     },
-  } as unknown as ExtensionHost
+  })
   return { ctx: { host, signal: new AbortController().signal } as ActionContext, project, getAuth }
 }
 

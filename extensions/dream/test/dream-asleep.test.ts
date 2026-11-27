@@ -23,7 +23,7 @@ import { Todos } from '../../todos/server.ts'
 import { actions, Next, userActions } from '../server.ts'
 import type { Sleep } from '../refs.ts'
 import type { Seed } from '../types.shared.ts'
-import { temp } from '../../../test/helpers.ts'
+import { temp, createTestExtensionHost } from '../../../test/helpers.ts'
 
 const harnesses: Harness[] = []
 afterEach(async () => {
@@ -69,7 +69,7 @@ async function fixture() {
     },
   )
   const hold = vi.fn<() => void>()
-  const host = {
+  const host = createTestExtensionHost({
     home,
     chapter: { name: 'the-beginning', number: 1 },
     want: (api: unknown) => services.get(api),
@@ -100,7 +100,7 @@ async function fixture() {
       })
       return 'Restart refused'
     }),
-  } as unknown as ExtensionHost
+  })
   await harness.commit(async (tx) => {
     ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = 20 as never
     ;(await tx.doc(host.doc('lineage.roots')!, ROOT_CONVERSATION_ID)).roots = [1]

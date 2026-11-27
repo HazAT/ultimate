@@ -6,10 +6,9 @@ import browserExtension from '../../server.ts'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { context } from '../../../../server/harness.ts'
 import { EventFeed } from '../../../../server/events.ts'
-import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { ChangedEvent } from '../../../../shared/events.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
-import { fauxServer, removeTemp, temp } from '../../../../test/helpers.ts'
+import { fauxServer, removeTemp, temp, createTestExtensionHost } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterAll(async () => {
@@ -75,14 +74,14 @@ async function boot() {
   })
   cleanup.push(() => server.close())
 
-  const host = {
+  const host = createTestExtensionHost({
     home: join(home, 'shots'),
     projectRoot: home,
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => cleanup.push(close),
     notice() {},
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {}, watchDoc: async () => undefined } as unknown as ToolExecutionApi
   const drive = async (steps: object[]) => {

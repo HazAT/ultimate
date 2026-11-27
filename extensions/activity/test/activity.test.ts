@@ -3,8 +3,8 @@ import { expect, it } from 'vitest'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { actions } from '../server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import type { EventRecord } from '../../../shared/events.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 const T0 = Date.parse('2026-10-20T12:00:00Z')
 const event = (id: number, name: string, hours: number): EventRecord => ({
@@ -20,7 +20,7 @@ const log = Array.from({ length: 30 }, (_, n) =>
   event(n + 1, ['workspaces.landed', 'ultimate.notice', 'trace.noise'][n % 3], n),
 )
 const ctx = {
-  host: {
+  host: createTestExtensionHost({
     eventLog: {
       // As the server's: newest first, filtered by kind, before an id, at most `limit`.
       async recent(options: { events?: { kind: string }[]; before?: number; limit?: number }) {
@@ -35,7 +35,7 @@ const ctx = {
           .slice(0, options.limit ?? 20)
       },
     },
-  } as unknown as ExtensionHost,
+  }),
 } as ActionContext
 const page = (args: Record<string, unknown>) =>
   actions.page(args as JsonValue, ctx) as Promise<{ events: EventRecord[]; next?: number }>

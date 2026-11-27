@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { status } from '../server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 const services: Record<string, unknown> = {
   update: {
@@ -37,7 +38,7 @@ const services: Record<string, unknown> = {
 }
 const signal = new AbortController().signal
 const host = (off: string[] = []) =>
-  ({
+  createTestExtensionHost({
     want: (api: { name: string }) => (off.includes(api.name) ? undefined : services[api.name]),
     need: (api: { name: string }) => services[api.name],
     conversations: () => [{ busy: true }, { busy: false }, { busy: true }],
@@ -60,7 +61,7 @@ const host = (off: string[] = []) =>
         server: { error: 'SyntaxError' },
       },
     ],
-  }) as unknown as ExtensionHost
+  })
 const extensions = [
   { name: 'status', source: 'builtin', enabled: true },
   { name: 'cloud', source: 'builtin', enabled: false },

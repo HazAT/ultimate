@@ -22,7 +22,14 @@ import dream, { Next } from '../server.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from '../seed.ts'
 import { CloudApi } from '../../cloud/api.ts'
 import type { CloudService, LastBackup } from '../../cloud/api.ts'
-import { apis, openers, temp, until, eventHost } from '../../../test/helpers.ts'
+import {
+  apis,
+  openers,
+  temp,
+  until,
+  eventHost,
+  createTestExtensionHost,
+} from '../../../test/helpers.ts'
 
 const openedHosts: OpenHost[] = []
 afterEach(async () => {
@@ -56,7 +63,7 @@ async function fixture({ todos = true } = {}) {
         ]
       : result
   })
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     get chapter() {
       return prepared.chapter
@@ -93,7 +100,7 @@ async function fixture({ todos = true } = {}) {
         }, context),
     }),
     invoke,
-  } as unknown as ExtensionHost
+  })
   prepared.registry.install(automations(host))
   if (todos) prepared.registry.install(todosExtension(host))
   prepared.registry.install(dream(host))

@@ -27,9 +27,8 @@ import type { ClassifyService } from '../api.ts'
 import { Judge } from '../../messages/api.ts'
 import type { JudgeService } from '../../messages/api.ts'
 import { writeSecret } from '../../secrets/store.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { context } from '../../../server/harness.ts'
-import { removeTemp, temp } from '../../../test/helpers.ts'
+import { removeTemp, temp, createTestExtensionHost } from '../../../test/helpers.ts'
 
 const cleanup: string[] = []
 const cleanups: (() => Promise<void>)[] = []
@@ -62,15 +61,17 @@ async function fixture(
   const implemented = new Map<string, unknown>()
   const implement = (api: { name: string }, service: unknown) => implemented.set(api.name, service)
   const notice = vi.fn<(message: string) => void>()
-  const extension = classify({
-    userHome: root,
-    implement,
-    modelRuntime,
-    notice,
-    harness: opened,
-    onOpen: (callback: () => Promise<void>) => openers.push(callback),
-    onClose: (callback: () => Promise<void>) => cleanups.push(callback),
-  } as unknown as ExtensionHost)
+  const extension = classify(
+    createTestExtensionHost({
+      userHome: root,
+      implement,
+      modelRuntime,
+      notice,
+      harness: opened,
+      onOpen: (callback: () => Promise<void>) => openers.push(callback),
+      onClose: (callback: () => Promise<void>) => cleanups.push(callback),
+    }),
+  )
   if (!harness) {
     own = await Harness.open(
       await storage(),

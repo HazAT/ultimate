@@ -20,10 +20,16 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import type { ActionContext } from '../../../server/actions.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import pauseExtension, { actions, autoPlay, passive, userActions } from '../server.ts'
 import { PauseApi } from '../api.ts'
-import { apis, openers, removeTemp, temp, until } from '../../../test/helpers.ts'
+import {
+  apis,
+  openers,
+  removeTemp,
+  temp,
+  until,
+  createTestExtensionHost,
+} from '../../../test/helpers.ts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Standing } from '../../subagents/api.ts'
@@ -101,19 +107,19 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
   let opened: OpenHost | undefined
   const services = apis()
   const lifecycle = openers()
-  const host = {
+  const host = createTestExtensionHost({
     ...services,
     harness: () => opened!.harness,
     resource: (() => {
       const resources = new Map<string, unknown>()
-      return <T>(key: string, create: () => T) => {
+      return (key: string, create: () => unknown) => {
         if (!resources.has(key)) resources.set(key, create())
-        return resources.get(key) as T
+        return resources.get(key)
       }
     })(),
     onOpen: lifecycle.onOpen,
     conversations: () => [],
-  } as unknown as ExtensionHost
+  })
   prepared.registry.install(pauseExtension(host))
   /** Open as the server does: the openers settle first, then scheduling resumes. */
   const open = async () => {

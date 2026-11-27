@@ -7,13 +7,12 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
 import { context, prepareHarness } from '../../../../server/harness.ts'
 import { Metadata } from '../../../../server/metadata.ts'
-import type { ExtensionHost } from '../../../../server/extensions.ts'
 import workspaceExtension from '../../server.ts'
 import { workspaces } from '../../workspaces.ts'
 import { git } from '../../../../lib/git.ts'
 import { ignoring, isNoProcess } from '../../../../lib/errors.shared.ts'
 import { groupTarget } from '../../../../lib/process-group.ts'
-import { temp, until } from '../../../../test/helpers.ts'
+import { temp, until, createTestExtensionHost } from '../../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -45,7 +44,7 @@ async function reopen(
   let opened: Awaited<ReturnType<typeof prepared.open>>
   const resources = new Map<string, unknown>()
   const closers: (() => Promise<void>)[] = []
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     harness: () => opened.harness,
     metadata: Metadata,
@@ -60,7 +59,7 @@ async function reopen(
     },
     onOpen: () => {},
     onClose: (close: () => Promise<void>) => closers.push(close),
-  } as unknown as ExtensionHost
+  })
   prepared.registry.install(workspaceExtension(host))
   opened = await prepared.open()
   cleanup.push(async () => {
