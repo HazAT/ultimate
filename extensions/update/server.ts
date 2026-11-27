@@ -29,7 +29,15 @@ import {
   summaryFor,
   withLock,
 } from './clone.ts'
-import { Applied, CheckAction, MergeAction, Refused, StateAction, UpdateAction } from './refs.ts'
+import {
+  Applied,
+  CheckAction,
+  MergeAction,
+  MergeEntry,
+  Refused,
+  StateAction,
+  UpdateAction,
+} from './refs.ts'
 import type { UpdateResult, UpdateState } from './refs.ts'
 import { UpdateApi } from './api.ts'
 
@@ -460,6 +468,7 @@ export const actions = {
       {
         type: 'input',
         content: mergeInput(latest.branch!, latest.root, latest.ahead ?? 0, latest.behind),
+        entry: { kind: MergeEntry.kind },
         requestId: mergeRequestIdForRange(head, remoteHead),
         whenBusy: 'followUp',
       },

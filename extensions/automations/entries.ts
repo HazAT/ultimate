@@ -6,3 +6,5 @@ export const FailedEntry = defineEntry<AutomationInput>('automations.failed')
 export const EscalatedEntry = defineEntry<AutomationInput>('automations.escalated')
 
 export const WritingEntry = defineEntry<AutomationInput>('automations.writing')
+
+export const RunEntry = defineEntry('automations.run')

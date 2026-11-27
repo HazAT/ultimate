@@ -1,5 +1,6 @@
 /** Update in the browser: whether the Ultimate clone is behind origin, and updating it. Browser-safe. */
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { defineEntry } from '@earendil-works/pi-durable'
 import { actionRef } from '../../shared/extension-api.ts'
 import { defineEvent } from '../../shared/events.ts'
 
@@ -82,6 +83,9 @@ export const UpdateAction = actionRef<null, UpdateResult>('update', 'update')
  * @ultimate's conversation id. Only while `merge` is offered.
  */
 export const MergeAction = actionRef<null, { id: ConversationId }>('update', 'merge')
+
+/** The merge instruction @ultimate is given as its next input, rendered as a normal user turn. */
+export const MergeEntry = defineEntry('update.merge')
 
 /**
  * The clone fast-forwarded `from..to` (`commits` commits) touching `layers`; `install` says whether packages were

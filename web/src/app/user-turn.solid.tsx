@@ -106,6 +106,14 @@ export function UserText(props: { text: string; class?: string; at?: number }) {
   )
 }
 
+export function UserTurn(props: { entry: EntryRecord }) {
+  const message = () =>
+    props.entry.model?.find((candidate): candidate is UserMessage => candidate.role === 'user')
+  return (
+    <Show when={message()}>{(found) => <UserView entry={props.entry} message={found()} />}</Show>
+  )
+}
+
 export function UserView(props: { entry: EntryRecord; message: UserMessage; text?: string }) {
   const text = () => props.text ?? textOf(props.message.content)
   const images = createMemo(() =>

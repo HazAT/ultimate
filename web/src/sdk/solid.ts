@@ -211,7 +211,8 @@ export { Card } from '../app/card.solid.tsx'
 /** A card that folds to one quiet line in compact mode; `label` names its button. The reader's choice survives reloads. */
 export { Fold, useFold } from '../app/fold.solid.tsx'
 export { MessageActions } from '../app/message-actions.solid.tsx'
-export { UserText, UserView } from '../app/user-turn.solid.tsx'
+/** An entry a machine submitted as the user's turn (watchdog retry, automation run, update merge): shown as a typed turn. */
+export { UserText, UserTurn, UserView } from '../app/user-turn.solid.tsx'
 export { useToolDuration } from '../app/tool-call.solid.tsx'
 /**
  * The values every provider gives for `point`, in discovery order. A provider that throws shows its inline error card

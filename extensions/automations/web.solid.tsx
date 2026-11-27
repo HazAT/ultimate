@@ -1,6 +1,6 @@
 import { TimerIcon } from '@lucide/solid'
 import { createMemo } from 'solid-js'
-import { defineWebExtension, provide, ROOT, useDocOf } from '@/sdk/solid'
+import { defineWebExtension, provide, ROOT, useDocOf, UserTurn } from '@/sdk/solid'
 import { WaitTimers } from '../messages/ui.solid.tsx'
 import { StandingDoc } from '../subagents/refs.ts'
 import { AutomationCall } from './call.solid.tsx'
@@ -31,6 +31,7 @@ export default defineWebExtension({
     'automations.failed': Failed,
     'automations.escalated': Escalated,
     'automations.writing': Writing,
+    'automations.run': UserTurn,
   },
   panels: [
     {

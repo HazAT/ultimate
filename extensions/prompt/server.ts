@@ -1,6 +1,6 @@
 import { parseConversationId } from '../../lib/ids.ts'
 import type { Context } from '@earendil-works/chord/context'
-import type { ConversationId, PromptInput, Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryDraft, PromptInput, Tx } from '@earendil-works/pi-durable'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
@@ -41,7 +41,55 @@ const LastRunBuildAndInstructionHashes = defineDoc<{
   fork: 'current',
   initial: () => ({}),
 })
-export const docs = [LastRunBuildAndInstructionHashes]
+export const PersonLanguage = defineDoc<{ language?: string }>({
+  kind: 'prompt.language',
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'current',
+  initial: () => ({}),
+  checkpointWhen: () => true,
+})
+export const docs = [LastRunBuildAndInstructionHashes, PersonLanguage]
+
+const scripts: readonly (readonly [RegExp, string])[] = [
+  [/\p{Script=Hiragana}|\p{Script=Katakana}/u, 'Japanese'],
+  [/\p{Script=Hangul}/u, 'Korean'],
+  [/\p{Script=Han}/u, 'Chinese'],
+  [/\p{Script=Arabic}/u, 'Arabic'],
+  [/\p{Script=Hebrew}/u, 'Hebrew'],
+  [/\p{Script=Thai}/u, 'Thai'],
+  [/\p{Script=Devanagari}/u, 'Hindi'],
+  [/\p{Script=Greek}/u, 'Greek'],
+  [/\p{Script=Cyrillic}/u, 'Russian'],
+]
+
+const latinMarkers: readonly (readonly [RegExp, string])[] = [
+  [/\b(the|and|is|you|this|that|with|please|thanks)\b/i, 'English'],
+  [/\b(el|la|por|para|una|los|las)\b/i, 'Spanish'],
+  [/\b(le|les|est|une|avec|pour|mais)\b/i, 'French'],
+  [/\b(der|die|das|und|ist|nicht)\b/i, 'German'],
+  [/\b(não|uma|para|isso|você)\b/i, 'Portuguese'],
+  [/\b(het|de|een|niet|maar)\b/i, 'Dutch'],
+  [/\b(che|non|una|per|questo)\b/i, 'Italian'],
+]
+
+export function detectLanguage(text: string): string | undefined {
+  for (const [script, language] of scripts) if (script.test(text)) return language
+  if (!/[a-zà-ÿ]/i.test(text)) return undefined
+  for (const [marker, language] of latinMarkers) if (marker.test(text)) return language
+  return undefined
+}
+
+const typedText = (draft: EntryDraft) =>
+  (draft.model ?? [])
+    .filter((message) => message.role === 'user')
+    .flatMap((message) =>
+      typeof message.content === 'string'
+        ? [message.content]
+        : message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])),
+    )
+    .join(' ')
 
 export function buildNote(
   build: ReturnType<ExtensionHost['build']>,
@@ -285,7 +333,7 @@ export default function prompt(host: ExtensionHost) {
           )?.head
           if (head && from && head !== from) await landedBetween(from, head)
         },
-        beforeInput: async function cachePreservingInputNote(_input, { tx, conversationId }) {
+        beforeInput: async function inputNotes(input, { tx, conversationId }) {
           const build = host.build()
           const seen = await tx.doc(LastRunBuildAndInstructionHashes, conversationId)
           const ultimate =
@@ -302,6 +350,10 @@ export default function prompt(host: ExtensionHost) {
             if (built && head && seen.head && head !== seen.head)
               landed = await landedBetween(seen.head, head)
             if (head) seen.head = head
+          }
+          if (input.kind === 'pi.user') {
+            const language = detectLanguage(typedText(input))
+            if (language) (await tx.doc(PersonLanguage, conversationId)).language = language
           }
           const text = [built && buildNote(build, previous, landed), instructionNote(changes)]
             .filter(Boolean)
@@ -331,6 +383,13 @@ export default function prompt(host: ExtensionHost) {
         (input) =>
           `You are Ultimate, a coding agent running in a web UI on the user's machine. The person in this conversation steers; you build, verify, and report. You are meant to be specialized for the project: build the tools, panels, agents, and skills that help with it into ${input.env?.cwd ?? input.agent.cwd ?? host.projectRoot}/.ultimate/ so everyone working on the project gets them, and personal ones into ~/.ultimate/.`,
       ),
+      section('language', async (input, context) => {
+        const language = (await input.read.snapshot(PersonLanguage, input.conversationId, context))
+          ?.language
+        return language
+          ? `The person writes in ${language} — answer in it. A hint from their typed messages: if they write in another language, follow that instead.`
+          : undefined
+      }),
       section(
         'principles',
         () => `- Read what kind of request it is. A question, or "how could we…", asks you to explore: investigate, then come back with one proposal that includes what the person may not have thought of (a risk, a simpler path, a case it also touches), and wait for their go before changing anything. A clear instruction ("do this", "fix that"), a delegated task or a scheduled run is the go, unless it asks for an assessment first: do it, verify, and report, asking only about decisions that change behaviour or scope. When you need a decision from the person, ask it the way your instructions say.

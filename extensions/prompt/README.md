@@ -6,6 +6,8 @@ changed: <old> → <new> · generation N · changed: …". The note is decided i
 patched `beforeInput` hook), and the `prompt.build` document records the last build each conversation saw. A new
 conversation records its first build silently, and a fork starts from its parent's.
 
+The `prompt.language` document keeps the language the person types in, written only from human-typed inputs (`pi.user`) — never agent text, tool results or machine-submitted prompts, which place their own entry kinds — so it survives compaction and resets. The `language` prompt section renders it beside identity: "The person writes in <language> — answer in it." Detection is cheap script and common-word heuristics, and a wrong guess is only a hint the person's own messages override.
+
 The primary agent (@ultimate) also follows its instructions there. When its definition's
 text differs from the conversation's, the hook re-applies it, so a typed input picks up an updated `agents/ultimate.md`
 as Messages deliveries already did. The document keeps a hash of each project context file (`AGENTS.md`) and of the

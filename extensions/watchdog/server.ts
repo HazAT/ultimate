@@ -28,7 +28,7 @@ import { Roots, Tally } from '../lineage/api.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
-import { FailureEntry, StandingFailureEntry } from './entries.ts'
+import { FailureEntry, RetryEntry, StandingFailureEntry } from './entries.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 async function isTally(tx: Tx, id: ConversationId) {
@@ -275,6 +275,7 @@ export default function watchdog(host: ExtensionHost) {
             {
               type: 'input',
               content: `Your previous run stopped with a provider error (${error}). Continue from where you left off; check what you already did and do not redo it.`,
+              entry: { kind: RetryEntry.kind },
               requestId: request,
               whenBusy: 'followUp',
             },
