@@ -1,9 +1,10 @@
-import { lstat, mkdir, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { git, isolatable, noCommit, noRepository } from '../lib/git.ts'
 import { readJson, updateJson, writeJson } from '../lib/json-file.ts'
 import { readSettings, updateSettings } from '../lib/settings.ts'
+import { fileMemo, signature } from '../lib/memo.ts'
 import { shortTitle } from '../lib/title.ts'
 import { temp } from './helpers.ts'
 
@@ -89,4 +90,19 @@ it('trims git output, reports a failed command with its stderr and explains why 
   await git(repo, 'init', '-q', '-b', 'main')
   expect(await isolatable(repo)).toEqual({ reason: noCommit })
   expect(await git({ cwd: repo, timeout: 0 }, 'symbolic-ref', '--short', 'HEAD')).toBe('main')
+})
+
+it('treats a symlink loop as an absent file and re-reads once it is replaced', async () => {
+  const dir = await temp('ultimate-lib-')
+  const [a, b] = [join(dir, 'a'), join(dir, 'b')]
+  await symlink(b, a)
+  await symlink(a, b)
+  expect(await signature([a, join(a, 'api.ts')])).toBe('-,-')
+  let reads = 0
+  const read = fileMemo({ paths: async () => [a], read: async () => ++reads })
+  expect([await read(), await read()]).toEqual([1, 1])
+  await rm(a)
+  await rm(b)
+  await writeFile(a, 'real')
+  expect(await read()).toBe(2)
 })
