@@ -216,6 +216,44 @@ it('opens the next question on Enter when recommended picks answer every questio
   ])
 })
 
+it('shows Reply in my own words first, and sends it only once something is typed', async () => {
+  const own: Message = { ...message, id: 12, questions: [message.questions![0]] }
+  const card = renderSolid(() => (
+    <MessageQuestions message={own} keys={false} withActions={false} />
+  ))
+  const reply = 'Option 3 · Reply in my own words… · question 1 · message 12'
+  expect(
+    [...card.querySelectorAll('[data-question="0"] [aria-label^="Option "]')].map((option) =>
+      option.getAttribute('aria-label'),
+    ),
+  ).toEqual([
+    reply,
+    'Option 1 · Sidebar · question 1 · message 12',
+    'Option 2 · Status line · question 1 · message 12',
+  ])
+  await press(reply)
+  const send = () =>
+    card.querySelector<HTMLButtonElement>('[aria-label="Send: answer to message 12"]')!
+  expect(send().disabled).toBe(true)
+  expect(card.querySelector('[data-question="0"] textarea')).not.toBeNull()
+  const field = card.querySelector<HTMLTextAreaElement>('[data-question="0"] textarea')!
+  field.value = 'Neither, put it in the panel'
+  field.dispatchEvent(new InputEvent('input', { bubbles: true }))
+  flush()
+  expect(send().disabled).toBe(false)
+  send().click()
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(harness.actions).toMatchObject([
+    {
+      name: 'answer',
+      args: {
+        messageId: 12,
+        answers: [{ question: 'Where should it sit?', answer: 'Neither, put it in the panel' }],
+      },
+    },
+  ])
+})
+
 it('keeps typed drafts without recording them, and records a person picking and sending', async () => {
   const typed: Message = { ...message, id: 8 }
   const card = renderSolid(() => (

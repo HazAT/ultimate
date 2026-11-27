@@ -20,15 +20,23 @@ const plain: Question = {
 }
 
 describe('the answer card state', () => {
-  it('offers the options, Yes/No for a confirmation, and Something else last', () => {
-    expect(choices(confirm).map((c) => c.label)).toEqual(['Yes', 'No', 'Something else…'])
-    expect(choices(lettered).at(-1)).toEqual({ label: 'Something else…', custom: true })
+  it('offers the options, Yes/No for a confirmation, and Reply in my own words last in the data', () => {
+    expect(choices(confirm).map((c) => c.label)).toEqual(['Yes', 'No', 'Reply in my own words…'])
+    expect(choices(lettered).at(-1)).toEqual({ label: 'Reply in my own words…', custom: true })
+  })
+
+  it('leaves Reply in my own words unanswered while nothing is typed', () => {
+    expect(answered([lettered], { 0: { chosen: [], other: true } })).toEqual([])
+    expect(answered([lettered], { 0: { chosen: [], other: true, text: ' ' } })).toEqual([])
+    expect(answered([lettered], { 0: { chosen: [], other: true, text: 'Later' } })).toEqual([
+      { question: 'Branch starts', answer: 'Later' },
+    ])
   })
 
   it('chooses by position or by the option letter', () => {
     expect(choiceForKey(lettered, '2')).toBe(1)
     expect(choiceForKey(lettered, 'c')).toBe(2)
-    expect(choiceForKey(lettered, '4')).toBe(3) // Something else…
+    expect(choiceForKey(lettered, '4')).toBe(3) // Reply in my own words…
     expect(choiceForKey(lettered, '5')).toBeUndefined()
     expect(choiceForKey(lettered, 'd')).toBeUndefined()
     expect(choiceForKey(plain, 'a')).toBeUndefined()

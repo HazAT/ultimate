@@ -158,14 +158,20 @@ export function QuestionItem(props: {
       onUploading={(busy) => props.onUploading(busy)}
     />
   )
+  // The free-text choice shows first; choices() keeps it last, so indices, keys and drafts stay put.
+  const shown = () => {
+    const all = list().map((_, index) => index)
+    return [...all.filter((i) => list()[i].custom), ...all.filter((i) => !list()[i].custom)]
+  }
   const options = () => (
     <div class={cn('grid content-start gap-1.5', confirm() && 'grid-cols-2')}>
-      <For each={list()} keyed={false}>
-        {(choice, index) => {
+      <For each={shown()} keyed={false}>
+        {(at) => {
+          const choice = () => list()[at()]
           const chosen = () =>
-            choice().custom ? !!props.draft?.other : !!props.draft?.chosen.includes(index)
+            choice().custom ? !!props.draft?.other : !!props.draft?.chosen.includes(at())
           const showPreview = () => {
-            if (!choice().custom) setActive(index)
+            if (!choice().custom) setActive(at())
           }
           return (
             <div
@@ -181,11 +187,11 @@ export function QuestionItem(props: {
               onPointerEnter={showPreview}
             >
               <OptionControl
-                name={`Option ${index + 1} · ${choice().label} · ${name()}`}
+                name={`Option ${at() + 1} · ${choice().label} · ${name()}`}
                 chosen={chosen()}
                 multi={multi()}
                 disabled={props.disabled}
-                onSelect={(pressed) => props.onSelect(index, pressed)}
+                onSelect={(pressed) => props.onSelect(at(), pressed)}
                 onFocus={showPreview}
               >
                 <span
@@ -198,7 +204,7 @@ export function QuestionItem(props: {
                       : 'border-border bg-background/60 text-muted-foreground group-hover/option:border-foreground/30 group-hover/option:text-foreground',
                   )}
                 >
-                  <Show when={chosen()} fallback={props.hints && keyOf(props.question, index)}>
+                  <Show when={chosen()} fallback={props.hints && keyOf(props.question, at())}>
                     <Check stroke-width={3} class={mark} />
                   </Show>
                 </span>

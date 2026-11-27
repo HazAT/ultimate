@@ -29,7 +29,7 @@ out behind its inline error card. Items are entries keyed by string; a question'
   `messages:open {conversation, message}`), and the answer card itself (questions' `MessageQuestions`). An extension
   providing `QuestionPane` (`ui.solid.tsx`) may take a question's pane over: side-chat shows the question's side chat there
   while it is in front.
-- **Keys** (desktop): `j`/`k` move the selection, `⇧O` opens the branch (plain `o` is the card's "Something else…"),
+- **Keys** (desktop): `j`/`k` move the selection, `⇧O` opens the branch (plain `o` is the card's "Reply in my own words…"),
   and the card's own keys (1–9, letters, ↵, ⇧↵) answer the shown item: the Inbox passes `keys` to the card. A
   branch's transcript keeps its own rule (`keyCard`) when the Inbox is not on screen.
 - **Phone**: the list full width; a tap shows the item full screen with a back arrow, the answer card after the text.

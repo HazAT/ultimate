@@ -248,7 +248,17 @@ describe('questions on a message', () => {
     )
     await refused(
       [{ text: 'One?', kind: 'choice', options: [{ label: 'x' }, { label: 'Something else' }] }],
-      'offers "Something else…" itself',
+      'offers "Reply in my own words…" itself',
+    )
+    await refused(
+      [
+        {
+          text: 'One?',
+          kind: 'choice',
+          options: [{ label: 'Just reply in my own words' }, { label: 'x' }],
+        },
+      ],
+      'offers "Reply in my own words…" itself',
     )
     await refused([{ text: '  ', kind: 'confirm' }], 'question 1 has no text')
     await refused(
@@ -489,7 +499,7 @@ describe('answer text', () => {
         ],
       ),
     ).toBe('2a,c. Suites: unit, fast, lint')
-    // A typed "Something else…" names no option: the number alone.
+    // A typed "Reply in my own words…" names no option: the number alone.
     expect(answerText([{ question: 'Scope', answer: 'neither' }], decisions)).toBe('1: neither')
     expect(
       answerText(
