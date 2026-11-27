@@ -1,4 +1,5 @@
 import type { JudgeService } from '../messages/api.ts'
+import type { JsonValue } from '@earendil-works/chord/json'
 import type { ClassifyQuestion, ClassifyService } from './api.ts'
 
 const reportQuestion = {
@@ -12,6 +13,23 @@ const reportQuestion = {
   },
 } satisfies ClassifyQuestion
 
+const asksQuestion = {
+  type: 'choice',
+  instructions:
+    'An AI coding agent sent this message to the user without an answer card. Decide whether the agent now waits for the user to answer it, or the message only informs them.',
+  criteria: {
+    asks: 'It asks the user a question, a decision or an approval, or asks them to do something and tell the agent, and the agent waits for that answer.',
+    informs:
+      'A report, result, progress update or FYI: the agent goes on or is done without an answer. An optional offer ("say if you want…", "let me know if…") or a question the message answers itself also informs.',
+  },
+} satisfies ClassifyQuestion
+
+const MESSAGE_EXCERPT = { whole: 1500, head: 500, tail: 1000 }
+const excerpt = (text: string) =>
+  text.length <= MESSAGE_EXCERPT.whole
+    ? text
+    : `${text.slice(0, MESSAGE_EXCERPT.head)}\n…\n${text.slice(-MESSAGE_EXCERPT.tail)}`
+
 function shortCause(error: unknown, signal: AbortSignal) {
   if (signal.aborted) return new Error('cancelled')
   const status = /^TypeSafe (\d{3})\b/.exec(error instanceof Error ? error.message : '')?.[1]
@@ -19,21 +37,27 @@ function shortCause(error: unknown, signal: AbortSignal) {
 }
 
 export function judge(classify: ClassifyService): JudgeService {
+  const probability = async (
+    state: JsonValue,
+    question: ClassifyQuestion,
+    choice: string,
+    signal: AbortSignal,
+  ) => {
+    const answers = await classify.ask({ state, questions: { q: question } }, signal).then(
+      (result) => result.answers,
+      (error: unknown) => {
+        throw shortCause(error, signal)
+      },
+    )
+    const answer = answers.q
+    if (answer.type !== 'choice') throw new Error(`classify answered ${answer.type}, not choice`)
+    const p = answer.probabilities[choice]
+    if (typeof p !== 'number') throw new Error(`classify gave no ${choice} probability`)
+    return p
+  }
   return {
-    async report(state, signal) {
-      const answers = await classify
-        .ask({ state, questions: { route: reportQuestion } }, signal)
-        .then(
-          (result) => result.answers,
-          (error: unknown) => {
-            throw shortCause(error, signal)
-          },
-        )
-      const answer = answers.route
-      if (answer.type !== 'choice') throw new Error(`classify answered ${answer.type}, not choice`)
-      const p = answer.probabilities.report
-      if (typeof p !== 'number') throw new Error('classify gave no report probability')
-      return p
-    },
+    report: (state, signal) => probability(state, reportQuestion, 'report', signal),
+    asks: (message, signal) =>
+      probability({ message: excerpt(message) }, asksQuestion, 'asks', signal),
   }
 }

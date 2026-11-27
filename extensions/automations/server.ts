@@ -53,7 +53,7 @@ import {
 } from './refs.ts'
 import { describeNext, describeSchedule, nextAt, parseSchedule } from './schedule.ts'
 import { scheduler } from './scheduler.ts'
-import { triggers, TRIGGER_EVENTS, describeTrigger } from './triggers.ts'
+import { triggers, describeTrigger } from './triggers.ts'
 import { supervisor } from './supervisor.ts'
 import type { Prepared } from './supervisor.ts'
 import type {
@@ -485,7 +485,7 @@ function backend(host: ExtensionHost) {
         throw new Error('key must be a non-empty string')
     }
     if (args.event !== undefined) {
-      const event = TRIGGER_EVENTS.find(({ name }) => name === args.event!.name)
+      const event = trigger.list().find(({ name }) => name === args.event!.name)
       if (!event) throw new Error(`Unknown event: ${args.event.name}`)
       for (const [key, value] of Object.entries(args.event.where ?? {})) {
         if (!Object.hasOwn(event.fields, key)) throw new Error(`Unknown where field: ${key}`)
@@ -574,7 +574,7 @@ function backend(host: ExtensionHost) {
     caller?: ConversationId,
     runBy = caller,
   ): Promise<Change> {
-    if (args.action === 'events') return { result: json(TRIGGER_EVENTS) }
+    if (args.action === 'events') return { result: json(trigger.list()) }
     const state = await tx.doc(Automations)
     if (args.action === 'list') return changeScript(tx, args, prepared, caller)
     if (args.action === 'create' && args.key !== undefined) {
@@ -775,7 +775,7 @@ function input(args: unknown, action: string): Args {
   return { ...(args as Omit<Args, 'action'>), action }
 }
 export const actions = {
-  events: implementAction(EventsAction, () => TRIGGER_EVENTS),
+  events: implementAction(EventsAction, (_args, { host }) => backends.get(host)!.trigger.list()),
   list: implementAction(
     ListAction,
     async (args, { host }) =>
@@ -885,6 +885,8 @@ export default function automations(host: ExtensionHost) {
       )
       return keyed && json(keyed)
     },
+    trigger: api.trigger.register,
+    matched: api.trigger.matched,
   })
   api.trigger.install()
   host.onOpen(async (opened) => {

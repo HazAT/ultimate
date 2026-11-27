@@ -13,8 +13,8 @@ import messagesExtension, {
   gist,
 } from '../extensions/messages/server.ts'
 import { Started } from '../extensions/messages/addresses.ts'
-import { Messages } from '../extensions/messages/api.ts'
-import type { Question } from '../extensions/messages/api.ts'
+import { Judge, Messages } from '../extensions/messages/api.ts'
+import type { JudgeService, Question } from '../extensions/messages/api.ts'
 import { checkQuestions } from '../extensions/messages/questions.ts'
 import questionsExtension, {
   actions,
@@ -93,6 +93,11 @@ async function fixture() {
   services.set('subagents', { residents: async () => [] } satisfies Partial<SubagentsService>)
   services.set('workspaces', { doc: Workspaces, landingPending, pendingLandingCards })
   services.set('conversations', { concludedIn: async () => new Set() })
+  // A card-less question stays open only when the judge says it asks something.
+  services.set(Judge.name, {
+    report: async () => 1,
+    asks: async () => 1,
+  } satisfies JudgeService)
   prepared.registry.install(messagesExtension(host))
   prepared.registry.install(questionsExtension(host))
   const observed: string[] = []

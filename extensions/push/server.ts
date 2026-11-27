@@ -275,3 +275,4 @@ export const actions = {
 }
 
 export const userActions = ['key', 'subscribe', 'unsubscribe', 'test', 'present']
+export const traceSealed = true

@@ -45,7 +45,7 @@ export type Message = {
   entry?: EntryId
   answer?: EntryId
   error?: string
-  /** The tool call that sent it: `message`'s own id, or `<script>/<n>` for a nested codemode call. */
+  /** The tool call that sent it: `message`'s or `branch`'s own id, `<script>/<n>` for a nested codemode call. */
   call?: string
   /** Images forwarded with it: the sender's entry that holds them, attached to the recipient's input on delivery. */
   images?: { entry: EntryId; count: number }
@@ -59,6 +59,8 @@ export type Message = {
   remote?: Remote
   /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
   interim?: true
+  /** The owner already settled this request before its original answer was delivered. */
+  ownerSettled?: true
   /** The questions a reply-expected message to the user asks, answered on its card. */
   questions?: Question[]
   /** A user answer or dismissal that @ultimate settled for the user, not their own click. */

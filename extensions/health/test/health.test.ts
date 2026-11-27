@@ -238,6 +238,7 @@ it('reads only providers with a login here, so a removed login leaves no stale f
         getProviderAuthStatus: (provider: string) => ({ configured: provider === 'openai-codex' }),
       },
       react: () => {},
+      onOpen: () => {},
     }),
   )
   const providers = await services.need(HealthApi).providers()
@@ -260,10 +261,11 @@ it("Ultimate's logout resets the provider's health through models.login-changed"
     const logouts: string[] = []
     const host = createTestExtensionHost({
       userHome: home,
-      ...apis(),
+      ...apis(new Map([['automations', { matched: async () => {} }]])),
       harness: () => opened.harness,
       emit: events.emit,
       react: events.react,
+      onOpen: () => {},
       modelRuntime: { logout: async (provider: string) => void logouts.push(provider) },
     })
     healthExtension(host)

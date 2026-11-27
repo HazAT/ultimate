@@ -1,7 +1,6 @@
 import { parseEntryId } from '../../lib/ids.shared.ts'
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { parseConversationId } from '../../lib/ids.shared.ts'
-import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
@@ -12,6 +11,8 @@ import type { CallRow, CallTree } from '../../server/trace.ts'
 import { LanesAction, NavigatedAction, PollsAction, StreamAction, TreeAction } from './refs.ts'
 import type { Lane, LaneLink, LaneSpawn, SystemCall, SystemFilter, SystemRow } from './refs.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
+import { MessageSent } from '../messages/api.ts'
+import { Started } from '../subagents/api.ts'
 
 const SUMMARY = 200
 const cut = (text: string) => (text.length > SUMMARY ? `${text.slice(0, SUMMARY - 1)}…` : text)
@@ -272,7 +273,6 @@ type Fact = Omit<Lane, 'conversation' | 'runs' | 'spawn'> & {
 }
 
 async function newestSpawnFactsByConversation(host: ExtensionHost) {
-  const Started = defineEvent<Record<string, JsonValue>>('subagents.started')
   const facts = new Map<number, Fact>()
   let before: EntryId | undefined
   for (;;) {
@@ -310,12 +310,11 @@ async function newestSpawnFactsByConversation(host: ExtensionHost) {
 type Sent = { from: ConversationId; to: ConversationId }
 
 async function messages(host: ExtensionHost, since: number, until: number) {
-  const Sent = defineEvent<Record<string, JsonValue>>('board.sent')
   const found: EventRecord<Sent>[] = []
   let before: EntryId | undefined
   for (;;) {
     const page = await host.eventLog.recent({
-      events: [Sent],
+      events: [MessageSent],
       ...(before === undefined ? {} : { before }),
       limit: 500,
     })

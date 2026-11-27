@@ -34,9 +34,10 @@ it cuts writes by ~89 %.
 
 Arguments and results are stored as JSON summaries of about 300 characters with values under keys matching
 `/secret|token|password|key|auth/i` replaced by `[redacted]`; tool calls keep none (the transcript has them). Calls
-into the extensions that handle credentials, `secrets` (secret values) and `models` (API keys and OAuth codes
-answering a login), keep neither, nor an error message, only the error's class. A new extension whose actions or
-services take or return credentials joins `SEALED` in `server/trace.ts`. Rows go to `<home>/trace.sqlite` in batches outside Pi commits, while
+into an extension whose `server.ts` exports `traceSealed = true` keep neither, nor an error message, only the error's
+class: every extension whose actions or services take or return credentials declares it (`secrets` for secret values,
+`models` for API keys and OAuth codes, `cloud` for its join token, `push` for subscription keys, `tailscale` for its
+tailnet address and logins). Rows go to `<home>/trace.sqlite` in batches outside Pi commits, while
 the harness is open only; retention keeps 7 days and at most 200,000 rows. A trace failure is logged once and never
 fails the call. Read with `host.trace.query({ trace?, conversation?, since?, until?, limit })` (oldest first: forward
 from `since` up to `until`, otherwise the newest `limit` before `until` or now), `host.trace.page({ before?, after?, since?, until?, kinds?, conversation?, errors?, text?, limit })` (calls by write

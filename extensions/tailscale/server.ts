@@ -38,6 +38,8 @@ type RetainedProjectOrTemporaryPortClaim = { port: number; owner: string; tempor
 export const reloadOnSettings = true
 const statuses = new WeakMap<ExtensionHost, Status>()
 const retries = new WeakMap<ExtensionHost, () => Promise<void>>()
+export const traceSealed = true
+
 export const actions: Record<string, ExtensionAction> = {
   status: implementAction(
     StatusAction,

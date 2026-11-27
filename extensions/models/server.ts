@@ -91,6 +91,7 @@ function running(host: ExtensionHost, args: ActionInput<{ flowId: string }>) {
 const withoutUndefined = <T>(value: T): MutableJson<T> => JSON.parse(JSON.stringify(value))
 
 export const userActions = ['login', 'answer', 'cancel', 'logout']
+export const traceSealed = true
 
 const invalidateLoginHealthBestEffort = async (host: ActionContext['host'], provider: string) =>
   host

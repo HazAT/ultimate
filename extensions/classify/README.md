@@ -22,7 +22,7 @@ A 401 (rejected key), 402 (out of credits) or 403 (forbidden) pauses both script
 
 ## Branch reports
 
-Classify provides messages' `messages.judge` point: before a branch's final answer wakes the agent that started it, one `choice` judges whether it is a report or back-and-forth with the user (see `extensions/messages/README.md`). Excerpts of every branch answer and its inputs, including what the user typed in the branch, go to TypeSafe.
+Classify provides messages' `messages.judge` point: before a branch's final answer wakes the agent that started it, one `choice` judges whether it is a report or back-and-forth with the user (see `extensions/messages/README.md`). A second `choice` judges whether an agent's message to the user without a question card asks something, or is a report sent one-way. Excerpts of every branch answer and its inputs, including what the user typed in the branch, and of every card-less message to the user go to TypeSafe.
 
 ## Service contract
 

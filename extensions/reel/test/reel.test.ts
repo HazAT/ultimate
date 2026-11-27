@@ -157,7 +157,7 @@ const round = [
 ]
 
 it("plays a question's round across the branch and its subagents, from its own history", async () => {
-  const { own, ctx } = fixture(round, [question(2, 'ask2')])
+  const { own, ctx } = fixture(round, [question(2, 'ask2')], ['ask1'])
   const reel = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
   expect(reel).toEqual({
     earlier: 0,
@@ -185,6 +185,21 @@ it("plays a question's round across the branch and its subagents, from its own h
     const stored = own.get(frame.conversation)!.find((item) => item.id === frame.entry)
     expect(imagesOf(stored)[frame.image]).toBeDefined()
   }
+})
+
+// A one-way report between two questions cut the next question's reel short.
+it('a one-way report to the user is no round boundary', async () => {
+  const branch = [
+    ...ask(60, 'ask2'),
+    ...shot(BRANCH, 50, 'c4', { url: '/' }, 'C'),
+    ...ask(40, 'fyi'),
+    ...shot(BRANCH, 30, 'c2', { url: '/' }, 'A'),
+    ...ask(20, 'ask1'),
+  ]
+  const fyi = { ...question(1, 'fyi'), reply: false }
+  const { ctx } = fixture(branch, [fyi, question(2, 'ask2')], ['ask1'])
+  const reel = await actions.frames({ conversation: BRANCH, message: 2 }, ctx)
+  expect(reel.frames.map((frame) => frame.entry)).toEqual([31, 41, 51])
 })
 
 it('a failed send is no round boundary', async () => {

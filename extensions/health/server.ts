@@ -8,6 +8,7 @@ import { HealthApi } from './api.ts'
 import { LoginChanged } from '../models/api.ts'
 import type { Flip, HealthEntry } from './store.ts'
 import { Changed } from './refs.ts'
+import { AutomationsApi } from '../automations/api.ts'
 
 export function responseEntry(message: AssistantMessage, now: number): HealthEntry | undefined {
   if (message.stopReason === 'aborted') return undefined
@@ -51,6 +52,19 @@ export default function health(host: ExtensionHost) {
   host.react('login-changed', [LoginChanged], async (tx, { data }) => {
     for (const { provider, from, to } of await reset(host.userHome, [data.provider]))
       if (from !== to) await host.emit(tx, Changed, { provider, state: to })
+  })
+  const automations = host.need(AutomationsApi)
+  host.onOpen(async (opened) => {
+    opened.defer(
+      automations.trigger({
+        event: Changed,
+        description: 'Provider health changed',
+        fields: { provider: 'Provider name', state: 'ok | failing | unknown' },
+      }),
+    )
+  })
+  host.react('automations', [Changed], (tx, event) => automations.matched(tx, event), {
+    from: { cursorOf: 'automations/events' },
   })
   host.implement(HealthApi, {
     providers: async () =>

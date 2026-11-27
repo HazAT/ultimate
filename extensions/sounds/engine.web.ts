@@ -1,6 +1,7 @@
 import * as Tone from 'tone'
 import { deadline, pace } from '../../lib/timers.shared.ts'
 import type { Cancel } from '../../lib/timers.shared.ts'
+import { speakSystem } from '../read-aloud/ui.solid.tsx'
 import type { Sound } from './cues.web.ts'
 import type { Happening, Role, Tool } from './agents.web.ts'
 import type { Variant } from './variants.web.ts'
@@ -118,13 +119,7 @@ export async function say(sound: Sound, text: string, mono24kHzPcm16: ArrayBuffe
   strike(sound, now)
   if (!mono24kHzPcm16) {
     await pace(voiceLeadInSeconds * 1000)
-    const utterance = new SpeechSynthesisUtterance(text)
-    await new Promise((resolve) => {
-      utterance.addEventListener('end', resolve)
-      utterance.addEventListener('error', resolve)
-      speechSynthesis.speak(utterance)
-    })
-    return
+    return speakSystem(text)
   }
   const samples = new Int16Array(mono24kHzPcm16)
   const buffer = Tone.getContext().createBuffer(1, samples.length, 24000)

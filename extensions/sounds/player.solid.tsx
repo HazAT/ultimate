@@ -10,6 +10,7 @@ import {
   useConnection,
   useConversations,
   useDocOf,
+  useEnabled,
   useEvents,
   useExtensionUiState,
   usePageVisible,
@@ -19,6 +20,8 @@ import { OverviewDoc } from '../conversations/refs.ts'
 import type { OverviewRow } from '../conversations/types.ts'
 import { Branched } from '../lineage/refs.ts'
 import { MessagesDoc } from '../messages/refs.ts'
+import type { OpenAiVoice } from '../read-aloud/refs.ts'
+import { speech } from '../read-aloud/ui.solid.tsx'
 import { StandingDoc } from '../subagents/refs.ts'
 import { CheckRan, SubmissionLanded } from '../workspaces/refs.ts'
 import { tracker } from './agents.web.ts'
@@ -50,18 +53,30 @@ async function claimPlayableCues(cues: readonly Cue[]) {
   })
 }
 
-async function sayLine(line: Line) {
+async function sayLine(line: Line, voice: OpenAiVoice | undefined) {
   if (!line.text) return tones.play(line.sound)
-  const { audio } = await api.action(SayAction, { text: line.text }).catch((error: unknown) => {
-    console.warn('Narrator voice failed', error)
-    return { audio: null }
-  })
+  const { audio } = await api
+    .action(SayAction, { text: line.text, ...(voice ? { voice } : {}) })
+    .catch((error: unknown) => {
+      console.warn('Narrator voice failed', error)
+      return { audio: null }
+    })
   const pcm = audio ? Uint8Array.from(atob(audio), (c) => c.charCodeAt(0)).buffer : undefined
   await tones.say(line.sound, line.text, pcm)
 }
 
 function resumeSwitchedNarrator() {
-  const narrate = speaker(sayLine, sessionStorage)
+  const readAloudOn = useEnabled('read-aloud')
+  const narrate = speaker(
+    (line) =>
+      sayLine(
+        line,
+        readAloudOn() && (speech.voice() === 'openai' || !speech.voiced())
+          ? speech.openaiVoice()
+          : undefined,
+      ),
+    sessionStorage,
+  )
   narrate.resume(Boolean(switched))
   return narrate.add
 }
