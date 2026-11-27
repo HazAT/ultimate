@@ -47,6 +47,7 @@ it('warms Claude Code, and the Anthropic API only under long cache retention', (
 })
 
 it('counts only answers that read or wrote an hour-long cache', () => {
+  vi.stubEnv('PI_CACHE_RETENTION', undefined)
   const answer = (change: Record<string, unknown>) =>
     ({
       role: 'assistant',
@@ -61,6 +62,7 @@ it('counts only answers that read or wrote an hour-long cache', () => {
   expect(keepWarm.cached(answer({ provider: 'openai-codex' }))).toBe(false)
   expect(keepWarm.cached(answer({ provider: 'anthropic' }))).toBe(false)
   expect(keepWarm.cached(answer({ usage: { cacheRead: 0, cacheWrite: 0 } }))).toBe(false)
+  vi.unstubAllEnvs()
 })
 
 it('counts a ping only on the provider and model it warmed', () => {

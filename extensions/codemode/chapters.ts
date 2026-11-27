@@ -22,6 +22,19 @@ export const id = (value: unknown): ConversationId => {
   return parseConversationId(value)
 }
 
+export function concludedWithOwners(records: readonly ConversationRecord[], concluded: unknown) {
+  const done = new Set(Array.isArray(concluded) ? (concluded as ConversationId[]) : [])
+  const owners = new Map(records.map((record) => [record.id, record.owner?.conversationId]))
+  const topOwner = (conversation: ConversationId) => {
+    let at = conversation
+    for (let owner = owners.get(at); owner !== undefined; owner = owners.get(at)) at = owner
+    return at
+  }
+  return new Set(
+    records.filter((record) => done.has(topOwner(record.id))).map((record) => record.id),
+  )
+}
+
 export type HistoryRead = 'conversations' | 'entries' | 'search'
 
 export type SearchOptions = {
@@ -178,7 +191,8 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
       const concluded = latestDocumentFromBaseAndDeltas('ultimate.ui', 1)?.[
         'ext.conversations.concluded'
       ]
-      const done = new Set(Array.isArray(concluded) ? concluded : [])
+      const records = conversations()
+      const done = concludedWithOwners(records, concluded)
       const busy = new Set(
         db
           .prepare(
@@ -187,7 +201,7 @@ export function readChapter(database: string, op: HistoryRead, args: unknown[]) 
           .all()
           .map((row) => Number(row.id)),
       )
-      return conversations().map((record) => {
+      return records.map((record) => {
         const metadata = latestDocumentFromBaseAndDeltas('ultimate.metadata', record.id) ?? {}
         const cwd = latestDocumentFromBaseAndDeltas('pi.agent', record.id)?.cwd
         const title = metadata.title ?? metadata.inputTitle

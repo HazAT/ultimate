@@ -16,17 +16,22 @@ export function imagesOf(entry: EntryRecord | undefined) {
 }
 
 export async function latestImagesEntry(tx: Tx, conversationId: ConversationId) {
-  const noImagesInCurrentTurn = new Error(
-    'images: "latest" found no images in this turn (your current input and the tool results since); pass an entry id to forward an older one',
-  )
+  const noImagesInCurrentTurn =
+    'images: "latest" found no images in this turn (your current input and the tool results since)'
+  let inCurrentTurn = true
   let cursor: Parameters<Tx['scanEntries']>[2]
   do {
     const page = await tx.scanEntries({ conversationId }, 200, cursor)
     for (const entry of page.items) {
-      if (imagesOf(entry).length) return entry
-      if (isInput(entry)) throw noImagesInCurrentTurn
+      if (imagesOf(entry).length) {
+        if (inCurrentTurn) return entry
+        throw new Error(
+          `${noImagesInCurrentTurn}; entry ${entry.id} has images: pass images: ${entry.id}`,
+        )
+      }
+      if (isInput(entry)) inCurrentTurn = false
     }
     cursor = page.next
   } while (cursor !== undefined)
-  throw noImagesInCurrentTurn
+  throw new Error(`${noImagesInCurrentTurn}; no earlier entry has images either`)
 }

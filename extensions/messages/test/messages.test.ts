@@ -1351,9 +1351,11 @@ it('forwards images from the sender to a message recipient, by latest in this tu
   expect(entry?.data).toMatchObject({ images: 2 })
   expect(imagesIn(entry)).toEqual([png(0), png(1)])
   // A later input without images (a branch for an unrelated request once carried an old screenshot this way):
-  // `latest` is refused, and only an id forwards the older images.
+  // `latest` is refused, its error names the entry with the older images, and only that id forwards them.
   await f.send(to, 'Again', { images: 'latest' })
-  expect(f.observed.join('\n')).toContain('found no images in this turn')
+  expect(f.observed.join('\n')).toContain(
+    `found no images in this turn (your current input and the tool results since); entry ${first.images!.entry} has images: pass images: ${first.images!.entry}`,
+  )
   await f.send(to, 'By id', { images: first.images!.entry })
   await until(async () => (await f.log())!.messages.filter((m) => m.images).length === 2)
   const messages = (await f.log())!.messages
@@ -1366,7 +1368,9 @@ it('refuses image references that do not resolve or exceed the limits', async ()
   const f = await fixture()
   const to = `#${f.recipient.id}`
   await f.send(to, 'None yet', { images: 'latest' })
-  expect(f.observed.join('\n')).toContain('found no images in this turn')
+  expect(f.observed.join('\n')).toContain(
+    'found no images in this turn (your current input and the tool results since); no earlier entry has images either',
+  )
   await f.send(to, 'Missing', { images: 99999 })
   expect(f.observed.join('\n')).toContain('entry 99999 is not in this conversation')
   const plain = await submitWithImages(f, 'plain', 0)
@@ -1409,7 +1413,7 @@ it("forwards tool-result images by id, not an earlier turn's as latest, and chec
   const shot = await write(result([png(7)]))
   // The screenshot came before this input, in an earlier turn: latest refuses it, its id forwards it.
   await f.send(to, 'Stale', { images: 'latest' })
-  expect(f.observed.join('\n')).toContain('found no images in this turn')
+  expect(f.observed.join('\n')).toContain(`entry ${shot} has images: pass images: ${shot}`)
   await f.send(to, 'Screenshot', { images: shot })
   // The reply reaches the sender before the next send, so it does not steer into that send's run.
   await until(async () => (await f.log())?.messages[1]?.state === 'delivered')

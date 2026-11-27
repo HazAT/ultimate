@@ -2,7 +2,9 @@ import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { readFile } from 'node:fs/promises'
 import { expect, it } from 'vitest'
+import type { ConversationRecord } from '@earendil-works/pi-durable'
 import { actions } from '../server.ts'
+import { concludedWithOwners } from '../chapters.ts'
 import { chapterFiles, FIRST_CHAPTER, requestChapter } from '../../../lib/chapters.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
@@ -146,4 +148,18 @@ it('reads closed chapter records exactly like live fork-aware history, with titl
   } finally {
     await opened.close()
   }
+})
+
+it('lists subagents of a concluded coordinator as concluded, down the whole owner chain', () => {
+  const owned = (id: number, owner: number) =>
+    ({ id, owner: { conversationId: owner, taskId: id - 1 } }) as unknown as ConversationRecord
+  const records = [
+    { id: 10 } as ConversationRecord,
+    owned(12, 10),
+    owned(14, 12),
+    { id: 20 } as ConversationRecord,
+    owned(22, 20),
+  ]
+  expect([...concludedWithOwners(records, [10])].toSorted((a, b) => a - b)).toEqual([10, 12, 14])
+  expect(concludedWithOwners(records, undefined).size).toBe(0)
 })
