@@ -117,8 +117,7 @@ const membersOf = (declaration: Node): Node[] =>
 const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
-/** Code the page runs: `*.tsx`, browser-only `*.web.ts` and `*.shared.ts`, which the server runs too. */
-const browserFile = (filename: string) => /\.(tsx|web\.ts|shared\.ts)$/.test(filename)
+const runsInBrowser = (filename: string) => /\.(tsx|web\.ts|shared\.ts)$/.test(filename)
 const bridgeFile = 'web/src/sdk/contribution.solid.tsx'
 const sdkEntries = ['web/src/sdk/solid.ts']
 const uiKitFile = (filename: string) =>
@@ -822,7 +821,7 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         if (!own) return {}
-        const browser = browserFile(context.filename)
+        const browser = runsInBrowser(context.filename)
         const allowed = browser ? ['refs.ts', 'ui.solid.tsx'] : ['api.ts']
         const how = browser
           ? 'its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its components, hooks and points)'

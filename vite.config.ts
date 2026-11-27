@@ -28,6 +28,7 @@ export default defineConfig({
     categories: { correctness: 'error', suspicious: 'error' },
     rules: {
       'import/no-cycle': 'error',
+      'typescript/no-import-type-side-effects': 'error',
       'typescript/no-unsafe-type-assertion': 'off',
       'promise/always-return': 'off',
       'typescript/no-floating-promises': ['error', { ignoreVoid: false }],
@@ -172,8 +173,8 @@ export default defineConfig({
       },
       {
         // An extension's test/ folder is not part of it: its tests set up the core and other extensions as test/ does.
-        files: ['extensions/**'],
-        excludeFiles: ['extensions/*/test/**'],
+        files: ['extensions/**', '.ultimate/extensions/**'],
+        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**'],
         rules: {
           'no-restricted-imports': [
             'error',
@@ -252,7 +253,7 @@ export default defineConfig({
             {
               patterns: [
                 {
-                  group: ['node:*', '**/server/**'],
+                  group: ['node:*', 'node:*/**', '**/server/**'],
                   message: 'Browser code cannot import Node or server modules.',
                 },
                 {
@@ -274,7 +275,7 @@ export default defineConfig({
             {
               patterns: [
                 {
-                  group: ['node:*', '**/server/**'],
+                  group: ['node:*', 'node:*/**', '**/server/**'],
                   message: 'Browser code cannot import Node or server modules.',
                 },
                 {
@@ -328,7 +329,7 @@ export default defineConfig({
             {
               patterns: [
                 {
-                  group: ['node:*', '**/server/**'],
+                  group: ['node:*', 'node:*/**', '**/server/**'],
                   message: 'Browser code cannot import Node or server modules.',
                 },
                 {

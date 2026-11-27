@@ -51,8 +51,9 @@ The UI is Solid, and so is every facet: `web.solid.tsx`. A leftover React `web.t
   `get`, `set` and `subscribe`; Solid reads it with a signal set from `subscribe` (`extensions/models/state.web.ts`,
   `readers.solid.tsx`).
 - **Contracts:** `ui.solid.tsx` holds only what other extensions use; a component's implementation can live in its
-  own file and be re-exported. A pure `.ts` helper counts as server code to `ultimate/api-only-imports`: it imports
-  other extensions' refs only as types, or takes their tokens as arguments (`extensions/activity/events.web.ts`).
+  own file and be re-exported. A `*.web.ts` or `*.shared.ts` helper is browser code to `ultimate/api-only-imports`:
+  it reaches another extension through its `refs.ts` (`extensions/messages/data.web.ts`); an unsuffixed `.ts` is
+  server code and reaches it through `api.ts`.
 - **Markdown:** the `link`, `inlineCode` and `codeBlocks` renderers are components passed straight to `web.solid.tsx`
   (`extensions/diagrams/mermaid.solid.tsx`). Use `Markdown` and `MentionText` from
   `@/components/markdown/markdown.solid.tsx` to show Markdown and mentions.
