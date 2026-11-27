@@ -1,9 +1,11 @@
 import { GitFork } from '@lucide/solid'
-import { createMemo, Show } from 'solid-js'
+import { createMemo, Show, useContext } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
+  ConversationScope,
   events,
   formatTime,
+  showSurface,
   switchConversation,
   useConversationId,
   useConversationSummary,
@@ -20,6 +22,7 @@ export function ForkMarker() {
   const forkOf = () => summary()?.forkOf
   const source = useConversationSummary(() => forkOf()?.conversationId)
   const roots = useRoots()
+  const scoped = useContext(ConversationScope) !== null
   const start = createMemo(() => {
     const fork = forkOf()
     const own = id()
@@ -31,8 +34,14 @@ export function ForkMarker() {
   const role = () => (root() ? 'project history' : standing() ? undefined : source()?.label)
   const open = () => {
     const fork = forkOf()!
-    events.emit('messages:open', { conversation: fork.conversationId, entry: fork.at })
+    const { entry, call } = start()!.reveal
+    showSurface('agent')
     switchConversation(fork.conversationId)
+    events.emit('messages:open', {
+      conversation: fork.conversationId,
+      entry,
+      ...(call ? { call } : {}),
+    })
   }
   return (
     <Show when={start()}>
@@ -47,7 +56,7 @@ export function ForkMarker() {
             <GitFork class="size-3 shrink-0 text-brand" />
             <span class="shrink-0">forked from</span>
             <Button
-              aria-label={`Open fork source #${forkOf()!.conversationId} at entry ${forkOf()!.at}`}
+              aria-label={`Open fork source #${forkOf()!.conversationId} of #${id()}${scoped ? ' (docked)' : ''}`}
               class="flex h-auto min-w-0 items-center gap-1.5 rounded-none p-0 font-mono text-[11px] font-normal text-foreground/80 hover:text-foreground"
               onClick={open}
               size={null}

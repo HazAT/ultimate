@@ -42,6 +42,7 @@ import {
   useExternal,
   useSurface,
   useEnabled,
+  useEvent,
   useUiState,
   useViewport,
   writerNow,
@@ -101,6 +102,9 @@ function Stage() {
 
 function SideStage(props: { id?: ConversationId; index?: SideChatIndex }) {
   const [front, setFront] = useSideChatFront()
+  useEvent('messages:open', (value) => {
+    if ((value as { conversation?: number }).conversation !== front()) setFront(null)
+  })
   const viewport = useViewport()
   const phone = createMemo(() => viewport() === 'phone')
   let overlay!: HTMLDivElement
@@ -210,7 +214,6 @@ function SideStage(props: { id?: ConversationId; index?: SideChatIndex }) {
             <ScopedConversation id={side}>
               <SidePane
                 front={inFront()}
-                index={props.index}
                 onPark={() => setFront(null)}
                 phone={phone()}
                 side={side}
@@ -225,7 +228,6 @@ function SideStage(props: { id?: ConversationId; index?: SideChatIndex }) {
 
 function SidePane(props: {
   side: ConversationId
-  index?: SideChatIndex
   front: boolean
   phone: boolean
   onPark: () => void
@@ -481,7 +483,6 @@ function inboxSideChat(input: () => { message: QuestionMessage | undefined; phon
   const sides = useDocOf(() => ROOT, QuestionSidesDoc)
   const [front, setFront] = useSideChatFront()
   const side = () => sides()?.sides.find((item) => item.id === front() && item.ended === undefined)
-  const index = useDocOf(() => side()?.of, SideChatsDoc)
   const sideId = createMemo(() => side()?.id)
   return createMemo(() => {
     const staticId = sideId()
@@ -493,13 +494,7 @@ function inboxSideChat(input: () => { message: QuestionMessage | undefined; phon
         data-side-chat={staticId}
       >
         <ScopedConversation id={staticId}>
-          <SidePane
-            front
-            index={index() ?? undefined}
-            onPark={() => setFront(null)}
-            phone={input().phone}
-            side={staticId}
-          />
+          <SidePane front onPark={() => setFront(null)} phone={input().phone} side={staticId} />
         </ScopedConversation>
       </section>
     )

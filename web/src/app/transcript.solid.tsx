@@ -376,6 +376,7 @@ function TranscriptView(props: {
               </div>
             </Show>
             <Show when={!props.loading && visible().length === 0 && !partial()}>
+              <Slot fallback={reportedFailure} name="transcript.start" />
               <Show when={id !== undefined} fallback={<EmptyState />}>
                 <RenderedPoint
                   core={() => <EmptyState />}
