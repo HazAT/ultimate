@@ -243,7 +243,7 @@ function extensionsArea(host: AreaHost): SetupIssue | undefined {
     status: 'warn',
     summary: `${broken.map((extension) => extension.name).join(', ')} failed to load`,
     impact: broken[0].server!.error!.split('\n')[0],
-    fix: { label: 'Open', command: 'onboarding.extensions' },
+    fix: { label: 'Open', command: 'manager.open' },
   }
 }
 
@@ -294,7 +294,7 @@ async function projectArea(
     summary: "undecided: this project's .ultimate/ is not loaded",
     impact:
       'Its extensions, agents, skills and settings (worktree setup, lander checks) stay off until you choose to use it or keep global.',
-    fix: { label: 'Decide', command: 'onboarding.extensions' },
+    fix: { label: 'Decide', command: 'manager.open' },
   }
 }
 

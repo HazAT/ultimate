@@ -340,7 +340,7 @@ it('warns while the project setup is undecided, without judging the settings it 
     expect.objectContaining({
       area: 'Project setup',
       status: 'warn',
-      fix: { label: 'Decide', command: 'onboarding.extensions' },
+      fix: { label: 'Decide', command: 'manager.open' },
     }),
   ])
   expect(await areas(true)).toEqual([

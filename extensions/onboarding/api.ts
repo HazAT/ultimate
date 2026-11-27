@@ -1,2 +1,2 @@
-/** Onboarding: first-run setup, setup cards and the Extensions panel. Core tier: @ultimate's first run depends on it. */
+/** Onboarding: first-run setup and @ultimate's setup cards. Core tier: @ultimate's first run depends on it. */
 export const tier = 'core'
