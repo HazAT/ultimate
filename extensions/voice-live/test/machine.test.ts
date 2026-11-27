@@ -23,10 +23,11 @@ it('Enter while recording holds the typed text for the recording, which sends it
   expect(typedIn(recording)).toBe(typed)
   const sent = transition(recording, spoke)
   expect(sent).toEqual({ phase: 'sending', voice: true })
-  const collected = transition(recording, { ...spoke, collect: true })
-  expect(collected).toEqual({ phase: 'sending', voice: true, typed })
-  expect(typedIn(collected)).toBe(typed)
-  expect(typedIn(transition(recording, { ...spoke, spoke: false }))).toBeUndefined()
+  expect(transition(recording, { ...spoke, collect: true })).toEqual({
+    phase: 'sending',
+    voice: true,
+  })
+  expect(typedIn(transition(recording, { type: 'enter' }))).toBeUndefined()
 })
 
 it('the session ending while the mic opens returns to idle, and the late mic start changes nothing', () => {
@@ -144,29 +145,10 @@ it('a collected clip sent with Enter keeps following the reply until it is sent,
     { type: 'enter', typed },
     { ...spoke, collect: true },
   )
-  expect(uploading).toMatchObject({ phase: 'sending', key: 'a', typed })
+  expect(uploading).toEqual({ phase: 'sending', voice: true, key: 'a' })
   expect(run(uploading, { type: 'playing', key: 'a' })).toBe(uploading)
   const failed = run(uploading, { type: 'abandon' }, { type: 'playing', key: 'a' })
   expect(failed).toEqual({ phase: 'speaking', key: 'a' })
-})
-
-it('the earlier turn being acknowledged or failing keeps the clips Enter reserved until its own send', () => {
-  const typed = { text: 'and this', images: [] }
-  const uploading = run(
-    { phase: 'idle' },
-    { type: 'send', key: 'a', voice: false },
-    { type: 'press', busy: true },
-    { type: 'open' },
-    { type: 'enter', typed },
-    { ...spoke, collect: true },
-  )
-  for (const event of [
-    { type: 'sent', key: 'a' },
-    { type: 'failed', key: 'a', message: 'offline' },
-    { type: 'silent', key: 'a' },
-  ] as const)
-    expect(typedIn(transition(uploading, event))).toBe(typed)
-  expect(typedIn(transition(uploading, { type: 'send', key: 'b', voice: true }))).toBeUndefined()
 })
 
 it('a failed send shows its error until the next press', () => {

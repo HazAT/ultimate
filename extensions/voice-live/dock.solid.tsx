@@ -290,6 +290,7 @@ export function registerVoiceFallback() {
 }
 
 const taken = new WeakSet<Typed>()
+let entering: Typed | undefined
 
 async function finishRecording(recorded: Recorded, retaking: boolean) {
   const who = writerNow()
@@ -323,6 +324,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
     await collectClip(recorded, typed, who, interrupted || ours().paused)
     return
   }
+  if (typed && entering === typed) entering = undefined
   await sendTurn({
     who,
     recorded,
@@ -355,10 +357,11 @@ async function collectClip(
   } catch (failure) {
     if (!signal.aborted) dock.setError(errorMessage(failure))
     if (!typed) return
-    if (typedIn(state()) === typed) dispatch({ type: 'abandon' })
+    dispatch({ type: 'abandon' })
     throw signal.aborted ? signal.reason : failure
   }
   if (typed) {
+    if (entering === typed) entering = undefined
     const earlier = draftOf().filter((clip) => clip.audio !== kept)
     const clip = { audio: kept, seconds: recorded.seconds, envelope: recorded.envelope }
     await sendClips('steer', typed.text, false, [...earlier, clip], {
@@ -395,7 +398,7 @@ export async function sendDraft(
   clips: readonly VoiceClip[] = draftOf(),
   who: UiWho = writerNow(),
 ) {
-  if (typedIn(state())) return
+  if (entering) return
   await sendClips(delivery, typed, spoken, clips, { who })
 }
 
@@ -436,9 +439,11 @@ export async function sendTyped(text: string, images: readonly Image[] = []) {
     const { signal } = session().live
     const typed = { text, images }
     dispatch({ type: 'enter', typed })
+    entering = typed
     try {
       await take.release()
     } finally {
+      if (entering === typed) entering = undefined
       if (typedIn(state()) === typed) dispatch({ type: 'enter' })
     }
     signal.throwIfAborted()
