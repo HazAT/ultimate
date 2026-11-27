@@ -616,6 +616,83 @@ it('checks every queued input a batch boundary would place', async () => {
   }
 })
 
+it('takes an onYield continuation when the follow-up queued while it decided is refused', async () => {
+  const home = await temp()
+  const gate = Promise.withResolvers<void>()
+  let deciding = false
+  let refusing = false
+  const Decide = defineTask<null, { phase: 'decide' }, { continue: string }>({
+    name: 'input-test.continue',
+    version: 1,
+    initial: () => ({ phase: 'decide' }),
+    abort: async (_task, runtime, ctx) =>
+      runtime.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }) as const, ctx),
+    phases: {
+      decide: async (_task, runtime, ctx) => {
+        deciding = true
+        await gate.promise
+        await runtime.commit(
+          () =>
+            ({
+              status: 'terminal',
+              outcome: { status: 'completed', result: { continue: 'continue please' } },
+            }) as const,
+          ctx,
+        )
+      },
+    },
+  })
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  let yields = 0
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      tasks: [Decide],
+      hooks: [
+        hook(GenerationTask, {
+          refuseInput: () => (refusing ? 'refused' : undefined),
+          onYield: () =>
+            yields++ === 0 ? { kind: 'tasks', tasks: [hookTask(Decide, null)] } : undefined,
+        }),
+      ],
+    }),
+  )
+  prepared.faux!.setResponses([
+    fauxAssistantMessage('first answer'),
+    fauxAssistantMessage('continued'),
+  ])
+  const f = await prepared.open()
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => deciding)
+    const followUp = await f.root.submit(
+      { type: 'input', content: 'follow-up', whenBusy: 'followUp' },
+      context,
+    )
+    refusing = true
+    gate.resolve()
+    expect(await followUp.wait(context)).toMatchObject({ status: 'unanswered', reason: 'refused' })
+    await first.wait(context)
+    await f.harness.waitForIdle(context)
+    const messages = (await f.root.context(context)).messages.flatMap((message) =>
+      message.role === 'user'
+        ? [message.content]
+        : message.role === 'assistant'
+          ? message.content.flatMap((part) => (part.type === 'text' ? [`> ${part.text}`] : []))
+          : [],
+    )
+    expect(messages).toEqual(['first', '> first answer', 'continue please', '> continued'])
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
 it('starts one run with every follow-up queued while busy, and steers join the current run', async () => {
   const home = await temp()
   const prepared = await prepareHarness({

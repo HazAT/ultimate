@@ -96,7 +96,7 @@ index 54f3ef34ddf1bf85e3ad9c41bdbd216c081a476f..8a63b529154f0e896edb585fc20d3d43
                  firstKept,
              };
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
-index 56f3055ab58e51d429f91c90c9286531f3086106..8fb4020d187163dd8275674bd48e956e10413e0d 100644
+index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b5548d22c427 100644
 --- a/dist/harness/generation.js
 +++ b/dist/harness/generation.js
 @@ -6,7 +6,7 @@ import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.j
@@ -172,6 +172,15 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..8fb4020d187163dd8275674bd48e956e
          const live = await tx.doc(LiveDoc, conversationId);
          const { users, first } = await applyBoundary(tx, boundary, "final", runtime.now());
          endRun(tx, live, runtime.taskId, { status: "done", answer });
+@@ -911,7 +929,7 @@ async function endAnsweredCutOff(runtime, task, answer, context) {
+  * otherwise run first. A continuation starts the turn count over.
+  */
+ function takesContinuation(continuation, boundary) {
+-    const items = boundary.inbox.items;
++    const items = boundary.inbox.items.filter((item) => !boundary.refusals?.has(item.id));
+     return (continuation !== undefined &&
+         !items.some((item) => item.mode === "steer" || item.mode === "followUp") &&
+         !hasQueuedReset(items));
 @@ -1010,11 +1028,17 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
      // Read from the phase's agent, as every agent field; a `configure()` during the round applies at its end.
      const maxTurns = (await runtime.agent(context)).maxTurns;
@@ -314,7 +323,7 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..0d89233c5b29c61e9a47d8e71e01a8e2
  /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
  export declare function pickInputEntry({ kind, data }: InputEntry): JsonRepresentation<InputEntry>;
 diff --git a/dist/harness/inbox.js b/dist/harness/inbox.js
-index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb5686d380523 100644
+index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..23cdd6e0ffb7d3ff62f3892e606854c6c9a66f12 100644
 --- a/dist/harness/inbox.js
 +++ b/dist/harness/inbox.js
 @@ -1,6 +1,7 @@
@@ -325,7 +334,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb568
  export const InboxDoc = defineDoc({
      kind: "pi.inbox",
      version: 1,
-@@ -14,10 +15,40 @@ export const InboxDoc = defineDoc({
+@@ -14,10 +15,43 @@ export const InboxDoc = defineDoc({
   * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
   * boundary at the start of their commit.
   */
@@ -335,9 +344,12 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb568
      const inbox = await tx.doc(InboxDoc, conversationId);
 +    const final = at === "final" || (at === "postTools" && hasQueuedReset(inbox.items));
 +    const refusals = new Map();
-+    const remaining = () => inbox.items.filter((item) => !refusals.has(item.id));
++    const selection = () => {
++        const remaining = inbox.items.filter((item) => !refusals.has(item.id));
++        return selectUsers(remaining, final, modes).map((index) => remaining[index]);
++    };
 +    for (let checked = new Set(); at !== "none";) {
-+        const selected = selectUsers(remaining(), final, modes).map((index) => remaining()[index]);
++        const selected = selection();
 +        const unchecked = selected.filter((item) => !checked.has(item.id));
 +        if (unchecked.length === 0)
 +            break;
@@ -348,7 +360,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb568
 +                refusals.set(item.id, reason);
 +        }
 +    }
-+    const first = at === "none" ? undefined : selectUsers(remaining(), final, modes).map((index) => remaining()[index])[0];
++    const first = at === "none" ? undefined : selection()[0];
 +    const input = first === undefined ? incoming : inputDraft(first.content, first.entry, now);
 +    let entries = [];
 +    if (input !== undefined && final) {
@@ -367,7 +379,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb568
          conversationId,
          inbox,
          steeringMode: modes.steeringMode,
-@@ -25,25 +56,44 @@ export async function prepareBoundary(tx, conversationId, modes) {
+@@ -25,25 +59,44 @@ export async function prepareBoundary(tx, conversationId, modes) {
          head,
      };
  }
@@ -420,7 +432,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb568
      // `appendEntry()` copies the drafts' values; the items are removed only afterwards.
      let first;
      for (const index of writes) {
-@@ -61,6 +111,9 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -61,6 +114,9 @@ export async function applyBoundary(tx, boundary, at, now) {
      }
      const placed = [];
      for (const index of users) {
@@ -430,7 +442,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb568
          const item = items[index];
          const entry = await appendInput(tx, conversationId, item.content, item.entry, now);
          tx.placeSubmission(item.id, entry.id);
-@@ -74,10 +127,11 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -74,10 +130,11 @@ export async function applyBoundary(tx, boundary, at, now) {
  }
  /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
  export function appendInput(tx, conversationId, content, entry, now) {

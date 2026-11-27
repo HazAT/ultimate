@@ -30,12 +30,12 @@ function needsCheck(host: ExtensionHost, model: Ref | undefined): model is Ref {
 type Login = Awaited<ReturnType<typeof loginCheck>>
 export type LoginChecks = {
   byProvider: Map<string, { snapshot: readonly unknown[]; login: Login }>
-  inconclusiveFor: Set<ConversationId>
+  inconclusiveFor: Map<ConversationId, { provider: string; snapshot: readonly unknown[] }>
 }
 
 export const loginChecks = (): LoginChecks => ({
   byProvider: new Map(),
-  inconclusiveFor: new Set(),
+  inconclusiveFor: new Map(),
 })
 
 async function conclusiveLogin(host: ExtensionHost, provider: string, checks: LoginChecks) {
@@ -55,8 +55,9 @@ export async function checkLogin(
 ) {
   checks.inconclusiveFor.delete(conversationId)
   if (!needsCheck(host, model)) return
+  const snapshot = host.modelRuntime.getAvailableSnapshot()
   if ((await conclusiveLogin(host, model.provider, checks)) === 'inconclusive')
-    checks.inconclusiveFor.add(conversationId)
+    checks.inconclusiveFor.set(conversationId, { provider: model.provider, snapshot })
 }
 
 async function loginMissing(
@@ -65,7 +66,12 @@ async function loginMissing(
   provider: string,
   checks: LoginChecks,
 ) {
-  if (checks.inconclusiveFor.delete(conversationId)) return false
+  const inconclusive = checks.inconclusiveFor.get(conversationId)
+  checks.inconclusiveFor.delete(conversationId)
+  const sameCheck =
+    inconclusive?.provider === provider &&
+    inconclusive.snapshot === host.modelRuntime.getAvailableSnapshot()
+  if (sameCheck) return false
   return (await conclusiveLogin(host, provider, checks)) === 'missing'
 }
 
