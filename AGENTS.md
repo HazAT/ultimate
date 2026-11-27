@@ -67,7 +67,7 @@ A project is a forest of conversation trees, like commit histories.
 Put behaviour in `extensions/` rather than `server/` whenever you can: it reloads without a restart. The browser runs a
 production bundle (`server/web.ts`): a change to `web/` or a browser facet rebuilds it in a short-lived child process, and
 every open page reloads onto the new bundle, resuming the view, drafts, reading position and caret it left; with no
-page open the next page load builds it.
+page open the next page load gets the last bundle while the new one builds, then reloads onto it.
 A surface is a full-screen app the user switches to (header, ⌘K, `mod+1…9`); the conversation itself is the built-in
 `agent` surface, and a project's apps go in `<project>/.ultimate/extensions/` (see [surfaces](docs/extensions/surfaces.md)).
 New UI is a new extension folder, not a change to `web/`: follow the `write-extension` skill, which points into
