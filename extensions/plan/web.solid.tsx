@@ -33,7 +33,7 @@ import { ConversationTaskChip as TaskChipOf } from './task-chip.solid.tsx'
 import { TaskChip, useOpenTask, useTaskOf } from './ui.solid.tsx'
 
 const pill =
-  'pointer-events-auto flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/90 px-2.5 font-mono text-[11px] text-muted-foreground shadow-sm backdrop-blur hover:text-foreground'
+  'pointer-events-auto flex h-7 max-w-(--plan-pill) min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/90 px-2.5 font-mono text-[11px] text-muted-foreground shadow-sm backdrop-blur hover:text-foreground'
 
 function Panel(props: {
   plan: Plan | null | undefined
@@ -82,31 +82,68 @@ function Panel(props: {
   )
 }
 
+type Anchor =
+  | { left: number; width: number; pill: number; bottom: number }
+  | { right: number; bottom: number }
+
+const overlayStyle = (anchor: Anchor) =>
+  'left' in anchor
+    ? {
+        left: `${anchor.left}px`,
+        bottom: `${anchor.bottom}px`,
+        'max-width': `${anchor.width}px`,
+        '--plan-pill': `${anchor.pill}px`,
+      }
+    : {
+        right: `${anchor.right}px`,
+        bottom: `${anchor.bottom}px`,
+        'max-width': 'calc(100vw - 1.5rem)',
+        '--plan-pill': '100%',
+      }
+
 function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
-  const [anchor, setAnchor] = createSignal<{ right: number; bottom: number }>()
+  const [anchor, setAnchor] = createSignal<Anchor>()
   createEffect(conversationId, () => {
     let form: HTMLFormElement | null | undefined
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
-      setAnchor({ right: innerWidth - rect.right, bottom: innerHeight - rect.top + 6 })
+      const toggle = form
+        .closest(':has(> * > [data-ui="voice-mode-switch"])')
+        ?.querySelector(':scope > * > [data-ui="voice-mode-switch"]')
+      const end = toggle?.getBoundingClientRect()
+      const row = toggle?.parentElement
+      if (!row || !end || end.width === 0) {
+        setAnchor({ right: innerWidth - rect.right, bottom: innerHeight - rect.top + 6 })
+        return
+      }
+      const left = Math.max(
+        rect.left,
+        row.getBoundingClientRect().left + parseFloat(getComputedStyle(row).paddingLeft),
+      )
+      setAnchor({
+        left,
+        width: end.right - left,
+        pill: end.left - 8 - left,
+        bottom: innerHeight - rect.top + 6,
+      })
     }
     const columnResizeObserver = new ResizeObserver(measure)
     const attach = () => {
       const container = document.querySelector('[data-composer-target="conversation"]')
       form = container?.querySelector('form')
       if (!container?.parentElement || !form) return false
-      appeared.disconnect()
+      columnResizeObserver.disconnect()
       columnResizeObserver.observe(container.parentElement)
       columnResizeObserver.observe(form)
       measure()
       return true
     }
-    const appeared = new MutationObserver(attach)
-    if (!attach()) {
-      setAnchor(undefined)
-      appeared.observe(document.body, { childList: true, subtree: true })
-    }
+    const appeared = new MutationObserver(() => {
+      if (!form?.isConnected) attach()
+    })
+    if (!attach()) setAnchor(undefined)
+    appeared.observe(document.body, { childList: true, subtree: true })
     addEventListener('resize', measure)
     return () => {
       appeared.disconnect()
@@ -137,8 +174,11 @@ function PlanOverlay() {
     <Show when={surface() === 'agent' && anchor() && conversationId()} keyed>
       {(conversation) => (
         <div
-          class="pointer-events-none fixed z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-1.5"
-          style={{ right: `${anchor()!.right}px`, bottom: `${anchor()!.bottom}px` }}
+          class={cn(
+            'pointer-events-none fixed z-30 flex flex-col gap-1.5',
+            'left' in anchor()! ? 'items-start' : 'items-end',
+          )}
+          style={overlayStyle(anchor()!)}
         >
           <Show
             when={task()}
@@ -207,7 +247,7 @@ function CoordinatorPlan(props: {
           >
             <ClipboardList class="size-3.5 shrink-0" />
             <span class="text-foreground/80">{progress().epic.key}</span>
-            <span>
+            <span class="min-w-0 truncate">
               · <PillProgress coordinator={props.conversation} epic={progress().epic} />
             </span>
             <Show when={progress().more > 0}>
