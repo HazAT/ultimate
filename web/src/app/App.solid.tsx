@@ -9,6 +9,7 @@ import {
   useStore,
   useSystem,
   useUiState,
+  writingAs,
 } from '../sdk/hooks.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { shellKeys, shownSurface } from '../sdk/actions.ts'
@@ -157,7 +158,7 @@ export function App() {
   createEffect(
     () => ({ choice: streamHasSurfaceChoice(), surface: shown() }),
     ({ choice, surface }) => {
-      if (choice && surface) uiState.set(shellKeys.shownSurface, surface)
+      if (choice && surface) writingAs('app', () => uiState.set(shellKeys.shownSurface, surface))
     },
   )
   createEffect(ready, (on) => (on ? installShortcuts() : undefined))

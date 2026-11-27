@@ -295,10 +295,19 @@ describe('side chats', () => {
   })
 
   it('tracks only the specified tool/actions before execution, including failures, and persists effects across reopen', async () => {
-    for (const name of ['branch', 'message', 'note', 'notify', 'setup', 'restart', 'edit', 'write'])
+    for (const name of [
+      'branch',
+      'message',
+      'note',
+      'notify',
+      'setup',
+      'restart',
+      'edit',
+      'write',
+      'bash',
+    ])
       expect(tracksEffect(name, {})).toBe(true)
-    for (const name of ['bash', 'codemode', 'read', 'memory'])
-      expect(tracksEffect(name, {})).toBe(false)
+    for (const name of ['codemode', 'read', 'memory']) expect(tracksEffect(name, {})).toBe(false)
     for (const action of ['add', 'done']) expect(tracksEffect('todo', { action })).toBe(true)
     expect(tracksEffect('todo', { action: 'list' })).toBe(false)
     for (const action of ['list', 'runs', 'log'])

@@ -36,6 +36,9 @@ function createDraft(id: number | string | undefined) {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
+        const { text, images, files, sending } = value
+        if (!listeners.size && !text && !images.length && !files.length && !sending)
+          draftsAndSubmissions.delete(id)
       }
     },
     set: (change: Partial<Draft>): boolean => {
@@ -169,8 +172,13 @@ export function getDraft(id: number | string | undefined) {
 export function setDraftText(draft: DraftStore, text: string) {
   const accepted = draft.set({ text, revision: draft.get().revision + 1 })
   if (!draft.key) return accepted
-  if (text) localStorage.setItem(draft.key, text)
-  else localStorage.removeItem(draft.key)
+  if (!text) localStorage.removeItem(draft.key)
+  else
+    try {
+      localStorage.setItem(draft.key, text)
+    } catch {
+      draft.set({ error: 'Browser storage is full: this draft is kept only until reload' })
+    }
   return accepted
 }
 
