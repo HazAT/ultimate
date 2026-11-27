@@ -92,7 +92,10 @@ async function openCard() {
     env: { ...process.env, TMPDIR: undefined },
   })
   cleanup.push(() => browser.close())
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 900 },
+    serviceWorkers: 'block',
+  })
   await page.goto(`${server.url}/?conversation=${ultimate}`)
   const card = page.locator(`[data-questions-card="message:${asked.id}"]`)
   await card.locator('fieldset').nth(2).waitFor()
