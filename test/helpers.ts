@@ -36,6 +36,7 @@ vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
   }
 })
 
+/** Every member of `ExtensionHost`, so a member added to it fails here and its test doubles get looked at. */
 const hostMembers = {
   ultimateRoot: true,
   projectRoot: true,
@@ -82,13 +83,18 @@ const hostMembers = {
   eventLog: true,
 } satisfies Record<keyof ExtensionHost, true>
 
+type HostMember = keyof typeof hostMembers & keyof ExtensionHost
+
+/** Members of a hand-built extension host, named as in `ExtensionHost`: shared fixtures check the members they supply. */
+type HostMembers = { [K in HostMember]?: unknown }
+
 /**
  * An extension host built by hand from the members a test needs. The member names are checked against `ExtensionHost`
- * (a member added to it fails here, one renamed or removed fails in every test that sets it); their values stay as
- * partial as the test needs.
+ * (one renamed or removed fails in every test or shared fixture that sets it); their values stay as partial as the
+ * test needs.
  */
 export function createTestExtensionHost(members: {
-  [K in keyof typeof hostMembers]?: ExtensionHost[K] extends (...args: infer A) => unknown
+  [K in HostMember]?: ExtensionHost[K] extends (...args: infer A) => unknown
     ? { method(...args: A): unknown }['method']
     : unknown
 }) {
@@ -100,8 +106,7 @@ export function createTestExtensionHost(members: {
  * each member access like the real handle, so a fixture may implement an API after its consumer took the handle.
  */
 export function apis(provided = new Map<string, unknown>()) {
-  return {
-    provided,
+  const host = {
     implement: <S>(api: Api<string, S>, value: S) => void provided.set(api.name, value),
     want: <S>(api: Api<string, S>) => provided.get(api.name) as S | undefined,
     need: <S>(api: Api<string, S>) =>
@@ -111,7 +116,8 @@ export function apis(provided = new Map<string, unknown>()) {
           get: (_, key) => (provided.get(api.name) as Record<string | symbol, unknown>)?.[key],
         },
       ) as S,
-  }
+  } satisfies HostMembers
+  return { provided, ...host }
 }
 
 /**
@@ -150,7 +156,7 @@ export function openers() {
 export function eventHost(harness: () => Harness, name: string) {
   const log = eventLog(harness, (_call, work) => work())
   const reactors: ReturnType<typeof log.reactor>[] = []
-  return {
+  const host = {
     emit: log.emit,
     /** The event feed by its kind, as the real host's `doc` finds it; other kinds are the fixture's own. */
     doc: (kind: string) => (kind === EventFeed.definition.kind ? EventFeed : undefined),
@@ -160,6 +166,9 @@ export function eventHost(harness: () => Harness, name: string) {
       handler: Reactor<EventData<T>>,
     ) => void reactors.push(log.reactor(`${name}/${reactor}`, events, handler)),
     eventLog: log.eventLog,
+  } satisfies HostMembers
+  return {
+    ...host,
     start: () => Promise.all(reactors.map((reactor) => reactor.start())),
     stop: () => Promise.all(reactors.map((reactor) => reactor.stop())),
     settled: async () =>
