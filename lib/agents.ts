@@ -466,8 +466,8 @@ export async function discoveryPaths(ultimateRoot: string, projectRoot: string, 
   ]
 }
 
-type DiscoveryCache = FileMemoState<AgentDiscovery> & {
-  readBy?: typeof discoverAgents
+type DiscoveryCache = {
+  readBy: WeakMap<typeof discoverAgents, FileMemoState<AgentDiscovery>>
   snapshot?: readonly unknown[]
   snapshots: number
 }
@@ -481,12 +481,11 @@ export function agentDefinitions(
 ): Promise<AgentDiscovery> {
   const { ultimateRoot, userHome, modelRuntime } = host
   const cache = host.resource<DiscoveryCache>(`agents.discovery:${projectRoot}`, () => ({
+    readBy: new WeakMap(),
     snapshots: 0,
   }))
-  if (cache.readBy !== discoverAgents) {
-    cache.readBy = discoverAgents
-    delete cache.last
-  }
+  const state = cache.readBy.get(discoverAgents) ?? {}
+  cache.readBy.set(discoverAgents, state)
   return fileMemo(
     {
       paths: () => discoveryPaths(ultimateRoot, projectRoot, userHome),
@@ -498,7 +497,7 @@ export function agentDefinitions(
         return String(cache.snapshots)
       },
     },
-    cache,
+    state,
   )()
 }
 
