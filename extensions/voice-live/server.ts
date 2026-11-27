@@ -964,7 +964,7 @@ const quiet = (host: ExtensionHost) => {
   return task
 }
 
-const summaryWriteRequest = (id: ConversationId, at: number) => `voice:summary:${id}:${at}`
+const summaryWriteRequest = (id: ConversationId) => `voice:summary:${id}`
 
 function quietTask(host: ExtensionHost) {
   const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
@@ -1025,45 +1025,15 @@ function quietTask(host: ExtensionHost) {
           }
         const text = failed === undefined ? response?.text.trim() : undefined
         const summary = text && text !== NOTHING ? text : undefined
-        const stillQuiet = () =>
-          host.harness().commit(async (tx) => {
-            if ((await tx.doc(Fork, id)).ended) return false
-            return (await quietUntil(tx, id, at)) <= at
-          }, ctx)
-        if (summary && (await stillQuiet())) {
-          const session = await runtime.snapshot(Session, ROOT_CONVERSATION_ID, ctx)
-          const data: VoiceSummary = {
-            from: id,
-            ...(session?.id === id && session.startedAt ? { startedAt: session.startedAt } : {}),
-            endedAt: at,
-            text: summary,
-          }
-          await (await host.harness().conversation(fork.of!, ctx))!.submit(
-            {
-              type: 'write',
-              requestId: summaryWriteRequest(id, at),
-              entry: {
-                kind: VoiceSummaryEntry.kind,
-                data,
-                model: [
-                  {
-                    role: 'user',
-                    content: `Voice session #${id} ended after ${QUIET_MINUTES} quiet minutes. What it decided or left open (its handoffs already reached you):\n${summary}`,
-                    timestamp: at,
-                  },
-                ],
-              },
-            },
-            ctx,
-          )
-        }
         let ended = false
         await runtime.commit(async (tx) => {
           const state = await tx.doc(Fork, id)
           if (state.ended) return terminal
+          if (response) await summaries.accountResponse(tx, id, response)
           if ((await quietUntil(tx, id, at)) > at)
             return { status: 'running' as const, checkpoint: { phase: 'wait' as const } }
           const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
+          const startedAt = session.id === id ? session.startedAt : undefined
           state.ended = true
           delete state.draft
           delete state.quiet
@@ -1081,7 +1051,29 @@ function quietTask(host: ExtensionHost) {
             }
           }
           await summaries.concludeIn(tx, [id], 'user')
-          if (response) await summaries.accountResponse(tx, id, response)
+          if (summary) {
+            const data: VoiceSummary = {
+              from: id,
+              ...(startedAt ? { startedAt } : {}),
+              endedAt: at,
+              text: summary,
+            }
+            await summaries.submitAfter(tx, fork.of!, {
+              type: 'write',
+              requestId: summaryWriteRequest(id),
+              entry: {
+                kind: VoiceSummaryEntry.kind,
+                data,
+                model: [
+                  {
+                    role: 'user',
+                    content: `Voice session #${id} ended after ${QUIET_MINUTES} quiet minutes. What it decided or left open (its handoffs already reached you):\n${summary}`,
+                    timestamp: at,
+                  },
+                ],
+              },
+            })
+          }
           ended = true
           return terminal
         }, ctx)

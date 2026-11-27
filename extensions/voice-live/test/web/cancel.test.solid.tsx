@@ -1,13 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
+import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
 import { composeIn, dock, draftOf, settleTranscripts, voiceSink } from '../../dock.solid.tsx'
-
-const serverEndedSession = async () => {
-  composeIn(parseConversationId(999))
-  composeIn(undefined)
-  await Promise.resolve()
-}
 
 const actions = vi.hoisted(() => [] as string[])
 vi.mock('@/sdk/solid', async () => {
@@ -86,7 +81,7 @@ const cancelRecording = () => capture.take(voiceSink)?.cancel()
 const talking = () => capture.talking(voiceSink)
 
 beforeEach(async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   actions.length = 0
 })
 
@@ -112,7 +107,7 @@ it('cancelling a spoken recording uploads nothing and keeps the collected clips;
   speak()
   const sending = release()
   await vi.waitFor(() => expect(actions).toEqual(['record']))
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   await sending
 })
 

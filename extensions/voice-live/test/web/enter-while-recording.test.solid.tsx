@@ -1,6 +1,7 @@
 import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
+import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
 import {
   composeIn,
@@ -10,12 +11,6 @@ import {
   settleTranscripts,
   voiceSink,
 } from '../../dock.solid.tsx'
-
-const serverEndedSession = async () => {
-  composeIn(parseConversationId(999))
-  composeIn(undefined)
-  await Promise.resolve()
-}
 
 const harness = vi.hoisted(() => ({
   turns: [] as Record<string, unknown>[],
@@ -101,7 +96,7 @@ const speak = () => {
 }
 
 beforeEach(async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   harness.turns.length = 0
   harness.record = undefined
   composeIn(parseConversationId(40))
@@ -160,7 +155,7 @@ it('a session that ends while Enter stops the recording sends nothing and leaves
   await capture.press(voiceSink)?.started
   speak()
   const sent = sendTyped('look at this')
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   await expect(sent).rejects.toThrow('The voice session ended')
   expect(harness.turns).toEqual([])
 })

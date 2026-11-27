@@ -2,6 +2,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
+import { serverEndedSession } from './session.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { composerDraft, getDraft } from '../../../../web/src/app/drafts.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'
@@ -16,12 +17,6 @@ import {
   settleTranscripts,
   voiceSink,
 } from '../../dock.solid.tsx'
-
-const serverEndedSession = async () => {
-  composeIn(parseConversationId(999))
-  composeIn(undefined)
-  await Promise.resolve()
-}
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -92,7 +87,7 @@ beforeEach(async ({ onTestFinished }) => {
   clientStore.start()
   onTestFinished(() => clientStore.stop())
   harness.sources[0].open()
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   composeIn(session)
   settleTranscripts({ of: parseConversationId(1), draft: [clip] }, session)
   getDraft(session).set({ images: [shot] })
@@ -129,7 +124,7 @@ it('a spoken send leaves text typed into the live voice composer alone', async (
 })
 
 it('what was typed and pasted while cold goes with the first turn, even when collecting opened the fork', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   getDraft(COLD_DRAFT).set({ text: 'look at this', images: [shot] })
   composeIn(session)
   await sendDraft('steer', '', true, [clip])
@@ -146,7 +141,7 @@ it('a session that ends during a send stops it before it reaches that session', 
   harness.status = new Promise((resolve) => (answer = resolve))
   const sending = sendDraft('steer')
   await vi.waitFor(() => expect(harness.asked).toBe(1))
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   answer()
   await sending
   expect(harness.turns).toEqual([])
@@ -159,7 +154,7 @@ it('a session that ends drops the collected clips and a transcription that settl
   const sending = sendDraft('steer')
   await vi.waitFor(() => expect(harness.asked).toBe(1))
   await settle()
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   await sending
   settleTranscripts({ transcripts: { 'clip-1': 'too late' }, draft: [clip] }, session)
   await settle()
@@ -174,14 +169,14 @@ it('a session that ends during a send from the composer rejects, so the composer
   harness.status = new Promise((resolve) => (answer = resolve))
   const sending = sendTyped('typed before it ended')
   await vi.waitFor(() => expect(harness.asked).toBe(1))
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   answer()
   await expect(sending).rejects.toThrow('The voice session ended')
   expect(harness.turns).toEqual([])
 })
 
 it('what is typed into the cold box during the first send stays in the box the session shows', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   getDraft(COLD_DRAFT).set({ text: 'first', revision: 1 })
   composeIn(session)
   let answer = () => {}
@@ -197,7 +192,7 @@ it('what is typed into the cold box during the first send stays in the box the s
 })
 
 it('a turn after a recording that opened the session belongs to that session', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   dock.setCollect(false)
   const recorded = {
     blob: new Blob(['a'], { type: 'audio/webm' }),
@@ -211,7 +206,7 @@ it('a turn after a recording that opened the session belongs to that session', a
 })
 
 it('a send from the cold box after the session opened carries its text once', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   getDraft(COLD_DRAFT).set({ text: 'look at this' })
   composeIn(session)
   settleTranscripts({ of: parseConversationId(1) }, session)
@@ -222,7 +217,7 @@ it('a send from the cold box after the session opened carries its text once', as
 })
 
 it('the send button while a spoken turn holds the collected clip and the box sends nothing more', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   composeIn(session)
   settleTranscripts({ of: parseConversationId(1), draft: [clip] }, session)
   harness.route = 'text'
@@ -251,14 +246,14 @@ it('a spoken cut-in while Enter is sending the box leaves the box to that send',
 })
 
 it('a spoken turn that ends without sending leaves the cold text and screenshot in the box', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   getDraft(COLD_DRAFT).set({ text: 'look', images: [shot] })
   let answer = () => {}
   harness.status = new Promise((resolve) => (answer = resolve))
   const spoken = sendDraft('steer', '', true, [clip])
   await vi.waitFor(() => expect(harness.asked).toBe(1))
   expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: true })
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   answer()
   await spoken
   expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: false })
@@ -282,7 +277,7 @@ it('a cut-in holds the collected clip and the box from the start, so follow-up d
 })
 
 it('a file attached to the cold box keeps it in view when the session opens', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   getDraft(COLD_DRAFT).set({
     files: [{ id: 'f', name: 'spec.pdf', size: '1 KB', mimeType: 'application/pdf', path: '' }],
   })
@@ -291,7 +286,7 @@ it('a file attached to the cold box keeps it in view when the session opens', as
 })
 
 it('a file upload finishing during a spoken turn still clears the text that turn sent', async () => {
-  await serverEndedSession()
+  await serverEndedSession(composeIn)
   const pending = { id: 'f', name: 'spec.pdf', size: '1 KB', mimeType: 'application/pdf', path: '' }
   getDraft(COLD_DRAFT).set({ text: 'look', files: [pending], revision: 1 })
   let answer = () => {}

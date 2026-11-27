@@ -71,6 +71,8 @@ async function fixture() {
   servers.push(server)
   const requests: { model: string; messages: Message[] }[] = []
   const summaries: string[] = []
+  let summaryGate = Promise.withResolvers<void>()
+  summaryGate.resolve()
   const hold = Promise.withResolvers<void>()
   let holding = false
   const route: FauxResponseFactory = async (transcript, _options, _state, model) => {
@@ -79,6 +81,7 @@ async function fixture() {
     const messages = transcript.messages.filter((message) => message.role !== 'system')
     if (system.includes('Summarize this voice session')) {
       summaries.push(JSON.stringify(messages))
+      await summaryGate.promise
       return fauxAssistantMessage(
         JSON.stringify(messages).includes('DECIDE') ? 'Decided: a quiet toggle.' : 'NOTHING',
       )
@@ -144,6 +147,10 @@ async function fixture() {
     session,
     quiet,
     summaries,
+    holdSummary: () => {
+      summaryGate = Promise.withResolvers<void>()
+      return summaryGate
+    },
     hold,
     holding: () => holding,
   }
@@ -244,17 +251,56 @@ it('a quiet session that decided something hands one summary card back and the n
   expect(next.id).not.toBe(talk.id)
 })
 
+it('a turn that arrives while the summary is asked keeps the session open, and only the real end publishes one card', async () => {
+  const f = await fixture()
+  const cards = async () =>
+    (await (await f.server.harness.conversation(f.main, context))!.context(context)).entries.filter(
+      (entry) => entry.kind === 'voice.summary',
+    )
+  const first = await f.turn({ key: 'decide', text: 'DECIDE a quiet toggle' })
+  const gate = f.holdSummary()
+  vi.advanceTimersByTime(21 * 60_000)
+  f.server.harness.resume()
+  await until(() => f.summaries.length === 1)
+  await f.turn({ key: 'late', text: 'one more thing', session: first.id })
+  gate.resolve()
+  await until(async () => {
+    const tasks = await f.server.harness.commit(
+      async (tx) => (await tx.scanTasks({ kind: 'voice-live.quiet', status: 'sleeping' }, 5)).items,
+      context,
+    )
+    return tasks.length === 1
+  })
+  expect((await f.session())?.id).toBe(first.id)
+  expect(await cards()).toHaveLength(0)
+  await f.quiet()
+  await until(async () => (await cards()).length === 1)
+  expect(await cards()).toHaveLength(1)
+})
+
 it('after a long gap the fork catches up on the newest of what @ultimate did, not the oldest', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })
   const main = (await f.server.harness.conversation(f.main, context))!
-  for (let n = 1; n <= 30; n++)
-    await (await main.submit({ type: 'input', content: `MAIN ${n}` }, context)).wait(context)
+  for (let n = 1; n <= 120; n++)
+    await main.submit(
+      {
+        type: 'write',
+        requestId: `answered:${n}`,
+        entry: {
+          kind: 'board.answered',
+          model: [{ role: 'user', content: `ANSWER ${n}`, timestamp: Date.now() }],
+        },
+      },
+      context,
+    )
+  await (await main.submit({ type: 'input', content: 'NEWEST' }, context)).wait(context)
   await f.turn({ key: 'two', text: 'what happened', session: first.id })
   const digest = JSON.stringify(f.requests.at(-1)!.messages)
   expect(digest).toContain('earlier entries left out')
-  expect(digest).toContain('echo MAIN 30')
-  expect(digest).not.toContain('In: MAIN 1\\n')
+  expect(digest).toContain('echo NEWEST')
+  expect(digest).toContain('In: ANSWER 120')
+  expect(digest).not.toContain('In: ANSWER 1\\n')
   expect((await f.forkOf(first.id))?.caughtUp).toEqual(expect.any(Number))
 })
 
