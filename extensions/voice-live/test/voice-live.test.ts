@@ -237,7 +237,10 @@ it('a quiet session that decided something hands one summary card back and the n
   expect(talk.id).not.toBe(chat.id)
   const busy = f.requests.length
   await f.quiet()
-  const cards = (await mainEntries()).filter((entry) => entry.kind === 'voice.summary')
+  const summaryCards = async () =>
+    (await mainEntries()).filter((entry) => entry.kind === 'voice.summary')
+  await until(async () => (await summaryCards()).length > 0)
+  const cards = await summaryCards()
   expect(cards).toHaveLength(1)
   expect(cards[0].data).toMatchObject({ from: talk.id, text: 'Decided: a quiet toggle.' })
   expect(cards[0].input).toBeUndefined()
