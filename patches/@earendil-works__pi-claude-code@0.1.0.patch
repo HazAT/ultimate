@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..56d05e9cff1ca8317cd3bbb108d954b21ff07fa0 100644
+index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..5dbc9db3655e971f7cbb784671d015e118336b52 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -1,4 +1,5 @@
@@ -292,17 +292,15 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..56d05e9cff1ca8317cd3bbb108d954b2
  
      const abort = () => {
        this.relay.abort();
-@@ -1181,6 +1257,9 @@ class ClaudeProcess {
+@@ -1181,6 +1257,7 @@ class ClaudeProcess {
        }
        await this.relay.settled();
        input.signal?.throwIfAborted();
-+      // Pi's history did not map onto Claude Code's request; nothing reached Anthropic,
-+      // and the same history fails the same way on every retry.
 +      if (rewriteFailure) throw new Error(`Claude Code request rewrite failed: ${rewriteFailure}`);
  
        let message: NativeMessage | undefined;
        if (this.relay.used) {
-@@ -1214,11 +1293,7 @@ class ClaudeProcess {
+@@ -1214,11 +1291,7 @@ class ClaudeProcess {
  
        // Native error assistants are not collected; report their text instead of "Incomplete".
        if (!message && nativeError) throw new Error(`Claude Code API error: ${nativeError}`);
@@ -449,7 +447,7 @@ index a80889e462a1e844b170199a516944458b1940b0..763d1d8940caa1b5ae6957d457decf7d
      }
    }
 diff --git a/src/transcript.ts b/src/transcript.ts
-index 8dd5f884633b118769b06edd73c24f0a19e1d9f0..4f7a2894eb870867b50646f7446e8e06da89a1eb 100644
+index 8dd5f884633b118769b06edd73c24f0a19e1d9f0..4eed92c97aeba7ba0e6545d5f589adf87bdb1714 100644
 --- a/src/transcript.ts
 +++ b/src/transcript.ts
 @@ -1,7 +1,5 @@
@@ -491,11 +489,8 @@ index 8dd5f884633b118769b06edd73c24f0a19e1d9f0..4f7a2894eb870867b50646f7446e8e06
  }
  
  export function prepareMessages(messages: Message[], model: Model<any>): Message[] {
-@@ -144,9 +149,10 @@ function userContent(content: string | (TextContent | ImageContent)[]): unknown[
-   );
- }
+@@ -146,7 +151,7 @@ function userContent(content: string | (TextContent | ImageContent)[]): unknown[
  
-+/** Anthropic accepts only text in an error tool result, so its images are dropped, as Claude Code drops them. */
  function toolResultContent(message: ToolResultMessage): string | unknown[] {
    const hasImages = message.content.some((block) => block.type === "image");
 -  if (!hasImages) {
@@ -503,18 +498,19 @@ index 8dd5f884633b118769b06edd73c24f0a19e1d9f0..4f7a2894eb870867b50646f7446e8e06
      return sanitizeSurrogates(
        message.content
          .filter((block): block is TextContent => block.type === "text")
-@@ -186,7 +192,17 @@ function canonicalAssistantContent(message: AssistantMessage): NativeContentBloc
+@@ -186,7 +191,18 @@ function canonicalAssistantContent(message: AssistantMessage): NativeContentBloc
    return blocks;
  }
  
-+/**
-+ * Claude Code's placeholder for an empty answer. Claude Code drops it from a replayed
-+ * history (2.1.322), and with it an assistant message left empty, so Pi does too.
-+ */
-+const NO_CONTENT = "(no content)";
++const CLAUDE_CODE_EMPTY_ANSWER_PLACEHOLDER = "(no content)";
 +
  function assistantContent(message: AssistantMessage): NativeContentBlock[] {
-+  return nativeAssistantContent(message).filter((block) => !(block.type === "text" && block.text === NO_CONTENT));
++  const blocks = nativeAssistantContent(message);
++  const visible = blocks.filter((block) => block.type === "text" || block.type === "tool_use");
++  const placeholderOnly =
++    visible.length > 0 &&
++    visible.every((block) => block.type === "text" && block.text === CLAUDE_CODE_EMPTY_ANSWER_PLACEHOLDER);
++  return placeholderOnly ? [] : blocks;
 +}
 +
 +function nativeAssistantContent(message: AssistantMessage): NativeContentBlock[] {

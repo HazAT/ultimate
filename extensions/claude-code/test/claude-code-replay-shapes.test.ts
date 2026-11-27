@@ -1,7 +1,10 @@
 import { expect, it } from 'vitest'
 import type { Message } from '@earendil-works/pi-ai'
 import { rewriteInitialRequest } from '@earendil-works/pi-claude-code/src/claude-cli.ts'
-import { prepareFrames } from '@earendil-works/pi-claude-code/src/transcript.ts'
+import {
+  prepareFrames,
+  prepareNativeTranscript,
+} from '@earendil-works/pi-claude-code/src/transcript.ts'
 
 // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/transcript.ts — two replayed shapes Claude Code 2.1.322
 // reshapes, after which the relay's rewrite failed every later turn of the conversation. Drop with the matching pnpm
@@ -67,25 +70,59 @@ it('sends an error tool result with images as its text alone', () => {
 })
 
 // #1111974: an answer whose only text was Claude Code's "(no content)". Claude Code dropped that turn and merged the
-// user messages around it, so its request had 190 user messages where Pi's history had 191.
-it('drops an assistant turn that holds only "(no content)", as Claude Code does', () => {
-  const frames = prepareFrames([
-    { role: 'user', content: 'Start the reviewer', timestamp: 0 },
-    assistant([{ type: 'toolCall', id: 'tool-1', name: 'subagent', arguments: {} }]),
-    {
-      role: 'toolResult',
-      toolCallId: 'tool-1',
-      toolName: 'subagent',
-      content: [text('Started')],
-      isError: false,
-      timestamp: 0,
-    },
-    assistant([text('(no content)')]),
-    { role: 'user', content: '[subagent answered] APPROVED', timestamp: 0 },
-  ] as Message[])
-  expect(frames.map((frame) => frame.type)).toEqual(['user', 'assistant', 'user'])
-  expect(frames[2].message.content.map((block) => (block as { type: string }).type)).toEqual([
-    'tool_result',
-    'text',
+// user messages around it, so its request had 190 user messages where Pi's history had 191. Claude Code 2.1.322 also
+// drops the turn when signed thinking precedes the placeholder, and keeps it when it has real text too.
+it('drops an assistant turn whose only answer is "(no content)", as Claude Code does', () => {
+  const thinking = { type: 'thinking', thinking: 'Waiting', thinkingSignature: 'c2ln' }
+  const history = (placeholder: unknown[]) =>
+    [
+      {
+        role: 'system',
+        content: 'You help.',
+        toolsAdded: [{ name: 'subagent', description: 'Start', parameters: { type: 'object' } }],
+        timestamp: 0,
+      },
+      { role: 'user', content: 'Start the reviewer', timestamp: 0 },
+      assistant([{ type: 'toolCall', id: 'tool-1', name: 'subagent', arguments: {} }]),
+      {
+        role: 'toolResult',
+        toolCallId: 'tool-1',
+        toolName: 'subagent',
+        content: [text('Started')],
+        isError: false,
+        timestamp: 0,
+      },
+      assistant(placeholder),
+      { role: 'system', content: 'Later section', timestamp: 0 },
+      { role: 'user', content: '[subagent answered] APPROVED', timestamp: 0 },
+      assistant([text('Done')]),
+      { role: 'user', content: 'Thanks', timestamp: 0 },
+    ] as Message[]
+  for (const placeholder of [[text('(no content)')], [thinking, text('(no content)')]]) {
+    const messages = history(placeholder)
+    const frames = prepareFrames(messages)
+    expect(frames.map((frame) => frame.type)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect(frames[2].message.content.map((block) => (block as { type: string }).type)).toEqual([
+      'tool_result',
+      'text',
+    ])
+    // The later section lands before the next answer Claude Code keeps: the second assistant message.
+    expect(prepareNativeTranscript(messages, true)!.systemInjections[0].beforeAssistant).toBe(1)
+  }
+  const kept = prepareFrames(history([text('Real answer.'), text('(no content)')]))
+  expect(kept.map((frame) => frame.type)).toEqual([
+    'user',
+    'assistant',
+    'user',
+    'assistant',
+    'user',
+    'assistant',
+    'user',
   ])
 })

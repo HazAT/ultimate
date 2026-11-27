@@ -135,6 +135,7 @@ export function diagnose(error: string, assistant?: AssistantMessage) {
       hint: `${missing[1] ?? missing[2]} has no login here. Log in again (⌘K → Log in to a provider), or message the conversation: its next run switches to a model that has one`,
       temporary: false,
     }
+  // Pi upstream: @earendil-works/pi-claude-code@0.1.0 src/claude-cli.ts (patched) names a failed replay rewrite.
   if (error.startsWith('Claude Code request rewrite failed: '))
     return {
       hint: 'This history does not map onto Claude Code’s request, so every retry fails the same way; switch this conversation to another model or hand its work to a fresh branch, and report the mismatch',
