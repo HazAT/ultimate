@@ -394,6 +394,7 @@ import { columns } from '../board/columns.ts'`
 it('makes the page import only suffixed files, as watchdog cards once ran an unsuffixed entries.ts', () => {
   const source = `import { IdleEntry } from './entries.ts'
 import { ids } from '../../lib/ids.ts'
+import { git } from '../../lib/git'
 import type { Run } from './types.ts'
 import { LogDoc } from './refs.ts'
 import { capture } from './capture.web.ts'
@@ -404,6 +405,7 @@ import { Card } from './card.solid.tsx'`
   expect(lint('browser-file-names', 'extensions/watchdog/idle.solid.tsx', source)).toEqual([
     named('extensions/watchdog/entries.ts'),
     named('lib/ids.ts'),
+    named('lib/git'),
   ])
 })
 

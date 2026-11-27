@@ -821,8 +821,8 @@ export default {
       create(context: Context) {
         const check = (node: ImportNode) => {
           const source = node.source?.value
-          if (typeof source !== 'string' || !source.startsWith('.') || !source.endsWith('.ts'))
-            return
+          if (typeof source !== 'string' || !source.startsWith('.')) return
+          if (!['', '.ts'].includes(path.extname(source))) return
           if (node.importKind === 'type' || node.exportKind === 'type') return
           const target = resolved(context.filename, source)
           const [directory] = target[0] === '.ultimate' ? target.slice(1) : target
