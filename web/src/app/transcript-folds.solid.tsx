@@ -31,7 +31,7 @@ export const recedeRow =
 
 export const itemParts = (item: Item) =>
   'aside' in item ? item.aside.flatMap(partsOf) : partsOf(item)
-export const partKeyOf = (row: Row) => partKey(partsOf(row)[0])
+const partKeyOf = (row: Row) => partKey(partsOf(row)[0])
 export const itemKey = (item: Item) =>
   'aside' in item ? `aside:${asideFirstEntryKey(item)}` : partKeyOf(item)
 export const shownKey = (item: Shown) =>
