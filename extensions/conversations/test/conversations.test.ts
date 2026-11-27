@@ -474,7 +474,7 @@ it('renames top-level conversations', async () => {
   })
   await delegate()
   const child = server.api.conversations().find((item) => item.label === 'worker')!
-  const owned = `Conversation ${child.id} is owned, not a top-level conversation`
+  const owned = `#${child.id} is a subagent of #${child.parentConversationId}, not a top-level conversation; it concludes with its owner`
   for (const [name, args, error] of [
     ['rename', null, 'Expected a conversation id'],
     ['rename', { id: 'one', title: 'x' }, 'Expected a conversation id'],

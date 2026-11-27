@@ -106,9 +106,14 @@ async function topLevelId(host: ExtensionHost, args: ActionInput<{ id: number }>
   const id = parseConversationId(value)
   const found = await record(host, id, context)
   if (!found) throw new Error(`Unknown conversation ${id}`)
-  if (found.owner) throw new Error(`Conversation ${id} is owned, not a top-level conversation`)
+  if (found.owner) throw ownedError(id, found.owner.conversationId)
   return id
 }
+
+const ownedError = (id: ConversationId, owner: ConversationId) =>
+  new Error(
+    `#${id} is a subagent of #${owner}, not a top-level conversation; it concludes with its owner`,
+  )
 
 async function refuseFixed(
   host: Pick<ExtensionHost, 'want'>,
@@ -246,7 +251,7 @@ export async function concludeIn(
   for (const id of ids) {
     const found = await tx.conversation(id)
     if (!found) throw new Error(`Unknown conversation ${id}`)
-    if (found.owner) throw new Error(`Conversation ${id} is owned, not a top-level conversation`)
+    if (found.owner) throw ownedError(id, found.owner.conversationId)
     await refuseFixed(host, tx, id, 'concluded')
   }
   const ui = await tx.doc(UiState, ROOT_CONVERSATION_ID)

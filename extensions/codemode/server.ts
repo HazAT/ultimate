@@ -45,7 +45,15 @@ import type { ActionContext } from '../../server/actions.ts'
 import { READS, readProject } from './projects.ts'
 import { REMOTE_BYTES } from '../../lib/remote.ts'
 import type { Read } from './projects.ts'
-import { closedChapter, compactEntry, id, limit, readChapter, searchHit } from './chapters.ts'
+import {
+  closedChapter,
+  compactEntry,
+  concludedWithOwners,
+  id,
+  limit,
+  readChapter,
+  searchHit,
+} from './chapters.ts'
 import type { EntriesOptions, HistoryRead, SearchOptions } from './chapters.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { MessagesApi } from '../messages/api.ts'
@@ -154,8 +162,9 @@ function localReads(host: ExtensionHost, context: Context) {
   const listed = async () => {
     const summaries = new Map(host.conversations().map((summary) => [summary.id, summary]))
     const concluded = (await host.uiState(context))['ext.conversations.concluded']
-    const done = new Set(Array.isArray(concluded) ? concluded : [])
-    return (await conversations()).map((record) => {
+    const records = await conversations()
+    const done = concludedWithOwners(records, concluded)
+    return records.map((record) => {
       const summary = summaries.get(record.id)
       return {
         ...record,
