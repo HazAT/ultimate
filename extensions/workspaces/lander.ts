@@ -338,8 +338,9 @@ export async function hasPendingLanderReport(tx: Tx, index: WorkspaceIndex, id: 
 export async function activeLandingCards(tx: Tx, index: WorkspaceIndex) {
   const results: string[] = []
   for (const taskId of Object.values(index.landers)) {
-    const task = await tx.task(taskId)
-    const checkpoint = task?.state.checkpoint as State | undefined
+    const state = (await tx.task(taskId))?.state
+    if (!state || state.status === 'terminal') continue
+    const checkpoint = state.checkpoint as State | undefined
     if (checkpoint?.phase === 'deliver' && checkpoint.concluded && checkpoint.starter !== undefined)
       results.push(checkpoint.id)
   }

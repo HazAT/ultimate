@@ -11,8 +11,8 @@ import {
   chapterFiles,
   chapterName,
   PENDING_CHAPTER,
+  prepareChapterRequest,
   readChapters,
-  requestChapter,
 } from '../../lib/chapters.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { CloudApi } from '../cloud/api.ts'
@@ -195,7 +195,7 @@ async function restartChapter(
   name: string,
   backupBeforeRestart?: () => Promise<unknown>,
 ): Promise<never> {
-  await requestChapter(host.home, name, process.pid)
+  const writePendingChapter = prepareChapterRequest(host.home, name, process.pid)
   try {
     await backupBeforeRestart?.()
     throw new Error(
@@ -203,6 +203,7 @@ async function restartChapter(
         requireNoWorkParkedBySwitch(host)
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold() keeps the scheduler from starting tasks.
         host.harness().hold()
+        await writePendingChapter()
       }),
     )
   } finally {

@@ -22,7 +22,7 @@ import { projectSkills } from './skills.ts'
 import { writeProject } from './project.ts'
 import { projectName, projectSettings } from '../lib/project-setup.ts'
 import { requestSwap } from './supervisor-protocol.ts'
-import { activeChapter, finishChapterSwitch } from '../lib/chapters.ts'
+import { activeChapter, prepareChapterSwitch } from '../lib/chapters.ts'
 import { defaultAgent } from '../lib/agents.ts'
 import { secretsAuthContext } from '../lib/secrets.ts'
 import type {
@@ -239,11 +239,11 @@ export async function prepareHarness(options: HostOptions) {
           projectName(projectRoot, await projectSettings(projectRoot, userHome)),
         )
         if (swappedIn) await backUpChaptersBeforeSwap(home)
-        await finishChapterSwitch(home, async (file) => {
+        const chapterSwitch = await prepareChapterSwitch(home, async (file) => {
           const created = await openNodeSqliteStorage(file)
           await created.close(context)
         })
-        chapter = await activeChapter(home)
+        chapter = chapterSwitch?.chapter ?? (await activeChapter(home))
         storage = await openNodeSqliteStorage(chapter.database)
         harness = await Harness.open(
           storage,
@@ -297,6 +297,7 @@ export async function prepareHarness(options: HostOptions) {
           } else await tx.doc(UiState, root.id)
           Object.assign(await tx.doc(AgentDoc, root.id), currentDefaultRootAgent)
         }, context)
+        await chapterSwitch?.finish()
         active = { harness, root, storage }
         const openedHarness = harness
         if (resume) openedHarness.resume()

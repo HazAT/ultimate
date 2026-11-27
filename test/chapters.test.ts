@@ -1,15 +1,14 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readdir, rename, rm } from 'node:fs/promises'
-import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
+import { copyFile, mkdir, readFile, readdir, rename, rm } from 'node:fs/promises'
+import { Harness } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import {
   activeChapter,
   chapterName,
   continueChapterIds,
-  finishChapterSwitch,
   FIRST_CHAPTER,
   inFlight,
   readChapters,
@@ -125,26 +124,32 @@ it('finishes a switch whose new database was left without its schema', async () 
   expect((await activeChapter(home)).name).toBe('next')
 })
 
-it('finishes a switch interrupted after the new database was created', async () => {
+it('commits the chapter switch only after the target harness opens', async () => {
   const home = await temp('ultimate-chapters-')
   const prepared = await prepare(home)
-  const first = await conversationIn(prepared)
+  await requestChapter(home, 'previous')
+  const previous = await conversationIn(prepared)
+  const chaptersFile = join(home, 'chapters.json')
+  const manifest = await readFile(chaptersFile, 'utf8')
+  const pendingFile = join(home, 'pending-chapter.json')
   await requestChapter(home, 'next')
-  // Interrupted before chapters.json was written: the database exists, the journal remains.
-  await finishChapterSwitch(home, async (file) => {
-    await (await openNodeSqliteStorage(file)).close(context)
-    throw new Error('interrupted')
-  }).then(
-    () => expect.unreachable(),
-    (error: unknown) => expect(String(error)).toContain('interrupted'),
-  )
-  expect(existsSync(join(home, 'pending-chapter.json'))).toBe(true)
-  expect((await activeChapter(home)).name).toBe(FIRST_CHAPTER)
 
-  const id = await conversationIn(prepared)
+  const open = vi.spyOn(Harness, 'open').mockImplementationOnce(async () => {
+    expect(prepared.chapter).toMatchObject({ name: 'next', number: 3, newest: 'next' })
+    throw new Error('target failed to open')
+  })
+  try {
+    await expect(prepared.open(false)).rejects.toThrow('target failed to open')
+  } finally {
+    open.mockRestore()
+  }
+  expect(await readFile(chaptersFile, 'utf8')).toBe(manifest)
+  expect(await readJson(pendingFile, null)).toEqual({ to: 'next' })
+
+  expect(await conversationIn(prepared)).toBeGreaterThan(previous)
   expect((await activeChapter(home)).name).toBe('next')
-  expect(id).toBeGreaterThan(first)
-  expect(await readdir(join(home, 'chapters'))).toEqual(['next'])
+  expect(existsSync(pendingFile)).toBe(false)
+  expect((await readdir(join(home, 'chapters'))).toSorted()).toEqual(['next', 'previous'])
 })
 
 it('refuses to switch into a chapter with foreground work in flight', async () => {

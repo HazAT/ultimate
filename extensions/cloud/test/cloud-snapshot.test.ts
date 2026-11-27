@@ -20,7 +20,7 @@ const machine = 'snapshot-test-desk'
 /** sha256 of a `VACUUM INTO` copy: the plaintext a manifest hashes. */
 async function contentHash(path: string) {
   const copy = join(await temp('ultimate-snapshot-hash-'), 'copy.sqlite')
-  vacuum(path, copy)
+  await vacuum(path, copy)
   return createHash('sha256')
     .update(await readFile(copy))
     .digest('hex')
