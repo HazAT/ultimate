@@ -104,7 +104,7 @@ export type SubagentsService = {
     options: Parameters<typeof createChild>[2],
   ) => ReturnType<typeof createChild>
   /**
-   * Refresh, inside `tx`, conversation `id` from `definition` (read fresh, e.g. with `discoverAgents`) over
+   * Refresh, inside `tx`, conversation `id` from `definition` (read fresh, e.g. with `agentDefinitions`) over
    * `parentAgent`: its current tools, extensions and instructions; the model and thinking chosen in it stay unless the
    * definition pins them.
    */

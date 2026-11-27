@@ -17,6 +17,8 @@ import { projectDecision, readDecision, useProjectSetup } from './project-setup.
 import { discoverExtensions } from './discovery.ts'
 import { isMissing } from './errors.shared.ts'
 import { fileMemo } from './memo.ts'
+import type { FileMemoState } from './memo.ts'
+import type { ExtensionHost } from '../server/extensions.ts'
 
 type DeferredToolNamesWhenInheritingAll = string[]
 export interface AgentDefinition {
@@ -464,24 +466,38 @@ export async function discoveryPaths(ultimateRoot: string, projectRoot: string, 
   ]
 }
 
-export function cachedDiscovery(
-  ultimateRoot: string,
-  projectRoot: string,
-  userHome: string,
-  modelRuntime: ModelRuntime,
-) {
-  let snapshot: readonly unknown[] | undefined
-  let snapshots = 0
-  return fileMemo({
-    paths: () => discoveryPaths(ultimateRoot, projectRoot, userHome),
-    read: () => discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
-    key: () => {
-      const replacedWhenModelsOrLoginsChange = modelRuntime.getAvailableSnapshot()
-      if (replacedWhenModelsOrLoginsChange !== snapshot) snapshots++
-      snapshot = replacedWhenModelsOrLoginsChange
-      return String(snapshots)
+type DiscoveryState = FileMemoState<AgentDiscovery> & {
+  snapshot?: readonly unknown[]
+  snapshots: number
+}
+
+export function agentDefinitions(
+  host: Pick<
+    ExtensionHost,
+    'resource' | 'ultimateRoot' | 'projectRoot' | 'userHome' | 'modelRuntime'
+  >,
+  projectRoot = host.projectRoot,
+): Promise<AgentDiscovery> {
+  const { ultimateRoot, userHome, modelRuntime } = host
+  const byReader = host.resource(
+    `agents.discovery-by-reader:${projectRoot}`,
+    () => new WeakMap<typeof discoverAgents, DiscoveryState>(),
+  )
+  const state = byReader.get(discoverAgents) ?? { snapshots: 0 }
+  byReader.set(discoverAgents, state)
+  return fileMemo(
+    {
+      paths: () => discoveryPaths(ultimateRoot, projectRoot, userHome),
+      read: () => discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
+      key: () => {
+        const replacedWhenModelsOrLoginsChange = modelRuntime.getAvailableSnapshot()
+        if (replacedWhenModelsOrLoginsChange !== state.snapshot) state.snapshots++
+        state.snapshot = replacedWhenModelsOrLoginsChange
+        return String(state.snapshots)
+      },
     },
-  })
+    state,
+  )()
 }
 
 export async function discoverAgents(

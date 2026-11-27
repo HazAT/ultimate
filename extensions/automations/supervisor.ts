@@ -12,7 +12,7 @@ import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { discoverAgents } from '../../lib/agents.ts'
+import { agentDefinitions } from '../../lib/agents.ts'
 import { FIRST_CHAPTER } from '../../lib/chapters.ts'
 import { isMissing, settled } from '../../lib/errors.shared.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
@@ -290,9 +290,7 @@ export function supervisor(
     return child.id
   }
   async function agentFor(caller?: ConversationId): Promise<Prepared> {
-    const profile = (
-      await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
-    ).definitions.find((d) => d.name === 'watcher')
+    const profile = (await agentDefinitions(host)).definitions.find((d) => d.name === 'watcher')
     if (!profile) throw new Error('Missing watcher agent definition')
     const parentId =
       caller ?? (await host.need(SubagentsApi).standing('ultimate', BACKGROUND_CONTEXT))

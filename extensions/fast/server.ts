@@ -10,7 +10,7 @@ import {
   ProviderDoc,
 } from '@earendil-works/pi-durable'
 import type { JsonObject } from '@earendil-works/pi-durable'
-import { discoverAgents, previewModel } from '../../lib/agents.ts'
+import { agentDefinitions, previewModel } from '../../lib/agents.ts'
 import { Profile } from '../subagents/api.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -150,14 +150,7 @@ export default function fastExtension(host: ExtensionHost) {
               : undefined
           const definitionUsesPriority =
             nonAdhocDefinitionName !== undefined &&
-            (
-              await discoverAgents(
-                host.ultimateRoot,
-                host.projectRoot,
-                host.userHome,
-                host.modelRuntime,
-              )
-            ).definitions.some(
+            (await agentDefinitions(host)).definitions.some(
               (definition) => definition.name === nonAdhocDefinitionName && definition.fast,
             )
           if (!definitionUsesPriority) definitionFastSessions.delete(provider.sessionId)

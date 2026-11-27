@@ -33,11 +33,15 @@ it('lists other projects with their standing agents, and a new one on the next r
   await writeProject(join(homes, 'life'), life, 'Life')
   await writeProject(join(homes, 'here'), here, 'Here')
   new ProjectTrustStore(join(userHome, '.ultimate')).set(life, true)
+  const resources = new Map<string, unknown>()
   const host = {
     projects: () => projects(userHome, join(homes, 'here')),
     ultimateRoot: repo,
+    projectRoot: here,
     userHome,
     modelRuntime: await ModelRuntime.create(),
+    resource: <T>(key: string, create: () => T) =>
+      (resources.get(key) ?? resources.set(key, create()).get(key)) as T,
   }
   expect(await projectsSection(host)).toContain('\n- Life')
   expect(await projectsSection(host)).not.toContain('Here')

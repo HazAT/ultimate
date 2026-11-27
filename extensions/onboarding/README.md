@@ -55,7 +55,7 @@ The input carries @ultimate's model and context window so the walkthrough can re
 **Walk me through Ultimate** (⌘K) reruns only the walkthrough: the user-only `walkthrough` action submits a
 `walkthrough.start` input to @ultimate, every time, and opens its conversation.
 
-Then @ultimate shows only applicable setup cards one at a time and waits for each choice, then reads the project
+Then, following the same skill's project setup section, @ultimate shows only applicable setup cards one at a time and waits for each choice, then reads the project
 with the user able to steer. It writes the root's first memories with `remember` (the user's instructions verbatim among them), suggests at most three useful
 project-specific agents, extensions or settings, and builds only what the user chooses. The first feature becomes a
 coordinator through `branch`. Roots stay read-only while @ultimate handles setup.

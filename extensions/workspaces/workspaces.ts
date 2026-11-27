@@ -1070,27 +1070,30 @@ export function workspaces(host: Host) {
         fresh: 0,
         dirty: 0,
       }
+      for (const workspace of items) stats[workspace.state]++
+      const gitProcessesAtOnce = 8
+      const queue = items.filter((workspace) => workspace.state === 'ready').values()
       await Promise.all(
-        items.map(async (workspace) => {
-          stats[workspace.state]++
-          if (workspace.state !== 'ready') return
-          const tip = await git(workspace.path, 'rev-parse', 'HEAD').catch(() => '')
-          if (await git(workspace.path, 'status', '--porcelain').catch(() => '')) stats.dirty++
-          if (!tip || tip === workspace.base) stats.fresh++
-          else if (
-            await git(
-              workspace.source,
-              'merge-base',
-              '--is-ancestor',
-              tip,
-              `refs/heads/${workspace.target}`,
-            ).then(
-              () => true,
-              () => false,
+        Array.from({ length: gitProcessesAtOnce }, async () => {
+          for (const workspace of queue) {
+            const tip = await git(workspace.path, 'rev-parse', 'HEAD').catch(() => '')
+            if (await git(workspace.path, 'status', '--porcelain').catch(() => '')) stats.dirty++
+            if (!tip || tip === workspace.base) stats.fresh++
+            else if (
+              await git(
+                workspace.source,
+                'merge-base',
+                '--is-ancestor',
+                tip,
+                `refs/heads/${workspace.target}`,
+              ).then(
+                () => true,
+                () => false,
+              )
             )
-          )
-            stats.landed++
-          else stats.ahead++
+              stats.landed++
+            else stats.ahead++
+          }
         }),
       )
       return stats

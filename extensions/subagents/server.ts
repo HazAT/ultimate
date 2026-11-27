@@ -45,10 +45,9 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Source } from '../../lib/project-paths.ts'
 import {
   agentRoots,
-  cachedDiscovery,
   definitionAgent,
   deleteDefinition,
-  discoverAgents,
+  agentDefinitions,
   hasLogin,
   hostDefault,
   previewModel,
@@ -452,12 +451,7 @@ export const actions = {
     return host.need(SubagentsApi).standing(name, BACKGROUND_CONTEXT)
   }),
   definitions: implementAction(DefinitionsAction, async (_args, { host }) => {
-    const { definitions, errors, projectSetup } = await discoverAgents(
-      host.ultimateRoot,
-      host.projectRoot,
-      host.userHome,
-      host.modelRuntime,
-    )
+    const { definitions, errors, projectSetup } = await agentDefinitions(host)
     const main = await (await host
       .harness()
       .conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))!.agent(BACKGROUND_CONTEXT)
@@ -484,12 +478,7 @@ export const actions = {
   definition: implementAction(DefinitionAction, async (args, { host }) => {
     const name = (args as { name?: JsonValue } | null)?.name
     if (typeof name !== 'string' || !name) throw new Error('name is required')
-    const { definitions, errors } = await discoverAgents(
-      host.ultimateRoot,
-      host.projectRoot,
-      host.userHome,
-      host.modelRuntime,
-    )
+    const { definitions, errors } = await agentDefinitions(host)
     const definition = definitions.find((candidate) => candidate.name === name)
     const invalid = errors.findLast((candidate) => candidate.name === name)
     const shown = definition ?? invalid
@@ -557,12 +546,7 @@ export const actions = {
     if (fast !== undefined && typeof fast !== 'boolean') throw new Error('fast must be a boolean')
     if (summaries !== undefined && typeof summaries !== 'boolean')
       throw new Error('summaries must be a boolean')
-    const { definitions } = await discoverAgents(
-      host.ultimateRoot,
-      host.projectRoot,
-      host.userHome,
-      host.modelRuntime,
-    )
+    const { definitions } = await agentDefinitions(host)
     const existing = definitions.find((definition) => definition.name === name)
     if (create === true && existing) throw new Error(`A definition named ${name} exists already`)
     const fields: DefinitionFields = {
@@ -583,12 +567,7 @@ export const actions = {
       existing?.overlays?.length || (overlay === true && existing && existing.source !== scope)
     if (needsDiffOverlay) {
       await saveOverlay(host, host.modelRuntime, scope, name, fields, instructions)
-      const { definitions: saved } = await discoverAgents(
-        host.ultimateRoot,
-        host.projectRoot,
-        host.userHome,
-        host.modelRuntime,
-      )
+      const { definitions: saved } = await agentDefinitions(host)
       return saved.find((definition) => definition.name === name)!
     }
     return saveDefinition(host, host.modelRuntime, scope, name, fields, instructions)
@@ -629,16 +608,9 @@ export default function subagents(
   host.want(ChildFailures)
   const failures = () => host.want(ChildFailures)
   const residentDefinitions = async () =>
-    (
-      await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
-    ).definitions.filter((definition) => definition.resident === true)
+    (await agentDefinitions(host)).definitions.filter((definition) => definition.resident === true)
   const pruneRetired = async (ctx: Context) => {
-    const { definitions, errors } = await discoverAgents(
-      host.ultimateRoot,
-      host.projectRoot,
-      host.userHome,
-      host.modelRuntime,
-    )
+    const { definitions, errors } = await agentDefinitions(host)
     const kept = new Set(
       definitions
         .filter((definition) => definition.resident === true)
@@ -675,12 +647,7 @@ export default function subagents(
       if (profile.adhoc) return undefined
       const name = profile.definition ?? (await tx.doc(host.metadata, id)).label
       if (!name) return undefined
-      const { definitions } = await discoverAgents(
-        host.ultimateRoot,
-        host.projectRoot,
-        host.userHome,
-        host.modelRuntime,
-      )
+      const { definitions } = await agentDefinitions(host)
       const definition = definitions.find((item) => item.name === name)
       return definition?.runs ? definition.runs.model : definition?.model
     },
@@ -712,12 +679,7 @@ export default function subagents(
       const result = await host
         .harness()
         .commit(async (tx): Promise<{ id: ConversationId } | { missing: string[] }> => {
-          const discovered = await discoverAgents(
-            host.ultimateRoot,
-            host.projectRoot,
-            host.userHome,
-            host.modelRuntime,
-          )
+          const discovered = await agentDefinitions(host)
           const definitions = discovered.definitions.filter((item) => item.resident === true)
           const definition = definitions.find((item) => item.name === name)
           if (!definition) return { missing: definitions.map((item) => `@${item.name}`) }
@@ -757,12 +719,6 @@ export default function subagents(
     },
   }
   host.implement(SubagentsApi, service)
-  const standingDefinitions = cachedDiscovery(
-    host.ultimateRoot,
-    host.projectRoot,
-    host.userHome,
-    host.modelRuntime,
-  )
   const refreshStanding = async (
     tx: Tx,
     id: ConversationId,
@@ -771,7 +727,7 @@ export default function subagents(
     const index = await tx.doc(Standing, ROOT_CONVERSATION_ID)
     const name = Object.keys(index).find((candidate) => index[candidate] === id)
     if (name === undefined) return
-    const discovered = await standingDefinitions().catch(meansNone)
+    const discovered = await agentDefinitions(host).catch(meansNone)
     const definition = discovered?.definitions.find(
       (item) => item.name === name && item.resident === true,
     )
@@ -1064,7 +1020,7 @@ export default function subagents(
         },
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         prepareInput: async () => {
-          await standingDefinitions()
+          await agentDefinitions(host)
         },
         beforeInput: async (_input, { tx, conversationId, agent }) => {
           await refreshStanding(tx, conversationId, agent)
@@ -1092,12 +1048,7 @@ export default function subagents(
           ['subagent', 'branch', 'automation'].includes(tool.name),
         )
         if (!usesDefinitions) return undefined
-        const discovered = await discoverAgents(
-          host.ultimateRoot,
-          host.projectRoot,
-          host.userHome,
-          host.modelRuntime,
-        )
+        const discovered = await agentDefinitions(host)
         const definitions = discovered.definitions
           .map((agent) => {
             const runs = runsLabel(agent.runs)
@@ -1198,14 +1149,7 @@ export default function subagents(
             const existingAction = index.actions[api.callId]
             const definitions =
               args.action === 'start' && !existingAction
-                ? (
-                    await discoverAgents(
-                      host.ultimateRoot,
-                      host.projectRoot,
-                      host.userHome,
-                      host.modelRuntime,
-                    )
-                  ).definitions
+                ? (await agentDefinitions(host)).definitions
                 : undefined
             const definition = definitions && (await spawnDefinition(args, definitions))
             const parentTools = [...parent.tools, ...parent.deferred]

@@ -36,7 +36,7 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { discoverAgents } from '../../lib/agents.ts'
+import { agentDefinitions } from '../../lib/agents.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { apiSource, apiSummaries } from '../../lib/api-files.ts'
@@ -352,8 +352,7 @@ function helpers(host: ExtensionHost): Helper[] {
         "Agent definitions for subagents and automations, the files that failed to parse, user or project files replacing a built-in, and the project's `.ultimate/` setup decision: its definitions apply only once trusted. To change one, edit its file.",
       signature:
         "(): Promise<{ definitions: { name: string; description: string; path: string; source: 'builtin' | 'user' | 'project'; instructions: string; model?: { provider: string; modelId: string }; thinking?: string; tools?: string[]; isolate?: 'none' | 'worktree'; resident?: boolean; fast?: boolean; summaries?: boolean; overlays?: string[] }[]; errors: { name: string; path: string; source: string; error: string }[]; replaced: { name: string; path: string; source: string }[]; projectSetup: 'trusted' | 'declined' | 'undecided' }>",
-      execute: () =>
-        discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime),
+      execute: () => agentDefinitions(host),
     },
     {
       name: 'doc',

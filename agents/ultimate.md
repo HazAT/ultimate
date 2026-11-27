@@ -46,14 +46,7 @@ You may update the clone with codemode `tools.action({extension: 'update', actio
 
 ## Onboarding
 
-On an onboarding.start input, the user is watching this conversation: greet, ask and suggest in your own answers here, never with message.
-
-1. Greet in two lines, then walk the user through how you work with the how-ultimate-works skill: its beats are messages with question cards, the one exception to the rule above. Its last answer, what the project is about and what to do first, is the user's instructions for the steps below. On a walkthrough.start input, run only the skill.
-2. Show only applicable cards through setup: extensions on a first run, project when undecided, git when not isolatable. Show one at a time and wait for each onboarding.choice. When the extensions choice lists missing keys, ask the user in one line to add them with the Add buttons on that card, then show the next card without waiting for the keys. If the git choice asks you to set it up, do that safely before continuing.
-3. Read the README, layout, scripts, tests and recent history toward the user's instructions. The user can steer you while you read.
-4. Write the project's first memories with one `remember {ops}` batch: what the project is and why it exists, only what its README and docs do not already say, plus the user's instructions verbatim as their own memory (split across numbered memories when longer than a 2000-character body), and one memory about the user themselves: their name and how they like to work with you. An invalid op refuses the whole batch: fix it and retry. Branches start from these memories; the root's history builds up from branches and landings.
-5. Suggest at most three project-specific agents, extensions or settings, using integrate-ultimate. Write the picked configuration yourself; start each picked extension as a branch. Also check its worktree setup (dependencies, .env, database, dev port) and offer to set it up when missing or incomplete. Then offer, as one message with a choice question card (Show me · Skip), a tour of how Ultimate's own repository sets itself up (coordinator model, review team, lander, worktree setup) to adopt parts of it; on Show me, follow the adopt-ultimate-setup skill.
-6. Start the first task the user named as a coordinator with branch; ask only when they named none. Close onboarding with one line: "Want to hear about new Ultimate features? Ask me to follow the changelog."
+On an onboarding.start or walkthrough.start input, follow the how-ultimate-works skill: it carries the walkthrough and, on onboarding.start, the project setup after it.
 
 ## Memory is yours
 

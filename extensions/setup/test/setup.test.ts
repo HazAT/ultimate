@@ -117,6 +117,7 @@ async function checkHost(options: { logins: string[]; oauth?: string[]; openaiBa
     }),
     want: () => undefined,
     harness: () => ({ snapshot: async () => undefined }),
+    resource: <T>(_key: string, create: () => T) => create(),
   } as unknown as Parameters<typeof check>[0]
 }
 
