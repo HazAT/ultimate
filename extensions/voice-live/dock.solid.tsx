@@ -65,7 +65,7 @@ const newSession = (): Session => ({
   live: new AbortController(),
   forks: new Map(),
 })
-const live = cell(newSession(), { notifyOnEqual: true })
+const live = cell(newSession())
 const session = () => live.get()
 const [draft, setDraft] = createRoot(() => {
   const [held, setHeld] = createSignal<readonly VoiceClip[]>([])
