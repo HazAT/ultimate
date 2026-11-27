@@ -94,14 +94,26 @@ function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
-      const end = form
+      const toggle = form
         .closest(':has([data-ui="voice-mode-switch"])')
         ?.querySelector('[data-ui="voice-mode-switch"]')
-        ?.getBoundingClientRect()
+      const end = toggle?.getBoundingClientRect()
+      const row = toggle?.parentElement
+      const { left, right, stop } =
+        row && end && end.width > 0
+          ? {
+              left: Math.max(
+                rect.left,
+                row.getBoundingClientRect().left + parseFloat(getComputedStyle(row).paddingLeft),
+              ),
+              right: end.right,
+              stop: end.left - 8,
+            }
+          : { left: rect.left, right: rect.right, stop: rect.right }
       setAnchor({
-        left: rect.left,
-        width: rect.width,
-        pill: (end && end.width > 0 ? end.left - 8 : rect.right) - rect.left,
+        left,
+        width: right - left,
+        pill: stop - left,
         bottom: innerHeight - rect.top + 6,
       })
     }
