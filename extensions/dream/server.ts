@@ -296,31 +296,43 @@ async function openAsk(tx: Tx) {
   return doc
 }
 
-async function startedDream(tx: Tx) {
+async function refuseParkAfterStart(tx: Tx, host: ExtensionHost): Promise<Error> {
   const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
-  if (doc.dream) return { branch: doc.dream.branch, ran: true }
+  if (doc.dream)
+    return new Error(
+      `No dream ask is open: dream #${doc.dream.branch} already started in this chapter, and a chapter dreams once. Put any handoff in that branch's prompt, or wait for the next chapter.`,
+    )
   const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
-  if (ultimate === undefined) return undefined
+  const started = ultimate === undefined ? undefined : await dreamInFlight(tx, ultimate)
+  if (started)
+    return new Error(
+      "No dream ask is open: Start already launched the dream, so there is no ask to park on. Put the handoff in the dream branch's prompt in this turn instead.",
+    )
+  const queued =
+    ultimate !== undefined &&
+    (
+      await host.scanSubmissions(
+        { conversationId: ultimate, status: 'queued' },
+        50,
+        undefined,
+        context,
+      )
+    ).items.some((submission) => submission.requestId?.startsWith('dream.requested:'))
+  if (queued)
+    return new Error(
+      "No dream ask is open: Start already launched the dream, and its input is queued behind the current turn. Put the handoff in the dream branch's prompt when that input runs, not in park.",
+    )
+  return new Error('No dream ask is open: no dream was asked for, and none has started')
+}
+
+async function dreamInFlight(tx: Tx, ultimate: ConversationId) {
   const page = await tx.scanEntries({ conversationId: ultimate }, REQUEST_LOOKBACK_ENTRIES)
   for (const entry of page.items) {
-    if (entry.kind === 'dream.requested') return { ran: false }
+    if (entry.kind === 'dream.requested') return true
     const message = entry.model?.at(-1)
     if (message?.role === 'assistant' && message.stopReason !== 'toolUse') return undefined
   }
   return undefined
-}
-
-async function refuseParkAfterStart(tx: Tx): Promise<Error> {
-  const started = await startedDream(tx)
-  if (!started)
-    return new Error('No dream ask is open: no dream was asked for, and none has started')
-  if (started.ran)
-    return new Error(
-      `No dream ask is open: dream #${started.branch} already ran this chapter, and a chapter dreams once. Put any handoff in that branch's prompt, or wait for the next chapter.`,
-    )
-  return new Error(
-    "No dream ask is open: Start already launched the dream, so there is no ask to park on. Put the handoff in the dream branch's prompt in this turn instead.",
-  )
 }
 
 export const actions = {
@@ -372,7 +384,7 @@ export const actions = {
   park: implementAction(ParkAction, async (args, { host }) =>
     host.harness().commit(async (tx) => {
       const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
-      if (!doc.ask) throw await refuseParkAfterStart(tx)
+      if (!doc.ask) throw await refuseParkAfterStart(tx, host)
       const parked = Date.now()
       doc.ask.handoff = text(fields(args).handoff, 'handoff', HANDOFF_CHARS)
       doc.ask.parked = parked

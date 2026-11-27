@@ -2,8 +2,11 @@ import type { Conversation, ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Message } from '@earendil-works/pi-ai'
-import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
-import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+} from '@earendil-works/pi-ai/providers/faux'
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
 import { onCommit } from '../../../lib/commits.ts'
@@ -18,8 +21,7 @@ import {
   until,
 } from '../../../test/helpers.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
-import { context } from '../../../server/harness.ts'
-import { prepareHarness } from '../../../server/harness.ts'
+import { context, prepareHarness } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { actions as conversationActions, setStanding } from '../server.ts'
 import { concludedIn } from '../projection.ts'
@@ -840,4 +842,5 @@ it('conclude and rename of a conversation a closed chapter holds name that chapt
   await expect(conversationActions.rename({ id, title: 'x' }, ctx)).rejects.toThrow(
     `Unknown conversation ${id}: chapter next holds it, and a closed chapter's conversations cannot be reached here`,
   )
+  await opened.close()
 })

@@ -86,6 +86,8 @@ async function fixture() {
       return prepared.chapter
     },
     harness: () => opened.harness,
+    scanSubmissions: (...args: Parameters<typeof prepared.scanSubmissions>) =>
+      prepared.scanSubmissions(...args),
     resource: (key: string, create: () => unknown) => {
       if (!resources.has(key)) resources.set(key, create())
       return resources.get(key)
@@ -308,6 +310,22 @@ it("asks the user on a built-in's fire instead of dreaming, and Start launches @
   )
 })
 
+it('park with no ask names a dream Start queued behind the current turn, and a chapter with no dream', async () => {
+  const f = await fixture()
+  ;(f.host as { scanSubmissions: unknown }).scanSubmissions = async () => ({
+    items: [{ requestId: 'dream.requested:1' }],
+  })
+  await expect(actions.park({ handoff: 'While it runs.' }, f.call)).rejects.toThrow(
+    "No dream ask is open: Start already launched the dream, and its input is queued behind the current turn. Put the handoff in the dream branch's prompt when that input runs, not in park.",
+  )
+  ;(f.host as { scanSubmissions: unknown }).scanSubmissions = async () => ({
+    items: [],
+  })
+  await expect(actions.park({ handoff: 'Nothing.' }, f.call)).rejects.toThrow(
+    'No dream ask is open: no dream was asked for, and none has started',
+  )
+})
+
 it('keeps the open ask when a second fire passed the hold before the first one opened it', async () => {
   const f = await fixture()
   const id = (await f.own())!
@@ -338,7 +356,7 @@ it('dreams once per chapter: neither built-in fires after a dream ran in it', as
   await f.settle()
   // A dream already ran in this chapter: park names it instead of a bare refusal.
   await expect(actions.park({ handoff: 'x' }, f.call)).rejects.toThrow(
-    'No dream ask is open: dream #9 already ran this chapter, and a chapter dreams once',
+    'No dream ask is open: dream #9 already started in this chapter, and a chapter dreams once',
   )
   // The crossing counts (it re-arms below 60 as usual) but fires nothing: no wake-up, no dream ask.
   expect(await f.record(id)).toMatchObject({ fires: 0, condition: { armed: false } })
