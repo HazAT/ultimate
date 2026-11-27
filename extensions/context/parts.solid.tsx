@@ -302,15 +302,10 @@ function SkillPills(props: { breakdown: Breakdown; allowed?: readonly string[]; 
 
 function Definition(props: { name: string; breakdown: Breakdown; label: string }) {
   const system = useSystem()
-  const { data } = useAction(
-    DefinitionAction,
-    {
-      get name() {
-        return props.name
-      },
-    },
-    { conversation: ROOT, onError: keepLast },
-  )
+  const { data } = useAction(DefinitionAction, () => ({ name: props.name }), {
+    conversation: ROOT,
+    onError: keepLast,
+  })
   const path = () => {
     const definition = data()
     const root = system()?.code.ultimateRoot

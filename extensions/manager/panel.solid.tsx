@@ -282,15 +282,9 @@ function Field(props: { label: string; children: JSX.Element }) {
 function Details(props: { extension: ExtensionInfo }) {
   const extension = () => props.extension
   const records = useExtensions()
-  const details = useAction(
-    DetailsAction,
-    {
-      get name() {
-        return extension().name
-      },
-    },
-    { conversation: ROOT },
-  )
+  const details = useAction(DetailsAction, () => ({ name: extension().name }), {
+    conversation: ROOT,
+  })
   const server = () => extension().server
   const data = details.data
   const tools = () => server()?.tools ?? []

@@ -115,15 +115,10 @@ const scheduleText = (schedule: Schedule) =>
       : `at ${schedule.time}`
 
 function ScheduleLine(props: { schedule: Schedule; now: number }) {
-  const { data } = useAction(
-    DescribeAction,
-    {
-      get schedule() {
-        return props.schedule
-      },
-    },
-    { conversation: ROOT, onError: keepLast },
-  )
+  const { data } = useAction(DescribeAction, () => ({ schedule: props.schedule }), {
+    conversation: ROOT,
+    onError: keepLast,
+  })
   return (
     <TriggerLine
       text={words(

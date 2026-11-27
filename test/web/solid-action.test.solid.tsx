@@ -63,11 +63,7 @@ it('shows the new read’s cached data at once when its args switch to an alread
 
   const [name, setName] = createSignal('ada')
   function Greeting() {
-    const action = useAction(Echo, {
-      get name() {
-        return name()
-      },
-    })
+    const action = useAction(Echo, () => ({ name: name() }))
     return <output>{action.data() ?? 'none'}</output>
   }
   const container = renderSolid(() => <Greeting />)
@@ -93,11 +89,7 @@ it('shows the new read’s cached data at once when its args switch to an alread
 it('subscribes a read with the args of its key, and never a read its args left before it went', async () => {
   const [name, setName] = createSignal('dee')
   function Greeting() {
-    const action = useAction(Echo, {
-      get name() {
-        return name()
-      },
-    })
+    const action = useAction(Echo, () => ({ name: name() }))
     return <output>{action.data() ?? 'none'}</output>
   }
   renderSolid(() => <Greeting />)

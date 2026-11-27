@@ -46,14 +46,7 @@ function RoundChip(props: { conversation: ConversationId; message: Message }) {
   const [open, setOpen] = createSignal(false)
   const { data } = useAction(
     FramesAction,
-    {
-      get conversation() {
-        return props.conversation
-      },
-      get message() {
-        return props.message.id
-      },
-    },
+    () => ({ conversation: props.conversation, message: props.message.id }),
     { conversation: ROOT, onError: meansNone },
   )
   return (
@@ -136,15 +129,10 @@ function BranchWatch(props: {
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { data, loading } = useAction(
-    FramesAction,
-    {
-      get conversation() {
-        return props.conversation
-      },
-    },
-    { conversation: ROOT, onError: meansNone },
-  )
+  const { data, loading } = useAction(FramesAction, () => ({ conversation: props.conversation }), {
+    conversation: ROOT,
+    onError: meansNone,
+  })
   const enough = () => (data()?.frames.length ?? 0) > 1
   return (
     <>

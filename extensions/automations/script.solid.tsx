@@ -78,29 +78,16 @@ function Script(props: Detail & { act: ReturnType<typeof useAct>['act'] }) {
   const script = () => props.automation.script!
   const system = useSystem()
   const pane = useExtensionUiState<'output' | 'script'>('pane', 'output')
-  const log = useAction(
-    LogAction,
-    {
-      get id() {
-        return props.automation.id
-      },
-      lines: 200,
-    },
-    { conversation: ROOT, every: () => (props.live ? 2000 : undefined), onError: keepLast },
-  )
-  const source = useAction(
-    ScriptAction,
-    {
-      get id() {
-        return props.automation.id
-      },
-    },
-    {
-      conversation: ROOT,
-      every: () => (props.live && pane[0]() === 'script' ? 2000 : undefined),
-      onError: keepLast,
-    },
-  )
+  const log = useAction(LogAction, () => ({ id: props.automation.id, lines: 200 }), {
+    conversation: ROOT,
+    every: () => (props.live ? 2000 : undefined),
+    onError: keepLast,
+  })
+  const source = useAction(ScriptAction, () => ({ id: props.automation.id }), {
+    conversation: ROOT,
+    every: () => (props.live && pane[0]() === 'script' ? 2000 : undefined),
+    onError: keepLast,
+  })
   const output = () => log.data()?.text ?? ''
   const path = () => source.data()?.path
   const running = () => script().state === 'running'

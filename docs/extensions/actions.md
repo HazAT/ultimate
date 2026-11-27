@@ -74,8 +74,8 @@ Call actions from the UI in one of two ways:
   a timer of your own that calls `api.action` or `refetch`: lint rejects it (`no-raw-stream`), since it runs once per
   page instead of once for all. It returns `{ data, error, loading, refetch }`: the first three are accessors, and
   `data()` stays while a refetch runs. A failure shows as a notice unless a reader passes `onError`. Pass an accessor
-  as `on` rather than refetching from an effect. Mount the reader only when its arguments are ready; for changing
-  object arguments, use getters or remount the reader on the new input (see the [Commits example](example-app.md)).
+  as `on` rather than refetching from an effect. Mount the reader only when its arguments are ready; for arguments that
+  change, pass an accessor (`() => ({ id: props.id })`) and the read follows it.
 - `api.action(ref, args?, { conversationId?, signal?, keepalive? })` acts, once: a click that saves,
   closes, or labels something; `keepalive` lets a call sent on `pagehide` outlive the page. It returns a promise of
   the result; afterwards, `refetch()` what changed. A rejection (an `ActionError` with `extension`, `action`,

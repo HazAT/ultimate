@@ -48,15 +48,10 @@ function Reading() {
 }
 
 function Description(props: { schedule: string }) {
-  const { data, error } = useAction(
-    DescribeAction,
-    {
-      get schedule() {
-        return props.schedule
-      },
-    },
-    { conversation: ROOT, onError: keepLast },
-  )
+  const { data, error } = useAction(DescribeAction, () => ({ schedule: props.schedule }), {
+    conversation: ROOT,
+    onError: keepLast,
+  })
   const now = useNow(1000)
   const perDay = () => {
     const next = data()?.next

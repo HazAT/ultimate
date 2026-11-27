@@ -83,11 +83,7 @@ function CallRow(props: { call: WireSummary; selected: boolean; onPick: () => vo
 }
 
 function Detail(props: { n: number; summary: WireSummary; calls: WireSummary[] }) {
-  const call = useAction(CallAction, {
-    get n() {
-      return props.n
-    },
-  })
+  const call = useAction(CallAction, () => ({ n: props.n }))
   const part = useUiState<Tab>(WIRE_TAB_KEY, 'request')
   const mode = useUiState<Mode>(WIRE_MODE_KEY, 'readable')
   const relay = () => props.summary.source === 'relay'

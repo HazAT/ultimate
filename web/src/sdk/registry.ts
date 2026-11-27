@@ -116,7 +116,6 @@ const shapes: Record<keyof WebExtension, [Check, string]> = {
     ),
     'an array of { id, title, icon?, component, order?, tab? }',
   ],
-  panelBadges: [objectOf(isComponent), 'an object of panel id → badge component'],
   surfaces: [
     arrayOf(
       fields({
@@ -347,16 +346,6 @@ export function panelItems(records: readonly ExtensionRecord[]): PanelItem[] {
       (extension?.panels ?? []).map((panel) => ({ ...panel, extension: name, version })),
     )
     .toSorted((a, b) => (a.order ?? 0) - (b.order ?? 0))
-}
-
-export function panelBadges(
-  records: readonly ExtensionRecord[],
-  id: string,
-): { extension: string; version: number; component: Component }[] {
-  return records.flatMap((record) => {
-    const component = record.extension?.panelBadges?.[id]
-    return component ? [{ extension: record.name, version: record.version, component }] : []
-  })
 }
 
 export function shownPanels<P extends Pick<PanelItem, 'id' | 'tab'>>(

@@ -352,12 +352,12 @@ export type UseActionOptions<T = unknown> = {
 
 /**
  * Calls the server action `ref` with `args`, sharing the result across readers of the same action, args and
- * conversation. Refetches on mount, when `on()` changes, at the `every` interval, on focus with `focus`, and after a
+ * conversation. `args` may be an accessor: the read follows its value. Refetches on mount, when `on()` changes, at the `every` interval, on focus with `focus`, and after a
  * restart. Read `data`, `error` and `loading` through their accessors, or call `refetch()` directly.
  */
 export function useAction<Args, T>(
   ref: ActionRef<Args, T>,
-  ...[args, options = {}]: ActionArgs<Args, UseActionOptions<T>>
+  ...[args, options = {}]: ActionArgs<Args | Accessor<Args>, UseActionOptions<T>>
 ) {
   const { state } = shared()
   const scope = useContext(ConversationScope)
@@ -368,7 +368,12 @@ export function useAction<Args, T>(
       const { view, requested } = state()
       conversation = view?.conversation.id ?? requested ?? ROOT
     }
-    return reads.get(ref.extension, ref.name, args, conversation)
+    return reads.get(
+      ref.extension,
+      ref.name,
+      typeof args === 'function' ? (args as Accessor<Args>)() : args,
+      conversation,
+    )
   })
   const [current, setCurrent] = createSignal<ReadState>(() => read().get())
   const interval = createMemo(() =>

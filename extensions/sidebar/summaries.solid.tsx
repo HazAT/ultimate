@@ -71,15 +71,10 @@ export function SummaryHistory(props: {
 }
 
 function History(props: { id: ConversationId; list: (element: HTMLOListElement) => void }) {
-  const { data, loading } = useAction(
-    SummariesAction,
-    {
-      get id() {
-        return props.id
-      },
-    },
-    { conversation: ROOT, onError: keepLast },
-  )
+  const { data, loading } = useAction(SummariesAction, () => ({ id: props.id }), {
+    conversation: ROOT,
+    onError: keepLast,
+  })
   const now = Date.now()
   return (
     <Switch>

@@ -39,7 +39,7 @@ import {
 } from '../sdk/hooks.ts'
 import { actions, layout, shellKeys } from '../sdk/actions.ts'
 import { Contribution, ContributedIcon, Slot } from '../sdk/contribution.solid.tsx'
-import { HOME, panelBadges, slotItems } from '../sdk/registry.ts'
+import { HOME, slotItems } from '../sdk/registry.ts'
 import type { PanelItem } from '../sdk/registry.ts'
 
 import { Composer } from './composer.solid.tsx'
@@ -266,18 +266,6 @@ type Fit = { compact: boolean; overflow: ReadonlySet<string> }
 
 const key = (panel: PanelItem) => `${panel.extension}:${panel.id}`
 
-function TabBadges(props: { id: string }) {
-  const extensions = useExtensions()
-  return (
-    <For
-      each={panelBadges(extensions(), props.id)}
-      keyed={(badge) => `${badge.extension}:${badge.version}`}
-    >
-      {(badge) => <Contribution fallback={inlineFailure} item={badge()} props={{}} />}
-    </For>
-  )
-}
-
 function TabIcon(props: { panel: PanelItem }) {
   return (
     <Show when={props.panel.icon}>
@@ -349,13 +337,11 @@ function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
                 <span class={tab} data-measure={`label:${key(panel())}`}>
                   <TabIcon panel={panel()} />
                   {panel().title}
-                  <TabBadges id={panel().id} />
                 </span>
                 <span class={tab} data-measure={`icon:${key(panel())}`}>
                   <Show when={panel().icon} fallback={panel().title}>
                     <TabIcon panel={panel()} />
                   </Show>
-                  <TabBadges id={panel().id} />
                 </span>
               </span>
             )}
@@ -381,7 +367,6 @@ function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
                       >
                         <TabIcon panel={panel()} />
                         <span class={iconOnly() ? 'sr-only' : undefined}>{panel().title}</span>
-                        <TabBadges id={panel().id} />
                       </TabsTab>
                     )}
                   />
@@ -412,7 +397,6 @@ function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
                   <DropdownMenuItem class="gap-2 py-1 font-mono text-[12px]" value={panel().id}>
                     <TabIcon panel={panel()} />
                     {panel().title}
-                    <TabBadges id={panel().id} />
                   </DropdownMenuItem>
                 )}
               </For>

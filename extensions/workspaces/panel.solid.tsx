@@ -86,20 +86,12 @@ function Checkout(props: {
   queued?: QueueEntry
   recorded: Workspace
 }) {
-  const info = useAction(
-    InfoAction,
-    {
-      get id() {
-        return props.id
-      },
-    },
-    {
-      conversation: ROOT,
-      onError: keepLast,
-      on: () => [props.recorded.state, props.recorded.landed, props.busy],
-      focus: true,
-    },
-  )
+  const info = useAction(InfoAction, () => ({ id: props.id }), {
+    conversation: ROOT,
+    onError: keepLast,
+    on: () => [props.recorded.state, props.recorded.landed, props.busy],
+    focus: true,
+  })
   const workspace = createMemo(() => {
     const live = info.data()
     const recorded = props.recorded

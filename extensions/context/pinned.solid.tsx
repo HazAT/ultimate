@@ -89,11 +89,7 @@ function useCurrentPrompt(conversation: ConversationId) {
   )
   const { data: current } = useAction(
     CurrentPromptAction,
-    {
-      get since() {
-        return acknowledged() ?? undefined
-      },
-    },
+    () => ({ since: acknowledged() ?? undefined }),
     {
       conversation,
       onError: keepLast,

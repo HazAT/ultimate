@@ -184,11 +184,7 @@ function noDiff(call: WireSummary, previous?: WireSummary) {
 }
 
 export function DiffView(props: { call: WireSummary; calls: WireSummary[] }) {
-  const diff = useAction(DiffAction, {
-    get n() {
-      return props.call.n
-    },
-  })
+  const diff = useAction(DiffAction, () => ({ n: props.call.n }))
   const previous = createMemo(() => {
     const n = props.call.n
     return props.calls.findLast((other) => other.n < n)

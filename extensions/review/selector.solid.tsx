@@ -62,15 +62,9 @@ export function Selector(props: SelectorProps) {
 function Ranges(
   props: Omit<SelectorProps, 'title'> & { query: string; setQuery: (query: string) => void },
 ) {
-  const ranges = useAction(
-    RangesAction,
-    {
-      get conversation() {
-        return props.conversation
-      },
-    },
-    { conversation: ROOT },
-  )
+  const ranges = useAction(RangesAction, () => ({ conversation: props.conversation }), {
+    conversation: ROOT,
+  })
   const [highlight, setHighlight] = createSignal<string>()
   const custom = () => props.query.trim()
   const shown = createMemo(() => {

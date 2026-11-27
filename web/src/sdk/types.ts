@@ -17,7 +17,6 @@ export type SlotName =
   | 'sidebar'
   | 'sidebar.top'
   | 'titlebar.brand'
-  | 'titlebar.project'
   | 'titlebar.left'
   | 'titlebar.right'
   | 'header.right'
@@ -554,8 +553,6 @@ export function provide<Input, Value>(
 export interface WebExtension {
   slots?: Partial<Record<SlotName, Contribution | readonly Contribution[]>>
   panels?: readonly PanelContribution[]
-  /** Badges after a right-panel tab's label or icon, by panel id (any extension's panel), in discovery order. */
-  panelBadges?: Readonly<Record<string, Component>>
   surfaces?: readonly SurfaceContribution[]
   /** Tool-call renderers by tool name. */
   tools?: Readonly<Record<string, ToolRenderer>>

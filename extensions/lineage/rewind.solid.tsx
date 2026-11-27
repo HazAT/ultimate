@@ -91,14 +91,7 @@ function Section(props: { title: string; children: JSX.Element }) {
 function GoBackDialog(props: { entry: EntryRecord; onClose: () => void }) {
   const preview = useAction(
     RewindPreviewAction,
-    {
-      get conversation() {
-        return props.entry.conversationId
-      },
-      get at() {
-        return props.entry.id
-      },
-    },
+    () => ({ conversation: props.entry.conversationId, at: props.entry.id }),
     { conversation: ROOT },
   )
   const [summarize, setSummarize] = createSignal(false)

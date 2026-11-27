@@ -2,7 +2,7 @@
 
 Part of the [extension guide](../../extensions/README.md).
 
-`defineWebExtension({ slots, panels, panelBadges, surfaces, tools, toolLines, entries, link, messageActions, messageDetails, answerLabels, userBubble, compact, documents, commands })`; every key is optional. Extensions load
+`defineWebExtension({ slots, panels, surfaces, tools, toolLines, entries, link, messageActions, messageDetails, answerLabels, userBubble, compact, documents, commands })`; every key is optional. Extensions load
 in parallel, installing independently; contributions follow discovery order: built-in → user → project, then folder name within each source. Give a slot item `{ component, order }` to move it (default order 0, lower first).
 Renderers (`tools`, `toolLines`, `entries`, `link`, `inlineCode`, `codeBlocks`, `messageActions`, `messageDetails`,
 `answerLabels`, `userBubble`, `compact`, `inbox`, `composer`) are in [renderers](renderers.md), `documents` in
@@ -18,7 +18,6 @@ title bar the host shows above every surface.
 | `sidebar`              | Left column (`<Sidebar />`); it disappears while nothing is in it                                                     |
 | `sidebar.top`          | Agent sidebar, after the Agents group and before the roots: background work such as watches                           |
 | `titlebar.brand`       | Title bar, the wordmark beyond a phone; render your own Solid mark (the core's wordmark is not exported)              |
-| `titlebar.project`     | Title bar, in place of the project chip                                                                               |
 | `titlebar.left`        | Title bar above every surface, after the project chip; monospace, one line                                            |
 | `titlebar.right`       | Title bar, right, before the palette button                                                                           |
 | `header.right`         | Right side of the header, before the panel toggle (`<Header>`)                                                        |
@@ -44,16 +43,6 @@ Tabs of the right panel (toggle: `mod+alt+b`).
 ```tsx
 import { InfoIcon } from '@lucide/solid'
 panels: [{ id: 'info', title: 'Info', icon: InfoIcon, component: InfoPanel }]
-```
-
-`panelBadges` puts a small component after a tab's label (or its icon, when the row is too narrow for labels), by
-panel id: your own panel's or another extension's, such as a count of what waits there. Badges render in discovery
-order; render nothing to show none.
-
-```tsx
-panelBadges: {
-  todos: OpenCount
-}
 ```
 
 Open one from code with `openPanel('info')` from `@/sdk/solid`. A panel with `tab: false` stays out of the tab row until

@@ -200,15 +200,11 @@ function Note(props: { note: Task['notes'][number]; clamp?: boolean }) {
 function IsolateRow(props: { child: ConversationId; coordinator: ConversationId }) {
   const child = useConversationSummary(() => props.child)
   const parent = useConversationSummary(() => child()?.parentConversationId ?? props.coordinator)
-  const { data } = useAction(
-    InfoAction,
-    {
-      get id() {
-        return props.child
-      },
-    },
-    { conversation: ROOT, on: () => [child()?.busy, parent()?.busy], focus: true },
-  )
+  const { data } = useAction(InfoAction, () => ({ id: props.child }), {
+    conversation: ROOT,
+    on: () => [child()?.busy, parent()?.busy],
+    focus: true,
+  })
   return (
     <Show when={data()}>
       {(isolate) => (

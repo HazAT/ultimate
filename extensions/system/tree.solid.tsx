@@ -61,15 +61,7 @@ function Node(props: { call: SystemCall; depth: number }) {
 }
 
 export function TraceTree(props: { trace: string }) {
-  const tree = useAction(
-    TreeAction,
-    {
-      get trace() {
-        return props.trace
-      },
-    },
-    { conversation: ROOT },
-  )
+  const tree = useAction(TreeAction, () => ({ trace: props.trace }), { conversation: ROOT })
   return (
     <div
       class="ml-4 border-l border-border/70 py-1 pr-1 pl-2 font-mono text-[10.5px] leading-[18px] text-muted-foreground"
