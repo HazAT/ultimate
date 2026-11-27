@@ -5,10 +5,7 @@ import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import {
-  api,
-  errorMessage,
   MessageActions,
-  pageAgent,
   ROOT,
   useConversation,
   useConversationId,
@@ -29,8 +26,8 @@ import {
   useTurns,
 } from './dock.solid.tsx'
 import { VoiceTurnEntry } from './entries.shared.ts'
-import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceSessionDoc, VoiceUiDoc } from './refs.ts'
-import type { VoiceFork, VoiceTurn, VoiceUiCall } from './refs.ts'
+import { VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
+import type { VoiceFork, VoiceTurn } from './refs.ts'
 import { splitReply, useSpokenText } from '../read-aloud/ui.solid.tsx'
 
 const short = (key: string) => key.slice(0, 8)
@@ -295,35 +292,8 @@ function actionLine(name: string, args: Record<string, unknown>) {
   return first ? first.split('\n')[0].slice(0, 80) : ''
 }
 
-const page = crypto.randomUUID()
-const seen = new Set<string>()
-
-async function runUi(call: VoiceUiCall) {
-  const agent = pageAgent()
-  const input = (call.input ?? {}) as Record<string, unknown>
-  try {
-    if (call.op === 'snapshot') return agent.snapshot()
-    if (call.op === 'query') return await agent.query(input)
-    return await agent.act(input as Parameters<typeof agent.act>[0])
-  } catch (failure) {
-    return { error: errorMessage(failure) }
-  }
-}
-
-async function claimAndRun(call: VoiceUiCall) {
-  const { claimed } = await api.action(UiClaimAction, { id: call.id, page })
-  if (!claimed) return
-  const result = await runUi(call)
-  await api.action(UiAnswerAction, {
-    id: call.id,
-    page,
-    result: JSON.parse(JSON.stringify(result ?? null)),
-  })
-}
-
 export function Voicing(props: { fork: ConversationId }) {
   const fork = useDocOf(() => props.fork, VoiceForkDoc)
-  const ui = useDocOf(() => props.fork, VoiceUiDoc)
   createEffect(
     () => {
       const doc = fork()
@@ -337,16 +307,6 @@ export function Voicing(props: { fork: ConversationId }) {
         : doc
     },
     (doc) => settleTranscripts(doc, props.fork),
-  )
-  createEffect(
-    () => (ui()?.calls ?? []).map((call) => ({ ...call })),
-    (calls) => {
-      for (const call of calls) {
-        if (call.page || seen.has(call.id)) continue
-        seen.add(call.id)
-        void claimAndRun(call)
-      }
-    },
   )
   const turns = useTurns()
   const conversation = useConversation()

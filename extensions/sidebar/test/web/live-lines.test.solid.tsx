@@ -14,7 +14,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
-import { LiveLines } from '../../../../web/src/app/transcript.solid.tsx'
+import { LiveLines } from '../../../../web/src/app/live-status.solid.tsx'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 
 const retrying = {

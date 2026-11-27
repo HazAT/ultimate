@@ -442,7 +442,7 @@ it('keeps voice-live off with a diagnostic while dictation, which it requires, i
   const info = (name: string) => server.extensions.info().find((entry) => entry.name === name)
   expect(info('voice-live')).toMatchObject({
     enabled: false,
-    requires: ['dictation', 'read-aloud'],
+    requires: ['dictation', 'read-aloud', 'page-agent'],
   })
   expect(info('read-aloud')).toMatchObject({ enabled: true })
   expect(server.system.current().extensionDiagnostics).toEqual([

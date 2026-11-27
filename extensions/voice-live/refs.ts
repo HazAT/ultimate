@@ -1,7 +1,6 @@
 /** Voice mode: a push-to-talk fork of @ultimate, its actions, session document and handoff entry. Browser-safe. */
-import type { JsonValue } from '@earendil-works/chord/json'
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
-import type { ConversationId, EntryId, TaskId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /** How one turn reached the model: the recording itself (`audio`) or its transcript (`text`). */
@@ -41,6 +40,8 @@ export type VoiceTurn = {
   answered?: true
   hint?: string
   images?: number
+  /** The page that sent it (page-agent's `pageId`): `ui` calls answering it run there. */
+  page?: string
 }
 
 /** A handoff to @ultimate, written as a `voice.handoff` input entry in @ultimate and as the tool's result in the fork. */
@@ -125,6 +126,8 @@ export const TurnAction = actionRef<
     envelope?: number[]
     hint?: string
     screen?: ConversationId
+    /** The page that sent it (page-agent's `pageId`): `ui` calls answering this turn run there. */
+    page?: string
     images?: { data: string; mimeType: string }[]
   },
   { conversation: ConversationId; route: VoiceRoute; dropped?: true }
@@ -169,38 +172,6 @@ export const StatusAction = actionRef<
     setup: { model: VoiceSetupItem; transcription: VoiceSetupItem; handsFree: VoiceSetupItem }
   }
 >('voice-live', 'status')
-
-/** One UI request the voice model made: ui-sdk `query`, `act` or `snapshot` input, run on the user's own page. */
-export type VoiceUiCall = {
-  id: string
-  task: TaskId
-  op: 'query' | 'act' | 'snapshot'
-  input?: JsonValue
-  at: number
-  /** The page that claimed it: only that page runs it and answers. */
-  page?: string
-}
-
-/** The UI requests waiting for the user's page, on the voice fork; the voice panel runs each and answers it. */
-export type VoiceUi = { calls: VoiceUiCall[] }
-
-/** `voice.ui` on the voice fork: see `VoiceUi`. */
-export const VoiceUiDoc = docRef<VoiceUi>('voice.ui')
-
-/**
- * `{ id, page }` → whether this page now holds UI request `id`: the first page to claim an unclaimed, unexpired request
- * gets it, and only it runs the request, once.
- */
-export const UiClaimAction = actionRef<{ id: string; page: string }, { claimed: boolean }>(
-  'voice-live',
-  'ui-claim',
-)
-
-/** `{ id, page, result }` → the claiming page's result for UI request `id`, which wakes the waiting `ui` tool call. */
-export const UiAnswerAction = actionRef<
-  { id: string; page: string; result: JsonValue },
-  Record<string, never>
->('voice-live', 'ui-answer')
 
 /** Drop every collected recording that was not sent. */
 export const DiscardAction = actionRef<null, Record<string, never>>('voice-live', 'discard')
