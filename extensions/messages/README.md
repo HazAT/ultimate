@@ -83,8 +83,9 @@ A message to the user without `questions` is a report: it goes one-way, shows no
 Inbox, unless it clearly asks something. The `messages.judge` point decides that with one Jev `choice` over the
 message text (whole up to 1500 characters, else its first 500 and last 1000; about 0.2 s): the message stays
 reply-expected only when the probability that it waits on the user's answer is at least 0.5. Without classify, after
-10 s or on any error it goes one-way, so an unanswerable FYI never sits in the Inbox. The tool call memoizes the verdict,
-so a replay never asks twice. `reply: false` skips the judge, and `questions` keep the message open.
+10 s or on any error it goes one-way, so an unanswerable FYI never sits in the Inbox. The tool call memoizes the verdict
+and marks the call before it asks, so a replay never asks twice: a crash in between sends it one-way. A send the
+sender may not make is refused before the judge sees it. `reply: false` skips the judge, and `questions` keep the message open.
 
 A reply-expected message to the user stays open, and its sender shows as awaiting reply, until the user answers that
 message: a Reply with `re` (the answer card or a typed Reply). The delivered input reads `Answer to message N:` before

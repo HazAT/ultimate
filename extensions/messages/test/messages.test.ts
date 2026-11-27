@@ -208,6 +208,7 @@ async function fixture(
                 if (memoContext === undefined) return api.memo(name, value as Context)
                 if (
                   name === 'asks' ||
+                  name === 'asking' ||
                   (sendGate.conversation && sendGate.conversation() !== api.conversationId)
                 )
                   return api.memo(name, value as JsonValue, memoContext)

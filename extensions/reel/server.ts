@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import type { Message as PiMessage } from '@earendil-works/pi-ai'
 import type { ConversationId, Cursor, EntryId, EntryRecord } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -120,25 +119,8 @@ export function collapse(shots: Shot[]) {
   return frames
 }
 
-const asksTheUser = (args: Readonly<Record<string, unknown>> | undefined) =>
-  !args || (args.to === 'user' && args.reply !== false)
-
-const SENT = /^Message \d+ sent\.$/m
-
-type ToolResult = Extract<PiMessage, { role: 'toolResult' }>
-function questionsOf(
-  call: { id: string; name: string; arguments: Readonly<Record<string, unknown>> },
-  result: ToolResult | undefined,
-  logged: ReadonlySet<string>,
-) {
-  if (call.name === 'message')
-    return logged.has(call.id) ||
-      (asksTheUser(call.arguments) &&
-        result !== undefined &&
-        !result.isError &&
-        result.content.some((block) => block.type === 'text' && SENT.test(block.text)))
-      ? [call.id]
-      : []
+function questionsOf(call: { id: string; name: string }, logged: ReadonlySet<string>) {
+  if (call.name === 'message') return logged.has(call.id) ? [call.id] : []
   const position = (id: string) => Number(id.split('/')[1].replace(/^c/, ''))
   return [...logged]
     .filter((id) => id.startsWith(`${call.id}/`))
@@ -157,24 +139,13 @@ async function windowOf(host: ExtensionHost, branch: ConversationId, message: nu
     ),
     ...((await host.harness().snapshot(AskedCalls, branch, context))?.calls ?? []),
   ])
-  const results = new Map<string, ToolResult>()
   let to: number | undefined
   for await (const entry of ownEntries(host, branch)()) {
     const sends: string[] = []
     for (const turn of entry.model ?? []) {
-      if (turn.role === 'toolResult')
-        results.set(
-          turn.toolCallId,
-          turn.toolName === 'message'
-            ? turn
-            : { ...turn, content: turn.content.filter((block) => block.type === 'text') },
-        )
       if (turn.role !== 'assistant') continue
       for (const block of turn.content)
-        if (block.type === 'toolCall') {
-          sends.push(...questionsOf(block, results.get(block.id), logged))
-          results.delete(block.id)
-        }
+        if (block.type === 'toolCall') sends.push(...questionsOf(block, logged))
     }
     const at = sends.indexOf(asked.call)
     if (to === undefined && at < 0) continue

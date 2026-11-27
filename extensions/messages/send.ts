@@ -80,7 +80,7 @@ export async function send(
     judged?: Judged
     stillReports?: (tx: Tx) => Promise<boolean>
     serveBranch?: true
-    informs?: true
+    informs?: () => Promise<boolean>
   } = {},
 ) {
   const { taskId, callId, requestId, answerId, device, via } = options
@@ -113,6 +113,7 @@ export async function send(
       `Subagents report to the conversation that started them: message only #${parent}. Your final answer reaches it anyway.`,
     )
   const to = await resolveRecipient(host, input.to, from, ctx)
+  const informs = (await options.informs?.()) ?? false
   const fromLabel = via
     ? `user (settled for them by @ultimate, from what they said in its chat)`
     : await senderName(host, from, ctx)
@@ -206,7 +207,7 @@ export async function send(
       from,
       to,
       text: input.text,
-      reply: !options.informs && (input.reply ?? true),
+      reply: !informs && (input.reply ?? true),
       state: to === 'user' ? 'delivered' : 'sent',
       ...(re === undefined ? {} : { re }),
       ...(callId === undefined ? {} : { call: callId }),

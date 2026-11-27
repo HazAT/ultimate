@@ -354,7 +354,7 @@ export default function messages(host: ExtensionHost) {
       defineTool({
         name: 'message',
         description:
-          'Send a message to #id or @name; it returns immediately. A busy recipient gets it after its current run, or during it with steer: true (the default for @ultimate). images forwards screenshots or other images from your conversation, to an agent or to the user. To the user without questions it is a report, one-way unless it clearly asks something. To an agent or the user whose message you owe an answer, it is that answer (with its images and questions). One to an agent ends your run; one to the user ends it too, unless an agent still waits for your answer or a branch whose reply or report you read in this run does. Sent from codemode or beside other calls in its tool round, it never ends the run.',
+          'Send a message to #id or @name; it returns immediately. A busy recipient gets it after its current run, or during it with steer: true (the default for @ultimate). images forwards screenshots or other images from your conversation, to an agent or to the user. To the user without questions it is a report, one-way unless a quick check finds it clearly asks something. To an agent or the user whose message you owe an answer, it is that answer (with its images and questions). One to an agent ends your run; one to the user ends it too, unless an agent still waits for your answer or a branch whose reply or report you read in this run does. Sent from codemode or beside other calls in its tool round, it never ends the run.',
         parameters: obj({
           to: str(),
           text: str({ minLength: 1 }),
@@ -375,6 +375,9 @@ export default function messages(host: ExtensionHost) {
             if (input.to !== 'user' || input.questions || input.reply === false) return false
             const remembered = await api.memo<number>('asks', ctx)
             if (remembered !== undefined) return remembered < 0.5
+            const askedBeforeACrash = await api.memo<true>('asking', ctx)
+            if (askedBeforeACrash) return true
+            await api.memo('asking', true, ctx)
             const verdict = await judge(
               host,
               (service, signal) => service.asks(input.text, signal),
@@ -399,7 +402,7 @@ export default function messages(host: ExtensionHost) {
                 {
                   taskId: api.taskId,
                   callId: api.callId,
-                  ...((await informs()) ? { informs: true as const } : {}),
+                  informs,
                 },
               ),
               ctx,
