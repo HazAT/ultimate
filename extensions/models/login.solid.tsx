@@ -44,7 +44,7 @@ import {
 } from '@/sdk/solid'
 import type { AuthEvent, AuthPrompt } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { AnswerAction, CancelAction, LoginAction, LoginDoc, LogoutAction } from './refs.ts'
 import {
   authLabel,

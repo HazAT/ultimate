@@ -4,7 +4,7 @@
 
 /* Classes used by extensions. */
 @source '../../extensions';
-@source '../../lib/conversation-ref.ts';
+@source '../../lib/conversation-ref.web.ts';
 
 @custom-variant dark (&:where(.dark, .dark *));
 

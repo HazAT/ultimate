@@ -1,6 +1,6 @@
-import { formatDuration } from '../../lib/format.ts'
-import type { Schedule } from './types.ts'
-export type { Schedule } from './types.ts'
+import { formatDuration } from '../../lib/format.shared.ts'
+import type { Schedule } from './types.shared.ts'
+export type { Schedule } from './types.shared.ts'
 
 function duration(text: string) {
   const match = /^(\d+(?:\.\d+)?)\s*(s|m|h|d)$/.exec(text)

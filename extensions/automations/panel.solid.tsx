@@ -113,7 +113,7 @@ export function AutomationsPanel() {
                 <Show
                   when={
                     /subagents/.test(listError()) &&
-                    commands().some((command) => command.id === 'onboarding.extensions')
+                    commands().some((command) => command.id === 'manager.open')
                   }
                 >
                   <Button

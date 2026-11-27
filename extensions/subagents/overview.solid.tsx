@@ -21,7 +21,7 @@ import {
   useDialog,
   useSystem,
 } from '@/sdk/solid'
-import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'
+import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.shared.ts'
 import {
   AddFamily,
   FamilyDot,

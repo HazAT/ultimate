@@ -1,4 +1,4 @@
-import { parseEntryId } from '../../../lib/ids.ts'
+import { parseEntryId } from '../../../lib/ids.shared.ts'
 import { CompactionEntry } from '@earendil-works/pi-durable'
 import type {
   ConversationId,

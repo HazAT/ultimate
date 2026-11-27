@@ -4,7 +4,7 @@ import { homedir, userInfo } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { meansNone } from '../lib/errors.ts'
+import { meansNone } from '../lib/errors.shared.ts'
 
 export interface UnitOptions {
   clone: string

@@ -31,10 +31,9 @@ import {
 import type { ExtensionInfo, SystemInfo } from '../../shared/protocol.ts'
 import { ListAction } from '../secrets/refs.ts'
 import type { Secret } from '../secrets/refs.ts'
-import { switchScope } from './choices.web.ts'
-import { projectDialog } from './dialogs.web.ts'
 import { Heading, Line, Segmented, projectLists, sources, useDescribed } from './parts.solid.tsx'
-import { ExtensionDetails } from './points.web.ts'
+import { ExtensionDetails, projectHelpDialog } from './points.web.ts'
+import { switchScope } from './scope.web.ts'
 import { AdoptProjectSetupAction, DecideAction, DetailsAction, SetExtensionAction } from './refs.ts'
 
 type Scope = 'project' | 'user'
@@ -84,7 +83,7 @@ function Diagnostics(props: { messages: readonly string[] }) {
 
 function ProjectSetup(props: { system: SystemInfo }) {
   const project = () => props.system.project
-  const [, setProjectOpen] = useDialog(projectDialog)
+  const [, setProjectOpen] = useDialog(projectHelpDialog)
   const [busy, setBusy] = createSignal<'local' | 'global' | 'adopt'>()
   const [error, setError] = createSignal<string>()
   const [adopted, setAdopted] = createSignal(false)

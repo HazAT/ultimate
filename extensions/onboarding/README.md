@@ -1,10 +1,10 @@
-Inline setup choices, the first-run prerequisites, and the Extensions panel that turns extensions on and off live.
+Inline setup choices and the first-run prerequisites. The Extensions panel is the `manager` extension.
 
 ## First run
 
 The first run has only **Get ready**: connect a provider and choose an available model. The model row recommends a
 1M+ context window for @ultimate, and names the chosen model's window when it is smaller. While no default model is
-configured it pre-selects the first of `RECOMMENDED_MODELS` (`lib/families.ts`: Opus 5.5 through Claude Code, then
+configured it pre-selects the first of `RECOMMENDED_MODELS` (`lib/families.shared.ts`: Opus 5.5 through Claude Code, then
 `openai-codex/gpt-6-astra`) with a login, else the first model with one, and links to Claude Code's setup while that is
 logged out. Continue saves the pre-selection, or a model picked in the dialog, as the default family's model with
 thinking high (the models extension's `setDefault`), so @ultimate, new conversations and branches start on it; a
@@ -104,19 +104,9 @@ unavailable, until Start here is dismissed: then both stay quiet, and ⌘K **Get
 still reach the decision. Clicking calls `help { card: 'project' | 'git' }`, which submits "Help me decide whether to use this
 project's setup." or "Help me set up git for this folder." directly in @ultimate's standing conversation and returns
 its id. The browser opens that conversation on the Agent surface. First-run Continue also selects the Agent surface.
-The Extensions panel's About this setup routes there too rather than opening a setup dialog.
+The Extensions panel's About this setup (the `manager` extension's `projectHelpDialog`) routes there too rather than
+opening a setup dialog.
 The Git status is read again whenever the shown conversation finishes a run, including an agent's first Git commit.
-
-## Extensions panel
-
-The right-panel tab (palette **Extensions…**) shows the project decision, a way to change it, Use this project's setup
-everywhere, and every extension with its source, deciding layer, README line and switch. Switches save everywhere
-(`~/.ultimate/settings.json`) unless you pick this project (when its setup is in use): a project's settings file is
-usually committed, so a personal toggle never lands there by default. A core-tier extension's switch stays on and disabled, its deciding layer
-reads `core`: the server keeps the core tier enabled whatever the settings say. Failures show on the row; the list
-follows system info. Clicking a row opens it in place (open rows are kept in UI state): its tools with their
-description's first line, contract summary, what it provides, needs and wants, actions, documents, events, web
-contributions, secrets, prompt sections and hooks, and its folder. Empty groups share one dim line.
 
 ## Actions
 
@@ -132,18 +122,10 @@ cannot apply them through codemode `tools.action`.
 - `applyFirstRun { extensions, local? }`: maps names to booleans, moving each name to user `extensions.enable` or
   `disable` and removing it from the opposite list. Records completion, then reloads; optional `local` also decides
   the project.
-- `decide { local }`: saves the project choice through Pi's `ProjectTrustStore` and reloads extensions/web facets.
-  Linked worktrees share their main checkout's choice.
 - `choose { card, toolCallId, extensions? | local? | initialize? }`: applies the card's payload and notifies the
   conversation as one retryable operation, as described above. Requires a conversation. Git initialization uses the
-  workspaces service behind the user-only `workspaces/setupGit` action.
-- `setExtension { name, enabled, scope }`: updates user or project settings, preserving other keys. Project writes
-  require a local decision.
-- `adoptProjectSetup`: merges project enable/disable lists into user settings.
-- `extensions`: discovered names, sources, effective enablement, deciding layers and README first sentences.
-- `details { name }`: the extension's contract summary (first api.ts or refs.ts doc sentence), the catalogue APIs it
-  provides, declares, needs and wants, and the events its contract files define.
+  workspaces service behind the user-only `workspaces/setupGit` action; the project decision is the one `manager`'s
+  `decide` saves.
 
-Undecided projects use global configuration. Only a local decision enables project extension folders, settings,
-agents and skills. Settings and completion-marker writes use same-directory temporary files and atomic renames,
-with two-space JSON and a trailing newline; `settings.ts` holds the writer.
+Settings and completion-marker writes use same-directory temporary files and atomic renames, with two-space JSON and
+a trailing newline; `lib/settings.ts` holds the writer.

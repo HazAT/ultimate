@@ -1,6 +1,6 @@
 /** Dream in the browser: the prepared next chapter, the sleep into it and the chapters. Browser-safe. */
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
-import type { Seed } from './types.ts'
+import type { Seed } from './types.shared.ts'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
 
 /**

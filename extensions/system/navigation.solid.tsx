@@ -1,6 +1,6 @@
 import { createEffect } from 'solid-js'
 import { api, useConversationId, usePageVisible, useSurface } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { NavigatedAction } from './refs.ts'
 
 const VISIBLE_VIEW_MINIMUM_MS = 1000

@@ -1,5 +1,5 @@
 import { defineWebExtension, provide } from '@/sdk/solid'
-import { ExtensionDetails } from '../onboarding/ui.solid.tsx'
+import { ExtensionDetails } from '../manager/ui.solid.tsx'
 import { Chip, Details } from './chip.solid.tsx'
 
 export default defineWebExtension({

@@ -26,7 +26,7 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { RewoundEntry, RewoundDependentEntry } from './entries.ts'
+import { RewoundEntry, RewoundDependentEntry } from './entries.shared.ts'
 import { RewindAction, RewindPreviewAction, RootsDoc } from './refs.ts'
 import type { RewindDependent, RewindFile } from './refs.ts'
 

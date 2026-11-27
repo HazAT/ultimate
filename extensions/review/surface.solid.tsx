@@ -43,8 +43,8 @@ import {
   useViewport,
   writingAs,
 } from '@/sdk/solid'
-import { compareUrl } from '../../lib/compare.ts'
-import { deadline } from '../../lib/timers.ts'
+import { compareUrl } from '../../lib/compare.shared.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { Address } from '../messages/ui.solid.tsx'
 import { useGithubRepo } from '../workspaces/ui.solid.tsx'
 import { draftsKey } from './comments.shared.ts'

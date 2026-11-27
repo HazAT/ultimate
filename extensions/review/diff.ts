@@ -2,7 +2,7 @@ import { lstat, readlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exec } from '../../lib/exec.ts'
 import { git } from '../../lib/git.ts'
-import { errnoCode, meansNone } from '../../lib/errors.ts'
+import { errnoCode, meansNone } from '../../lib/errors.shared.ts'
 import type { ReviewDiff, ReviewFile, ReviewKind } from './refs.ts'
 
 type FilePatchByteCap = number

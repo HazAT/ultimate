@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { parseConversationId } from '../../../lib/ids.ts'
+import { parseConversationId } from '../../../lib/ids.shared.ts'
 
 export const scopeAttribute = 'data-conversation-scope'
 

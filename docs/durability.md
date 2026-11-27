@@ -13,7 +13,7 @@ before its outcome commits, so `run` is idempotent by its `key` (the task id) or
 in the task's terminal commit, and `{ ok: false, error: 'stopped' }` when it is aborted. `effectResult` waits for one.
 Server code never starts work and drops it (`ultimate/no-unowned-work`): what open derives again says so with
 `rebuiltOnOpen(why, work)`, what belongs to this process only (a request, a stream, a child, shutdown) with
-`inProcess(why, work)`, both from `lib/errors.ts`.
+`inProcess(why, work)`, both from `lib/errors.shared.ts`.
 
 Each folder keeps its own conversations in that central projects directory. Homes describe themselves with `project.json` and debounced `conversations.json`; `host.projects()` (or `ultimate.projects()` in codemode) lists these manifests and live supervisor URLs without opening another project's SQLite.
 

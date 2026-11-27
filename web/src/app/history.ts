@@ -1,4 +1,4 @@
-import { offsetEntryId } from '../../../lib/ids.ts'
+import { offsetEntryId } from '../../../lib/ids.shared.ts'
 import type { EntryRecord, EntryId } from '@earendil-works/pi-durable'
 
 export function mergeRows(previous: readonly EntryRecord[], rows: readonly EntryRecord[]) {

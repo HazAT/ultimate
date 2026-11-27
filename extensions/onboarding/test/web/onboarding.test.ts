@@ -1,17 +1,5 @@
 import { expect, it } from 'vitest'
-import {
-  extensionChoices,
-  extensionOptions,
-  settledChoice,
-  switchScope,
-} from '../../choices.web.ts'
-
-it('saves extension switches to user settings unless the user picks this project', () => {
-  expect(switchScope(true)).toBe('user')
-  expect(switchScope(false)).toBe('user')
-  expect(switchScope(false, 'project')).toBe('user')
-  expect(switchScope(true, 'project')).toBe('project')
-})
+import { extensionChoices, extensionOptions, settledChoice } from '../../choices.web.ts'
 
 it('settles a project card once the project setup is decided elsewhere, keeping an answer given on it', () => {
   expect(settledChoice('project', undefined, null)).toBeUndefined()

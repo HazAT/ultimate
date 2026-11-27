@@ -1,6 +1,6 @@
-import { inProcess, meansNone } from '../../lib/errors.ts'
-import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { inProcess, meansNone } from '../../lib/errors.shared.ts'
+import { deadline } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 
 export const MAX_RECORDING_MS = 30 * 60_000
 const videoMimeOrder = [

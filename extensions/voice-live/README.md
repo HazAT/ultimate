@@ -55,8 +55,8 @@ collect mode (optional), each with what to do when it is missing. The model line
    transcript, a side chat): length and waveform, "transcribing…", a failure, screenshots and "sent as your answer".
    A turn shows the moment you send it: until the server stores it, voice draws it in the fork's `transcript.end`.
 6. **Replies** stream from the fork's live partial. Each finished sentence is spoken through read-aloud's page-wide
-   speech player (`extensions/read-aloud/README.md`), with the shared Speech setting (voice, speed) that Voice settings
-   shows; read-aloud's highlight marks the sentence being read and plays any sentence on click. Starting a read-aloud elsewhere stops voice's reply, and a new voice
+   speech player (`extensions/read-aloud/README.md`), with the shared Speech setting (voice, OpenAI voice, speed): Voice settings shows
+   read-aloud's `SpeechOptions`, the same controls the playback bar's speed opens; read-aloud's highlight marks the sentence being read and plays any sentence on click. Starting a read-aloud elsewhere stops voice's reply, and a new voice
    reply stops a read-aloud. The highlight follows the spoken sentence across every message of that turn's reply,
    since a reply with tool calls spans several. Folded, the status line shows the whole paragraph being read with that
    sentence highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips

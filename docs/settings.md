@@ -72,5 +72,5 @@ A project's `.ultimate/` applies only once it is chosen: its `extensions/`, the 
 `agents/`, and `skills/` load only when the project decision is local. Decisions are kept per project path with Pi's
 `ProjectTrustStore` in `~/.ultimate/trust.json`, and a linked git worktree shares its main checkout's; undecided behaves like global and is reported in system info
 (`project.decision`). Every `.ultimate/settings.json` key (`defaultSurface`, `isolates`, …) goes through the gated
-`host.projectSettings()`; onboarding reads the file only to show what choosing the project would bring. The `onboarding` extension asks once and its Extensions panel changes the choice live. Resources you add to a
+`host.projectSettings()`; onboarding reads the file only to show what choosing the project would bring. The `onboarding` extension asks once and the `manager` extension's Extensions panel changes the choice live. Resources you add to a
 project's `.ultimate/` stay unloaded until that project is local; tests seed the decision in their temporary home.

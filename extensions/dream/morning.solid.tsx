@@ -32,8 +32,8 @@ import {
   switchChapter,
   useBusyElsewhere,
 } from './chapters.solid.tsx'
-import type { Seed } from './types.ts'
-import { ChapterStarted } from './entries.ts'
+import type { Seed } from './types.shared.ts'
+import { ChapterStarted } from './entries.shared.ts'
 import type { ChapterEntry } from './refs.ts'
 
 export const AWAKE_PROMPT = [

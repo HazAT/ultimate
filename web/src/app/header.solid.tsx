@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { cell } from '../../../lib/cell.ts'
+import { cell } from '../../../lib/cell.web.ts'
 import {
   ConversationKind,
   ROOT,

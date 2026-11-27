@@ -9,7 +9,7 @@ import type {
   Tx,
 } from '@earendil-works/pi-durable'
 import { onCommit } from '../../lib/commits.ts'
-import { parseEntryId } from '../../lib/ids.ts'
+import { parseEntryId } from '../../lib/ids.shared.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UiState } from '../../shared/ui-state.ts'
 

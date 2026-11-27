@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { writeJson } from '../../lib/json-file.ts'
-import { settled } from '../../lib/errors.ts'
+import { settled } from '../../lib/errors.shared.ts'
 import type { ProviderHealth } from './refs.ts'
 
 type EpochMilliseconds = number

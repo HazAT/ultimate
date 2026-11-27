@@ -1,5 +1,5 @@
 import { cn } from '@/sdk/solid'
-import type { PassName } from './types.ts'
+import type { PassName } from './types.shared.ts'
 
 export const passLabels: Record<PassName, string> = {
   memory: 'Memory',

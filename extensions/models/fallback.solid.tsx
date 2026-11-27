@@ -3,7 +3,7 @@ import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { useDialog, useTranscript } from '@/sdk/solid'
 import type { SolidEntryProps } from '@/sdk/solid'
-import { FallbackEntry } from './entries.ts'
+import { FallbackEntry } from './entries.shared.ts'
 import type { Fallback } from './refs.ts'
 import { dialogs, openLogin, openPicker } from './state.web.ts'
 

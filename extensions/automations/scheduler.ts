@@ -10,13 +10,13 @@ import { SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { discoverAgents, hostDefault } from '../../lib/agents.ts'
 import { nextAt } from './schedule.ts'
-import type { Automation, Run } from './types.ts'
-import { RUN_TASK } from './types.ts'
+import type { Automation, Run } from './types.shared.ts'
+import { RUN_TASK } from './types.shared.ts'
 import { settledSubmission, submitAndSleep } from '../../lib/settled.ts'
 import type { Automations as Ledger } from './server.ts'
 import { Escalated, Fired } from './refs.ts'
 import { Hold } from './api.ts'
-import { RunLabel } from './types.ts'
+import { RunLabel } from './types.shared.ts'
 const MAX_FIRES_PER_HOUR = 6
 const FIRE_WINDOW_MS = 3600000
 const RETAINED_RUNS = 50

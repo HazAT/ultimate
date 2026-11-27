@@ -1,4 +1,4 @@
-import { isOpen, openQuestion } from './message-state.ts'
+import { isOpen, openQuestion } from './message-state.shared.ts'
 
 export type Wait =
   | { on: 'work' }

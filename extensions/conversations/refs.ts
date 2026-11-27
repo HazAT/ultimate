@@ -61,7 +61,7 @@ export type SummaryModelSetting = {
 
 /** `{ [name]: { title?, icon?, tint? } }`: how each standing agent's definition asks to be named and its mark to look, on conversation 1. */
 export const MarksDoc = docRef<Record<string, AgentMarkStyle>>('conversations.agent-marks')
-/** A definition's `title` (its display name), `icon` (a lucide name) and `tint` (one of lib/marks.ts `markTints`). */
+/** A definition's `title` (its display name), `icon` (a lucide name) and `tint` (one of lib/marks.shared.ts `markTints`). */
 export type AgentMarkStyle = { title?: string; icon?: string; tint?: string }
 
 /** Each conversation's summary, feature, activity and assessment, on conversation 1. */

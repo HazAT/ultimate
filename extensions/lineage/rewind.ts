@@ -1,5 +1,5 @@
 import type { ContextEdit, ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
-import { parseConversationId, parseEntryId, offsetEntryId } from '../../lib/ids.ts'
+import { parseConversationId, parseEntryId, offsetEntryId } from '../../lib/ids.shared.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { Message } from '@earendil-works/pi-ai'
@@ -14,7 +14,7 @@ import {
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import { git } from '../../lib/git.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { defineEvent } from '../../shared/events.ts'
 import { Committed } from '../coding-tools/api.ts'
@@ -31,7 +31,7 @@ import { WorkspacesApi } from '../workspaces/api.ts'
 import { Roots } from './api.ts'
 import { RewindAction, RewindPreviewAction, Rewound } from './refs.ts'
 import type { RewindDependent, RewindFile } from './refs.ts'
-import { RewoundEntry, RewoundDependentEntry } from './entries.ts'
+import { RewoundEntry, RewoundDependentEntry } from './entries.shared.ts'
 
 type View = {
   entries: readonly { id: EntryId; kind: string }[]

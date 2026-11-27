@@ -1,11 +1,11 @@
-import { parseEntryId, offsetEntryId } from '../lib/ids.ts'
+import { parseEntryId, offsetEntryId } from '../lib/ids.shared.ts'
 import type { EntryId, ConversationId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { isDeepStrictEqual } from 'node:util'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { onCommit } from '../lib/commits.ts'
-import { inProcess } from '../lib/errors.ts'
+import { inProcess } from '../lib/errors.shared.ts'
 import { EVENT_FEED, EVENT_FEED_SIZE, NoticeEvent } from '../shared/events.ts'
 import type {
   ChangedEvent,

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isMissing } from './errors.ts'
+import { isMissing } from './errors.shared.ts'
 
 type Folder = { name: string; path: string; enabled: boolean }
 

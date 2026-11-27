@@ -1,6 +1,6 @@
-import { inProcess } from '../../lib/errors.ts'
-import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
+import { deadline } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 
 const AUTO_REPEAT_GAP_MS = 120
 const MODIFIERS = ['Meta', 'Control', 'Shift', 'Alt']

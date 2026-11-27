@@ -9,7 +9,7 @@ import {
 } from '@/components/ai/tool.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { useToolDuration, useConversationId, useDoc, type SolidToolProps } from '@/sdk/solid'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { LiteralPlanText, Tag } from './body.solid.tsx'
 import { PlanDoc } from './refs.ts'
 import { TaskChip, useOpenTask, useTaskOf } from './ui.solid.tsx'

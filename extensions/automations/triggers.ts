@@ -1,9 +1,9 @@
-import { formatDuration } from '../../lib/format.ts'
-import { parseConversationId } from '../../lib/ids.ts'
+import { formatDuration } from '../../lib/format.shared.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
-import { settled } from '../../lib/errors.ts'
+import { settled } from '../../lib/errors.shared.ts'
 import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { defineEvent, UserInputEvent } from '../../shared/events.ts'
@@ -13,8 +13,8 @@ import type { ContextUsage } from '../conversations/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { describeSchedule } from './schedule.ts'
 import type { Automations as Ledger } from './server.ts'
-import type { Automation, TriggerEvent } from './types.ts'
-import { RUN_TASK, STANDING } from './types.ts'
+import type { Automation, TriggerEvent } from './types.shared.ts'
+import { RUN_TASK, STANDING } from './types.shared.ts'
 
 export const TRIGGER_EVENTS: TriggerEvent[] = [
   {

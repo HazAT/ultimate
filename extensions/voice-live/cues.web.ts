@@ -1,4 +1,4 @@
-import { startCue, stopCue, tone } from '../../lib/cues.ts'
+import { startCue, stopCue, tone } from '../../lib/cues.web.ts'
 
 const pentatonic = [523.3, 587.3, 659.3, 784, 880, 1046.5, 1174.7, 1318.5]
 

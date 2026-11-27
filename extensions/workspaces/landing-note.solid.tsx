@@ -9,7 +9,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import { useTranscript } from '@/sdk/solid'
-import { compareUrl } from '../../lib/compare.ts'
+import { compareUrl } from '../../lib/compare.shared.ts'
 import { NoteEntry } from '../entries/refs.ts'
 import type { NoteData } from '../entries/refs.ts'
 import { LandingCard } from './landing.solid.tsx'

@@ -9,7 +9,7 @@ import type { Automation } from '../automations/refs.ts'
 import { Standing } from '../subagents/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import type { RequestedEntry } from './refs.ts'
-import type { Seed } from './types.ts'
+import type { Seed } from './types.shared.ts'
 import { Next } from './next.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 

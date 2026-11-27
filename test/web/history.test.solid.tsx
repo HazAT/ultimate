@@ -1,7 +1,7 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { createRoot, createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
-import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
+import { parseConversationId, parseEntryId } from '../../lib/ids.shared.ts'
 import { createHistory } from '../../web/src/app/history.solid.tsx'
 import { api } from '../../web/src/sdk/client.ts'
 import type { Api } from '../../web/src/sdk/api.ts'

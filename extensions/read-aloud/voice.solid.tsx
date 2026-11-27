@@ -1,8 +1,8 @@
 import { createEffect, createRoot, createSignal } from 'solid-js'
 import { api, errorMessage, ROOT, useUiState } from '@/sdk/solid'
-import { animationFrames } from '../../lib/timers.ts'
-import { cell } from '../../lib/cell.ts'
-import { inProcess, overshadowed } from '../../lib/errors.ts'
+import { animationFrames } from '../../lib/timers.shared.ts'
+import { cell } from '../../lib/cell.web.ts'
+import { overshadowed } from '../../lib/errors.shared.ts'
 import { SpeakAction } from './refs.ts'
 import type { OpenAiVoice } from './refs.ts'
 import { createPlayer, fetchedVoice, systemVoice, systemVoices } from './speech.web.ts'
@@ -84,12 +84,9 @@ export const speech = createRoot(() => {
     openaiOn,
     warm() {
       if (!openaiOn()) return
-      inProcess(
-        'opening the voice connection early only saves this page time',
-        api
-          .action(SpeakAction, { voice: openaiVoice() }, { conversationId: ROOT })
-          .catch(overshadowed),
-      )
+      void api
+        .action(SpeakAction, { voice: openaiVoice() }, { conversationId: ROOT })
+        .catch(overshadowed)
     },
   }
 })

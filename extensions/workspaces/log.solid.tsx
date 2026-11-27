@@ -2,7 +2,7 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 import { GitMerge } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { ROOT, useConversationId, useDocOf, useTranscript } from '@/sdk/solid'
-import { LanderLog } from './entries.ts'
+import { LanderLog } from './entries.shared.ts'
 import { LandingCard, Open, Subject } from './landing.solid.tsx'
 import {
   badges,

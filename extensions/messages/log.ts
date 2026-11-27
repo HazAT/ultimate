@@ -1,6 +1,6 @@
 import type { Tx } from '@earendil-works/pi-durable'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
-import { isOpen } from '../../lib/message-state.ts'
+import { isOpen } from '../../lib/message-state.shared.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 

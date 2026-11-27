@@ -11,7 +11,7 @@ import {
   writerNow,
 } from '@/sdk/solid'
 type UiWho = ReturnType<typeof writerNow>
-import { every } from '../../lib/timers.ts'
+import { every } from '../../lib/timers.shared.ts'
 import {
   base64,
   capture,

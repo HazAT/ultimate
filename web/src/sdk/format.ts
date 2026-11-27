@@ -16,7 +16,7 @@ export function formatBytes(bytes: number): string {
 }
 
 /** How long ago a time was (`5m`, `3d`) and how long something took in its two largest units (`420ms`, `3.2s`, `1m 4s`, `3d 4h`); in lib/ so server code (model text, receipts) says it the same way. */
-export { formatAgo, formatDuration } from '../../../lib/format.ts'
+export { formatAgo, formatDuration } from '../../../lib/format.shared.ts'
 
 /** Show `path` relative to `cwd` when inside it, else with `~` for `home` (`system.machine.home`). */
 export function shortenPath(path: string, options: { cwd?: string; home?: string } = {}): string {
@@ -51,7 +51,7 @@ export function prettyName(folder: string) {
 }
 
 /** `1 page`, `3 pages`: a count with its noun, plural by `s`; in lib/ so a shared `.ts` helper says it the same way. */
-export { plural } from '../../../lib/plural.ts'
+export { plural } from '../../../lib/plural.web.ts'
 
 /** What to show for a thrown value: an Error's message, anything else as a string. */
 export function errorMessage(error: unknown): string {

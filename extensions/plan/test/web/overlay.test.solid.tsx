@@ -1,6 +1,6 @@
 import { createRoot, createSignal, flush, untrack } from 'solid-js'
 import { expect, it, vi } from 'vitest'
-import { parseConversationId } from '../../../../lib/ids.ts'
+import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { Plan } from '../../refs.ts'
 import { PLAN_OPEN } from '../../status.web.ts'

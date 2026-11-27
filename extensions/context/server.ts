@@ -1,4 +1,4 @@
-import { parseEntryId } from '../../lib/ids.ts'
+import { parseEntryId } from '../../lib/ids.shared.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'

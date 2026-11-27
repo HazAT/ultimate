@@ -1,6 +1,6 @@
 import type { ConversationId, EntryId, EntryRecord, Tx } from '@earendil-works/pi-durable'
 import { int, lit, union } from '@earendil-works/pi-schema'
-import { imagesOf, latestImagesEntry } from '../../lib/entries.ts'
+import { imagesOf, latestImagesEntry } from '../../lib/entries.shared.ts'
 import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
 
 export type ImagesRef = 'latest' | EntryId

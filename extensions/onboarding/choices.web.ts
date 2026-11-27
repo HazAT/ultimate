@@ -44,11 +44,6 @@ export function settledChoice(
   return undefined
 }
 
-export function switchScope(projectSetupChosen: boolean, chosen?: 'project' | 'user') {
-  const useProjectSettings = projectSetupChosen && chosen === 'project'
-  return useProjectSettings ? 'project' : 'user'
-}
-
 export function extensionOptions(
   user: { enable: readonly string[]; disable: readonly string[] },
   changed: Record<string, boolean>,

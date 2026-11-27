@@ -12,7 +12,7 @@ import {
   writerNow,
   writingAs,
 } from '@/sdk/solid'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { useConcludedSince } from '../conversations/ui.solid.tsx'
 import { talkToUltimate } from '../subagents/ui.solid.tsx'
 import { DismissAction, DreamDoc, ReadyAction } from './refs.ts'

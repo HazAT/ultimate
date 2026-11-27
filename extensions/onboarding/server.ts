@@ -19,36 +19,36 @@ import {
 } from '@earendil-works/pi-durable'
 import { obj } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
-import { meansNone, settled } from '../../lib/errors.ts'
+import { meansNone, settled } from '../../lib/errors.shared.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
 import { writeJson } from '../../lib/json-file.ts'
 import { providerKeyStandsIn } from '../../lib/openai.ts'
 import { secretMetadata } from '../../lib/secrets.ts'
-import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
+import {
+  extensionLists,
+  readSettings,
+  toggleExtension,
+  updateSettings,
+  userSettingsPath,
+} from '../../lib/settings.ts'
 import type { ExtensionAction } from '../../server/actions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
 import { LineageApi } from '../lineage/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { contractOutline } from '../../lib/api-files.ts'
 import {
-  AdoptProjectSetupAction,
   ChooseAction,
-  DecideAction,
-  DetailsAction,
   DismissAction,
-  ExtensionsAction,
   FirstRunDoneAction,
   HelpAction,
-  SetExtensionAction,
   StartAction,
   StartsDoc,
   StatusAction,
   WalkthroughAction,
 } from './refs.ts'
-import { StartEntry, WalkthroughEntry, ChoiceEntry } from './entries.ts'
+import { StartEntry, WalkthroughEntry, ChoiceEntry } from './entries.shared.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
@@ -72,29 +72,6 @@ const ChoiceRequests = defineDoc<{ payloads: Record<string, JsonObject> }>({
 })
 export const docs = [Starts]
 
-function lists(value: JsonObject) {
-  const extensions = value.extensions ?? {}
-  if (typeof extensions !== 'object' || Array.isArray(extensions))
-    throw new Error('extensions must be a JSON object')
-  const result = extensions
-  for (const key of ['enable', 'disable']) {
-    const names = result[key]
-    if (
-      names !== undefined &&
-      (!Array.isArray(names) || names.some((name) => typeof name !== 'string'))
-    )
-      throw new Error(`extensions.${key} must be an array of names`)
-  }
-  value.extensions = result
-  return result
-}
-function toggle(extensions: JsonObject, name: string, enabled: boolean) {
-  const key = enabled ? 'enable' : 'disable'
-  const opposite = enabled ? 'disable' : 'enable'
-  extensions[key] = [...new Set([...((extensions[key] as string[]) ?? []), name])]
-  if (extensions[opposite] !== undefined)
-    extensions[opposite] = (extensions[opposite] as string[]).filter((entry) => entry !== name)
-}
 async function missingSecrets(host: ExtensionHost, chosen: Record<string, boolean>) {
   const declared = host
     .extensions()
@@ -197,9 +174,6 @@ export const userActions = [
   'walkthrough',
   'help',
   'choose',
-  'decide',
-  'setExtension',
-  'adoptProjectSetup',
   'applyFirstRun',
   'firstRunDone',
 ]
@@ -388,8 +362,7 @@ export const actions: Record<string, ExtensionAction> = {
         if (card === 'extensions') {
           await actions.applyFirstRun({ extensions: payload.extensions! }, actionContext)
           missing = await missingSecrets(host, payload.extensions as Record<string, boolean>)
-        } else if (card === 'project')
-          await actions.decide({ local: payload.local! }, actionContext)
+        } else if (card === 'project') await host.setProjectDecision(payload.local === true)
         else if (payload.initialize) await host.need(WorkspacesApi).setupGit()
         await harness.commit(async (tx) => {
           ;(await tx.doc(ChoiceRequests, id)).payloads[toolCallId] = payload
@@ -449,112 +422,15 @@ export const actions: Record<string, ExtensionAction> = {
       )
     const { local } = args as { local?: boolean }
     await updateSettings(userSettingsPath(host.userHome), (value) => {
-      const extensions = lists(value)
+      const extensions = extensionLists(value)
       for (const [name, enabled] of Object.entries(choices as Record<string, boolean>))
-        toggle(extensions, name, enabled)
+        toggleExtension(extensions, name, enabled)
     })
     await writeJson(marker(host.userHome), { firstRunDone: true })
     if (local === undefined) await host.reloadExtensions()
     else await host.setProjectDecision(local)
     return { firstRun: false }
   },
-  decide: implementAction(DecideAction, async (args, { host }) => {
-    if (!args || typeof args !== 'object' || Array.isArray(args) || typeof args.local !== 'boolean')
-      throw new Error('local must be a boolean')
-    await host.setProjectDecision(args.local)
-    return { project: await host.projectSetup() }
-  }),
-  setExtension: implementAction(SetExtensionAction, async (args, { host }) => {
-    if (
-      !args ||
-      typeof args !== 'object' ||
-      Array.isArray(args) ||
-      typeof args.name !== 'string' ||
-      !args.name.trim() ||
-      typeof args.enabled !== 'boolean' ||
-      (args.scope !== 'project' && args.scope !== 'user')
-    )
-      throw new Error('Expected name, enabled boolean, and scope project or user')
-    if (args.scope === 'project' && (await host.projectSetup()).decision !== true)
-      throw new Error("Choose this project's local setup before changing project extensions")
-    const path = join(
-      args.scope === 'project' ? host.projectRoot : host.userHome,
-      '.ultimate/settings.json',
-    )
-    await updateSettings(path, (value) =>
-      toggle(lists(value), args.name as string, args.enabled as boolean),
-    )
-    await host.reloadExtensions()
-    return { ok: true }
-  }),
-  adoptProjectSetup: implementAction(AdoptProjectSetupAction, async (_args, { host }) => {
-    if ((await host.projectSetup()).decision !== true)
-      throw new Error("Choose this project's local setup before adopting project extensions")
-    const project = lists(await host.projectSettings())
-    if (
-      !(project.enable as string[] | undefined)?.length &&
-      !(project.disable as string[] | undefined)?.length
-    )
-      return { ok: true }
-    const path = userSettingsPath(host.userHome)
-    await updateSettings(path, (value) => {
-      const extensions = lists(value)
-      for (const [key, enabled] of [
-        ['enable', true],
-        ['disable', false],
-      ] as const)
-        for (const name of (project[key] as string[]) ?? []) toggle(extensions, name, enabled)
-    })
-    await host.reloadExtensions()
-    return { ok: true }
-  }),
-  details: implementAction(DetailsAction, async (args, { host }) => {
-    const name = args && typeof args === 'object' && !Array.isArray(args) ? args.name : undefined
-    const folder = host.extensions().find((entry) => entry.name === name)
-    if (typeof name !== 'string' || !folder)
-      throw new Error(`Unknown extension ${JSON.stringify(name)}`)
-    const { apis } = host.catalogue()
-    const matching = (pick: (api: (typeof apis)[number]) => boolean) =>
-      apis.filter(pick).map((api) => api.name)
-    return {
-      ...(await contractOutline(folder)),
-      provides: matching((api) => api.provider === name),
-      declares: matching((api) => api.owner === name && api.provider !== name),
-      needs: matching((api) => api.needs.includes(name)),
-      wants: matching((api) => api.wants.includes(name)),
-    }
-  }),
-  extensions: implementAction(ExtensionsAction, async (_args, { host }) => {
-    const project = await host.projectExtensions()
-    return Promise.all(
-      [
-        ...host
-          .extensions()
-          .filter((entry) => !project.some((folder) => folder.name === entry.name)),
-        ...project,
-      ].map(async (entry) => {
-        const readme = await readFile(join(entry.path, 'README.md'), 'utf8').catch(
-          (error: NodeJS.ErrnoException) => {
-            if (error.code !== 'ENOENT') throw error
-            return ''
-          },
-        )
-        const paragraph =
-          readme
-            .replace(/^#+ .*\n+/u, '')
-            .trim()
-            .split(/\n\s*\n/u)[0] ?? ''
-        return {
-          name: entry.name,
-          source: entry.source,
-          ...(entry.replaces ? { replaces: entry.replaces } : {}),
-          enabled: entry.enabled,
-          layer: entry.layer,
-          readme: paragraph.match(/^.*?[.!?](?:\s|$)/su)?.[0].trim() ?? paragraph,
-        }
-      }),
-    )
-  }),
 }
 
 export default function onboarding(host: ExtensionHost) {

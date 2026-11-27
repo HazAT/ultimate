@@ -8,7 +8,7 @@ import {
   definitionFamily,
   onFamily,
 } from '../lib/agents.ts'
-import { mergeFamilies } from '../lib/families.ts'
+import { mergeFamilies } from '../lib/families.shared.ts'
 
 const opus = { provider: 'claude-code', modelId: 'claude-opus-5-5' }
 

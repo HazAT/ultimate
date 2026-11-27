@@ -1,6 +1,6 @@
 import { mkdtemp, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import type { Video } from './refs.ts'
 
 export type Runner = (

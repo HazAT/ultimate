@@ -3,7 +3,7 @@ import type { Nodes } from 'mdast'
 import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
-import { openQuestion } from '../../lib/message-state.ts'
+import { openQuestion } from '../../lib/message-state.shared.ts'
 import type { Message } from '../messages/refs.ts'
 import type { InboxItem } from './points.web.ts'
 
