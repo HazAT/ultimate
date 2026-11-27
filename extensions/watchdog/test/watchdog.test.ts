@@ -1002,6 +1002,12 @@ it.each([
     undefined,
   ],
   ['Overloaded (529)', true, undefined],
+  // Two branches retried this for an hour before being handed to fresh ones (#1100481, #1111974).
+  [
+    "Claude Code request rewrite failed: Claude Code request has 190 user messages where Pi's history has 191",
+    false,
+    'This history does not map onto Claude Code’s request, so every retry fails the same way; switch this conversation to another model or hand its work to a fresh branch, and report the mismatch',
+  ],
   // A conversation pinned to a provider whose login was removed (rog, 2026-10-25).
   [
     'Provider is not configured: openrouter',
