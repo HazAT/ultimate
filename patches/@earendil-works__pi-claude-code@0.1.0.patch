@@ -1,5 +1,5 @@
 diff --git a/src/claude-cli.ts b/src/claude-cli.ts
-index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..5dbc9db3655e971f7cbb784671d015e118336b52 100644
+index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..d6f8deed258071fab376b502f426b1314f9f14f4 100644
 --- a/src/claude-cli.ts
 +++ b/src/claude-cli.ts
 @@ -1,4 +1,5 @@
@@ -269,7 +269,21 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..5dbc9db3655e971f7cbb784671d015e1
        const queue = new AsyncQueue<NativeOutputEvent>();
        const reader = createInterface({ input: child.stdout!, crlfDelay: Infinity });
        const readTask = (async () => {
-@@ -1124,11 +1190,21 @@ class ClaudeProcess {
+@@ -1101,6 +1167,13 @@ class ClaudeProcess {
+       this.tipHash = undefined;
+       return false;
+     }
++    // An answer without visible text (thinking only) makes Claude Code 2.1.322
++    // add "[Your previous response had no visible output…]" to the next user
++    // message of its hidden history, which Pi's history lacks. Replay from Pi.
++    if (!message.content.some((block) => block.type === "text" && block.text.trim())) {
++      this.tipHash = undefined;
++      return false;
++    }
+     this.tipHash = frameHistoryHash([
+       ...input.frames,
+       { type: "assistant", message: { role: "assistant", content: message.content } },
+@@ -1124,11 +1197,21 @@ class ClaudeProcess {
        if (event.type === "message_stop") sawMessageStop = true;
        input.onEvent?.(event);
      };
@@ -292,7 +306,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..5dbc9db3655e971f7cbb784671d015e1
  
      const abort = () => {
        this.relay.abort();
-@@ -1181,6 +1257,7 @@ class ClaudeProcess {
+@@ -1181,6 +1264,7 @@ class ClaudeProcess {
        }
        await this.relay.settled();
        input.signal?.throwIfAborted();
@@ -300,7 +314,7 @@ index b883a3fd7d9d28f7f7d106801e6f961e6bcf96ee..5dbc9db3655e971f7cbb784671d015e1
  
        let message: NativeMessage | undefined;
        if (this.relay.used) {
-@@ -1214,11 +1291,7 @@ class ClaudeProcess {
+@@ -1214,11 +1298,7 @@ class ClaudeProcess {
  
        // Native error assistants are not collected; report their text instead of "Incomplete".
        if (!message && nativeError) throw new Error(`Claude Code API error: ${nativeError}`);
