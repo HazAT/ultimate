@@ -1,11 +1,20 @@
 import { parseEntryId, offsetEntryId } from '../lib/ids.shared.ts'
-import type { EntryId, ConversationId, EntryRecord, Harness, Tx } from '@earendil-works/pi-durable'
+import type {
+  Conversation,
+  ConversationId,
+  EntryId,
+  EntryRecord,
+  Harness,
+  Tx,
+} from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { isDeepStrictEqual } from 'node:util'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { onCommit } from '../lib/commits.ts'
 import { inProcess } from '../lib/errors.shared.ts'
+import { retryAfter } from '../lib/timers.shared.ts'
+import type { Cancel } from '../lib/timers.shared.ts'
 import { EVENT_FEED, EVENT_FEED_SIZE, NoticeEvent } from '../shared/events.ts'
 import type {
   ChangedEvent,
@@ -154,17 +163,17 @@ export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, da
 }
 
 async function scan(
-  tx: Tx,
-  log: ConversationId,
+  entries: Conversation['entries'],
   after: EntryId,
   visit: (entry: EntryRecord) => boolean,
 ) {
-  let cursor: Parameters<Tx['scanEntries']>[2]
+  let cursor: Parameters<Conversation['entries']>[2]
   do {
-    const page = await tx.scanEntries(
-      { conversationId: log, minEntryId: offsetEntryId(after, 1), order: 'ascending' },
+    const page = await entries(
+      { minEntryId: offsetEntryId(after, 1), order: 'ascending' },
       256,
       cursor,
+      context,
     )
     for (const entry of page.items) if (visit(entry)) return
     cursor = page.next
@@ -176,20 +185,27 @@ export function eventLog(
   trace: CallTrace['run'],
   keepEmittingCallForFutureReactors: CallTrace['keep'] = () => {},
 ) {
-  type Active = { kinds: Set<string>; handler: Reactor<JsonValue>; from: 'start' | 'now' }
+  type Active = { kinds: Set<string>; handler: Reactor<JsonValue> }
+  const initialRetryDelay = 1_000
   const reactors = new Map<
     string,
     {
       active?: Active
       kinds: Set<string>
       chain: Promise<void>
+      queued: boolean
+      cancelRetry?: Cancel
+      retryDelay: number
       failure?: ReactorStatus['failure']
     }
   >()
 
   function drain(name: string) {
     const state = reactors.get(name)!
+    if (state.queued) return
+    state.queued = true
     state.chain = state.chain.then(async () => {
+      state.queued = false
       for (;;) {
         const active = state.active
         if (!active) return
@@ -197,23 +213,20 @@ export function eventLog(
         try {
           const handled = await harness().commit(async function handleEventAtomically(tx) {
             const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
-            if (index.cursors[name] === undefined && active.from === 'now') {
-              const newest =
-                index.conversation === undefined
-                  ? undefined
-                  : (await tx.scanEntries({ conversationId: index.conversation }, 1)).items[0]
-              index.cursors[name] = newest?.id ?? parseEntryId(0)
-              return false
-            }
-            if (index.conversation === undefined) return false
+            const conversationId = index.conversation
+            if (conversationId === undefined) return false
             const after = index.cursors[name] ?? parseEntryId(0)
             let pending: EntryRecord | undefined
             let last = after
-            await scan(tx, index.conversation, after, (entry) => {
-              last = entry.id
-              if (active.kinds.has(entry.kind)) pending = entry
-              return pending !== undefined
-            })
+            await scan(
+              (query, limit, cursor) => tx.scanEntries({ ...query, conversationId }, limit, cursor),
+              after,
+              (entry) => {
+                last = entry.id
+                if (active.kinds.has(entry.kind)) pending = entry
+                return pending !== undefined
+              },
+            )
             if (pending) {
               attemptedUncommittedEventId = pending.id
               const event = record(pending)
@@ -234,12 +247,27 @@ export function eventLog(
             return pending !== undefined
           }, context)
           state.failure = undefined
+          state.cancelRetry?.()
+          state.cancelRetry = undefined
+          state.retryDelay = initialRetryDelay
           if (!handled) return
         } catch (error) {
+          console.error(`Reactor ${name} failed at entry`, attemptedUncommittedEventId, error)
           state.failure = {
             error: String(error),
             at: new Date().toISOString(),
             entryId: attemptedUncommittedEventId,
+          }
+          if (state.active === active && !state.cancelRetry) {
+            state.cancelRetry = retryAfter(
+              state.retryDelay,
+              () => {
+                state.cancelRetry = undefined
+                drain(name)
+              },
+              { unref: true },
+            )
+            state.retryDelay = Math.min(state.retryDelay * 2, 30_000)
           }
           return
         }
@@ -274,20 +302,40 @@ export function eventLog(
       const active: Active = {
         kinds: new Set(events.map((event) => event.kind)),
         handler: handler as Reactor<JsonValue>,
-        from: options.from ?? 'start',
       }
-      if (!reactors.has(name)) reactors.set(name, { kinds: active.kinds, chain: Promise.resolve() })
+      if (!reactors.has(name))
+        reactors.set(name, {
+          kinds: active.kinds,
+          chain: Promise.resolve(),
+          queued: false,
+          retryDelay: initialRetryDelay,
+        })
       const state = reactors.get(name)!
       let unsubscribe: (() => void) | undefined
       const stop = () => {
         unsubscribe?.()
         unsubscribe = undefined
-        if (state.active === active) state.active = undefined
+        if (state.active === active) {
+          state.active = undefined
+          state.cancelRetry?.()
+          state.cancelRetry = undefined
+          state.retryDelay = initialRetryDelay
+        }
         return state.chain
       }
       return {
         start: async () => {
           await stop()
+          if (options.from === 'now')
+            await harness().commit(async (tx) => {
+              const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
+              if (index.cursors[name] !== undefined) return
+              const newest =
+                index.conversation === undefined
+                  ? undefined
+                  : (await tx.scanEntries({ conversationId: index.conversation }, 1)).items[0]
+              index.cursors[name] = newest?.id ?? parseEntryId(0)
+            }, context)
           state.active = active
           state.kinds = active.kinds
           unsubscribe = onCommit(harness(), (publication) => {
@@ -348,27 +396,30 @@ export function eventLog(
   }
 
   async function statuses(): Promise<ReactorStatus[]> {
-    const index = await harness().snapshot(EventLog, ROOT_CONVERSATION_ID, context)
-    return harness().commit(async (tx) => {
-      const list: ReactorStatus[] = []
-      for (const [name, state] of reactors) {
-        const cursor = index?.cursors[name] ?? parseEntryId(0)
-        let lag = 0
-        if (index?.conversation !== undefined)
-          await scan(tx, index.conversation, cursor, (entry) => {
-            if (state.kinds.has(entry.kind)) lag++
-            return false
-          })
-        list.push({
-          name,
-          events: [...state.kinds].map((kind) => kind.slice('event.'.length)),
-          cursor,
-          lag,
-          running: state.active !== undefined,
-          ...(state.failure ? { failure: state.failure } : {}),
+    const session = harness()
+    const index = await session.snapshot(EventLog, ROOT_CONVERSATION_ID, context)
+    const log =
+      index?.conversation === undefined
+        ? undefined
+        : await session.conversation(index.conversation, context)
+    const list: ReactorStatus[] = []
+    for (const [name, state] of reactors) {
+      const cursor = index?.cursors[name] ?? parseEntryId(0)
+      let lag = 0
+      if (log)
+        await scan(log.entries.bind(log), cursor, (entry) => {
+          if (state.kinds.has(entry.kind)) lag++
+          return false
         })
-      }
-      return list
-    }, context)
+      list.push({
+        name,
+        events: [...state.kinds].map((kind) => kind.slice('event.'.length)),
+        cursor,
+        lag,
+        running: state.active !== undefined,
+        ...(state.failure ? { failure: state.failure } : {}),
+      })
+    }
+    return list
   }
 }

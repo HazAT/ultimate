@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { until } from './helpers.ts'
-import { fixture, servers } from './server-fixture.ts'
+import { fixture } from './server-fixture.ts'
 
 const gated = (name: string) => `
 import { defineExtension } from '@earendil-works/pi-durable'
@@ -57,8 +57,7 @@ it('close during a reload finishes the loading facet and skips queued and remain
       }
       return off(event, listener)
     })
-    servers.splice(servers.indexOf(server), 1)
-    await server.close()
+    await server.extensions.close()
     await Promise.all([queuedBefore, queuedAfter])
     expect(gate.started).toEqual(['a-first'])
     expect(prepared.mock.calls.filter(([file]) => file.endsWith('/node_modules'))).toEqual([])

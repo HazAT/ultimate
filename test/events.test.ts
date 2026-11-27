@@ -1,10 +1,17 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { defineDoc, ROOT_CONVERSATION_ID as ROOT } from '@earendil-works/pi-durable'
+import { createModels } from '@earendil-works/pi-ai/models'
+import {
+  createRegistry,
+  defineDoc,
+  Harness,
+  MemoryStorage,
+  ROOT_CONVERSATION_ID as ROOT,
+} from '@earendil-works/pi-durable'
 import type { Tx } from '@earendil-works/pi-durable'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { context } from '../server/harness.ts'
-import { EventFeed, EventLog } from '../server/events.ts'
+import { EventFeed, EventLog, eventLog } from '../server/events.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 import { defineEvent, EVENT_FEED, NoticeEvent, StartedEvent } from '../shared/events.ts'
 import type { EventRecord } from '../shared/events.ts'
@@ -30,6 +37,79 @@ const doc = (kind: string) =>
   })
 const Shipped = doc('test.shipped')
 const Seen = doc('test.seen')
+
+async function reactorFixture() {
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: createModels(), registry: createRegistry() },
+    context,
+  )
+  await harness.root(context)
+  const log = eventLog(
+    () => harness,
+    (_call, work) => work(),
+  )
+  const land = (sha: string) => harness.commit((tx) => log.emit(tx, Landed, { sha }), context)
+  return { harness, log, land }
+}
+
+it('a reactor starting from now sees events emitted as soon as start resolves', async () => {
+  const { harness, log, land } = await reactorFixture()
+  await land('before')
+  const seen: string[] = []
+  const reactor = log.reactor('now', [Landed], (_tx, event) => void seen.push(event.data.sha), {
+    from: 'now',
+  })
+  // Hold the first drain off the writer until the emit after start has committed.
+  const commit = harness.commit.bind(harness)
+  const drainMayCommit = Promise.withResolvers<void>()
+  const spy = vi.spyOn(harness, 'commit').mockImplementation(async (work, ...args) => {
+    if (work.name === 'handleEventAtomically') await drainMayCommit.promise
+    return commit(work, ...args)
+  })
+  try {
+    await reactor.start()
+    const immediate = await land('after')
+    drainMayCommit.resolve()
+    await until(async () => (await log.eventLog.reactors())[0].cursor === immediate.id)
+    expect(seen).toEqual(['after'])
+  } finally {
+    drainMayCommit.resolve()
+    await reactor.stop()
+    spy.mockRestore()
+    await harness.close(context)
+  }
+})
+
+it('retries a failed reactor without another event', async () => {
+  const { harness, log, land } = await reactorFixture()
+  const seen: string[] = []
+  const failure = new Error('try again')
+  const handler = vi.fn<(sha: string) => void>((sha) => void seen.push(sha))
+  handler.mockImplementationOnce(() => {
+    throw failure
+  })
+  const reactor = log.reactor('retry', [Landed], (_tx, event) => handler(event.data.sha))
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    await reactor.start()
+    const emitted = await land('once')
+    await until(async () => !!(await log.eventLog.reactors())[0].failure)
+    expect(handler).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(seen).toEqual(['once'])
+    const [status] = await log.eventLog.reactors()
+    expect(status).toMatchObject({ cursor: emitted.id, lag: 0 })
+    expect(status.failure).toBeUndefined()
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('retry'), emitted.id, failure)
+  } finally {
+    await reactor.stop()
+    vi.useRealTimers()
+    error.mockRestore()
+    await harness.close(context)
+  }
+})
 
 /** A project with one extension, `probe`, whose actions hand out its facet host and raise a notice; `setup` runs at load. */
 async function project(setup = '') {
