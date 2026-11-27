@@ -1,7 +1,7 @@
 import { stat } from 'node:fs/promises'
 import { errnoCode, ignoring } from './errors.shared.ts'
 
-const absent = (error: unknown) => ['ENOENT', 'ENOTDIR'].includes(errnoCode(error) ?? '')
+const absent = (error: unknown) => ['ENOENT', 'ENOTDIR', 'ELOOP'].includes(errnoCode(error) ?? '')
 
 export async function signature(paths: readonly string[]) {
   const stats = await Promise.all(
