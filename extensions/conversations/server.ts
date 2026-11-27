@@ -28,6 +28,7 @@ import { summaryModel, summaryModelSetting, summaryModelStatus } from './summary
 import { parseSummaryModel } from './summary-model-ref.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
+import { chapterHolding } from '../../lib/chapters.ts'
 import { updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import { overviewBehavior } from './overview.ts'
 import { activityBehavior } from './activity.ts'
@@ -99,13 +100,25 @@ async function identityNoteOncePerContextHead(tx: Tx, id: ConversationId) {
 const record = (host: Pick<ExtensionHost, 'harness'>, id: ConversationId, caller: Context) =>
   host.harness().commit((tx) => tx.conversation(id), caller)
 
+async function unknownConversation(
+  host: Pick<ExtensionHost, 'home' | 'chapter'>,
+  id: ConversationId,
+  verb: string,
+): Promise<Error> {
+  const chapter = await chapterHolding(host.home, host.chapter.name, id)
+  if (!chapter) return new Error(`Unknown conversation ${id}`)
+  return new Error(
+    `Unknown conversation ${id}: chapter ${chapter} holds it, and a closed chapter's conversations cannot be ${verb} here. Its history is still readable, as in entries(${id}, { chapter: '${chapter}' }).`,
+  )
+}
+
 async function topLevelId(host: ExtensionHost, args: ActionInput<{ id: number }>) {
   const value = args && typeof args === 'object' && !Array.isArray(args) ? args.id : undefined
   if (typeof value !== 'number' || !Number.isInteger(value))
     throw new Error('Expected a conversation id')
   const id = parseConversationId(value)
   const found = await record(host, id, context)
-  if (!found) throw new Error(`Unknown conversation ${id}`)
+  if (!found) throw await unknownConversation(host, id, 'reached')
   if (found.owner) throw new Error(`Conversation ${id} is owned, not a top-level conversation`)
   return id
 }
@@ -238,14 +251,14 @@ async function ownedTree(tx: Tx, ids: ConversationId[]) {
   return tree
 }
 export async function concludeIn(
-  host: Pick<ExtensionHost, 'want' | 'emit'>,
+  host: Pick<ExtensionHost, 'want' | 'emit' | 'home' | 'chapter'>,
   tx: Tx,
   ids: ConversationId[],
   by: ConversationId | 'landing' | 'user',
 ) {
   for (const id of ids) {
     const found = await tx.conversation(id)
-    if (!found) throw new Error(`Unknown conversation ${id}`)
+    if (!found) throw await unknownConversation(host, id, 'concluded')
     if (found.owner) throw new Error(`Conversation ${id} is owned, not a top-level conversation`)
     await refuseFixed(host, tx, id, 'concluded')
   }

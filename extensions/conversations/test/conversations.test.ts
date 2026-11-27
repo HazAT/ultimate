@@ -3,9 +3,11 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Message } from '@earendil-works/pi-ai'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
+import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { afterEach, expect, it } from 'vitest'
 import { onCommit } from '../../../lib/commits.ts'
+import { FIRST_CHAPTER, requestChapter } from '../../../lib/chapters.ts'
 import {
   attach,
   fauxServer,
@@ -17,6 +19,7 @@ import {
 } from '../../../test/helpers.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { context } from '../../../server/harness.ts'
+import { prepareHarness } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { actions as conversationActions, setStanding } from '../server.ts'
 import { concludedIn } from '../projection.ts'
@@ -794,4 +797,47 @@ it('resume removes concluded ancestors and leaves unrelated ids alone', async ()
     data: { result: { resumed: [parent, child.id] } },
   })
   expect((await server.host.uiState(context))['ext.conversations.concluded']).toEqual([unrelated])
+})
+
+it('conclude and rename of a conversation a closed chapter holds name that chapter', async () => {
+  const home = await temp('ultimate-conversations-chapter-')
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  await (await prepared.open(false)).close()
+  await requestChapter(home, 'next')
+  let opened = await prepared.open(false)
+  const id = (await opened.harness.commit(
+    (tx) => tx.createConversation({ ownership: { kind: 'ownerless' } }).then((c) => c.id),
+    context,
+  )) as number
+  await opened.close()
+  await requestChapter(home, FIRST_CHAPTER)
+  opened = await prepared.open(false)
+  const host = {
+    home,
+    get chapter() {
+      return prepared.chapter
+    },
+    harness: () => opened.harness,
+    emit: async () => {},
+    metadata: Metadata,
+    want: () => undefined,
+  } as unknown as ExtensionHost
+  const ctx = {
+    host,
+    signal: new AbortController().signal,
+    exec: actionExec('.', new AbortController().signal),
+    by: { source: 'person' as const },
+    uiChanged: async () => undefined,
+  }
+  await expect(conversationActions.conclude({ ids: [id] }, ctx)).rejects.toThrow(
+    `Unknown conversation ${id}: chapter next holds it, and a closed chapter's conversations cannot be concluded here. Its history is still readable, as in entries(${id}, { chapter: 'next' }).`,
+  )
+  await expect(conversationActions.rename({ id, title: 'x' }, ctx)).rejects.toThrow(
+    `Unknown conversation ${id}: chapter next holds it, and a closed chapter's conversations cannot be reached here`,
+  )
 })

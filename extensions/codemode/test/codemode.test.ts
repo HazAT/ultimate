@@ -141,6 +141,35 @@ it('reads an inactive chapter through the sandbox and rejects project with chapt
   expect(conflict.output).toContain('chapter and project cannot be used together')
 })
 
+it('names the fix in script errors: an unknown tool, and a declaration that shadows a built-in', async () => {
+  const { server } = await fixture()
+  const unknown = await run(server, `return await describeTool('no-such-tool');`)
+  expect(unknown.data.isError).toBe(true)
+  expect(unknown.output).toContain('describeTool("no-such-tool"): no such tool')
+  expect(unknown.output).toContain(
+    'searchTools(query) finds tools by topic; ALL_TOOLS lists every tool',
+  )
+
+  const shadowedTools = await run(server, 'const tools = {};\nreturn tools.read;')
+  expect(shadowedTools.data.isError).toBe(true)
+  expect(shadowedTools.output).toContain('invalid redefinition of parameter')
+  expect(shadowedTools.output).toContain(
+    'Note: the script declares `tools` (every callable tool), which shadows the sandbox built-in of the same name',
+  )
+
+  const shadowedUltimate = await run(server, 'const ultimate = {};\nreturn ultimate.entries();')
+  expect(shadowedUltimate.data.isError).toBe(true)
+  expect(shadowedUltimate.output).toContain('TypeError: not a function')
+  expect(shadowedUltimate.output).toContain(
+    'Note: the script declares `ultimate` (the read-only introspection helpers), which shadows the sandbox built-in of the same name',
+  )
+
+  // A clean script gets no note even when it names a variable like a built-in's member.
+  const clean = await run(server, 'const entries = [];\nreturn entries.length;')
+  expect(clean.data.isError).toBe(false)
+  expect(clean.output).not.toContain('shadows the sandbox built-in')
+})
+
 it('keeps codemode guidance without repeating top-level tool schemas', async () => {
   const { server } = await fixture()
   const agent = await server.root.agent(context)

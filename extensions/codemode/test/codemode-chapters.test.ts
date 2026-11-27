@@ -114,7 +114,13 @@ it('reads closed chapter records exactly like live fork-aware history, with titl
     expect(listing).toContainEqual(expect.objectContaining({ id: parent.id, title: 'After' }))
     expect(await read('conversations', [{ chapter: 'next' }])).toEqual(listing)
     expect(await readFile(database)).toEqual(bytes)
-    await expect(read('entries', [fork.id])).rejects.toThrow('Unknown conversation')
+    // The live chapter does not know the fork: the error names the chapter that holds it and the option that reads it.
+    await expect(read('entries', [fork.id])).rejects.toThrow(
+      `Unknown conversation #${fork.id}: chapter next holds it. Read it with the chapter option, as in entries(${fork.id}, { chapter: 'next' }) or search(text, { conversationId: ${fork.id}, chapter: 'next' }).`,
+    )
+    await expect(read('search', ['chapter-needle', { conversationId: fork.id }])).rejects.toThrow(
+      `Unknown conversation #${fork.id}: chapter next holds it`,
+    )
     expect(await read('entries', [fork.id, { chapter: 'next', limit: 5000 }])).toEqual(live)
     expect(
       await read('entries', [fork.id, { chapter: 'next', kinds: ['chapter.note'], limit: 0 }]),

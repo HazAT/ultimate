@@ -302,6 +302,10 @@ it("asks the user on a built-in's fire instead of dreaming, and Start launches @
   expect(await f.lastAsk()).toContain('"agent":true')
   expect(await ask()).toBeUndefined()
   await expect(actions.skip(null, f.call)).rejects.toThrow('No dream ask is open')
+  // Start consumed the ask: parking now names the fix instead of failing opaquely.
+  await expect(actions.park({ handoff: 'Too late.' }, f.call)).rejects.toThrow(
+    "No dream ask is open: Start already launched the dream, so there is no ask to park on. Put the handoff in the dream branch's prompt in this turn instead.",
+  )
 })
 
 it('keeps the open ask when a second fire passed the hold before the first one opened it', async () => {
@@ -332,6 +336,10 @@ it('dreams once per chapter: neither built-in fires after a dream ran in it', as
   await f.usage(71)
   await until(async () => (await f.record(id)).condition?.value === 71)
   await f.settle()
+  // A dream already ran in this chapter: park names it instead of a bare refusal.
+  await expect(actions.park({ handoff: 'x' }, f.call)).rejects.toThrow(
+    'No dream ask is open: dream #9 already ran this chapter, and a chapter dreams once',
+  )
   // The crossing counts (it re-arms below 60 as usual) but fires nothing: no wake-up, no dream ask.
   expect(await f.record(id)).toMatchObject({ fires: 0, condition: { armed: false } })
   expect(await f.requests()).toEqual([])

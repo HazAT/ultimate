@@ -46,6 +46,7 @@ import { READS, readProject } from './projects.ts'
 import { REMOTE_BYTES } from '../../lib/remote.ts'
 import type { Read } from './projects.ts'
 import { closedChapter, compactEntry, id, limit, readChapter, searchHit } from './chapters.ts'
+import { chapterHolding } from '../../lib/chapters.ts'
 import type { EntriesOptions, HistoryRead, SearchOptions } from './chapters.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { MessagesApi } from '../messages/api.ts'
@@ -101,9 +102,17 @@ function localReads(host: ExtensionHost, context: Context) {
       } while (cursor)
       return items
     }, context)
+  const unknownConversation = async (conversation: ConversationId) => {
+    const chapter = await chapterHolding(host.home, host.chapter.name, conversation)
+    return new Error(
+      chapter
+        ? `Unknown conversation #${conversation}: chapter ${chapter} holds it. Read it with the chapter option, as in entries(${conversation}, { chapter: '${chapter}' }) or search(text, { conversationId: ${conversation}, chapter: '${chapter}' }).`
+        : `Unknown conversation #${conversation}`,
+    )
+  }
   const entries = async (conversation: unknown, options: EntriesOptions = {}) => {
     const found = await host.harness().conversation(id(conversation), context)
-    if (!found) throw new Error('Unknown conversation')
+    if (!found) throw await unknownConversation(id(conversation))
     const items: unknown[] = []
     let cursor: Cursor | undefined
     const count = limit(options.limit)
@@ -139,7 +148,7 @@ function localReads(host: ExtensionHost, context: Context) {
       let cursor: Cursor | undefined
       do {
         const found = await host.harness().conversation(conversation.id, context)
-        if (!found) throw new Error('Unknown conversation')
+        if (!found) throw await unknownConversation(conversation.id)
         const page = await found.entries({}, 100, cursor, context)
         for (const entry of page.items) {
           const hit = searchHit(entry, text, options)
@@ -403,6 +412,23 @@ export const actions = {
   },
 }
 
+const SANDBOX_BUILTINS: Record<string, string> = {
+  tools: 'every callable tool',
+  ultimate: 'the read-only introspection helpers',
+  console: 'the output console',
+}
+
+export function shadowedBuiltinsNote(code: string) {
+  const shadowed = Object.keys(SANDBOX_BUILTINS).filter((name) =>
+    new RegExp(`\\b(?:(?:const|let|var)\\s+|(?:async\\s+)?(?:function|class)\\s+)${name}\\b`).test(
+      code,
+    ),
+  )
+  if (!shadowed.length) return undefined
+  const named = shadowed.map((name) => `\`${name}\` (${SANDBOX_BUILTINS[name]})`).join(', ')
+  return `Note: the script declares ${named}, which shadows the sandbox built-in of the same name, so calls on it fail. Rename the declaration to reach the built-in.`
+}
+
 const DEFAULT_TIMEOUT_MS = 60_000
 export function withDefaultTimeout(code: string) {
   let parsed: ReturnType<typeof parseCodemodeSource>
@@ -645,8 +671,15 @@ export default function codemode(host: ExtensionHost) {
             : undefined
         },
         afterTool: async (call, result, api) => {
-          if (topLevelCodemode(call)) await summarize(api, call, result)
-          return undefined
+          if (!topLevelCodemode(call)) return undefined
+          await summarize(api, call, result)
+          if (!result.isError) return undefined
+          const code = call.arguments.code
+          if (typeof code !== 'string') return undefined
+          const note = shadowedBuiltinsNote(code)
+          return note
+            ? { ...result, output: [...(result.output ?? []), { type: 'text', text: note }] }
+            : undefined
         },
       }),
     ],

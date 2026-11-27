@@ -296,6 +296,33 @@ async function openAsk(tx: Tx) {
   return doc
 }
 
+async function startedDream(tx: Tx) {
+  const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+  if (doc.dream) return { branch: doc.dream.branch, ran: true }
+  const ultimate = (await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate
+  if (ultimate === undefined) return undefined
+  const page = await tx.scanEntries({ conversationId: ultimate }, REQUEST_LOOKBACK_ENTRIES)
+  for (const entry of page.items) {
+    if (entry.kind === 'dream.requested') return { ran: false }
+    const message = entry.model?.at(-1)
+    if (message?.role === 'assistant' && message.stopReason !== 'toolUse') return undefined
+  }
+  return undefined
+}
+
+async function refuseParkAfterStart(tx: Tx): Promise<Error> {
+  const started = await startedDream(tx)
+  if (!started)
+    return new Error('No dream ask is open: no dream was asked for, and none has started')
+  if (started.ran)
+    return new Error(
+      `No dream ask is open: dream #${started.branch} already ran this chapter, and a chapter dreams once. Put any handoff in that branch's prompt, or wait for the next chapter.`,
+    )
+  return new Error(
+    "No dream ask is open: Start already launched the dream, so there is no ask to park on. Put the handoff in the dream branch's prompt in this turn instead.",
+  )
+}
+
 export const actions = {
   chapters: implementAction(ChaptersAction, async (_args, { host }) => {
     const { active, chapters } = await readChapters(host.home)
@@ -344,10 +371,11 @@ export const actions = {
   }),
   park: implementAction(ParkAction, async (args, { host }) =>
     host.harness().commit(async (tx) => {
-      const doc = await openAsk(tx)
+      const doc = await tx.doc(Next, ROOT_CONVERSATION_ID)
+      if (!doc.ask) throw await refuseParkAfterStart(tx)
       const parked = Date.now()
-      doc.ask!.handoff = text(fields(args).handoff, 'handoff', HANDOFF_CHARS)
-      doc.ask!.parked = parked
+      doc.ask.handoff = text(fields(args).handoff, 'handoff', HANDOFF_CHARS)
+      doc.ask.parked = parked
       return { parked }
     }, context),
   ),
