@@ -7,11 +7,17 @@ import { HealthApi } from '../api.ts'
 import { actions as models } from '../../models/server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { failureKind, healthPath, merge, readHealth, record, sanitize, state } from '../store.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { prepareHarness } from '../../../server/harness.ts'
 import { LoginChanged } from '../../models/api.ts'
 import { Changed as HealthChanged } from '../refs.ts'
-import { apis, eventHost, removeTemps, temp, until } from '../../../test/helpers.ts'
+import {
+  apis,
+  eventHost,
+  removeTemps,
+  temp,
+  until,
+  createTestExtensionHost,
+} from '../../../test/helpers.ts'
 
 afterEach(removeTemps)
 
@@ -224,15 +230,16 @@ it('reads only providers with a login here, so a removed login leaves no stale f
   await record(home, 'openai', { lastFail: NOW, error: 'invalid_grant' })
   await record(home, 'openai-codex', { lastOk: NOW })
   const services = apis()
-  healthExtension({
-    ...services,
-    faux: fauxProvider(),
-    userHome: home,
-    modelRuntime: {
-      getProviderAuthStatus: (provider: string) => ({ configured: provider === 'openai-codex' }),
-    },
-    react: () => {},
-  } as unknown as ExtensionHost)
+  healthExtension(
+    createTestExtensionHost({
+      ...services,
+      userHome: home,
+      modelRuntime: {
+        getProviderAuthStatus: (provider: string) => ({ configured: provider === 'openai-codex' }),
+      },
+      react: () => {},
+    }),
+  )
   const providers = await services.need(HealthApi).providers()
   expect(providers.map((entry) => [entry.provider, entry.state])).toEqual([['openai-codex', 'ok']])
 })
@@ -251,15 +258,14 @@ it("Ultimate's logout resets the provider's health through models.login-changed"
   try {
     const events = eventHost(() => opened.harness, 'health')
     const logouts: string[] = []
-    const host = {
+    const host = createTestExtensionHost({
       userHome: home,
-      faux: fauxProvider(),
       ...apis(),
       harness: () => opened.harness,
       emit: events.emit,
       react: events.react,
       modelRuntime: { logout: async (provider: string) => void logouts.push(provider) },
-    } as unknown as ExtensionHost
+    })
     healthExtension(host)
     await events.start()
     await models.logout({ provider: 'anthropic' }, { host } as ActionContext)

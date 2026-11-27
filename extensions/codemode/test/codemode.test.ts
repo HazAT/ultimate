@@ -19,6 +19,7 @@ import {
   removeTemp,
   linkDependencies,
   post,
+  createTestExtensionHost,
 } from '../../../test/helpers.ts'
 import { context } from '../../../server/harness.ts'
 import { FIRST_CHAPTER, prepareChapterRequest } from '../../../lib/chapters.ts'
@@ -26,7 +27,6 @@ import { SummaryDoc, withDefaultTimeout } from '../server.ts'
 import { CodemodeStoreDoc } from '@earendil-works/pi-durable/codemode'
 import { Summarized } from '../refs.ts'
 import planExtension from '../../plan/server.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import type { CallTree } from '../../../server/trace.ts'
 
@@ -601,12 +601,14 @@ it('composes read and bash with private nested results and final JSON details', 
     }),
   )
   server.host.registry.install(
-    planExtension({
-      react: () => {},
-      implement: () => {},
-      metadata: Metadata,
-      onOpen: () => {},
-    } as unknown as ExtensionHost),
+    planExtension(
+      createTestExtensionHost({
+        react: () => {},
+        implement: () => {},
+        metadata: Metadata,
+        onOpen: () => {},
+      }),
+    ),
   )
   // #159728 extended task descriptions from a script; a text result made `shown.description` undefined and wiped them.
   const extended = await run(

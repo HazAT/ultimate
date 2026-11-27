@@ -2,8 +2,8 @@ import type { ConversationId, GenerationHooks, Tx } from '@earendil-works/pi-dur
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { expect, it } from 'vitest'
 import todosExtension, { add, DONE_LIMIT, mark, noteFor, Todos } from '../server.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import type { TodosService } from '../api.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 const ULTIMATE = 5 as ConversationId
 
@@ -45,10 +45,12 @@ it('adds to-dos by owner and refuses empty text or an unknown owner', async () =
 it('adds through TodosApi once per key, even after the to-do left the list', async () => {
   const { tx } = fakeTx()
   let service: TodosService | undefined
-  todosExtension({
-    implement: (_api: unknown, value: TodosService) => (service = value),
-    harness: () => ({ commit: (fn: (tx: Tx) => unknown) => fn(tx) }),
-  } as unknown as ExtensionHost)
+  todosExtension(
+    createTestExtensionHost({
+      implement: (_api: unknown, value: TodosService) => (service = value),
+      harness: () => ({ commit: (fn: (tx: Tx) => unknown) => fn(tx) }),
+    }),
+  )
   const first = await service!.add({ text: 'Call back', owner: 'user', key: 'mail-42' })
   expect(first).toMatchObject({ id: 1, text: 'Call back', owner: 'user' })
   expect(await service!.add({ text: 'Call back', owner: 'user', key: 'mail-42' })).toEqual(first)
@@ -92,10 +94,12 @@ it('tells @ultimate the open list only when it changed', async () => {
 it("keeps the todo tool to @ultimate and the note to @ultimate's inputs", async () => {
   const { tx } = fakeTx()
   // No side-chat extension installed: every caller acts as itself.
-  const extension = todosExtension({
-    doc: () => undefined,
-    implement: () => {},
-  } as unknown as ExtensionHost)
+  const extension = todosExtension(
+    createTestExtensionHost({
+      doc: () => undefined,
+      implement: () => {},
+    }),
+  )
   const tool = extension.tools!.find((candidate) => candidate.name === 'todo')!
   const run = (conversationId: number, args: object) =>
     tool.execute(

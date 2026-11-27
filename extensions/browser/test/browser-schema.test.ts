@@ -7,13 +7,14 @@ import { expect, it, vi } from 'vitest'
 import browserExtension from '../server.ts'
 import subagents from '../../subagents/server.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 // A browser call held its run for minutes on an until that never came; a model turn gets at most 120 s.
 it('refuses an until timeoutMs above 120 s', () => {
-  const host = {
+  const host = createTestExtensionHost({
     resource: <T>(_name: string, create: () => T) => create(),
     onClose() {},
-  } as unknown as ExtensionHost
+  })
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const call = (timeoutMs: number) => () =>
     validateToolArguments(browser, {
@@ -27,14 +28,14 @@ it('refuses an until timeoutMs above 120 s', () => {
 })
 
 it('preserves browser fill and typed tool enum schemas in provider payloads', async () => {
-  const host = {
+  const host = createTestExtensionHost({
     resource: <T>(_name: string, create: () => T) => create(),
     onClose() {},
     onOpen() {},
     need: vi.fn<ExtensionHost['need']>(),
     want: vi.fn<ExtensionHost['want']>(),
     implement: vi.fn<ExtensionHost['implement']>(),
-  } as unknown as ExtensionHost
+  })
   const tools = [
     ...browserExtension(host).tools!,
     subagents(host).tools!.find((tool) => tool.name === 'subagent')!,

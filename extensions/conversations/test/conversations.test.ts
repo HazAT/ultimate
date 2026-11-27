@@ -14,6 +14,7 @@ import {
   prepareFauxServer,
   temp,
   until,
+  createTestExtensionHost,
 } from '../../../test/helpers.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { context } from '../../../server/harness.ts'
@@ -21,7 +22,6 @@ import { Metadata } from '../../../server/metadata.ts'
 import { actions as conversationActions, setStanding } from '../server.ts'
 import { concludedIn } from '../projection.ts'
 import { UiState } from '../../../shared/ui-state.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { actionExec } from '../../../server/actions.ts'
 import { currentAnswer, exchangeUser } from '../summary.ts'
 import { Overview, Previews, Release } from '../api.ts'
@@ -631,7 +631,7 @@ it('conclude merges concurrent additions, deduplicates ids and returns kept chec
   const second = await create()
   const kept = [{ id: first, uncommitted: 2, unlanded: 1 }]
   const released: number[][] = []
-  const host = {
+  const host = createTestExtensionHost({
     harness: () => server.harness,
     emit: async () => {},
     metadata: Metadata,
@@ -646,7 +646,7 @@ it('conclude merges concurrent additions, deduplicates ids and returns kept chec
         }
       return undefined
     },
-  } as unknown as ExtensionHost
+  })
   const ctx = {
     host,
     signal: new AbortController().signal,

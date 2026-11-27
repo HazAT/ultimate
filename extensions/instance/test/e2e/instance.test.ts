@@ -21,11 +21,18 @@ import { git } from '../../../../lib/git.ts'
 import { exec } from '../../../../lib/exec.ts'
 import { projectSettings } from '../../../../lib/project-setup.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
-import type { ExtensionHost } from '../../../../server/extensions.ts'
 import type { ConversationsService } from '../../../conversations/api.ts'
 import { setAutomaticSummaries } from '../../../conversations/summary.ts'
 import { setStanding } from '../../../conversations/server.ts'
-import { apis, attach, post, temp, removeTemp, until } from '../../../../test/helpers.ts'
+import {
+  apis,
+  attach,
+  post,
+  temp,
+  removeTemp,
+  until,
+  createTestExtensionHost,
+} from '../../../../test/helpers.ts'
 import { scriptedModel } from '../../../../test/e2e/scripted-model.ts'
 
 type Preview = { id: string; url: string; home: string; pid: number }
@@ -103,7 +110,7 @@ async function fixture({ foreign = false } = {}) {
   const resources = new Map<string, unknown>()
   const services = new Map<string, unknown>()
   const cleanups: (() => Promise<void>)[] = []
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     projectSettings: () => projectSettings(project, root),
     harness: () => opened.harness,
@@ -119,7 +126,7 @@ async function fixture({ foreign = false } = {}) {
     onClose: (cleanup: () => Promise<void>) => {
       cleanups.push(cleanup)
     },
-  } as unknown as ExtensionHost
+  })
   // The core's conversations: nothing concluded, no summaries.
   services.set('conversations', {
     concluded: async () => new Set(),

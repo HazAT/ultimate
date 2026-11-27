@@ -25,7 +25,7 @@ import { Todos } from '../../todos/server.ts'
 import { actions, Next, userActions } from '../server.ts'
 import type { Sleep } from '../refs.ts'
 import type { Seed } from '../types.shared.ts'
-import { temp } from '../../../test/helpers.ts'
+import { temp, createTestExtensionHost } from '../../../test/helpers.ts'
 
 const harnesses: Harness[] = []
 afterEach(async () => {
@@ -72,7 +72,21 @@ async function fixture(expectedChapter = READY.chapter) {
   )
   const hold = vi.fn<() => void>()
   const release = vi.fn<() => void>()
-  const host = {
+  const tracked = {
+    hold,
+    release,
+    resume: () => harness.resume(),
+    commit: async (run: Parameters<Harness['commit']>[0]) => {
+      const result = await harness.commit(run, context)
+      const sleep = (await harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.sleep
+      if (sleep && JSON.stringify(sleep) !== previous) {
+        phases.push(structuredClone(sleep))
+        previous = JSON.stringify(sleep)
+      }
+      return result
+    },
+  }
+  const host = createTestExtensionHost({
     home,
     chapter: { name: 'the-beginning', number: 1 },
     want: (api: unknown) => services.get(api),
@@ -81,20 +95,7 @@ async function fixture(expectedChapter = READY.chapter) {
       if (!resources.has(key)) resources.set(key, create())
       return resources.get(key)
     },
-    harness: () => ({
-      hold,
-      release,
-      resume: () => harness.resume(),
-      commit: async (run: Parameters<Harness['commit']>[0]) => {
-        const result = await harness.commit(run, context)
-        const sleep = (await harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.sleep
-        if (sleep && JSON.stringify(sleep) !== previous) {
-          phases.push(structuredClone(sleep))
-          previous = JSON.stringify(sleep)
-        }
-        return result
-      },
-    }),
+    harness: () => tracked,
     doc: (kind: string) => tokens.find((token) => token.definition.kind === kind),
     invoke,
     restart: vi.fn<ExtensionHost['restart']>(async (approved) => {
@@ -104,7 +105,7 @@ async function fixture(expectedChapter = READY.chapter) {
       expect(await readJson(journal, null)).toEqual({ to: expectedChapter, by: process.pid })
       return 'Restart refused'
     }),
-  } as unknown as ExtensionHost
+  })
   await harness.commit(async (tx) => {
     ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = 20 as never
     ;(await tx.doc(host.doc('lineage.roots')!, ROOT_CONVERSATION_ID)).roots = [1]
@@ -298,6 +299,7 @@ it.each(['return', 'throw', 'before approval'])(
       'Restart failed',
     )
     expect(f.hold).toHaveBeenCalledTimes(failure === 'before approval' ? 0 : 1)
+    expect(f.release).toHaveBeenCalledTimes(failure === 'before approval' ? 0 : 1)
     expect(existsSync(journal)).toBe(false)
   },
 )

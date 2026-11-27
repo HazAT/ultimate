@@ -46,7 +46,13 @@ import { Serving, Started } from '../../../messages/addresses.ts'
 import promptExtension, { order as promptOrder } from '../../../prompt/server.ts'
 import subagents from '../../../subagents/server.ts'
 import { Standing, Subagents } from '../../../subagents/api.ts'
-import { openers, seedTally, temp, until } from '../../../../test/helpers.ts'
+import {
+  openers,
+  seedTally,
+  temp,
+  until,
+  createTestExtensionHost,
+} from '../../../../test/helpers.ts'
 
 /** The part of the conversations service a test stands in for; standing a lander turns its summaries off and marks it standing. */
 const conversations = (service: Partial<ConversationsService>) =>
@@ -115,7 +121,7 @@ async function fixture(
     (_call, work) => work(),
   )
   let started = false
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     harness: () => opened.harness,
     metadata: Metadata,
@@ -153,7 +159,7 @@ async function fixture(
     conversations: () => [],
     build: () => ({ id: 'test-build' }),
     system: () => ({ process: {} }),
-  } as unknown as ExtensionHost
+  })
   // The core's conversations, until a test implements its own: nothing concluded, no titles or summaries.
   services.set(
     'conversations',

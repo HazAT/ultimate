@@ -10,10 +10,9 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import { Standing } from '../../subagents/api.ts'
-import { apis, eventHost, openers, until } from '../../../test/helpers.ts'
+import { apis, eventHost, openers, until, createTestExtensionHost } from '../../../test/helpers.ts'
 import { LEAD } from '../due.shared.ts'
 import keepWarm, { docs } from '../server.ts'
 
@@ -50,13 +49,13 @@ async function fixture() {
   const services = apis()
   services.provided.set('conversations', { accountResponse: async () => {} })
   services.provided.set('pause', { paused: () => paused })
-  const host = {
+  const host = createTestExtensionHost({
     ...services,
     ...events,
     harness: () => harness,
     modelRuntime: models,
     onOpen: lifecycle.onOpen,
-  } as unknown as ExtensionHost
+  })
   registry.install(keepWarm(host))
   const ultimate = await harness.commit(async (tx) => {
     const { id } = await tx.createConversation({ ownership: { kind: 'ownerless' } })

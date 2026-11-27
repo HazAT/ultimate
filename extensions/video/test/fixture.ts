@@ -3,10 +3,9 @@ import { join } from 'node:path'
 import { afterEach, vi } from 'vitest'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ActionContext } from '../../../server/actions.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
-import { apis, eventHost, openers, temp } from '../../../test/helpers.ts'
+import { apis, eventHost, openers, temp, createTestExtensionHost } from '../../../test/helpers.ts'
 import { VideoApi } from '../api.ts'
 import { GEMINI } from '../gemini.ts'
 import type { Runner } from '../prepare.ts'
@@ -55,7 +54,7 @@ export async function fixture(run: Runner, fake?: Fake) {
   const harness = () => current.harness
   const events = eventHost(harness, 'video')
   const resources = new Map<string, unknown>()
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     ...services,
     ...events,
@@ -68,7 +67,7 @@ export async function fixture(run: Runner, fake?: Fake) {
       if (!resources.has(key)) resources.set(key, create())
       return resources.get(key)
     },
-  } as unknown as ExtensionHost
+  })
   prepared.registry.install(videoExtension(host, run, { fetch, pollMs: 0 }))
   const open = async () => {
     current = await prepared.open(false)

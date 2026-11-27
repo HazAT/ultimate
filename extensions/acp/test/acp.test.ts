@@ -5,6 +5,7 @@ import { ConversationsApi, ExternalSessions } from '../../conversations/api.ts'
 import { makeClient } from '../server.ts'
 import { fileLinksAsPaths } from '../tools.ts'
 import { apply, settleTurn } from '../updates.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 const ID = 7 as ConversationId
 const metadata = { definition: { kind: 'ultimate.metadata', initial: () => ({}) } }
@@ -159,7 +160,7 @@ it('settles a concluded prompt before its reconnect finishes preparing the workt
   }
   let open!: Opener
   let stop!: (ids: readonly ConversationId[]) => Promise<Disposable>
-  const host = {
+  const host = createTestExtensionHost({
     need: (api: { name: string }) =>
       api.name === ConversationsApi.name ? { concludedIn: async () => concluded } : workspaces,
     implement: (_api: typeof ExternalSessions, service: { stop: typeof stop }) => {
@@ -171,7 +172,7 @@ it('settles a concluded prompt before its reconnect finishes preparing the workt
     react: () => undefined,
     notice: vi.fn<(message: string) => void>(),
     harness: () => ({ commit: async (runTx: (tx: Tx) => Promise<unknown>) => runTx(tx) }),
-  } as unknown as ExtensionHost
+  })
   const client = makeClient(host)
   await using opened = new AsyncDisposableStack()
   await open(opened)

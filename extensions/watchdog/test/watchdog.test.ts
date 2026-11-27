@@ -5,7 +5,7 @@ import type {
   Task,
   ToolExecutionApi,
 } from '@earendil-works/pi-durable'
-import { apis, openers, until } from '../../../test/helpers.ts'
+import { apis, openers, until, createTestExtensionHost } from '../../../test/helpers.ts'
 import { BACKGROUND_CONTEXT as context, awaitWithContext } from '@earendil-works/chord/context'
 import { createModels } from '@earendil-works/pi-ai/models'
 import { obj } from '@earendil-works/pi-schema'
@@ -36,7 +36,6 @@ import subagents from '../../subagents/server.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import { concludedIn } from '../../conversations/projection.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -92,7 +91,7 @@ async function fixture(
   const services = apis()
   services.provided.set('conversations', { concludedIn })
   services.provided.set('workspaces', { doc: Workspaces, get: async () => undefined })
-  const host = {
+  const host = createTestExtensionHost({
     ...services,
     harness: () => harness,
     metadata: Metadata,
@@ -100,7 +99,7 @@ async function fixture(
     onOpen: lifecycle.onOpen,
     scanSubmissions: (...args: Parameters<MemoryStorage['scanSubmissions']>) =>
       storage.scanSubmissions(...args),
-  } as unknown as ExtensionHost
+  })
   const subagentsHost = {
     ...host,
     onOpen: () => {},

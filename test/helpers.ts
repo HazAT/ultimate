@@ -26,7 +26,7 @@ import type { EventData, EventToken } from '../shared/events.ts'
 import { EventFeed, EventLog, eventLog } from '../server/events.ts'
 import { copySource } from './source-copy.ts'
 import type { Reactor } from '../server/events.ts'
-import type { Opener } from '../server/extensions.ts'
+import type { ExtensionHost, Opener } from '../server/extensions.ts'
 
 vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
   const original = await importOriginal<typeof import('@earendil-works/pi-ai/providers/faux')>()
@@ -37,10 +37,90 @@ vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
   }
 })
 
+/** Every member of `ExtensionHost`, so a member added to it fails here and its test doubles get looked at. */
+const hostMembers = {
+  ultimateRoot: true,
+  projectRoot: true,
+  userHome: true,
+  home: true,
+  modelRuntime: true,
+  settings: true,
+  build: true,
+  images: true,
+  uiState: true,
+  scanSubmissions: true,
+  models: true,
+  skills: true,
+  restart: true,
+  chapter: true,
+  access: true,
+  notice: true,
+  implement: true,
+  need: true,
+  want: true,
+  catalogue: true,
+  trace: true,
+  resource: true,
+  onOpen: true,
+  onClose: true,
+  onLoadError: true,
+  onBeforeLoad: true,
+  coreChanged: true,
+  harness: true,
+  system: true,
+  conversations: true,
+  projects: true,
+  extensions: true,
+  projectSetup: true,
+  projectSettings: true,
+  projectExtensions: true,
+  setProjectDecision: true,
+  reloadExtensions: true,
+  invoke: true,
+  doc: true,
+  metadata: true,
+  emit: true,
+  react: true,
+  eventLog: true,
+} satisfies Record<keyof ExtensionHost, true>
+
+type HostMember = keyof typeof hostMembers & keyof ExtensionHost
+
+/** Members of a hand-built extension host, named as in `ExtensionHost`: shared fixtures check the members they supply. */
+type HostMembers = { [K in HostMember]?: unknown }
+
+/**
+ * An extension host built by hand from the members a test needs. The member names are checked against `ExtensionHost`
+ * (one renamed or removed fails in every test or shared fixture that sets it); their values stay as partial as the
+ * test needs.
+ */
+export function createTestExtensionHost(members: {
+  [K in HostMember]?: ExtensionHost[K] extends (...args: infer A) => unknown
+    ? { method(...args: A): unknown }['method']
+    : unknown
+}) {
+  return members as ExtensionHost
+}
+
 /**
  * `implement`, `need` and `want` over a plain map, for extension hosts built by hand. `need` resolves the provider on
  * each member access like the real handle, so a fixture may implement an API after its consumer took the handle.
  */
+export function apis(provided = new Map<string, unknown>()) {
+  const host = {
+    implement: <S>(api: Api<string, S>, value: S) => void provided.set(api.name, value),
+    want: <S>(api: Api<string, S>) => provided.get(api.name) as S | undefined,
+    need: <S>(api: Api<string, S>) =>
+      new Proxy(
+        {},
+        {
+          get: (_, key) => (provided.get(api.name) as Record<string | symbol, unknown>)?.[key],
+        },
+      ) as S,
+  } satisfies HostMembers
+  return { provided, ...host }
+}
+
 /**
  * `need` for a hand-built host whose core services stay out of the test: every method resolves undefined, as a worktree
  * lookup for a conversation without one does.
@@ -70,21 +150,6 @@ export function openers() {
   }
 }
 
-export function apis(provided = new Map<string, unknown>()) {
-  return {
-    provided,
-    implement: <S>(api: Api<string, S>, value: S) => void provided.set(api.name, value),
-    want: <S>(api: Api<string, S>) => provided.get(api.name) as S | undefined,
-    need: <S>(api: Api<string, S>) =>
-      new Proxy(
-        {},
-        {
-          get: (_, key) => (provided.get(api.name) as Record<string | symbol, unknown>)?.[key],
-        },
-      ) as S,
-  }
-}
-
 /**
  * A real event log for a hand-built host over `harness`: `emit`, and `react` as extension `name` registers reactors,
  * which run from `start()` (each harness open) until `stop()`. `settled()` holds once every event is handled.
@@ -105,7 +170,7 @@ export function eventHost(harness: () => Harness, name: string) {
     (_call, work) => work(),
   )
   const reactors: ReturnType<typeof log.reactor>[] = []
-  return {
+  const host = {
     emit: log.emit,
     /** The event feed by its kind, as the real host's `doc` finds it; other kinds are the fixture's own. */
     doc: (kind: string) => (kind === EventFeed.definition.kind ? EventFeed : undefined),
@@ -115,6 +180,9 @@ export function eventHost(harness: () => Harness, name: string) {
       handler: Reactor<EventData<T>>,
     ) => void reactors.push(log.reactor(`${name}/${reactor}`, events, handler)),
     eventLog: log.eventLog,
+  } satisfies HostMembers
+  return {
+    ...host,
     start: () => Promise.all(reactors.map((reactor) => reactor.start())),
     stop: () => Promise.all(reactors.map((reactor) => reactor.stop())),
     settled: async () =>
