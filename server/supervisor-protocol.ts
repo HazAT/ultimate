@@ -26,7 +26,7 @@ export type ChildMessage =
   | { type: 'swap-ack'; requestId: string; ok: boolean; error?: string }
 export type SupervisorMessage =
   | { type: 'go' | 'release' | 'exit' }
-  | { type: 'reacquire'; error: string }
+  | { type: 'reacquire'; requestId: string; error: string }
   | { type: 'swap-result'; requestId: string; ok: false; error: string }
   | { type: 'swap-result'; requestId: string; ok: true; generation: number }
 
@@ -37,10 +37,17 @@ export async function requestSwap(
   if (!process.send) return 'Restart requires pnpm start (the supervisor).'
   const requestId = randomUUID()
   return new Promise((resolve) => {
-    const listener = (message: SupervisorMessage) => {
-      if (message.type !== 'swap-result' || message.requestId !== requestId) return
+    const finish = (error: string) => {
       process.off('message', listener)
-      if (!message.ok) return resolve(message.error.slice(-4096))
+      resolve(error)
+    }
+    const listener = (message: SupervisorMessage) => {
+      if (
+        (message.type !== 'swap-result' && message.type !== 'reacquire') ||
+        message.requestId !== requestId
+      )
+        return
+      if (message.type === 'reacquire' || !message.ok) return finish(message.error.slice(-4096))
       inProcess(
         'the swap acknowledgement belongs to this process and its supervisor channel',
         recordDurableReplayResult(message.generation).then(
@@ -54,7 +61,7 @@ export async function requestSwap(
               ok: false,
               error: String(error),
             } satisfies ChildMessage)
-            resolve(String(error))
+            finish(String(error))
           },
         ),
       )

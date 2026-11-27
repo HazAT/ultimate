@@ -115,7 +115,8 @@ test('rebuilds when the settings a build read go back to the published set befor
     }
     await mkdir(request.outDir, { recursive: true })
     await writeFile(join(request.outDir, 'index.html'), `<head></head>build ${current}`)
-    return { stdout: JSON.stringify({ inputs: [] }), stderr: '' }
+    await writeFile(request.resultFile, JSON.stringify({ inputs: [] }))
+    return { stdout: '', stderr: '' }
   })
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   let change: ((file: string) => Promise<void> | void) | undefined

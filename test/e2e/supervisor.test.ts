@@ -91,12 +91,26 @@ describe('supervisor restart', () => {
     const owner = JSON.parse(await readFile(join(running.home, 'storage.lock'), 'utf8'))
     expect(owner.pid).toBe(pid)
   }, 60000)
-  it('rolls back an API activation failure and refuses standalone storage ownership', async () => {
-    const running = await fixture()
+  it('settles the original API restart request on rollback and keeps standalone off storage', async () => {
+    const running = await fixture(async (root) => {
+      const file = join(root, 'server/api.ts')
+      const api = await readFile(file, 'utf8')
+      await writeFile(
+        file,
+        api.replace(
+          'if (!response.writableEnded) json(500, { ok: false, error })',
+          "console.log('Restart request settled:', error); if (!response.writableEnded) json(500, { ok: false, error })",
+        ),
+      )
+    })
     const stream = await attach(running.url)
     const pid = stream.system().process.pid
     await activationFailure(running.ultimateRoot)
+    // The API responds to the early swap acknowledgement. Observe the original handler beyond it.
     expect((await post(running.url, '/api/restart')).status).toBe(202)
+    await until(() =>
+      /Restart request settled: .*Injected activation failure/.test(running.output()),
+    )
     await until(() => stream.connections() > 1 && !!stream.system().process.activationError)
     expect(stream.system().process.activationError).toContain('Injected activation failure')
     expect(stream.system().process.generation).toBe(1)

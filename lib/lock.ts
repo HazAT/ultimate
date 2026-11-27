@@ -1,8 +1,8 @@
-import { readFile, writeFile, unlink, rename } from 'node:fs/promises'
+import { lstat, readFile, writeFile, unlink, rename } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { identify } from './process-group.ts'
 import { pace } from './timers.shared.ts'
-import { isMissing, isNoProcess, sqliteCode } from './errors.shared.ts'
+import { ignoring, isMissing, isNoProcess, sqliteCode } from './errors.shared.ts'
 export function alive(pid: number) {
   try {
     process.kill(pid, 0)
@@ -50,10 +50,9 @@ export async function retireStorageOwner(path: string) {
     }
     return true
   }
-  if (!(await signal('SIGTERM'))) return
+  if (!(await signal('SIGKILL'))) return
   const deadline = Date.now() + 10000
   while (alive(owner.pid) && Date.now() < deadline) await pace(50)
-  if (alive(owner.pid)) await signal('SIGKILL')
 }
 export async function readOwner(
   path: string,
@@ -108,7 +107,7 @@ export async function acquireLock(
         await pace(50)
       }
     }
-    const stale = Boolean(await readOwner(path))
+    const stale = Boolean(await lstat(path).catch(ignoring(isMissing)))
     await update(value)
     return {
       stale,

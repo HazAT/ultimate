@@ -152,6 +152,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     return () => watcher.off('change', restartViteOnConfigChangeWithoutHmr)
   })
   let opened: OpenHost | undefined
+  let released = false
   const processInfo: { activationError?: string } = {}
   let settledGoOrRelease = Promise.resolve()
   const serial = <T>(task: () => Promise<T>) => {
@@ -189,7 +190,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     home: host.home,
     watch,
     before: () => extensions.prepareLoadBestEffort(),
-    held: extensions.heldForNewCore,
+    held: () => released || extensions.heldForNewCore(),
     pages: () => api?.pages() ?? 0,
     changed: () => void system?.changed(),
     notice: (message) => notice({ level: 'error', message }),
@@ -244,6 +245,8 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     web,
     release: () =>
       serial(async () => {
+        released = true
+        await web.settled()
         if (opened) await extensions.released()
         await api?.close()
         api = undefined
@@ -257,6 +260,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
         processInfo.activationError = activationError
         const swappedIn = !!process.env.ULTIMATE_PREVIOUS_BUILD && activationError === undefined
         const served = await openExtensionsThenServeApi(await host.open(false, swappedIn))
+        released = false
         reportCore({ type: 'web', state: 'ready' })
         return served
       }),
