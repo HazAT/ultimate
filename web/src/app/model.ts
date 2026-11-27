@@ -26,6 +26,11 @@ export function indexTools(entries: readonly EntryRecord[]) {
   return { results, calls }
 }
 
+export function toolCallId(entry: EntryRecord) {
+  const message = entry.model?.[0]
+  return message?.role === 'toolResult' ? message.toolCallId : undefined
+}
+
 export function slotsOf(tools: LiveState['tools']): Map<string, ToolSlot> {
   return new Map((tools ?? []).map((slot) => [slot.callId, slot]))
 }
