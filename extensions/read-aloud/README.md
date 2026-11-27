@@ -12,7 +12,11 @@ lightly rewritten for listening.
 - **The voices:** the browser's `speechSynthesis`, or OpenAI's Realtime `gpt-realtime-2.1-mini` through the `speak`
   action (`openai-voice.ts`), with the `OPENAI_API_KEY` secret or an API key Pi's `openai` provider holds. The OpenAI
   voice fetches each sentence clause by clause and the next sentence while one plays; stopping aborts every request in
-  flight, which cancels its response.
+  flight, which cancels its response. Other extensions can `want(ReadAloudApi)` (`api.ts`) and call
+  `speak(text, voice, signal)` for 24 kHz mono PCM16 (`undefined` without a key). It shares the action's connection,
+  key lookup and instructions; the action wraps the PCM in WAV for the player. For browser speech,
+  `speakSystem(text)` (`ui.solid.tsx`) queues the default system voice without cancelling speech already playing,
+  and resolves on end or error. The narrator uses both contracts.
 - **The Speech setting** is shared by read-aloud and voice: voice (OpenAI by default when a key is set, else the
   system voice), the OpenAI voice (cedar by default) and the speed (1.1× by default), in UI state
   `ext.read-aloud.voice`, `ext.read-aloud.openai-voice` and `ext.read-aloud.rate`. Read aloud owns their controls

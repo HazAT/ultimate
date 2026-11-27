@@ -106,30 +106,52 @@ export const systemVoices = () => {
 export const isBlocked = (error: unknown) =>
   error instanceof Error && error.name === 'NotAllowedError'
 
+function queueSystemSpeech(
+  text: string,
+  options: {
+    rate?: number
+    volume?: number
+    start?: () => void
+    boundary?: (charIndex: number) => void
+    end: () => void
+    error?: (code: SpeechSynthesisErrorCode) => void
+  },
+) {
+  const synth = globalThis.speechSynthesis
+  if (!synth) return options.end()
+  const utterance = new SpeechSynthesisUtterance(text)
+  const { rate, volume, start, boundary, end, error } = options
+  if (rate !== undefined) utterance.rate = rate
+  if (volume !== undefined) utterance.volume = volume
+  if (start) utterance.addEventListener('start', () => start())
+  if (boundary)
+    utterance.addEventListener('boundary', (event) => {
+      if (!event.name || event.name === 'word') boundary(event.charIndex)
+    })
+  utterance.addEventListener('end', () => end())
+  if (error) utterance.addEventListener('error', (event) => error(event.error))
+  synth.speak(utterance)
+}
+
+export function speakSystem(text: string): Promise<void> {
+  return new Promise((resolve) => queueSystemSpeech(text, { end: resolve, error: () => resolve() }))
+}
+
 export function systemVoice(): SpeechEngine {
   let primed = false
   return {
     say(text, rate, events) {
-      if (!('speechSynthesis' in globalThis)) return events.end()
-      speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = rate
-      utterance.addEventListener('start', () => events.start())
-      utterance.addEventListener('boundary', (event) => {
-        if (!event.name || event.name === 'word') events.boundary(event.charIndex)
+      globalThis.speechSynthesis?.cancel()
+      queueSystemSpeech(text, {
+        ...events,
+        rate,
+        error: (code) => (code === 'not-allowed' ? events.blocked() : events.end()),
       })
-      utterance.addEventListener('end', events.end)
-      utterance.addEventListener('error', (event) =>
-        event.error === 'not-allowed' ? events.blocked() : events.end(),
-      )
-      speechSynthesis.speak(utterance)
     },
     unlock() {
-      if (primed || !('speechSynthesis' in globalThis) || speechSynthesis.speaking) return
-      const silence = new SpeechSynthesisUtterance(' ')
-      silence.volume = 0
-      silence.addEventListener('end', () => (primed = true))
-      speechSynthesis.speak(silence)
+      const synth = globalThis.speechSynthesis
+      if (primed || !synth || synth.speaking) return
+      queueSystemSpeech(' ', { volume: 0, end: () => (primed = true) })
     },
     halt: () => globalThis.speechSynthesis?.cancel(),
     reset: () => globalThis.speechSynthesis?.cancel(),
