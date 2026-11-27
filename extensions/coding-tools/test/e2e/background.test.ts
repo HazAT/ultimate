@@ -77,7 +77,7 @@ it('starts a command in its own group, logs its output and stops by the returned
   await until(async () => !(await groupsOf(server, id)).some((file) => file.endsWith('.pid')))
 })
 
-it('tells the conversation once, with its exit code and log tail, when a background command ends', async () => {
+it('wakes the idle conversation once, with its exit code and log tail, when a background command ends', async () => {
   const server = await boot()
   const id = await create(server)
   const go = join(directory, 'go')
@@ -86,6 +86,7 @@ it('tells the conversation once, with its exit code and log tail, when a backgro
     id,
     `until [ -e '${go}' ]; do sleep 0.05; done; seq 1 30; echo failing >&2; exit 3`,
   )
+  server.host.faux!.setResponses([fauxAssistantMessage('Saw it fail')])
   await writeFile(go, '')
   const handle = (await server.harness.conversation(id, context))!
   const ended = async () =>
@@ -101,6 +102,9 @@ it('tells the conversation once, with its exit code and log tail, when a backgro
     'failing',
   ])
   expect(JSON.stringify(entry.model)).toContain('exited with code 3')
+  await until(async () =>
+    JSON.stringify((await handle.context(context)).entries.at(-1)?.model).includes('Saw it fail'),
+  )
   await until(async () => !(await groupsOf(server, id)).some((file) => file.endsWith('.pid')))
   expect(await ended()).toHaveLength(1)
 })

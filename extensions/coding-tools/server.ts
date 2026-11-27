@@ -284,13 +284,14 @@ export default function codingTools(
     await harness.commit(async (tx) => {
       if (await concludedWithOwners(tx, conversation)) return
       await handle.submit(tx, {
-        type: 'write',
+        type: 'input',
         requestId: `background-ended:${name}`,
+        whenBusy: 'steer',
         entry: {
           kind: BackgroundEndedEntry.kind,
           data: { command, pgid, exitCode, signal, log, tail },
-          model: [{ role: 'user', content, timestamp: Date.now() }],
         },
+        content,
       })
     }, BACKGROUND_CONTEXT)
   }
@@ -345,7 +346,7 @@ export default function codingTools(
     background: opt(
       bool({
         description:
-          'For servers, test runs and other long-running processes: start the command in its own process group and return at once with the group id, a log file of its output and the command that stops it. Do not add & yourself. When it ends, its exit code and the last lines of its log arrive with your next input: do not poll or sleep on the log to wait for it. Ultimate stops it when this conversation concludes or Ultimate restarts.',
+          'For servers, test runs and other long-running processes: start the command in its own process group and return at once with the group id, a log file of its output and the command that stops it. Do not add & yourself. When it ends, its exit code and the last lines of its log arrive as a new input that wakes you: do not poll or sleep on the log to wait for it. Ultimate stops it when this conversation concludes or Ultimate restarts.',
       }),
     ),
   })

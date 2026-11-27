@@ -34,9 +34,9 @@ again. A pid is signalled only while its pid file still names it with the start 
 
 When a background group ends on its own or is killed, the process that started it writes one
 `coding-tools.background-ended` entry (`refs.ts`) to the conversation, keyed by the group's name: the command, the
-exit code or signal, the log path and its last 20 lines. The entry carries model text, so it is placed at the next
-boundary like a note: the agent reads it with its next input instead of polling the log. It wakes nobody and is
-skipped once the conversation is concluded. The watch is the group's own `ended` promise, nothing durable: a restart
+exit code or signal, the log path and its last 20 lines. It is submitted as input: it starts a run in an idle
+conversation and steers a busy one, so the agent hears of the exit instead of polling the log. It is skipped once the
+conversation or an owner is concluded, so the groups a conclusion stops wake nobody. The watch is the group's own `ended` promise, nothing durable: a restart
 stops every background group anyway, so no exit outlives the process to report. The transcript shows it as a
 collapsed `&` card with the exit status, opening on the log tail.
 
