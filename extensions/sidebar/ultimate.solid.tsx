@@ -3,7 +3,6 @@ import { createMemo, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import { useProvided, cn, ParkedRuns, ROOT, useDocOf, useTasks } from '@/sdk/solid'
-import { useAutomations, timerWaits } from '../automations/ui.solid.tsx'
 import { OverviewDoc } from '../conversations/refs.ts'
 import { AgentMark, ConversationPhase } from '../conversations/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
@@ -16,6 +15,7 @@ import {
   useUnderway,
   waitLabel,
   waitingOnUser,
+  WaitTimers,
 } from '../messages/ui.solid.tsx'
 import { StandingDoc } from '../subagents/refs.ts'
 import { talkToUltimate } from '../subagents/ui.solid.tsx'
@@ -45,8 +45,7 @@ export function UltimateButton() {
   const parked = useProvided(ParkedRuns, () => null)
   const standing = useDocOf(() => ROOT, StandingDoc)
   const id = () => standing()?.ultimate
-  const list = useAutomations(() => 5000)
-  const timers = createMemo(() => timerWaits(list().data, standing()))
+  const timers = useProvided(WaitTimers, () => null)
   const tasks = useTasks()
   const messages = useDocOf(() => ROOT, MessagesDoc)
   const log = () => messages() ?? emptyMessages

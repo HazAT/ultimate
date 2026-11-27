@@ -28,7 +28,6 @@ import {
   useSurface,
   useUiState,
 } from '@/sdk/solid'
-import { useAutomations, timerWaits } from '../automations/ui.solid.tsx'
 import { useOverview } from '../conversations/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
 import {
@@ -38,6 +37,7 @@ import {
   useRemoteProgress,
   useUnderway,
   waitLabel,
+  WaitTimers,
 } from '../messages/ui.solid.tsx'
 import { StandingDoc } from '../subagents/refs.ts'
 import { LaneTree } from './hierarchy.solid.tsx'
@@ -66,8 +66,7 @@ function useStates() {
   const summaries = createMemo(() => new Map(conversations().map((item) => [item.id, item])))
   const standing = useDocOf(() => ROOT, StandingDoc)
   const primary = () => standing()?.ultimate
-  const automations = useAutomations(() => 5000)
-  const timers = createMemo(() => timerWaits(automations().data, standing()))
+  const timers = useProvided(WaitTimers, () => null)
   const underway = useUnderway()
   const primaryWait = createMemo(() => {
     const id = primary()
