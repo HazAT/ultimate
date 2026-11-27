@@ -1,15 +1,22 @@
 import { stat } from 'node:fs/promises'
-import { errnoCode, ignoring } from './errors.shared.ts'
+import { errnoCode } from './errors.shared.ts'
 
-const absent = (error: unknown) => ['ENOENT', 'ENOTDIR'].includes(errnoCode(error) ?? '')
+const unreadable = (error: unknown) => {
+  const code = errnoCode(error)
+  if (code === undefined) throw error
+  return ['ENOENT', 'ENOTDIR'].includes(code) ? '-' : `!${code}`
+}
 
 export async function signature(paths: readonly string[]) {
   const stats = await Promise.all(
-    paths.map((path) => stat(path, { bigint: true }).catch(ignoring(absent))),
+    paths.map((path) =>
+      stat(path, { bigint: true }).then(
+        (found) => `${found.ino}:${found.size}:${found.mtimeNs}`,
+        unreadable,
+      ),
+    ),
   )
-  return stats
-    .map((found) => (found ? `${found.ino}:${found.size}:${found.mtimeNs}` : '-'))
-    .join(',')
+  return stats.join(',')
 }
 
 export type FileMemoState<T> = {
