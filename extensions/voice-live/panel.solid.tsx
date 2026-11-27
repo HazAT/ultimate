@@ -860,8 +860,7 @@ export function VoicePanel() {
                 <p class="max-w-sm text-[13px] text-muted-foreground">
                   Use the mic below, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> when no other prompt
                   box is focused. Voice forks @ultimate with everything it knows, talks it through
-                  with you, and hands the result back when you agree; then the next talk starts
-                  fresh.
+                  with you, and hands the result back when you agree.
                 </p>
                 <SetupList />
               </div>
