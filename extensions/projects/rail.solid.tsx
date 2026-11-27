@@ -10,6 +10,7 @@ import {
   Show,
 } from 'solid-js'
 import type { ComponentProps } from 'solid-js'
+import type { JSX } from '@solidjs/web'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Skeleton } from '@/components/ui/skeleton.solid.tsx'
@@ -19,6 +20,7 @@ import {
   cn,
   keepLast,
   prettyName,
+  showSurface,
   useAction,
   useExtensions,
   usePageVisible,
@@ -26,7 +28,7 @@ import {
 } from '@/sdk/solid'
 import { deadline, debounce } from '../../lib/timers.ts'
 import { ProjectSwatch, RepoLabel, stemOf } from '../sidebar/ui.solid.tsx'
-import { shownPort, target } from './links.ts'
+import { inboxTarget, shownPort, target } from './links.ts'
 import { ListAction, PinAction } from './refs.ts'
 import type { RunningProject } from './refs.ts'
 
@@ -58,6 +60,39 @@ export function OpeningBar() {
         aria-hidden="true"
         class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 animate-sweep bg-brand/30 bg-size-[300%_100%] bg-no-repeat bg-[linear-gradient(90deg,transparent_30%,var(--color-brand)_50%,transparent_70%)]"
       />
+    </Show>
+  )
+}
+
+const opensHere = (event: MouseEvent) =>
+  event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+
+function InboxLink(props: { project?: RunningProject; class?: string; children: JSX.Element }) {
+  const here = () => !props.project || props.project.current
+  const href = () =>
+    here() ? `${location.pathname}?inbox=` : inboxTarget(props.project as RunningProject, location)
+  const label = () =>
+    here() ? 'Open the Inbox' : `Open ${prettyName(props.project?.name ?? '')}’s Inbox`
+  return (
+    <Show when={href()} fallback={<span class={props.class}>{props.children}</span>}>
+      {(link) => (
+        <a
+          aria-label={props.project ? `${label()} · ${props.project.questions} for you` : undefined}
+          class={cn('outline-none focus-visible:ring-1 focus-visible:ring-ring', props.class)}
+          href={link()}
+          onClick={(event) => {
+            if (!opensHere(event)) return
+            if (here()) {
+              event.preventDefault()
+              showSurface('inbox')
+            } else open(props.project?.url)
+          }}
+          onMouseDown={(event) => event.preventDefault()}
+          title={label()}
+        >
+          {props.children}
+        </a>
+      )}
     </Show>
   )
 }
@@ -202,9 +237,11 @@ function ProjectsRail() {
             </span>
             <Show when={wide() && !loading()}>
               <span class="truncate">
-                <span class={cn(questions() > 0 && 'text-amber-700 dark:text-amber-300')}>
-                  {questions()} for you
-                </span>
+                <Show when={questions() > 0} fallback={<span>{questions()} for you</span>}>
+                  <InboxLink class="rounded-sm text-amber-700 underline-offset-2 hover:underline dark:text-amber-300">
+                    {questions()} for you
+                  </InboxLink>
+                </Show>
                 {` · ${working()} working`}
               </span>
             </Show>
@@ -265,18 +302,16 @@ function Row(props: {
       .filter(Boolean)
       .join(' · '),
   )
-  const opensHere = (event: MouseEvent) =>
-    event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+  const count = () => questions() > 0
   const control = (render?: ComponentProps<typeof Button>['render']) => (
     <Button
       aria-current={here() ? 'page' : undefined}
       aria-label={title()}
       class={cn(
-        'group relative mx-1.5 flex h-10 items-center justify-start gap-0 rounded-lg text-left font-normal whitespace-normal outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+        'relative flex h-full min-w-0 flex-1 items-center justify-start gap-0 rounded-lg text-left font-normal whitespace-normal outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
         unreachable()
           ? 'disabled:opacity-45 data-disabled:opacity-45'
           : 'disabled:opacity-100 data-disabled:opacity-100',
-        props.wide && (here() ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
       )}
       data-project={props.project.name}
       disabled={!href()}
@@ -316,24 +351,15 @@ function Row(props: {
             family={props.family}
             folder={props.project.name}
           />
-          <Show when={!props.wide}>
-            <Show
-              when={questions() > 0}
-              fallback={
-                <Show when={busy()}>
-                  <span class="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
-                </Show>
-              }
-            >
-              <span class="absolute inset-0 m-auto flex h-4 w-fit min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] leading-none font-semibold text-black tabular-nums ring-2 ring-sidebar">
-                {questions()}
-              </span>
-            </Show>
+          <Show when={!props.wide && !count() && busy()}>
+            <span class="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
           </Show>
         </span>
       </span>
       <Show when={props.wide}>
-        <span class="flex min-w-0 flex-1 items-center gap-2 pr-2.5 pl-1.5">
+        <span
+          class={cn('flex min-w-0 flex-1 items-center gap-2 pl-1.5', count() ? 'pr-2' : 'pr-2.5')}
+        >
           <span class="flex min-w-0 flex-1 flex-col">
             <span
               class={cn(
@@ -354,24 +380,22 @@ function Row(props: {
               </Show>
             </span>
           </span>
-          <Show
-            when={questions() > 0}
-            fallback={
-              <Show when={busy()}>
-                <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
-              </Show>
-            }
-          >
-            <span class="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 px-1.5 font-mono text-[10px] font-semibold text-amber-700 tabular-nums ring-1 ring-amber-500/30 ring-inset dark:text-amber-300">
-              {questions()}
-            </span>
+          <Show when={!count() && busy()}>
+            <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
           </Show>
         </span>
       </Show>
     </Button>
   )
   return (
-    <div class={cn(props.first && props.gap && 'mt-2')} title={title()}>
+    <div
+      class={cn(
+        'group relative mx-1.5 flex h-10 items-center rounded-lg',
+        props.first && props.gap && 'mt-2',
+        props.wide && (here() ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/50'),
+      )}
+      title={title()}
+    >
       <Show when={href()} fallback={control()}>
         {(link) =>
           control((anchor) => (
@@ -380,6 +404,19 @@ function Row(props: {
             </a>
           ))
         }
+      </Show>
+      <Show when={count()}>
+        <InboxLink
+          class={cn(
+            'flex items-center justify-center rounded-full font-mono font-semibold tabular-nums transition-colors after:absolute after:-inset-1',
+            props.wide
+              ? 'relative mr-2.5 h-5 min-w-5 shrink-0 bg-amber-400/15 px-1.5 text-[10px] text-amber-700 ring-1 ring-amber-500/30 ring-inset hover:bg-amber-400/30 hover:ring-amber-500/70 dark:text-amber-300'
+              : 'absolute top-1/2 left-[22px] h-4 min-w-4 -translate-1/2 bg-amber-400 px-1 text-[9.5px] leading-none text-black ring-2 ring-sidebar hover:bg-amber-300',
+          )}
+          project={props.project}
+        >
+          {questions()}
+        </InboxLink>
       </Show>
     </div>
   )
