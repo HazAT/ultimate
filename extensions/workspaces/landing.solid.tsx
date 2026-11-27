@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Fold, Provided, cn, switchConversation, useConversations } from '@/sdk/solid'
 import type { ConversationSubject } from '../conversations/types.ts'
 import { FeatureTag } from '../conversations/ui.solid.tsx'
-import { LandedNote, LandingExtras } from './landing-points.ts'
+import { LandedNote, LandingExtras } from './landing-points.web.ts'
 
 export function Open(props: { id: ConversationId; card: number; entry?: number }) {
   const conversations = useConversations()

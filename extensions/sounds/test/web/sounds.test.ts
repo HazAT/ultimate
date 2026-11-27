@@ -1,9 +1,9 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import type { OverviewRow } from '../../../conversations/types.ts'
-import { cuesOf, listener } from '../../cues.ts'
-import type { Watched } from '../../cues.ts'
-import { linesOf } from '../../narration.ts'
+import { cuesOf, listener } from '../../cues.web.ts'
+import type { Watched } from '../../cues.web.ts'
+import { linesOf } from '../../narration.web.ts'
 
 const agent = 7 as ConversationId
 const answered = (answerId: number, extra: Partial<OverviewRow> = {}): OverviewRow => ({

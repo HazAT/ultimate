@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createCapture } from '../../capture.ts'
+import { createCapture } from '../../capture.web.ts'
 
 beforeEach(() => vi.stubGlobal('MediaRecorder', Object))
 afterEach(() => vi.unstubAllGlobals())

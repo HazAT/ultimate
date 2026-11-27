@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { hiddenConversationIds } from '../../visible.ts'
+import { hiddenConversationIds } from '../../visible.web.ts'
 
 const conversations = [
   { id: 1 },

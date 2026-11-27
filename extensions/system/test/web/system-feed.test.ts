@@ -9,7 +9,7 @@ import {
   older,
   pagesOlder,
   wantOlder,
-} from '../../feed.ts'
+} from '../../feed.web.ts'
 import type { SystemRow } from '../../refs.ts'
 
 const rows = (from: number, count: number): SystemRow[] =>

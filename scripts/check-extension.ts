@@ -54,22 +54,19 @@ try {
     symlinkSync(folder, join(temp, link))
     return { link, folder }
   })
-  const web = JSON.parse(readFileSync(join(clone, 'tsconfig.web.json'), 'utf8'))
-  const cloneWebAndBundlerOptions = web.compilerOptions
+  const cloneOptions = JSON.parse(
+    readFileSync(join(clone, 'tsconfig.json'), 'utf8'),
+  ).compilerOptions
   writeFileSync(
     join(temp, 'tsconfig.json'),
     JSON.stringify({
       compilerOptions: {
-        ...cloneWebAndBundlerOptions,
-        composite: false,
-        emitDeclarationOnly: false,
-        outDir: undefined,
-        noEmit: true,
-        types: [...cloneWebAndBundlerOptions.types, 'node'],
+        ...cloneOptions,
         paths: Object.fromEntries(
-          Object.entries(cloneWebAndBundlerOptions.paths as Record<string, string[]>).map(
-            ([alias, targets]) => [alias, targets.map((target) => join(clone, target))],
-          ),
+          Object.entries(cloneOptions.paths as Record<string, string[]>).map(([alias, targets]) => [
+            alias,
+            targets.map((target) => join(clone, target)),
+          ]),
         ),
       },
       include: ['ext/*/web.solid.tsx', 'ext/*/server.ts'],

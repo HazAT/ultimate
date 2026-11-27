@@ -13,8 +13,8 @@ import {
   useStore,
 } from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
-import { callerOf } from './caller.ts'
-import { openQuestion } from './data.ts'
+import { callerOf } from './caller.shared.ts'
+import { openQuestion } from './data.web.ts'
 import { CallerAction, MessagesDoc } from './refs.ts'
 
 type Target = { conversation: ConversationId; entry?: number; call?: string; message?: number }

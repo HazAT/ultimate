@@ -5,7 +5,7 @@ import { useDialog, useTranscript } from '@/sdk/solid'
 import type { SolidEntryProps } from '@/sdk/solid'
 import { FallbackEntry } from './entries.ts'
 import type { Fallback } from './refs.ts'
-import { dialogs, openLogin, openPicker } from './state.ts'
+import { dialogs, openLogin, openPicker } from './state.web.ts'
 
 const switchedTo: Record<Exclude<Fallback['reason'], 'none'>, string> = {
   same: 'the same model through another login',

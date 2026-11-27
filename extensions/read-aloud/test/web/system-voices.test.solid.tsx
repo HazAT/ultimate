@@ -46,7 +46,7 @@ beforeEach(() => {
 const speakWith = async (synth: FakeSynth) => {
   vi.stubGlobal('speechSynthesis', synth)
   const { speech } = await import('../../voice.solid.tsx')
-  const { splitSentences } = await import('../../speech.ts')
+  const { splitSentences } = await import('../../speech.web.ts')
   speech.setVoice('system')
   speech.setKeyed(true)
   flush()

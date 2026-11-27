@@ -80,7 +80,7 @@ import type { ModelPick } from '../models/ui.solid.tsx'
 import { PlaybackBar, SOUND_BLOCKED, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
 
 import { Voicing, Waveform } from './turns.solid.tsx'
-import { REST, settle, type Snap } from './sheet.ts'
+import { REST, settle, type Snap } from './sheet.web.ts'
 
 const FULL_TOP = 36
 const [sheetRoom, setSheetRoom] = createRoot(() => createSignal(0))

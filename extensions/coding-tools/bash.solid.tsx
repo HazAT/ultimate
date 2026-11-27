@@ -18,8 +18,8 @@ import {
   type SolidToolProps,
   type ToolCallView,
 } from '@/sdk/solid'
-import { formatBashCommand } from './bash-command.ts'
-import type { BashStep } from './bash-command.ts'
+import { formatBashCommand } from './bash-command.web.ts'
+import type { BashStep } from './bash-command.web.ts'
 import { CodeBlock } from './code.solid.tsx'
 import { Caret, text, useFollow, usePath } from './display.solid.tsx'
 import { CancelAction } from './refs.ts'

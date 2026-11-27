@@ -12,7 +12,7 @@ import { rateLimited } from '../../lib/rate-limit.ts'
 import { Standing } from '../subagents/api.ts'
 import { PauseApi } from './api.ts'
 import { formatDuration } from '../../lib/format.ts'
-import { autoPlayMinutes } from './autoplay.ts'
+import { autoPlayMinutes } from './autoplay.shared.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type {
   AutoPlayed,

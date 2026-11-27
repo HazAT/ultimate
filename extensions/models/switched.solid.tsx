@@ -2,7 +2,7 @@ import { Brain, Cpu } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { useTranscript } from '@/sdk/solid'
 import type { SolidEntryProps } from '@/sdk/solid'
-import { switchAt } from './switches.ts'
+import { switchAt } from './switches.web.ts'
 
 export function Switched(props: SolidEntryProps) {
   const transcript = useTranscript()

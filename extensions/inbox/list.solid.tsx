@@ -11,8 +11,8 @@ import {
   useUiState,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { SELECTED, WAIT_WARNING_AFTER_MS, amber, shown } from './items.ts'
-import type { Anchor, Row, Selection } from './items.ts'
+import { SELECTED, WAIT_WARNING_AFTER_MS, amber, shown } from './items.web.ts'
+import type { Anchor, Row, Selection } from './items.web.ts'
 
 function InboxRow(props: {
   row: Row

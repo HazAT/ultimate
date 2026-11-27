@@ -46,13 +46,13 @@ The UI is Solid, and so is every facet: `web.solid.tsx`. A leftover React `web.t
   ([Solid facets](../../docs/extensions/sdk.md#solid-facets)).
 - **Other extensions through their contracts.** A Solid file imports another extension's `refs.ts` (its documents and
   actions) or its `ui.solid.tsx` (its components, such as conversations' `ConversationRef`). Shared data goes in a
-  `.ts` file or `lib/` (`lib/conversation-ref.ts`, `extensions/sounds/variants.ts`). Lint: `ultimate/api-only-imports`.
+  `.ts` file or `lib/` (`lib/conversation-ref.ts`, `extensions/sounds/variants.web.ts`). Lint: `ultimate/api-only-imports`.
 - **Module stores** that several parts read (a cache, a picker's target) live in a `.ts` file as one small cell with
-  `get`, `set` and `subscribe`; Solid reads it with a signal set from `subscribe` (`extensions/models/state.ts`,
+  `get`, `set` and `subscribe`; Solid reads it with a signal set from `subscribe` (`extensions/models/state.web.ts`,
   `readers.solid.tsx`).
 - **Contracts:** `ui.solid.tsx` holds only what other extensions use; a component's implementation can live in its
   own file and be re-exported. A pure `.ts` helper counts as server code to `ultimate/api-only-imports`: it imports
-  other extensions' refs only as types, or takes their tokens as arguments (`extensions/activity/events.ts`).
+  other extensions' refs only as types, or takes their tokens as arguments (`extensions/activity/events.web.ts`).
 - **Markdown:** the `link`, `inlineCode` and `codeBlocks` renderers are components passed straight to `web.solid.tsx`
   (`extensions/diagrams/mermaid.solid.tsx`). Use `Markdown` and `MentionText` from
   `@/components/markdown/markdown.solid.tsx` to show Markdown and mentions.
@@ -71,7 +71,7 @@ The UI is Solid, and so is every facet: `web.solid.tsx`. A leftover React `web.t
   as props (`{ conversation }`), and `Provided` renders it under its extension name. Keep UI and data in separate
   points (the sidebar's task data and task chip). A data provider takes an input accessor and returns a value
   accessor. Declare a shared point once and re-export it from `ui.solid.tsx`; built-ins keep definitions in a plain
-  `.ts` file (`extensions/conversations/points.ts`) so tests can read them without loading the browser SDK. A core-tier
+  `.ts` file (`extensions/conversations/points.web.ts`) so tests can read them without loading the browser SDK. A core-tier
   reader can't import an optional extension's contract: it declares the point instead.
 - **Point and slot readers:** `useProvided` for one data value, `useAllProvided` for every provider's (`Unlisted`),
   `Provided` for UI (`UnderUltimate`, the task chip), and `Slot` for a slot (`sidebar.top`). Read a point once per
@@ -125,10 +125,10 @@ Icons come from `@lucide/solid`. `extensions/keep-warm/chip.solid.tsx` is a smal
 - **Whose key:** `useExtensionUiState` takes the extension name of where it renders, so a part rendered through another
   extension's point (a System tab, the sidebar's `UnderUltimate`) writes under that extension's name: wire's tab once
   wrote its own state over `ext.system.tab`. Such a part uses `useUiState` with an explicit `ext.<own name>.<key>`
-  from a shared `.ts` file (`extensions/wire/state.ts`).
+  from a shared `.ts` file (`extensions/wire/state.web.ts`).
 - **A durable selection names what is shown.** When the selected row leaves, store the row that took its place, not
   just a rule for finding it again, or a later arrival takes over the pane under the person's cursor
-  (`selectionAfterChange` in `extensions/inbox/items.ts`). Order rows with a tie-breaker, never by time alone. An
+  (`selectionAfterChange` in `extensions/inbox/items.web.ts`). Order rows with a tie-breaker, never by time alone. An
   effect that repairs stored state writes in `writingAs('app', …)`; UI state never resends an `app` value the server
   refused until a write goes through, the key changes or someone writes it, so the effect needs no guard of its own.
 - **Reading the server:** `useAction(ref, args, options)` shares one call per action, args and conversation. `every` takes ms or
@@ -312,7 +312,8 @@ ui-sdk:
 
 Tooling:
 
-- A browser helper extracted to `.ts` goes in `tsconfig.web.json`'s `include`. Keep shared pure helpers independent
+- A browser helper extracted to `.ts` is named `*.web.ts`; one the server imports too is `*.shared.ts` (no Node, no
+  browser modules). Lint holds both to it. Keep shared pure helpers independent
   of the SDK: pass SDK functions in or use `lib/`. Another extension reaches an extension-local browser helper
   through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
 - A test fixture that registers a facet names it `web.solid.tsx`.
@@ -332,7 +333,7 @@ Tooling:
   popover), not one per case.
 - **Files:** `*.test.solid.tsx`, in the `solid-dom` Vitest project (jsdom). Mount with `renderSolid`
   from `test/web/solid-dom-setup.ts`, which disposes after each test. Import only browser-safe helpers from `test/web`;
-  `test/helpers.ts` imports the server and fails the web type check (lint:
+  `test/helpers.ts` imports the server and its real-time waits (lint:
   `ultimate/no-server-helpers-in-web-tests`).
 - **Timing:** reads lag writes: `flush()` from `solid-js` before asserting, `await settle()` from
   `@ui-sdk/core/testing` for deferred SDK work, but not under fake timers. Under fake timers `agent.act` never settles

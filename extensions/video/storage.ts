@@ -18,7 +18,7 @@ import {
 } from './input.ts'
 import { gemini } from './gemini.ts'
 import type { Google } from './gemini.ts'
-import { KEPT_MS } from './limits.ts'
+import { KEPT_MS } from './limits.shared.ts'
 import { VideoReady, VideosDoc } from './refs.ts'
 import type { Video, Videos } from './refs.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'

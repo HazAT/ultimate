@@ -3,7 +3,7 @@ import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { KEPT_MS, MAX_FILE_BYTES_FOR_12_MB_ACTION } from './limits.ts'
+import { KEPT_MS, MAX_FILE_BYTES_FOR_12_MB_ACTION } from './limits.shared.ts'
 import { UploadAction } from './refs.ts'
 
 const uploadsOutsideCheckout = (home: string) => join(home, 'attachments')

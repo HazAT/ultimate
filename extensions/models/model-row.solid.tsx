@@ -2,8 +2,8 @@ import { Brain, Check } from '@lucide/solid'
 import { createMemo, Show } from 'solid-js'
 import { CommandItem } from '@/components/ui/command.solid.tsx'
 import { cn } from '@/sdk/solid'
-import { modelFacts, modelKey } from './state.ts'
-import type { ModelInfo } from './state.ts'
+import { modelFacts, modelKey } from './state.web.ts'
+import type { ModelInfo } from './state.web.ts'
 
 export function ModelRow(props: {
   model: ModelInfo

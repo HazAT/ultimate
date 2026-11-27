@@ -1,7 +1,14 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { setAsideIds } from '../../../web/src/app/compact.ts'
-import { breakdownAt, diffAt, modelLine, opensContext, ownStart, promptAt } from '../breakdown.ts'
+import {
+  breakdownAt,
+  diffAt,
+  modelLine,
+  opensContext,
+  ownStart,
+  promptAt,
+} from '../breakdown.shared.ts'
 
 let next = 1
 // Fixtures write messages loosely; the module reads only the fields they set.

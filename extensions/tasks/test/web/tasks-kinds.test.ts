@@ -1,6 +1,6 @@
 import type { ConversationId, TaskGraphNode, TaskId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { meaning } from '../../kinds.ts'
+import { meaning } from '../../kinds.web.ts'
 
 const task = (kind: string, state: TaskGraphNode['state'], extra: Partial<TaskGraphNode> = {}) =>
   ({

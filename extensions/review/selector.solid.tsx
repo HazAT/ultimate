@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/command.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { ROOT, cn, useAction } from '@/sdk/solid'
-import { shortSpec } from './comments.ts'
+import { shortSpec } from './comments.shared.ts'
 import { RangesAction } from './refs.ts'
 import type { ReviewRange } from './refs.ts'
 

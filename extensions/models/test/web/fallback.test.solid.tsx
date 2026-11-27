@@ -8,7 +8,7 @@ import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store } from '../../../../web/src/sdk/client.ts'
 import type { SolidEntryProps } from '../../../../web/src/sdk/types.ts'
-import { dialogs, pickerTarget } from '../../state.ts'
+import { dialogs, pickerTarget } from '../../state.web.ts'
 import models from '../../web.solid.tsx'
 
 const agent = createAgent()

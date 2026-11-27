@@ -1,9 +1,9 @@
 import { createMemo, Show } from 'solid-js'
 import { StatusButton } from '@/components/ui/status-trigger.solid.tsx'
 import { cn, openPanel, showSurface, switchConversation, useNow } from '@/sdk/solid'
-import { active, attention, lookOf, looks, worstFirst } from './looks.ts'
-import type { Look } from './looks.ts'
-import { openAutomationsPanel } from './navigation.ts'
+import { active, attention, lookOf, looks, worstFirst } from './looks.web.ts'
+import type { Look } from './looks.web.ts'
+import { openAutomationsPanel } from './navigation.web.ts'
 import { Dot } from './parts.solid.tsx'
 import { useAutomations } from './live.solid.tsx'
 

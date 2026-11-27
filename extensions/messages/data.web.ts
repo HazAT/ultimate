@@ -5,8 +5,8 @@ import type { Wait, WaitFacts } from '../../lib/waits.ts'
 import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
 import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote, RemoteProgress } from './refs.ts'
-import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/api.ts'
-import { LanderReportEntry } from '../workspaces/api.ts'
+import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/refs.ts'
+import { LanderReportEntry } from '../workspaces/refs.ts'
 
 export { isOpen, isOwed, openQuestion }
 

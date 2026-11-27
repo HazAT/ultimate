@@ -117,6 +117,8 @@ const membersOf = (declaration: Node): Node[] =>
 const repositoryPath = (filename: string) =>
   path.relative(process.cwd(), filename).split(path.sep).join('/')
 const solidFile = (filename: string) => filename.endsWith('.solid.tsx')
+/** Code the page runs: `*.tsx`, browser-only `*.web.ts` and `*.shared.ts`, which the server runs too. */
+const browserFile = (filename: string) => /\.(tsx|web\.ts|shared\.ts)$/.test(filename)
 const bridgeFile = 'web/src/sdk/contribution.solid.tsx'
 const sdkEntries = ['web/src/sdk/solid.ts']
 const uiKitFile = (filename: string) =>
@@ -689,7 +691,7 @@ export default {
             context.report({
               node,
               message:
-                "test/helpers.ts imports the server, and a web test is type-checked by tsconfig.web.json, which then fails as 'Invalid tsconfig'. Use the browser-safe helpers in test/web (solid-dom-setup.ts, fake-source.ts, agent-names.ts) and vi.advanceTimersByTimeAsync or settle() instead of until.",
+                'test/helpers.ts brings the whole server and real-time waits into a page test, which then runs slow and reaches what a page never could. Use the browser-safe helpers in test/web (solid-dom-setup.ts, fake-source.ts, agent-names.ts) and vi.advanceTimersByTimeAsync or settle() instead of until.',
             })
         }
         return { ImportDeclaration: check, ImportExpression: check }
@@ -820,7 +822,7 @@ export default {
       create(context: Context) {
         const own = extensionOf(context.filename)
         if (!own) return {}
-        const browser = context.filename.endsWith('.tsx')
+        const browser = browserFile(context.filename)
         const allowed = browser ? ['refs.ts', 'ui.solid.tsx'] : ['api.ts']
         const how = browser
           ? 'its refs.ts (the refs of its documents and actions) or its ui.solid.tsx (its components, hooks and points)'
@@ -923,7 +925,6 @@ export default {
             return report(node, `${file} is a contract: it imports no node:* module.`)
           const target = source.startsWith('.') ? resolved(context.filename, source) : undefined
           if (file === 'refs.ts') {
-            // The browser imports refs.ts (tsconfig.web.json), so it may not reach server code even for types.
             if (node.importKind !== 'type')
               return target?.[0] === 'shared' || onlyDefineEntry(node)
                 ? undefined

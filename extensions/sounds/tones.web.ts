@@ -1,10 +1,10 @@
-import type { Sound } from './cues.ts'
+import type { Sound } from './cues.web.ts'
 
 let volumeGain01 = 1
-let lazyEngine: Promise<typeof import('./engine.ts')> | undefined
+let lazyEngine: Promise<typeof import('./engine.web.ts')> | undefined
 
 export const engine = () =>
-  (lazyEngine ??= import('./engine.ts').then((tone) => {
+  (lazyEngine ??= import('./engine.web.ts').then((tone) => {
     tone.setVolume(volumeGain01)
     return tone
   }))

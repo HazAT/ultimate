@@ -18,7 +18,7 @@ import {
   switchConversation,
   type SolidToolProps,
 } from '@/sdk/solid'
-import { openAutomation, openAutomationsPanel } from './navigation.ts'
+import { openAutomation, openAutomationsPanel } from './navigation.web.ts'
 
 const shell = { openPanel, showSurface, switchConversation }
 const words = (value: unknown) => (typeof value === 'string' ? value : '')

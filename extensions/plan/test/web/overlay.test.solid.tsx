@@ -3,8 +3,8 @@ import { expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { Plan } from '../../refs.ts'
-import { PLAN_OPEN } from '../../status.ts'
-import type { PlanOpen } from '../../status.ts'
+import { PLAN_OPEN } from '../../status.web.ts'
+import type { PlanOpen } from '../../status.web.ts'
 import facet from '../../web.solid.tsx'
 
 const coordinator = parseConversationId(21)

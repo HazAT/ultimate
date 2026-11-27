@@ -1,6 +1,6 @@
 import type { FileDiffMetadata, SelectedLineRange } from '@pierre/diffs'
-import { excerptOf } from './comments.ts'
-import type { ReviewComment } from './comments.ts'
+import { excerptOf } from './comments.shared.ts'
+import type { ReviewComment } from './comments.shared.ts'
 
 const strip = (line: string | undefined) => (line ?? '').replace(/\r?\n$/, '')
 

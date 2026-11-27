@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import type { Line } from '../../narration.ts'
-import { speaker } from '../../speaker.ts'
+import type { Line } from '../../narration.web.ts'
+import { speaker } from '../../speaker.web.ts'
 
 afterEach(() => vi.useRealTimers())
 

@@ -1,8 +1,8 @@
 import { createSignal, flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { SELECTED, UNLOADED } from '../../items.ts'
-import type { Entry, Selection } from '../../items.ts'
+import { SELECTED, UNLOADED } from '../../items.web.ts'
+import type { Entry, Selection } from '../../items.web.ts'
 import { useSelection } from '../../selection.solid.tsx'
 
 const harness = vi.hoisted(() => ({ writes: [] as unknown[], failures: 0, rejections: 0 }))

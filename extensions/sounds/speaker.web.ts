@@ -1,7 +1,7 @@
 import { pace } from '../../lib/timers.ts'
-import type { Cue } from './cues.ts'
-import { linesOf } from './narration.ts'
-import type { Line } from './narration.ts'
+import type { Cue } from './cues.web.ts'
+import { linesOf } from './narration.web.ts'
+import type { Line } from './narration.web.ts'
 
 const cueGatherMs = 1500
 

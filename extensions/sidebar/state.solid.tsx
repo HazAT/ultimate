@@ -33,8 +33,8 @@ import {
 import { StandingDoc } from '../subagents/refs.ts'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import type { Workspace, WorkspaceIndex } from '../workspaces/types.ts'
-import { topLevelRows } from './listed.ts'
-import { Unlisted } from './points.ts'
+import { topLevelRows } from './listed.web.ts'
+import { Unlisted } from './points.web.ts'
 
 export type SidebarConversation = ConversationSummary & { workspace?: Workspace }
 const emptyWorkspaces: WorkspaceIndex = {

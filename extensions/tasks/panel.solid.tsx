@@ -41,10 +41,10 @@ import {
 import { MessagesDoc } from '../messages/refs.ts'
 import { Address } from '../messages/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
-import { groups, meaning } from './kinds.ts'
+import { groups, meaning } from './kinds.web.ts'
 import { DescribeAction, StartedAction } from './refs.ts'
-import { buildVisibleTaskTree, places, rawTitle, status, top } from './tree.ts'
-import type { Place, TaskIcon } from './tree.ts'
+import { buildVisibleTaskTree, places, rawTitle, status, top } from './tree.web.ts'
+import type { Place, TaskIcon } from './tree.web.ts'
 
 const LONG_RUNNING_WARNING_MS = 10 * 60_000
 

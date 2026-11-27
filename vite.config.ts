@@ -86,11 +86,7 @@ export default defineConfig({
           'test/**',
           'extensions/*/test/**',
           'lib/errors.ts',
-          'extensions/review/drafts.ts',
-          'extensions/sounds/conductor.ts',
-          'extensions/sounds/engine.ts',
-          'extensions/sounds/speaker.ts',
-          'extensions/sounds/tones.ts',
+          'extensions/**/*.web.ts',
         ],
         rules: { 'ultimate/no-unowned-work': 'error' },
       },
@@ -188,6 +184,12 @@ export default defineConfig({
                   allowTypeImports: true,
                   message: 'Use host capabilities for core runtime behaviour.',
                 },
+                {
+                  group: ['**/*.web.ts', '**/*.solid.tsx'],
+                  allowTypeImports: true,
+                  message:
+                    'Server code cannot run browser modules; move what both need into a *.shared.ts file.',
+                },
               ],
             },
           ],
@@ -235,7 +237,11 @@ export default defineConfig({
         rules: { 'ultimate/no-raw-stream': 'error' },
       },
       {
-        files: ['web/src/**', 'extensions/**/*.tsx', '.ultimate/extensions/**/*.tsx'],
+        files: [
+          'web/src/**',
+          'extensions/**/*.{tsx,web.ts,shared.ts}',
+          '.ultimate/extensions/**/*.{tsx,web.ts,shared.ts}',
+        ],
         excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**'],
         rules: {
           // In the page `void` marks a call not awaited on purpose: client.ts turns an unhandled action failure into a
@@ -253,6 +259,29 @@ export default defineConfig({
                   group: ['**/bin/**'],
                   allowTypeImports: true,
                   message: 'Use host capabilities for core runtime behaviour.',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        // Replaces the browser restriction above for *.shared.ts, so it repeats it and adds browser modules.
+        files: ['extensions/**/*.shared.ts', '.ultimate/extensions/**/*.shared.ts'],
+        rules: {
+          'no-restricted-imports': [
+            'error',
+            {
+              patterns: [
+                {
+                  group: ['node:*', '**/server/**'],
+                  message: 'Browser code cannot import Node or server modules.',
+                },
+                {
+                  group: ['**/bin/**', '**/*.web.ts', '**/*.solid.tsx'],
+                  allowTypeImports: true,
+                  message:
+                    'The server runs a *.shared.ts file too, so it imports no browser module.',
                 },
               ],
             },

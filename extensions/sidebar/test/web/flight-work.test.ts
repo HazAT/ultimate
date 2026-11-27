@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { workOf } from '../../work.ts'
+import { workOf } from '../../work.web.ts'
 
 const branch = 'ultimate/47c790-12'
 

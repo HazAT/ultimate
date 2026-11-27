@@ -8,13 +8,13 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, getState, ROOT, showSurface, useDocOf, useUiState } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { RootsDoc } from './refs.ts'
-import { MEMORY_FOCUS, MEMORY_SURFACE, memoryChipClass } from './memory-chip.ts'
+import { MEMORY_FOCUS, MEMORY_SURFACE, memoryChipClass } from './memory-chip.web.ts'
 
 /**
  * `MEMORY_SURFACE` is the id of lineage's Memory surface (every root's project memory, grouped by kind);
  * `MEMORY_FOCUS` the UI state key of the memory it shows unfolded and scrolled into view.
  */
-export { MEMORY_FOCUS, MEMORY_SURFACE } from './memory-chip.ts'
+export { MEMORY_FOCUS, MEMORY_SURFACE } from './memory-chip.web.ts'
 export {
   AbstractEntry,
   Branched,
@@ -28,7 +28,7 @@ export {
 } from './refs.ts'
 export type { MemoryItem } from './refs.ts'
 /** What the Memory surface shows above the memories (`dream` provides its Dream button). */
-export { MemoryHeader } from './points.ts'
+export { MemoryHeader } from './points.web.ts'
 
 /** The project's roots, live in every client; undefined until the stream delivers them. */
 export function useRoots() {

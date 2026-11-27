@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { clauses, createPlayer, fetchedVoice, splitReply } from '../speech.ts'
+import { clauses, createPlayer, fetchedVoice, splitReply } from '../speech.web.ts'
 import { until } from '../../../test/helpers.ts'
 
 function fakeVoice(options: { refuse?: () => Error | undefined } = {}) {

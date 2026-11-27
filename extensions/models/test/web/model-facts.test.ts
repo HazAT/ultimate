@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { modelFacts } from '../../state.ts'
-import type { ModelInfo } from '../../state.ts'
+import { modelFacts } from '../../state.web.ts'
+import type { ModelInfo } from '../../state.web.ts'
 
 const model: ModelInfo = {
   id: 'atlas',

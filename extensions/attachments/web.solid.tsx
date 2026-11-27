@@ -1,5 +1,5 @@
 import { api, defineWebExtension, FileUpload, provide } from '@/sdk/solid'
-import { KEPT_MS, MAX_FILE_BYTES_FOR_12_MB_ACTION } from './limits.ts'
+import { KEPT_MS, MAX_FILE_BYTES_FOR_12_MB_ACTION } from './limits.shared.ts'
 import { UploadAction } from './refs.ts'
 
 async function base64(blob: Blob) {

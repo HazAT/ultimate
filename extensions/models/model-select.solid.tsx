@@ -10,8 +10,8 @@ import {
 } from '@/components/ui/command.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { cn, useModels } from '@/sdk/solid'
-import { modelIdOf } from './family-state.ts'
-import { matchesEveryQueryTerm, modelKey, termsOf } from './state.ts'
+import { modelIdOf } from './family-state.web.ts'
+import { matchesEveryQueryTerm, modelKey, termsOf } from './state.web.ts'
 import { ModelRow } from './model-row.solid.tsx'
 
 const LIMIT = 150

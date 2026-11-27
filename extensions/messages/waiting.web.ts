@@ -1,6 +1,6 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { openQuestion } from '../../lib/message-state.ts'
-import { callerOf } from './caller.ts'
+import { callerOf } from './caller.shared.ts'
 import { AskedEntry } from './entries.ts'
 import type { Message } from './refs.ts'
 

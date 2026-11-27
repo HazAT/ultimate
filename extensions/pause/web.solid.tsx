@@ -11,7 +11,7 @@ import {
   useTasks,
 } from '@/sdk/solid'
 import { AutoPlayedNote, Held, Limit, Note } from './entries.solid.tsx'
-import { parkedConversations } from './parked.ts'
+import { parkedConversations } from './parked.web.ts'
 import { PauseAction, PauseDoc, PlayAction } from './refs.ts'
 import { Hint, Item, Play } from './status.solid.tsx'
 

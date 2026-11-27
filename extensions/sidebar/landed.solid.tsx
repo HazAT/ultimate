@@ -5,8 +5,8 @@ import { events, formatAgo, keepLast, ROOT, useAction, useDocOf } from '@/sdk/so
 import { RecentAction, TallyDoc } from '../lineage/refs.ts'
 import { CommitCount } from '../workspaces/ui.solid.tsx'
 import { FeatureTag } from '../conversations/ui.solid.tsx'
-import { groupLandings, groupRange } from './landings.ts'
-import type { Landing, LandingGroup } from './landings.ts'
+import { groupLandings, groupRange } from './landings.web.ts'
+import type { Landing, LandingGroup } from './landings.web.ts'
 import { More, Section } from './section.solid.tsx'
 import { shell, useSidebarState } from './state.solid.tsx'
 

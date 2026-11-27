@@ -1,7 +1,7 @@
 import { For, Show, createMemo } from 'solid-js'
 import { formatTokens, plural } from '@/sdk/solid'
-import { isBranch, isObject, parse, requestShape } from './json.ts'
-import type { Json, JsonObject } from './json.ts'
+import { isBranch, isObject, parse, requestShape } from './json.web.ts'
+import type { Json, JsonObject } from './json.web.ts'
 import type { WireCall, WireUsage } from './refs.ts'
 import { CacheMark, Children, Fold, Node, Part, TextBlock } from './tree.solid.tsx'
 

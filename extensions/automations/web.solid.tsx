@@ -6,11 +6,11 @@ import { StandingDoc } from '../subagents/refs.ts'
 import { AutomationCall } from './call.solid.tsx'
 import { Chip } from './chip.solid.tsx'
 import { Escalated, Failed, Finished, Fired, Writing } from './entry.solid.tsx'
-import { openAutomationsPanel } from './navigation.ts'
+import { openAutomationsPanel } from './navigation.web.ts'
 import { AutomationsPanel } from './panel.solid.tsx'
 import { AutomationsSection } from './sidebar.solid.tsx'
 import { useAutomations } from './live.solid.tsx'
-import { timerWaits } from './waits.ts'
+import { timerWaits } from './waits.web.ts'
 
 function waitTimers() {
   const list = useAutomations(() => 5000)

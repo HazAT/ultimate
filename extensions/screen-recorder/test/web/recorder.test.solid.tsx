@@ -8,10 +8,10 @@ import { parseConversationId } from '../../../../lib/ids.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { installShortcuts } from '../../../../web/src/app/keyboard.ts'
 import { registry } from '../../../../web/src/sdk/client.ts'
-import { capture } from '../../../dictation/capture.ts'
+import { capture } from '../../../dictation/capture.web.ts'
 import { DictationShortcuts } from '../../../dictation/routing.solid.tsx'
 import { recordButton } from '../../button.solid.tsx'
-import { createScreenRecorder } from '../../capture.ts'
+import { createScreenRecorder } from '../../capture.web.ts'
 
 class FakeTrack extends EventTarget {
   stopped = false

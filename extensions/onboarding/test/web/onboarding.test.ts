@@ -1,5 +1,10 @@
 import { expect, it } from 'vitest'
-import { extensionChoices, extensionOptions, settledChoice, switchScope } from '../../choices.ts'
+import {
+  extensionChoices,
+  extensionOptions,
+  settledChoice,
+  switchScope,
+} from '../../choices.web.ts'
 
 it('saves extension switches to user settings unless the user picks this project', () => {
   expect(switchScope(true)).toBe('user')

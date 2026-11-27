@@ -24,7 +24,7 @@ import {
   isFamilyName,
 } from '../../lib/families.ts'
 import { refreshFamilies } from './families.solid.tsx'
-import { modelIdOf } from './family-state.ts'
+import { modelIdOf } from './family-state.web.ts'
 import { ModelSelect } from './model-select.solid.tsx'
 import { SaveFamiliesAction } from './refs.ts'
 import type { FamiliesView, FamilyView, SaveFamilies } from './refs.ts'

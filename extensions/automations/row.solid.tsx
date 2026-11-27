@@ -38,11 +38,11 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import { useRefreshList } from './live.solid.tsx'
-import { attention, clock, lookOf, looks, spent, stateLine, statusLabel } from './looks.ts'
+import { attention, clock, lookOf, looks, spent, stateLine, statusLabel } from './looks.web.ts'
 import { BusyDot, Dot, KindIcon, RunIcon, Tag } from './parts.solid.tsx'
 import { DeleteAction, DescribeAction, PauseAction, ResumeAction, RunAction } from './refs.ts'
 import type { Automation, Run, Schedule } from './refs.ts'
-import { actions, automationLabel, full, triggerWords, words } from './words.ts'
+import { actions, automationLabel, full, triggerWords, words } from './words.web.ts'
 
 export function useAct() {
   const refreshList = useRefreshList()

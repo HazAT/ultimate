@@ -1,6 +1,6 @@
 /** Side chats for other extensions' browser code: opening one, their document, and which one is in front. */
 import { useUiState } from '@/sdk/solid'
-import { FRONT_KEY } from './front.ts'
+import { FRONT_KEY } from './front.web.ts'
 
 export { OpenAction, SideChatsDoc } from './refs.ts'
 

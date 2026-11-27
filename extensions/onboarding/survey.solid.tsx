@@ -17,8 +17,8 @@ import {
 import type { SolidComposerProps } from '@/sdk/solid'
 import { MemoryDoc, RootsDoc } from '../lineage/refs.ts'
 import { StandingDoc } from '../subagents/refs.ts'
-import { firstRunDialog } from './dialogs.ts'
-import { onboarded } from './onboarded.ts'
+import { firstRunDialog } from './dialogs.web.ts'
+import { onboarded } from './onboarded.web.ts'
 import { DismissAction, StartAction, StartsDoc, StatusAction } from './refs.ts'
 
 export function StartComposer(props: SolidComposerProps) {

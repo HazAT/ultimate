@@ -17,8 +17,8 @@ import {
 } from '@/sdk/solid'
 import { ConversationRef, ConversationTaskChip } from '../conversations/ui.solid.tsx'
 import { InstructionEntry, ReportEntry } from './refs.ts'
-import { senderAgent, sourceEvent } from './source.ts'
-import type { SourceNavigation } from './source.ts'
+import { senderAgent, sourceEvent } from './source.web.ts'
+import type { SourceNavigation } from './source.web.ts'
 import type { AgentOrigin } from './types.ts'
 import { openAgentSource } from './run-name.solid.tsx'
 

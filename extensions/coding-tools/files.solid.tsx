@@ -13,7 +13,7 @@ import { languageFromPath } from '@/components/markdown/highlight.ts'
 import { useToolDuration, formatBytes, type SolidToolProps } from '@/sdk/solid'
 import { CodeBlock } from './code.solid.tsx'
 import { Diff } from './diff.solid.tsx'
-import { countChanges, editRows, rowsFromDetails } from './diff.ts'
+import { countChanges, editRows, rowsFromDetails } from './diff.web.ts'
 import { text, usePath } from './display.solid.tsx'
 
 function lineCount(value: string) {

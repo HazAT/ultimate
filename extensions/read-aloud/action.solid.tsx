@@ -4,7 +4,7 @@ import { createMemo, createSignal, Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, useExternal } from '@/sdk/solid'
 import { useSpokenText } from './spoken.solid.tsx'
-import { sections } from './text.ts'
+import { sections } from './text.shared.ts'
 
 type Player = {
   current: () =>
