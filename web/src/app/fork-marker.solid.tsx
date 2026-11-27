@@ -58,7 +58,7 @@ export function ForkMarker(props: { id: ConversationId; entries: readonly EntryR
             <span class="shrink-0 max-sm:hidden">
               ·{' '}
               {point().fresh
-                ? 'starts from a brief, not this history'
+                ? 'starts from the memory brief'
                 : 'knows everything up to here'}
             </span>
           </span>
