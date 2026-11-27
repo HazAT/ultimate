@@ -1,11 +1,21 @@
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
 
+/**
+ * The shortcut a key press spells, as the shortcut registry matches it: the letter it types (on any layout), else its
+ * physical key for a letter or digit typed with Alt or Shift, else its key name: `mod+shift+space`, `mod+k`.
+ */
 export function chordOf(event: KeyboardEvent): string {
-  const key = event.code.startsWith('Key')
-    ? event.code.slice(3).toLowerCase()
-    : event.code.startsWith('Digit')
-      ? event.code.slice(5)
-      : event.key.toLowerCase()
+  const typed = event.key.length === 1 ? event.key.toLowerCase() : ''
+  const key =
+    typed === ' '
+      ? 'space'
+      : /^[a-z0-9]$/.test(typed)
+        ? typed
+        : event.code.startsWith('Key')
+          ? event.code.slice(3).toLowerCase()
+          : event.code.startsWith('Digit')
+            ? event.code.slice(5)
+            : event.key.toLowerCase()
   const parts = []
   if (isMac ? event.metaKey : event.ctrlKey) parts.push('mod')
   if (isMac && event.ctrlKey) parts.push('ctrl')

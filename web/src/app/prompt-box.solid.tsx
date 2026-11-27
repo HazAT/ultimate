@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
 import { Provided } from '../sdk/parts.solid.tsx'
+import { escapeHeld } from '../sdk/shortcuts.ts'
 import type { PromptBoxProps, UploadSource } from '../sdk/types.ts'
 import {
   Dictation,
@@ -184,7 +185,7 @@ export function PromptBox(props: PromptBoxProps) {
   }
 
   function onKeyDown(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
-    if (event.isComposing) return
+    if (event.isComposing || (event.key === 'Escape' && escapeHeld())) return
     if (props.onKeyDown?.(event)) return
     if (event.key !== 'Enter' || event.shiftKey) return
     const touchReturnInsertsNewline =

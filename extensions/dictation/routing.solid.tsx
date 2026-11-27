@@ -1,13 +1,5 @@
 import { createEffect, createRoot, createSignal, onSettled } from 'solid-js'
-import {
-  api,
-  chordOf,
-  formatKeys,
-  holdEscape,
-  registerShortcut,
-  ROOT,
-  useAction,
-} from '@/sdk/solid'
+import { api, formatKeys, holdEscape, registerShortcut, ROOT, useAction } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.shared.ts'
 import { capture } from './capture.web.ts'
 import type { Sink, Take } from './capture.web.ts'
@@ -46,8 +38,6 @@ export const shortcutHint = () => ({
   gesture: talkMode(),
   keys: formatKeys(shortcut()).join('+'),
 })
-export const keyChord = (event: KeyboardEvent) =>
-  event.code === 'Space' ? chordOf(event).replace(/ $/, 'space') : chordOf(event)
 
 type Target = { sink: Sink; wake?: () => void; ready?: () => boolean }
 type Box = Target & { root: Element }
@@ -81,7 +71,6 @@ function route() {
 
 export function DictationShortcuts() {
   let owner: Take | undefined
-  const matches = (event: KeyboardEvent) => keyChord(event) === shortcut().trim().toLowerCase()
   const talk = createTalk({
     tap: () => talkMode() === 'tap',
     talking: () => owner?.active() ?? false,
@@ -103,7 +92,6 @@ export function DictationShortcuts() {
     },
     cancel: async () => owner?.cancel(),
     overCancel: () => false,
-    matches,
   })
   onSettled(() => {
     const unregister = registerShortcut(
@@ -115,7 +103,12 @@ export function DictationShortcuts() {
         }
         talk.keyDown(event)
       },
-      { allowInInput: true, repeat: true, description: 'Talk: dictate into the prompt box' },
+      {
+        allowInInput: true,
+        repeat: true,
+        layer: () => document.activeElement?.closest(boxSelector) ?? document.body,
+        description: 'Talk: dictate into the prompt box',
+      },
     )
     const releaseKey = (event: KeyboardEvent) => {
       if (talk.keyUp(event)) event.preventDefault()

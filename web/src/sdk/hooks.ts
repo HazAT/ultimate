@@ -96,6 +96,7 @@ export {
   listShortcuts,
   onShortcutsChanged,
   registerShortcut,
+  sameKeys,
   useShortcut,
 } from './shortcuts.ts'
 /** Whether the device types on a touch keyboard, which focusing an input would slide up over the page. */

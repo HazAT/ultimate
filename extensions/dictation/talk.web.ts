@@ -14,7 +14,6 @@ export function createTalk(talk: {
   release: () => Promise<void>
   cancel: () => Promise<void>
   overCancel: (event: PointerEvent) => boolean
-  matches?: (event: KeyboardEvent) => boolean
 }) {
   const start = () => onThisPage(talk.tap() && talk.talking() ? talk.release() : talk.press())
   const stop = () => {
@@ -56,7 +55,6 @@ export function createTalk(talk: {
     },
     keyDown(event: KeyboardEvent) {
       if (talk.tap()) {
-        if (!talk.matches?.(event)) return false
         if (event.repeat) return true
         start()
         return true
@@ -67,7 +65,7 @@ export function createTalk(talk: {
         letGo = undefined
         return true
       }
-      if (event.repeat || !talk.matches?.(event)) return false
+      if (event.repeat) return false
       held = event.code
       onThisPage(talk.press())
       return true

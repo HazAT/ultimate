@@ -22,43 +22,45 @@ function allowedAt(command: CommandItem, keys: string, focused: Element | null) 
   return !typing(focused)
 }
 
+function register(id: string, keys: string, title: string, latest: () => CommandItem | undefined) {
+  const context = () => currentContext(scopeOf(document.activeElement))
+  return registerShortcut(keys, () => runCommand(id, context()), {
+    allowInInput: true,
+    description: title,
+    when: () => {
+      const command = latest()
+      return (
+        !!command && allowedAt(command, keys, document.activeElement) && applies(command, context())
+      )
+    },
+  })
+}
+
 export function installShortcuts() {
-  let byId = new Map<string, CommandItem>()
-  const registered = new Map<string, () => void>()
-  const register = (id: string) => {
-    const context = () => currentContext(scopeOf(document.activeElement))
-    return registerShortcut(
-      () => byId.get(id)?.keys,
-      () => runCommand(id, context()),
-      {
-        allowInInput: true,
-        description: byId.get(id)?.title,
-        when: () => {
-          const command = byId.get(id)
-          return (
-            !!command?.keys &&
-            allowedAt(command, command.keys, document.activeElement) &&
-            applies(command, context())
-          )
-        },
-      },
-    )
-  }
+  let current = new Map<string, CommandItem>()
+  const registered = new Map<string, { shape: string; release: () => void }>()
   const sync = () => {
-    byId = new Map(
+    current = new Map(
       allCommands().flatMap((command) => (command.keys ? [[command.id, command]] : [])),
     )
-    for (const [id, release] of registered)
-      if (!byId.has(id)) {
-        release()
-        registered.delete(id)
-      }
-    for (const id of byId.keys()) if (!registered.has(id)) registered.set(id, register(id))
+    const shapeOf = (command: CommandItem) => `${command.keys}\n${command.title}`
+    for (const [id, { shape, release }] of registered) {
+      const command = current.get(id)
+      if (command && shapeOf(command) === shape) continue
+      release()
+      registered.delete(id)
+    }
+    for (const [id, command] of current)
+      if (!registered.has(id))
+        registered.set(id, {
+          shape: shapeOf(command),
+          release: register(id, command.keys!, command.title, () => current.get(id)),
+        })
   }
   sync()
   const unsubscribe = registry.subscribe(sync)
   return () => {
     unsubscribe()
-    for (const release of registered.values()) release()
+    for (const { release } of registered.values()) release()
   }
 }

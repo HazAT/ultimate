@@ -2,6 +2,8 @@ import { Blob as NodeBlob, File as NodeFile } from 'node:buffer'
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { createRoot, createSignal, flush, Show } from 'solid-js'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
+import { PromptBox } from '@/sdk/solid'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { UltimateContext } from '@/sdk/solid'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
@@ -302,13 +304,12 @@ it('Escape in a busy composer cancels the newest of dictation and screen recordi
       new KeyboardEvent(type, { key: 'Escape', cancelable: true, bubbles: true, repeat }),
     )
   expect(escape()).toBe(false)
-  await capture.end()
+  expect(dictation.active()).toBe(false)
+  await settle()
   flush()
-  expect(capture.talking(sink)).toBe(false)
   expect(sink.cancel).toHaveBeenCalledOnce()
   expect(sink.finish).not.toHaveBeenCalled()
   expect(recorder.state().phase).toBe('recording')
-  await settle()
   expect(stopRun).not.toHaveBeenCalled()
 
   expect(escape('keydown', true)).toBe(false)
@@ -329,7 +330,44 @@ it('Escape in a busy composer cancels the newest of dictation and screen recordi
   )
 })
 
-it('a held Escape that discarded a screen recording does not also stop a busy run', async ({
+it('Escape in a prompt box whose own Escape blurs it still cancels a recording first', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
+  const blurred = vi.fn<() => void>()
+  const field = renderSolid(() => (
+    <PromptBox
+      draft={undefined}
+      name="note"
+      placeholder=""
+      onSubmit={() => Promise.resolve()}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return false
+        event.preventDefault()
+        blurred()
+        return true
+      }}
+    />
+  )).querySelector('textarea')!
+  const { recorder } = mount({ name: 'box A', draft: 1 })
+  await press('Record the screen into box A')
+  field.focus()
+  field.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true }),
+  )
+  flush()
+  expect(recorder.state().phase).toBe('idle')
+  expect(blurred).not.toHaveBeenCalled()
+})
+
+it('a held Escape that discarded a screen recording closes no popup beneath it and stops no busy run', async ({
   onTestFinished,
 }) => {
   const stopRun = vi.fn<() => void>()
@@ -355,23 +393,48 @@ it('a held Escape that discarded a screen recording does not also stop a busy ru
     uninstall()
     await registry.setLoaders({})
   })
-  const composer = renderSolid(() => (
+  let open = true
+  const [shown, setOpen] = createSignal(true)
+  const page = renderSolid(() => (
     <div data-composer-target="conversation" data-conversation-scope={busyId}>
-      <textarea aria-label="Busy composer" />
+      <Popover
+        open={shown()}
+        onOpenChange={(next) => {
+          open = next
+          setOpen(next)
+        }}
+      >
+        <PopoverTrigger>Settings</PopoverTrigger>
+        <PopoverContent>
+          <input aria-label="Popover field" />
+        </PopoverContent>
+      </Popover>
     </div>
-  )).querySelector('textarea')!
-  composer.focus()
+  ))
+  await settle()
+  const field = page.ownerDocument.querySelector<HTMLInputElement>('[aria-label="Popover field"]')!
+  field.focus()
+  await settle()
   const { recorder } = mount({ name: 'box A', draft: 1 })
   await press('Record the screen into box A')
+  field.focus()
   const escape = (type: 'keydown' | 'keyup', repeat = false) =>
-    composer.dispatchEvent(
+    (document.activeElement ?? document.body).dispatchEvent(
       new KeyboardEvent(type, { key: 'Escape', cancelable: true, bubbles: true, repeat }),
     )
   escape('keydown')
   escape('keydown', true)
   escape('keydown', true)
   await settle()
+  flush()
   expect(recorder.state().phase).toBe('idle')
+  expect(open).toBe(true)
+  expect(stopRun).not.toHaveBeenCalled()
+  escape('keyup')
+  escape('keydown')
+  await settle()
+  flush()
+  expect(open).toBe(false)
   expect(stopRun).not.toHaveBeenCalled()
   escape('keyup')
   escape('keydown')

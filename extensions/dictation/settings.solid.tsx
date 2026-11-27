@@ -3,10 +3,9 @@ import { createSignal } from 'solid-js'
 import { Button, buttonVariants } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
-import { cn, formatKeys, useCommands } from '@/sdk/solid'
+import { chordOf, cn, formatKeys, sameKeys, useCommands } from '@/sdk/solid'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import {
-  keyChord,
   setShortcut,
   setSoundCues,
   setTalkMode,
@@ -73,11 +72,6 @@ export function DictationOptions(props: { name: string }) {
   )
 }
 
-const sameKeys = (a: string, b: string) => {
-  const parts = (keys: string) => keys.toLowerCase().split('+').toSorted().join('+')
-  return parts(a) === parts(b)
-}
-
 function ShortcutRecorder(props: { name: string }) {
   const commands = useCommands()
   const [listening, setListening] = createSignal(false)
@@ -89,7 +83,7 @@ function ShortcutRecorder(props: { name: string }) {
   const record = (event: KeyboardEvent) => {
     event.preventDefault()
     if (event.key === 'Escape') return stop()
-    const chord = keyChord(event)
+    const chord = chordOf(event)
     const hasKey = !['mod', 'ctrl', 'alt', 'shift'].includes(chord.split('+').at(-1)!)
     const hasModifier = chord.includes('+')
     if (!hasKey || !hasModifier) return undefined

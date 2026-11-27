@@ -10,7 +10,6 @@ import {
   api,
   cn,
   errorMessage,
-  holdEscape,
   registerShortcut,
   ROOT,
   useShortcut,
@@ -303,7 +302,7 @@ function AnswerCard(props: CardProps & { id: number }) {
     )
   }
   const answering = () => keyed() && !locked() && reachable()
-  const undoing = () => keyed() && phase() === 'undo'
+  const undoing = () => keyed() && phase() === 'undo' && reachable()
   const shownQuestion = () => questions()[current()]
   const choiceKeys = createMemo(() => {
     const shown = keyed() && !locked() ? shownQuestion() : undefined
@@ -328,12 +327,12 @@ function AnswerCard(props: CardProps & { id: number }) {
     )
     return () => off.forEach((release) => release())
   })
-  createEffect(undoing, (undoable) => (undoable ? holdEscape(undo) : undefined))
   const named = (when: () => boolean, description: string) => () => ({
     when,
     description: `${description} on message ${props.id}`,
   })
   useShortcut('u', undo, named(undoing, 'Undo the answer'))
+  useShortcut('escape', undo, named(undoing, 'Undo the answer'))
   useShortcut(
     'enter',
     () => (phase() === 'undo' ? flushAnswer() : enter()),

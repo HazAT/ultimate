@@ -24,7 +24,6 @@ function setup(mode: 'hold' | 'tap', over = { cancel: false }) {
       recording = false
     },
     overCancel: () => over.cancel,
-    matches: (event) => event.code === 'Space' && event.ctrlKey && event.shiftKey,
   })
   return { talk, calls }
 }

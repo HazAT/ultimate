@@ -216,6 +216,27 @@ it('Escape undoes the answer, then clears the pick, and only then stops a busy r
   expect(stopRun).toHaveBeenCalledOnce()
 })
 
+it('in the undo window, Enter and Escape on another control are that control’s, not the card’s', async () => {
+  const page = renderSolid(() => (
+    <>
+      <MessageQuestions message={{ ...message, id: 12 }} keys={true} withActions={false} />
+      <button type="button">Elsewhere</button>
+    </>
+  ))
+  await press('Option 2 · Status line · question 1 · message 12')
+  await press('Send 1 of 2: answer to message 12')
+  const elsewhere = page.querySelector<HTMLButtonElement>('button:not([aria-label])')!
+  elsewhere.focus()
+  for (const key of ['Enter', 'Escape']) {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+    elsewhere.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  }
+  await vi.advanceTimersByTimeAsync(0)
+  expect(harness.actions).toEqual([])
+  expect(page.querySelector('[aria-label="Undo: answer to message 12"]')).not.toBeNull()
+})
+
 it('opens the next question on Enter when recommended picks answer every question', async () => {
   const recommended: Message = {
     ...message,

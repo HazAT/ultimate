@@ -1,6 +1,12 @@
 import { createSignal, flush, Show } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog.solid.tsx'
 import { PromptBox } from '@/sdk/solid'
 import type { DictationSink } from '@/sdk/solid'
 import { registry } from '../../../../web/src/sdk/client.ts'
@@ -220,4 +226,43 @@ it('focuses and records into the main composer when neither focus nor fallback s
   await release()
   expect(main.finish).toHaveBeenCalledOnce()
   expect(plain.recording).not.toHaveBeenCalled()
+})
+
+it('the shortcut reaches a prompt box inside a modal dialog, and the main composer behind it is left alone', async () => {
+  const inDialog = sink()
+  const main = sink()
+  renderSolid(() => (
+    <>
+      <DictationShortcuts />
+      <div data-ui="composer" data-composer-target="conversation">
+        <PromptBox
+          draft={undefined}
+          name="main composer"
+          placeholder=""
+          onSubmit={() => Promise.resolve()}
+          dictation={main}
+        />
+      </div>
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Goal</DialogTitle>
+          <DialogDescription>What to do</DialogDescription>
+          <PromptBox
+            draft={undefined}
+            name="goal"
+            placeholder=""
+            onSubmit={() => Promise.resolve()}
+            dictation={inDialog}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
+  ))
+  await vi.advanceTimersByTimeAsync(0)
+  document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!.focus()
+  await press()
+  expect(inDialog.recording).toHaveBeenCalledOnce()
+  await release()
+  expect(inDialog.finish).toHaveBeenCalledOnce()
+  expect(main.recording).not.toHaveBeenCalled()
 })

@@ -30,12 +30,14 @@ Every shortcut on the page goes through one registry, ui-sdk's, which commands' 
 of these that wants it:
 
 1. The focused field, when it handles the key itself and calls `preventDefault` (Escape in a line comment, ↑ in the
-   composer).
+   composer). A prompt box leaves Escape alone while something holds it (2).
 2. The topmost open layer: a popup closes on Escape, and something pending that Escape cancels claims it with
-   `holdEscape(cancel)` from `@/sdk/solid` while it lasts (a screen recording, a dictation take, an answer's undo
-   window). A held Escape cancels once.
+   `holdEscape(cancel)` from `@/sdk/solid` while it lasts (a screen recording, a dictation take). One press cancels
+   once: held down, it reaches nothing beneath until the key comes up.
 3. The newest matching shortcut whose `when` holds, registered with `useShortcut(keys, run, options)` in a component
-   or `registerShortcut` (both `@/sdk/solid`), over a command's. A modal dialog pauses page shortcuts.
+   or `registerShortcut` (both `@/sdk/solid`), over a command's (an answer's undo window over Escape's stop). A modal
+   dialog pauses page shortcuts, except one whose `layer` is in it. Keys match what a key types, not where it sits,
+   so `mod+k` is the key labelled K on any layout; `chordOf(event)` spells a press that way, `sameKeys` compares two.
 
 So Escape cancels a recording before it stops the run. Never listen for `keydown` on `window` or `document` to take a
 key: register it, and `shortcuts.list()` names it in the System surface's Shortcuts tab. Two keys stay outside the

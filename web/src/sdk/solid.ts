@@ -112,6 +112,7 @@ export {
   onShortcutsChanged,
   pageAgent,
   registerShortcut,
+  sameKeys,
   useShortcut,
   formatTime,
   formatTokens,
