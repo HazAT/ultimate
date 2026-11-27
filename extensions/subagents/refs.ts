@@ -34,6 +34,7 @@ export type Definition = {
   resident?: boolean
   fast?: boolean
   summaries?: boolean
+  cache?: CachePolicy
   /** Overlay files merged into it, in order; saving it writes an overlay, not a whole copy. */
   overlays?: string[]
 }
@@ -75,6 +76,20 @@ export type DefinitionFields = {
   resident?: boolean
   fast?: boolean
   summaries?: boolean
+  cache?: CachePolicy
+}
+
+/**
+ * How its conversations keep their prompt cache warm (the keep-warm extension); only standing agents and branch
+ * coordinators are warmed. `minutes` is the idle window, `shortMinutes` caps it on caches that live under an hour,
+ * `compact` compacts before the cache goes cold once the context has `compactTokens`.
+ */
+export type CachePolicy = {
+  warm?: boolean
+  minutes?: number
+  shortMinutes?: number
+  compact?: boolean
+  compactTokens?: number
 }
 
 /**

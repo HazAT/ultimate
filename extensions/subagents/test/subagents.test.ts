@@ -2307,6 +2307,51 @@ describe('subagents', () => {
       save({ description: 'Helps more', tools: ['read', 'bash'], denyTools: ['instance'] }),
     ).rejects.toThrow('An overlay cannot allow bash again')
   })
+  it("saves a cache policy change as an overlay that merges into the base's cache", async () => {
+    const { prepared, opened, userHome, ultimateRoot } = await fixture()
+    const ctx = {
+      host: { ...prepared, harness: () => opened.harness },
+    } as unknown as ActionContext
+    await writeFile(
+      join(ultimateRoot, 'agents/scout.md'),
+      definition().replace(
+        'tools: [read, bash]\n',
+        'tools: [read, bash]\ncache: { warm: true, minutes: 480, shortMinutes: 90 }\n',
+      ),
+    )
+    const overlay = join(userHome, '.ultimate/agents/scout.md')
+    await actions.saveDefinition(
+      {
+        name: 'scout',
+        scope: 'user',
+        frontmatter: {
+          description: 'Search',
+          tools: ['read', 'bash'],
+          cache: { warm: true, minutes: 60, shortMinutes: 90 },
+        },
+        instructions: 'Original instructions',
+        overlay: true,
+      },
+      ctx,
+    )
+    expect(await readFile(overlay, 'utf8')).toBe(
+      '---\nname: scout\naddTools: []\ncache: { minutes: 60 }\n---\n',
+    )
+    expect(await actions.definition({ name: 'scout' }, ctx)).toMatchObject({
+      definition: { cache: { warm: true, minutes: 60, shortMinutes: 90 } },
+    })
+    await expect(
+      actions.saveDefinition(
+        {
+          name: 'scout',
+          scope: 'user',
+          frontmatter: { description: 'Search', cache: { minutes: -1 } },
+          instructions: 'Original instructions',
+        },
+        ctx,
+      ),
+    ).rejects.toThrow('cache.minutes must be a number of at least 0')
+  })
   it('keeps the tools an overlay adds to a base that inherits every tool when its form is saved', async () => {
     const { prepared, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {

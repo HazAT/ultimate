@@ -51,6 +51,7 @@ import {
   discoverAgents,
   hasLogin,
   hostDefault,
+  parseCache,
   previewModel,
   saveDefinition,
   saveOverlay,
@@ -528,6 +529,7 @@ export const actions = {
       resident,
       fast,
       summaries,
+      cache,
     } = frontmatter
     if (typeof description !== 'string') throw new Error('description is required')
     if (model !== undefined && typeof model !== 'string') throw new Error('model must be a string')
@@ -577,6 +579,7 @@ export const actions = {
       ...(resident !== undefined ? { resident } : {}),
       ...(fast ? { fast } : {}),
       ...(!summaries ? { summaries } : {}),
+      ...(cache !== undefined ? { cache: parseCache(cache) } : {}),
       ...preserveUneditedAppearance(existing),
     }
     const needsDiffOverlay =
