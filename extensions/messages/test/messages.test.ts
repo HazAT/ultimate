@@ -207,8 +207,7 @@ async function fixture(
               memo: async (name: string, value: JsonValue | Context, memoContext?: Context) => {
                 if (memoContext === undefined) return api.memo(name, value as Context)
                 if (
-                  name === 'asks' ||
-                  name === 'asking' ||
+                  !['message-id', 'branch-id'].includes(name) ||
                   (sendGate.conversation && sendGate.conversation() !== api.conversationId)
                 )
                   return api.memo(name, value as JsonValue, memoContext)
