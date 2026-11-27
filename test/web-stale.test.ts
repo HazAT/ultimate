@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createWeb } from '../server/web.ts'
 import type { WebBuildRequest } from '../server/web-build.ts'
 import { until } from './helpers.ts'
@@ -13,8 +13,6 @@ vi.mock('../lib/exec.ts', async (original) => ({
   ...(await original<typeof import('../lib/exec.ts')>()),
   exec: build,
 }))
-
-afterEach(() => vi.useRealTimers())
 
 function page(web: Awaited<ReturnType<typeof createWeb>>) {
   return new Promise<string>((resolve, reject) => {
@@ -45,7 +43,6 @@ test('a page load after a source change gets the last bundle this process built 
     await writeFile(join(request.outDir, 'index.html'), `<head></head>build ${number}`)
     return { stdout: JSON.stringify({ inputs: [source] }), stderr: '' }
   })
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   let change: ((file: string) => Promise<void> | void) | undefined
   const web = await createWeb({
     ultimateRoot,
@@ -75,11 +72,7 @@ test('a page load after a source change gets the last bundle this process built 
     await change!(source)
     const second = await page(web)
     expect(second).toContain('build 1')
-    await until(
-      () => releases.length === 2,
-      1000,
-      () => vi.advanceTimersByTimeAsync(150),
-    )
+    await until(() => releases.length === 2)
     releases[1]()
     await until(() => !web.info().building)
     expect(await page(web)).toContain('build 2')

@@ -34,7 +34,7 @@ it('builds the classes of a project extension folder created while the host runs
       join(dir, 'web.solid.tsx'),
       'export const Chevron = () => <span class="rotate-[37deg]" />\n',
     )
-    // No page is open: a page load after the change builds the new bundle.
+    // No page is open: a page load after the change starts the build, and a later one gets the new bundle.
     await until(async () => (await css()).includes('37deg'))
     const bundles = await readdir(join(home, 'state/web'))
     const manifest = JSON.parse(await readFile(join(home, 'state/web/manifest.json'), 'utf8'))

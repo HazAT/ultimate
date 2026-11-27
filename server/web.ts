@@ -387,7 +387,11 @@ export async function createWeb(options: {
     },
     async handle(request: IncomingMessage, response: ServerResponse) {
       if (!manifest || !servableWhileStale) await buildUntilFreshSerially()
-      else if (stale) scheduleUpdate()
+      else if (stale)
+        inProcess(
+          'a stale bundle is found stale again on the next request',
+          buildUntilFreshSerially(),
+        )
       const bundleForEntireRequest = manifest
       if (!bundleForEntireRequest && options.held()) {
         response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' })
