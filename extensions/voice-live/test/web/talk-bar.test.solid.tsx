@@ -4,7 +4,7 @@ import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { serverEndedSession } from './session.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import { composeIn, dock, settleTranscripts, voiceSink } from '../../dock.solid.tsx'
+import { composeIn, dispatch, dock, settleTranscripts, voiceSink } from '../../dock.solid.tsx'
 import { TalkBar } from '../../talk.solid.tsx'
 
 const harness = vi.hoisted(() => ({
@@ -195,16 +195,15 @@ it('a take is sent as whoever started it, even when someone else starts the next
 
 it('a cut-in whose mic fails shows the error in the bar, not the pending reply\u2019s Thinking', () => {
   const view = renderSolid(() => <TalkBar />)
-  dock.setPhase('thinking')
-  dock.setStatus('Thinking\u2026')
+  dispatch({ type: 'send', key: 'earlier', voice: false })
+  dispatch({ type: 'sent', key: 'earlier' })
   dock.setError('Microphone access is blocked')
   flush()
   expect(view.querySelector('[data-voice-talk]')?.textContent).toContain(
     'Microphone access is blocked',
   )
   dock.setError(undefined)
-  dock.setPhase('idle')
-  dock.setStatus(undefined)
+  dispatch({ type: 'ended' })
 })
 
 it('a recording the shortcut started shows its waveform in the bar but no cancel the bar cannot act on', async () => {

@@ -2,7 +2,15 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import { composeIn, dock, draftOf, settleTranscripts, voiceSink } from '../../dock.solid.tsx'
+import {
+  composeIn,
+  dispatch,
+  dock,
+  draftOf,
+  settleTranscripts,
+  voiceSink,
+} from '../../dock.solid.tsx'
+import { flush } from 'solid-js'
 
 const actions = vi.hoisted(() => [] as string[])
 vi.mock('@/sdk/solid', async () => {
@@ -113,11 +121,12 @@ it('cancelling a spoken recording uploads nothing and keeps the collected clips;
 
 it('a retake started while a cancel stops the mic keeps the interruption the cancelled take held', async () => {
   await press()
-  dock.hold({ busy: true })
+  dispatch({ type: 'press', busy: true })
   const cancelled = cancelRecording()
   const retake = press()
   await Promise.all([cancelled, retake])
-  expect(dock.held()).toEqual({ busy: true })
+  flush()
+  expect(dock.state()).toMatchObject({ phase: 'recording', busy: true })
   await cancelRecording()
 })
 
@@ -128,7 +137,7 @@ it('cancelling a retake before its mic starts resumes the reply the first take p
     ...dock.player.state.get(),
     paused: true,
   })
-  dock.hold({ busy: true })
+  dispatch({ type: 'press', busy: true })
   const cancelled = cancelRecording()
   const retake = press()
   const retakeCancelled = cancelRecording()

@@ -1,6 +1,6 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { MessageCircleReply, Mic } from '@lucide/solid'
-import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, For, onCleanup, onSettled, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
@@ -10,6 +10,7 @@ import {
   useConversation,
   useConversationId,
   useDocOf,
+  useTranscriptElements,
   UserText,
 } from '@/sdk/solid'
 import { capture, drawWave } from '../dictation/ui.solid.tsx'
@@ -18,6 +19,7 @@ import {
   imagesIn,
   imagesOf,
   playerState,
+  replyEntries,
   replyOf,
   setActivity,
   settleTranscripts,
@@ -67,11 +69,11 @@ export function saidIn(
   return data.text || undefined
 }
 
-const row = '[data-entry-id]'
-const answer = '[data-from="assistant"]'
+const streaming = ':scope > [data-from="assistant"]'
 
-function useSpokenReply(key: () => string, turnRow: () => Element | undefined) {
+function useSpokenReply(key: () => string) {
   const conversation = useConversation()
+  const transcript = useTranscriptElements()
   const spoken = createMemo(() => playerState().key === key())
   const sentences = createMemo(() => {
     if (!spoken()) return []
@@ -83,12 +85,17 @@ function useSpokenReply(key: () => string, turnRow: () => Element | undefined) {
       .sentences
   })
   const replies = () => {
-    const rows: Element[] = []
-    for (let next = turnRow()?.nextElementSibling; next; next = next.nextElementSibling) {
-      if (next.querySelector('[data-voice-turn]')) break
-      if (next.matches(answer) || next.querySelector(answer)) rows.push(next)
-    }
-    return rows
+    const content = transcript.content()
+    if (!content) return []
+    const state = conversation()
+    const rows = replyEntries(state.entries, key()).flatMap((id) => [
+      ...content.querySelectorAll(`[data-entry-id="${id}"]`),
+    ])
+    const last = turnsIn(state).turns.at(-1)?.key === key()
+    const live = last && state.busy ? [...content.querySelectorAll(streaming)] : []
+    return [...rows, ...live].filter(
+      (element, _index, all) => !all.some((other) => other !== element && other.contains(element)),
+    )
   }
   useSpokenText(replies, () =>
     spoken()
@@ -120,18 +127,9 @@ export function VoiceTurnView(props: {
     const recording = audio()
     return local()?.failed ?? (recording ? fork()?.failed?.[recording] : undefined)
   }
-  const [element, setElement] = createSignal<HTMLElement>()
-  useSpokenReply(
-    () => props.turn.key,
-    () => element()?.closest(row) ?? undefined,
-  )
+  useSpokenReply(() => props.turn.key)
   return (
-    <Message
-      class="group/message mt-3 first:mt-0"
-      data-voice-turn={props.turn.key}
-      from="user"
-      ref={setElement}
-    >
+    <Message class="group/message mt-3 first:mt-0" data-voice-turn={props.turn.key} from="user">
       <MessageContent>
         <Show when={data().audio || data().answered}>
           <div class="flex min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
