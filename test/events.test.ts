@@ -11,7 +11,7 @@ import {
 import type { Tx } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
 import { context } from '../server/harness.ts'
-import { EventFeed, EventLog, eventLog } from '../server/events.ts'
+import { EventFeed, EventLog, eventLog, eventStatusReader } from '../server/events.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 import { defineEvent, EVENT_FEED, NoticeEvent, StartedEvent } from '../shared/events.ts'
 import type { EventRecord } from '../shared/events.ts'
@@ -39,14 +39,16 @@ const Shipped = doc('test.shipped')
 const Seen = doc('test.seen')
 
 async function reactorFixture() {
+  const storage = new MemoryStorage()
   const harness = await Harness.open(
-    new MemoryStorage(),
+    storage,
     { models: createModels(), registry: createRegistry() },
     context,
   )
   await harness.root(context)
   const log = eventLog(
     () => harness,
+    () => eventStatusReader(storage),
     (_call, work) => work(),
   )
   const land = (sha: string) => harness.commit((tx) => log.emit(tx, Landed, { sha }), context)
@@ -81,7 +83,7 @@ it('a reactor starting from now sees events emitted as soon as start resolves', 
   }
 })
 
-it('retries a failed reactor without another event', async () => {
+it('retries a failed reactor on its timer, not on a matching event during backoff', async () => {
   const { harness, log, land } = await reactorFixture()
   const seen: string[] = []
   const failure = new Error('try again')
@@ -96,11 +98,13 @@ it('retries a failed reactor without another event', async () => {
     await reactor.start()
     const emitted = await land('once')
     await until(async () => !!(await log.eventLog.reactors())[0].failure)
+    const next = await land('during backoff')
+    await vi.advanceTimersByTimeAsync(999)
     expect(handler).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(seen).toEqual(['once'])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(seen).toEqual(['once', 'during backoff'])
     const [status] = await log.eventLog.reactors()
-    expect(status).toMatchObject({ cursor: emitted.id, lag: 0 })
+    expect(status).toMatchObject({ cursor: next.id, lag: 0 })
     expect(status.failure).toBeUndefined()
     expect(error).toHaveBeenCalledWith(expect.stringContaining('retry'), emitted.id, failure)
   } finally {
@@ -186,24 +190,30 @@ it('emits atomically and reacts exactly once across catch-up, failures, reloads 
   await probe.land('b2')
   await until(async () => (await probe.read(Seen)).length === 2)
 
-  // A throwing handler rolls back its writes and cursor; the event stays pending and is retried on the next commit.
-  throwOn = 'c3'
-  await probe.land('c3')
-  await until(async () => !!(await status())?.failure)
-  const [failed] = await (await probe.host()).eventLog.recent({ events: [Landed], limit: 1 })
-  expect(await status()).toMatchObject({
-    events: ['test.landed'],
-    lag: 1,
-    running: true,
-    failure: { error: 'Error: handler failed', entryId: failed.id },
-  })
-  expect(await probe.read(Seen)).toEqual(['a1', 'b2'])
-  throwOn = undefined
-  await probe.land('d4')
-  await until(async () => (await probe.read(Seen)).length === 4)
-  const recovered = await status()
-  expect(recovered).toMatchObject({ lag: 0, running: true })
-  expect(recovered?.failure).toBeUndefined()
+  // A throwing handler rolls back its writes and cursor; the event stays pending until the retry.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    throwOn = 'c3'
+    await probe.land('c3')
+    await until(async () => !!(await status())?.failure)
+    const [failed] = await (await probe.host()).eventLog.recent({ events: [Landed], limit: 1 })
+    expect(await status()).toMatchObject({
+      events: ['test.landed'],
+      lag: 1,
+      running: true,
+      failure: { error: 'Error: handler failed', entryId: failed.id },
+    })
+    expect(await probe.read(Seen)).toEqual(['a1', 'b2'])
+    throwOn = undefined
+    await probe.land('d4')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await until(async () => (await probe.read(Seen)).length === 4)
+    const recovered = await status()
+    expect(recovered).toMatchObject({ lag: 0, running: true })
+    expect(recovered?.failure).toBeUndefined()
+  } finally {
+    vi.useRealTimers()
+  }
 
   // A facet reload stops the reactor; the same name on the new facet continues from its cursor.
   await fixture.write(2)

@@ -36,6 +36,7 @@ import type {
   Report,
   CompactionPolicy,
   Page,
+  Storage,
   SubmissionQuery,
   SubmissionRecord,
 } from '@earendil-works/pi-durable'
@@ -189,6 +190,10 @@ export async function prepareHarness(options: HostOptions, holdWebForSwap?: Hold
     ): Promise<Page<SubmissionRecord, Cursor>> {
       if (!active) throw new Error('Harness is not open')
       return active.storage.scanSubmissions(query, limit, cursor, caller)
+    },
+    eventStorage(): Pick<Storage, 'findDocument' | 'document' | 'scanEntries'> {
+      if (!active) throw new Error('Harness is not open')
+      return active.storage
     },
     models: async () => (await listModels(guardedRuntime)).models,
     model: (ref: ModelRef) => guardedRuntime.getModel(ref.provider, ref.modelId),

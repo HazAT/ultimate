@@ -32,7 +32,7 @@ import { Metadata } from './metadata.ts'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { AgentDoc, LiveDoc } from '@earendil-works/pi-durable'
 import type { Access } from './request-security.ts'
-import { EventFeed, eventLog, uiChange } from './events.ts'
+import { EventFeed, eventLog, eventStatusReader, uiChange } from './events.ts'
 import { contractOutline } from '../lib/api-files.ts'
 import type { EventHost } from './events.ts'
 import { extensionApis } from './extension-apis.ts'
@@ -107,7 +107,12 @@ export async function loadExtensions(
   rebuildWeb: () => Promise<void> = async () => {},
 ) {
   const trace = host.callTrace
-  const log = eventLog(runtime.harness, trace.run, trace.keep)
+  const log = eventLog(
+    runtime.harness,
+    () => eventStatusReader(host.eventStorage()),
+    trace.run,
+    trace.keep,
+  )
   const roots = discoveryRoots(host.ultimateRoot, host.projectRoot, host.userHome)
   const directories = roots.map((root) => join(root.path, 'extensions'))
   const stagedServicesByFacet = new Map<ExtensionHost, Map<string, unknown>>()
@@ -157,12 +162,21 @@ export async function loadExtensions(
     facetCleanups.delete(facetHost)
     facetNotices.delete(facetHost)
   }
-  const scope = (name: string): ExtensionHost => {
+  const scope = (name: string) => {
     const stops = new Set<() => void>()
+    const stagedOpeners = new Map<Opener, boolean>()
     let sharedResource = false
-    const registerOpener = (callback: Opener, shared = false) => {
+    let published = false
+    const addOpener = (callback: Opener, shared: boolean) => {
       if (!shared) facetOpeners.get(facetHost)!.add(callback)
       openers.set(callback, name)
+    }
+    const registerOpener = (callback: Opener, shared = false) => {
+      if (!published) {
+        stagedOpeners.set(callback, shared)
+        return
+      }
+      addOpener(callback, shared)
       if (open && facetHosts.get(name) === facetHost)
         inProcess('the onOpen callback belongs to this extension host', runOpener(callback))
     }
@@ -242,7 +256,14 @@ export async function loadExtensions(
     facetOpeners.set(facetHost, new Set())
     facetCleanups.set(facetHost, new Set())
     facetNotices.set(facetHost, new Map())
-    return facetHost
+    return {
+      facetHost,
+      publishOpeners: () => {
+        published = true
+        for (const [callback, shared] of stagedOpeners) addOpener(callback, shared)
+        stagedOpeners.clear()
+      },
+    }
   }
   const actions = new Map<string, Record<string, ExtensionAction>>()
   const userActions = new Map<string, string[]>()
@@ -632,7 +653,7 @@ export async function loadExtensions(
       }
       let replaced = false
       if (enabled && record.facets.server && (!servers || servers.has(name))) {
-        const facetHost = scope(name)
+        const { facetHost, publishOpeners } = scope(name)
         try {
           const module = await vite.ssrLoadModule(join(target, 'server.ts'))
           const extension: Extension =
@@ -708,6 +729,7 @@ export async function loadExtensions(
             secrets,
           }
           await dispose(previousHost)
+          publishOpeners()
           replaced = true
         } catch (error) {
           await dispose(facetHost)

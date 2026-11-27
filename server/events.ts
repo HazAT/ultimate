@@ -1,10 +1,11 @@
 import { parseEntryId, offsetEntryId } from '../lib/ids.shared.ts'
 import type {
-  Conversation,
   ConversationId,
+  Cursor,
   EntryId,
   EntryRecord,
   Harness,
+  Storage,
   Tx,
 } from '@earendil-works/pi-durable'
 import type { JsonValue } from '@earendil-works/chord/json'
@@ -29,10 +30,9 @@ import { traceContext } from './trace.ts'
 import type { CallTrace } from './trace.ts'
 import { checkpointEvery } from '../shared/checkpoint.ts'
 
-export const EventLog = defineDoc<{
-  conversation?: ConversationId
-  cursors: Record<string, EntryId>
-}>({
+type EventIndex = { conversation?: ConversationId; cursors: Record<string, EntryId> }
+
+export const EventLog = defineDoc<EventIndex>({
   kind: 'ultimate.events',
   checkpointWhen: checkpointEvery(100),
   version: 1,
@@ -162,15 +162,42 @@ export async function emit<D extends JsonValue>(tx: Tx, event: EventToken<D>, da
   return emitted
 }
 
+type StatusReader = {
+  index: () => Promise<EventIndex | undefined>
+  scanEntries: Storage['scanEntries']
+}
+
+export function eventStatusReader(
+  storage: Pick<Storage, 'findDocument' | 'document' | 'scanEntries'>,
+): StatusReader {
+  return {
+    index: async () => {
+      const doc = await storage.findDocument(
+        {
+          kind: EventLog.definition.kind,
+          scope: { kind: 'conversation', conversationId: ROOT_CONVERSATION_ID },
+        },
+        'current',
+        context,
+      )
+      if (!doc) return undefined
+      const stored = await storage.document(doc.id, 'current', context)
+      return stored?.value as EventIndex | undefined
+    },
+    scanEntries: storage.scanEntries.bind(storage),
+  }
+}
+
 async function scan(
-  entries: Conversation['entries'],
+  entries: Storage['scanEntries'],
+  conversationId: ConversationId,
   after: EntryId,
   visit: (entry: EntryRecord) => boolean,
 ) {
-  let cursor: Parameters<Conversation['entries']>[2]
+  let cursor: Cursor | undefined
   do {
     const page = await entries(
-      { minEntryId: offsetEntryId(after, 1), order: 'ascending' },
+      { conversationId, minEntryId: offsetEntryId(after, 1), order: 'ascending' },
       256,
       cursor,
       context,
@@ -182,6 +209,7 @@ async function scan(
 
 export function eventLog(
   harness: () => Harness,
+  readStatus: () => StatusReader,
   trace: CallTrace['run'],
   keepEmittingCallForFutureReactors: CallTrace['keep'] = () => {},
 ) {
@@ -202,10 +230,11 @@ export function eventLog(
 
   function drain(name: string) {
     const state = reactors.get(name)!
-    if (state.queued) return
+    if (state.queued || state.cancelRetry) return
     state.queued = true
     state.chain = state.chain.then(async () => {
       state.queued = false
+      if (state.cancelRetry) return
       for (;;) {
         const active = state.active
         if (!active) return
@@ -218,15 +247,11 @@ export function eventLog(
             const after = index.cursors[name] ?? parseEntryId(0)
             let pending: EntryRecord | undefined
             let last = after
-            await scan(
-              (query, limit, cursor) => tx.scanEntries({ ...query, conversationId }, limit, cursor),
-              after,
-              (entry) => {
-                last = entry.id
-                if (active.kinds.has(entry.kind)) pending = entry
-                return pending !== undefined
-              },
-            )
+            await scan(tx.scanEntries.bind(tx), conversationId, after, (entry) => {
+              last = entry.id
+              if (active.kinds.has(entry.kind)) pending = entry
+              return pending !== undefined
+            })
             if (pending) {
               attemptedUncommittedEventId = pending.id
               const event = record(pending)
@@ -247,8 +272,6 @@ export function eventLog(
             return pending !== undefined
           }, context)
           state.failure = undefined
-          state.cancelRetry?.()
-          state.cancelRetry = undefined
           state.retryDelay = initialRetryDelay
           if (!handled) return
         } catch (error) {
@@ -258,7 +281,7 @@ export function eventLog(
             at: new Date().toISOString(),
             entryId: attemptedUncommittedEventId,
           }
-          if (state.active === active && !state.cancelRetry) {
+          if (state.active === active) {
             state.cancelRetry = retryAfter(
               state.retryDelay,
               () => {
@@ -396,18 +419,14 @@ export function eventLog(
   }
 
   async function statuses(): Promise<ReactorStatus[]> {
-    const session = harness()
-    const index = await session.snapshot(EventLog, ROOT_CONVERSATION_ID, context)
-    const log =
-      index?.conversation === undefined
-        ? undefined
-        : await session.conversation(index.conversation, context)
+    const { index, scanEntries } = readStatus()
+    const current = await index()
     const list: ReactorStatus[] = []
     for (const [name, state] of reactors) {
-      const cursor = index?.cursors[name] ?? parseEntryId(0)
+      const cursor = current?.cursors[name] ?? parseEntryId(0)
       let lag = 0
-      if (log)
-        await scan(log.entries.bind(log), cursor, (entry) => {
+      if (current?.conversation !== undefined)
+        await scan(scanEntries, current.conversation, cursor, (entry) => {
           if (state.kinds.has(entry.kind)) lag++
           return false
         })
