@@ -6,7 +6,7 @@ import { AgentDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { context } from '../../../server/harness.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
 
-import { Calls, NamedPage } from '../server.ts'
+import { Calls } from '../server.ts'
 
 let ultimateRoot: string
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
@@ -17,7 +17,7 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()))
 })
 
-async function fixture(page?: string) {
+async function fixture() {
   const home = await temp('ultimate-page-agent-')
   const server = await fauxServer({ ultimateRoot, home, userHome: home })
   servers.push(server)
@@ -43,14 +43,13 @@ async function fixture(page?: string) {
       model: { provider: 'faux', modelId: 'faux-1' },
       modelTools: { add: ['ui'] },
     })
-    if (page) (await tx.doc(NamedPage, id)).page = page
   }, context)
   await conversation.submit({ type: 'input', content: 'look' }, context)
   const calls = () => server.harness.snapshot(Calls, ROOT_CONVERSATION_ID, context)
   await until(async () => ((await calls())?.calls.length ?? 0) > 0)
   const action = (name: string, args: unknown) =>
     post(server, `/api/extensions/page-agent/actions/${name}`, { args })
-  return { id, conversation, requests, calls, action, call: (await calls())!.calls[0] }
+  return { server, id, conversation, requests, calls, action, call: (await calls())!.calls[0] }
 }
 
 it('a visible page claims an unnamed request first, and only its answer is the result', async () => {
@@ -78,9 +77,35 @@ it('a visible page claims an unnamed request first, and only its answer is the r
   expect((await f.calls())!.calls).toEqual([])
 })
 
+it('a claimed request that times out unanswered warns that it may have run', async () => {
+  const f = await fixture()
+  await f.action('claim', { id: f.call.id, page: 'page-a', visible: true })
+  const ui = f.server.host.registry
+    .snapshot()
+    .extension('page-agent')!
+    .tools!.find((tool) => tool.name === 'ui')!
+  const timedOut = await ui.execute(
+    { op: 'act', steps: [] },
+    {
+      callId: f.call.id,
+      wake: { reason: 'time' },
+      readSignal: async () => undefined,
+      commit: (change: never) => f.server.harness.commit(change, context),
+    } as never,
+    context,
+  )
+  expect(timedOut).toMatchObject({
+    isError: true,
+    output: [{ text: expect.stringContaining('Look before repeating it') }],
+  })
+  expect((await f.calls())!.calls).toEqual([])
+})
+
 it('only the named page may claim a request, visible or not', async () => {
-  const f = await fixture('voice-page')
-  expect(f.call.page).toBe('voice-page')
+  const f = await fixture()
+  await f.server.harness.commit(async (tx) => {
+    ;(await tx.doc(Calls, ROOT_CONVERSATION_ID)).calls[0].page = 'voice-page'
+  }, context)
   const claim = (page: string, visible: boolean) =>
     f.action('claim', { id: f.call.id, page, visible })
   expect((await claim('other', true)).data.result).toEqual({ claimed: false })

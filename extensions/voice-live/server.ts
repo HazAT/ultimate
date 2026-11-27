@@ -16,6 +16,7 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
+import type { Context } from '@earendil-works/chord/context'
 import { arr, num, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -36,7 +37,7 @@ import { ConversationsApi } from '../conversations/api.ts'
 import { Family } from '../models/api.ts'
 import { Branch } from '../lineage/api.ts'
 import { Standing } from '../subagents/api.ts'
-import { PageAgentApi } from '../page-agent/api.ts'
+import { PageAgentPages } from '../page-agent/api.ts'
 import { VideoApi } from '../video/api.ts'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.shared.ts'
 import {
@@ -659,6 +660,7 @@ export const actions = {
       ...(levels?.length ? { envelope: levels } : {}),
       ...(typeof hint === 'string' && hint.trim() ? { hint: hint.trim() } : {}),
       ...(pictures.length ? { images: pictures.length } : {}),
+      ...(typeof page === 'string' && page ? { page } : {}),
     }
     const words =
       typeof audio === 'string'
@@ -693,9 +695,6 @@ export const actions = {
         fork.draft = (fork.draft ?? []).filter((clip) => !collected.includes(clip.audio))
       if (typeof screen === 'number') fork.screen = screen as ConversationId
       else delete fork.screen
-      await host
-        .need(PageAgentApi)
-        .namePage(tx, id, typeof page === 'string' && page ? page : undefined)
       if (silent) return 'dropped' as const
       if (group.length && !data.text && !pictures.length)
         fork.pending = { ...fork.pending, [key]: group }
@@ -886,8 +885,16 @@ async function voiceRequest(
   return changed ? result : undefined
 }
 
+async function pageOfLatestTurn(host: ExtensionHost, id: ConversationId, ctx: Context) {
+  const conversation = await host.harness().conversation(id, ctx)
+  const page = await conversation?.entries({ order: 'descending' }, 50, undefined, ctx)
+  const turn = page?.items.find((entry) => VoiceTurnEntry.is(entry))
+  return turn && VoiceTurnEntry.is(turn) ? turn.data.page : undefined
+}
+
 export default function voiceExtension(host: ExtensionHost) {
   host.need(ConversationsApi)
+  host.implement(PageAgentPages, { pageFor: (id, ctx) => pageOfLatestTurn(host, id, ctx) })
   return defineExtension({
     name: 'voice-live',
     tasks: [transcribe(host)],

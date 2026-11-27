@@ -81,6 +81,10 @@ async function fixture() {
         : last.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(' ')
     const call = /CALL (\{.*\})/.exec(text)
     if (call && last.role === 'user') {
+      if (text.includes('HOLD CALL')) {
+        holding = true
+        await hold.promise
+      }
       const { name, args } = JSON.parse(call[1])
       return fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: 'toolUse' })
     }
@@ -272,18 +276,30 @@ it('only the voice fork has ui, and its requests name the page that sent the tur
   expect(await offered(first.id)).toContain('ui')
   expect(await offered(f.main)).not.toContain('ui')
   const calls = () => f.server.harness.snapshot(Calls, ROOT_CONVERSATION_ID, context)
-  const sent = f.action('turn', {
+  await f.action('turn', {
     key: 'look',
     page: 'voice-page',
-    text: `CALL ${JSON.stringify({ name: 'ui', args: { op: 'snapshot' } })}`,
+    text: `HOLD CALL ${JSON.stringify({ name: 'ui', args: { op: 'snapshot' } })}`,
   })
+  await until(async () => f.holding())
+  await f.action('turn', {
+    key: 'later',
+    page: 'other-page',
+    text: 'queued',
+    delivery: 'followUp',
+  })
+  f.transcribed.push('')
+  const kept = (await f.action('record', { audio, mimeType: 'audio/webm', session: first.id })).data
+    .result.audio as string
+  await until(async () => (await f.forkOf(first.id))?.transcripts?.[kept] !== undefined)
+  await f.action('turn', { key: 'silent', page: 'other-page', text: '', audio: kept })
+  f.hold.resolve()
   await until(async () => ((await calls())?.calls.length ?? 0) > 0)
   expect((await calls())!.calls[0]).toMatchObject({
     conversation: first.id,
     op: 'snapshot',
     page: 'voice-page',
   })
-  await sent
 })
 
 it('collected recordings wait in the draft and go out together as one turn', async () => {

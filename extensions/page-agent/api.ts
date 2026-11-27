@@ -1,13 +1,14 @@
-/** The page agent for other extensions: name the page that runs a conversation's `ui` requests. */
-import type { ConversationId, Tx } from '@earendil-works/pi-durable'
+/** The page agent's extension point: which page runs a conversation's `ui` requests. */
+import type { Context } from '@earendil-works/chord/context'
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 
-export type PageAgentService = {
+export type PageAgentPagesService = {
   /**
-   * Name the page (its `pageId` from `ui.solid.tsx`) that runs the `ui` requests `conversation` makes from now on,
-   * inside the caller's transaction; `undefined` lets any visible page run them.
+   * The page (its `pageId` from `ui.solid.tsx`) that runs the `ui` request `conversation` makes now, read from what is
+   * committed; `undefined` lets any visible page run it.
    */
-  namePage(tx: Tx, conversation: ConversationId, page: string | undefined): Promise<void>
+  pageFor(conversation: ConversationId, context: Context): Promise<string | undefined>
 }
-/** The page agent; `need` it from an extension that `requires` page-agent. */
-export const PageAgentApi = defineApi<PageAgentService>()('page-agent')
+/** Implemented by the extension whose conversations call `ui` (voice); page-agent `want`s it on every request. */
+export const PageAgentPages = defineApi<PageAgentPagesService>()('page-agent.pages')

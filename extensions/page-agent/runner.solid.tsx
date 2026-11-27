@@ -42,6 +42,7 @@ export function PageAgentRunner() {
       visible: pageVisible(),
     }),
     ({ calls, visible }) => {
+      for (const id of tried) if (!calls.some((call) => call.id === id)) tried.delete(id)
       for (const call of calls) {
         if (call.claimed || tried.has(call.id)) continue
         if (call.page ? call.page !== pageId : !visible) continue

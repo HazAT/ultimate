@@ -40,6 +40,8 @@ export type VoiceTurn = {
   answered?: true
   hint?: string
   images?: number
+  /** The page that sent it (page-agent's `pageId`): `ui` calls answering it run there. */
+  page?: string
 }
 
 /** A handoff to @ultimate, written as a `voice.handoff` input entry in @ultimate and as the tool's result in the fork. */
@@ -124,7 +126,7 @@ export const TurnAction = actionRef<
     envelope?: number[]
     hint?: string
     screen?: ConversationId
-    /** The page that sent it (page-agent's `pageId`): the session's `ui` requests run there. */
+    /** The page that sent it (page-agent's `pageId`): `ui` calls answering this turn run there. */
     page?: string
     images?: { data: string; mimeType: string }[]
   },

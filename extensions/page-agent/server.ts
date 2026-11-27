@@ -11,7 +11,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
-import { PageAgentApi } from './api.ts'
+import { PageAgentPages } from './api.ts'
 import { AnswerAction, ClaimAction, PageAgentDoc } from './refs.ts'
 import type { PageAgentCall } from './refs.ts'
 
@@ -27,17 +27,7 @@ export const Calls = defineDoc<{ calls: PageAgentCall[] }>({
   initial: () => ({ calls: [] }),
 })
 
-export const NamedPage = defineDoc<{ page?: string }>({
-  kind: 'page-agent.page',
-  checkpointWhen: checkpointEvery(100),
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({}),
-})
-
-export const docs = [Calls, NamedPage]
+export const docs = [Calls]
 
 const Answered = defineSignal({
   name: 'page-agent.answered',
@@ -87,13 +77,6 @@ export const actions = {
 }
 
 export default function pageAgentExtension(host: ExtensionHost) {
-  host.implement(PageAgentApi, {
-    namePage: async (tx, conversation, page) => {
-      const named = await tx.doc(NamedPage, conversation)
-      if (page) named.page = page
-      else delete named.page
-    },
-  })
   return defineExtension({
     name: 'page-agent',
     tools: [
@@ -132,7 +115,7 @@ export default function pageAgentExtension(host: ExtensionHost) {
               const doc = await tx.doc(Calls, ROOT_CONVERSATION_ID)
               const call = doc.calls.find((each) => each.id === id)
               doc.calls = doc.calls.filter((each) => each.id !== id)
-              return call
+              return { claimed: !!call?.claimed, named: !!call?.page }
             }, ctx)
           const answered = await api.readSignal(Answered, id, ctx)
           if (answered && 'value' in answered) {
@@ -148,9 +131,9 @@ export default function pageAgentExtension(host: ExtensionHost) {
               output: [
                 {
                   type: 'text',
-                  text: call?.claimed
+                  text: call.claimed
                     ? "The user's page took the request but did not answer in time: it may or may not have run. Look before repeating it."
-                    : call?.page
+                    : call.named
                       ? "The user's page did not answer: it must be open in their browser."
                       : 'No page answered: the user must have Ultimate open and in view in their browser.',
                 },
@@ -158,12 +141,12 @@ export default function pageAgentExtension(host: ExtensionHost) {
             }
           }
           const { op, ...input } = args as { op: 'snapshot' | 'query' | 'act' }
+          const page = await host.want(PageAgentPages)?.pageFor(api.conversationId, ctx)
           await api.commit(async (tx) => {
             const doc = await tx.doc(Calls, ROOT_CONVERSATION_ID)
             if (doc.calls.some((call) => call.id === id)) return
-            const page = (await tx.doc(NamedPage, api.conversationId)).page
             doc.calls = [
-              ...doc.calls,
+              ...doc.calls.filter((call) => api.now() - call.at <= 2 * TIMEOUT_MS),
               {
                 id,
                 conversation: api.conversationId,

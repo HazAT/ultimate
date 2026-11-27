@@ -13,8 +13,10 @@ conversation gets it when its owner enables and loads it: voice mode adds it to 
 
 `ui {op: query | act | snapshot}` records the request on the `page-agent.calls` document on conversation 1 as
 `{ id, conversation, task, op, input, at, page? }` and parks durably for 15 s, waking on the answer's signal.
-`page` is the page the caller named: `PageAgentApi.namePage(tx, conversation, page)` stores it per conversation, and
-voice names the page that sent each turn. A finished, failed or cancelled call removes its request.
+`page` is the page that should run it, asked of the `page-agent.pages` point (`PageAgentPages.pageFor`) when the call
+starts: voice answers with the page that sent the conversation's latest turn, so a turn queued from another page
+cannot redirect a call already running. A finished, failed or cancelled call removes its request, and each new
+request prunes ones left more than 30 s old.
 
 ## Pages
 
