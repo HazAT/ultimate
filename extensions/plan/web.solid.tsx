@@ -91,11 +91,13 @@ function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
   }>()
   createEffect(conversationId, () => {
     let form: HTMLFormElement | null | undefined
-    let row: Element | null | undefined
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
-      const end = row?.querySelector('[data-ui="voice-mode-switch"]')?.getBoundingClientRect()
+      const end = form
+        .closest(':has([data-ui="voice-mode-switch"])')
+        ?.querySelector('[data-ui="voice-mode-switch"]')
+        ?.getBoundingClientRect()
       setAnchor({
         left: rect.left,
         width: rect.width,
@@ -108,7 +110,6 @@ function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
       const container = document.querySelector('[data-composer-target="conversation"]')
       form = container?.querySelector('form')
       if (!container?.parentElement || !form) return false
-      row = container.parentElement
       appeared.disconnect()
       columnResizeObserver.observe(container.parentElement)
       columnResizeObserver.observe(form)
