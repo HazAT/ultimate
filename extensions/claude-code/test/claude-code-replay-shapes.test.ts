@@ -125,4 +125,5 @@ it('drops an assistant turn whose only answer is "(no content)", as Claude Code 
     'assistant',
     'user',
   ])
+  expect(kept[3].message.content).toEqual([text('Real answer.'), text('(no content)')])
 })
