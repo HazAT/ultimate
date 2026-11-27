@@ -282,6 +282,10 @@ it('only the voice fork has ui, and its requests name the page that sent the tur
     text: `HOLD CALL ${JSON.stringify({ name: 'ui', args: { op: 'snapshot' } })}`,
   })
   await until(async () => f.holding())
+  await f.server.harness.commit(async (tx) => {
+    for (let i = 0; i < 120; i++)
+      await tx.appendEntry(first.id, { kind: 'test.filler', data: i, head: 'self' })
+  }, context)
   await f.action('turn', {
     key: 'later',
     page: 'other-page',

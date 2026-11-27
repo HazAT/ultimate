@@ -887,9 +887,13 @@ async function voiceRequest(
 
 async function pageOfLatestTurn(host: ExtensionHost, id: ConversationId, ctx: Context) {
   const conversation = await host.harness().conversation(id, ctx)
-  const page = await conversation?.entries({ order: 'descending' }, 50, undefined, ctx)
-  const turn = page?.items.find((entry) => VoiceTurnEntry.is(entry))
-  return turn && VoiceTurnEntry.is(turn) ? turn.data.page : undefined
+  let cursor: Cursor | undefined
+  do {
+    const page = await conversation?.entries({ order: 'descending' }, 100, cursor, ctx)
+    for (const entry of page?.items ?? []) if (VoiceTurnEntry.is(entry)) return entry.data.page
+    cursor = page?.next
+  } while (cursor)
+  return undefined
 }
 
 export default function voiceExtension(host: ExtensionHost) {

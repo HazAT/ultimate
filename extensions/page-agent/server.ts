@@ -146,7 +146,7 @@ export default function pageAgentExtension(host: ExtensionHost) {
             const doc = await tx.doc(Calls, ROOT_CONVERSATION_ID)
             if (doc.calls.some((call) => call.id === id)) return
             doc.calls = [
-              ...doc.calls.filter((call) => api.now() - call.at <= 2 * TIMEOUT_MS),
+              ...doc.calls.filter((call) => call.claimed || api.now() - call.at <= 2 * TIMEOUT_MS),
               {
                 id,
                 conversation: api.conversationId,
