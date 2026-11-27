@@ -434,14 +434,7 @@ function ReviewScope(props: {
   const layout = () => (stored() === 'unified' ? 'unified' : 'split')
   const viewport = useViewport()
   const phone = () => viewport() === 'phone'
-  const args = {
-    get spec() {
-      return props.scope.spec
-    },
-    get conversation() {
-      return props.scope.conversation
-    },
-  }
+  const args = () => ({ spec: props.scope.spec, conversation: props.scope.conversation })
   const diff = useAction(DiffAction, args, { conversation: ROOT, onError: keepLast })
   const github = useGithubRepo()
   const [drafts, update] = useDrafts(() => draftsKey(props.scope.spec, props.scope.conversation))
