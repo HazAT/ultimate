@@ -14,7 +14,8 @@ import type { EntryId } from '@earendil-works/pi-durable'
 import { Branch } from '../../lineage/api.ts'
 import { context } from '../../../server/harness.ts'
 import { Family } from '../../models/api.ts'
-import { Fork, Session, Ui } from '../server.ts'
+import { Fork, Session } from '../server.ts'
+import { Calls } from '../../page-agent/server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
 import { EventFeed } from '../../../server/events.ts'
 import { ChangedEvent } from '../../../shared/events.ts'
@@ -261,35 +262,28 @@ it('a recording whose transcript is empty is never sent to the model', async () 
   expect(f.requests).toHaveLength(asked)
 })
 
-it('ui waits for the page: one page claims the request, and only its answer is the result', async () => {
+it('only the voice fork has ui, and its requests name the page that sent the turn', async () => {
   const f = await fixture()
-  const first = await f.turn({ key: 'one', text: 'start' })
-  const calls = () => f.server.harness.snapshot(Ui, first.id, context)
+  const first = await f.turn({ key: 'one', text: 'start', page: 'voice-page' })
+  const offered = async (id: ConversationId) =>
+    (await (await f.server.harness.conversation(id, context))!.agent(context)).tools.map(
+      (tool) => tool.name,
+    )
+  expect(await offered(first.id)).toContain('ui')
+  expect(await offered(f.main)).not.toContain('ui')
+  const calls = () => f.server.harness.snapshot(Calls, ROOT_CONVERSATION_ID, context)
   const sent = f.action('turn', {
     key: 'look',
-    text: `CALL ${JSON.stringify({ name: 'ui', args: { op: 'query', text: 'Secrets' } })}`,
+    page: 'voice-page',
+    text: `CALL ${JSON.stringify({ name: 'ui', args: { op: 'snapshot' } })}`,
   })
   await until(async () => ((await calls())?.calls.length ?? 0) > 0)
-  const call = (await calls())!.calls[0]
-  expect(call).toMatchObject({ op: 'query', input: { text: 'Secrets' } })
-  await sent
-  const claim = (page: string) => f.action('ui-claim', { id: call.id, page })
-  expect((await claim('page-a')).data.result).toEqual({ claimed: true })
-  expect((await claim('page-b')).data.result).toEqual({ claimed: false })
-  await f.action('ui-answer', { id: call.id, page: 'page-b', result: ['from the wrong page'] })
-  expect((await calls())!.calls).toHaveLength(1)
-  const answered = await f.action('ui-answer', {
-    id: call.id,
-    page: 'page-a',
-    result: [{ ref: 'c7', label: 'Secrets' }],
+  expect((await calls())!.calls[0]).toMatchObject({
+    conversation: first.id,
+    op: 'snapshot',
+    page: 'voice-page',
   })
-  expect(answered.status).toBe(200)
-  await (await f.server.harness.conversation(first.id, context))!.waitForIdle(context)
-  const result = f.requests.at(-1)!.messages.at(-1)!
-  expect(result.role === 'toolResult' && result.content).toEqual([
-    { type: 'text', text: '[{"ref":"c7","label":"Secrets"}]' },
-  ])
-  expect((await calls())!.calls).toEqual([])
+  await sent
 })
 
 it('collected recordings wait in the draft and go out together as one turn', async () => {

@@ -65,11 +65,9 @@ collect mode (optional), each with what to do when it is missing. The model line
    A press while it speaks pauses at once. With real speech it cuts: speech stops, the running turn is stopped
    (`stop`) and the rest of that reply stays silent. Without speech it resumes where it paused.
 8. **The UI and codemode**: voice may use `codemode` (its scripts reach `tools.action`) and a `ui` tool that drives the
-   user's own page. `ui {op: query | act | snapshot}` records the request on the fork's `voice.ui` document and parks
-   durably; the voice panel in the user's page runs it on the page's ui-sdk bridge (`pageAgent()` from `@/sdk/solid`)
-   and answers with `ui-answer`, which signals the parked call with the result. With no answer within 15 s the call
-   fails with a clear message. The prompt has voice say each action in one short line before it runs it; the folded
-   status line names the call running now.
+   user's own page. The `ui` tool belongs to [page-agent](../page-agent/README.md): the fork enables and loads it, and
+   each turn names the page that sent it, so that page runs the session's requests. The prompt has voice say each
+   action in one short line before it runs it; the folded status line names the call running now.
 9. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
    @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With
    `attachments`, the images the user pasted into the session's turns (the latest four) go along with it. With `to`, it

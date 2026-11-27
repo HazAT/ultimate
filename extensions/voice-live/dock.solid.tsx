@@ -20,6 +20,7 @@ import {
   talkMode,
 } from '../dictation/ui.solid.tsx'
 import type { Recorded, Sink } from '../dictation/ui.solid.tsx'
+import { pageId } from '../page-agent/ui.solid.tsx'
 import { speech, splitReply } from '../read-aloud/ui.solid.tsx'
 import type { Sentence } from '../read-aloud/ui.solid.tsx'
 import { createCues } from './cues.web.ts'
@@ -556,6 +557,7 @@ async function sendTurn(input: {
           ...(input.recorded || clips.length ? { seconds, envelope } : {}),
           ...(hint ? { hint } : {}),
           ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),
+          page: pageId,
           images,
         },
         { signal, who },

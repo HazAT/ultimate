@@ -8,7 +8,6 @@ import {
   AgentDoc,
   defineDoc,
   defineExtension,
-  defineSignal,
   defineTool,
   GenerationTask,
   hook,
@@ -17,7 +16,7 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { arr, lit, num, obj, opt, str, union, unknown } from '@earendil-works/pi-schema'
+import { arr, num, obj, opt, str } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
@@ -37,6 +36,7 @@ import { ConversationsApi } from '../conversations/api.ts'
 import { Family } from '../models/api.ts'
 import { Branch } from '../lineage/api.ts'
 import { Standing } from '../subagents/api.ts'
+import { PageAgentApi } from '../page-agent/api.ts'
 import { VideoApi } from '../video/api.ts'
 import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
 import {
@@ -49,8 +49,6 @@ import {
   DiscardAction,
   IntentAction,
   TurnAction,
-  UiAnswerAction,
-  UiClaimAction,
 } from './refs.ts'
 import type {
   VoiceDelivery,
@@ -59,7 +57,6 @@ import type {
   VoiceRoute,
   VoiceSession,
   VoiceTurn,
-  VoiceUi,
 } from './refs.ts'
 import { voicePrompt } from './prompt.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
@@ -82,7 +79,6 @@ const VOICE_TOOLS = [
   'ui',
   'voice_handoff',
 ]
-const UI_TIMEOUT_MS = 15_000
 const THINKING_LEVELS: readonly ModelThinkingLevel[] = [
   'off',
   'minimal',
@@ -93,18 +89,7 @@ const THINKING_LEVELS: readonly ModelThinkingLevel[] = [
   'max',
 ]
 
-export const userActions = [
-  'open',
-  'record',
-  'turn',
-  'pick',
-  'stop',
-  'end',
-  'ui-claim',
-  'ui-answer',
-  'discard',
-  'intent',
-]
+export const userActions = ['open', 'record', 'turn', 'pick', 'stop', 'end', 'discard', 'intent']
 
 export const Session = defineDoc<VoiceSession>({
   kind: 'voice.session',
@@ -135,19 +120,7 @@ export const Fork = defineDoc<
   initial: () => ({}),
 })
 
-export const Ui = defineDoc<VoiceUi>({
-  kind: 'voice.ui',
-  checkpointWhen: checkpointEvery(100),
-  version: 1,
-  scope: 'conversation',
-  history: 'latest',
-  fork: 'initial',
-  initial: () => ({ calls: [] }),
-})
-
-const UiAnswered = defineSignal({ name: 'voice-live.ui-answered', version: 1, schema: unknown() })
-
-export const docs = [Session, Fork, Ui]
+export const docs = [Session, Fork]
 
 export const hearsAudio = (model: { provider: string; modelId: string }) =>
   /gemini/i.test(model.modelId)
@@ -625,6 +598,7 @@ export const actions = {
       envelope,
       hint,
       screen,
+      page,
       images,
       session: expected,
     } = unwrap<{
@@ -639,6 +613,7 @@ export const actions = {
       envelope: unknown
       hint: unknown
       screen: unknown
+      page: unknown
       images: unknown
     }>(args)
     if (typeof key !== 'string' || !key) throw new Error('Expected a turn key')
@@ -718,6 +693,9 @@ export const actions = {
         fork.draft = (fork.draft ?? []).filter((clip) => !collected.includes(clip.audio))
       if (typeof screen === 'number') fork.screen = screen as ConversationId
       else delete fork.screen
+      await host
+        .need(PageAgentApi)
+        .namePage(tx, id, typeof page === 'string' && page ? page : undefined)
       if (silent) return 'dropped' as const
       if (group.length && !data.text && !pictures.length)
         fork.pending = { ...fork.pending, [key]: group }
@@ -837,35 +815,6 @@ export const actions = {
       clips,
       ...(only ? { dropped: true as const } : {}),
     }
-  }),
-  'ui-claim': implementAction(UiClaimAction, async (args, { host }) => {
-    const { id, page } = unwrap<{ id: unknown; page: unknown }>(args)
-    if (typeof id !== 'string' || typeof page !== 'string' || !page)
-      throw new Error('Expected { id, page }')
-    const session = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-    if (session === undefined) return { claimed: false }
-    return host.harness().commit(async (tx) => {
-      const ui = await tx.doc(Ui, session)
-      const call = ui.calls.find((each) => each.id === id)
-      if (!call || call.page || Date.now() - call.at > UI_TIMEOUT_MS) return { claimed: false }
-      call.page = page
-      return { claimed: true }
-    }, context)
-  }),
-  'ui-answer': implementAction(UiAnswerAction, async (args, { host }) => {
-    const { id, page, result } = unwrap<{ id: unknown; page: unknown; result: unknown }>(args)
-    if (typeof id !== 'string' || typeof page !== 'string')
-      throw new Error('Expected { id, page, result }')
-    const session = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-    if (session === undefined) return {}
-    await host.harness().commit(async (tx) => {
-      const ui = await tx.doc(Ui, session)
-      const call = ui.calls.find((each) => each.id === id)
-      if (!call || call.page !== page) return
-      await tx.signal(call.task, UiAnswered, id, result ?? null)
-    }, context)
-    host.harness().resume()
-    return {}
   }),
   stop: implementAction(StopAction, async (_args, { host }) => {
     const id = (await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
@@ -1012,73 +961,6 @@ export default function voiceExtension(host: ExtensionHost) {
       }),
     ],
     tools: [
-      defineTool({
-        name: 'ui',
-        description:
-          "Drive the user's own Ultimate page through its ui-sdk agent bridge: `snapshot` lists the controls on screen with their state, `query` finds controls by label or row text (`text`, optional `within` a list, `kind`), `act` runs steps in order as the agent ([{ref, action, args?}], ref is a label or a ref from query, like {ref: 'System', action: 'press'} to switch surface). Each change is recorded as made by an agent. Say in one short line what you are about to do before calling it.",
-        parameters: union([
-          obj({ op: lit('snapshot') }),
-          obj({ op: lit('query'), text: opt(str()), within: opt(str()), kind: opt(str()) }),
-          obj({
-            op: lit('act'),
-            steps: arr(
-              obj({
-                ref: str({ minLength: 1 }),
-                action: str({ minLength: 1 }),
-                args: opt(arr(unknown())),
-              }),
-            ),
-          }),
-        ]),
-        ...safeToRerun(
-          'The request is recorded once per tool call; a rerun finds it or its answer.',
-        ),
-        async execute(args, api, ctx) {
-          const id = api.callId
-          const answered = await api.readSignal(UiAnswered, id, ctx)
-          if (answered && 'value' in answered) {
-            await api.commit(async (tx) => {
-              const ui = await tx.doc(Ui, api.conversationId)
-              ui.calls = ui.calls.filter((call) => call.id !== id)
-            }, ctx)
-            return { output: [{ type: 'text', text: JSON.stringify(answered.value) }] }
-          }
-          if (answered || api.wake?.reason === 'time') {
-            const claimed = await api.commit(async (tx) => {
-              const ui = await tx.doc(Ui, api.conversationId)
-              const call = ui.calls.find((each) => each.id === id)
-              ui.calls = ui.calls.filter((each) => each.id !== id)
-              return !!call?.page
-            }, ctx)
-            return {
-              isError: true,
-              output: [
-                {
-                  type: 'text',
-                  text: claimed
-                    ? "The user's page took the request but did not answer in time: it may or may not have run. Look before repeating it."
-                    : "The user's page did not answer: the voice panel must be open in their browser.",
-                },
-              ],
-            }
-          }
-          const { op, ...input } = args as { op: 'snapshot' | 'query' | 'act' }
-          await api.commit(async (tx) => {
-            const ui = await tx.doc(Ui, api.conversationId)
-            if (!ui.calls.some((call) => call.id === id))
-              ui.calls = [...ui.calls, { id, task: api.taskId, op, input, at: api.now() }]
-          }, ctx)
-          return {
-            sleep: { until: api.now() + UI_TIMEOUT_MS, signals: [UiAnswered.key(id)] },
-          }
-        },
-        async cancel(_args, api, ctx) {
-          await api.commit(async (tx) => {
-            const ui = await tx.doc(Ui, api.conversationId)
-            ui.calls = ui.calls.filter((call) => call.id !== api.callId)
-          }, ctx)
-        },
-      }),
       defineTool({
         name: 'voice_handoff',
         deferred: true,
