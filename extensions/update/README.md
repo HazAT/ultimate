@@ -69,7 +69,7 @@ When the install fails, the item reads `install owed`, extensions and the web bu
 
 The lander fast-forwards the host's checkout itself. A landing that changes only `patches/` or `pnpm-lock.yaml` touches no file the extension watcher reloads for, so on each `workspaces.landed` the extension runs the step above at once. The landing card says "Needs restart." (`needsRestart` in `lib/layers.ts`, the rule `layersOf` shares) when it changed `server/`, `shared/`, a patch or the lockfile.
 
-Then, once the install is done, the extension restarts the host through the core swap when the core is stale by the test above (`Restarting: a landing changed the core`). Until then the core holds every extension reload and web rebuild (`docs/running.md`), so the old process never runs extension code written for the new core. A swap that fails its type-check keeps the old core serving its old code and leaves a notice. Previews never install or restart.
+Then, once the install is done, the extension restarts the host through the core swap when the core is stale by the test above, without a notice: only a failed restart leaves one, and a swap already in progress is no failure. Until then the core holds every extension reload and web rebuild (`docs/running.md`), so the old process never runs extension code written for the new core. A swap that fails its type-check keeps the old core serving its old code and leaves a notice. Previews never install or restart.
 
 ## Events
 
