@@ -3,13 +3,12 @@ import { expect, it } from 'vitest'
 import { execFile } from '../../../../lib/spawn.ts'
 import { fixture } from '../fixture.ts'
 
-const ffmpeg = await execFile('ffmpeg', ['-version']).then(
-  () => true,
-  (error: NodeJS.ErrnoException) => {
+const ffmpeg = await execFile('ffmpeg', ['-encoders'])
+  .then(({ stdout }) => stdout.includes('libx264'))
+  .catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return false
     throw error
-  },
-)
+  })
 
 it.skipIf(!ffmpeg)('prepares a real 960p 30 fps video with audio as a smaller MP4', async () => {
   const f = await fixture(execFile)
