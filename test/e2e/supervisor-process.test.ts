@@ -120,7 +120,7 @@ describe('supervisor process ownership', () => {
       `import { createServer } from 'node:http'
 const server=createServer((_req,res)=>res.end('recovered'))
 server.listen(0,'127.0.0.1',()=>process.send?.({type:'prepared',port:(server.address() as import('node:net').AddressInfo).port}))
-process.on('message',(message:{type:string})=>{ if(message.type==='go')process.send?.({type:'ready'}); if(message.type==='release')process.send?.({type:'released'}); if(message.type==='exit')server.close(()=>process.exit(0)) })`,
+process.on('message',(message:{type:string;requestId?:string})=>{ if(message.type==='go')process.send?.({type:'ready'}); if(message.type==='release')process.send?.({type:'released',requestId:message.requestId}); if(message.type==='exit')server.close(()=>process.exit(0)) })`,
     )
     await until(async () => {
       try {
@@ -270,5 +270,83 @@ process.on('message',(message:{type:string})=>{ if(message.type==='go'){process.
       await rm(file, { force: true })
       await rm(extensionFile, { force: true })
     }
+  }, 60000)
+
+  it('ignores the late release of a timed-out swap, so the next swap waits for its own release', async () => {
+    const home = await temp('ultimate-late-release-')
+    homes.push(home)
+    const root = await sourceCopy(home)
+    copies.set(home, root)
+    await writeFile(
+      join(root, 'server/main.ts'),
+      `import { createServer } from 'node:http'
+import { appendFileSync } from 'node:fs'
+import type { AddressInfo } from 'node:net'
+const generation = process.env.ULTIMATE_GENERATION
+const log = (line: string) => appendFileSync(process.env.ULTIMATE_HOME + '/events.log', 'gen' + generation + ':' + line + '\\n')
+let releases = 0
+let firstReleaseId = ''
+const server = createServer((req, res) => {
+  process.send?.({ type: 'swap', requestId: new URL(req.url!, 'http://x').searchParams.get('id')! })
+  res.end('ok')
+})
+server.listen(0, '127.0.0.1', () => process.send?.({ type: 'prepared', port: (server.address() as AddressInfo).port }))
+process.on('message', (message: { type: string; requestId?: string }) => {
+  if (message.type === 'go') { log('go'); process.send?.({ type: 'ready' }) }
+  if (message.type === 'swap-result') {
+    log('swap-result:' + message.requestId + ':' + (message as { ok?: boolean }).ok)
+    if ((message as { ok?: boolean }).ok) process.send?.({ type: 'swap-ack', requestId: message.requestId, ok: true })
+  }
+  if (message.type === 'release') {
+    const attempt = ++releases
+    log('release-start:' + attempt)
+    if (generation !== '1' || attempt > 2) {
+      log('released:' + attempt)
+      process.send?.({ type: 'released', requestId: message.requestId })
+    } else if (attempt === 1) {
+      firstReleaseId = message.requestId!
+    } else {
+      log('stale-replayed')
+      process.send?.({ type: 'released', requestId: firstReleaseId })
+      setTimeout(() => {
+        log('released:2')
+        process.send?.({ type: 'released', requestId: message.requestId })
+      }, 1000)
+    }
+  }
+  if (message.type === 'reacquire') {
+    log('reacquire')
+    log('released:1')
+    process.send?.({ type: 'released', requestId: firstReleaseId })
+    log('ready-again')
+    process.send?.({ type: 'ready' })
+  }
+  if (message.type === 'exit') { server.close(() => process.exit(0)); server.closeAllConnections() }
+})`,
+    )
+    await launch(home)
+    const events = async () =>
+      (await readFile(join(home, 'events.log'), 'utf8').catch(() => '')).split('\n')
+    const results = async () =>
+      (await events()).filter((line) => line.startsWith('gen1:swap-result:'))
+    let posted = 0
+    const swap = async (accepted: number) => {
+      const lock = JSON.parse(await readFile(join(home, 'ultimate.lock'), 'utf8'))
+      await fetch(`http://127.0.0.1:${lock.port}/?id=s${posted++}`)
+      await until(async () => (await results()).length === posted)
+      return (await results()).filter((line) => line.endsWith(':true')).length === accepted
+    }
+    await until(async () => (await events()).includes('gen1:go'))
+    await until(() => swap(1))
+    await until(async () => (await events()).includes('gen1:ready-again'), 30000)
+    await until(() => swap(2))
+    await until(async () => (await events()).includes('gen3:go'))
+    const lines = await events()
+    const goIndex = lines.indexOf('gen3:go')
+    const staleIndex = lines.indexOf('gen1:stale-replayed')
+    const released2 = lines.indexOf('gen1:released:2')
+    expect(staleIndex).toBeGreaterThanOrEqual(0)
+    expect(released2).toBeGreaterThan(staleIndex)
+    expect(released2).toBeLessThan(goIndex)
   }, 60000)
 })

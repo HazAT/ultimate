@@ -20,12 +20,14 @@ export function isCoreReport(message: ChildMessage): message is CoreReport {
 export type ChildMessage =
   | CoreReport
   | { type: 'prepared'; port: number }
-  | { type: 'ready' | 'released' }
+  | { type: 'ready' }
+  | { type: 'released'; requestId: string }
   | { type: 'failed'; error: string }
   | { type: 'swap'; requestId: string; build?: BuildInfo }
   | { type: 'swap-ack'; requestId: string; ok: boolean; error?: string }
 export type SupervisorMessage =
-  | { type: 'go' | 'release' | 'exit' }
+  | { type: 'go' | 'exit' }
+  | { type: 'release'; requestId: string }
   | { type: 'reacquire'; error: string }
   | { type: 'swap-result'; requestId: string; ok: false; error: string }
   | { type: 'swap-result'; requestId: string; ok: true; generation: number }

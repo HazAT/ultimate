@@ -646,6 +646,46 @@ export default host => { host.resource('cleanup.process',()=>{
       await prepared.close()
     }
   })
+  it('serialises close behind a release that is still unwinding, so the storage owner closes once', async () => {
+    const entered = Promise.withResolvers<void>()
+    const gate = Promise.withResolvers<void>()
+    let calls = 0
+    Object.assign(globalThis, {
+      releaseProbe: async () => {
+        if (++calls > 1) return
+        entered.resolve()
+        await gate.promise
+      },
+    })
+    const { options } = await fixture(false, {
+      slowrelease: `import { defineExtension } from '@earendil-works/pi-durable'
+export default h => { h.onOpen(async opened => { opened.defer(globalThis.releaseProbe) }); return defineExtension({ name: 'slowrelease' }) }`,
+    })
+    const prepared = await prepareServer({ ...options, home: join(options.home, 'candidate') })
+    let closing: Promise<void> | undefined
+    let releasing: Promise<void> | undefined
+    let closeDone = false
+    try {
+      await prepared.go()
+      releasing = prepared.release()
+      await entered.promise
+      closing = prepared.close().finally(() => {
+        closeDone = true
+      })
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(closeDone).toBe(false)
+      gate.resolve()
+      await expect(releasing).resolves.toBeUndefined()
+      await expect(closing).resolves.toBeUndefined()
+      expect(calls).toBe(1)
+    } finally {
+      gate.resolve()
+      await Promise.allSettled([releasing, closing])
+      delete (globalThis as { releaseProbe?: unknown }).releaseProbe
+      if (!closing) await prepared.close()
+    }
+  })
+
   it('streams a SQLite tool turn as ops that exactly replicate the committed view', async () => {
     const { server } = await fixture()
     const stream = await attach(server)

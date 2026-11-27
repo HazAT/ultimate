@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { fork, spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { mkdir, realpath } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
@@ -327,8 +328,9 @@ async function exit(core: Core) {
   if (core.child.exitCode !== null || core.child.signalCode !== null) return
   const expiresAt = Date.now() + 10000
   try {
-    const released = wait(core, 'released', undefined, 10000)
-    send(core, { type: 'release' })
+    const requestId = randomUUID()
+    const released = wait(core, 'released', requestId, 10000)
+    send(core, { type: 'release', requestId })
     await released
     const exited = once(core.child, 'exit')
     send(core, { type: 'exit' })
@@ -469,8 +471,8 @@ async function swap(old: Core, requestId: string, previousBuild?: BuildInfo) {
     active = undefined
     display.lifecycle('swapping')
     released = true
-    const release = wait(old, 'released', undefined, 10000)
-    send(old, { type: 'release' })
+    const release = wait(old, 'released', requestId, 10000)
+    send(old, { type: 'release', requestId })
     await release
     await start(next)
     await exit(old)
@@ -485,6 +487,9 @@ async function swap(old: Core, requestId: string, previousBuild?: BuildInfo) {
       send(old, { type: 'reacquire', error: stderr })
       try {
         await wait(old, 'ready')
+        old.messages = old.messages.filter(
+          (message) => !(message.type === 'released' && message.requestId === requestId),
+        )
         active = old
         display.lifecycle('ready', { generation: old.generation, pid: old.child.pid })
         for (const report of old.reports.values()) display.report(report)
