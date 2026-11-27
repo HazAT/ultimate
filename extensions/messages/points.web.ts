@@ -3,7 +3,7 @@ import type { Component } from 'solid-js'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { definePoint } from '@/sdk/types.ts'
 import type { Message } from './refs.ts'
-import type { WaitFacts } from '../../lib/waits.ts'
+import type { WaitFacts } from '../../lib/waits.web.ts'
 
 export const WaitTimers = definePoint<null, WaitFacts['automations']>('messages.wait-timers')
 

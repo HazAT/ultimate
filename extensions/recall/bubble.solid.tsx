@@ -1,12 +1,12 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { cn, useDoc, useTranscript } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 import { MemoryChip } from '../lineage/ui.solid.tsx'
 import { RecallDoc } from './refs.ts'
-import { RecalledEntry } from './types.ts'
-import type { Recalled } from './types.ts'
+import { RecalledEntry } from './types.shared.ts'
+import type { Recalled } from './types.shared.ts'
 
 function Chips(props: { recalled: Recalled; animate: boolean }) {
   let row!: HTMLDivElement

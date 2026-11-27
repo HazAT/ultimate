@@ -1,7 +1,7 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { openQuestion } from '../../lib/message-state.ts'
+import { openQuestion } from '../../lib/message-state.shared.ts'
 import { callerOf } from './caller.shared.ts'
-import { AskedEntry } from './entries.ts'
+import { AskedEntry } from './entries.shared.ts'
 import type { Message } from './refs.ts'
 
 export type Question = {

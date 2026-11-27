@@ -56,16 +56,12 @@ async function setupFixture(decision?: boolean) {
 }
 
 function drive(server: Awaited<ReturnType<typeof fauxServer>>) {
-  const call =
-    (extension: string) =>
-    async (name: string, args: unknown = {}) => {
-      const response = await post(server, `/api/extensions/${extension}/actions/${name}`, { args })
+  return {
+    action: async (name: string, args: unknown = {}) => {
+      const response = await post(server, `/api/extensions/manager/actions/${name}`, { args })
       expect(response.status).toBe(200)
       return response.data.result
-    }
-  return {
-    action: call('manager'),
-    onboarding: call('onboarding'),
+    },
     enabled: (name: string) =>
       server.extensions.info().find((entry) => entry.name === name)?.enabled,
     web: async () => server.web.facets(),
@@ -78,29 +74,7 @@ it('gates project resources until the local setup is chosen, and remembers the c
   let server: Awaited<ReturnType<typeof fauxServer>> | undefined
   try {
     server = await fauxServer(options)
-    const { action, onboarding, enabled, web, tools } = drive(server)
-    for (const args of [
-      {},
-      { extensions: { plan: 'yes' } },
-      { extensions: {}, local: 1 },
-      { extensions: { '': true } },
-      { extensions: { ' ': false } },
-    ])
-      expect(
-        (await post(server, '/api/extensions/onboarding/actions/applyFirstRun', { args })).status,
-      ).toBe(500)
-    expect(await onboarding('status')).toMatchObject({
-      firstRun: true,
-      // Undecided: the project's settings are not applied, but the page shows what they would enable.
-      adds: {
-        agents: ['y'],
-        skills: ['local-skill'],
-        extensions: ['x'],
-        replaces: [],
-        enable: [],
-        disable: ['plan'],
-      },
-    })
+    const { action, enabled, web, tools } = drive(server)
     expect(server.system.current().project).toMatchObject({
       config: true,
       decision: null,
@@ -211,7 +185,7 @@ it('applies extension choices live at project and user scope, keeping other sett
   }
 })
 
-it('withdraws the local setup, adopts it into user settings, and remembers the first run', async () => {
+it('withdraws the local setup and adopts it into user settings', async () => {
   const { home, projectFile, userFile, options } = await setupFixture(true)
   await updateSettings(projectFile, (value) => {
     value.extensions = { ...(value.extensions as object), enable: ['splash'] }
@@ -223,7 +197,7 @@ it('withdraws the local setup, adopts it into user settings, and remembers the f
   let server: Awaited<ReturnType<typeof fauxServer>> | undefined
   try {
     server = await fauxServer(options)
-    const { action, onboarding, enabled, web, tools } = drive(server)
+    const { action, enabled, web, tools } = drive(server)
     await action('decide', { local: false })
     expect(enabled('x')).toBe(false)
     expect(enabled('plan')).toBe(true)
@@ -242,24 +216,12 @@ it('withdraws the local setup, adopts it into user settings, and remembers the f
       custom: 'user',
       extensions: { extra: 2, enable: ['splash'], disable: ['sounds', 'plan'] },
     })
-    // `"onboarding": false` in the user's settings skips the first run without its marker.
-    await updateSettings(userFile, (value) => {
-      value.onboarding = false
-    })
-    expect(await onboarding('status')).toMatchObject({ firstRun: false, off: true })
-    await updateSettings(userFile, (value) => {
-      delete value.onboarding
-    })
-    expect(await onboarding('status')).toMatchObject({ firstRun: true, off: false })
-    await onboarding('firstRunDone')
-    expect((await onboarding('status')).firstRun).toBe(false)
     const first = server
     server = undefined
     await first.close()
     server = await fauxServer(options)
     expect(server.system.current().project.decision).toBe(false)
     expect(drive(server).enabled('x')).toBe(false)
-    expect((await drive(server).onboarding('status')).firstRun).toBe(false)
   } finally {
     await server?.close()
     await removeTemp(home)

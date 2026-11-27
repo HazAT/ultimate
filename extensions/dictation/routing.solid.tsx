@@ -1,6 +1,6 @@
 import { createRoot, createSignal, onSettled } from 'solid-js'
 import { api, chordOf, formatKeys, ROOT, useAction } from '@/sdk/solid'
-import { inProcess } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
 import { capture } from './capture.web.ts'
 import type { Sink, Take } from './capture.web.ts'
 import { SetSettingsAction, SettingsAction } from './refs.ts'

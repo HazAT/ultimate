@@ -1,6 +1,6 @@
 import { createSignal, flush, Show } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { parseConversationId } from '../../../../lib/ids.ts'
+import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
 import { composeIn, dock, endSession, settleTranscripts, voiceSink } from '../../dock.solid.tsx'

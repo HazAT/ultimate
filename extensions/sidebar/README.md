@@ -100,7 +100,7 @@ A solid purple dot means an unread reply, not ongoing work; only the pulsing dot
 Every row reads one state from messages’ `conversationState`, the same the System surface shows: working;
 **waits on you** (@ultimate or a branch with an open question to the user);
 **waits on <target>** (brand-colored, never on a subagent: an open agent or remote request, an enabled timer with
-its next fire time). The primary is named `@ultimate`, other conversations `#N`;
+its next fire time, read from messages' `WaitTimers` point, which automations provides). The primary is named `@ultimate`, other conversations `#N`;
 when @ultimate itself waits on a remote, its waiting branch shows `waits on @ultimate → <project>` (one hop).
 Every row counts busy subagents and a queued landing as working
 (`useUnderway`), so a working tree never reads as waiting. Labels truncate with

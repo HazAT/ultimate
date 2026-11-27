@@ -1,8 +1,8 @@
 import { createRoot, createSignal } from 'solid-js'
 import { errorMessage, writerNow, writingAs } from '@/sdk/solid'
 import type { DictationSink, DictationTake } from '@/sdk/solid'
-import { inProcess } from '../../lib/errors.ts'
-import { animationFrames, deadline } from '../../lib/timers.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
+import { animationFrames, deadline } from '../../lib/timers.shared.ts'
 
 const recordingMimeOrder = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg', 'audio/webm']
 const MAX_RECORDING_MS = 5 * 60_000

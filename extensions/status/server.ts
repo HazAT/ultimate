@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { HealthApi } from '../health/api.ts'
 import { MessagesApi } from '../messages/api.ts'

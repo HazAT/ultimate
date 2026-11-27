@@ -19,7 +19,7 @@ import {
 } from '@earendil-works/pi-durable'
 import { obj } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
-import { meansNone, settled } from '../../lib/errors.ts'
+import { meansNone, settled } from '../../lib/errors.shared.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { isolatable } from '../../lib/git.ts'
@@ -48,7 +48,7 @@ import {
   StatusAction,
   WalkthroughAction,
 } from './refs.ts'
-import { StartEntry, WalkthroughEntry, ChoiceEntry } from './entries.ts'
+import { StartEntry, WalkthroughEntry, ChoiceEntry } from './entries.shared.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 

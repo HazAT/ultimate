@@ -1,7 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { openQuestion } from '../../lib/message-state.ts'
+import { openQuestion } from '../../lib/message-state.shared.ts'
 import type { Question } from '../messages/refs.ts'
-import { cardKey } from '../../lib/question-cards.ts'
+import { cardKey } from '../../lib/question-cards.shared.ts'
 import type { CardState } from './state.web.ts'
 
 export type Message = {

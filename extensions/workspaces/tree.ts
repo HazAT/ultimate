@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { exec } from '../../lib/exec.ts'
 import { git } from '../../lib/git.ts'
-import { isMissing, overshadowed } from '../../lib/errors.ts'
+import { isMissing, overshadowed } from '../../lib/errors.shared.ts'
 
 const configuredCommandTimeoutMs = 300_000
 

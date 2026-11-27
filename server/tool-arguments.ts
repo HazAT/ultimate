@@ -10,9 +10,9 @@ import type {
 } from '@earendil-works/pi-ai'
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import { traceContext } from './trace.ts'
-import { inProcess } from '../lib/errors.ts'
-import { deadline } from '../lib/timers.ts'
-import type { Cancel } from '../lib/timers.ts'
+import { inProcess } from '../lib/errors.shared.ts'
+import { deadline } from '../lib/timers.shared.ts'
+import type { Cancel } from '../lib/timers.shared.ts'
 import type { CallTrace } from './trace.ts'
 
 export const MAX_WHITESPACE_RUN = 1000

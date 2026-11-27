@@ -35,7 +35,7 @@ import { ListAction } from '../secrets/refs.ts'
 import { IsolationAction } from '../workspaces/refs.ts'
 import { settledChoice } from './choices.web.ts'
 import { firstRunDialog, gitDialog } from './dialogs.web.ts'
-import { ChoiceEntry, StartEntry } from './entries.ts'
+import { ChoiceEntry, StartEntry } from './entries.shared.ts'
 import { FirstRun, GitCard, ProjectCard, Recommended } from './pages.solid.tsx'
 import {
   ChooseAction,

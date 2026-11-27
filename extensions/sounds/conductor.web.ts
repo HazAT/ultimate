@@ -1,5 +1,5 @@
-import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 import { demo, demoLength, demoPlayer } from './agents.web.ts'
 import type { Happening } from './agents.web.ts'
 import type { Variant } from './variants.web.ts'

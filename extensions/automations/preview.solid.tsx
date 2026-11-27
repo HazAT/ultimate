@@ -1,7 +1,7 @@
 import { LoaderCircle, X } from '@lucide/solid'
 import { createEffect, createSignal, For, Show } from 'solid-js'
 import { ROOT, formatTime, keepLast, useAction, useNow } from '@/sdk/solid'
-import { retryAfter } from '../../lib/timers.ts'
+import { retryAfter } from '../../lib/timers.shared.ts'
 import { clock, countdown } from './looks.web.ts'
 import { DescribeAction } from './refs.ts'
 import { full, words } from './words.web.ts'

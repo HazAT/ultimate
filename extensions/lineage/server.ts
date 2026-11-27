@@ -1,4 +1,4 @@
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import type {
   CompactionResult,
   ConversationId,
@@ -15,7 +15,7 @@ import type {
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { onCommit } from '../../lib/commits.ts'
-import { isMissing, meansNone } from '../../lib/errors.ts'
+import { isMissing, meansNone } from '../../lib/errors.shared.ts'
 import { awaitWithContext, BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { arr, bool, int, lit, obj, opt, str, union } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
@@ -66,7 +66,7 @@ import {
   FinishedEntry,
 } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
-import { BranchedEntry } from './entries.ts'
+import { BranchedEntry } from './entries.shared.ts'
 import { NoteEntry } from '../entries/api.ts'
 import {
   applyMemoryOps,
@@ -81,7 +81,7 @@ import {
 import { catchupPreparation, Seen, seedSeen, watchSeen } from './catchup.ts'
 import { rewindActions, rewindTask } from './rewind.ts'
 import type { RootEvent } from './types.ts'
-import { compareUrl } from '../../lib/compare.ts'
+import { compareUrl } from '../../lib/compare.shared.ts'
 import { hasLogin, hostDefault } from '../../lib/agents.ts'
 import { admitCompaction } from '../../lib/compaction.ts'
 import { githubRepo } from '../../lib/project-identity.ts'

@@ -87,7 +87,7 @@ it('rejects raw timers, as in the review surface polling the DOM for a diff line
   }
   visit(parseSync('surface.tsx', shipped).program)
   expect(f.reports).toHaveLength(4)
-  expect(f.reports[0]).toMatch(/guesses when something has happened.*lib\/timers\.ts/)
+  expect(f.reports[0]).toMatch(/guesses when something has happened.*lib\/timers\.shared\.ts/)
 })
 
 it('rejects a commented replay: safe, as the restart tool declared it, and accepts the named spreads', async () => {

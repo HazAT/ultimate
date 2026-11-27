@@ -1,4 +1,4 @@
-import { parseConversationId } from './ids.ts'
+import { parseConversationId } from './ids.shared.ts'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { ExtensionHost } from '../server/extensions.ts'

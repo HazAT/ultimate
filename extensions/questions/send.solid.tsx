@@ -2,8 +2,8 @@ import { Undo2 } from '@lucide/solid'
 import { createEffect, createSignal, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 
 export const ANSWER_UNDO_WINDOW_MS = 3000
 const HOLD_TO_SEND_MS = 1000

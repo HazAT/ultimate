@@ -1,4 +1,4 @@
-import { cell } from '../../../lib/cell.ts'
+import { cell } from '../../../lib/cell.web.ts'
 
 export const {
   get: statusTarget,

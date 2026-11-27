@@ -6,7 +6,7 @@ import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durabl
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSummary } from '../../shared/protocol.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { AskedCalls, Messages } from '../messages/api.ts'
 import { FramesAction } from './refs.ts'
 import type { Frame } from './refs.ts'

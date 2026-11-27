@@ -16,7 +16,7 @@ import { onCommit } from '../../../lib/commits.ts'
 import { context } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { Summaries, summaryBehavior } from '../summary.ts'
-import { IntentSummarized, TitleChanged } from '../entries.ts'
+import { IntentSummarized, TitleChanged } from '../entries.shared.ts'
 import { until } from '../../../test/helpers.ts'
 
 const reported = {

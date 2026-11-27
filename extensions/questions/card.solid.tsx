@@ -19,8 +19,8 @@ import {
   writingAs,
   type Point,
 } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 import { MessagesDoc } from '../messages/refs.ts'
 import { keyCard, openQuestions, waitsOnUser } from './open.web.ts'
 import type { Message } from './open.web.ts'

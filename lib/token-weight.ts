@@ -1,5 +1,5 @@
 import { git } from './git.ts'
-import { meansNone } from './errors.ts'
+import { meansNone } from './errors.shared.ts'
 import { spawn } from './spawn.ts'
 
 const measuredBytesPerEstimatedToken = 4

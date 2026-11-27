@@ -1,7 +1,7 @@
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { ROOT } from '@/sdk/solid'
-import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
+import { parseConversationId, parseEntryId } from '../../../../lib/ids.shared.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { store } from '../../../../web/src/sdk/client.ts'

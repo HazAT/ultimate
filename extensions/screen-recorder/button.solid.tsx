@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import { holdReload, useEnabled, useNow } from '@/sdk/solid'
 import type { PromptRecorder } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { browserMedia, createScreenRecorder, screenSupported } from './capture.web.ts'
 import type { Box, Phase, ScreenRecorder } from './capture.web.ts'
 

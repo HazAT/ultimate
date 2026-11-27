@@ -11,9 +11,9 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import type { EventContext } from '../shared/events.ts'
-import { batch, every } from '../lib/timers.ts'
-import { meansNone } from '../lib/errors.ts'
-import type { Cancel } from '../lib/timers.ts'
+import { batch, every } from '../lib/timers.shared.ts'
+import { meansNone } from '../lib/errors.shared.ts'
+import type { Cancel } from '../lib/timers.shared.ts'
 
 export type TraceContext = EventContext & { traceId: string; parentCall: string }
 export type CallKind = 'service' | 'action' | 'reactor' | 'tool' | 'model'

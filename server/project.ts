@@ -2,8 +2,8 @@ import { basename, join } from 'node:path'
 import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
 import { alive, readOwner } from '../lib/lock.ts'
-import { debounce } from '../lib/timers.ts'
-import { rebuiltOnOpen, meansNone } from '../lib/errors.ts'
+import { debounce } from '../lib/timers.shared.ts'
+import { rebuiltOnOpen, meansNone } from '../lib/errors.shared.ts'
 
 export type ProjectConversation = Pick<
   ConversationSummary,

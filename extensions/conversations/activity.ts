@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { ConversationId, Cursor } from '@earendil-works/pi-durable'
-import { isInput } from '../../lib/entries.ts'
+import { isInput } from '../../lib/entries.shared.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { projection } from './projection.ts'
 

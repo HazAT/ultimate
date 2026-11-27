@@ -29,7 +29,7 @@ import {
   writerNow,
   writingAs,
 } from '@/sdk/solid'
-import { DEFAULT_FAMILY } from '../../lib/families.ts'
+import { DEFAULT_FAMILY } from '../../lib/families.shared.ts'
 import {
   agentsPanel,
   FamilyLabel,

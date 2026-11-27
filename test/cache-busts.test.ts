@@ -1,6 +1,6 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { cacheBusts } from '../lib/context-usage.ts'
+import { cacheBusts } from '../lib/context-usage.shared.ts'
 
 let id = 0
 const answer = (

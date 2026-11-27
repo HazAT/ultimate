@@ -10,7 +10,7 @@ import {
   useUiState,
 } from '@/sdk/solid'
 import type { SolidEntryProps } from '@/sdk/solid'
-import { cacheBusts } from '../../lib/context-usage.ts'
+import { cacheBusts } from '../../lib/context-usage.shared.ts'
 import { ListAction } from './refs.ts'
 import { SYSTEM_TAB_KEY } from '../system/ui.solid.tsx'
 import type { WireSummary } from './refs.ts'

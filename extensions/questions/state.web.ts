@@ -1,6 +1,6 @@
 import type { Question } from '../messages/refs.ts'
-import { choices } from '../../lib/question-cards.ts'
-import type { Draft } from '../../lib/question-cards.ts'
+import { choices } from '../../lib/question-cards.shared.ts'
+import type { Draft } from '../../lib/question-cards.shared.ts'
 
 export {
   cardKey,
@@ -10,8 +10,8 @@ export {
   EMPTY_CARD,
   keyOf,
   position,
-} from '../../lib/question-cards.ts'
-export type { CardState, Choice, Draft } from '../../lib/question-cards.ts'
+} from '../../lib/question-cards.shared.ts'
+export type { CardState, Choice, Draft } from '../../lib/question-cards.shared.ts'
 
 export function choiceForKey(question: Question, key: string) {
   const list = choices(question)

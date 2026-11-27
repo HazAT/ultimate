@@ -1,7 +1,7 @@
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
-import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
+import { parseConversationId, parseEntryId } from '../../../../lib/ids.shared.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { Player } from '../../player.solid.tsx'

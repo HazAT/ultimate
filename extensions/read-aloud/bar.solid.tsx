@@ -13,7 +13,7 @@ import type { JSX } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, useExternal } from '@/sdk/solid'
-import { every } from '../../lib/timers.ts'
+import { every } from '../../lib/timers.shared.ts'
 import { estimate } from './speech.web.ts'
 import { speech } from './voice.solid.tsx'
 

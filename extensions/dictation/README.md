@@ -9,7 +9,7 @@ Dictation: a mic button in every prompt box records speech and puts its transcri
 - **Talk shortcut** (Ctrl/⌘+Shift+Space by default) goes to the focused prompt box. With none focused, it talks to
   Voice if enabled; otherwise it focuses the main composer and dictates there. The cog next to any mic changes
   the page-wide shortcut, Hold/Tap mode (Tap by default) and **Sound cues** (on by default): a soft rising
-  tone when recording starts and a falling one when it stops. The tones live in `lib/cues.ts`; Voice mode plays the same
+  tone when recording starts and a falling one when it stops. The tones live in `lib/cues.web.ts`; Voice mode plays the same
   ones under its own Sound cues switch. It also provides the SDK's `DictationShortcut` point (gesture `tap`, keys
   `Ctrl+Shift+Space`), which the main composer's placeholder names; a phone names only the gesture. The three live in
   the user's settings (`~/.ultimate/settings.json`, `"dictation": { "talk", "shortcut", "cues" }`), so every project on

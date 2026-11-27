@@ -6,7 +6,12 @@ import { previewModel } from '../../lib/agents.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { parseSummaryModel } from './summary-model-ref.shared.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
-import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES, mergeFamilies } from '../../lib/families.ts'
+import {
+  BUILTIN_FAMILIES,
+  DEFAULT_FAMILY,
+  FEATURES,
+  mergeFamilies,
+} from '../../lib/families.shared.ts'
 
 const builtinSummaryFamily = BUILTIN_FAMILIES[FEATURES.summaries.family]
 const DEFAULT_SUMMARY_MODEL = `${builtinSummaryFamily.model}:${builtinSummaryFamily.thinking ?? 'medium'}`

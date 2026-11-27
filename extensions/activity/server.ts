@@ -1,4 +1,4 @@
-import { parseEntryId } from '../../lib/ids.ts'
+import { parseEntryId } from '../../lib/ids.shared.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEvent } from '../../shared/events.ts'
 import { PageAction } from './refs.ts'

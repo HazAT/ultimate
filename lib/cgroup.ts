@@ -6,7 +6,7 @@ import { basename, dirname, join } from 'node:path'
 import type { spawn as nodeSpawn, SpawnOptions } from 'node:child_process'
 import { exec } from './exec.ts'
 import { readSettings, userSettingsPath } from './settings.ts'
-import { errnoCode, ignoring, isMissing } from './errors.ts'
+import { errnoCode, ignoring, isMissing } from './errors.shared.ts'
 
 const isBusy = (error: unknown) => errnoCode(error) === 'EBUSY'
 const exists = (error: unknown) => errnoCode(error) === 'EEXIST'

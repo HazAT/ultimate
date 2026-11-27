@@ -29,7 +29,7 @@ import {
 } from './chapters.solid.tsx'
 import { Moon } from './moon.solid.tsx'
 import { DreamDoc } from './refs.ts'
-import { ChapterPrepared } from './entries.ts'
+import { ChapterPrepared } from './entries.shared.ts'
 import type { Prepared, Sleep } from './refs.ts'
 
 type Step = Exclude<Sleep['phase'], 'asleep' | 'failed'>

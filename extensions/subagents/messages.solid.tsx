@@ -1,6 +1,6 @@
 import { ArrowLeft, Bot, SquareArrowOutUpRight } from '@lucide/solid'
 import { createEffect, createSignal, Show } from 'solid-js'
-import { nextTurn } from '../../lib/timers.ts'
+import { nextTurn } from '../../lib/timers.shared.ts'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {

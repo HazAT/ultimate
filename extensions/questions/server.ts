@@ -3,7 +3,7 @@ import { BACKGROUND_CONTEXT as context, withAbortSignal } from '@earendil-works/
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { openQuestion as open } from '../../lib/message-state.ts'
+import { openQuestion as open } from '../../lib/message-state.shared.ts'
 import { checkReply, replyText } from '../../lib/question-answers.ts'
 import { AnswerAction, DismissAction } from './refs.ts'
 import type { Reply } from '../../lib/question-answers.ts'

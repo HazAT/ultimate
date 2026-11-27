@@ -1,6 +1,6 @@
-import { parseEntryId } from '../../lib/ids.ts'
+import { parseEntryId } from '../../lib/ids.shared.ts'
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'

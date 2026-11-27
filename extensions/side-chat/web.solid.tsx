@@ -47,7 +47,7 @@ import {
   writerNow,
   writingAs,
 } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { QuestionPane } from '../inbox/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
 import type { Reply } from '../questions/refs.ts'
@@ -62,7 +62,7 @@ import {
 import type { CardState, QuestionMessage } from '../questions/ui.solid.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.solid.tsx'
 import { talkToUltimate } from '../subagents/ui.solid.tsx'
-import { SideChatSummaryEntry } from './entries.ts'
+import { SideChatSummaryEntry } from './entries.shared.ts'
 import { ComposerFrame, ease } from './frame.solid.tsx'
 import {
   contextSize,

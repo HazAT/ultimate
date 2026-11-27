@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { formatDuration } from '../../lib/format.ts'
+import { formatDuration } from '../../lib/format.shared.ts'
 
 import type { Lane, LaneCall, LaneLink, LaneRun } from './refs.ts'
 

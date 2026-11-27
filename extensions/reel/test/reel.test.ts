@@ -1,7 +1,7 @@
 import type { ConversationId, EntryId, EntryRecord } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import { actions } from '../server.ts'
-import { imagesOf } from '../../../lib/entries.ts'
+import { imagesOf } from '../../../lib/entries.shared.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { Message } from '../../messages/api.ts'
 

@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { JsonObject } from '@earendil-works/pi-durable'
-import { errnoCode, isMissing } from './errors.ts'
+import { errnoCode, isMissing } from './errors.shared.ts'
 
 export function projectDiagnostics(projectRoot: string, userHome = homedir()) {
   const { error } = readDecision(projectRoot, userHome)

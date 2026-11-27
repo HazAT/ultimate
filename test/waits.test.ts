@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { waitedOn, waitsOn } from '../lib/waits.ts'
-import type { WaitFacts } from '../lib/waits.ts'
+import { waitedOn, waitsOn } from '../lib/waits.web.ts'
+import type { WaitFacts } from '../lib/waits.web.ts'
 
 it('derives the first wait from work, user, agent, remote, timer, then idle', () => {
   const message = { from: 5, reply: true, state: 'delivered' }

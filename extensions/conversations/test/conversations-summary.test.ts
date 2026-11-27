@@ -47,7 +47,7 @@ import {
   TitleChanged,
   ReplySummarized,
   SummaryDiscarded,
-} from '../entries.ts'
+} from '../entries.shared.ts'
 
 it('schedules no summary task for intent, reply or spawn once automatic summaries are off, while askSummaryModel still answers', async () => {
   const f = await launch(false, true)

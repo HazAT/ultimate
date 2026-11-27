@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { inProcess } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
 import { ListAction } from './refs.ts'
 import type { AutomationListItem } from './refs.ts'
 

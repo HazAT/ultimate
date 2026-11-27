@@ -294,10 +294,10 @@ export const limit = 3
     'refs.ts is a contract: it imports no node:* module.',
     'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
     'refs.ts imports at runtime only shared/ and `defineEntry` from Pi Durable; use `import type` for the rest.',
-    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
-    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
-    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
-    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
+    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts, types.ts or types.shared.ts.",
+    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts, types.ts or types.shared.ts.",
+    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts, types.ts or types.shared.ts.",
+    "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts, types.ts or types.shared.ts.",
     "Document each ref: what it holds, or an action's arguments and result.",
     'refs.ts holds only contracts: imports, `export const X = docRef/actionRef/defineEvent/defineEntry(...)` and types.',
   ])
@@ -388,6 +388,24 @@ export { TaskChip } from '../plan/chip.solid.tsx'`
 import { columns } from '../board/columns.ts'`
   expect(lint('api-only-imports', '.ultimate/extensions/echo/status.solid.tsx', project)).toEqual([
     browserMessage('board/columns.ts'),
+  ])
+})
+
+it('makes the page import only suffixed files, as watchdog cards once ran an unsuffixed entries.ts', () => {
+  const source = `import { IdleEntry } from './entries.ts'
+import { ids } from '../../lib/ids.ts'
+import { git } from '../../lib/git'
+import type { Run } from './types.ts'
+import { LogDoc } from './refs.ts'
+import { capture } from './capture.web.ts'
+import { isInput } from '../../lib/entries.shared.ts'
+import { Card } from './card.solid.tsx'`
+  const named = (file: string) =>
+    `${file} runs in the page: name it *.web.ts when only the browser runs it, *.shared.ts when the server runs it too, or import it with \`import type\`.`
+  expect(lint('browser-file-names', 'extensions/watchdog/idle.solid.tsx', source)).toEqual([
+    named('extensions/watchdog/entries.ts'),
+    named('lib/ids.ts'),
+    named('lib/git'),
   ])
 })
 

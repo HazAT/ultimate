@@ -13,8 +13,8 @@ import {
   RECOMMENDED_THINKING,
   refName,
   refOf,
-} from '../../lib/families.ts'
-import type { Families, Feature, FamilySpec } from '../../lib/families.ts'
+} from '../../lib/families.shared.ts'
+import type { Families, Feature, FamilySpec } from '../../lib/families.shared.ts'
 import { mergeLayers, readFamilyLayers, writeFamilies } from '../../lib/families-settings.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { FamiliesView, FamilyUser, SaveFamilies } from './refs.ts'

@@ -3,7 +3,7 @@ import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
 import { createRoot, createSignal, flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { parseConversationId } from '../../../../lib/ids.ts'
+import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import type { StreamedView } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
@@ -14,10 +14,10 @@ import { events } from '@/sdk/solid'
 import { VoiceButton } from '../../button.solid.tsx'
 import { capture } from '../../capture.web.ts'
 import type { VoiceStatus } from '../../refs.ts'
-import { startCue, stopCue } from '../../../../lib/cues.ts'
+import { startCue, stopCue } from '../../../../lib/cues.web.ts'
 import { setSoundCues, setTalkMode, talkMode } from '../../routing.solid.tsx'
 
-vi.mock('../../../../lib/cues.ts', () => ({
+vi.mock('../../../../lib/cues.web.ts', () => ({
   startCue: vi.fn<() => void>(),
   stopCue: vi.fn<() => void>(),
 }))

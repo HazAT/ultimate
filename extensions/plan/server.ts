@@ -1,4 +1,4 @@
-import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import { parseConversationId, offsetEntryId } from '../../lib/ids.shared.ts'
 import type { ConversationId, Cursor, EntryId, JsonObject, Tx } from '@earendil-works/pi-durable'
 import { randomUUID } from 'node:crypto'
 import { arr, int, obj, opt, str } from '@earendil-works/pi-schema'

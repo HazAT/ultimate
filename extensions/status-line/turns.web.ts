@@ -1,6 +1,6 @@
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { promptTokens } from '../../lib/context-usage.ts'
+import { promptTokens } from '../../lib/context-usage.shared.ts'
 
 const isInput = (entry: EntryRecord) =>
   entry.model?.[0]?.role === 'user' && entry.kind !== 'pi.compaction'

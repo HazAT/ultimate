@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { conversationRefParts } from '../../../../lib/conversation-ref.ts'
+import { conversationRefParts } from '../../../../lib/conversation-ref.web.ts'
 
 it('names a conversation by its feature, then its live title, then by its id alone', () => {
   expect(conversationRefParts({ feature: 'Note Cards', live: 'Give Notes a Yellow Look' })).toEqual(

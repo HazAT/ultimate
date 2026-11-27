@@ -23,7 +23,7 @@ import {
   useAction,
   writingAs,
 } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import {
   asking,
