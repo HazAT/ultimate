@@ -14,10 +14,9 @@ import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, useExternal } from '@/sdk/solid'
 import { every } from '../../lib/timers.ts'
+import { SpeechSettings } from './options.solid.tsx'
 import { estimate } from './speech.web.ts'
 import { speech } from './voice.solid.tsx'
-
-const speeds = [1, 1.1, 1.25, 1.5, 1.75, 2, 0.8]
 
 const rowButton =
   'h-auto rounded p-0.5 font-normal text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3'
@@ -112,18 +111,7 @@ export function PlaybackBar(props: {
         )}
       </Show>
       <span class="ml-auto flex shrink-0 items-center gap-1">
-        <Button
-          aria-label={named('Reading speed')}
-          class="h-auto shrink-0 rounded px-1 font-mono text-[11px] font-normal text-muted-foreground tabular-nums transition-colors hover:text-foreground"
-          onClick={() =>
-            speech.setRate(speeds[(speeds.indexOf(speech.rate()) + 1) % speeds.length])
-          }
-          size={null}
-          title="Reading speed"
-          variant={null}
-        >
-          {speech.rate()}×
-        </Button>
+        <SpeechSettings name={props.name} />
         {step('Previous paragraph', <SkipBack />, () => speech.paragraph(-1))}
         {step('Previous sentence', <ChevronLeft />, () => speech.sentence(-1))}
         <Button

@@ -45,5 +45,8 @@ export { PlaybackBar } from './bar.solid.tsx'
  * its controls apart from the composer's.
  */
 export { SpeakerBar } from './reading-bar.solid.tsx'
-/** The voices the OpenAI voice offers. */
-export { VOICES } from './voices.shared.ts'
+/**
+ * The Speech setting's controls (Voice, OpenAI voice, Speed), for a settings popover that shows them among its own;
+ * `name` names them apart from another copy on the page. The playback bar opens the same controls from its speed.
+ */
+export { SpeechOptions } from './options.solid.tsx'

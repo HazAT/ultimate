@@ -25,8 +25,6 @@ import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
-import { Slider } from '@/components/ui/slider.solid.tsx'
-import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
   api,
@@ -77,7 +75,13 @@ import {
 import { PickAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
 import { PickControl } from '../models/ui.solid.tsx'
 import type { ModelPick } from '../models/ui.solid.tsx'
-import { PlaybackBar, SOUND_BLOCKED, SpeakerBar, speech, VOICES } from '../read-aloud/ui.solid.tsx'
+import {
+  PlaybackBar,
+  SOUND_BLOCKED,
+  SpeakerBar,
+  speech,
+  SpeechOptions,
+} from '../read-aloud/ui.solid.tsx'
 
 import { Voicing, Waveform } from './turns.solid.tsx'
 import { REST, settle, type Snap } from './sheet.web.ts'
@@ -306,23 +310,7 @@ function Settings(props: { name?: string }) {
             Sound cues
             <Toggle aria-label="Voice sound cues" bind={[dock.cuesOn, dock.setCuesOn]} />
           </label>
-          <SpeechVoice />
-          <label class="flex items-center justify-between gap-3">
-            Speed
-            <span class="flex items-center gap-2">
-              <Slider
-                aria-label="Speech speed"
-                bind={[speech.rate, speech.setRate]}
-                class="w-24"
-                max={2}
-                min={0.8}
-                step={0.05}
-              />
-              <span class="w-9 text-right text-foreground/85 tabular-nums">
-                {speech.rate().toFixed(2)}×
-              </span>
-            </span>
-          </label>
+          <SpeechOptions />
           <label class="flex items-start justify-between gap-3">
             <span class="flex flex-col gap-0.5">
               Collect until send
@@ -336,54 +324,6 @@ function Settings(props: { name?: string }) {
         <DictationOptions name={props.name ?? 'Voice'} />
       </PopoverContent>
     </Popover>
-  )
-}
-
-function SpeechVoice() {
-  const keyed = () => speech.keyed() === true
-  const voiceNote = () => {
-    const needsKey = speech.keyed() === false && 'OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets'
-    if (speech.voiced()) return needsKey
-    if (needsKey) return `No system voices in this browser. ${needsKey}`
-    return keyed() && 'No system voices in this browser · speaking with OpenAI'
-  }
-  return (
-    <div class="flex flex-col gap-2">
-      <div class="flex items-center justify-between gap-3">
-        Voice
-        <SegmentedControl
-          aria-label="Speech voice"
-          bind={[() => (speech.openaiOn() ? 'openai' : 'system'), speech.setVoice]}
-        >
-          <SegmentedControlItem disabled={!speech.voiced()} value="system">
-            System
-          </SegmentedControlItem>
-          <SegmentedControlItem disabled={!keyed()} value="openai">
-            OpenAI
-          </SegmentedControlItem>
-        </SegmentedControl>
-      </div>
-      <Show when={voiceNote()}>
-        {(note) => (
-          <span class="text-[10.5px] leading-snug text-muted-foreground/70">{note()}</span>
-        )}
-      </Show>
-      <Show when={speech.openaiOn()}>
-        <SegmentedControl
-          aria-label="OpenAI voice"
-          bind={[speech.openaiVoice, speech.setOpenaiVoice]}
-          class="grid grid-cols-5"
-        >
-          <For each={VOICES}>
-            {(name) => (
-              <SegmentedControlItem class="justify-center" value={name}>
-                {name}
-              </SegmentedControlItem>
-            )}
-          </For>
-        </SegmentedControl>
-      </Show>
-    </div>
   )
 }
 
