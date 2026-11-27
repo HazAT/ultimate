@@ -22,7 +22,8 @@ import { projectSkills } from './skills.ts'
 import { writeProject } from './project.ts'
 import { projectName, projectSettings } from '../lib/project-setup.ts'
 import { requestSwap } from './supervisor-protocol.ts'
-import { activeChapter, finishChapterSwitch } from '../lib/chapters.ts'
+import type { HoldWebForSwap } from './supervisor-protocol.ts'
+import { activeChapter, prepareChapterSwitch } from '../lib/chapters.ts'
 import { defaultAgent } from '../lib/agents.ts'
 import { secretsAuthContext } from '../lib/secrets.ts'
 import type {
@@ -35,6 +36,7 @@ import type {
   Report,
   CompactionPolicy,
   Page,
+  Storage,
   SubmissionQuery,
   SubmissionRecord,
 } from '@earendil-works/pi-durable'
@@ -126,7 +128,7 @@ export interface HostOptions {
   faux?: FauxProviderHandle
   report?: (notice: Notice) => void
 }
-export async function prepareHarness(options: HostOptions) {
+export async function prepareHarness(options: HostOptions, holdWebForSwap?: HoldWebForSwap) {
   const { ultimateRoot } = options
   const projectRoot = await realpath(options.projectRoot ?? ultimateRoot)
   const userHome = options.userHome ?? process.env.ULTIMATE_USER_HOME ?? homedir()
@@ -189,11 +191,15 @@ export async function prepareHarness(options: HostOptions) {
       if (!active) throw new Error('Harness is not open')
       return active.storage.scanSubmissions(query, limit, cursor, caller)
     },
+    eventStorage(): Pick<Storage, 'findDocument' | 'document' | 'scanEntries'> {
+      if (!active) throw new Error('Harness is not open')
+      return active.storage
+    },
     models: async () => (await listModels(guardedRuntime)).models,
     model: (ref: ModelRef) => guardedRuntime.getModel(ref.provider, ref.modelId),
     skills: (cwd: string) => projectSkills({ ultimateRoot, projectRoot, userHome }, cwd).skills,
     restart: (approved: (generation: number) => Promise<void>) =>
-      requestSwap(approved, builds.current()),
+      requestSwap(approved, builds.current(), holdWebForSwap),
     images: await createNodePhotonImages(),
     ultimateRoot,
     projectRoot,
@@ -239,11 +245,11 @@ export async function prepareHarness(options: HostOptions) {
           projectName(projectRoot, await projectSettings(projectRoot, userHome)),
         )
         if (swappedIn) await backUpChaptersBeforeSwap(home)
-        await finishChapterSwitch(home, async (file) => {
+        const chapterSwitch = await prepareChapterSwitch(home, async (file) => {
           const created = await openNodeSqliteStorage(file)
           await created.close(context)
         })
-        chapter = await activeChapter(home)
+        chapter = chapterSwitch?.chapter ?? (await activeChapter(home))
         storage = await openNodeSqliteStorage(chapter.database)
         harness = await Harness.open(
           storage,
@@ -297,6 +303,7 @@ export async function prepareHarness(options: HostOptions) {
           } else await tx.doc(UiState, root.id)
           Object.assign(await tx.doc(AgentDoc, root.id), currentDefaultRootAgent)
         }, context)
+        await chapterSwitch?.finish()
         active = { harness, root, storage }
         const openedHarness = harness
         if (resume) openedHarness.resume()

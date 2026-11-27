@@ -134,6 +134,39 @@ describe('server reload', () => {
     expect(entry().server!.loadedAt).toBe(successful)
     expect(server.host.registry.snapshot().extension('counter')).toBe(installed)
   })
+  it('closes the rejected resource and runs the corrected shared opener once', async () => {
+    const source = (version: string, invalid = false) => `
+import { appendFile } from 'node:fs/promises'
+const key = 'shared-opener:test'
+export default (host) => {
+  host.resource(key, () => {
+    const state = { version: '${version}', opens: 0 }
+    host.onOpen(async () => { state.opens++ })
+    host.onClose(() => appendFile(host.home + '/closed.txt', '${version}\\n'))
+    return state
+  })
+  host.resource(key, () => { throw new Error('resource factory called twice') })
+  const tool = { name: 'duplicate', description: 'Test tool', execute: async () => ({}) }
+  return { name: 'shared-opener', tools: ${invalid ? '[tool, tool]' : '[]'} }
+}
+export const actions = {
+  state: (_, { host }) => host.resource(key, () => { throw new Error('resource not published') }),
+}
+`
+    const { server } = await fixture(false, { 'shared-opener': source('rejected', true) })
+    const info = () =>
+      server.system.current().extensions.find((extension) => extension.name === 'shared-opener')
+        ?.server
+    expect(info()?.error).toContain('two tools named duplicate')
+    const file = join(server.host.ultimateRoot, 'extensions/shared-opener/server.ts')
+    await writeFile(file, source('corrected'))
+    server.vite.watcher.emit('change', file)
+    await until(() => !!info()?.loadedAt && !info()?.error)
+    expect(
+      await server.extensions.invoke('shared-opener', 'state', null, new AbortController().signal),
+    ).toEqual({ version: 'corrected', opens: 1 })
+    expect(await readFile(join(server.host.home, 'closed.txt'), 'utf8')).toBe('rejected\n')
+  })
   it('reloads only the owning extension when files or directories are added or removed', async () => {
     const { server } = await fixture(false, {
       a: orderedSource('a'),

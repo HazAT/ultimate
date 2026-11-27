@@ -65,7 +65,7 @@ export async function uploadSnapshot(o: {
   const temp = await mkdtemp(join(dirname(o.database), '.snapshot-'))
   try {
     const copy = join(temp, 'database.sqlite')
-    vacuum(o.database, copy)
+    await vacuum(o.database, copy)
     let bundle: string | undefined
     if (await gitWithoutTimeout(o.repo, 'for-each-ref', '--count=1', ULTIMATE_REF_NAMESPACE)) {
       bundle = join(temp, 'branches.bundle')

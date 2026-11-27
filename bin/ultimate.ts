@@ -325,14 +325,10 @@ async function kill(core: Core) {
 }
 async function exit(core: Core) {
   if (core.child.exitCode !== null || core.child.signalCode !== null) return
-  const expiresAt = Date.now() + 10000
   try {
-    const released = wait(core, 'released', undefined, 10000)
-    send(core, { type: 'release' })
-    await released
     const exited = once(core.child, 'exit')
     send(core, { type: 'exit' })
-    await Promise.race([exited, pace(Math.max(0, expiresAt - Date.now()))])
+    await Promise.race([exited, pace(10000)])
   } catch {
     await kill(core)
     return

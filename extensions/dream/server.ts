@@ -11,11 +11,12 @@ import {
   chapterFiles,
   chapterName,
   PENDING_CHAPTER,
+  prepareChapterRequest,
   readChapters,
-  requestChapter,
 } from '../../lib/chapters.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { CloudApi } from '../cloud/api.ts'
+import { PauseApi } from '../pause/api.ts'
 import { Standing, Started as StandingStarted } from '../subagents/api.ts'
 import { Fired, Hold } from '../automations/api.ts'
 import { Branched } from '../lineage/api.ts'
@@ -195,18 +196,22 @@ async function restartChapter(
   name: string,
   backupBeforeRestart?: () => Promise<unknown>,
 ): Promise<never> {
-  await requestChapter(host.home, name, process.pid)
+  const writePendingChapter = prepareChapterRequest(host.home, name, process.pid)
+  let held: ReturnType<ExtensionHost['harness']> | undefined
   try {
     await backupBeforeRestart?.()
     throw new Error(
       await host.restart(async () => {
         requireNoWorkParkedBySwitch(host)
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold() keeps the scheduler from starting tasks.
-        host.harness().hold()
+        held = host.harness()
+        held.hold()
+        await writePendingChapter()
       }),
     )
   } finally {
     await rm(join(host.home, PENDING_CHAPTER), { force: true })
+    if (held && held === host.harness() && !host.want(PauseApi)?.paused()) held.release()
   }
 }
 

@@ -4,7 +4,7 @@ import { onCommit } from '../../lib/commits.ts'
 import type { Context } from '@earendil-works/chord/context'
 import { AgentDoc, defineDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { git } from '../../lib/git.ts'
-import { inProcess, meansNone } from '../../lib/errors.shared.ts'
+import { inProcess, meansNone, settled } from '../../lib/errors.shared.ts'
 import { shortTitle } from '../../lib/title.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
@@ -47,13 +47,14 @@ export async function seedSeen(tx: Tx, id: ConversationId, main: string, at: num
 export function watchSeen(host: ExtensionHost, ctx: Context) {
   let pending = Promise.resolve()
   const seed = (id: ConversationId) => {
-    pending = pending.then(async () => {
+    const next = pending.then(async () => {
       if ((await host.harness().snapshot(Seen, id, ctx))?.main) return
       const main = await mainOf(host, id, ctx)
       if (!main) return
       await host.harness().commit((tx) => seedSeen(tx, id, main.sha, Date.now()), ctx)
     })
-    return pending
+    pending = settled(next)
+    return next
   }
   host.onOpen(async (opened) => {
     const harness = host.harness()

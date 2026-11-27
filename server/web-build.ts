@@ -12,6 +12,7 @@ export interface WebBuildRequest {
   projectRoot: string
   userHome: string
   outDir: string
+  resultFile: string
   cacheDir: string
   broken: Record<string, string>
 }
@@ -75,4 +76,4 @@ try {
     },
   }
 }
-process.stdout.write(JSON.stringify(result) + '\n')
+await writeFile(request.resultFile, JSON.stringify(result))

@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { afterAll, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../server/harness.ts'
-import { eventLog } from '../server/events.ts'
+import { eventLog, eventStatusReader } from '../server/events.ts'
 import { defineEvent } from '../shared/events.ts'
 import { createModels } from '@earendil-works/pi-ai/models'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
@@ -468,7 +468,12 @@ it('writes a repeated poll that emits an event, with its chain, so its reactors 
   trace.open()
   // Real time: every poll here runs well within the minute a written one stands for its repeats.
   try {
-    const log = eventLog(() => opened.harness, trace.run, trace.keep)
+    const log = eventLog(
+      () => opened.harness,
+      () => eventStatusReader(prepared.eventStorage()),
+      trace.run,
+      trace.keep,
+    )
     const Pinged = defineEvent<{ fail: boolean }>('test.pinged')
     // A reactor reached through the event's copied context: one passes, one throws.
     const reactor = log.reactor('test/on-pinged', [Pinged], (_tx, event) => {
@@ -496,7 +501,7 @@ it('writes a repeated poll that emits an event, with its chain, so its reactors 
     // Repeats that emit are written with their chain, and each reactor run sits under its emitting call.
     await poll(false)
     await poll(true)
-    // The failing event stays pending and is retried on later commits, so it may run more than once.
+    // The failing event stays pending and is retried, so it may run more than once.
     await until(() => rows().some((row) => row.kind === 'reactor' && !row.ok))
     const reactors = rows().filter((row) => row.kind === 'reactor')
     expect(reactors[0]).toMatchObject({ ok: true })

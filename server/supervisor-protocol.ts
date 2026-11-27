@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { inProcess } from '../lib/errors.shared.ts'
+import { inProcess, settled } from '../lib/errors.shared.ts'
 import type { BuildInfo } from '../shared/protocol.ts'
 
 export type CoreReport =
@@ -30,35 +30,73 @@ export type SupervisorMessage =
   | { type: 'swap-result'; requestId: string; ok: false; error: string }
   | { type: 'swap-result'; requestId: string; ok: true; generation: number }
 
+export type HoldWebForSwap = () => { drained: Promise<void> | undefined; unhold: () => void }
+
+const pendingSwaps = new Map<string, (error: string) => void>()
+let acknowledgedSwap: ((error: string) => void) | undefined
+
+export function settleReacquiredSwap(error: string) {
+  acknowledgedSwap?.(error.slice(-4096))
+}
+
 export async function requestSwap(
   recordDurableReplayResult: (generation: number) => Promise<void>,
   build?: BuildInfo,
+  holdWebForSwap?: HoldWebForSwap,
 ): Promise<string> {
   if (!process.send) return 'Restart requires pnpm start (the supervisor).'
   const requestId = randomUUID()
   return new Promise((resolve) => {
+    let unholdWeb: (() => void) | undefined
+    let recording: Promise<void> | undefined
+    const finish = (error: string) => {
+      pendingSwaps.delete(requestId)
+      if (acknowledgedSwap === finish) acknowledgedSwap = undefined
+      process.off('message', listener)
+      unholdWeb?.()
+      resolve(error)
+    }
+    const acknowledge = async (generation: number) => {
+      try {
+        const hold = holdWebForSwap?.()
+        unholdWeb = hold?.unhold
+        await hold?.drained
+        if (!pendingSwaps.has(requestId)) return
+        recording = recordDurableReplayResult(generation)
+        await recording
+      } catch (error) {
+        if (!pendingSwaps.has(requestId)) return
+        process.send?.({
+          type: 'swap-ack',
+          requestId,
+          ok: false,
+          error: String(error),
+        } satisfies ChildMessage)
+        finish(String(error))
+        return
+      }
+      if (pendingSwaps.has(requestId)) {
+        acknowledgedSwap = finish
+        process.send?.({ type: 'swap-ack', requestId, ok: true } satisfies ChildMessage)
+      }
+    }
     const listener = (message: SupervisorMessage) => {
       if (message.type !== 'swap-result' || message.requestId !== requestId) return
-      process.off('message', listener)
-      if (!message.ok) return resolve(message.error.slice(-4096))
+      if (!message.ok) {
+        const error = message.error.slice(-4096)
+        if (!recording) return finish(error)
+        pendingSwaps.delete(requestId)
+        return inProcess(
+          'a refusal settles the swap once its approval has finished writing',
+          settled(recording).then(() => finish(error)),
+        )
+      }
       inProcess(
         'the swap acknowledgement belongs to this process and its supervisor channel',
-        recordDurableReplayResult(message.generation).then(
-          () => {
-            process.send?.({ type: 'swap-ack', requestId, ok: true } satisfies ChildMessage)
-          },
-          (error) => {
-            process.send?.({
-              type: 'swap-ack',
-              requestId,
-              ok: false,
-              error: String(error),
-            } satisfies ChildMessage)
-            resolve(String(error))
-          },
-        ),
+        acknowledge(message.generation),
       )
     }
+    pendingSwaps.set(requestId, finish)
     process.on('message', listener)
     process.send?.({ type: 'swap', requestId, build } satisfies ChildMessage)
   })

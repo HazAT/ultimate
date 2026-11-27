@@ -1,10 +1,17 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { defineDoc, ROOT_CONVERSATION_ID as ROOT } from '@earendil-works/pi-durable'
+import { createModels } from '@earendil-works/pi-ai/models'
+import {
+  createRegistry,
+  defineDoc,
+  Harness,
+  MemoryStorage,
+  ROOT_CONVERSATION_ID as ROOT,
+} from '@earendil-works/pi-durable'
 import type { Tx } from '@earendil-works/pi-durable'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { context } from '../server/harness.ts'
-import { EventFeed, EventLog } from '../server/events.ts'
+import { EventFeed, EventLog, eventLog, eventStatusReader } from '../server/events.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 import { defineEvent, EVENT_FEED, NoticeEvent, StartedEvent } from '../shared/events.ts'
 import type { EventRecord } from '../shared/events.ts'
@@ -30,6 +37,83 @@ const doc = (kind: string) =>
   })
 const Shipped = doc('test.shipped')
 const Seen = doc('test.seen')
+
+async function reactorFixture() {
+  const storage = new MemoryStorage()
+  const harness = await Harness.open(
+    storage,
+    { models: createModels(), registry: createRegistry() },
+    context,
+  )
+  await harness.root(context)
+  const log = eventLog(
+    () => harness,
+    () => eventStatusReader(storage),
+    (_call, work) => work(),
+  )
+  const land = (sha: string) => harness.commit((tx) => log.emit(tx, Landed, { sha }), context)
+  return { harness, log, land }
+}
+
+it('a reactor starting from now sees events emitted as soon as start resolves', async () => {
+  const { harness, log, land } = await reactorFixture()
+  await land('before')
+  const seen: string[] = []
+  const reactor = log.reactor('now', [Landed], (_tx, event) => void seen.push(event.data.sha), {
+    from: 'now',
+  })
+  // Hold the first drain off the writer until the emit after start has committed.
+  const commit = harness.commit.bind(harness)
+  const drainMayCommit = Promise.withResolvers<void>()
+  const spy = vi.spyOn(harness, 'commit').mockImplementation(async (work, ...args) => {
+    if (work.name === 'handleEventAtomically') await drainMayCommit.promise
+    return commit(work, ...args)
+  })
+  try {
+    await reactor.start()
+    const immediate = await land('after')
+    drainMayCommit.resolve()
+    await until(async () => (await log.eventLog.reactors())[0].cursor === immediate.id)
+    expect(seen).toEqual(['after'])
+  } finally {
+    drainMayCommit.resolve()
+    await reactor.stop()
+    spy.mockRestore()
+    await harness.close(context)
+  }
+})
+
+it('retries a failed reactor on its timer, not on a matching event during backoff', async () => {
+  const { harness, log, land } = await reactorFixture()
+  const seen: string[] = []
+  const failure = new Error('try again')
+  const handler = vi.fn<(sha: string) => void>((sha) => void seen.push(sha))
+  handler.mockImplementationOnce(() => {
+    throw failure
+  })
+  const reactor = log.reactor('retry', [Landed], (_tx, event) => handler(event.data.sha))
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    await reactor.start()
+    const emitted = await land('once')
+    await until(async () => !!(await log.eventLog.reactors())[0].failure)
+    const next = await land('during backoff')
+    await vi.advanceTimersByTimeAsync(999)
+    expect(handler).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(seen).toEqual(['once', 'during backoff'])
+    const [status] = await log.eventLog.reactors()
+    expect(status).toMatchObject({ cursor: next.id, lag: 0 })
+    expect(status.failure).toBeUndefined()
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('retry'), emitted.id, failure)
+  } finally {
+    await reactor.stop()
+    vi.useRealTimers()
+    error.mockRestore()
+    await harness.close(context)
+  }
+})
 
 /** A project with one extension, `probe`, whose actions hand out its facet host and raise a notice; `setup` runs at load. */
 async function project(setup = '') {
@@ -106,24 +190,30 @@ it('emits atomically and reacts exactly once across catch-up, failures, reloads 
   await probe.land('b2')
   await until(async () => (await probe.read(Seen)).length === 2)
 
-  // A throwing handler rolls back its writes and cursor; the event stays pending and is retried on the next commit.
-  throwOn = 'c3'
-  await probe.land('c3')
-  await until(async () => !!(await status())?.failure)
-  const [failed] = await (await probe.host()).eventLog.recent({ events: [Landed], limit: 1 })
-  expect(await status()).toMatchObject({
-    events: ['test.landed'],
-    lag: 1,
-    running: true,
-    failure: { error: 'Error: handler failed', entryId: failed.id },
-  })
-  expect(await probe.read(Seen)).toEqual(['a1', 'b2'])
-  throwOn = undefined
-  await probe.land('d4')
-  await until(async () => (await probe.read(Seen)).length === 4)
-  const recovered = await status()
-  expect(recovered).toMatchObject({ lag: 0, running: true })
-  expect(recovered?.failure).toBeUndefined()
+  // A throwing handler rolls back its writes and cursor; the event stays pending until the retry.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    throwOn = 'c3'
+    await probe.land('c3')
+    await until(async () => !!(await status())?.failure)
+    const [failed] = await (await probe.host()).eventLog.recent({ events: [Landed], limit: 1 })
+    expect(await status()).toMatchObject({
+      events: ['test.landed'],
+      lag: 1,
+      running: true,
+      failure: { error: 'Error: handler failed', entryId: failed.id },
+    })
+    expect(await probe.read(Seen)).toEqual(['a1', 'b2'])
+    throwOn = undefined
+    await probe.land('d4')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await until(async () => (await probe.read(Seen)).length === 4)
+    const recovered = await status()
+    expect(recovered).toMatchObject({ lag: 0, running: true })
+    expect(recovered?.failure).toBeUndefined()
+  } finally {
+    vi.useRealTimers()
+  }
 
   // A facet reload stops the reactor; the same name on the new facet continues from its cursor.
   await fixture.write(2)

@@ -16,13 +16,14 @@ import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import { Tally } from '../extensions/lineage/api.ts'
+import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { context } from '../server/harness.ts'
 import { createServer, prepareServer } from '../server/main.ts'
 import type { ServerOptions } from '../server/main.ts'
 import type { ConversationSummary, ServerEvents, SystemInfo } from '../shared/protocol.ts'
 import type { Api } from '../shared/extension-api.ts'
 import type { EventData, EventToken } from '../shared/events.ts'
-import { EventFeed, eventLog } from '../server/events.ts'
+import { EventFeed, EventLog, eventLog } from '../server/events.ts'
 import { copySource } from './source-copy.ts'
 import type { Reactor } from '../server/events.ts'
 import type { ExtensionHost, Opener } from '../server/extensions.ts'
@@ -154,7 +155,20 @@ export function openers() {
  * which run from `start()` (each harness open) until `stop()`. `settled()` holds once every event is handled.
  */
 export function eventHost(harness: () => Harness, name: string) {
-  const log = eventLog(harness, (_call, work) => work())
+  const log = eventLog(
+    harness,
+    () => ({
+      index: () => harness().snapshot(EventLog, ROOT_CONVERSATION_ID, context),
+      scanEntries: async ({ conversationId, ...query }, limit, cursor, caller) =>
+        (await harness().conversation(conversationId, caller))!.entries(
+          query,
+          limit,
+          cursor,
+          caller,
+        ),
+    }),
+    (_call, work) => work(),
+  )
   const reactors: ReturnType<typeof log.reactor>[] = []
   const host = {
     emit: log.emit,

@@ -4,7 +4,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { afterEach, expect, it, vi } from 'vitest'
-import { requestChapter } from '../../../lib/chapters.ts'
+import { prepareChapterRequest } from '../../../lib/chapters.ts'
 import { writeJson } from '../../../lib/json-file.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
@@ -244,7 +244,7 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
   ])
   await writeSeed(join(f.home, 'chapters', 'fresh-roots'), seed)
   await f.close()
-  await requestChapter(f.home, 'fresh-roots')
+  await prepareChapterRequest(f.home, 'fresh-roots')()
   await f.open()
   const contents = async () => ({
     memory: (await f.harness.snapshot(
@@ -345,7 +345,7 @@ it.each(['on', 'off'] as const)(
     f.cloud({ status: async () => status, backup, lastBackup: async () => last })
     await writeSeed(join(f.home, 'chapters', 'fresh-roots'), seed)
     await f.close()
-    await requestChapter(f.home, 'fresh-roots')
+    await prepareChapterRequest(f.home, 'fresh-roots')()
     await f.open()
     if (status === 'on') await until(() => last !== undefined)
     // A facet reload and a later restart open the chapter again: its backup is recorded, so none follows.
@@ -424,7 +424,7 @@ it('carries event and standing context triggers, but leaves numeric context targ
   })
   await writeSeed(join(f.home, 'chapters', 'triggers'), seed)
   await f.close()
-  await requestChapter(f.home, 'triggers')
+  await prepareChapterRequest(f.home, 'triggers')()
   await f.open()
   await applySeed(f.host)
   const carried = await automationActions.list(null, { host: f.host } as ActionContext)
@@ -509,7 +509,7 @@ it('seeds a chapter without the optional to-dos extension', async () => {
   expect(seed.questions).toHaveLength(2)
   await writeSeed(join(f.home, 'chapters', 'without-todos'), seed)
   await f.close()
-  await requestChapter(f.home, 'without-todos')
+  await prepareChapterRequest(f.home, 'without-todos')()
   await f.open()
   const memory = f.host.doc('lineage.memory')!
   expect((await f.harness.snapshot(memory, ROOT_CONVERSATION_ID, context))!.memories).toEqual(

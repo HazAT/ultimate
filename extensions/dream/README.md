@@ -64,12 +64,13 @@ made active again (`lib/chapters.ts`).
   switched has no `chapters.json` and nothing moves. Later chapters live in `<home>/chapters/<name>/`.
 - `<home>/chapters.json` `{ active, chapters: [{ name, createdAt? }] }` lists them in creation order; the newest is
   the last.
-- A switch is journaled: `requestChapter(home, name)` writes `pending-chapter.json` `{ to }`, then the host restarts.
-  `prepareHarness.open` finishes the journal before storage opens: a new chapter gets its database, with record ids
-  continuing after every earlier chapter's, so `#123` names one conversation whichever chapter is open. An
-  interrupted switch finishes on the next open.
-- `requestChapter` refuses while the target chapter has a live foreground task: that work would resume the moment it
-  opens.
+- Once the supervisor approves the restart, the restart callback writes `pending-chapter.json` `{ to, by }`. The
+  replacement core prepares the target database with record ids continuing after every earlier chapter's, so `#123`
+  names one conversation whichever chapter is open. Only after the target harness opens does `prepareHarness.open`
+  make it active in `chapters.json` and remove the journal. If opening fails, the original core can reopen the previous
+  chapter and discard its journal.
+- `prepareChapterRequest` refuses while the target chapter has a live foreground task: that work would resume the
+  moment it opens.
 - The host exposes the active chapter as `host.chapter` (`name`, `number`, `newest`, `dir`, `database`, `trace`).
 - Cloud backups are per chapter: the first chapter keeps the project key and `<home>/cloud-backup.json`; a later one
   backs up as `<key>@<name>` with its record in its own folder. The status line names a later chapter.
@@ -109,10 +110,10 @@ changes are serialized. Each step commits as `sleep` in `dream.next`: `seeding`,
 
 After the seed is built, optional `CloudApi` takes a final non-forced backup of the current chapter. Missing, off or
 local-only cloud records why it was skipped; a configured backup failure aborts. Idleness is checked again, the seed
-is written in the destination, the switch journaled and the host restarted; the restart's approval checks idleness
-once more and holds the scheduler. A restart failure removes the pending journal and records `failed`; the seed stays
-for a retry. No action performs a real switch in its caller. On open, a sleep left `switching` becomes `asleep` when
-its chapter exists, else `failed`; one a restart stopped earlier becomes `failed`.
+is written in the destination, and a restart is requested. On approval the callback checks idleness once more, holds
+the scheduler, and writes the switch journal. A restart failure removes the pending journal and records `failed`;
+the seed stays for a retry. No action performs a real switch in its caller. On open, a sleep left `switching` becomes
+`asleep` when its chapter exists, else `failed`; one a restart stopped earlier becomes `failed`.
 
 Once the new chapter has applied its seed, its open starts the chapter's first cloud backup in the background, when
 `CloudApi` reports backups on (not off, satellite or local-only) and the chapter has no backup yet: none recorded in
@@ -124,9 +125,9 @@ If the new chapter is off, the morning card's Discard path offers **Back to** th
 was left.
 
 `chapters` returns `{ active, number, newest, chapters: [{ name, number, createdAt? }] }`. User-only `switch { chapter }`
-refuses active or unknown names, busy conversations here, and targets with work in flight (`requestChapter`). It
-backs up and restarts without building a seed. A failed restart removes its pending journal and throws. A successful
-restart never returns: the new host opens the requested chapter.
+refuses active or unknown names, busy conversations here, and targets with work in flight. It backs up and restarts
+without building a seed. A failed restart removes its pending journal and throws. A successful restart never returns:
+the new host opens the requested chapter.
 
 ## Actions
 

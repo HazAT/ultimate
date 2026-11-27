@@ -244,7 +244,7 @@ process.on('message',(message:{type:string})=>{ if(message.type==='go'){process.
     const supervisor = await launch(home)
     await until(() => supervisor.output().includes('Ultimate: http://'))
     await exited
-    expect(core.exitCode).toBe(0)
+    expect(core.signalCode).toBe('SIGKILL')
     const owner = JSON.parse(await readFile(join(home, 'storage.lock'), 'utf8'))
     expect(owner.pid).not.toBe(core.pid)
   }, 60000)

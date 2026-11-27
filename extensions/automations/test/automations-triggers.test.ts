@@ -362,12 +362,13 @@ it('rolls back a fire and its cursor together, then retries exactly once', async
     name: 'Update',
     event: { name: 'update.applied' },
   })) as Automation
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   f.fail()
   await f.emit('update.applied')
   await until(f.rolledBack)
   await until(async () => (await f.host.eventLog.reactors()).some((r) => !!r.failure))
   expect((await f.record(a.id)).fires).toBe(0)
-  await f.emit('update.refused')
+  await vi.advanceTimersByTimeAsync(1_000)
   await f.settle()
   expect((await f.record(a.id)).fires).toBe(1)
   await f.stopEvents()

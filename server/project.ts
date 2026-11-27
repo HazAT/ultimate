@@ -3,7 +3,7 @@ import { readFile, readdir, writeFile, rename } from 'node:fs/promises'
 import type { ConversationSummary } from '../shared/protocol.ts'
 import { alive, readOwner } from '../lib/lock.ts'
 import { debounce } from '../lib/timers.shared.ts'
-import { rebuiltOnOpen, meansNone } from '../lib/errors.shared.ts'
+import { rebuiltOnOpen, meansNone, settled } from '../lib/errors.shared.ts'
 
 export type ProjectConversation = Pick<
   ConversationSummary,
@@ -75,13 +75,14 @@ export function conversationIndex(home: string) {
   })
   const flush = () => {
     schedule.cancel()
-    serializedSnapshots = serializedSnapshots.then(async () => {
+    const next = serializedSnapshots.then(async () => {
       if (latest === written) return
       const value = latest
       await atomicJson(join(home, 'conversations.json'), value)
       written = value
     })
-    return serializedSnapshots
+    serializedSnapshots = settled(next)
+    return next
   }
   return {
     update(summaries: ConversationSummary[]) {

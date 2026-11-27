@@ -11,7 +11,7 @@ import { Messages } from '../../../messages/api.ts'
 import { launchHandshake, Automations } from '../../server.ts'
 import { Done, Exited } from '../../refs.ts'
 import type { Automation, AutomationListItem } from '../../types.shared.ts'
-import { requestChapter } from '../../../../lib/chapters.ts'
+import { prepareChapterRequest } from '../../../../lib/chapters.ts'
 import { context } from '../../../../server/harness.ts'
 import { eventHost, fauxServer, temp, until } from '../../../../test/helpers.ts'
 
@@ -457,7 +457,7 @@ it("keeps a later chapter's scripts in their own folder, apart from the first ch
   const { home, userHome } = first
   await server?.close()
   server = undefined
-  await requestChapter(home, 'next')
+  await prepareChapterRequest(home, 'next')()
   server = await fauxServer({ ...first.options, home, userHome })
   const sub = await create(server)
   expect(sub.id).toBe('A1')

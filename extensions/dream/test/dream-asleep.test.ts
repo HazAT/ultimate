@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { chmod } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -16,6 +17,7 @@ import { chapterFiles } from '../../../lib/chapters.ts'
 import { readJson, writeJson } from '../../../lib/json-file.ts'
 import { CloudApi } from '../../cloud/api.ts'
 import type { CloudService } from '../../cloud/api.ts'
+import { PauseApi } from '../../pause/api.ts'
 import { Standing } from '../../subagents/api.ts'
 import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
@@ -36,7 +38,7 @@ const READY = {
   handoff: 'Open: the preview round.',
 }
 
-async function fixture() {
+async function fixture(expectedChapter = READY.chapter) {
   const home = await temp('ultimate-dream-asleep-')
   const harness = await Harness.open(
     new MemoryStorage(),
@@ -69,6 +71,21 @@ async function fixture() {
     },
   )
   const hold = vi.fn<() => void>()
+  const release = vi.fn<() => void>()
+  const tracked = {
+    hold,
+    release,
+    resume: () => harness.resume(),
+    commit: async (run: Parameters<Harness['commit']>[0]) => {
+      const result = await harness.commit(run, context)
+      const sleep = (await harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.sleep
+      if (sleep && JSON.stringify(sleep) !== previous) {
+        phases.push(structuredClone(sleep))
+        previous = JSON.stringify(sleep)
+      }
+      return result
+    },
+  }
   const host = createTestExtensionHost({
     home,
     chapter: { name: 'the-beginning', number: 1 },
@@ -78,26 +95,14 @@ async function fixture() {
       if (!resources.has(key)) resources.set(key, create())
       return resources.get(key)
     },
-    harness: () => ({
-      hold,
-      resume: () => harness.resume(),
-      commit: async (run: Parameters<Harness['commit']>[0]) => {
-        const result = await harness.commit(run, context)
-        const sleep = (await harness.snapshot(Next, ROOT_CONVERSATION_ID, context))?.sleep
-        if (sleep && JSON.stringify(sleep) !== previous) {
-          phases.push(structuredClone(sleep))
-          previous = JSON.stringify(sleep)
-        }
-        return result
-      },
-    }),
+    harness: () => tracked,
     doc: (kind: string) => tokens.find((token) => token.definition.kind === kind),
     invoke,
-    restart: vi.fn<ExtensionHost['restart']>(async () => {
-      expect(await readJson(join(home, 'pending-chapter.json'), null)).toEqual({
-        to: 'fresh-roots',
-        by: process.pid,
-      })
+    restart: vi.fn<ExtensionHost['restart']>(async (approved) => {
+      const journal = join(home, 'pending-chapter.json')
+      expect(existsSync(journal)).toBe(false)
+      await approved(2)
+      expect(await readJson(journal, null)).toEqual({ to: expectedChapter, by: process.pid })
       return 'Restart refused'
     }),
   })
@@ -114,7 +119,7 @@ async function fixture() {
     harness.commit(async (tx) => {
       ;(await tx.doc(Next, ROOT_CONVERSATION_ID)).prepared = { ...READY, at: 1 }
     }, context)
-  return { host, home, harness, call, prepare, cloud, services, phases, invoke, hold }
+  return { host, home, harness, call, prepare, cloud, services, phases, invoke, hold, release }
 }
 
 it('keeps asleep and switch user-only', () => {
@@ -192,21 +197,23 @@ it('commits each sleep phase, carries the handover, backs up before journaling, 
 it.each([undefined, 'off', 'local'] as const)(
   'skips cloud with a recorded reason for %s',
   async (status) => {
-    const f = await fixture()
+    const chapter = 'other-name'
+    const f = await fixture(chapter)
     await f.prepare()
     if (status === undefined) f.services.delete(CloudApi)
     else f.cloud.status.mockResolvedValue(status)
-    const result = await actions.asleep({ name: 'other-name' }, f.call)
+    const result = await actions.asleep({ name: chapter }, f.call)
     const reasons = {
       off: 'Cloud backups are off',
       local: 'Project has no GitHub origin; cloud backup is local-only',
     }
     expect(result).toMatchObject({
       sleep: {
-        chapter: 'other-name',
+        chapter,
         backup: {
           skipped: status === undefined ? 'Cloud extension is not enabled' : reasons[status],
         },
+        error: 'Error: Restart refused',
       },
     })
     expect(f.cloud.backup).not.toHaveBeenCalled()
@@ -271,25 +278,54 @@ it('lists numbered chapters and refuses active, unknown, busy and in-flight swit
   expect(existsSync(join(f.home, 'pending-chapter.json'))).toBe(false)
 })
 
-it.each(['return', 'throw'])(
-  'removes the pending journal when switch restart failures %s',
+it.each(['return', 'throw', 'before approval'])(
+  'leaves no pending journal after switch restart failure: %s',
   async (failure) => {
     const f = await fixture()
     await writeJson(join(f.home, 'chapters.json'), {
       active: 'the-beginning',
       chapters: [{ name: 'the-beginning' }, { name: 'fresh-roots' }],
     })
-    f.host.restart = vi.fn<ExtensionHost['restart']>(async () => {
-      expect(await readJson(join(f.home, 'pending-chapter.json'), null)).toEqual({
-        to: 'fresh-roots',
-        by: process.pid,
-      })
+    const journal = join(f.home, 'pending-chapter.json')
+    f.host.restart = vi.fn<ExtensionHost['restart']>(async (approved) => {
+      expect(existsSync(journal)).toBe(false)
+      if (failure === 'before approval') return 'Restart failed'
+      await approved(2)
+      expect(await readJson(journal, null)).toEqual({ to: 'fresh-roots', by: process.pid })
       if (failure === 'throw') throw new Error('Restart failed')
       return 'Restart failed'
     })
     await expect(actions.switch({ chapter: 'fresh-roots' }, f.call)).rejects.toThrow(
       'Restart failed',
     )
+    expect(f.hold).toHaveBeenCalledTimes(failure === 'before approval' ? 0 : 1)
+    expect(f.release).toHaveBeenCalledTimes(failure === 'before approval' ? 0 : 1)
+    expect(existsSync(journal)).toBe(false)
+  },
+)
+
+it.each([false, true])(
+  'a failed journal write lifts the switch hold unless the user paused: paused = %s',
+  async (paused) => {
+    const f = await fixture()
+    await writeJson(join(f.home, 'chapters.json'), {
+      active: 'the-beginning',
+      chapters: [{ name: 'the-beginning' }, { name: 'fresh-roots' }],
+    })
+    f.services.set(PauseApi, { paused: () => paused })
+    f.host.restart = vi.fn<ExtensionHost['restart']>(async (approved) => {
+      await chmod(f.home, 0o500)
+      try {
+        await approved(2)
+      } finally {
+        await chmod(f.home, 0o700)
+      }
+      return 'unreachable'
+    })
+
+    await expect(actions.switch({ chapter: 'fresh-roots' }, f.call)).rejects.toThrow('EACCES')
+    expect(f.hold).toHaveBeenCalledOnce()
+    expect(f.release).toHaveBeenCalledTimes(paused ? 0 : 1)
     expect(existsSync(join(f.home, 'pending-chapter.json'))).toBe(false)
   },
 )
@@ -329,17 +365,18 @@ it.each([true, false])(
     })
     const before = await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context)
     const order: string[] = []
+    const journal = join(f.home, 'pending-chapter.json')
     if (!enabled) f.services.delete(CloudApi)
     f.cloud.backup.mockImplementation(async () => {
-      expect(await readJson(join(f.home, 'pending-chapter.json'), null)).toEqual({
-        to: 'fresh-roots',
-        by: process.pid,
-      })
+      expect(existsSync(journal)).toBe(false)
       order.push('backup')
       return { id: 'final', at: 1, machine: 'here', bytes: 1, uploaded: 1 }
     })
-    f.host.restart = vi.fn<ExtensionHost['restart']>(async () => {
+    f.host.restart = vi.fn<ExtensionHost['restart']>(async (approved) => {
+      expect(existsSync(journal)).toBe(false)
       order.push('restart')
+      await approved(2)
+      expect(await readJson(journal, null)).toEqual({ to: 'fresh-roots', by: process.pid })
       return 'Restart refused'
     })
 
@@ -350,7 +387,7 @@ it.each([true, false])(
     expect(f.cloud.backup).toHaveBeenCalledTimes(enabled ? 1 : 0)
     expect(await f.harness.snapshot(Next, ROOT_CONVERSATION_ID, context)).toEqual(before)
     expect(f.phases).toEqual([])
-    expect(existsSync(join(f.home, 'pending-chapter.json'))).toBe(false)
+    expect(existsSync(journal)).toBe(false)
   },
 )
 

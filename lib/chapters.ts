@@ -39,8 +39,7 @@ export function chapterFiles(home: string, name: string) {
   return { dir, database: join(dir, 'state.sqlite'), trace: join(dir, 'trace.sqlite') }
 }
 
-export async function activeChapter(home: string) {
-  const { active, chapters } = await readChapters(home)
+function describeChapter(home: string, { active, chapters }: Chapters) {
   return {
     name: active,
     number: chapters.findIndex((chapter) => chapter.name === active) + 1,
@@ -49,17 +48,22 @@ export async function activeChapter(home: string) {
   }
 }
 
-export async function requestChapter(home: string, to: string, by?: number) {
+export async function activeChapter(home: string) {
+  return describeChapter(home, await readChapters(home))
+}
+
+export function prepareChapterRequest(home: string, to: string, by?: number) {
   const name = chapterName(to)
   const busy = inFlight(chapterFiles(home, name).database)
   if (busy.length)
     throw new Error(
       `Chapter ${name} has work in flight in ${busy.map((id) => `${name}#${id}`).join(', ')}; it resumes when that chapter opens, so finish or stop it there first`,
     )
-  await writeJson(join(home, PENDING_CHAPTER), {
-    to: name,
-    ...(by === undefined ? {} : { by }),
-  } satisfies PendingChapter)
+  return () =>
+    writeJson(join(home, PENDING_CHAPTER), {
+      to: name,
+      ...(by === undefined ? {} : { by }),
+    } satisfies PendingChapter)
 }
 
 export function inFlight(database: string): number[] {
@@ -82,7 +86,7 @@ export function inFlight(database: string): number[] {
   }
 }
 
-export async function finishChapterSwitch(
+export async function prepareChapterSwitch(
   lockedHomeBeforeStorageOpen: string,
   ensureSchemaIdempotently: (database: string) => Promise<void>,
 ) {
@@ -108,9 +112,13 @@ export async function finishChapterSwitch(
     target.database,
   )
   chapters.active = to
-  await writeJson(join(lockedHomeBeforeStorageOpen, CHAPTERS_FILE), chapters)
-  await rm(join(lockedHomeBeforeStorageOpen, PENDING_CHAPTER))
-  return to
+  return {
+    chapter: describeChapter(lockedHomeBeforeStorageOpen, chapters),
+    async finish() {
+      await writeJson(join(lockedHomeBeforeStorageOpen, CHAPTERS_FILE), chapters)
+      await rm(join(lockedHomeBeforeStorageOpen, PENDING_CHAPTER))
+    },
+  }
 }
 
 const otherDatabases = (home: string, chapters: Chapters, name: string) =>

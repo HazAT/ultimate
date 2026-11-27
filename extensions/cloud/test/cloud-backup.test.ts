@@ -10,7 +10,12 @@ import { backUp, backupPath, classify, Conflict, readBackup } from '../backup.ts
 import { BackupEvent } from '../refs.ts'
 import { uploadSnapshot } from '../snapshot.ts'
 import { git } from '../../../lib/git.ts'
-import { chapterFiles, FIRST_CHAPTER, readChapters, requestChapter } from '../../../lib/chapters.ts'
+import {
+  chapterFiles,
+  FIRST_CHAPTER,
+  prepareChapterRequest,
+  readChapters,
+} from '../../../lib/chapters.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { acquireLock } from '../../../lib/lock.ts'
@@ -301,7 +306,7 @@ it('refuses to restore while a chapter switch is pending, and moves nothing', as
   const other = own()
   const done = await back(source, 'desk', { key: other })
   const target = await machine(['kept'])
-  await requestChapter(target.home, 'next')
+  await prepareChapterRequest(target.home, 'next')()
   await expect(
     restore({
       ...cloud,

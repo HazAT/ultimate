@@ -300,11 +300,13 @@ export function callTrace(file: string | (() => string), retention = { rows: 200
     marked: () => skippableParentByCallId.size,
     open() {
       if (database) return
+      reported = false
       written.clear()
       polls.clear()
       try {
         database = new DatabaseSync(typeof file === 'string' ? file : file())
-        const crashSafeBatchedSchema = `PRAGMA journal_mode = WAL;
+        const crashSafeBatchedSchema = `PRAGMA busy_timeout = 5000;
+PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 CREATE TABLE IF NOT EXISTS calls (id TEXT PRIMARY KEY, parent TEXT, trace TEXT NOT NULL, at REAL NOT NULL,
   ms REAL NOT NULL, caller TEXT NOT NULL, callee TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL,

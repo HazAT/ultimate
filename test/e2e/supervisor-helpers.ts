@@ -68,9 +68,10 @@ afterEach(async () => {
   for (const home of taken) await removeTemp(home)
 })
 export const copies = new Map<string, string>()
-export async function launch(home: string) {
+export async function launch(home: string, prepare?: (root: string) => Promise<void>) {
   const ultimateRoot = copies.get(home) ?? (await sourceCopy(home))
   copies.set(home, ultimateRoot)
+  await prepare?.(ultimateRoot)
   model ??= await scriptedModel(answer)
   // Pi locks files in its agent directory and waits 30 s before taking over a lock left by a SIGKILLed core, as long as
   // fixture() waits for a boot: each home gets its own copy, so one test's killed core cannot stall the next test's.
@@ -102,10 +103,10 @@ export async function launch(home: string) {
   })
   return { child, ultimateRoot, output: () => output }
 }
-export async function fixture() {
+export async function fixture(prepare?: (root: string) => Promise<void>) {
   const home = await temp('ultimate-supervisor-')
   homes.push(home)
-  const running = await launch(home)
+  const running = await launch(home, prepare)
   await until(() => running.output().includes('Ultimate: http://'))
   return { ...running, home, url: /Ultimate: (http:\/\/[^\s]+)/.exec(running.output())![1] }
 }

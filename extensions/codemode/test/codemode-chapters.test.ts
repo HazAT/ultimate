@@ -3,7 +3,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { readFile } from 'node:fs/promises'
 import { expect, it } from 'vitest'
 import { actions } from '../server.ts'
-import { chapterFiles, FIRST_CHAPTER, requestChapter } from '../../../lib/chapters.ts'
+import { chapterFiles, FIRST_CHAPTER, prepareChapterRequest } from '../../../lib/chapters.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
@@ -19,7 +19,7 @@ it('reads closed chapter records exactly like live fork-aware history, with titl
     faux: fauxProvider(),
   })
   await (await prepared.open(false)).close()
-  await requestChapter(home, 'next')
+  await prepareChapterRequest(home, 'next')()
   let opened = await prepared.open(false)
   const host = createTestExtensionHost({
     home,
@@ -94,7 +94,7 @@ it('reads closed chapter records exactly like live fork-aware history, with titl
     expect(await read('entries', [fork.id, { chapter: 'next' }])).toEqual(live)
     expect(await read('entries', [fork.id, { limit: 5000 }])).toEqual(live)
     await opened.close()
-    await requestChapter(home, FIRST_CHAPTER)
+    await prepareChapterRequest(home, FIRST_CHAPTER)()
     opened = await prepared.open(false)
     const database = chapterFiles(home, 'next').database
     const bytes = await readFile(database)

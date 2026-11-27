@@ -15,7 +15,7 @@ import type { ConversationId, JsonObject, Submission, Tx } from '@earendil-works
 import { afterAll, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../../server/harness.ts'
 import { Metadata } from '../../../../server/metadata.ts'
-import { eventLog } from '../../../../server/events.ts'
+import { eventLog, eventStatusReader } from '../../../../server/events.ts'
 import { UiState } from '../../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import type { ActionContext } from '../../../../server/actions.ts'
@@ -117,6 +117,7 @@ async function fixture(
   // As the server: the real event log, and reactors that run while the harness is open.
   const events = eventLog(
     () => opened.harness,
+    () => eventStatusReader(prepared.eventStorage()),
     (_call, work) => work(),
   )
   let started = false

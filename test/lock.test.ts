@@ -1,4 +1,4 @@
-import { rm, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import { temp, removeTemp } from './helpers.ts'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -58,12 +58,12 @@ it('holds ownership until close, then lets a waiting contender acquire it', asyn
   expect(lock.stale).toBe(true)
   await lock.update({ pid: process.pid, port: 5000 })
   expect(await readOwner(file)).toEqual({ pid: process.pid, port: 5000 })
-  await lock.close()
-  locks.splice(locks.indexOf(lock), 1)
+})
+it('overwrites a corrupt sidecar once it owns the exclusive lock', async () => {
+  const file = await path()
   await writeFile(file, 'not JSON')
-  await expect(acquireLock(file, { pid: process.pid })).rejects.toThrow(
-    'Cannot parse Ultimate lock',
-  )
-  await rm(file)
-  locks.push(await acquireLock(file, { pid: process.pid }))
+  const lock = await acquireLock(file, { pid: process.pid })
+  locks.push(lock)
+  expect(lock.stale).toBe(true)
+  expect(await readOwner(file)).toEqual({ pid: process.pid })
 })

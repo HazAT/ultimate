@@ -1,5 +1,7 @@
 import { execFile, spawn } from 'node:child_process'
 import type { ChildProcess, ExecFileOptions, SpawnOptions } from 'node:child_process'
+import { isNoProcess } from './errors.shared.ts'
+import { groupTarget } from './process-group.ts'
 
 export type Request =
   | { id: number; op: 'exec'; command: string; args: string[]; options: ExecFileOptions }
@@ -32,7 +34,7 @@ function serve() {
       void closedHostChannel
     })
   const aborts = new Map<number, AbortController>()
-  const children = new Map<number, ChildProcess>()
+  const children = new Map<number, { child: ChildProcess; detached?: boolean }>()
 
   function exec({ id, command, args, options }: Extract<Request, { op: 'exec' }>) {
     const abort = new AbortController()
@@ -48,6 +50,8 @@ function serve() {
         { ...options, encoding: 'utf8', signal: abort.signal },
         done,
       )
+      children.set(id, { child })
+      child.once('close', () => children.delete(id))
       child.stdin?.end()
     } catch (error) {
       done(error as Error)
@@ -63,7 +67,7 @@ function serve() {
       send({ id, event: 'close', code: null, signal: null })
       return
     }
-    children.set(id, child)
+    children.set(id, { child, detached: options.detached })
     child.once('spawn', () => send({ id, event: 'spawn', pid: child.pid! }))
     child.on('error', (error) => send({ id, event: 'error', error: data(error) }))
     child.once('exit', (code, signal) => send({ id, event: 'exit', code, signal }))
@@ -80,7 +84,7 @@ function serve() {
   }
 
   function writeInputWithReceipt({ id, data: chunk, end }: Extract<Request, { op: 'stdin' }>) {
-    const stdin = children.get(id)?.stdin
+    const stdin = children.get(id)?.child.stdin
     const written = (error?: Error | null) =>
       send({ id, event: 'written', ...(error && { error: data(error) }) })
     if (!stdin) written(new Error('The process has no input open'))
@@ -91,7 +95,7 @@ function serve() {
   }
 
   process.on('message', (request: Request) => {
-    const child = children.get(request.id)
+    const child = children.get(request.id)?.child
     if (request.op === 'exec') exec(request)
     else if (request.op === 'spawn') start(request)
     else if (request.op === 'stdin') writeInputWithReceipt(request)
@@ -99,7 +103,18 @@ function serve() {
     else if (request.op === 'kill') child?.kill(request.signal)
     else child?.[request.stream]?.[request.op]()
   })
-  const exitWhenHostGone = () => process.exit(0)
+  const exitWhenHostGone = () => {
+    for (const { child, detached } of children.values()) {
+      if (!child.pid) continue
+      try {
+        if (detached) process.kill(groupTarget(child.pid), 'SIGKILL')
+        else child.kill('SIGKILL')
+      } catch (error) {
+        if (!isNoProcess(error)) console.error(`Could not stop child ${child.pid}:`, error)
+      }
+    }
+    process.exit(0)
+  }
   process.on('disconnect', exitWhenHostGone)
 }
 

@@ -180,6 +180,7 @@ export async function createWeb(options: {
     const facets = await webFacets(ultimateRoot, projectRoot, userHome)
     const targets = await discoverExtensions(ultimateRoot, projectRoot, userHome)
     const outDir = join(folder, 'next')
+    const resultFile = join(folder, '.build-result.json')
     const broken: Record<string, string> = {}
     const brokenFolders: string[] = []
     let result: WebBuildResult
@@ -193,10 +194,11 @@ export async function createWeb(options: {
         projectRoot,
         userHome,
         outDir,
+        resultFile,
         cacheDir: join(options.home, 'vite'),
         broken,
       }
-      const { stdout } = await exec(
+      await exec(
         process.execPath,
         [fileURLToPath(new URL('./web-build.ts', import.meta.url)), JSON.stringify(request)],
         {
@@ -206,7 +208,8 @@ export async function createWeb(options: {
           signal: closing.signal,
         },
       )
-      result = JSON.parse(stdout.trim().split('\n').at(-1)!) as WebBuildResult
+      result = JSON.parse(await readFile(resultFile, 'utf8')) as WebBuildResult
+      await rm(resultFile)
       if ('inputs' in result) break
       const file = result.error.file
       const facet =
@@ -281,6 +284,7 @@ export async function createWeb(options: {
   }
 
   function buildUntilFreshSerially() {
+    if (options.held()) return building
     building ??= (async () => {
       try {
         await mkdir(folder, { recursive: true })
@@ -375,6 +379,7 @@ export async function createWeb(options: {
       ...(failed ? { error: failed } : {}),
     }),
     facets: () => webFacets(ultimateRoot, projectRoot, userHome),
+    settled: () => building,
     pageConnected() {
       if (manifest && stale) scheduleUpdate()
     },

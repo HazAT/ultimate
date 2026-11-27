@@ -22,7 +22,7 @@ import { realpath } from 'node:fs/promises'
 import { extensionModules } from './vite-extensions.ts'
 import { createWeb } from './web.ts'
 import { admit, createAccess } from './request-security.ts'
-import { reportCore } from './supervisor-protocol.ts'
+import { reportCore, settleReacquiredSwap } from './supervisor-protocol.ts'
 import { viteLogger } from './vite-logger.ts'
 import type { Notice } from '../shared/protocol.ts'
 
@@ -51,12 +51,20 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       text: entry.message,
     })
   }
-  const host = await prepareHarness({
-    ...options,
-    ultimateRoot,
-    projectRoot,
-    report: notice,
-  })
+  let web: Awaited<ReturnType<typeof createWeb>> | undefined
+  let webHeldForSwap = false
+  const host = await prepareHarness(
+    { ...options, ultimateRoot, projectRoot, report: notice },
+    () => {
+      webHeldForSwap = true
+      return {
+        drained: web?.settled(),
+        unhold: () => {
+          webHeldForSwap = false
+        },
+      }
+    },
+  )
   let system: Awaited<ReturnType<typeof createSystem>> | undefined
   let reportedRemoteOrigins: string[] = []
   const access = createAccess(() => {
@@ -72,7 +80,6 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
       .catch((error: unknown) => console.error('Publishing access changes failed:', error))
   })
   let api: Awaited<ReturnType<typeof createApi>> | undefined
-  let web: Awaited<ReturnType<typeof createWeb>> | undefined
   const http = createHttpServer((request, response) => {
     inProcess(
       'a request handler: the HTTP response dies with the process',
@@ -189,7 +196,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     home: host.home,
     watch,
     before: () => extensions.prepareLoadBestEffort(),
-    held: extensions.heldForNewCore,
+    held: () => webHeldForSwap || extensions.heldForNewCore(),
     pages: () => api?.pages() ?? 0,
     changed: () => void system?.changed(),
     notice: (message) => notice({ level: 'error', message }),
@@ -244,6 +251,7 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
     web,
     release: () =>
       serial(async () => {
+        webHeldForSwap = true
         if (opened) await extensions.released()
         await api?.close()
         api = undefined
@@ -257,24 +265,28 @@ export async function prepareServer(options: Partial<ServerOptions> = {}) {
         processInfo.activationError = activationError
         const swappedIn = !!process.env.ULTIMATE_PREVIOUS_BUILD && activationError === undefined
         const served = await openExtensionsThenServeApi(await host.open(false, swappedIn))
+        webHeldForSwap = false
         reportCore({ type: 'web', state: 'ready' })
         return served
       }),
-    async close() {
-      const stopped = new Promise<void>((resolve, reject) =>
-        http.close((error) => (error ? reject(error) : resolve())),
-      )
-      if (opened) await extensions.released()
-      await api?.close()
-      await opened?.close()
-      opened = undefined
-      await extensions.close()
-      await web?.close()
-      await system?.close()
-      await vite.close()
-      reportCore({ type: 'web', state: 'stopped' })
-      http.closeAllConnections()
-      await stopped
+    close() {
+      extensions.stopWatching()
+      return serial(async () => {
+        const stopped = new Promise<void>((resolve, reject) =>
+          http.close((error) => (error ? reject(error) : resolve())),
+        )
+        if (opened) await extensions.released()
+        await api?.close()
+        await opened?.close()
+        opened = undefined
+        await extensions.close()
+        await web?.close()
+        await system?.close()
+        await vite.close()
+        reportCore({ type: 'web', state: 'stopped' })
+        http.closeAllConnections()
+        await stopped
+      })
     },
   }
 }
@@ -344,6 +356,7 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
                 await server!.go(message.type === 'reacquire' ? message.error : undefined),
               )
               send({ type: 'ready' })
+              if (message.type === 'reacquire') settleReacquiredSwap(message.error)
             }
             if (message.type === 'release') {
               await server!.release()

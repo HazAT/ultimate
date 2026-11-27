@@ -23,7 +23,7 @@ async function backUp(home: string, chapter: string, database: string) {
   const copy = join(folder, `${prefix}${Date.now()}.sqlite`)
   const unfinished = join(folder, `${prefix}unfinished.sqlite`)
   await rm(unfinished, { force: true })
-  vacuum(database, unfinished)
+  await vacuum(database, unfinished)
   await rename(unfinished, copy)
   const finished = new RegExp(`^${prefix}\\d+\\.sqlite$`)
   const copies = (await readdir(folder)).filter((name) => finished.test(name)).toSorted()
