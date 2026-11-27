@@ -16,7 +16,7 @@ conversation gets it when its owner enables and loads it: voice mode adds it to 
 `page` is the page that should run it, asked of the `page-agent.pages` point (`PageAgentPages.pageFor`) when the call
 starts: voice answers with the page that sent the conversation's latest turn, so a turn queued from another page
 cannot redirect a call already running. A finished, failed or cancelled call removes its request, and each new
-request prunes ones left more than 30 s old.
+request prunes unclaimed ones left more than 30 s old.
 
 ## Pages
 
