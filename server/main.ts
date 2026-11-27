@@ -356,8 +356,7 @@ if (process.argv[1] && resolvePath(process.argv[1]) === fileURLToPath(import.met
                 await server!.go(message.type === 'reacquire' ? message.error : undefined),
               )
               send({ type: 'ready' })
-              if (message.type === 'reacquire')
-                settleReacquiredSwap(message.requestId, message.error)
+              if (message.type === 'reacquire') settleReacquiredSwap(message.error)
             }
             if (message.type === 'release') {
               await server!.release()

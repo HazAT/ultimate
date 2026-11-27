@@ -478,7 +478,7 @@ async function swap(old: Core, requestId: string, previousBuild?: BuildInfo) {
       send(old, { type: 'swap-result', requestId, ok: false, error: stderr })
     else {
       old.messages = old.messages.filter((message) => message.type !== 'failed')
-      send(old, { type: 'reacquire', requestId, error: stderr })
+      send(old, { type: 'reacquire', error: stderr })
       try {
         await wait(old, 'ready')
         active = old

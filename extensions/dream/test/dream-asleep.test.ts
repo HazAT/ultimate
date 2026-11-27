@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { chmod } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -16,6 +17,7 @@ import { chapterFiles } from '../../../lib/chapters.ts'
 import { readJson, writeJson } from '../../../lib/json-file.ts'
 import { CloudApi } from '../../cloud/api.ts'
 import type { CloudService } from '../../cloud/api.ts'
+import { PauseApi } from '../../pause/api.ts'
 import { Standing } from '../../subagents/api.ts'
 import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
@@ -69,6 +71,7 @@ async function fixture(expectedChapter = READY.chapter) {
     },
   )
   const hold = vi.fn<() => void>()
+  const release = vi.fn<() => void>()
   const host = {
     home,
     chapter: { name: 'the-beginning', number: 1 },
@@ -80,6 +83,7 @@ async function fixture(expectedChapter = READY.chapter) {
     },
     harness: () => ({
       hold,
+      release,
       resume: () => harness.resume(),
       commit: async (run: Parameters<Harness['commit']>[0]) => {
         const result = await harness.commit(run, context)
@@ -114,7 +118,7 @@ async function fixture(expectedChapter = READY.chapter) {
     harness.commit(async (tx) => {
       ;(await tx.doc(Next, ROOT_CONVERSATION_ID)).prepared = { ...READY, at: 1 }
     }, context)
-  return { host, home, harness, call, prepare, cloud, services, phases, invoke, hold }
+  return { host, home, harness, call, prepare, cloud, services, phases, invoke, hold, release }
 }
 
 it('keeps asleep and switch user-only', () => {
@@ -295,6 +299,32 @@ it.each(['return', 'throw', 'before approval'])(
     )
     expect(f.hold).toHaveBeenCalledTimes(failure === 'before approval' ? 0 : 1)
     expect(existsSync(journal)).toBe(false)
+  },
+)
+
+it.each([false, true])(
+  'a failed journal write lifts the switch hold unless the user paused: paused = %s',
+  async (paused) => {
+    const f = await fixture()
+    await writeJson(join(f.home, 'chapters.json'), {
+      active: 'the-beginning',
+      chapters: [{ name: 'the-beginning' }, { name: 'fresh-roots' }],
+    })
+    f.services.set(PauseApi, { paused: () => paused })
+    f.host.restart = vi.fn<ExtensionHost['restart']>(async (approved) => {
+      await chmod(f.home, 0o500)
+      try {
+        await approved(2)
+      } finally {
+        await chmod(f.home, 0o700)
+      }
+      return 'unreachable'
+    })
+
+    await expect(actions.switch({ chapter: 'fresh-roots' }, f.call)).rejects.toThrow('EACCES')
+    expect(f.hold).toHaveBeenCalledOnce()
+    expect(f.release).toHaveBeenCalledTimes(paused ? 0 : 1)
+    expect(existsSync(join(f.home, 'pending-chapter.json'))).toBe(false)
   },
 )
 

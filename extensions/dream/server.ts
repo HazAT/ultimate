@@ -16,6 +16,7 @@ import {
 } from '../../lib/chapters.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { CloudApi } from '../cloud/api.ts'
+import { PauseApi } from '../pause/api.ts'
 import { Standing, Started as StandingStarted } from '../subagents/api.ts'
 import { Fired, Hold } from '../automations/api.ts'
 import { Branched } from '../lineage/api.ts'
@@ -203,7 +204,10 @@ async function restartChapter(
         requireNoWorkParkedBySwitch(host)
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold() keeps the scheduler from starting tasks.
         host.harness().hold()
-        await writePendingChapter()
+        await writePendingChapter().catch((error: unknown) => {
+          if (!host.want(PauseApi)?.paused()) host.harness().release()
+          throw error
+        })
       }),
     )
   } finally {
