@@ -25,6 +25,9 @@ screenshots: send them with the request.
    is, or change something). Review never has to come before a preview. When the change depends on a real device
    (phone, real mic, real playback, on-screen keyboard), name each such check as **confirmed**, **simulated only** or
    **not checked**: a desktop preview cannot show them, so say which one the user still owes.
-6. **Iterate**: each change is a new commit and a new round; keep the same preview running.
+   Every round asks through `message` with that choice card, never as text in a final answer: only a card reaches the
+   user's Inbox, and a final answer that says "say approve here" reaches nobody.
+6. **Iterate**: each change is a new commit and a new round, asked again with a card as in step 5, follow-ups after
+   "change something" included; keep the same preview running.
 7. **On approval**: remove anything only the preview needed, `instance stop`, run the review if it has not run, then
    `workspace submit` with the divergence and the reviewed range. Report the landing in your final answer.
