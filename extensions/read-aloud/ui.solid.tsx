@@ -9,7 +9,8 @@
  * `play(index)`, `sentence(step)`, `paragraph(step)`; `state` (a cell: `key`, `index`, `charIndex`, `playing`,
  * `paused`, `blocked`, `streaming`) and `items()`; `idle()` resolves once it is done or another source took over. A source may
  * pass `hold` to `load`: while it returns true, a sentence that would start waits paused for that source's `resume`. `voice`, `openaiVoice`, `rate` and their setters are the shared Speech setting;
- * `setKeyed` records whether the OpenAI voice has a key; `warm()` opens its connection early; `failure` holds the last
+ * `openaiOn` says whether the player uses OpenAI; `setKeyed` records whether the OpenAI voice has a key;
+ * `warm()` opens its connection early; `failure` holds the last
  * error with the key it stopped.
  */
 export { speech } from './voice.solid.tsx'
@@ -19,6 +20,8 @@ export { BLOCKED as SOUND_BLOCKED } from './voice.solid.tsx'
 export type { Speech } from './voice.solid.tsx'
 /** Split streamed reply parts, or one text, into sentences with their paragraphs; `estimate` gives a sentence's seconds. */
 export { estimate, splitReply, splitSentences } from './speech.web.ts'
+/** Queue text in the system voice at its default speed without interrupting speech; resolves on end or error. */
+export { speakSystem } from './speech.web.ts'
 /** One spoken sentence: its text, paragraph, word starts and its place in its reply (`at`). */
 export type { Sentence } from './speech.web.ts'
 /**

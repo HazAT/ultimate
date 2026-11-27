@@ -21,7 +21,10 @@ wait on any other name fails at once. `{ fails: '<event>' }` marks an event that
   Pending events are also retried when the harness opens. Reactors stop with their facet; a reloaded facet
   registering the same name continues from the cursor. Pass
   `{ from: 'now' }` as a fourth argument when past events must not be handled: a reactor without a cursor then starts
-  after the newest event instead of replaying the log.
+  after the newest event instead of replaying the log. `{ from: { cursorOf: '<extension>/<name>' } }` starts it where
+  that reactor's cursor is, and after the newest event when that one has none. Hand over by retiring the old name, so
+  nothing advances its cursor after the handover: `automations/triggers` and the `automations` reactors of health,
+  update and cloud all start from the retired `automations/events`, so an event it had not handled yet still fires.
 - `host.eventLog.recent({ events?, since?, before?, order?, limit })` reads the newest first (oldest first with
   `order: 'ascending'`) as plain copies, `since` and `before` exclusive event ids; `host.eventLog.reactors()`
   shows each reactor's cursor, lag and last failure. In the browser, `useEvents({ events?, limit })` from `@/sdk/solid` streams

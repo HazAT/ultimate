@@ -16,7 +16,6 @@ import type { ActionInput } from '../../lib/actions.ts'
 import { git } from '../../lib/git.ts'
 import { meansNone } from '../../lib/errors.shared.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { defineEvent } from '../../shared/events.ts'
 import { Committed } from '../coding-tools/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
@@ -28,7 +27,7 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import type { JsonValue } from '@earendil-works/chord/json'
 import type { EventData, EventRecord, EventToken } from '../../shared/events.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { Roots } from './api.ts'
+import { Replies, Roots } from './api.ts'
 import { RewindAction, RewindPreviewAction, Rewound } from './refs.ts'
 import type { RewindDependent, RewindFile } from './refs.ts'
 import { RewoundEntry, RewoundDependentEntry } from './entries.shared.ts'
@@ -44,9 +43,6 @@ type Facts = {
 }
 
 type FactsAtContextRevision = { revision: EntryId | null; facts: Facts }
-const BoardSentByKind = defineEvent<{ from: ConversationId | 'user'; to: ConversationId | 'user' }>(
-  'board.sent',
-)
 
 const EVENTS_PER_PAGE = 5000
 
@@ -247,14 +243,8 @@ async function checkoutAndTreeFactsAfterEntry(
         id: event.data.id,
         via: event.data.kind === 'branch' ? 'branch' : 'subagent',
       })
-  for (const { data } of await allEventsAfterEntryAscending(BoardSentByKind))
-    if (
-      data.from === id &&
-      typeof data.to === 'number' &&
-      data.to !== id &&
-      !dependents.has(data.to)
-    )
-      dependents.set(data.to, { id: data.to, via: 'message' })
+  for (const to of (await host.want(Replies)?.messaged(id, at)) ?? [])
+    if (!dependents.has(to)) dependents.set(to, { id: to, via: 'message' })
   return {
     files,
     commits: after.map((event) => ({ sha: event.data.sha, subject: event.data.subject })),

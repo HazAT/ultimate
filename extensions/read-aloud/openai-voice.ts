@@ -1,3 +1,6 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { subscribe, unsubscribe } from 'node:diagnostics_channel'
+import type { ChannelListener } from 'node:diagnostics_channel'
 import { inProcess } from '../../lib/errors.shared.ts'
 import { within } from '../../lib/timers.shared.ts'
 import type { OpenAiVoice } from './refs.ts'
@@ -24,6 +27,48 @@ type RealtimeEvent = {
   error?: { message?: string; code?: string; event_id?: string }
 }
 
+const openingSocket = new AsyncLocalStorage<object>()
+
+type RequestDiagnostic = { request: object; response?: { statusCode: number }; error?: Error }
+
+function observeHandshake() {
+  const scope = {}
+  const requests = new WeakSet<object>()
+  let status: number | undefined
+  let error: Error | undefined
+  const listeners: [string, ChannelListener][] = [
+    [
+      'undici:request:create',
+      (message) => {
+        if (openingSocket.getStore() === scope) requests.add((message as RequestDiagnostic).request)
+      },
+    ],
+    [
+      'undici:request:headers',
+      (message) => {
+        const { request, response } = message as RequestDiagnostic
+        if (requests.has(request) && response && response.statusCode !== 101)
+          status = response.statusCode
+      },
+    ],
+    [
+      'undici:request:error',
+      (message) => {
+        const { request, error: cause } = message as RequestDiagnostic
+        if (requests.has(request)) error = cause
+      },
+    ],
+  ]
+  for (const [event, listener] of listeners) subscribe(event, listener)
+  return {
+    open: (connect: () => WebSocket) => openingSocket.run(scope, connect),
+    stop: () => {
+      for (const [event, listener] of listeners) unsubscribe(event, listener)
+    },
+    detail: () => (status === undefined ? error?.message : `HTTP ${status}`),
+  }
+}
+
 export function createRealtimeVoice(open: (url: string, key: string) => WebSocket = connect) {
   let current: Connection | undefined
   let next = 0
@@ -36,7 +81,14 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
   }
 
   function opened(key: string): Connection {
-    const socket = open(`wss://api.openai.com/v1/realtime?model=${MODEL}`, key)
+    const handshake = observeHandshake()
+    let socket: WebSocket
+    try {
+      socket = handshake.open(() => open(`wss://api.openai.com/v1/realtime?model=${MODEL}`, key))
+    } catch (error) {
+      handshake.stop()
+      throw error
+    }
     const waiting = new Map<string, Pending>()
     const running = new Map<string, Pending>()
     const failAll = (error: Error) => {
@@ -64,7 +116,14 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
         )
         resolve(socket)
       })
-      socket.addEventListener('error', () => reject(new Error('Could not reach the OpenAI voice')))
+      socket.addEventListener(
+        'error',
+        () => {
+          const detail = handshake.detail()
+          reject(new Error(`Could not reach the OpenAI voice${detail ? `: ${detail}` : ''}`))
+        },
+        { once: true },
+      )
       socket.addEventListener('close', () =>
         reject(new Error('The OpenAI voice closed before it opened')),
       )
@@ -73,7 +132,7 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
       CONNECT_TIMEOUT_MS,
       ready,
       () => new Error('The OpenAI voice did not connect in time'),
-    )
+    ).finally(handshake.stop)
     inProcess(
       'a voice socket lives in this process only',
       bounded.catch((error: Error) => {
@@ -163,7 +222,7 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
           },
         }),
       )
-      return wav(await pcm)
+      return pcm
     },
     close() {
       current?.socket.close()
@@ -174,20 +233,3 @@ export function createRealtimeVoice(open: (url: string, key: string) => WebSocke
 
 const connect = (url: string, key: string) =>
   new WebSocket(url, ['realtime', `openai-insecure-api-key.${key}`])
-
-function wav(pcm: Buffer) {
-  const header = Buffer.alloc(44)
-  header.write('RIFF', 0)
-  header.writeUInt32LE(36 + pcm.length, 4)
-  header.write('WAVEfmt ', 8)
-  header.writeUInt32LE(16, 16)
-  header.writeUInt16LE(1, 20)
-  header.writeUInt16LE(1, 22)
-  header.writeUInt32LE(24000, 24)
-  header.writeUInt32LE(48000, 28)
-  header.writeUInt16LE(2, 32)
-  header.writeUInt16LE(16, 34)
-  header.write('data', 36)
-  header.writeUInt32LE(pcm.length, 40)
-  return Buffer.concat([header, pcm])
-}

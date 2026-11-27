@@ -551,6 +551,7 @@ export async function loadExtensions(
     actions.delete(name)
     userActions.delete(name)
     pollActions.delete(name)
+    trace.seal(name, false)
     settingsReloads.delete(name)
   }
   let closed = false
@@ -685,6 +686,8 @@ export async function loadExtensions(
             )
           )
             throw new Error('userActions must contain registered action names')
+          if (module.traceSealed !== undefined && module.traceSealed !== true)
+            throw new Error('traceSealed must be true when exported')
           const exportedPollActions: unknown = module.pollActions ?? []
           if (
             !Array.isArray(exportedPollActions) ||
@@ -722,6 +725,7 @@ export async function loadExtensions(
           actions.set(name, exportedActions)
           userActions.set(name, exportedUserActions)
           pollActions.set(name, exportedPollActions)
+          trace.seal(name, module.traceSealed === true)
           documents.set(name, docs)
           if (module.reloadOnSettings === true) settingsReloads.add(name)
           else settingsReloads.delete(name)

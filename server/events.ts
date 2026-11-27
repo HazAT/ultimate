@@ -69,7 +69,7 @@ export interface ReactorStatus {
 }
 
 export interface ReactOptions {
-  from?: 'start' | 'now'
+  from?: 'start' | 'now' | { cursorOf: string }
 }
 
 export interface EventHost {
@@ -349,15 +349,17 @@ export function eventLog(
       return {
         start: async () => {
           await stop()
-          if (options.from === 'now')
+          const from = options.from
+          if (from && from !== 'start')
             await harness().commit(async (tx) => {
               const index = await tx.doc(EventLog, ROOT_CONVERSATION_ID)
               if (index.cursors[name] !== undefined) return
+              const handedOver = from === 'now' ? undefined : index.cursors[from.cursorOf]
               const newest =
-                index.conversation === undefined
+                handedOver !== undefined || index.conversation === undefined
                   ? undefined
                   : (await tx.scanEntries({ conversationId: index.conversation }, 1)).items[0]
-              index.cursors[name] = newest?.id ?? parseEntryId(0)
+              index.cursors[name] = handedOver ?? newest?.id ?? parseEntryId(0)
             }, context)
           state.active = active
           state.kinds = active.kinds

@@ -74,9 +74,7 @@ it('reads several sentences at once on one connection and cancels an aborted one
   expect(sockets[0].sent.at(-1)).toEqual({ type: 'response.cancel', response_id: 'r2' })
   event({ type: 'response.output_audio.delta', response_id: 'r1', delta: audio([3, 4]) })
   event({ type: 'response.done', response: { id: 'r1', status: 'completed' } })
-  const wav = await first
-  expect(wav.subarray(0, 4).toString()).toBe('RIFF')
-  expect([...wav.subarray(44)]).toEqual([1, 2, 3, 4])
+  expect(await first).toEqual(Buffer.from([1, 2, 3, 4]))
 })
 
 it('an error about one request fails only that request', async () => {
@@ -92,7 +90,7 @@ it('an error about one request fails only that request', async () => {
   await expect(bad).rejects.toThrow('Invalid value')
   event({ type: 'response.output_audio.delta', response_id: 'r1', delta: audio([9]) })
   event({ type: 'response.done', response: { id: 'r1', status: 'completed' } })
-  expect([...(await good).subarray(44)]).toEqual([9])
+  expect(await good).toEqual(Buffer.from([9]))
 })
 
 it('a key change retires the old socket, and its late close fails nothing on the new one', async () => {
@@ -111,7 +109,7 @@ it('a key change retires the old socket, and its late close fails nothing on the
   )
   event({ type: 'response.output_audio.delta', response_id: 'r1', delta: audio([5]) }, 1)
   event({ type: 'response.done', response: { id: 'r1', status: 'completed' } }, 1)
-  expect([...(await fresh).subarray(44)]).toEqual([5])
+  expect(await fresh).toEqual(Buffer.from([5]))
 })
 
 it('after a disconnect the same key opens a new socket', async () => {
@@ -128,7 +126,7 @@ it('after a disconnect the same key opens a new socket', async () => {
     1,
   )
   event({ type: 'response.done', response: { id: 'r1', status: 'completed' } }, 1)
-  expect((await again).length).toBe(44)
+  expect(await again).toEqual(Buffer.alloc(0))
   expect(sockets).toHaveLength(2)
 })
 

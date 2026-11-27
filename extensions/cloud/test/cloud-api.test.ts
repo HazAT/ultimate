@@ -32,6 +32,8 @@ it('publishes optional status and non-forced backup services for the active chap
     },
     harness: () => ({ commit: async (run: (tx: unknown) => unknown) => run({}) }),
     emit: () => {},
+    react: () => {},
+    onOpen: () => {},
     notice: () => {},
   })
   cloud(host)

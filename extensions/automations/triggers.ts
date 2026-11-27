@@ -6,9 +6,14 @@ import { onCommit } from '../../lib/commits.ts'
 import { settled } from '../../lib/errors.shared.ts'
 import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { defineEvent, UserInputEvent } from '../../shared/events.ts'
+import { UserInputEvent } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
-import { ContextUsageDoc } from '../conversations/api.ts'
+import { Compacted, ContextUsageDoc } from '../conversations/api.ts'
+import { Branched } from '../lineage/api.ts'
+import { LoginChanged } from '../models/api.ts'
+import { CheckRan, SubmissionLanded } from '../workspaces/api.ts'
+import { Escalated } from './refs.ts'
+import type { Trigger } from './api.ts'
 import type { ContextUsage } from '../conversations/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { describeSchedule } from './schedule.ts'
@@ -16,9 +21,9 @@ import type { Automations as Ledger } from './server.ts'
 import type { Automation, TriggerEvent } from './types.shared.ts'
 import { RUN_TASK, STANDING } from './types.shared.ts'
 
-export const TRIGGER_EVENTS: TriggerEvent[] = [
+const CORE_TRIGGERS: Trigger[] = [
   {
-    name: 'workspaces.landed',
+    event: SubmissionLanded,
     description: 'A submission landed',
     fields: {
       sha: 'Landed commit',
@@ -28,30 +33,18 @@ export const TRIGGER_EVENTS: TriggerEvent[] = [
     },
   },
   {
-    name: 'workspaces.check',
+    event: CheckRan,
     description: 'A landing check finished',
     fields: { result: 'passed | failed | flaky | timeout' },
   },
   {
-    name: 'health.changed',
-    description: 'Provider health changed',
-    fields: { provider: 'Provider name', state: 'ok | failing | unknown' },
-  },
-  {
-    name: 'models.login-changed',
+    event: LoginChanged,
     description: 'Provider login changed',
     fields: { provider: 'Provider name' },
   },
-  { name: 'update.applied', description: 'An update was applied', fields: {} },
-  { name: 'update.refused', description: 'An update was refused', fields: {} },
+  { event: Branched, description: 'A branch was created', fields: {} },
   {
-    name: 'cloud.backup',
-    description: 'Cloud backup changed phase',
-    fields: { phase: 'started | done | failed' },
-  },
-  { name: 'lineage.branched', description: 'A branch was created', fields: {} },
-  {
-    name: 'conversations.compacted',
+    event: Compacted,
     description: 'A conversation compacted',
     fields: {
       conversation: 'Conversation id, or @name for a standing agent',
@@ -59,7 +52,7 @@ export const TRIGGER_EVENTS: TriggerEvent[] = [
     },
   },
   {
-    name: 'automations.escalated',
+    event: Escalated,
     description: 'An automation escalated',
     fields: { id: 'Automation id' },
   },
@@ -107,6 +100,7 @@ export function triggers(
   fire: (tx: Tx, a: Automation, at: number, text?: string) => Promise<unknown>,
   scanRunsBeforeWrites: (tx: Tx) => Promise<unknown>,
 ) {
+  const registered = host.resource('automations.triggers', () => new Map<string, Trigger>())
   async function resolve(of: string): Promise<ConversationId | undefined> {
     if (STANDING.test(of)) return host.need(SubagentsApi).standing(of.slice(1), BACKGROUND_CONTEXT)
     if (/^#[1-9]\d*$/.test(of)) return parseConversationId(Number(of.slice(1)))
@@ -289,34 +283,48 @@ export function triggers(
       { from: 'now' },
     )
     host.react(
-      'events',
-      TRIGGER_EVENTS.map(({ name }) => defineEvent(name)),
-      async (tx, event) => {
-        const state = await tx.doc(Automations)
-        const matching: Automation[] = []
-        const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
-        const expectedInCurrentChapter = (value: string | number | boolean) =>
-          typeof value === 'string' && STANDING.test(value)
-            ? Object.hasOwn(standing, value.slice(1))
-              ? standing[value.slice(1)]
-              : null
-            : value
-        for (const a of Object.values(state.automations)) {
-          if (!a.enabled || a.event?.name !== event.name || event.id <= a.event.sinceEvent) continue
-          if (
-            !Object.entries(a.event.where ?? {}).every(
-              ([key, value]) =>
-                (event.data as Record<string, unknown>)[key] === expectedInCurrentChapter(value),
-            )
-          )
-            continue
-          if (!(await fromOwnRun(tx, a, event))) matching.push(a)
-        }
-        if (matching.some((a) => a.prompt)) await scanRunsBeforeWrites(tx)
-        for (const a of matching) await fire(tx, a, Date.now(), summary(event))
-      },
-      { from: 'now' },
+      'triggers',
+      CORE_TRIGGERS.map(({ event }) => event),
+      (tx, event) => matched(tx, event),
+      { from: { cursorOf: 'automations/events' } },
     )
+  }
+  async function matched(tx: Tx, event: EventRecord) {
+    const state = await tx.doc(Automations)
+    const matching: Automation[] = []
+    const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
+    const expectedInCurrentChapter = (value: string | number | boolean) =>
+      typeof value === 'string' && STANDING.test(value)
+        ? Object.hasOwn(standing, value.slice(1))
+          ? standing[value.slice(1)]
+          : null
+        : value
+    for (const a of Object.values(state.automations)) {
+      if (!a.enabled || a.event?.name !== event.name || event.id <= a.event.sinceEvent) continue
+      if (
+        !Object.entries(a.event.where ?? {}).every(
+          ([key, value]) =>
+            (event.data as Record<string, unknown>)[key] === expectedInCurrentChapter(value),
+        )
+      )
+        continue
+      if (!(await fromOwnRun(tx, a, event))) matching.push(a)
+    }
+    if (matching.some((a) => a.prompt)) await scanRunsBeforeWrites(tx)
+    for (const a of matching) await fire(tx, a, Date.now(), summary(event))
+  }
+  function register(trigger: Trigger) {
+    registered.set(trigger.event.name, trigger)
+    return () => {
+      if (registered.get(trigger.event.name) === trigger) registered.delete(trigger.event.name)
+    }
+  }
+  function list(): TriggerEvent[] {
+    return [...CORE_TRIGGERS, ...registered.values()].map(({ event, description, fields }) => ({
+      name: event.name,
+      description,
+      fields,
+    }))
   }
   async function open() {
     closed = false
@@ -346,5 +354,16 @@ export function triggers(
     stop = undefined
     await measurementsInCommitOrder
   }
-  return { resolve, evaluate, schedule, install, open, close, IdleWaker }
+  return {
+    resolve,
+    evaluate,
+    schedule,
+    install,
+    open,
+    close,
+    matched,
+    register,
+    list,
+    IdleWaker,
+  }
 }

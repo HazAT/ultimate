@@ -45,13 +45,15 @@ several machines each speak. A tab keeps the lines it claimed in its session unt
 when the page reloads onto a new web bundle (a landing that changes the UI) is said after the switch; any other reload
 drops them.
 
-The `say` action (`server.ts`) defaults to OpenAI's `gpt-realtime-2.1-mini` over one realtime WebSocket response,
-with the `OPENAI_API_KEY` secret that voice input uses (or an API key Pi's `openai` provider holds). The line's text,
-branch titles included, goes to OpenAI when that voice is used. Without a key, or if speaking fails, the browser's own
-`speechSynthesis` says it. Browser voices depend on the browser and OS and are not necessarily offline. Server audio
-plays through the same volume. Lines have a 300-character limit and a 20-second deadline; the last 50 successful
-lines are cached by source, command and text. Set `sounds.voice` to `off` to use browser speech only, without
-server audio or OpenAI access, even for a previously cached line.
+By default, the narrator follows read-aloud's **Speech** setting: OpenAI speech uses the same voice, model and
+instructions as read-aloud, on its shared Realtime connection. The line's text, branch titles included, goes to
+OpenAI when that voice is used. If Speech uses the system voice, read-aloud is off, there is no key, or OpenAI
+speech fails, the narrator queues the line in the same browser voice without interrupting. Browser voices depend
+on the browser and OS and are not necessarily offline. The narrator keeps its normal speed; the Speech speed
+setting does not change it. Server audio plays through the same volume. Lines have a 300-character limit and a
+20-second deadline; the last 50 successful lines are cached by source, command, OpenAI voice and text. Set
+`sounds.voice` to `off` to use browser speech only, without server audio or OpenAI access, even for a previously
+cached line.
 
 ### Local command
 

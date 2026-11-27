@@ -9,6 +9,7 @@ import { cloudConfig, fetchRegister } from '../../lib/cloud.ts'
 import { projectIdentity } from '../../lib/project-identity.ts'
 import { readSecret } from '../../lib/secrets.ts'
 import { CloudApi } from './api.ts'
+import { AutomationsApi } from '../automations/api.ts'
 import { PauseApi } from '../pause/api.ts'
 import { SecretsApi } from '../secrets/api.ts'
 import { TailscaleApi } from '../tailscale/api.ts'
@@ -191,6 +192,7 @@ export const actions = {
   }),
 }
 export const userActions = ['join']
+export const traceSealed = true
 
 export default function cloud(host: ExtensionHost) {
   host.implement(CloudApi, {
@@ -212,5 +214,18 @@ export default function cloud(host: ExtensionHost) {
   host.want(TailscaleApi)
   host.want(PauseApi)
   host.need(SecretsApi)
+  const automations = host.need(AutomationsApi)
+  host.onOpen(async (opened) => {
+    opened.defer(
+      automations.trigger({
+        event: BackupEvent,
+        description: 'Cloud backup changed phase',
+        fields: { phase: 'started | done | failed' },
+      }),
+    )
+  })
+  host.react('automations', [BackupEvent], (tx, event) => automations.matched(tx, event), {
+    from: { cursorOf: 'automations/events' },
+  })
   return defineExtension({ name: 'cloud' })
 }

@@ -11,7 +11,9 @@ import { ConversationRef, FeatureTag } from '../conversations/ui.solid.tsx'
 import { Branched, Rooted } from '../lineage/refs.ts'
 import { CheckRan, SubmissionLanded } from '../workspaces/refs.ts'
 import { CommitCount, useGithubRepo } from '../workspaces/ui.solid.tsx'
-import { Backup, Escalation, activityRules } from './events.web.ts'
+import { BackupEvent } from '../cloud/refs.ts'
+import { Escalated } from '../automations/refs.ts'
+import { activityRules } from './events.web.ts'
 
 export const { filters, shows, tone } = activityRules({
   landed: SubmissionLanded,
@@ -215,7 +217,7 @@ function Activity(props: { event: EventRecord; now: number }) {
         </Row>
       )
     }
-    if (Backup.is(event)) {
+    if (BackupEvent.is(event)) {
       const data = event.data
       const failure = data.phase === 'failed' ? (data.error ?? data.reason) : undefined
       return (
@@ -235,7 +237,7 @@ function Activity(props: { event: EventRecord; now: number }) {
         </Row>
       )
     }
-    if (Escalation.is(event)) {
+    if (Escalated.is(event)) {
       const { id, reason } = event.data
       return (
         <Row
