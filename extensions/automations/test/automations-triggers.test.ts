@@ -113,22 +113,19 @@ async function fixture() {
   const owner = eventHost(() => opened.harness, 'update')
   const ownerLifecycle = openers()
   const service = services.provided.get('automations') as AutomationsService
-  const ownTriggers = () => {
-    ownerLifecycle.onOpen(async (opened) => {
-      opened.defer(
-        service.trigger({ event: Applied, description: 'An update was applied', fields: {} }),
-      )
-      opened.defer(
-        service.trigger({
-          event: Changed,
-          description: 'Provider health changed',
-          fields: { provider: 'Provider name', state: 'ok | failing | unknown' },
-        }),
-      )
-    })
-    owner.react('automations', [Applied, Changed], (tx, event) => service.matched(tx, event))
-  }
-  ownTriggers()
+  ownerLifecycle.onOpen(async (ownerOpened) => {
+    ownerOpened.defer(
+      service.trigger({ event: Applied, description: 'An update was applied', fields: {} }),
+    )
+    ownerOpened.defer(
+      service.trigger({
+        event: Changed,
+        description: 'Provider health changed',
+        fields: { provider: 'Provider name', state: 'ok | failing | unknown' },
+      }),
+    )
+  })
+  owner.react('automations', [Applied, Changed], (tx, event) => service.matched(tx, event))
   const answer = () => {
     prepared.faux!.appendResponses([answer])
     return fauxAssistantMessage([fauxText('OK')])
