@@ -43,6 +43,8 @@ export type Message = {
   routed?: EntryId
   /** A branch's report answering routed answers only: the starter's answer to it stays local. */
   echo?: true
+  /** A branch's final answer to the user's own input in the branch: the user reads it there. */
+  shown?: true
   /** The other project's Ultimate a `remote` side names. */
   remote?: Remote
   /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */

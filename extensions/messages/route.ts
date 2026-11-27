@@ -45,6 +45,17 @@ function inputSource(entry: EntryRecord | undefined): string {
   return entry?.kind ?? 'input'
 }
 
+function theUsersOwnInput(entry: EntryRecord | undefined): boolean {
+  if (
+    entry?.kind === 'pi.user' ||
+    entry?.kind === 'voice.utterance' ||
+    entry?.kind === 'review.comments'
+  )
+    return true
+  const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
+  return data?.from === 'user' && data.re !== undefined
+}
+
 function textOf(entry: EntryRecord | undefined): string {
   const data = MessageEntry.is(entry) || ReplyEntry.is(entry) ? entry.data : undefined
   if (data) return data.text
@@ -297,6 +308,7 @@ interface Route {
     note?: boolean
     report?: boolean
     echo?: boolean
+    shown?: boolean
     routed?: EntryId
     judged?: Judged
   }
@@ -427,14 +439,20 @@ export function route(host: ExtensionHost) {
                   (last.judged && 'report' in last.judged && last.judged.report < 0.5)
                 )
                   return []
-                return routeToStarter(last.text, last.judged ? { judged: last.judged } : {})
+                return routeToStarter(last.text, {
+                  ...(last.judged ? { judged: last.judged } : {}),
+                  ...(last.shown ? { shown: true } : {}),
+                })
               }
               const last = log.messages.findLast(
                 (m) => (m.from === id && m.to === by) || (m.from === by && m.to === id),
               )
               return promoteLastNote(last)
             }
-            const [toStarter] = routeToStarter(text, { echo: answersOnlyRoutedInputs })
+            const [toStarter] = routeToStarter(text, {
+              echo: answersOnlyRoutedInputs,
+              shown: entries.some(theUsersOwnInput),
+            })
             if (!report) return [toStarter]
             const first = Math.min(...inputsSettledByThisAnswer.map(({ entry }) => entry))
             return {

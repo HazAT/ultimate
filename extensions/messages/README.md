@@ -50,7 +50,9 @@ report.**
   judge's error message is a short cause (classify keeps only `TypeSafe <status>`); a provider's response body never
   crosses it. The message card and the branch's final answer show the verdict as a
   chip. A landing concludes the branch and wakes the starter itself, asking through
-  the `workspaces.branches` point this extension provides (`starter`, `underway`).
+  the `workspaces.branches` point this extension provides (`starter`, `underway`). An answer to the user's own input
+  in the branch (typed, spoken, a diff review or a card answer) carries `shown: true`, and its delivery opens with a
+  line telling the starter the user already sees it in the branch, so it does not send it to them again.
 - **Answers back down.** The primary agent's final answer goes to each branch whose reply or report was an input of
   that run (not concluded, not messaged in the run) with `routed: true`, so a weigh-in reaches the branch. The run's
   other inputs (the user's, another Ultimate's, a card) neither receive it nor keep it from a branch.
