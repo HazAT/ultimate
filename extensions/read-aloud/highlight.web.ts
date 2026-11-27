@@ -1,4 +1,4 @@
-import type { PlayerState } from './speech.ts'
+import type { PlayerState } from './speech.web.ts'
 
 export type SpokenText = {
   key?: string

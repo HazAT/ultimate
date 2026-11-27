@@ -4,11 +4,11 @@ import type { JSX } from '@solidjs/web'
 import { Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { useProvided, ROOT, cn, plural, useAction, useDocOf } from '@/sdk/solid'
-import { Review } from './landing-points.ts'
+import { Review } from './landing-points.web.ts'
 import { GithubAction, RepoAction, WorkspacesDoc } from './refs.ts'
 import type { Workspace, WorkspaceIndex } from './types.ts'
 
-export { LandedNote, LandingExtras, Review } from './landing-points.ts'
+export { LandedNote, LandingExtras, Review } from './landing-points.web.ts'
 export {
   CheckRan,
   InfoAction,

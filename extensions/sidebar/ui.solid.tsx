@@ -3,15 +3,15 @@ import { Lock } from '@lucide/solid'
 import { Show } from 'solid-js'
 import { cn } from '@/sdk/solid'
 import type { GithubRepo } from '../workspaces/refs.ts'
-import { githubMarkPath, isHiddenRepo, swatchClass, swatchStyle } from './colour.ts'
+import { githubMarkPath, isHiddenRepo, swatchClass, swatchStyle } from './colour.web.ts'
 
-export { stemOf } from './colour.ts'
+export { stemOf } from './colour.web.ts'
 /** Whether a preview started by this conversation is running, provided by `instance`. */
-export { PreviewUp } from './points.ts'
+export { PreviewUp } from './points.web.ts'
 /** Rows nested under @ultimate's row, in discovery order; the input names @ultimate's conversation when it exists. */
-export { UnderUltimate } from './points.ts'
+export { UnderUltimate } from './points.web.ts'
 /** Conversations hidden from the top-level lists; the sidebar takes the union of the providers' sets. */
-export { Unlisted } from './points.ts'
+export { Unlisted } from './points.web.ts'
 
 /** Folder `folder`'s colour, shaded apart from its `family` (the other folders shown beside it), as the sidebar draws it. */
 export function ProjectSwatch(props: {

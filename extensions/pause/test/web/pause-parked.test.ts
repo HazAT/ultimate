@@ -1,6 +1,6 @@
 import type { TaskGraph } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { parkedConversations } from '../../parked.ts'
+import { parkedConversations } from '../../parked.web.ts'
 
 const task = (id: number, conversationId: number, status: string, background = false) => ({
   id,

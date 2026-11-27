@@ -1,9 +1,9 @@
 import { createRoot, onSettled } from 'solid-js'
 import { chordOf, formatKeys, useUiState } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.ts'
-import { capture } from './capture.ts'
-import type { Sink, Take } from './capture.ts'
-import { createTalk } from './talk.ts'
+import { capture } from './capture.web.ts'
+import type { Sink, Take } from './capture.web.ts'
+import { createTalk } from './talk.web.ts'
 
 export const [talkMode, setTalkMode] = createRoot(() =>
   useUiState<'hold' | 'tap'>('ext.dictation.talk', 'tap'),

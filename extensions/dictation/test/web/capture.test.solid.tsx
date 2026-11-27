@@ -1,6 +1,6 @@
 import { settle } from '@ui-sdk/core/testing'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createCapture } from '../../capture.ts'
+import { createCapture } from '../../capture.web.ts'
 
 class FakeRecorder extends EventTarget {
   static isTypeSupported = () => true

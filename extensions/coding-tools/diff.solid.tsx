@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from 'solid-js'
 import { cn } from '@/sdk/solid'
-import type { DiffRow } from './diff.ts'
+import type { DiffRow } from './diff.web.ts'
 import { Caret, useFollow } from './display.solid.tsx'
 
 const tone = {

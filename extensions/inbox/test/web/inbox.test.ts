@@ -9,9 +9,9 @@ import {
   shown,
   toRow,
   UNLOADED,
-} from '../../items.ts'
-import type { Anchor, Selection } from '../../items.ts'
-import type { InboxItem } from '../../points.ts'
+} from '../../items.web.ts'
+import type { Anchor, Selection } from '../../items.web.ts'
+import type { InboxItem } from '../../points.web.ts'
 import type { Message } from '../../../messages/refs.ts'
 
 const ask = (id: number, at: number, fields: Partial<Message> = {}): Message => ({

@@ -3,7 +3,7 @@ import { Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'
 import { ROOT, events, useDocOf } from '@/sdk/solid'
 import { RunsDoc } from './refs.ts'
-import { agentSource } from './source.ts'
+import { agentSource } from './source.web.ts'
 
 export function RunName(props: { id?: number; label: JSX.Element }) {
   const runs = useDocOf(() => ROOT, RunsDoc)

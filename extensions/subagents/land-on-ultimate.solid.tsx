@@ -8,7 +8,7 @@ import {
   useUiState,
   writingAs,
 } from '@/sdk/solid'
-import { landing } from './landing.ts'
+import { landing } from './landing.web.ts'
 import { StandingAction, StandingDoc } from './refs.ts'
 
 export function LandOnUltimate() {

@@ -30,8 +30,8 @@ import {
   writerNow,
   writingAs,
 } from '@/sdk/solid'
-import { contextCondition, draftOf, scheduleOf, triggerOf, zone } from './form-draft.ts'
-import type { Draft, FilterType, Mode } from './form-draft.ts'
+import { contextCondition, draftOf, scheduleOf, triggerOf, zone } from './form-draft.web.ts'
+import type { Draft, FilterType, Mode } from './form-draft.web.ts'
 import { AgentPicker, Picker } from './picker.solid.tsx'
 import { Preview } from './preview.solid.tsx'
 import { CreateAction, EventsAction, UpdateAction } from './refs.ts'

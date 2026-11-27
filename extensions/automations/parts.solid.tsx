@@ -11,8 +11,8 @@ import {
 import { Dynamic } from '@solidjs/web'
 import type { JSX } from '@solidjs/web'
 import { cn } from '@/sdk/solid'
-import { automationKind, dotStatus, looks, statusLabel } from './looks.ts'
-import type { Look } from './looks.ts'
+import { automationKind, dotStatus, looks, statusLabel } from './looks.web.ts'
+import type { Look } from './looks.web.ts'
 import type { Automation, Run } from './refs.ts'
 
 const statuses = {

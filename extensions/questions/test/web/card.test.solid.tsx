@@ -4,8 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import type { Message } from '../../open.ts'
-import { CARDS_KEY } from '../../state.ts'
+import type { Message } from '../../open.web.ts'
+import { CARDS_KEY } from '../../state.web.ts'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],

@@ -8,11 +8,11 @@ import { Slider } from '@/components/ui/slider.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import { cn, useExtensionUiState, useExternal, useNow } from '@/sdk/solid'
-import * as conductor from './conductor.ts'
-import { sounds } from './cues.ts'
-import type { Sound } from './cues.ts'
-import * as tones from './tones.ts'
-import { variantOf, variants } from './variants.ts'
+import * as conductor from './conductor.web.ts'
+import { sounds } from './cues.web.ts'
+import type { Sound } from './cues.web.ts'
+import * as tones from './tones.web.ts'
+import { variantOf, variants } from './variants.web.ts'
 
 const preview = (sound: Sound) =>
   tones.play(sound).catch((error: unknown) => console.warn('Sound failed', error))

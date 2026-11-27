@@ -12,7 +12,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 
 import { InstanceCall } from '../../call.solid.tsx'
-import { getShown, polled } from '../../previews.ts'
+import { getShown, polled } from '../../previews.web.ts'
 
 const agent = createAgent()
 

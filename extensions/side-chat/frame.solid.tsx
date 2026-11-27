@@ -18,8 +18,8 @@ import {
 } from '@/sdk/solid'
 import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'
-import { FRONT_KEY } from './front.ts'
-import { frontSide, openSides, togglesSideMode } from './logic.ts'
+import { FRONT_KEY } from './front.web.ts'
+import { frontSide, openSides, togglesSideMode } from './logic.web.ts'
 import { OpenAction, SideChatsDoc } from './refs.ts'
 
 export const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'

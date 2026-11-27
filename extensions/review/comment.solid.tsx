@@ -2,8 +2,8 @@ import { MessageSquareIcon, PencilIcon, Trash2Icon } from '@lucide/solid'
 import { createSignal, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { PromptBox } from '@/sdk/solid'
-import { limits, location } from './comments.ts'
-import type { CommentLines } from './lines.ts'
+import { limits, location } from './comments.shared.ts'
+import type { CommentLines } from './lines.web.ts'
 
 function Lines(props: { comment: CommentLines }) {
   return (

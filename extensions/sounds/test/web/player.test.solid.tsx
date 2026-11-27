@@ -26,12 +26,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   })
   return { store, uiState: createUiState(undefined), api: {}, registry: createRegistry() }
 })
-vi.mock('../../tones.ts', () => ({
+vi.mock('../../tones.web.ts', () => ({
   setVolume: () => undefined,
   play: async (sound: string) => void harness.played.push(sound),
   say: async () => undefined,
 }))
-vi.mock('../../conductor.ts', () => ({
+vi.mock('../../conductor.web.ts', () => ({
   conduct: async () => undefined,
   hit: (happening: unknown) => void harness.hits.push(happening),
 }))

@@ -9,7 +9,7 @@ import { AgentMark, AgentTitle } from '../conversations/ui.solid.tsx'
 import { FamilyDoc } from '../models/refs.ts'
 import { useFamilies } from '../models/ui.solid.tsx'
 import { useAccentOf } from './card-parts.solid.tsx'
-import { ExternalSpeaker } from './points.ts'
+import { ExternalSpeaker } from './points.web.ts'
 import { useStandingName } from './standing-name.solid.tsx'
 
 const titleClass = 'font-sans text-[13px] font-semibold tracking-[-0.005em]'

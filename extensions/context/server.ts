@@ -2,7 +2,7 @@ import { parseEntryId } from '../../lib/ids.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
-import { comparePrompts, promptOf } from './breakdown.ts'
+import { comparePrompts, promptOf } from './breakdown.shared.ts'
 import { CurrentPromptAction } from './refs.ts'
 
 export default defineExtension({ name: 'context' })

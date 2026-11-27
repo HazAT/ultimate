@@ -22,7 +22,7 @@ import {
   VideosDoc,
 } from './refs.ts'
 import type { Video } from './refs.ts'
-import { KEPT_MS, MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.ts'
+import { KEPT_MS, MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.shared.ts'
 
 async function base64(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer())

@@ -21,8 +21,8 @@ import {
   useTasks,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { defaultAutoPlayMinutes } from './autoplay.ts'
-import { unwrappedProviderError } from './provider-error.ts'
+import { defaultAutoPlayMinutes } from './autoplay.shared.ts'
+import { unwrappedProviderError } from './provider-error.web.ts'
 import { AutoPlayAction, PauseAction, PauseDoc, PlayAction, StateAction } from './refs.ts'
 import type { PauseState, RunningTask } from './refs.ts'
 

@@ -1,10 +1,12 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ESNext", "DOM"],
-    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite-plus/client"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "@solidjs/web",
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
@@ -20,12 +22,11 @@
     "shared",
     "lib",
     "scripts",
-    "extensions/**/*.ts",
-    ".ultimate/extensions/**/*.ts",
+    "web/src",
+    "extensions",
+    ".ultimate/extensions",
     ".ultimate/skills/**/*.ts",
     "test",
     "vite.config.ts"
-  ],
-  "exclude": ["test/web", "extensions/*/test/web"],
-  "references": [{ "path": "./tsconfig.web.json" }]
+  ]
 }

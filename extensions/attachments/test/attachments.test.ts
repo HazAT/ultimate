@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { KEPT_MS } from '../limits.ts'
+import { KEPT_MS } from '../limits.shared.ts'
 import { actions, sweep } from '../server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { splitAttachments, withAttachments } from '../../../web/src/app/attachments.ts'

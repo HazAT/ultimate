@@ -53,7 +53,7 @@ import {
   usePicks,
 } from '../models/ui.solid.tsx'
 import type { Isolation } from '../workspaces/refs.ts'
-import { extensionChoices, extensionOptions, offeredNames } from './choices.ts'
+import { extensionChoices, extensionOptions, offeredNames } from './choices.web.ts'
 import { Line, useDescribed } from './parts.solid.tsx'
 import { FirstRunDoneAction } from './refs.ts'
 import type { OnboardingStatus as Status } from './refs.ts'

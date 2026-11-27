@@ -9,8 +9,8 @@ import {
   languageOf,
   limits,
   reviewText,
-} from '../comments.ts'
-import { sha256 } from '../sha256.ts'
+} from '../comments.shared.ts'
+import { sha256 } from '../sha256.shared.ts'
 
 const bytes = (text: string) => new TextEncoder().encode(text).length
 

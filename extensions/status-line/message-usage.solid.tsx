@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { formatDuration, formatTokens, useModels, useTranscript } from '@/sdk/solid'
 import type { EntryRecord } from '@/sdk/solid'
 import { promptTokens } from '../../lib/context-usage.ts'
-import { responseAfter, turnOf } from './turns.ts'
+import { responseAfter, turnOf } from './turns.web.ts'
 
 const dollars = (cost: number) => `$${cost.toFixed(cost < 1 ? 3 : 2)}`
 

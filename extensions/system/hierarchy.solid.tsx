@@ -10,8 +10,8 @@ import {
   standingName,
 } from './lanes.solid.tsx'
 import type { LaneState } from './lanes.solid.tsx'
-import { chain, links, messageLinks, tree } from './layout.ts'
-import type { Frame, WindowName } from './layout.ts'
+import { chain, links, messageLinks, tree } from './layout.web.ts'
+import type { Frame, WindowName } from './layout.web.ts'
 import type { Lane, LaneLink } from './refs.ts'
 
 const KEY = 'ultimate.system.expanded'

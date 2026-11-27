@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createTalk } from '../../talk.ts'
+import { createTalk } from '../../talk.web.ts'
 
 const chord = { code: 'Space', ctrlKey: true, shiftKey: true }
 const key = (init: Partial<KeyboardEvent>) => ({ repeat: false, key: '', ...init }) as KeyboardEvent

@@ -2,7 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'
 import { createEffect, createMemo, For, onCleanup } from 'solid-js'
 import { ROOT, keepLast, useAction, useExternal, useStore } from '@/sdk/solid'
-import { getPreviews, getShown, polled, show, subscribe } from './previews.ts'
+import { getPreviews, getShown, polled, show, subscribe } from './previews.web.ts'
 import { ListAction } from './refs.ts'
 
 export function Poll() {

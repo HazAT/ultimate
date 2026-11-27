@@ -10,7 +10,7 @@ import {
 import { ROOT, useCompact, useConversationId, useDocOf } from '@/sdk/solid'
 import { Bubble } from './bubble.solid.tsx'
 import { Answers } from './card-parts.solid.tsx'
-import { answeredMessages, sentBy } from './data.ts'
+import { answeredMessages, sentBy } from './data.web.ts'
 import { MessagesDoc } from './refs.ts'
 import { Address } from './ui.solid.tsx'
 

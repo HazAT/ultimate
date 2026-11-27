@@ -18,12 +18,12 @@ import { OverviewDoc } from '../conversations/refs.ts'
 import { useConcluded } from '../conversations/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import { parseConversationId } from '../../lib/ids.ts'
-import { openMessages } from './data.ts'
-import { WaitTimers } from './points.ts'
+import { openMessages } from './data.web.ts'
+import { WaitTimers } from './points.web.ts'
 import { MessagesDoc, StartedDoc } from './refs.ts'
 import type { Message } from './refs.ts'
 import { Address } from './ui.solid.tsx'
-import { underwayOf } from './working.ts'
+import { underwayOf } from './working.web.ts'
 
 const gist = (text: string) => text.replace(/\s+/g, ' ').trim()
 

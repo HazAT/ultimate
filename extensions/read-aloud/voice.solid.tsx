@@ -5,9 +5,9 @@ import { cell } from '../../lib/cell.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
 import { SpeakAction } from './refs.ts'
 import type { OpenAiVoice } from './refs.ts'
-import { createPlayer, fetchedVoice, systemVoice, systemVoices } from './speech.ts'
-import type { Sentence } from './speech.ts'
-import { VOICES } from './voices.ts'
+import { createPlayer, fetchedVoice, systemVoice, systemVoices } from './speech.web.ts'
+import type { Sentence } from './speech.web.ts'
+import { VOICES } from './voices.shared.ts'
 
 export const BLOCKED = 'Tap ▶ to let this page play sound'
 

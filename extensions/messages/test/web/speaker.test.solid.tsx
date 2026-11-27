@@ -3,7 +3,7 @@ import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { familiesCache } from '../../../models/family-state.ts'
+import { familiesCache } from '../../../models/family-state.web.ts'
 import type { FamiliesView } from '../../../models/refs.ts'
 import { Speaker } from '../../speaker.solid.tsx'
 

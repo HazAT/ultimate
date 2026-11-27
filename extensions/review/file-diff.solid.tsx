@@ -14,9 +14,9 @@ import type {
 import { Dynamic } from '@solidjs/web'
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
 import { Composer, DraftCard } from './comment.solid.tsx'
-import type { Draft, Drafts } from './drafts.ts'
-import { commentRange } from './lines.ts'
-import type { ReviewTarget } from './link-state.ts'
+import type { Draft, Drafts } from './drafts.web.ts'
+import { commentRange } from './lines.web.ts'
+import type { ReviewTarget } from './link-state.web.ts'
 
 export type Writing = { file: string; range: SelectedLineRange; id?: string }
 

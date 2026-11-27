@@ -7,8 +7,8 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { registry, store } from '../../../../web/src/sdk/client.ts'
 import { provide } from '../../../../web/src/sdk/types.ts'
 import { MessagesDoc } from '../../../messages/refs.ts'
-import type { InboxItem } from '../../points.ts'
-import { InboxItems } from '../../points.ts'
+import type { InboxItem } from '../../points.web.ts'
+import { InboxItems } from '../../points.web.ts'
 import { AppBadge } from '../../surface.solid.tsx'
 
 const harness = vi.hoisted(() => ({

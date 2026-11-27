@@ -1,7 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { demo, demoPlayer, tracker } from '../../agents.ts'
-import type { Snapshot } from '../../agents.ts'
+import { demo, demoPlayer, tracker } from '../../agents.web.ts'
+import type { Snapshot } from '../../agents.web.ts'
 
 const snapshot = (extra: Partial<Snapshot> = {}): Snapshot => ({
   conversations: [],

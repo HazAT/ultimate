@@ -4,7 +4,7 @@ import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import { ROOT, api, cn, formatAgo, keepLast, useAction, useDocOf, useNow } from '@/sdk/solid'
-import { failing, TTL } from './due.ts'
+import { failing, TTL } from './due.shared.ts'
 import { SetAction, StateAction, WarmDoc } from './refs.ts'
 import type { WarmState } from './refs.ts'
 

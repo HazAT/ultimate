@@ -20,8 +20,8 @@ import {
 import { AgentMark, AgentTitle, ConversationRef } from '../conversations/ui.solid.tsx'
 import { stateTone, stateWord } from '../messages/ui.solid.tsx'
 import type { ConversationState } from '../messages/ui.solid.tsx'
-import { block, duration, label, ticks } from './layout.ts'
-import type { TreeRow, WindowName } from './layout.ts'
+import { block, duration, label, ticks } from './layout.web.ts'
+import type { TreeRow, WindowName } from './layout.web.ts'
 import type { Lane, LaneRun } from './refs.ts'
 import { clock, KindIcon, TraceTree } from './tree.solid.tsx'
 

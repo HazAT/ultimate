@@ -9,17 +9,17 @@ import { dynamic } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { ROOT, cn, useConversations, useDocOf, useUiState } from '@/sdk/solid'
 import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
-import { agentMark, agentTitle } from './mark-style.ts'
+import { agentMark, agentTitle } from './mark-style.web.ts'
 import { MarksDoc, OverviewDoc } from './refs.ts'
 
 /** A working conversation's phase `word` and whether it is only `waiting` on its subagents. */
-export { ConversationPhase } from './points.ts'
+export { ConversationPhase } from './points.web.ts'
 /** The plan task a conversation works on. Use its `title` and render its chip through `ConversationTaskChip`. */
-export { ConversationTask } from './points.ts'
+export { ConversationTask } from './points.web.ts'
 /** The epic a coordinator works directly, with its status, progress and an action that opens it. */
-export { ConversationEpic } from './points.ts'
-export { ConversationTaskChip, Unsummarized } from './points.ts'
-export { hiddenConversationIds } from './visible.ts'
+export { ConversationEpic } from './points.web.ts'
+export { ConversationTaskChip, Unsummarized } from './points.web.ts'
+export { hiddenConversationIds } from './visible.web.ts'
 export {
   Compacted,
   ConcludeAction,

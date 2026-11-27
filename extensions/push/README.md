@@ -9,7 +9,7 @@ with `extensions.enable: ["push"]` in user or project settings.
   service worker without opening the app; a failure replaces the notification with the reason. Answering on any card
   closes the notification on open devices.
 - **A landing** (`workspaces.landed`).
-- **@ultimate's failed run**, read from the conversation overview as the sounds do (`extensions/sounds/cues.ts`).
+- **@ultimate's failed run**, read from the conversation overview as the sounds do (`extensions/sounds/cues.web.ts`).
 
 - **Another extension's push**, through `PushApi` (`api.ts`; `host.want` it, push is optional): `notify(push)` sends a
   `Push` (`{ title, body, tag, path, urgency }`, `rules.ts`) the same way; `close(tag)` closes that tag's

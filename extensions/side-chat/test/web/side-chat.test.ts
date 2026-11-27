@@ -1,7 +1,7 @@
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { createEndings, endings, frontSide, openSides, togglesSideMode } from '../../logic.ts'
-import { topLevelRows } from '../../../sidebar/listed.ts'
+import { createEndings, endings, frontSide, openSides, togglesSideMode } from '../../logic.web.ts'
+import { topLevelRows } from '../../../sidebar/listed.web.ts'
 
 const tab = {
   key: 'Tab',

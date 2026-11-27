@@ -1,7 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { api, errorMessage } from '@/sdk/solid'
 import { PrepareAction } from './refs.ts'
-import { splitReply } from './speech.ts'
+import { splitReply } from './speech.web.ts'
 import { speech } from './voice.solid.tsx'
 
 export type Reading = {

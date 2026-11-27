@@ -15,9 +15,9 @@ import {
 import { parseConversationId } from '../../lib/ids.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { Bubble } from './bubble.solid.tsx'
-import { callerOf } from './caller.ts'
+import { callerOf } from './caller.shared.ts'
 import { Answers, Body, Navigate, openMessage } from './card-parts.solid.tsx'
-import { outgoingState } from './data.ts'
+import { outgoingState } from './data.web.ts'
 import { MessagesDoc } from './refs.ts'
 import { Address } from './ui.solid.tsx'
 

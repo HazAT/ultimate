@@ -71,7 +71,7 @@ import {
   frontSide,
   openQuestionSide,
   openSides,
-} from './logic.ts'
+} from './logic.web.ts'
 import {
   DiscardAction,
   InjectAction,

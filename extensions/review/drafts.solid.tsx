@@ -1,8 +1,8 @@
 import type { Accessor } from 'solid-js'
 import { useUiState } from '@/sdk/solid'
 import type { JsonValue } from '@/sdk/solid'
-import { fitsDraftBudget } from './comments.ts'
-import type { Drafts } from './drafts.ts'
+import { fitsDraftBudget } from './comments.shared.ts'
+import type { Drafts } from './drafts.web.ts'
 
 const empty: Drafts = { comments: [], note: '' }
 

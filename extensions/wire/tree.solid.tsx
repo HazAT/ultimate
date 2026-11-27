@@ -7,8 +7,8 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import { cn, formatBytes } from '@/sdk/solid'
-import { firstLine, hintOf, isBranch, isShort, kindOf, markerOf } from './json.ts'
-import type { Json, JsonObject } from './json.ts'
+import { firstLine, hintOf, isBranch, isShort, kindOf, markerOf } from './json.web.ts'
+import type { Json, JsonObject } from './json.web.ts'
 
 export function CacheMark(props: { ttl?: string; inside?: boolean }) {
   return (

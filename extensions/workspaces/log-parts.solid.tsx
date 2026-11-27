@@ -20,7 +20,7 @@ import {
   useNow,
 } from '@/sdk/solid'
 import type { LandingTone } from './landing.solid.tsx'
-import { inProgress, tookFor, visibleSteps } from './steps.ts'
+import { inProgress, tookFor, visibleSteps } from './steps.web.ts'
 import type { LanderOutcome, LanderStep } from './types.ts'
 
 export const short = (sha: string) => sha.slice(0, 7)

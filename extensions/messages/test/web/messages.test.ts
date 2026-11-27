@@ -1,7 +1,7 @@
 import type { EntryRecord, EntryId, ConversationId } from '@earendil-works/pi-durable'
 import { describe, expect, it, vi } from 'vitest'
-import { accentOf } from '../../accent.ts'
-import { callerOf } from '../../caller.ts'
+import { accentOf } from '../../accent.web.ts'
+import { callerOf } from '../../caller.shared.ts'
 import {
   answerTo,
   answeredMessages,
@@ -23,9 +23,9 @@ import {
   threadRow,
   ultimateCompact,
   waitingOnUser,
-} from '../../data.ts'
+} from '../../data.web.ts'
 import type { Message } from '../../refs.ts'
-import { questionsOf } from '../../waiting.ts'
+import { questionsOf } from '../../waiting.web.ts'
 
 vi.mock('../../../lineage/ui.tsx', async () => import('../../../lineage/refs.ts'))
 vi.mock('../../../workspaces/ui.tsx', async () => import('../../../workspaces/refs.ts'))

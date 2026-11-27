@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { formatBashCommand } from '../../bash-command.ts'
+import { formatBashCommand } from '../../bash-command.web.ts'
 
 const steps = (command: string) =>
   formatBashCommand(command).steps.map(({ operator, text }) =>

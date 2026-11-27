@@ -10,8 +10,8 @@ import {
   position,
   ticks,
   tree,
-} from '../../layout.ts'
-import type { Frame } from '../../layout.ts'
+} from '../../layout.web.ts'
+import type { Frame } from '../../layout.web.ts'
 import type { Lane, LaneCall, LaneRun } from '../../refs.ts'
 
 const now = Date.parse('2026-10-19T12:00:00Z')

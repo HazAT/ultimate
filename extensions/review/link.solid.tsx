@@ -7,8 +7,8 @@ import {
   useStore,
   writingAs,
 } from '@/sdk/solid'
-import { defaultSpec, getTarget, setTarget, specKey, subscribeTarget } from './link-state.ts'
-import type { ReviewRequest } from './link-state.ts'
+import { defaultSpec, getTarget, setTarget, specKey, subscribeTarget } from './link-state.web.ts'
+import type { ReviewRequest } from './link-state.web.ts'
 
 function fromAddress(): ReviewRequest | undefined {
   const params = new URL(location.href).searchParams

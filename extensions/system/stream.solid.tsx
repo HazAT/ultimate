@@ -25,8 +25,17 @@ import {
 } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { asking, empty, failed, followed, loaded, older, pagesOlder, wantOlder } from './feed.ts'
-import type { Feed } from './feed.ts'
+import {
+  asking,
+  empty,
+  failed,
+  followed,
+  loaded,
+  older,
+  pagesOlder,
+  wantOlder,
+} from './feed.web.ts'
+import type { Feed } from './feed.web.ts'
 import { StreamAction } from './refs.ts'
 import type { SystemFilter, SystemRow } from './refs.ts'
 import { clock, KindIcon, TraceTree } from './tree.solid.tsx'

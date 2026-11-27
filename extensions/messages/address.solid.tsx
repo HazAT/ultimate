@@ -4,7 +4,7 @@ import { Match, Show, Switch } from 'solid-js'
 import { ROOT, useDocOf } from '@/sdk/solid'
 import { AgentMark, ConversationRef, useAgentTitle } from '../conversations/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
-import { remoteLabel } from './data.ts'
+import { remoteLabel } from './data.web.ts'
 import type { Remote } from './refs.ts'
 import { useStandingName } from './standing-name.solid.tsx'
 

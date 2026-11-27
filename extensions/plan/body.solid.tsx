@@ -36,8 +36,8 @@ import {
   useDocOf,
 } from '@/sdk/solid'
 import { InfoAction, stateLabel, useWorkspaceIndex } from '../workspaces/ui.solid.tsx'
-import { criteriaOf, sectionsOf, verbatim } from './body.ts'
-import { confirmed, criteriaCounts, criteriaOfBody, finished, number } from './progress.ts'
+import { criteriaOf, sectionsOf, verbatim } from './body.shared.ts'
+import { confirmed, criteriaCounts, criteriaOfBody, finished, number } from './progress.shared.ts'
 import { ProgressDoc } from './refs.ts'
 import type { Epic, Estimate, Plan, Task } from './refs.ts'
 

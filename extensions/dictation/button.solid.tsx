@@ -14,13 +14,13 @@ import {
 } from '@/sdk/solid'
 import type { Dictation } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.ts'
-import { base64, capture, unsupported } from './capture.ts'
+import { base64, capture, unsupported } from './capture.web.ts'
 import { startCue, stopCue } from '../../lib/cues.ts'
-import type { Sink, Take } from './capture.ts'
+import type { Sink, Take } from './capture.web.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 import { registerBox, soundCues, talkMode } from './routing.solid.tsx'
 import { DictationSettings } from './settings.solid.tsx'
-import { createTalk } from './talk.ts'
+import { createTalk } from './talk.web.ts'
 
 const buttonSize = 'size-6 rounded-md pointer-coarse:size-9'
 const stopSize =

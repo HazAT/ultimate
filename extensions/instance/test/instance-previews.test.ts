@@ -19,7 +19,7 @@ import instance, {
 import { saveDefinition } from '../../../lib/agents.ts'
 import { writeFamilies } from '../../../lib/families-settings.ts'
 import { writeJson } from '../../../lib/json-file.ts'
-import { at, label } from '../links.ts'
+import { at, label } from '../links.web.ts'
 import type { PreviewsService } from '../../conversations/api.ts'
 
 const homes: string[] = []

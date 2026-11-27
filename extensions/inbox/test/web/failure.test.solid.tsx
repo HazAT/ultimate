@@ -18,7 +18,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { registry } from '../../../../web/src/sdk/client.ts'
 import { ExtensionName } from '../../../../web/src/sdk/solid.ts'
 import { provide } from '../../../../web/src/sdk/types.ts'
-import { InboxItems } from '../../points.ts'
+import { InboxItems } from '../../points.web.ts'
 import { WaitingBadge } from '../../surface.solid.tsx'
 import { TodoList } from '../../../todos/panel.solid.tsx'
 

@@ -1,9 +1,9 @@
 import * as Tone from 'tone'
 import { deadline, pace } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
-import type { Sound } from './cues.ts'
-import type { Happening, Role, Tool } from './agents.ts'
-import type { Variant } from './variants.ts'
+import type { Sound } from './cues.web.ts'
+import type { Happening, Role, Tool } from './agents.web.ts'
+import type { Variant } from './variants.web.ts'
 
 const limitedMaster = new Tone.Volume(-6)
 limitedMaster.chain(new Tone.Limiter(-3), Tone.getDestination())
@@ -19,10 +19,12 @@ let bandPlaying = false
 let cancelRest: Cancel | undefined
 let quietAtAudioSeconds = 0
 
+const toneContext = () => Tone.getContext() as Tone.Context
+
 function tick() {
   cancelRest?.()
   cancelRest = undefined
-  if (Tone.getContext().clockSource !== 'worker') Tone.getContext().clockSource = 'worker'
+  if (toneContext().clockSource !== 'worker') toneContext().clockSource = 'worker'
 }
 
 function restAfter(seconds: number) {
@@ -39,7 +41,7 @@ function rest() {
     return
   }
   cancelRest = undefined
-  Tone.getContext().clockSource = 'offline'
+  toneContext().clockSource = 'offline'
   ;(Tone.getContext().rawContext as AudioContext)
     .suspend()
     .catch((error: unknown) => console.warn('Audio suspend failed', error))

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { standingPlaceholder } from '../../mark-style.ts'
+import { standingPlaceholder } from '../../mark-style.web.ts'
 
 it("addresses an idle standing agent by its title, and leaves the core's text everywhere else", () => {
   expect(standingPlaceholder('chess-coach', 'Coach', false)).toBe('Message Coach…')

@@ -1,7 +1,7 @@
 import type { EntryId, ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { groupLandings, groupRange } from '../../landings.ts'
-import type { Landing } from '../../landings.ts'
+import { groupLandings, groupRange } from '../../landings.web.ts'
+import type { Landing } from '../../landings.web.ts'
 
 const landing = (sha: string, base: string, feature?: string, title?: string): Landing => ({
   type: 'landed',

@@ -15,8 +15,8 @@ import {
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { StandingAction } from '../subagents/refs.ts'
-import { SELECTED, SURFACE, UNLOADED, amber, keyOf } from './items.ts'
-import type { Anchor, Answered, Selection } from './items.ts'
+import { SELECTED, SURFACE, UNLOADED, amber, keyOf } from './items.web.ts'
+import type { Anchor, Answered, Selection } from './items.web.ts'
 
 async function backToUltimate(source: string) {
   const id = await api.action(StandingAction, { name: 'ultimate' })

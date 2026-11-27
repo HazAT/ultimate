@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { actions } from '../server.ts'
-import { plainSpeech, sections } from '../text.ts'
+import { plainSpeech, sections } from '../text.shared.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { removeTemp, temp } from '../../../test/helpers.ts'
 

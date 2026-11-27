@@ -2,9 +2,9 @@ import { LoaderCircle, X } from '@lucide/solid'
 import { createEffect, createSignal, For, Show } from 'solid-js'
 import { ROOT, formatTime, keepLast, useAction, useNow } from '@/sdk/solid'
 import { retryAfter } from '../../lib/timers.ts'
-import { clock, countdown } from './looks.ts'
+import { clock, countdown } from './looks.web.ts'
 import { DescribeAction } from './refs.ts'
-import { full, words } from './words.ts'
+import { full, words } from './words.web.ts'
 
 export function Preview(props: { schedule?: string }) {
   const [settled, setSettled] = createSignal<string>()

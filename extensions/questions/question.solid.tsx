@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { cn, PromptBox } from '@/sdk/solid'
 import type { Question } from '../messages/refs.ts'
-import { answerOf, choices, keyOf, position } from './state.ts'
-import type { Draft } from './state.ts'
+import { answerOf, choices, keyOf, position } from './state.web.ts'
+import type { Draft } from './state.web.ts'
 
 const mark =
   'size-3 transition-[scale,opacity] duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] starting:scale-40 starting:opacity-0'

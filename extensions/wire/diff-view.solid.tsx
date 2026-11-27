@@ -1,6 +1,6 @@
 import { For, Show, createMemo } from 'solid-js'
 import { cn, formatBytes, useAction } from '@/sdk/solid'
-import { parse } from './json.ts'
+import { parse } from './json.web.ts'
 import { DiffAction } from './refs.ts'
 import type { WireDiff, WireSummary } from './refs.ts'
 import { Fold, Node, Part } from './tree.solid.tsx'

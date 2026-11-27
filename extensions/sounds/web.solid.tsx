@@ -1,6 +1,6 @@
 import { defineWebExtension } from '@/sdk/solid'
 import { Control } from './chip.solid.tsx'
-import * as conductor from './conductor.ts'
+import * as conductor from './conductor.web.ts'
 import { Player } from './player.solid.tsx'
 
 export default defineWebExtension({

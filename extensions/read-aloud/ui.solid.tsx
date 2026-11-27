@@ -18,9 +18,9 @@ export { BLOCKED as SOUND_BLOCKED } from './voice.solid.tsx'
 /** The page's speech player and its settings. */
 export type { Speech } from './voice.solid.tsx'
 /** Split streamed reply parts, or one text, into sentences with their paragraphs; `estimate` gives a sentence's seconds. */
-export { estimate, splitReply, splitSentences } from './speech.ts'
+export { estimate, splitReply, splitSentences } from './speech.web.ts'
 /** One spoken sentence: its text, paragraph, word starts and its place in its reply (`at`). */
-export type { Sentence } from './speech.ts'
+export type { Sentence } from './speech.web.ts'
 /**
  * Mark what the player speaks in a rendered message: `useSpokenText(elements, spoken)` with the message's root elements
  * (one message, or every message of a reply in order) and, while it has a source, `{ key, spans, span?, play? }`.
@@ -32,7 +32,7 @@ export type { Sentence } from './speech.ts'
  */
 export { useSpokenText } from './spoken.solid.tsx'
 /** What a message being read gives the highlight. */
-export type { SpokenText } from './highlight.ts'
+export type { SpokenText } from './highlight.web.ts'
 /**
  * The one playback bar for the page's player: `status` (Speaking, Reading, Paused…), then paragraph, sentence and time
  * left, the speed, skip by paragraph or sentence, `toggle` (pause or resume), and `stop` when given. `onShow` makes the
@@ -46,4 +46,4 @@ export { PlaybackBar } from './bar.solid.tsx'
  */
 export { SpeakerBar } from './reading-bar.solid.tsx'
 /** The voices the OpenAI voice offers. */
-export { VOICES } from './voices.ts'
+export { VOICES } from './voices.shared.ts'

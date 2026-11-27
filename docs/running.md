@@ -26,8 +26,9 @@
   server's address is untouched. Stop it and delete the scratch home when done.
   A state you cannot reach is reported as unverified, never faked by injecting entries.
 - `tsconfig.swap.json` is the server-only type-check gate for swaps.
-- `tsconfig.json` (server, tests, tooling) references `tsconfig.web.json` (browser: `web/src`, `extensions/**/*.tsx`).
-  `pnpm check` type-checks both; with plain `tsc`, run `tsc -b`.
+- `tsconfig.json` type-checks everything, browser and server; `pnpm check` runs it. File names say where code runs
+  (`*.solid.tsx` and `*.web.ts` in the page, `*.shared.ts` in both), and lint keeps browser code off Node and server
+  code off browser modules.
 - The standalone server shuts down on SIGINT/SIGTERM; reopening resumes durable work. A supervised core ignores both
   and logs a warning: the supervisor stops it over IPC, so such a signal either reached the whole group while the
   service stops Ultimate, or came from outside (an agent's kill by port or name). Stop Ultimate through the supervisor (`pnpm start`'s process, or its service).

@@ -23,8 +23,8 @@ import { Raw, RawResponse, ReadableRequest, ReadableResponse } from './body.soli
 import { DiffView } from './diff-view.solid.tsx'
 import { CallAction, ListAction } from './refs.ts'
 import type { WireSummary } from './refs.ts'
-import { WIRE_MODE_KEY, WIRE_PICKED_KEY, WIRE_TAB_KEY } from './state.ts'
-import type { Picked } from './state.ts'
+import { WIRE_MODE_KEY, WIRE_PICKED_KEY, WIRE_TAB_KEY } from './state.web.ts'
+import type { Picked } from './state.web.ts'
 
 type Tab = 'request' | 'response' | 'diff'
 type Mode = 'readable' | 'raw'

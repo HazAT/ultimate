@@ -1,7 +1,7 @@
 import { InboxIcon } from '@lucide/solid'
 import { defineWebExtension, provide } from '@/sdk/solid'
 import { UnderUltimate } from '../sidebar/ui.solid.tsx'
-import { SURFACE } from './items.ts'
+import { SURFACE } from './items.web.ts'
 import { AppBadge, Inbox, InboxSidebar, WaitingBadge, WaitingLink } from './surface.solid.tsx'
 
 export default defineWebExtension({
