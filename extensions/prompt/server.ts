@@ -17,7 +17,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { ConversationSummary } from '../../shared/protocol.ts'
-import { cachedDiscovery, discoverAgents } from '../../lib/agents.ts'
+import { agentDefinitions } from '../../lib/agents.ts'
 import { git, refFiles } from '../../lib/git.ts'
 import { fileMemo } from '../../lib/memo.ts'
 import { ignoring, isMissing, meansNone } from '../../lib/errors.shared.ts'
@@ -150,12 +150,6 @@ async function instructionHashes(host: ExtensionHost, own: readonly string[]) {
 }
 
 function instructionReads(host: ExtensionHost) {
-  const discovered = cachedDiscovery(
-    host.ultimateRoot,
-    host.projectRoot,
-    host.userHome,
-    host.modelRuntime,
-  )
   let own: readonly string[] = []
   const files = fileMemo({
     paths: () => instructionPaths(host, own),
@@ -163,7 +157,7 @@ function instructionReads(host: ExtensionHost) {
     key: () => own.join('\0'),
   })
   return async () => {
-    const definition = (await discovered()).definitions.find(
+    const definition = (await agentDefinitions(host)).definitions.find(
       (candidate) => candidate.name === 'ultimate',
     )
     own = definition ? [definition.path, ...(definition.overlays ?? [])] : []
@@ -227,24 +221,15 @@ export function instructionNote(changes: { instructions: string[]; docs: string[
     .join('\n')
 }
 
-async function definitionSkills(
-  host: ExtensionHost,
-  input: PromptInput,
-  context: Context,
-): Promise<string[] | undefined> {
+async function ownDefinition(host: ExtensionHost, input: PromptInput, context: Context) {
   const profile = await input.read.snapshot(Profile, input.conversationId, context)
   if (profile?.adhoc) return undefined
   const name =
     profile?.definition ??
     (await input.read.snapshot(host.metadata, input.conversationId, context))?.label
   if (!name) return undefined
-  const { definitions } = await discoverAgents(
-    host.ultimateRoot,
-    host.projectRoot,
-    host.userHome,
-    host.modelRuntime,
-  )
-  return definitions.find((definition) => definition.name === name)?.skills
+  const { definitions } = await agentDefinitions(host)
+  return definitions.find((definition) => definition.name === name)
 }
 
 export default function prompt(host: ExtensionHost) {
@@ -381,23 +366,27 @@ export default function prompt(host: ExtensionHost) {
           '- You talk to the person through a web UI that renders Markdown: short paragraphs, lists, fenced code with a language, and file paths in backticks.',
         ].join('\n')
       }),
-      section('project_context', (input) =>
-        loadProjectContextFiles({
+      section('project_context', async (input, context) => {
+        const files = loadProjectContextFiles({
           cwd: input.env?.cwd ?? input.agent.cwd ?? host.projectRoot,
           agentDir: join(host.userHome, '.ultimate'),
         })
+        if (!files.length) return undefined
+        if ((await ownDefinition(host, input, context))?.family === 'tiny')
+          return `Project instructions, to read when your task needs them: ${files.map((file) => file.path).join(', ')}`
+        return files
           .map(
             (file) =>
               `<project_instructions path="${file.path}">\n${file.content}\n</project_instructions>`,
           )
-          .join('\n\n'),
-      ),
+          .join('\n\n')
+      }),
       section('skills', async (input, context) => {
         const names = new Set((input.agent.tools ?? []).map((tool) => tool.name))
         const reader = (['read', 'bash'] as const).find((name) => names.has(name))
         if (!reader) return undefined
         const skills = host.skills(input.env?.cwd ?? input.agent.cwd ?? host.projectRoot)
-        const allowed = await definitionSkills(host, input, context)
+        const allowed = (await ownDefinition(host, input, context))?.skills
         const listed = formatSkillsForPrompt(
           allowed ? skills.filter((skill) => allowed.includes(skill.name)) : skills,
           reader,
@@ -434,7 +423,6 @@ export default function prompt(host: ExtensionHost) {
         const os = process.platform === 'darwin' ? 'macOS' : process.platform
         return `OS: ${os} ${process.arch}\nWork checkout (effective cwd): ${cwd}\nHost project: ${host.projectRoot}\nRunning Ultimate host: ${host.ultimateRoot}\nUI: ${host.system().process.url} (shared host)\nDirect project edits to the effective cwd. Host-scoped config and extensions remain loaded from the host project and Ultimate clone; edits in a separate checkout do not hot-reload the running host.`
       }),
-      section('cwd', (input) => input.env?.cwd ?? input.agent.cwd ?? host.projectRoot),
     ],
   })
 }

@@ -17,6 +17,7 @@ import { projectDecision, readDecision, useProjectSetup } from './project-setup.
 import { discoverExtensions } from './discovery.ts'
 import { isMissing } from './errors.shared.ts'
 import { fileMemo } from './memo.ts'
+import type { ExtensionHost } from '../server/extensions.ts'
 
 type DeferredToolNamesWhenInheritingAll = string[]
 export interface AgentDefinition {
@@ -464,7 +465,7 @@ export async function discoveryPaths(ultimateRoot: string, projectRoot: string, 
   ]
 }
 
-export function cachedDiscovery(
+function cachedDiscovery(
   ultimateRoot: string,
   projectRoot: string,
   userHome: string,
@@ -482,6 +483,18 @@ export function cachedDiscovery(
       return String(snapshots)
     },
   })
+}
+
+export function agentDefinitions(
+  host: Pick<
+    ExtensionHost,
+    'resource' | 'ultimateRoot' | 'projectRoot' | 'userHome' | 'modelRuntime'
+  >,
+  projectRoot = host.projectRoot,
+): Promise<AgentDiscovery> {
+  return host.resource(`agents.discovery:${projectRoot}`, () =>
+    cachedDiscovery(host.ultimateRoot, projectRoot, host.userHome, host.modelRuntime),
+  )()
 }
 
 export async function discoverAgents(

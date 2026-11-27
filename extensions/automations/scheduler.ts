@@ -8,7 +8,7 @@ import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
-import { discoverAgents, hostDefault } from '../../lib/agents.ts'
+import { agentDefinitions, hostDefault } from '../../lib/agents.ts'
 import { nextAt } from './schedule.ts'
 import type { Automation, Run } from './types.shared.ts'
 import { RUN_TASK } from './types.shared.ts'
@@ -30,9 +30,7 @@ const terminal = {
   outcome: { status: 'completed' as const, result: null },
 }
 async function definition(host: ExtensionHost, name: string) {
-  const found = (
-    await discoverAgents(host.ultimateRoot, host.projectRoot, host.userHome, host.modelRuntime)
-  ).definitions.find((d) => d.name === name)
+  const found = (await agentDefinitions(host)).definitions.find((d) => d.name === name)
   if (!found) throw new Error(`Unknown agent: ${name}`)
   return found
 }

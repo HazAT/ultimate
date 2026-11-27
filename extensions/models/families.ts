@@ -1,7 +1,7 @@
 import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { discoverAgents } from '../../lib/agents.ts'
+import { agentDefinitions } from '../../lib/agents.ts'
 import {
   agentUser,
   BUILTIN_FAMILIES,
@@ -56,12 +56,7 @@ async function read(host: ExtensionHost) {
   const project = await host.projectSettings()
   const layers = await readFamilyLayers(host.userHome, host.projectRoot, project)
   const config = mergeLayers(layers)
-  const { definitions } = await discoverAgents(
-    host.ultimateRoot,
-    host.projectRoot,
-    host.userHome,
-    host.modelRuntime,
-  )
+  const { definitions } = await agentDefinitions(host)
   return { project, layers, config, definitions }
 }
 

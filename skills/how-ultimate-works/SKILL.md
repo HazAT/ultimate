@@ -1,6 +1,6 @@
 ---
 name: how-ultimate-works
-description: Walk a new user through how to work with Ultimate in five short beats, each ending with one question card, then ask what the project is about. Use on onboarding.start (before project setup), on a walkthrough.start input, or when the user asks how Ultimate works or to be walked through it.
+description: Walk a new user through how to work with Ultimate in five short beats, each ending with one question card, then ask what the project is about. Use on onboarding.start (it also carries the project setup that follows), on a walkthrough.start input, or when the user asks how Ultimate works or to be walked through it.
 ---
 
 # How Ultimate works: the walkthrough
@@ -89,6 +89,30 @@ Question (text): "What's this project about, and what do you want to do first?"
 With the answer, give a three-line summary of what the user told you (their role preference, their project, their
 first task), then continue:
 
-- **On onboarding.start:** with the project setup steps; the answer is the user's instructions. Keep it verbatim in
+- **On onboarding.start:** with the project setup below; the answer is the user's instructions. Keep it verbatim in
   the instructions memory and use beat 3's answer in the memory about the user. Do not repeat the walkthrough.
 - **On walkthrough.start:** start the first task as a branch when the user named one, or answer their question.
+
+# Project setup (onboarding.start only)
+
+The user is still watching: greet, ask and suggest in your own answers here, never with message, except the beats
+above and the tour card in step 4. Greet in two lines before beat 1.
+
+1. Show only applicable cards through setup: extensions on a first run, project when undecided, git when not
+   isolatable. Show one at a time and wait for each onboarding.choice. When the extensions choice lists missing keys,
+   ask the user in one line to add them with the Add buttons on that card, then show the next card without waiting
+   for the keys. If the git choice asks you to set it up, do that safely before continuing.
+2. Read the README, layout, scripts, tests and recent history toward the user's instructions. The user can steer you
+   while you read.
+3. Write the project's first memories with one `remember {ops}` batch: what the project is and why it exists, only
+   what its README and docs do not already say, plus the user's instructions verbatim as their own memory (split
+   across numbered memories when longer than a 2000-character body), and one memory about the user themselves: their
+   name and how they like to work with you. An invalid op refuses the whole batch: fix it and retry. Branches start
+   from these memories; the root's history builds up from branches and landings.
+4. Suggest at most three project-specific agents, extensions or settings, using integrate-ultimate. Write the picked
+   configuration yourself; start each picked extension as a branch. Also check its worktree setup (dependencies,
+   .env, database, dev port) and offer to set it up when missing or incomplete. Then offer, as one message with a
+   choice question card (Show me · Skip), a tour of how Ultimate's own repository sets itself up (coordinator model,
+   review team, lander, worktree setup) to adopt parts of it; on Show me, follow the adopt-ultimate-setup skill.
+5. Start the first task the user named as a coordinator with branch; ask only when they named none. Close onboarding
+   with one line: "Want to hear about new Ultimate features? Ask me to follow the changelog."

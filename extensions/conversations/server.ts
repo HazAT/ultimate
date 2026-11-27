@@ -399,7 +399,7 @@ export default (host: ExtensionHost) => {
         }
         if (!immutableOwnershipIsTopLevel.get(input.conversationId)) return undefined
         const cacheStableConversationGuidance = [
-          'Other conversations in this project are separate agents with their own context, and some may work in your checkout: check `git status` before broad changes, never revert or reformat changes you did not make, and coordinate through the user.',
+          'Other conversations in this project are separate agents with their own context.',
           'In codemode, `ultimate.conversations()` lists them with title, cwd and whether they are busy or concluded; `ultimate.entries(id)` shows what one did; `ultimate.projects()` lists other projects.',
         ].join('\n')
         return cacheStableConversationGuidance

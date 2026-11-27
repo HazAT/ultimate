@@ -9,7 +9,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { locate, postAction, selfAddress } from '../../lib/remote.ts'
 import { defineEffect, effectResult } from '../../lib/effect.ts'
-import { discoverAgents } from '../../lib/agents.ts'
+import { agentDefinitions } from '../../lib/agents.ts'
 import { Messages, MessageSent } from './api.ts'
 import type { Message } from './api.ts'
 import { append } from './log.ts'
@@ -47,18 +47,16 @@ const field = (value: unknown, name: string, max: number) => {
 }
 
 export async function projectsSection(
-  host: Pick<ExtensionHost, 'projects' | 'ultimateRoot' | 'userHome' | 'modelRuntime'>,
+  host: Pick<
+    ExtensionHost,
+    'projects' | 'resource' | 'ultimateRoot' | 'projectRoot' | 'userHome' | 'modelRuntime'
+  >,
 ) {
   const lines = await Promise.all(
     (await host.projects())
       .filter((project) => !project.current && project.root)
       .map(async (project) => {
-        const { definitions } = await discoverAgents(
-          host.ultimateRoot,
-          project.root!,
-          host.userHome,
-          host.modelRuntime,
-        )
+        const { definitions } = await agentDefinitions(host, project.root)
         const agents = definitions.filter((d) => d.resident && d.name !== 'ultimate')
         return `- ${project.name}${agents.length ? `: ${agents.map((a) => `@${a.name}`).join(', ')}` : ''}`
       }),

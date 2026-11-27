@@ -14,7 +14,7 @@ import {
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { discoverAgents } from '../../lib/agents.ts'
+import { agentDefinitions } from '../../lib/agents.ts'
 import { providerKeyStandsIn } from '../../lib/openai.ts'
 import { readFamilyLayers } from '../../lib/families-settings.ts'
 import { isolatable } from '../../lib/git.ts'
@@ -57,6 +57,7 @@ type CheckHost = Pick<
   | 'need'
   | 'want'
   | 'harness'
+  | 'resource'
 >
 
 const configured = (host: Pick<CheckHost, 'modelRuntime'>, provider: string) =>
@@ -110,12 +111,7 @@ async function summaryArea(host: AreaHost): Promise<SetupIssue | undefined> {
 }
 
 async function agentsArea(host: AreaHost): Promise<SetupIssue[]> {
-  const { definitions, errors, replaced } = await discoverAgents(
-    host.ultimateRoot,
-    host.projectRoot,
-    host.userHome,
-    host.modelRuntime,
-  )
+  const { definitions, errors, replaced } = await agentDefinitions(host)
   const issues: SetupIssue[] = []
   const missing = new Map<string, string[]>()
   for (const definition of definitions)

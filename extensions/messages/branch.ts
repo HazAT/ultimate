@@ -5,7 +5,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import {
   definitionAgent,
   definitionFamily,
-  discoverAgents,
+  agentDefinitions,
   hostDefault,
   onFamily,
 } from '../../lib/agents.ts'
@@ -62,12 +62,7 @@ export const branchTool = (host: ExtensionHost) =>
           throw new Error(
             `Choose a root. Roots: ${roots.map((candidate) => `#${candidate}`).join(', ') || '(none)'}`,
           )
-        const { definitions } = await discoverAgents(
-          host.ultimateRoot,
-          host.projectRoot,
-          host.userHome,
-          host.modelRuntime,
-        )
+        const { definitions } = await agentDefinitions(host)
         const definition = definitions.find((candidate) => candidate.name === 'coordinator')
         if (!definition) throw new Error('Missing coordinator definition')
         const coordinator =
