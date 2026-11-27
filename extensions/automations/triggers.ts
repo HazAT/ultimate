@@ -7,20 +7,19 @@ import { settled } from '../../lib/errors.shared.ts'
 import { defineTask, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { UserInputEvent } from '../../shared/events.ts'
-import type { EventRecord, EventToken } from '../../shared/events.ts'
+import type { EventRecord } from '../../shared/events.ts'
 import { Compacted, ContextUsageDoc } from '../conversations/api.ts'
 import { Branched } from '../lineage/api.ts'
 import { LoginChanged } from '../models/api.ts'
 import { CheckRan, SubmissionLanded } from '../workspaces/api.ts'
 import { Escalated } from './refs.ts'
+import type { Trigger } from './api.ts'
 import type { ContextUsage } from '../conversations/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { describeSchedule } from './schedule.ts'
 import type { Automations as Ledger } from './server.ts'
 import type { Automation, TriggerEvent } from './types.shared.ts'
 import { RUN_TASK, STANDING } from './types.shared.ts'
-
-export type Trigger = { event: EventToken; description: string; fields: Record<string, string> }
 
 const CORE_TRIGGERS: Trigger[] = [
   {
@@ -284,10 +283,10 @@ export function triggers(
       { from: 'now' },
     )
     host.react(
-      'events',
+      'triggers',
       CORE_TRIGGERS.map(({ event }) => event),
       (tx, event) => matched(tx, event),
-      { from: 'now' },
+      { from: { cursorOf: 'automations/events' } },
     )
   }
   async function matched(tx: Tx, event: EventRecord) {

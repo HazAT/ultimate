@@ -83,6 +83,35 @@ it('a reactor starting from now sees events emitted as soon as start resolves', 
   }
 })
 
+it("a reactor taking over a retired one's events starts at its cursor, so its pending event still runs", async () => {
+  const { harness, log, land } = await reactorFixture()
+  const retired = log.reactor('owner/old', [Landed], () => {})
+  await retired.start()
+  await land('handled')
+  await until(async () => (await log.eventLog.reactors())[0].lag === 0)
+  await retired.stop()
+  await land('pending')
+  const seen: string[] = []
+  const successor = log.reactor(
+    'owner/new',
+    [Landed],
+    (_tx, event) => void seen.push(event.data.sha),
+    {
+      from: { cursorOf: 'owner/old' },
+    },
+  )
+  try {
+    await successor.start()
+    await until(async () => seen.length > 0)
+    await land('later')
+    await until(async () => seen.length > 1)
+    expect(seen).toEqual(['pending', 'later'])
+  } finally {
+    await successor.stop()
+    await harness.close(context)
+  }
+})
+
 it('retries a failed reactor on its timer, not on a matching event during backoff', async () => {
   const { harness, log, land } = await reactorFixture()
   const seen: string[] = []

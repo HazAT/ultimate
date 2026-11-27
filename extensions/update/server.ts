@@ -194,7 +194,7 @@ export default function update(host: ExtensionHost) {
     )
   })
   host.react('automations', [Applied, Refused], (tx, event) => automations.matched(tx, event), {
-    from: 'now',
+    from: { cursorOf: 'automations/events' },
   })
   const shared = reloadSharedState(host)
   if (sharesHostCloneAsPreview()) return defineExtension({ name: 'update' })

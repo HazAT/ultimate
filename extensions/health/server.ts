@@ -64,7 +64,7 @@ export default function health(host: ExtensionHost) {
     )
   })
   host.react('automations', [Changed], (tx, event) => automations.matched(tx, event), {
-    from: 'now',
+    from: { cursorOf: 'automations/events' },
   })
   host.implement(HealthApi, {
     providers: async () =>

@@ -68,7 +68,13 @@ async function sayLine(line: Line, voice: OpenAiVoice | undefined) {
 function resumeSwitchedNarrator() {
   const readAloudOn = useEnabled('read-aloud')
   const narrate = speaker(
-    (line) => sayLine(line, readAloudOn() && speech.openaiOn() ? speech.openaiVoice() : undefined),
+    (line) =>
+      sayLine(
+        line,
+        readAloudOn() && (speech.voice() === 'openai' || !speech.voiced())
+          ? speech.openaiVoice()
+          : undefined,
+      ),
     sessionStorage,
   )
   narrate.resume(Boolean(switched))

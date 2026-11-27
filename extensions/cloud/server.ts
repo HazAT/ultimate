@@ -225,7 +225,7 @@ export default function cloud(host: ExtensionHost) {
     )
   })
   host.react('automations', [BackupEvent], (tx, event) => automations.matched(tx, event), {
-    from: 'now',
+    from: { cursorOf: 'automations/events' },
   })
   return defineExtension({ name: 'cloud' })
 }

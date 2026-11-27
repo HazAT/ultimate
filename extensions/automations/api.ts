@@ -25,17 +25,15 @@ export type AutomationsService = {
   readByKey(tx: Tx, key: string): Promise<Automation | undefined>
   /**
    * List the owner's `event` as an event trigger, with what it means and its filter fields, until the returned function
-   * removes it; call it at setup and remove it in `onClose`. The owner reacts to the event and passes each one to
-   * `matched`.
+   * removes it. Take the service with `need` at setup, call this in `onOpen` and defer the returned function there. The
+   * owner reacts to the event and passes each one to `matched`.
    */
-  trigger(trigger: {
-    event: EventToken
-    description: string
-    fields: Record<string, string>
-  }): () => void
+  trigger(trigger: Trigger): () => void
   /** In the owner's reactor transaction, fire every enabled automation whose event trigger matches `event`. */
   matched(tx: Tx, event: EventRecord): Promise<void>
 }
+/** An owner's event trigger: its token, what it means and its filter fields. */
+export type Trigger = { event: EventToken; description: string; fields: Record<string, string> }
 /** The automations service. */
 export const AutomationsApi = defineApi<AutomationsService>()('automations')
 export type HoldService = {
