@@ -66,10 +66,6 @@ export function prepareChapterRequest(home: string, to: string, by?: number) {
     } satisfies PendingChapter)
 }
 
-export async function requestChapter(home: string, to: string, by?: number) {
-  return prepareChapterRequest(home, to, by)()
-}
-
 export function inFlight(database: string): number[] {
   if (!existsSync(database)) return []
   // Pi upstream: @earendil-works/pi-durable@1.6.0 src/storage/sqlite/migrations.ts — tasks.status is terminal once a task ended; background tasks (schedules, watchers) always live. Drop when Pi Durable reads a closed store's task graph.

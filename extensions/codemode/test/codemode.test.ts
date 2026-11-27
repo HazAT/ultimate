@@ -21,7 +21,7 @@ import {
   post,
 } from '../../../test/helpers.ts'
 import { context } from '../../../server/harness.ts'
-import { FIRST_CHAPTER, requestChapter } from '../../../lib/chapters.ts'
+import { FIRST_CHAPTER, prepareChapterRequest } from '../../../lib/chapters.ts'
 import { SummaryDoc, withDefaultTimeout } from '../server.ts'
 import { CodemodeStoreDoc } from '@earendil-works/pi-durable/codemode'
 import { Summarized } from '../refs.ts'
@@ -107,7 +107,7 @@ it('reads an inactive chapter through the sandbox and rejects project with chapt
   await server.vite.watcher.close()
   await server.close()
   servers.splice(servers.indexOf(server), 1)
-  await requestChapter(options.home, 'next')
+  await prepareChapterRequest(options.home, 'next')()
   const next = await createServer(options)
   servers.push(next)
   const result = await run(
