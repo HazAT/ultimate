@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { capture } from '../dictation/ui.solid.tsx'
 import { dock, playerState, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
-import { VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
+import { VoiceSessionDoc } from './refs.ts'
 
-type Live = 'listening' | 'speaking' | 'thinking' | 'handed off' | 'open'
+type Live = 'listening' | 'speaking' | 'thinking' | 'open'
 
 const bars = [0.55, 1, 0.7]
 
@@ -29,7 +29,7 @@ function Level(props: { live: Live }) {
               'h-full w-[2px] origin-center rounded-full transition-transform duration-75',
               props.live === 'listening'
                 ? 'bg-error'
-                : props.live === 'open' || props.live === 'handed off'
+                : props.live === 'open'
                   ? 'bg-muted-foreground/60'
                   : 'bg-brand',
               props.live === 'speaking' &&
@@ -56,14 +56,13 @@ function Level(props: { live: Live }) {
 export function VoiceRow(props: { conversation: ConversationId | undefined }) {
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
   const id = () => session()?.id
-  const fork = useDocOf(id, VoiceForkDoc)
   const conversations = useConversations()
   const busy = () => conversations().some((row) => row.id === id() && row.busy)
   const live = createMemo((): Live => {
     if (dock.phase() === 'recording') return 'listening'
     if (playerState().playing) return 'speaking'
     if (dock.phase() === 'sending' || busy()) return 'thinking'
-    return fork()?.handedOff ? 'handed off' : 'open'
+    return 'open'
   })
   return (
     <Show when={props.conversation !== undefined && id() !== undefined}>

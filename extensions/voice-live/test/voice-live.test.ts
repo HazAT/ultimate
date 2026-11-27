@@ -622,7 +622,7 @@ it('a model picked in the fork itself carries over to the next session', async (
     text: `CALL ${JSON.stringify({ name: 'voice_handoff', args: { title: 'T', outcome: 'O', instruction: 'I' } })}`,
   })
   const after = await f.turn({ key: 'after', text: 'after the handoff' })
-  expect(after.id).not.toBe(next.id)
+  expect(after.id).toBe(next.id)
   expect(
     f.requests.findLast((request) =>
       JSON.stringify(request.messages).includes('after the handoff'),
@@ -630,7 +630,7 @@ it('a model picked in the fork itself carries over to the next session', async (
   ).toBe('gemini-faux')
 })
 
-it('other tools are blocked, voice_handoff starts @ultimate with a card and the next turn forks afresh', async () => {
+it('other tools are blocked, voice_handoff starts @ultimate with a card and the session stays open', async () => {
   const f = await fixture()
   const blocked = await f.turn({
     key: 'blocked',
@@ -691,9 +691,7 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   )
 
   const after = await f.turn({ key: 'after', text: 'next idea', session: blocked.id })
-  expect(after.id).not.toBe(blocked.id)
-  const stale = await f.action('turn', { key: 'stale', text: 'late', session: blocked.id })
-  expect(stale.data.error).toContain('This voice session ended')
+  expect(after.id).toBe(blocked.id)
 })
 
 it("voice_handoff carries the user's own turns of this session in order, without failed transcriptions", async () => {
@@ -731,40 +729,15 @@ it("voice_handoff carries the user's own turns of this session in order, without
   )
 
   const next = await f.turn({ key: 'fresh', text: 'a new thought', session: first.id })
-  expect(next.id).not.toBe(first.id)
+  expect(next.id).toBe(first.id)
   await f.turn({ key: 'again', text: call('Second') })
   await until(async () => (await cards()).length === 2)
   expect((await cards())[1].data).toMatchObject({ words: ['a new thought', call('Second')] })
 })
 
-it('after a handoff the next fork keeps the model the session ran on, not a settings change since', async () => {
+it('a request for a session that ended is refused and opens nothing', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })
-  await f.server.harness.commit(async (tx) => {
-    ;(await tx.doc(Fork, first.id)).handedOff = true
-  }, context)
-  await writeFile(
-    join(f.home, '.ultimate/settings.json'),
-    JSON.stringify({ voice: { model: 'faux/main-faux' } }),
-  )
-  const second = await f.turn({ key: 'two', text: 'next' })
-  expect(second.id).not.toBe(first.id)
-  expect(f.requests.at(-1)!.model).toBe('gemini-faux')
-  expect(
-    await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context),
-  ).not.toHaveProperty('model')
-  expect((await f.action('status', null)).data.result).toMatchObject({
-    model: 'faux/gemini-faux',
-    source: 'settings',
-  })
-})
-
-it('a request for a session that handed off and was then ended is refused and opens nothing', async () => {
-  const f = await fixture()
-  const first = await f.turn({ key: 'one', text: 'start' })
-  await f.server.harness.commit(async (tx) => {
-    ;(await tx.doc(Fork, first.id)).handedOff = true
-  }, context)
   await f.quiet()
   const late = await f.action('turn', { key: 'late', text: 'after end', session: first.id })
   expect(late.data.error).toContain('This voice session ended')

@@ -326,3 +326,26 @@ it('a spoken turn that takes nothing from the live box leaves it open for typing
   await spoken
   expect(getDraft(session).get()).toMatchObject({ text: 'still typing', sending: false })
 })
+
+it('stopping a recording sends what was typed and pasted into the live box with it, as one turn, and clears the box', async () => {
+  dock.setCollect(false)
+  getDraft(session).set({ text: 'more context', images: [shot] })
+  const recorded = { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: true }
+  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  await settle()
+  expect(harness.turns).toEqual([
+    expect.objectContaining({ text: 'more context', audio: 'rec-1', images: [shot] }),
+  ])
+  expect(getDraft(session).get()).toMatchObject({ text: '', images: [], sending: false })
+})
+
+it('a recording that heard nothing still sends what was typed and pasted into the box', async () => {
+  dock.setCollect(false)
+  getDraft(session).set({ text: 'more context', images: [shot] })
+  const recorded = { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: false }
+  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  await settle()
+  expect(harness.turns).toEqual([expect.objectContaining({ text: 'more context', images: [shot] })])
+  expect(harness.turns[0]).not.toHaveProperty('audio')
+  expect(getDraft(session).get()).toMatchObject({ text: '', images: [], sending: false })
+})

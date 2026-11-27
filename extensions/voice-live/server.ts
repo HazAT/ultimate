@@ -303,20 +303,9 @@ async function openSession(host: ExtensionHost, expected?: ConversationId) {
     const open = current !== undefined && !current.ended
     if (expected !== undefined && (!open || session.id !== expected))
       throw new Error('This voice session ended; send again')
-    let model = configured.model
-    let source = configured.source
-    if (open && !current.handedOff) return session.id!
+    if (open) return session.id!
+    const { model, source } = configured
     const at = await answerIncludingClosingToolResults(tx, main, answer)
-    if (open) {
-      current.ended = true
-      const handedOff = await tx.doc(AgentDoc, session.id!)
-      keepModel(session, current, handedOff)
-      if (handedOff.model) {
-        model = handedOff.model
-        source = modelName(model) === current.opened?.model ? current.opened.source : 'picked'
-      }
-      await host.need(ConversationsApi).concludeIn(tx, [session.id!], 'user')
-    }
     const fork = await tx.forkConversation(main, at, { ownership: { kind: 'ownerless' } })
     Object.assign(await tx.doc(Fork, fork.id), {
       of: main,
@@ -453,7 +442,11 @@ async function wordsOf(tx: Tx, session: ConversationId, fork: VoiceFork) {
   let cursor: Cursor | undefined
   do {
     const page = await tx.scanEntries(
-      { conversationId: session, minEntryId: offsetEntryId(fork.at!, 1), order: 'ascending' },
+      {
+        conversationId: session,
+        minEntryId: offsetEntryId(fork.handedOff ?? fork.at!, 1),
+        order: 'ascending',
+      },
       200,
       cursor,
     )
@@ -1259,6 +1252,8 @@ export default function voiceExtension(host: ExtensionHost) {
             const { words, earlier } = await wordsOf(tx, api.conversationId, session)
             if (words.length) handoff.words = words
             if (earlier) handoff.earlier = earlier
+            const latest = (await tx.scanEntries({ conversationId: api.conversationId }, 1))
+              .items[0]?.id
             const text = [...lines, ...(words.length ? quoted(words, earlier) : [])].join('\n')
             await receiver.submit(tx, {
               type: 'input',
@@ -1267,7 +1262,7 @@ export default function voiceExtension(host: ExtensionHost) {
               entry: { kind: VoiceHandoffEntry.kind, data: handoff },
               content: [{ type: 'text', text }, ...shared],
             })
-            session.handedOff = true
+            session.handedOff = latest
           }, ctx)
           host.harness().resume()
           return {

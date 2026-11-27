@@ -317,7 +317,15 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
         }),
   })
   if (!recorded.spoke) {
-    if (paused !== undefined) dock.player.resume()
+    if (
+      !retaking &&
+      !typed &&
+      !dock.collect() &&
+      recorded.seconds >= MIN_SPOKEN_SECONDS &&
+      boxHolds()
+    )
+      await sendTurn({ who, interrupted: interrupted || paused !== undefined, wholeBox: true })
+    else if (paused !== undefined) dock.player.resume()
     return
   }
   if (dock.collect()) {
@@ -329,8 +337,15 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
     who,
     recorded,
     interrupted,
-    ...(typed ? { typed: typed.text.trim(), images: typed.images, fromComposer: true } : {}),
+    ...(typed
+      ? { typed: typed.text.trim(), images: typed.images, fromComposer: true }
+      : { wholeBox: true }),
   })
+}
+
+function boxHolds() {
+  const id = session().id
+  return coldHolds(composerDraft(COLD_DRAFT)) || (id !== undefined && coldHolds(composerDraft(id)))
 }
 
 async function collectClip(
@@ -472,6 +487,7 @@ async function sendTurn(input: {
   interrupted: boolean
   spokenSend?: boolean | 'answer'
   fromComposer?: boolean
+  wholeBox?: boolean
   who?: UiWho
 }) {
   const { signal } = session().live
@@ -496,12 +512,13 @@ async function sendTurn(input: {
       : owner === undefined
         ? undefined
         : composerDraft(owner)
+  const withText = fromCold || !!input.wholeBox
   const takes =
     !!box &&
-    (box.images.length > 0 || box.attachments.length > 0 || (fromCold && !!box.text.trim()))
+    (box.images.length > 0 || box.attachments.length > 0 || (withText && !!box.text.trim()))
   const releaseBox = takes ? box.reserve() : undefined
   const pasted = releaseBox ? box : undefined
-  const carried = fromCold ? pasted : undefined
+  const carried = withText ? pasted : undefined
   const images = [...(input.images ?? pasted?.images ?? [])]
   const typed = [input.typed, carried?.text.trim(), pasted?.attachments.join('\n')]
     .filter(Boolean)

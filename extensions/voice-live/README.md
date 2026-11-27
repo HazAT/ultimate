@@ -48,8 +48,9 @@ collect mode (optional), each with what to do when it is missing. The model line
    input carries a short digest of what @ultimate did since the last turn (its newest 12 signal lines: inputs, card
    answers, summaries and final answers, never tool chatter, with a note when earlier ones were left out), and every
    turn says which surface and conversation are on screen. The panel header shows when the fork last caught up
-   ("caught up 5m ago"). The session stays hot until it hands off or goes quiet: after a handoff the next turn
-   concludes it and forks @ultimate afresh. There is no End: closing the panel only hides it.
+   ("caught up 5m ago"). The session stays hot until it goes quiet; a handoff keeps it, so the box, its draft and
+   the view stay, and the next handoff quotes only the words said since the last one. There is no End: closing the
+   panel only hides it.
 5. **Quiet end**: a durable `voice-live.quiet` task, started with the session's first turn, ends it after
    `QUIET_MINUTES` (20) without a turn or a reply, never during a run. It asks the summary model about the talk
    since the fork: when something was decided or left open beyond its handoffs, it writes one passive `voice.summary`

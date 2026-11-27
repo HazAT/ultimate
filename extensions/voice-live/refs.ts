@@ -78,8 +78,7 @@ export type VoiceHandoff = {
 
 /**
  * On a voice fork: what it forked from, each recording's transcript by recording id once its durable transcription
- * settled (`failed` holds the error of one that did not), and `handedOff` once it handed off to @ultimate: the session
- * goes cold, and the next turn forks @ultimate afresh.
+ * settled (`failed` holds the error of one that did not). The session stays open across handoffs.
  */
 export type VoiceFork = {
   of?: ConversationId
@@ -90,7 +89,8 @@ export type VoiceFork = {
   draft?: VoiceClip[]
   /** The recordings each admitted turn carries, by turn key: a turn whose recordings all came back empty is withdrawn. */
   pending?: Record<string, string[]>
-  handedOff?: true
+  /** The fork's newest entry at its latest handoff: the next handoff quotes the user's words from there on. */
+  handedOff?: EntryId
   /** The conversation on the user's screen at the latest turn, the one a handoff `to` may name. */
   screen?: ConversationId
   /** When the fork last read what @ultimate did: at the fork, then at the start of each turn. */
@@ -112,7 +112,7 @@ export const VoiceForkDoc = docRef<VoiceFork>('voice.fork')
  * `{ audio: base64, mimeType }` → `{ audio, session }`, the id of the recording kept for the session's next turn and
  * that session. Opens the session and starts the recording's durable transcription, which lands in the fork's
  * `transcripts` or `failed`. With `session`, it belongs to that session: refused when it is no longer the current one
- * or was ended, and when it is current and handed off, the next session replaces it.
+ * or was ended.
  */
 export const RecordAction = actionRef<
   {
@@ -128,8 +128,7 @@ export const RecordAction = actionRef<
  * A turn: the transcript (or typed text), the recording it came from, images, and a hint about an interrupted reply.
  * Opens the session on its first turn. Returns the session's conversation and the route the turn takes; `dropped`
  * when its recording's transcript came back empty, so nothing was sent (a turn already sent is stopped instead).
- * With `session`, it belongs to that session: refused when it is no longer the current one or was ended, and when it
- * is current and handed off, the next session replaces it.
+ * With `session`, it belongs to that session: refused when it is no longer the current one or was ended.
  */
 export const TurnAction = actionRef<
   {
