@@ -12,7 +12,8 @@ Screen recording: a button in every desktop prompt box records the screen and mi
   to the box the square was pressed in, or for the browser's stop to the draft that started it: the same path as a
   pasted video (`video` uploads it in chunks and shows its chip). When that draft's box is not on screen or busy, the
   recording waits in the page until it is shown again, and the page keeps holding reloads until the upload settles.
-  **Cancel** or **Escape** discards it; nothing is uploaded.
+  **Cancel** or **Escape** discards it; nothing is uploaded. While it records it holds Escape (`holdEscape`), so Escape
+  never also stops a run, a held one included.
 - **Mixing:** the shared audio and the mic go through one `AudioContext` into one `MediaRecorder` track:
   `video/webm` with VP9 and Opus on Chromium (VP8 or MP4 where VP9 is missing), about 2.5 Mbit/s.
 - **Desktop only:** phones and touch devices show no button; they can still paste or pick a video. It needs a

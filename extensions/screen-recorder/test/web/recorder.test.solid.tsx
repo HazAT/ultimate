@@ -240,8 +240,8 @@ it('discards on Cancel and on Escape: nothing attaches and every track is releas
   screen = new FakeStream([new FakeTrack('video')])
   mic = new FakeStream([new FakeTrack('audio')])
   await press('Record the screen into box A')
-  const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
-  window.dispatchEvent(escape)
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true })
+  document.body.dispatchEvent(escape)
   flush()
   expect(escape.defaultPrevented).toBe(true)
   expect(attached).toEqual([])
@@ -249,7 +249,7 @@ it('discards on Cancel and on Escape: nothing attaches and every track is releas
   expect(released).toHaveBeenCalledTimes(2)
 })
 
-it('Escape in a busy composer cancels screen recording, then dictation, then stops the run', async ({
+it('Escape in a busy composer cancels the newest of dictation and screen recording, then the other, then stops the run', async ({
   onTestFinished,
 }) => {
   vi.stubGlobal('isSecureContext', true)
@@ -302,21 +302,23 @@ it('Escape in a busy composer cancels screen recording, then dictation, then sto
       new KeyboardEvent(type, { key: 'Escape', cancelable: true, bubbles: true, repeat }),
     )
   expect(escape()).toBe(false)
-  expect(recorder.state().phase).toBe('idle')
-  expect(capture.talking(sink)).toBe(true)
-  expect(sink.cancel).not.toHaveBeenCalled()
+  await capture.end()
+  flush()
+  expect(capture.talking(sink)).toBe(false)
+  expect(sink.cancel).toHaveBeenCalledOnce()
+  expect(sink.finish).not.toHaveBeenCalled()
+  expect(recorder.state().phase).toBe('recording')
   await settle()
   expect(stopRun).not.toHaveBeenCalled()
 
   expect(escape('keydown', true)).toBe(false)
-  expect(capture.talking(sink)).toBe(true)
+  expect(recorder.state().phase).toBe('recording')
   escape('keyup')
   expect(escape()).toBe(false)
-  expect(capture.talking(sink)).toBe(false)
-  await capture.end()
-  expect(sink.cancel).toHaveBeenCalledOnce()
-  expect(sink.finish).not.toHaveBeenCalled()
+  flush()
+  expect(recorder.state().phase).toBe('idle')
   expect(attached).toEqual([])
+  await settle()
   expect(stopRun).not.toHaveBeenCalled()
 
   escape('keyup')

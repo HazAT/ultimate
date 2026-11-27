@@ -58,6 +58,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { FileUpload, provide } from '../../../../web/src/sdk/solid.ts'
+import { installShortcuts } from '../../../../web/src/app/keyboard.ts'
 import { MessageQuestions } from '../../card.solid.tsx'
 
 const agent = createAgent()
@@ -149,7 +150,10 @@ it('announces the current choice and rating, and clears picks without advancing'
   await press(sidebar)
   expect(choice(sidebar)?.getAttribute('aria-current')).toBe('true')
   expect(choice(status)?.getAttribute('aria-current')).toBeNull()
-  const key = (value: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key: value }))
+  const key = (value: string) =>
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }),
+    )
   key('Escape')
   await vi.advanceTimersByTimeAsync(350)
   flush()
@@ -171,6 +175,45 @@ it('announces the current choice and rating, and clears picks without advancing'
   expect(choice(rating)?.getAttribute('aria-current')).toBe('true')
   expect(choice('Rating 2 · question 3 · message 7')?.getAttribute('aria-current')).toBeNull()
   await uiState.flush()
+})
+
+it('Escape undoes the answer, then clears the pick, and only then stops a busy run', async ({
+  onTestFinished,
+}) => {
+  const stopRun = vi.fn<() => void>()
+  await registry.setLoaders({
+    '/extensions/agent/web.solid.tsx': async () => ({
+      default: {
+        commands: [{ id: 'agent.stop', title: 'Stop the run', keys: 'escape', run: stopRun }],
+      },
+    }),
+  })
+  const uninstall = installShortcuts()
+  onTestFinished(async () => {
+    uninstall()
+    await registry.setLoaders({})
+  })
+  renderSolid(() => <MessageQuestions message={message} keys={true} withActions={false} />)
+  await press('Option 2 · Status line · question 1 · message 5')
+  await press('Send 1 of 2: answer to message 5')
+  const escape = () =>
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    )
+  escape()
+  flush()
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(stopRun).not.toHaveBeenCalled()
+  expect(harness.actions).toEqual([])
+  const option = '[aria-label="Option 2 · Status line · question 1 · message 5"]'
+  expect(document.querySelector(option)?.hasAttribute('data-selected')).toBe(true)
+  escape()
+  flush()
+  expect(document.querySelector(option)?.hasAttribute('data-selected')).toBe(false)
+  expect(stopRun).not.toHaveBeenCalled()
+  escape()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(stopRun).toHaveBeenCalledOnce()
 })
 
 it('opens the next question on Enter when recommended picks answer every question', async () => {
@@ -195,11 +238,15 @@ it('opens the next question on Enter when recommended picks answer every questio
   ))
   const current = () => card.querySelector('[data-question] fieldset[data-current]')
   expect(current()?.closest('[data-question]')?.getAttribute('data-question')).toBe('0')
-  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  document.body.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+  )
   flush()
   expect(current()?.closest('[data-question]')?.getAttribute('data-question')).toBe('1')
   expect(card.querySelector('[aria-label="Undo: answer to message 9"]')).toBeNull()
-  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  document.body.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+  )
   await vi.advanceTimersByTimeAsync(3000)
   expect(harness.actions).toEqual([
     {

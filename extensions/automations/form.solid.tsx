@@ -41,7 +41,7 @@ const input = 'h-8 bg-transparent px-2.5 font-sans text-[13px]'
 const monoInput = `${input} font-mono text-[12.5px]`
 const label = 'text-[12.5px] font-medium text-foreground/90'
 const area = 'bg-transparent px-2.5'
-const submitKeys = (formatKeys('mod+enter')[0] ?? []).join('+')
+const submitKeys = formatKeys('mod+enter').join('+')
 const triggers = [
   {
     value: 'schedule',

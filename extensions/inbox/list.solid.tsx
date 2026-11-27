@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo } from 'solid-js'
+import { For, Show, createMemo } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
@@ -8,6 +8,7 @@ import {
   showSurface,
   switchConversation,
   useNow,
+  useShortcut,
   useUiState,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
@@ -82,47 +83,27 @@ export function List(props: { rows: readonly Row[]; phone: boolean }) {
   const current = createMemo(() => shown(props.rows, selected()))
   const select = ({ key, at }: Anchor) => setSelected({ key, at, open: true })
 
-  const onKey = (event: KeyboardEvent) => {
-    const target = event.target
-    if (
-      event.defaultPrevented ||
-      event.isComposing ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey ||
-      (target instanceof Element &&
-        target.closest('input, textarea, select, [contenteditable="true"]')) ||
-      document.querySelector(
-        '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
-      )
-    )
-      return
-
+  const move = (step: number) => () => {
     const row = current()
-    if (!row) return
-    if (event.key === 'j' || event.key === 'k') {
-      event.preventDefault()
-      const rows = props.rows
-      const at = rows.findIndex((candidate) => candidate.key === row.key)
-      const step = event.key === 'j' ? 1 : -1
-      select(rows[Math.max(0, Math.min(rows.length - 1, at + step))])
-    } else if (event.key === 'O') {
-      event.preventDefault()
-      const { conversation, message } = row
-      if (conversation === undefined) return
-      if (message !== undefined) events.emit('messages:open', { conversation, message })
-      showSurface('agent')
-      switchConversation(conversation)
-    }
+    const rows = props.rows
+    const at = rows.findIndex((candidate) => candidate.key === row?.key)
+    select(rows[Math.max(0, Math.min(rows.length - 1, at + step))])
   }
-  createEffect(
-    () => !props.phone,
-    (desktop) => {
-      if (!desktop) return undefined
-      window.addEventListener('keydown', onKey, true)
-      return () => window.removeEventListener('keydown', onKey, true)
-    },
-  )
+  const open = () => {
+    const { conversation, message } = current() ?? {}
+    if (conversation === undefined) return
+    if (message !== undefined) events.emit('messages:open', { conversation, message })
+    showSurface('agent')
+    switchConversation(conversation)
+  }
+  const keys = () => ({ when: () => !props.phone && !!current(), repeat: true })
+  useShortcut('j', move(1), () => ({ ...keys(), description: 'Inbox: next item' }))
+  useShortcut('k', move(-1), () => ({ ...keys(), description: 'Inbox: previous item' }))
+  useShortcut('shift+o', open, () => ({
+    ...keys(),
+    repeat: false,
+    description: 'Inbox: open its conversation',
+  }))
 
   return (
     <div class="flex min-h-0 flex-1 flex-col">

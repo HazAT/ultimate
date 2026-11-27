@@ -3,7 +3,7 @@ import { createSignal } from 'solid-js'
 import { Button, buttonVariants } from '@/components/ui/button.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control.solid.tsx'
-import { cn, formatKeys } from '@/sdk/solid'
+import { cn, formatKeys, useCommands } from '@/sdk/solid'
 import { Switch } from '@/components/ui/switch.solid.tsx'
 import {
   keyChord,
@@ -73,21 +73,30 @@ export function DictationOptions(props: { name: string }) {
   )
 }
 
+const sameKeys = (a: string, b: string) => {
+  const parts = (keys: string) => keys.toLowerCase().split('+').toSorted().join('+')
+  return parts(a) === parts(b)
+}
+
 function ShortcutRecorder(props: { name: string }) {
+  const commands = useCommands()
   const [listening, setListening] = createSignal(false)
+  const [taken, setTaken] = createSignal<string>()
+  const stop = () => {
+    setListening(false)
+    setTaken(undefined)
+  }
   const record = (event: KeyboardEvent) => {
     event.preventDefault()
-    event.stopPropagation()
-    if (event.key === 'Escape') {
-      setListening(false)
-      return
-    }
+    if (event.key === 'Escape') return stop()
     const chord = keyChord(event)
     const hasKey = !['mod', 'ctrl', 'alt', 'shift'].includes(chord.split('+').at(-1)!)
     const hasModifier = chord.includes('+')
-    if (!hasKey || !hasModifier) return
+    if (!hasKey || !hasModifier) return undefined
+    const command = commands().find(({ keys }) => keys && sameKeys(keys, chord))
+    if (command) return setTaken(`${formatKeys(chord).join('+')} is ${command.title}`)
     setShortcut(chord)
-    setListening(false)
+    return stop()
   }
   return (
     <Button
@@ -96,15 +105,14 @@ function ShortcutRecorder(props: { name: string }) {
         'flex h-6 items-center gap-1 rounded-md border border-border/70 px-1.5 font-mono text-[11px] font-normal text-foreground/85 hover:bg-accent',
         listening() && 'border-brand/60 text-brand',
       )}
-      data-dictation-shortcut-recorder={listening() ? '' : undefined}
-      onBlur={() => setListening(false)}
+      onBlur={stop}
       onClick={() => setListening(true)}
       onKeyDown={(event: KeyboardEvent) => listening() && record(event)}
       size={null}
       title="Click, then press a key with a modifier (Ctrl, Alt, Shift); Esc cancels"
       variant={null}
     >
-      {listening() ? 'press keys…' : formatKeys(shortcut())[0].join('+')}
+      {listening() ? (taken() ?? 'press keys…') : formatKeys(shortcut()).join('+')}
     </Button>
   )
 }

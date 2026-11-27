@@ -5,10 +5,12 @@ Dictation: a mic button in every prompt box records speech and puts its transcri
 - **Click the mic to start or stop.** On touch or pen, hold the mic or tap to toggle, depending on the Talk mode.
   While recording the button becomes Cancel, an elapsed clock and Stop, and the box's bottom hairline shows the
   live voice level. Stop transcribes and inserts at the cursor with spaces as needed, never sending on its own.
-  Escape cancels. Recordings stop themselves after 5 minutes.
+  Escape cancels, ahead of any shortcut (`holdEscape`), and a held Escape cancels nothing more. Recordings stop
+  themselves after 5 minutes.
 - **Talk shortcut** (Ctrl/⌘+Shift+Space by default) goes to the focused prompt box. With none focused, it talks to
-  Voice if enabled; otherwise it focuses the main composer and dictates there. The cog next to any mic changes
-  the page-wide shortcut, Hold/Tap mode (Tap by default) and **Sound cues** (on by default): a soft rising
+  Voice if enabled; otherwise it focuses the main composer and dictates there. It registers in the page's shortcut
+  registry; hold-to-talk alone also listens for the key's release on `window`. The cog next to any mic changes
+  the page-wide shortcut (refusing a chord a command already uses, and naming that command), Hold/Tap mode (Tap by default) and **Sound cues** (on by default): a soft rising
   tone when recording starts and a falling one when it stops. The tones live in `lib/cues.web.ts`; Voice mode plays the same
   ones under its own Sound cues switch. It also provides the SDK's `DictationShortcut` point (gesture `tap`, keys
   `Ctrl+Shift+Space`), which the main composer's placeholder names; a phone names only the gesture. The three live in

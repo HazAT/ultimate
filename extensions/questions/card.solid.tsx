@@ -1,6 +1,6 @@
 import type { JSX } from '@solidjs/web'
 import { MessageCircleQuestion } from '@lucide/solid'
-import { createMemo, createSignal, For, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
@@ -10,7 +10,10 @@ import {
   api,
   cn,
   errorMessage,
+  holdEscape,
+  registerShortcut,
   ROOT,
+  useShortcut,
   useConversationId,
   useDocOf,
   useUiState,
@@ -291,57 +294,68 @@ function AnswerCard(props: CardProps & { id: number }) {
     } else return false
     return true
   }
-  const onKey = (event: KeyboardEvent) => {
-    if (!hints() || !questions().length || (locked() && phase() !== 'undo')) return
-    const target = event.target instanceof Element ? event.target : null
-    if (
-      event.defaultPrevented ||
-      root.closest('[data-receded]') ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey ||
-      target?.closest('input, textarea, select, [contenteditable="true"]') ||
-      (!root.contains(target) && target?.closest('[data-questions-card], button, a'))
+  const keyed = () => hints() && questions().length > 0
+  const reachable = () => {
+    const focused = document.activeElement
+    return (
+      !root.closest('[data-receded]') &&
+      (!focused || root.contains(focused) || !focused.closest('[data-questions-card], button, a'))
     )
-      return
-    if (phase() === 'undo') {
-      if (event.key === 'Escape' || event.key === 'u') {
-        event.preventDefault()
-        undo()
-      } else if (event.key === 'Enter') {
-        event.preventDefault()
-        flushAnswer()
-      }
-      return
-    }
-    const question = questions()[current()]
-    const choice =
-      question && /^[1-9a-z]$/.test(event.key) ? choiceForKey(question, event.key) : undefined
-    if (choice !== undefined) {
-      event.preventDefault()
-      select(current(), choice)
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault()
-      go(current() + (event.key === 'ArrowDown' ? 1 : -1))
-    } else if (event.key === 'Enter') {
-      event.preventDefault()
-      if (event.shiftKey) send(true)
-      else enter()
-    } else if (event.key === 'Escape' && question && word(current())) {
-      event.preventDefault()
+  }
+  const answering = () => keyed() && !locked() && reachable()
+  const undoing = () => keyed() && phase() === 'undo'
+  const shownQuestion = () => questions()[current()]
+  const choiceKeys = createMemo(() => {
+    const shown = keyed() && !locked() ? shownQuestion() : undefined
+    if (!shown) return []
+    const keys = choices(shown).flatMap((_, i) => [
+      ...(i < 9 ? [String(i + 1)] : []),
+      keyOf(shown, i) ?? [],
+    ])
+    return [...new Set(keys.flat())]
+  })
+  const choose = (key: string) => {
+    const shown = shownQuestion()
+    const choice = shown && choiceForKey(shown, key)
+    if (choice !== undefined) select(current(), choice)
+  }
+  createEffect(choiceKeys, (keys) => {
+    const off = keys.map((key) =>
+      registerShortcut(key, () => choose(key), {
+        when: reachable,
+        description: `Choose ${key} on message ${props.id}`,
+      }),
+    )
+    return () => off.forEach((release) => release())
+  })
+  createEffect(undoing, (undoable) => (undoable ? holdEscape(undo) : undefined))
+  const named = (when: () => boolean, description: string) => () => ({
+    when,
+    description: `${description} on message ${props.id}`,
+  })
+  useShortcut('u', undo, named(undoing, 'Undo the answer'))
+  useShortcut(
+    'enter',
+    () => (phase() === 'undo' ? flushAnswer() : enter()),
+    named(() => undoing() || answering(), 'Next or send'),
+  )
+  useShortcut('shift+enter', () => send(true), named(answering, 'Send now'))
+  useShortcut('arrowdown', () => go(current() + 1), named(answering, 'Next question'))
+  useShortcut('arrowup', () => go(current() - 1), named(answering, 'Previous question'))
+  useShortcut('/', () => noteField?.focus(), named(answering, 'Write a note'))
+  useShortcut('shift+/', () => noteField?.focus(), named(answering, 'Write a note'))
+  useShortcut(
+    'escape',
+    () => {
       advance?.()
       draft(current(), () => ({ chosen: [] }))
-    } else if (event.key === '/') {
-      event.preventDefault()
-      noteField?.focus()
-    }
-  }
+    },
+    named(() => answering() && !!shownQuestion() && !!word(current()), 'Clear the answer'),
+  )
   onSettled(() => {
-    const listeners = new AbortController()
-    window.addEventListener('keydown', onKey, { signal: listeners.signal })
-    window.addEventListener('pagehide', flushAnswer, { signal: listeners.signal })
+    window.addEventListener('pagehide', flushAnswer)
     return () => {
-      listeners.abort()
+      window.removeEventListener('pagehide', flushAnswer)
       advance?.()
       flushAnswer()
     }

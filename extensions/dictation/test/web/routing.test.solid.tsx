@@ -116,7 +116,6 @@ function key(type: 'keydown' | 'keyup', handled = true) {
     key: ' ',
     code: 'Space',
     ctrlKey: true,
-    metaKey: true,
     shiftKey: true,
     cancelable: true,
     bubbles: true,

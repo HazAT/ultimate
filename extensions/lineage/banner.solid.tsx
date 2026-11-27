@@ -100,7 +100,7 @@ function HistoryBanner(props: { id: number; dock?: boolean }) {
             <ArrowLeft />
             Back to @ultimate
             <KbdGroup class="hidden sm:inline-flex pointer-coarse:hidden">
-              <For each={formatKeys('mod+0')[0]}>{(key) => <Kbd>{key}</Kbd>}</For>
+              <For each={formatKeys('mod+0')}>{(key) => <Kbd>{key}</Kbd>}</For>
             </KbdGroup>
           </Button>
         </div>

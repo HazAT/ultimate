@@ -155,6 +155,7 @@ export type Take = {
 export function createCapture(keepOpen = () => false) {
   const mic = createMic(() => keepOpen())
   const [active, setActive] = createSignal<Sink>()
+  const [pending, setPending] = createSignal(false)
   let current: { sink: Sink; take: Take } | undefined
   const latest = new WeakMap<Sink, Take>()
   let micWork: Promise<unknown> = Promise.resolve()
@@ -180,6 +181,7 @@ export function createCapture(keepOpen = () => false) {
     const clear = () => {
       current = undefined
       setActive(undefined)
+      setPending(false)
       signal?.removeEventListener('abort', abort)
       cap?.()
       cap = undefined
@@ -223,6 +225,7 @@ export function createCapture(keepOpen = () => false) {
       }),
     }
     current = { sink, take }
+    setPending(true)
     latest.set(sink, take)
     signal?.addEventListener('abort', abort, { once: true })
     sink.start?.()
@@ -240,6 +243,7 @@ export function createCapture(keepOpen = () => false) {
     end,
     take,
     talking: (owner?: Sink) => take(owner) !== undefined,
+    pending,
     capturing: (owner?: Sink) => {
       const sink = active()
       return !!sink && (!owner || owner === sink)

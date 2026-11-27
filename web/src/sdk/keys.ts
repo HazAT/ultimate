@@ -15,18 +15,7 @@ export function chordOf(event: KeyboardEvent): string {
   return parts.join('+')
 }
 
-export function parseKeys(keys: string): string[] {
-  const order = ['mod', 'ctrl', 'alt', 'shift']
-  return keys
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .map((chord) => {
-      const parts = chord.split('+').map((part) => (part === 'esc' ? 'escape' : part))
-      const modifiers = order.filter((modifier) => parts.includes(modifier))
-      return [...modifiers, ...parts.filter((part) => !order.includes(part))].join('+')
-    })
-}
+const order = ['mod', 'ctrl', 'alt', 'shift']
 
 const symbols: Record<string, string> = isMac
   ? {
@@ -50,11 +39,15 @@ const symbols: Record<string, string> = isMac
       space: 'Space',
     }
 
-/** Display parts of a shortcut, one array of keys per chord: `mod+k m` → [['⌘','K'],['M']]. */
-export function formatKeys(keys: string): string[][] {
-  return parseKeys(keys).map((chord) =>
-    chord
-      .split('+')
-      .map((part) => symbols[part] ?? (part.length === 1 ? part.toUpperCase() : part)),
-  )
+/** Display keys of a shortcut, modifiers first: `shift+mod+k` → ['⌘', '⇧', 'K']. */
+export function formatKeys(keys: string): string[] {
+  const parts = keys
+    .trim()
+    .toLowerCase()
+    .split('+')
+    .map((part) => (part === 'esc' ? 'escape' : part))
+  return [
+    ...order.filter((modifier) => parts.includes(modifier)),
+    ...parts.filter((part) => !order.includes(part)),
+  ].map((part) => symbols[part] ?? (part.length === 1 ? part.toUpperCase() : part))
 }

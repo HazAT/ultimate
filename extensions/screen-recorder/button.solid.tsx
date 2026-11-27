@@ -2,7 +2,7 @@ import { LoaderCircle, ScreenShare, Square, X } from '@lucide/solid'
 import { createEffect, createRoot, createSignal, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
-import { holdReload, useEnabled, useNow } from '@/sdk/solid'
+import { holdEscape, holdReload, useEnabled, useNow } from '@/sdk/solid'
 import type { PromptRecorder } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.shared.ts'
 import { browserMedia, createScreenRecorder, screenSupported } from './capture.web.ts'
@@ -22,29 +22,12 @@ export function recordButton(recorder: ScreenRecorder, supported: () => boolean)
   const phase = createRoot(() => {
     const [current, setCurrent] = createSignal<Phase>(recorder.state())
     recorder.subscribe(() => setCurrent(recorder.state()))
+    createEffect(
+      () => current().phase === 'recording',
+      (recording) => (recording ? holdEscape(recorder.cancel) : undefined),
+    )
     return current
   })
-  let escapeHeld = false
-  window.addEventListener(
-    'keydown',
-    (event) => {
-      if (event.key !== 'Escape') return
-      const cancels = !event.repeat && recorder.state().phase === 'recording'
-      if (!event.repeat) escapeHeld = cancels
-      if (!escapeHeld) return
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      if (cancels) recorder.cancel()
-    },
-    { capture: true },
-  )
-  window.addEventListener(
-    'keyup',
-    (event) => {
-      if (event.key === 'Escape') escapeHeld = false
-    },
-    { capture: true },
-  )
 
   return function RecordButton(props: RecorderProps) {
     const box: Box = {

@@ -15,11 +15,11 @@ afterEach(() => vi.unstubAllGlobals())
 it.each(['Linux', 'MacIntel'])('normalizes and displays shortcuts on %s', async (platform) => {
   vi.resetModules()
   vi.stubGlobal('navigator', { platform })
-  const { chordOf, parseKeys, formatKeys } = await import('../../web/src/sdk/keys.ts')
-  expect(parseKeys(' Shift+MOD+K   Esc ')).toEqual(['mod+shift+k', 'escape'])
-  expect(formatKeys('mod+shift+k esc')).toEqual(
-    platform === 'MacIntel' ? [['⌘', '⇧', 'K'], ['esc']] : [['Ctrl', 'Shift', 'K'], ['Esc']],
+  const { chordOf, formatKeys } = await import('../../web/src/sdk/keys.ts')
+  expect(formatKeys(' Shift+MOD+K ')).toEqual(
+    platform === 'MacIntel' ? ['⌘', '⇧', 'K'] : ['Ctrl', 'Shift', 'K'],
   )
+  expect(formatKeys('esc')).toEqual([platform === 'MacIntel' ? 'esc' : 'Esc'])
   expect(
     chordOf(
       event({ shiftKey: true, ctrlKey: platform === 'Linux', metaKey: platform === 'MacIntel' }),

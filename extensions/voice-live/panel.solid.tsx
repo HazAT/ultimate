@@ -129,8 +129,8 @@ function TalkOrType(props: { onTalk?: () => void; children: JSX.Element; dock?: 
 
 const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground pointer-coarse:size-9'
-const keys = () => formatKeys(KEYS)[0].join('+')
-const holdKeys = () => formatKeys(shortcut())[0].join('+')
+const keys = () => formatKeys(KEYS).join('+')
+const holdKeys = () => formatKeys(shortcut()).join('+')
 const tap = () => talkMode() === 'tap'
 const talkVerb = () => (tap() ? 'tap' : 'hold')
 

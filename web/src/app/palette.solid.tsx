@@ -22,15 +22,9 @@ import { HOME } from '../sdk/registry.ts'
 
 export function Shortcut(props: { keys: string }) {
   return (
-    <span class="flex items-center gap-1">
-      <For each={formatKeys(props.keys)}>
-        {(chord) => (
-          <KbdGroup>
-            <For each={chord}>{(key) => <Kbd>{key}</Kbd>}</For>
-          </KbdGroup>
-        )}
-      </For>
-    </span>
+    <KbdGroup>
+      <For each={formatKeys(props.keys)}>{(key) => <Kbd>{key}</Kbd>}</For>
+    </KbdGroup>
   )
 }
 

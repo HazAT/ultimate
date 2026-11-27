@@ -52,8 +52,9 @@ advance in steps. Dismiss closes the message without an answer. Beside it, the `
 field (sent as a Reply to that message) and Dismiss. On desktop, 1–9 or an option's letter (`y`/`n` for Yes/No, `o`
 for Something else) chooses, ↑/↓ moves between questions, Enter goes to the next question while one is unanswered,
 and sends from the last one or once all are answered; ⇧Enter sends at once, like a held Send; `/` focuses the note field, where Enter sends and
-⇧Enter breaks a line; Esc clears an answer, leaves the note field or, while Undo fills, undoes (so does `u`; Enter sends at once). Only the shown
-conversation's newest open card takes these keys; they leave alone input/textarea editing and keys pressed in another
+⇧Enter breaks a line; Esc clears an answer, leaves the note field or, while Undo fills, undoes (so does `u`; Enter sends at once). The undo
+window holds Escape (`holdEscape`), so it undoes before Escape can stop a run; the keys register in the page's
+shortcut registry. Only the shown conversation's newest open card takes these keys; they leave alone input/textarea editing and keys pressed in another
 card, on another control or in the panel, whose cards take no global keys.
 
 What the user picked and typed on a card lives in durable UI state, by message (`ext.questions.cards`), so leaving a
