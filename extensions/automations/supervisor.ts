@@ -7,7 +7,17 @@ import type {
 } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { access, appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  access,
+  appendFile,
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
@@ -137,19 +147,18 @@ export function supervisor(
 ) {
   const reloadStableProcessState = host.resource('automations.supervisor.state', () => ({
     runs: new Map<string, Run>(),
-    launches: new Set<Promise<void>>(),
+    launches: new Map<string, Promise<void>>(),
     effects: new Map<string, Promise<void>>(),
     closing: false,
   }))
   const { runs, launches, effects } = reloadStableProcessState
-  const chapterIsolatedRuntimeRoot = () =>
+  const chapterFolder = (chapter: string) =>
     join(
       host.userHome,
       '.ultimate/automations',
-      host.chapter.name === FIRST_CHAPTER
-        ? basename(host.home)
-        : `${basename(host.home)}@${host.chapter.name}`,
+      chapter === FIRST_CHAPTER ? basename(host.home) : `${basename(host.home)}@${chapter}`,
     )
+  const chapterIsolatedRuntimeRoot = () => chapterFolder(host.chapter.name)
   const folder = (id: string) => join(chapterIsolatedRuntimeRoot(), id)
   const projectDir = (id: string) => join(host.projectRoot, '.ultimate/automations', id)
   const runPath = (sub: Pick<Automation, 'id' | 'scope'>) =>
@@ -542,12 +551,17 @@ export function supervisor(
     } else if ((await readPid(id)) === pid) await cleanup(id, pid)
   }
   async function launch(id: string, previousPid?: number) {
+    const inFlight = launches.get(id)
+    if (inFlight) {
+      await settled(inFlight)
+      return
+    }
     const work = launchRun(id, previousPid)
-    launches.add(work)
+    launches.set(id, work)
     try {
       await work
     } finally {
-      launches.delete(work)
+      launches.delete(id)
     }
   }
   async function launchRun(id: string, previousPid?: number) {
@@ -702,6 +716,24 @@ export function supervisor(
   function resetFailuresOnSuccessfulFire(sub: Automation) {
     delete sub.script!.failures
   }
+  async function carryScriptState(id: string, from: string) {
+    if (from === host.chapter.name) return
+    const sub = (await host.harness().snapshot(Automations, BACKGROUND_CONTEXT))?.automations[id]
+    if (sub?.scope !== 'project') return
+    const dir = folder(id)
+    const dest = join(dir, 'state')
+    if (await exists(dest)) return
+    await mkdir(dir, { recursive: true })
+    const staged = join(dir, 'state.carrying')
+    await rm(staged, { recursive: true, force: true })
+    try {
+      await cp(join(chapterFolder(from), id, 'state'), staged, { recursive: true })
+      await rename(staged, dest)
+    } catch (error) {
+      await rm(staged, { recursive: true, force: true })
+      if (!isMissing(error)) throw error
+    }
+  }
   async function effect(value: Effect) {
     if (value.action === 'resume') {
       try {
@@ -763,7 +795,7 @@ export function supervisor(
   }
   const close = async () => {
     reloadStableProcessState.closing = true
-    await Promise.allSettled(launches)
+    await Promise.allSettled(launches.values())
     for (const [id, run] of runs) await stopProcess(id, run.child.pid, 'shutdown')
   }
   const open = async () => {
@@ -811,6 +843,7 @@ export function supervisor(
     trusted,
     agentFor,
     projectDir,
+    carryScriptState,
     manifest,
     committedManifest,
     snapshot,

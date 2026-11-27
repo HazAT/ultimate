@@ -27,6 +27,10 @@ export type Seed = {
     scope?: 'project'
     name: string
     ask: string
+    once: boolean
+    armed?: boolean
+    secrets?: string[]
+    to?: string
     prompt?: string
     agent?: string
     model?: { provider: string; modelId: string }
