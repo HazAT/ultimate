@@ -30,7 +30,7 @@ import {
   type SolidToolProps,
 } from '@/sdk/solid'
 import { parseConversationId } from '../../lib/ids.ts'
-import { ConversationRef } from '../conversations/ui.solid.tsx'
+import { ConversationRef, useOverview } from '../conversations/ui.solid.tsx'
 import { NoteEntry } from '../entries/refs.ts'
 import { Open } from '../workspaces/ui.solid.tsx'
 import { BranchedEntry } from './entries.ts'
@@ -153,6 +153,7 @@ function Started(props: BranchRow) {
 
 export const Abstract = renderEntry(AbstractEntry, function AbstractCard(props) {
   const transcript = useTranscript()
+  const overview = useOverview()
   const abstract = createMemo(() => {
     const entry = props.entry
     if (entry.data.anchor !== undefined) return undefined
@@ -163,6 +164,12 @@ export const Abstract = renderEntry(AbstractEntry, function AbstractCard(props) 
     if (latest.edits?.some((edit) => edit.target === entry.id && edit.action === 'omit'))
       return undefined
     return AbstractEntry.is(latest) ? latest.data : undefined
+  })
+  const outOfDate = createMemo(() => {
+    const current = abstract()
+    if (!current) return false
+    const row = overview()[current.conversation]
+    return row?.summaryStatus === 'error' || row?.assessmentStatus === 'error'
   })
   return (
     <Show when={abstract()}>
@@ -177,6 +184,11 @@ export const Abstract = renderEntry(AbstractEntry, function AbstractCard(props) 
               <span class="flex min-w-0 text-foreground/80">
                 <ConversationRef id={data().conversation} title={data().title} />
               </span>
+              <Show when={outOfDate()}>
+                <span class="shrink-0 text-muted-foreground/80" data-abstract-stale="true">
+                  · out of date
+                </span>
+              </Show>
             </>
           }
         >
@@ -198,6 +210,11 @@ export const Abstract = renderEntry(AbstractEntry, function AbstractCard(props) 
               >
                 <ConversationRef id={data().conversation} title={data().title} />
               </Button>
+              <Show when={outOfDate()}>
+                <span class="shrink-0 text-muted-foreground/80" data-abstract-stale="true">
+                  · out of date
+                </span>
+              </Show>
               <div class="ml-auto flex shrink-0">
                 <Open card={props.entry.id} entry={data().at} id={data().conversation} />
               </div>

@@ -157,9 +157,13 @@ Each accepted automatic title change appends a `conversations.title-changed` ent
 agent-triggered tool or model message. Unchanged titles, protected manual titles, stale results, failures and
 an unavailable summary model produce no action. Entries survive reload/restart without duplication; old changes are not
 backfilled and manual renames are not logged.
-The task saves the provider response before parsing it and adds reported usage even for stale or invalid results.
-Replaying a saved response does not count it again. Crashing before it is saved can repeat the request.
-State survives reloads and restarts. Failed requests preserve the last summary and retry on the next reply.
+The task saves each attempt's provider response before parsing it and adds reported usage even for stale or invalid
+results. Replaying a saved response does not count it again. Crashing before it is saved can repeat the request.
+Transient or incomplete failures (provider errors, timeouts, invalid JSON, unfinished stop reasons) retry durably up to
+twice (2 s, then 10 s via `SUMMARY_RETRY_DELAYS_MS`) with per-attempt response memos, stopping immediately when
+superseded, reset or when the chosen model is unavailable; a `length` truncation doubles the output budget (clamped to
+the model's `maxTokens`) for the retry. State survives reloads and restarts. Exhausted retries preserve the last summary,
+record `conversations.summary-discarded` and retry on the next reply.
 When the summary model is unavailable in the model runtime, summaries and assessments are skipped quietly, without a
 task. A task that finds no available model before it chose one settles quietly too: no discard entry, no error status.
 

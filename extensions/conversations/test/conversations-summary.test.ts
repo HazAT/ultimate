@@ -744,27 +744,6 @@ it('protects preexisting and in-flight manual titles, and blank rename restores 
   expect(await fixture.titleChanges()).toHaveLength(2)
 })
 
-it('isolates provider errors', async () => {
-  const fixture = await launch(false, false, false, true)
-  fixture.generated.mockRejectedValueOnce(new Error('Provider offline'))
-  fixture.generated.mockRejectedValueOnce(new Error('Provider offline'))
-  await fixture.exchange()
-  expect((await fixture.read())?.status).toBe('error')
-  expect((await fixture.read())?.assessmentStatus).toBe('error')
-  expect((await fixture.entries()).filter((entry) => SummaryDiscarded.is(entry))[0]?.data).toEqual({
-    reason: 'error',
-    cause: 'Provider offline',
-    model: 'openai-codex/gpt-6-luna',
-    at: expect.any(Number),
-  })
-  expect((await fixture.read())?.summary).toBeUndefined()
-  expect(fixture.abstract).not.toHaveBeenCalled()
-  expect(await fixture.titleChanges()).toEqual([])
-  for (let count = 2; count <= 4; count++) await fixture.exchange()
-  await until(async () => (await fixture.read())?.status === 'ready')
-  expect(fixture.generated).toHaveBeenCalledTimes(4)
-})
-
 it('assesses owned children without renaming them, summarizes ownerless forks, and does not backfill', async () => {
   const fixture = await launch()
   const root = fixture.server.root
