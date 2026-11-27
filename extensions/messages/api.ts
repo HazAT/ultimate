@@ -16,46 +16,9 @@ import { defineDoc } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Device } from '../../shared/events.ts'
 import { JudgementsDoc, MessagesDoc } from './refs.ts'
-import type { Judged, Question, Remote, Via } from './refs.ts'
+import type { Judged, Message } from './refs.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
-/** One message as the log stores it. */
-export type Message = {
-  id: number
-  /** `remote`: another project's Ultimate, named by `remote`. */
-  from: ConversationId | 'user' | 'remote'
-  to: ConversationId | 'user' | 'remote'
-  text: string
-  at: number
-  reply: boolean
-  re?: number
-  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'failed' | 'stopped'
-  entry?: EntryId
-  answer?: EntryId
-  error?: string
-  /** The tool call that sent it: `message`'s or `branch`'s own id, `<script>/<n>` for a nested codemode call. */
-  call?: string
-  /** Images forwarded with it: the sender's entry that holds them, attached to the recipient's input on delivery. */
-  images?: { entry: EntryId; count: number }
-  /** A branch's final answer routed to its starter after it stopped with nothing under way: it awaits the starter. */
-  report?: true
-  /** The starter's final answer to a branch's report or reply, routed to that branch: the answer's entry. */
-  routed?: EntryId
-  /** A branch's report answering routed answers only: the starter's answer to it stays local. */
-  echo?: true
-  /** The other project's Ultimate a `remote` side names. */
-  remote?: Remote
-  /** A reply to another Ultimate's request whose serving work goes on; that request stays open for the result. */
-  interim?: true
-  /** The owner already settled this request before its original answer was delivered. */
-  ownerSettled?: true
-  /** The questions a reply-expected message to the user asks, answered on its card. */
-  questions?: Question[]
-  /** A user answer or dismissal that @ultimate settled for the user, not their own click. */
-  via?: Via
-  /** How the judge weighed this branch's final answer before it went to the starter. */
-  judged?: Judged
-}
 /**
  * The tool call ids of every reply-expected question a conversation asked the user, oldest first, on that
  * conversation. Unlike the message log it is never trimmed, so a call keeps marking where its question was asked.
@@ -144,7 +107,7 @@ export type MessagesService = {
   dropped(tx: Tx, automation: string, source: string, why: string): Promise<void>
 }
 export { MessageSent } from './refs.ts'
-export type { Question, Serves } from './refs.ts'
+export type { Message, Question, Serves } from './refs.ts'
 /** The judge's verdict on each of a branch's final answers, by answer entry, on the branch; never trimmed. */
 export const Judgements = defineDoc<{ answers: Record<number, Judged> }>({
   kind: JudgementsDoc.kind,
