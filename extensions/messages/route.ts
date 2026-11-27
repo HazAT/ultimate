@@ -12,9 +12,9 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { Judge, Judgements, Messages } from './api.ts'
+import { Judgements, Messages } from './api.ts'
 import type { JudgeState } from './api.ts'
-import { within } from '../../lib/timers.shared.ts'
+import { judge } from './judge.ts'
 import { isOpen } from '../../lib/message-state.shared.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
@@ -28,7 +28,6 @@ import { ownerOutput, sameOwner, Serving, Started } from './addresses.ts'
 import { sendResult } from './delivery.ts'
 import { scanNonterminalTasks } from './tasks.ts'
 
-const JUDGE_TIMEOUT_MS = 10_000
 const EXCERPT = { before: 600, input: 500, answer: 1200 }
 
 function inputSource(entry: EntryRecord | undefined): string {
@@ -70,37 +69,6 @@ async function branchSaidBefore(tx: Tx, id: ConversationId, before: EntryId) {
     cursor = page.next
   } while (cursor !== undefined)
   return ''
-}
-
-class JudgeTimeout extends Error {}
-
-async function judge(
-  host: ExtensionHost,
-  state: JudgeState,
-  signal: AbortSignal,
-): Promise<{ report: number } | { error: string }> {
-  const service = host.want(Judge)
-  if (!service) return { error: 'no judge' }
-  const stop = new AbortController()
-  try {
-    const cancelled = new Promise<never>((_resolve, reject) =>
-      signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
-    )
-    const p = await within(
-      JUDGE_TIMEOUT_MS,
-      Promise.race([service.report(state, AbortSignal.any([signal, stop.signal])), cancelled]),
-      () => new JudgeTimeout(),
-      signal,
-    )
-    if (!Number.isFinite(p) || p < 0 || p > 1) return { error: 'invalid verdict' }
-    return { report: p }
-  } catch (error) {
-    if (signal.aborted) throw error
-    if (error instanceof JudgeTimeout) return { error: 'timed out' }
-    return { error: error instanceof Error ? error.message.slice(0, 80) : 'judge failed' }
-  } finally {
-    stop.abort()
-  }
 }
 
 async function hasRunQueuedInputOrWakeTask(tx: Tx, id: ConversationId) {
@@ -467,8 +435,12 @@ export function route(host: ExtensionHost) {
           if (!askedBeforeACrash) await runtime.memo('asked', true, ctx)
           const verdict = askedBeforeACrash
             ? { error: 'interrupted' }
-            : await judge(host, state, runtime.signal)
-          judged = await runtime.memo<Judged>('judged', { answer, ...verdict }, ctx)
+            : await judge(host, (service, signal) => service.report(state, signal), runtime.signal)
+          judged = await runtime.memo<Judged>(
+            'judged',
+            'p' in verdict ? { answer, report: verdict.p } : { answer, ...verdict },
+            ctx,
+          )
         }
         const verdict = judged
         await runtime.commit(async (tx) => {

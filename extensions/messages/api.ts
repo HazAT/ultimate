@@ -169,8 +169,17 @@ export type JudgeService = {
    * provider's response body) when it cannot judge. Messages reports on a throw or anything outside [0, 1].
    */
   report(state: JudgeState, signal: AbortSignal): Promise<number>
+  /**
+   * The probability that `message`, an agent's message to the user without a question card, waits on the user's answer
+   * rather than only informing them. It throws like `report`; messages sends it one-way on a throw or anything outside
+   * [0, 1].
+   */
+  asks(message: string, signal: AbortSignal): Promise<number>
 }
-/** The extension point that judges whether a branch's answer wakes its starter; classify provides it. `want` it. */
+/**
+ * The extension point that judges whether a branch's answer wakes its starter and whether a card-less message to the
+ * user asks something; classify provides it. `want` it.
+ */
 export const Judge = defineApi<JudgeService>()('messages.judge')
 
 /** Messages between conversations; core, so `need` it. */

@@ -80,6 +80,7 @@ export async function send(
     judged?: Judged
     stillReports?: (tx: Tx) => Promise<boolean>
     serveBranch?: true
+    informs?: true
   } = {},
 ) {
   const { taskId, callId, requestId, answerId, device, via } = options
@@ -205,7 +206,7 @@ export async function send(
       from,
       to,
       text: input.text,
-      reply: input.reply ?? true,
+      reply: !options.informs && (input.reply ?? true),
       state: to === 'user' ? 'delivered' : 'sent',
       ...(re === undefined ? {} : { re }),
       ...(callId === undefined ? {} : { call: callId }),
