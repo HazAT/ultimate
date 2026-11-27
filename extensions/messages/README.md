@@ -82,7 +82,10 @@ another.
 A reply-expected message to the user stays open, and its sender shows as awaiting reply, until the user answers that
 message: a Reply with `re` (the answer card or a typed Reply). The delivered input reads `Answer to message N:` before
 the reply, so an asker with several cards open never guesses which one it answers; a spoken (voice) reply answers no
-card while several are open. Dismissing it closes it with a one-way note to the sender. A branch's question also puts an attention pointer (`board.asked`) in the conversation of the standing agent that
+card while several are open. Dismissing it closes it with a one-way note to the sender. When a branch asks a newer
+questions card, that card supersedes its own still-open one: the old card closes as `superseded` in the same commit,
+without a note or a wake, so refining a question never stacks stale cards in the Inbox; a standing agent's cards stay
+open side by side. A branch's question also puts an attention pointer (`board.asked`) in the conversation of the standing agent that
 started it (@ultimate when a coordinator, a side chat or no standing agent started it), and the user's answer a
 `board.answered` note there; neither starts a run. A branch with an open question shows as `waits on you`.
 
@@ -139,8 +142,9 @@ as `@ultimate@<project> on <machine>` with a globe mark and a violet accent.
 
 `Messages` (kind `board`, version 1) is exported on `ROOT_CONVERSATION_ID` as `{ messages: Message[]; next: number }`;
 the log keeps the newest 300 items, and transcripts retain delivered inputs. `Message` is in `api.ts`: `from` and `to`
-are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`, `failed` or
-`stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`, `questions` and `call` are optional.
+are a conversation id, `'user'` or `'remote'`; `state` is `sent`, `delivered`, `answered`, `dismissed`,
+`superseded`, `failed` or `stopped`; `re`, `entry`, `answer`, `error`, `via`, `remote`, `report`,
+`questions` and `call` are optional.
 
 - `board.message` data: `{ id, from, text, reply, delivery: 'steer' | 'followUp' | 'note', images?, remote?, judged? }`.
 - `board.reply` data: `{ id, re, from, text, failed, stopped?, images?, remote?, interim? }`; `stopped` also sets

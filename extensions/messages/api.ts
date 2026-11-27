@@ -29,7 +29,7 @@ export type Message = {
   at: number
   reply: boolean
   re?: number
-  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'failed' | 'stopped'
+  state: 'sent' | 'delivered' | 'answered' | 'dismissed' | 'superseded' | 'failed' | 'stopped'
   entry?: EntryId
   answer?: EntryId
   error?: string

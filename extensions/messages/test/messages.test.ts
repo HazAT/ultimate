@@ -44,6 +44,8 @@ import pauseExtension, { actions as pauseActions } from '../../pause/server.ts'
 import { AskedCalls, Judge, Judgements, Messages, MessageSent } from '../api.ts'
 import type { JudgeService, JudgeState } from '../api.ts'
 import { send as sendMessage } from '../send.ts'
+import { openQuestionsNote } from '../questions.ts'
+import { openQuestion } from '../../../lib/message-state.ts'
 import { UserInputEvent } from '../../../shared/events.ts'
 import type { MessagesService } from '../api.ts'
 import { BranchReceipts, rootOf, startBranch } from '../../lineage/server.ts'
@@ -1584,6 +1586,60 @@ it('points a branch question and its answer at the standing agent that started t
   expect(await kinds(triage.id)).toContain('board.asked')
   expect(await kinds(ROOT_CONVERSATION_ID)).not.toContain('board.asked')
   expect(await kinds(ROOT_CONVERSATION_ID)).not.toContain('board.answered')
+})
+it("supersedes a branch's own open questions when it asks the user again, without a dismissal reply", async () => {
+  const f = await fixture()
+  const b = await branched(f)
+  const ask = (text: string) =>
+    b.later(
+      'SEND ' + JSON.stringify({ to: 'user', text, questions: [{ text: 'Go?', kind: 'confirm' }] }),
+    )
+  await ask('First draft')
+  await ask('Second draft')
+  const [first, second] = (await f.log())!.messages.filter(
+    (m) => m.from === b.id && m.to === 'user',
+  )
+  expect([first.state, second.state]).toEqual(['superseded', 'delivered'])
+  // Only the newest card waits on the user.
+  expect((await f.log())!.messages.filter(openQuestion)).toEqual([second])
+  // Nothing went back to the branch as the user's dismissal: no reply, no wake, no answered note to @ultimate.
+  expect((await f.log())!.messages.filter((m) => m.from === 'user')).toEqual([])
+  const view = await f.opened.root.context(context)
+  expect(view.entries.filter((entry) => entry.kind === 'board.answered')).toEqual([])
+  const inputs = await eventHost(() => f.opened.harness, 'supersede').eventLog.recent({
+    events: [UserInputEvent],
+  })
+  expect(inputs).toEqual([])
+  // The branch's board.open line lists only the newest card.
+  const note = await f.opened.harness.commit(
+    (tx) => openQuestionsNote(tx, b.id as ConversationId, Date.now()),
+    context,
+  )
+  expect(JSON.stringify(note)).toContain(`message ${second.id}:`)
+  expect(JSON.stringify(note)).not.toContain(`message ${first.id}`)
+})
+it("keeps a standing agent's questions open side by side", async () => {
+  const f = await fixture()
+  await f.send('user', 'First topic', { questions: [{ text: 'A?', kind: 'confirm' }] })
+  await f.send('user', 'Second topic', { questions: [{ text: 'B?', kind: 'confirm' }] })
+  expect((await f.log())!.messages.filter((m) => m.to === 'user')).toMatchObject([
+    { from: 1, state: 'delivered', questions: [{ text: 'A?', kind: 'confirm' }] },
+    { from: 1, state: 'delivered', questions: [{ text: 'B?', kind: 'confirm' }] },
+  ])
+  expect((await f.log())!.messages.filter(openQuestion)).toHaveLength(2)
+})
+it("leaves a branch's open questions when its newer message to the user asks none", async () => {
+  const f = await fixture()
+  const b = await branched(f)
+  await b.later(
+    'SEND ' +
+      JSON.stringify({ to: 'user', text: 'Decide', questions: [{ text: 'Go?', kind: 'confirm' }] }),
+  )
+  await b.later('SEND ' + JSON.stringify({ to: 'user', text: 'Work continues meanwhile' }))
+  const [card, plain] = (await f.log())!.messages.filter((m) => m.from === b.id && m.to === 'user')
+  expect(card.state).toBe('delivered')
+  expect(plain).toMatchObject({ reply: true, state: 'delivered' })
+  expect((await f.log())!.messages.filter(openQuestion)).toHaveLength(2)
 })
 it('forwards images into a new branch with its prompt', async () => {
   const f = await fixture()

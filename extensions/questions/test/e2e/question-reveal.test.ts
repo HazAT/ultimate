@@ -27,7 +27,7 @@ afterEach(async () => {
 const step = (n: number) =>
   `## Step ${n}\n\n${'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(12)}\n\n- one\n- two\n- three`
 
-/** A branch asking two questions between long answers, another conversation, and a browser. */
+/** Two branches asking a question each between long answers, another conversation, and a browser. */
 async function setup() {
   const home = await temp('ultimate-question-reveal-')
   cleanup.push(() => removeTemp(home))
@@ -69,10 +69,11 @@ async function setup() {
   server.host.faux!.setResponses([route])
   const created = async () =>
     (await post(server, '/api/conversations', {})).data.id as ConversationId
-  const [branch, other] = [await created(), await created()]
-  // Started by another conversation, the branch may ask the user.
+  const [branch, other, second] = [await created(), await created(), await created()]
+  // Started by another conversation, the branches may ask the user.
   await server.harness.commit(async (tx) => {
     ;(await tx.doc(Started, branch)).by = other
+    ;(await tx.doc(Started, second)).by = other
   }, context)
   const say = async (id: number, content: string) =>
     (
@@ -81,9 +82,11 @@ async function setup() {
         context,
       )
     ).wait(context)
-  // One question sits between long answers, far above the bottom the conversation opens at; the other is the newest.
-  for (const content of ['one', 'two', 'ask early', 'three', 'four', 'five', 'six', 'ask last'])
+  // One question sits between long answers, far above the bottom the conversation opens at; the other is the
+  // newest. A branch's newer questions supersede its own open one, so the second comes from another branch.
+  for (const content of ['one', 'two', 'ask early', 'three', 'four', 'five', 'six'])
     await say(branch, content)
+  await say(second, 'ask last')
   await say(other, 'hello')
   const log = () => server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context)
   const asked = (await log())!.messages.filter((message) => message.to === 'user')

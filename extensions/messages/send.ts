@@ -217,6 +217,15 @@ export async function send(
       ...(options.judged ? { judged: options.judged } : {}),
       ...(via ? { via } : {}),
     })
+    if (
+      to === 'user' &&
+      questions !== undefined &&
+      typeof from === 'number' &&
+      !Object.values(await tx.doc(Standing, ROOT_CONVERSATION_ID)).includes(from)
+    )
+      for (const m of (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages)
+        if (m.id !== message.id && m.from === from && m.questions && openQuestion(m))
+          m.state = 'superseded'
     if (to === 'user' && message.reply && typeof from === 'number' && callId !== undefined)
       (await tx.doc(AskedCalls, from)).calls.push(callId)
     if (watcherId !== undefined) {
