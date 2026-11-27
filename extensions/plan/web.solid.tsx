@@ -133,17 +133,17 @@ function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
       const container = document.querySelector('[data-composer-target="conversation"]')
       form = container?.querySelector('form')
       if (!container?.parentElement || !form) return false
-      appeared.disconnect()
+      columnResizeObserver.disconnect()
       columnResizeObserver.observe(container.parentElement)
       columnResizeObserver.observe(form)
       measure()
       return true
     }
-    const appeared = new MutationObserver(attach)
-    if (!attach()) {
-      setAnchor(undefined)
-      appeared.observe(document.body, { childList: true, subtree: true })
-    }
+    const appeared = new MutationObserver(() => {
+      if (!form?.isConnected) attach()
+    })
+    if (!attach()) setAnchor(undefined)
+    appeared.observe(document.body, { childList: true, subtree: true })
     addEventListener('resize', measure)
     return () => {
       appeared.disconnect()
