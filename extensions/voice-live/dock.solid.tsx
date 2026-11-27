@@ -29,7 +29,6 @@ import {
   pendingKey,
   pulsing,
   replying,
-  settled,
   shownPhase,
   statusOf,
   transition,
@@ -61,12 +60,23 @@ type Session = {
   live: AbortController
   forks: Map<ConversationId, Readonly<VoiceFork>>
 }
-const newSession = (id?: ConversationId): Session => ({
-  id,
+const newSession = (): Session => ({
+  id: undefined,
   live: new AbortController(),
   forks: new Map(),
 })
-let session = newSession()
+const live = cell(newSession(), { notifyOnEqual: true })
+const session = () => live.get()
+const [draft, setDraft] = createRoot(() => {
+  const [held, setHeld] = createSignal<readonly VoiceClip[]>([])
+  const sync = () => {
+    const { id, forks } = live.get()
+    setHeld((id !== undefined && forks.get(id)?.draft) || [])
+  }
+  live.subscribe(sync)
+  return [held, sync] as const
+})
+export const draftOf = draft
 
 let voiced: string | undefined
 const owned = () => {
@@ -154,17 +164,14 @@ export { setScreen }
 type Waiter = { resolve: (text: string) => void; reject: (error: Error) => void }
 const waiting = new Map<string, Set<Waiter>>()
 const sending = new Set<string>()
-capture.setKeepOpen(() => session.id !== undefined)
+capture.setKeepOpen(() => session().id !== undefined)
 export const COLD_DRAFT = 'voice-live.cold'
 export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
   !!cold.text.trim() || cold.images.length > 0 || cold.files > 0
 export const composeIn = (id: ConversationId | undefined) => {
-  if (session.id !== undefined && id === undefined) endLocally()
-  session.id = id
-  setDraft((id !== undefined && session.forks.get(id)?.draft) || [])
+  if (session().id !== undefined && id === undefined) endLocally()
+  else live.set({ ...session(), id })
 }
-const [draft, setDraft] = createRoot(() => createSignal<VoiceClip[]>([]))
-export const draftOf = draft
 const settledTranscript = (audio: string, signal: AbortSignal) =>
   new Promise<string>((resolve, reject) => {
     if (signal.aborted) {
@@ -191,15 +198,15 @@ const settledTranscript = (audio: string, signal: AbortSignal) =>
     const ended = () => waiter.reject(signal.reason as Error)
     signal.addEventListener('abort', ended, { once: true })
     waiters.add(waiter)
-    for (const fork of session.forks.values()) settleTranscripts(fork)
+    for (const fork of session().forks.values()) settleTranscripts(fork)
   })
 
 export function settleTranscripts(
   fork: Readonly<VoiceFork> | null | undefined,
   id?: ConversationId,
 ) {
-  if (fork && id !== undefined) session.forks.set(id, fork)
-  if (id !== undefined && id === session.id) setDraft(fork?.draft ?? [])
+  if (fork && id !== undefined) session().forks.set(id, fork)
+  if (id !== undefined && id === session().id) setDraft()
   for (const [audio, waiters] of waiting) {
     const text = fork?.transcripts?.[audio]
     const failed = fork?.failed?.[audio]
@@ -244,15 +251,13 @@ export const retire = (key: string) =>
     [key]: kept,
   }))
 
-const busyNow = () => ours().playing || ours().paused || replying(state())
-
 function listening() {
   return capture.capturing(voiceSink)
 }
 
 export const voiceSink: Sink = {
   get signal() {
-    return session.live.signal
+    return session().live.signal
   },
   start() {
     dock.setError(undefined)
@@ -315,7 +320,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
     return
   }
   if (dock.collect()) {
-    await collectClip(recorded, typed, who)
+    await collectClip(recorded, typed, who, interrupted)
     return
   }
   await sendTurn({
@@ -326,9 +331,14 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
   })
 }
 
-async function collectClip(recorded: Recorded, typed: Typed | undefined, who: UiWho) {
-  const { signal } = session.live
-  const owner = session.id
+async function collectClip(
+  recorded: Recorded,
+  typed: Typed | undefined,
+  who: UiWho,
+  busy: boolean,
+) {
+  const { signal } = session().live
+  const owner = session().id
   let kept: string
   try {
     const audio = await base64(recorded.blob)
@@ -351,7 +361,12 @@ async function collectClip(recorded: Recorded, typed: Typed | undefined, who: Ui
   if (typed) {
     const earlier = draftOf().filter((clip) => clip.audio !== kept)
     const clip = { audio: kept, seconds: recorded.seconds, envelope: recorded.envelope }
-    await sendClips('steer', typed.text, false, [...earlier, clip], true, typed.images, who)
+    await sendClips('steer', typed.text, false, [...earlier, clip], {
+      fromComposer: true,
+      images: typed.images,
+      who,
+      busy,
+    })
     return
   }
   try {
@@ -365,15 +380,7 @@ async function collectClip(recorded: Recorded, typed: Typed | undefined, who: Ui
       if (intent.answered && !judged) {
         if (ours().paused) dock.player.resume()
       } else if (clips.length === chosen.size)
-        await sendClips(
-          intent.send,
-          '',
-          intent.answered ? 'answer' : true,
-          clips,
-          false,
-          undefined,
-          who,
-        )
+        await sendDraft(intent.send, '', intent.answered ? 'answer' : true, clips, who)
       else dispatch({ type: 'note', note: 'clips changed' })
     } else if (ours().paused) dock.player.resume()
   } catch (failure) {
@@ -386,9 +393,10 @@ export async function sendDraft(
   typed = '',
   spoken: boolean | 'answer' = false,
   clips: readonly VoiceClip[] = draftOf(),
+  who: UiWho = writerNow(),
 ) {
   if (typedIn(state())) return
-  await sendClips(delivery, typed, spoken, clips)
+  await sendClips(delivery, typed, spoken, clips, { who })
 }
 
 async function sendClips(
@@ -396,13 +404,16 @@ async function sendClips(
   typed: string,
   spoken: boolean | 'answer',
   clips: readonly VoiceClip[],
-  fromComposer = false,
-  images?: readonly Image[],
-  who: UiWho = writerNow(),
+  {
+    fromComposer = false,
+    images,
+    who = writerNow(),
+    busy = ours().playing || ours().paused || replying(state()),
+  }: { fromComposer?: boolean; images?: readonly Image[]; who?: UiWho; busy?: boolean },
 ) {
   clips = clips.filter((clip) => !sending.has(clip.audio))
   if (!clips.length && !typed.trim() && !images?.length) return
-  const interrupted = busyNow() && delivery === 'steer'
+  const interrupted = busy && delivery === 'steer'
   if (interrupted) dock.player.pause()
   else if (ours().paused) dock.player.resume()
   await sendTurn({
@@ -422,7 +433,7 @@ export const discardDraft = () => api.action(DiscardAction, null)
 export async function sendTyped(text: string, images: readonly Image[] = []) {
   const take = capture.take(voiceSink)
   if (take) {
-    const { signal } = session.live
+    const { signal } = session().live
     const typed = { text, images }
     dispatch({ type: 'enter', typed })
     try {
@@ -434,7 +445,7 @@ export async function sendTyped(text: string, images: readonly Image[] = []) {
     if (taken.has(typed)) return
   }
   const free = draftOf().filter((clip) => !sending.has(clip.audio))
-  if (free.length) return sendClips('steer', text, false, free, true, images)
+  if (free.length) return sendClips('steer', text, false, free, { fromComposer: true, images })
   if (!text.trim() && !images.length) return
   const interrupted = ours().playing || replying(state())
   dock.player.pause()
@@ -442,7 +453,7 @@ export async function sendTyped(text: string, images: readonly Image[] = []) {
 }
 
 function heardNothing(key: string) {
-  dock.player.stop()
+  if (pendingKey(state()) === key) dock.player.stop()
   dock.setLocal(({ [key]: _dropped, ...rest }) => rest)
   dispatch({ type: 'silent', key })
 }
@@ -458,9 +469,9 @@ async function sendTurn(input: {
   fromComposer?: boolean
   who?: UiWho
 }) {
-  const { signal } = session.live
+  const { signal } = session().live
   const who = input.who ?? writerNow()
-  let owner = session.id
+  let owner = session().id
   const cancelled = () => {
     if (input.fromComposer) throw signal.reason
   }
@@ -472,14 +483,14 @@ async function sendTurn(input: {
   const hint = [screen()?.text, sentBySaying].filter(Boolean).join('\n\n') || undefined
   if (signal.aborted) return cancelled()
   const cold = composerDraft(COLD_DRAFT)
-  const fromCold = !input.fromComposer && (session.id === undefined || coldHolds(cold))
+  const fromCold = !input.fromComposer && (owner === undefined || coldHolds(cold))
   const box = input.images
     ? undefined
     : fromCold
       ? cold
-      : session.id === undefined
+      : owner === undefined
         ? undefined
-        : composerDraft(session.id)
+        : composerDraft(owner)
   const takes =
     !!box &&
     (box.images.length > 0 || box.attachments.length > 0 || (fromCold && !!box.text.trim()))
@@ -500,7 +511,8 @@ async function sendTurn(input: {
       dispatch({ type: 'interrupt' })
       await api.action(StopAction, null, { signal, who }).catch((failure: unknown) => {
         if (signal.aborted) return
-        if (pendingKey(state()) === undefined) dispatch({ type: 'abandon' })
+        if (state().phase === 'sending' && pendingKey(state()) === undefined)
+          dispatch({ type: 'abandon' })
         throw failure
       })
     }
@@ -621,6 +633,7 @@ export type TurnView = {
   key: string
   data: VoiceTurn
   replies: AssistantMessage[]
+  entries: number[]
   live?: AssistantMessage
   optimistic?: true
 }
@@ -636,10 +649,12 @@ export function turnsIn(conversation: ReturnType<ReturnType<typeof useConversati
   for (const entry of conversation.entries) {
     if (entry.kind === 'voice.turn') {
       const data = entry.data as VoiceTurn
-      turns.push({ key: data.key, data, replies: [] })
+      turns.push({ key: data.key, data, replies: [], entries: [] })
     } else if (entry.kind === 'pi.assistant' && turns.length) {
       const message = entry.model?.[0]
-      if (message?.role === 'assistant') turns.at(-1)!.replies.push(message)
+      if (message?.role !== 'assistant') continue
+      turns.at(-1)!.replies.push(message)
+      turns.at(-1)!.entries.push(entry.id)
     }
   }
   const last = turns.at(-1)
@@ -656,20 +671,10 @@ export function turnsIn(conversation: ReturnType<ReturnType<typeof useConversati
         key,
         data: local.optimistic,
         replies: [],
+        entries: [],
         optimistic: true,
       })
   return { turns, busy: conversation.busy }
-}
-
-export function replyEntries(entries: readonly EntryRecord[], key: string) {
-  const ids: number[] = []
-  let inside = false
-  for (const entry of entries)
-    if (entry.kind === 'voice.turn') {
-      if (inside) break
-      inside = (entry.data as VoiceTurn).key === key
-    } else if (inside && entry.kind === 'pi.assistant') ids.push(entry.id)
-  return ids
 }
 
 export function imagesOf(entry: EntryRecord) {
@@ -747,7 +752,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
       dispatch({ type: 'generated', key: latest.key })
       void (ours().key === latest.key ? dock.player.idle() : Promise.resolve()).then(() => {
         if (pendingKey(state()) !== latest.key) return
-        if (state().phase !== 'recording') dock.cues.done()
+        if (shownPhase(state()) !== 'recording') dock.cues.done()
         dispatch({ type: 'finished', key: latest.key })
       })
     },
@@ -755,7 +760,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
   createEffect(
     () => playerState().playing && playerState().key,
     (key) => {
-      if (key && settled(state()).phase !== 'speaking') dispatch({ type: 'playing' })
+      if (key) dispatch({ type: 'playing', key })
     },
   )
 }
@@ -763,10 +768,9 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
 function endLocally() {
   void capture.end(voiceSink)
   dock.player.stop()
-  session.live.abort(new Error('The voice session ended'))
-  session = newSession()
+  session().live.abort(new Error('The voice session ended'))
   voiced = undefined
-  setDraft([])
+  live.set(newSession())
   dock.setLocal({})
   dispatch({ type: 'ended' })
 }

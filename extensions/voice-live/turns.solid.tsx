@@ -19,7 +19,6 @@ import {
   imagesIn,
   imagesOf,
   playerState,
-  replyEntries,
   replyOf,
   setActivity,
   settleTranscripts,
@@ -88,11 +87,13 @@ function useSpokenReply(key: () => string) {
     const content = transcript.content()
     if (!content) return []
     const state = conversation()
-    const rows = replyEntries(state.entries, key()).flatMap((id) => [
+    const { turns } = turnsIn(state)
+    const turn = turns.find((each) => each.key === key())
+    const rows = (turn?.entries ?? []).flatMap((id) => [
       ...content.querySelectorAll(`[data-entry-id="${id}"]`),
     ])
-    const last = turnsIn(state).turns.at(-1)?.key === key()
-    const live = last && state.busy ? [...content.querySelectorAll(streaming)] : []
+    const live =
+      turn && turns.at(-1) === turn && state.busy ? [...content.querySelectorAll(streaming)] : []
     return [...rows, ...live].filter(
       (element, _index, all) => !all.some((other) => other !== element && other.contains(element)),
     )

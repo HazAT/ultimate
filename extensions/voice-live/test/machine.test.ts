@@ -8,7 +8,7 @@ const thinking = run(
   { type: 'send', key: 'a', voice: true },
   { type: 'sent', key: 'a' },
 )
-const speaking = run(thinking, { type: 'words', key: 'a' }, { type: 'playing' })
+const speaking = run(thinking, { type: 'words', key: 'a' }, { type: 'playing', key: 'a' })
 const spoke = { type: 'stop', retaking: false, spoke: true, collect: false, paused: false } as const
 
 it('Enter while recording holds the typed text for the recording, which sends it with its words', () => {
@@ -91,6 +91,7 @@ it('a recording too short to send says why and returns to the reply it paused', 
     note: 'too short hold',
   })
   expect(statusOf(kept)).toBe('Not enough audio · kept going')
+  expect(statusOf(transition(kept, { type: 'playing', key: 'a' }))).toBe('Speaking')
   const idle = run(
     { phase: 'idle' },
     { type: 'press', busy: false },
@@ -98,6 +99,27 @@ it('a recording too short to send says why and returns to the reply it paused', 
     { ...spoke, spoke: false, note: 'too short tap' },
   )
   expect(statusOf(idle)).toBe('Too short: tap again when you are done')
+})
+
+it('the previous reply resuming during a new send leaves the new turn thinking', () => {
+  const next = run(
+    speaking,
+    { type: 'send', key: 'b', voice: false },
+    { type: 'playing', key: 'a' },
+    { type: 'sent', key: 'b' },
+  )
+  expect(next).toEqual({ phase: 'thinking', key: 'b' })
+})
+
+it('after a finished reply, a collected clip or a too-short take still says what happened', () => {
+  const done = run(speaking, { type: 'finished', key: 'a' })
+  const take = run(done, { type: 'press', busy: false }, { type: 'open' })
+  expect(statusOf(transition(take, { ...spoke, collect: true }))).toBe(
+    'Collecting · say "send it" or press Enter',
+  )
+  const short = transition(take, { ...spoke, spoke: false, note: 'too short hold' })
+  expect(short).toMatchObject({ phase: 'idle', key: 'a' })
+  expect(statusOf(short)).toBe('Too short: hold while you talk')
 })
 
 it('a failed send shows its error until the next press', () => {

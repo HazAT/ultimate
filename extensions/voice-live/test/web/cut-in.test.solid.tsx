@@ -70,6 +70,7 @@ const reply = (key: string, text: string): TurnView => ({
       content: [{ type: 'text', text }],
     } as TurnView['replies'][number],
   ],
+  entries: [],
 })
 
 it('cutting in stops the earlier reply’s speech and its turn, and what it streams next stays silent', async () => {
@@ -109,7 +110,7 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
   setView({ turns: [reply(thirdKey, 'Still streaming. More arrives. Even')], busy: true })
   flush()
   expect(speech.state.get()).toMatchObject({ key: 'read-aloud:elsewhere' })
-  dispatch({ type: 'playing' })
+  dispatch({ type: 'playing', key: thirdKey })
   const elsewhere = sendTyped('cutting in while another source speaks')
   await vi.waitFor(() => expect(harness.turns).toHaveLength(3))
   expect(harness.stops).toBe(2)
