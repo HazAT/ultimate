@@ -1017,7 +1017,7 @@ function quietTask(host: ExtensionHost) {
             )
             if (!['stop', 'length'].includes(response.stopReason) || !response.text.trim())
               throw new Error(
-                `summaryModel failed (${response.stopReason}): ${response.text || 'no answer'}`,
+                `summaryModel failed (${response.stopReason}): ${response.errorMessage ?? (response.text || 'no answer')}`,
               )
           } catch (error) {
             if (runtime.signal.aborted) throw error

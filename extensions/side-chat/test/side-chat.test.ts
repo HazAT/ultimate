@@ -44,8 +44,8 @@ afterEach(async () => {
 const textOf = (content: unknown): string =>
   typeof content === 'string'
     ? content
-    : Array.isArray(content) && content[0]?.type === 'text'
-      ? content[0].text
+    : Array.isArray(content) && content.some((part) => part?.type === 'text')
+      ? content.find((part) => part?.type === 'text').text
       : JSON.stringify(content)
 
 async function fixture() {
@@ -96,7 +96,7 @@ async function fixture() {
         await hold.promise
       }
       if (gate.summaryFailure)
-        return fauxAssistantMessage(gate.summaryFailure, {
+        return fauxAssistantMessage('', {
           stopReason: 'error',
           errorMessage: gate.summaryFailure,
         })
@@ -890,6 +890,29 @@ describe('side chats', () => {
       f.gate.summaryFailure = 'another model failure'
       expect((await f.action('inject', { id: discardable })).status).toBe(500)
       expect((await f.action('discard', { id: discardable })).status).toBe(200)
+    } finally {
+      await writeFile(
+        join(ultimateRoot, '.ultimate/settings.json'),
+        JSON.stringify({ summaryModel: 'unavailable/test' }),
+      )
+    }
+  })
+
+  it('summarizes a side chat with an image tool result as text, without the image', async () => {
+    const f = await fixture()
+    const side = await f.open('SCREENSHOT FINDING')
+    const pixel =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    await writeFile(join(f.home, 'shot.png'), Buffer.from(pixel, 'base64'))
+    await f.call(side, 'read', { path: join(f.home, 'shot.png') })
+    expect(JSON.stringify(await entries(f.server, side))).toContain(pixel.slice(0, 40))
+    await writeFile(join(ultimateRoot, '.ultimate/settings.json'), JSON.stringify({}))
+    try {
+      expect((await f.action('inject', { id: side })).status).toBe(200)
+      expect(f.summaries).toHaveLength(1)
+      expect(f.summaries[0]).toContain('SCREENSHOT FINDING')
+      expect(f.summaries[0]).toContain('shot.png')
+      expect(f.summaries[0]).not.toContain(pixel.slice(0, 40))
     } finally {
       await writeFile(
         join(ultimateRoot, '.ultimate/settings.json'),

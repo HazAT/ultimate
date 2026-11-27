@@ -57,6 +57,7 @@ export type ResponseReceipt = {
   usage?: JsonRepresentation<Usage>
   text: string
   stopReason: AssistantMessage['stopReason']
+  errorMessage?: string
 }
 
 type ConsideredSteerId = SubmissionId
@@ -218,6 +219,7 @@ export async function askSummaryModel(
         usage: answer.usage,
         text,
         stopReason: answer.stopReason,
+        errorMessage: answer.errorMessage,
       },
       { omitUndefinedProperties: true },
     ) as ResponseReceipt
