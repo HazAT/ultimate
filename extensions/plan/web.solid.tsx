@@ -82,38 +82,49 @@ function Panel(props: {
   )
 }
 
+type Anchor =
+  | { left: number; width: number; pill: number; bottom: number }
+  | { right: number; bottom: number }
+
+const overlayStyle = (anchor: Anchor) =>
+  'left' in anchor
+    ? {
+        left: `${anchor.left}px`,
+        bottom: `${anchor.bottom}px`,
+        'max-width': `${anchor.width}px`,
+        '--plan-pill': `${anchor.pill}px`,
+      }
+    : {
+        right: `${anchor.right}px`,
+        bottom: `${anchor.bottom}px`,
+        'max-width': 'calc(100vw - 1.5rem)',
+        '--plan-pill': '100%',
+      }
+
 function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
-  const [anchor, setAnchor] = createSignal<{
-    left: number
-    width: number
-    pill: number
-    bottom: number
-  }>()
+  const [anchor, setAnchor] = createSignal<Anchor>()
   createEffect(conversationId, () => {
     let form: HTMLFormElement | null | undefined
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
       const toggle = form
-        .closest(':has([data-ui="voice-mode-switch"])')
-        ?.querySelector('[data-ui="voice-mode-switch"]')
+        .closest(':has(> * > [data-ui="voice-mode-switch"])')
+        ?.querySelector(':scope > * > [data-ui="voice-mode-switch"]')
       const end = toggle?.getBoundingClientRect()
       const row = toggle?.parentElement
-      const { left, right, stop } =
-        row && end && end.width > 0
-          ? {
-              left: Math.max(
-                rect.left,
-                row.getBoundingClientRect().left + parseFloat(getComputedStyle(row).paddingLeft),
-              ),
-              right: end.right,
-              stop: end.left - 8,
-            }
-          : { left: rect.left, right: rect.right, stop: rect.right }
+      if (!row || !end || end.width === 0) {
+        setAnchor({ right: innerWidth - rect.right, bottom: innerHeight - rect.top + 6 })
+        return
+      }
+      const left = Math.max(
+        rect.left,
+        row.getBoundingClientRect().left + parseFloat(getComputedStyle(row).paddingLeft),
+      )
       setAnchor({
         left,
-        width: right - left,
-        pill: stop - left,
+        width: end.right - left,
+        pill: end.left - 8 - left,
         bottom: innerHeight - rect.top + 6,
       })
     }
@@ -163,13 +174,11 @@ function PlanOverlay() {
     <Show when={surface() === 'agent' && anchor() && conversationId()} keyed>
       {(conversation) => (
         <div
-          class="pointer-events-none fixed z-30 flex flex-col items-start gap-1.5"
-          style={{
-            left: `${anchor()!.left}px`,
-            bottom: `${anchor()!.bottom}px`,
-            'max-width': `${anchor()!.width}px`,
-            '--plan-pill': `${anchor()!.pill}px`,
-          }}
+          class={cn(
+            'pointer-events-none fixed z-30 flex flex-col gap-1.5',
+            'left' in anchor()! ? 'items-start' : 'items-end',
+          )}
+          style={overlayStyle(anchor()!)}
         >
           <Show
             when={task()}
