@@ -96,15 +96,28 @@ async function browserProcess(browser: Browser) {
   return pid === undefined || start === undefined ? undefined : { pid, start }
 }
 
+type BrowserOwner = { pid: number; start: string }
+const owners = new WeakMap<Browser, Promise<BrowserOwner | undefined>>()
+
 const gone = (error: unknown) => ['ESRCH', 'EPERM'].includes(errnoCode(error) ?? '')
 
-function killDisconnectedBrowserGroup(owner: { pid: number; start: string } | undefined) {
+function killBrowserGroup(owner: BrowserOwner | undefined) {
   if (!owner || identify(owner.pid) !== owner.start) return
   const target = groupTarget(owner.pid)
   try {
     process.kill(target, 'SIGKILL')
   } catch (error) {
     ignoring(gone)(error)
+  }
+}
+
+async function closeBrowser(browser: Browser) {
+  try {
+    await within(closeTimeoutMs, browser.close())
+  } catch (error) {
+    const owner = owners.get(browser) ?? Promise.resolve(undefined)
+    killBrowserGroup(await within(closeTimeoutMs, owner).catch(meansNone))
+    throw error
   }
 }
 
@@ -168,7 +181,13 @@ export default function browserExtension(host: ExtensionHost) {
   const state = host.resource('browser', () => {
     const resource: { launched?: Promise<Browser>; browser?: Browser } = {}
     host.onClose(async () => {
-      if (resource.launched) await (await resource.launched).close()
+      const browser = await resource.launched?.catch(meansNone)
+      resource.launched = undefined
+      resource.browser = undefined
+      if (browser)
+        await closeBrowser(browser).catch((reason: unknown) =>
+          host.notice(`Closing the browser failed: ${String(reason)}`),
+        )
     })
     return resource
   })
@@ -517,6 +536,7 @@ export default function browserExtension(host: ExtensionHost) {
             })
             if (state.launched === launched) state.browser = browser
             const owner = browserProcess(browser).catch(meansNone)
+            owners.set(browser, owner)
             browser.once('disconnected', () => {
               if (state.launched === launched) {
                 state.launched = undefined
@@ -525,7 +545,7 @@ export default function browserExtension(host: ExtensionHost) {
               inProcess(
                 'the disconnected browser was launched by this process',
                 owner
-                  .then(killDisconnectedBrowserGroup)
+                  .then(killBrowserGroup)
                   .catch((error: unknown) =>
                     host.notice(`Killing a disconnected browser failed: ${String(error)}`),
                   ),
@@ -639,7 +659,7 @@ export default function browserExtension(host: ExtensionHost) {
         state.launched = undefined
         state.browser = undefined
       }
-      await within(closeTimeoutMs, browser.close()).catch((reason: unknown) =>
+      await closeBrowser(browser).catch((reason: unknown) =>
         host.notice(`Closing the wedged browser failed: ${String(reason)}`),
       )
     }
