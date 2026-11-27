@@ -513,9 +513,9 @@ it('applies each automation call in one script to its own arguments', async () =
 
 it('reserves trust and secret writes for the UI while allowing normal actions', async () => {
   const { server, options } = await fixture()
-  // Onboarding and secrets use the shared helpers in lib/.
+  // Manager and secrets use the shared helpers in lib/.
   await cp(resolve('lib'), join(options.ultimateRoot, 'lib'), { recursive: true })
-  const probes = { onboarding: 'decide', secrets: 'set' } as const
+  const probes = { manager: 'decide', secrets: 'set' } as const
   for (const [name, probe] of Object.entries(probes)) {
     await cp(resolve(`extensions/${name}`), join(options.ultimateRoot, `extensions/${name}`), {
       recursive: true,
@@ -523,7 +523,7 @@ it('reserves trust and secret writes for the UI while allowing normal actions', 
     await until(() => !!server.extensions.action(name, probe))
   }
   for (const [extension, action, args] of [
-    ['onboarding', 'decide', { local: true }],
+    ['manager', 'decide', { local: true }],
     ['secrets', 'set', { name: 'TEST_KEY', value: 'test-value' }],
   ] as const) {
     const denied = await run(

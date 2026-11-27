@@ -90,15 +90,13 @@ function KeyAction(props: { error: string; id: string }) {
   const label = () =>
     secrets() ? (props.error.includes('rejected') ? 'Replace key' : 'Add key') : 'Turn on secrets'
   return (
-    <Show
-      when={props.error.includes('PARALLEL_API_KEY') && (secrets() || has('onboarding.extensions'))}
-    >
+    <Show when={props.error.includes('PARALLEL_API_KEY') && (secrets() || has('manager.open'))}>
       <Button
         aria-label={`${label()} for Parallel #${props.id}`}
         class="mr-1.5 h-6 shrink-0 px-2 font-mono text-[11px]"
         onClick={() => {
           if (secrets()) events.emit('secrets:open', { name: 'PARALLEL_API_KEY' })
-          else return runCommand('onboarding.extensions')
+          else return runCommand('manager.open')
         }}
         size="xs"
         type="button"

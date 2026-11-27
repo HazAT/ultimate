@@ -1,10 +1,4 @@
-import {
-  BlocksIcon,
-  CheckIcon,
-  FolderCogIcon,
-  GitBranchIcon,
-  LoaderCircleIcon,
-} from '@lucide/solid'
+import { CheckIcon, FolderCogIcon, GitBranchIcon, LoaderCircleIcon } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
@@ -36,13 +30,13 @@ import {
   type EntryRecord,
   type SolidToolProps,
 } from '@/sdk/solid'
+import { projectHelpDialog } from '../manager/ui.solid.tsx'
 import { ListAction } from '../secrets/refs.ts'
 import { IsolationAction } from '../workspaces/refs.ts'
 import { settledChoice } from './choices.web.ts'
-import { firstRunDialog, gitDialog, projectDialog } from './dialogs.web.ts'
+import { firstRunDialog, gitDialog } from './dialogs.web.ts'
 import { ChoiceEntry, StartEntry } from './entries.ts'
 import { FirstRun, GitCard, ProjectCard, Recommended } from './pages.solid.tsx'
-import { ExtensionsPanel } from './panel.solid.tsx'
 import {
   ChooseAction,
   HelpAction,
@@ -99,7 +93,7 @@ async function askUltimate(card: 'project' | 'git') {
 function Onboarding() {
   const status = useAction(StatusAction, null, { conversation: ROOT })
   const [finished, setFinished] = createSignal(false)
-  const [projectOpen, setProjectOpen] = useDialog(projectDialog)
+  const [projectOpen, setProjectOpen] = useDialog(projectHelpDialog)
   const [gitOpen, setGitOpen] = useDialog(gitDialog)
   const [again, setAgain] = useDialog(firstRunDialog)
   const [error, setError] = createSignal<string>()
@@ -435,21 +429,7 @@ export default defineWebExtension({
       { component: Undecided, phone: true },
     ],
   },
-  panels: [
-    {
-      id: 'extensions',
-      title: 'Extensions',
-      icon: BlocksIcon,
-      component: ExtensionsPanel,
-      order: 8,
-    },
-  ],
   commands: [
-    {
-      id: 'onboarding.extensions',
-      title: 'Extensions…',
-      run: (context) => context.openPanel('extensions'),
-    },
     {
       id: 'onboarding.first-run',
       title: 'Get ready…',

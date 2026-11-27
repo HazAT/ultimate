@@ -25,8 +25,8 @@ Lint's `declared-requires` fails on an undeclared one: without it, the other's b
 off, and the feature half-works with no word why (voice-live before it declared `requires`).
 
 Today's core tier: agent, prompt, coding-tools, entries, conversations, models, documents, notices, secrets, theme,
-workspaces, subagents, lineage, messages, automations, onboarding (the first run and @ultimate's setup cards need it)
-and sidebar.
+workspaces, subagents, lineage, messages, automations, manager (the Extensions panel, the only way to turn an
+extension back on), onboarding (the first run and @ultimate's setup cards need it) and sidebar.
 
 Dependencies point one way. A core-tier extension imports (runtime or type), needs and wants only core-tier
 extensions; lint's `core-tier-deps` enforces the imports, and the catalogue has no cycles. `pnpm deps`
@@ -44,7 +44,7 @@ extension depending on an optional one. The core layers, lowest first, each depe
 6. lineage: roots, branches, tallies, notes.
 7. messages: delivery and the `branch` tool.
 8. automations: schedules, scripts, events and context triggers that wake conversations.
-9. onboarding and agent.
+9. manager: the Extensions panel and the project decision; then onboarding, which uses it, and agent.
 10. sidebar: the sidebar and the @ultimate button, the UI that brings the core together.
 
 Where a lower extension needs something a higher one knows, it declares the contract and the higher one fills it:
