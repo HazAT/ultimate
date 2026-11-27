@@ -41,7 +41,6 @@ function serve() {
     aborts.set(id, abort)
     const done = (error: Error | null, stdout = '', stderr = '') => {
       aborts.delete(id)
-      children.delete(id)
       send({ id, event: 'done', stdout, stderr, ...(error && { error: data(error) }) })
     }
     try {
@@ -52,6 +51,7 @@ function serve() {
         done,
       )
       children.set(id, { child })
+      child.once('close', () => children.delete(id))
       child.stdin?.end()
     } catch (error) {
       done(error as Error)
