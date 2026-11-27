@@ -74,24 +74,24 @@ function useSpokenReply(key: () => string) {
   const conversation = useConversation()
   const transcript = useTranscriptElements()
   const spoken = createMemo(() => playerState().key === key())
+  const turn = createMemo(() =>
+    spoken() ? turnsIn(conversation()).turns.find((each) => each.key === key()) : undefined,
+  )
   const sentences = createMemo(() => {
-    if (!spoken()) return []
-    const state = conversation()
-    const turn = turnsIn(state).turns.find((each) => each.key === key())
-    if (!turn) return []
-    const parts = replyOf(turn).parts
-    return splitReply(state.busy ? parts : parts.map((part) => ({ ...part, final: true })))
+    const shown = turn()
+    if (!shown) return []
+    const parts = replyOf(shown).parts
+    return splitReply(conversation().busy ? parts : parts.map((part) => ({ ...part, final: true })))
       .sentences
   })
   const replies = () => {
     const content = transcript.content()
-    if (!content) return []
-    const state = conversation()
-    const turn = turnsIn(state).turns.find((each) => each.key === key())
-    const rows = (turn?.entries ?? []).flatMap((id) => [
+    const shown = turn()
+    if (!content || !shown) return []
+    const rows = shown.entries.flatMap((id) => [
       ...content.querySelectorAll(`[data-entry-id="${id}"]`),
     ])
-    const live = turn?.live ? [...content.querySelectorAll(streaming)] : []
+    const live = shown.live ? [...content.querySelectorAll(streaming)] : []
     return [...rows, ...live].filter(
       (element, _index, all) => !all.some((other) => other !== element && other.contains(element)),
     )

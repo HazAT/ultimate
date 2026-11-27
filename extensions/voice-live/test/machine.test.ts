@@ -150,6 +150,25 @@ it('a collected clip sent with Enter keeps following the reply until it is sent,
   expect(failed).toEqual({ phase: 'speaking', key: 'a' })
 })
 
+it('the earlier turn being acknowledged or failing keeps the clips Enter reserved until its own send', () => {
+  const typed = { text: 'and this', images: [] }
+  const uploading = run(
+    { phase: 'idle' },
+    { type: 'send', key: 'a', voice: false },
+    { type: 'press', busy: true },
+    { type: 'open' },
+    { type: 'enter', typed },
+    { ...spoke, collect: true },
+  )
+  for (const event of [
+    { type: 'sent', key: 'a' },
+    { type: 'failed', key: 'a', message: 'offline' },
+    { type: 'silent', key: 'a' },
+  ] as const)
+    expect(typedIn(transition(uploading, event))).toBe(typed)
+  expect(typedIn(transition(uploading, { type: 'send', key: 'b', voice: true }))).toBeUndefined()
+})
+
 it('a failed send shows its error until the next press', () => {
   const failed = run(
     { phase: 'idle' },

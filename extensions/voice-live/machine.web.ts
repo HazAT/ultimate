@@ -12,15 +12,15 @@ export type Note =
   | 'collecting'
   | 'clips changed'
 
-type Turn = { key?: string; note?: Note; replied?: true }
+type Turn = { key?: string; note?: Note; replied?: true; typed?: Typed }
 
 export type Settled =
   | ({ phase: 'idle' } & Turn)
-  | ({ phase: 'sending'; voice: boolean; typed?: Typed } & Turn)
+  | ({ phase: 'sending'; voice: boolean } & Turn)
   | ({ phase: 'thinking'; words?: true } & Turn)
   | ({ phase: 'speaking' } & Turn)
   | ({ phase: 'done'; stopped?: true } & Turn)
-  | { phase: 'error'; key?: string; message: string }
+  | { phase: 'error'; key?: string; message: string; typed?: Typed }
 
 type Recording = {
   phase: 'recording'
@@ -97,11 +97,7 @@ export const pulsing = (state: DockState) => {
 }
 
 export const typedIn = (state: DockState): Typed | undefined =>
-  state.phase === 'recording'
-    ? (state.typed ?? typedIn(state.before))
-    : state.phase === 'sending'
-      ? state.typed
-      : undefined
+  state.phase === 'recording' ? (state.typed ?? state.before.typed) : state.typed
 
 const noted = (state: Of<Settled, 'idle' | 'sending' | 'thinking' | 'speaking' | 'done'>) =>
   state.note && notes[state.note]
@@ -218,8 +214,14 @@ const settling: Handlers<Settled, Settled> = {
   note: (state, event) => noting(state, event.note),
 }
 
-const settle = (state: Settled, event: DockEvent): Settled =>
-  (settling[event.type] as (state: Settled, event: DockEvent) => Settled)(state, event)
+const releases = new Set<DockEvent['type']>(['send', 'abandon', 'ended'])
+
+const settle = (state: Settled, event: DockEvent): Settled => {
+  const next = (settling[event.type] as (state: Settled, event: DockEvent) => Settled)(state, event)
+  return state.typed && !releases.has(event.type) && next.typed !== state.typed
+    ? { ...next, typed: state.typed }
+    : next
+}
 
 const meanwhile = (state: Recording, event: DockEvent): DockState => ({
   ...state,

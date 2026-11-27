@@ -5,6 +5,7 @@ import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
 import {
   composeIn,
+  dispatch,
   dock,
   sendDraft,
   sendTyped,
@@ -151,6 +152,31 @@ it('Enter during a recording while collecting sends the collected clips, the new
       clips: ['clip-0', 'rec-1'],
       images: [shot],
     }),
+  ])
+})
+
+it('an earlier turn acknowledged while Enter uploads its clip leaves Follow-up nothing to send', async () => {
+  dock.setCollect(true)
+  flush()
+  const earlier = { audio: 'clip-0', seconds: 2 }
+  settleTranscripts({ draft: [earlier] }, session)
+  dispatch({ type: 'send', key: 'earlier', voice: false })
+  await capture.press(voiceSink)?.started
+  speak()
+  let uploaded = () => {}
+  harness.record = new Promise((resolve) => (uploaded = resolve))
+  const sent = sendTyped('look at this')
+  await vi.waitFor(() => expect(dock.state().phase).toBe('sending'))
+  dispatch({ type: 'sent', key: 'earlier' })
+  await sendDraft('followUp')
+  uploaded()
+  settleTranscripts(
+    { draft: [earlier], transcripts: { 'clip-0': 'first', 'rec-1': 'second' } },
+    session,
+  )
+  await sent
+  expect(harness.turns).toEqual([
+    expect.objectContaining({ text: 'first second\n\nlook at this', clips: ['clip-0', 'rec-1'] }),
   ])
 })
 
