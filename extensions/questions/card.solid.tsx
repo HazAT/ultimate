@@ -332,7 +332,15 @@ function AnswerCard(props: CardProps & { id: number }) {
     description: `${description} on message ${props.id}`,
   })
   useShortcut('u', undo, named(undoing, 'Undo the answer'))
-  useShortcut('escape', undo, named(undoing, 'Undo the answer'))
+  const inComposerOrPage = () => {
+    const focused = document.activeElement
+    const typing = focused?.closest('input, textarea, select, [contenteditable="true"]')
+    return !typing || !!focused?.closest('[data-composer-target="conversation"]')
+  }
+  useShortcut('escape', undo, () => ({
+    ...named(() => undoing() && inComposerOrPage(), 'Undo the answer')(),
+    allowInInput: true,
+  }))
   useShortcut(
     'enter',
     () => (phase() === 'undo' ? flushAnswer() : enter()),

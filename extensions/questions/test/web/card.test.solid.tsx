@@ -184,7 +184,15 @@ it('Escape undoes the answer, then clears the pick, and only then stops a busy r
   await registry.setLoaders({
     '/extensions/agent/web.solid.tsx': async () => ({
       default: {
-        commands: [{ id: 'agent.stop', title: 'Stop the run', keys: 'escape', run: stopRun }],
+        commands: [
+          {
+            id: 'agent.stop',
+            title: 'Stop the run',
+            keys: 'escape',
+            whileTyping: true,
+            run: stopRun,
+          },
+        ],
       },
     }),
   })
@@ -193,14 +201,24 @@ it('Escape undoes the answer, then clears the pick, and only then stops a busy r
     uninstall()
     await registry.setLoaders({})
   })
-  renderSolid(() => <MessageQuestions message={message} keys={true} withActions={false} />)
+  const page = renderSolid(() => (
+    <>
+      <MessageQuestions message={message} keys={true} withActions={false} />
+      <div data-composer-target="conversation">
+        <textarea aria-label="Composer" />
+      </div>
+    </>
+  ))
   await press('Option 2 · Status line · question 1 · message 5')
   await press('Send 1 of 2: answer to message 5')
+  const composer = page.querySelector<HTMLTextAreaElement>('[aria-label="Composer"]')!
+  composer.focus()
   const escape = () =>
-    document.body.dispatchEvent(
+    (document.activeElement ?? document.body).dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
     )
   escape()
+  composer.blur()
   flush()
   await vi.advanceTimersByTimeAsync(3000)
   expect(stopRun).not.toHaveBeenCalled()

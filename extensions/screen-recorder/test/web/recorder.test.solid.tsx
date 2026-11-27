@@ -330,7 +330,7 @@ it('Escape in a busy composer cancels the newest of dictation and screen recordi
   )
 })
 
-it('Escape in a prompt box whose own Escape blurs it still cancels a recording first', async ({
+it('Escape in a prompt box whose own Escape blurs it cancels a recording first, and only a new press reaches the box', async ({
   onTestFinished,
 }) => {
   vi.stubGlobal('matchMedia', () => ({
@@ -359,12 +359,19 @@ it('Escape in a prompt box whose own Escape blurs it still cancels a recording f
   const { recorder } = mount({ name: 'box A', draft: 1 })
   await press('Record the screen into box A')
   field.focus()
-  field.dispatchEvent(
-    new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true }),
-  )
+  const escape = (type: 'keydown' | 'keyup', repeat = false) =>
+    field.dispatchEvent(
+      new KeyboardEvent(type, { key: 'Escape', cancelable: true, bubbles: true, repeat }),
+    )
+  escape('keydown')
   flush()
   expect(recorder.state().phase).toBe('idle')
+  escape('keydown', true)
+  escape('keydown', true)
   expect(blurred).not.toHaveBeenCalled()
+  escape('keyup')
+  escape('keydown')
+  expect(blurred).toHaveBeenCalledOnce()
 })
 
 it('a held Escape that discarded a screen recording closes no popup beneath it and stops no busy run', async ({

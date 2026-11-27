@@ -17,7 +17,9 @@ export function Shortcuts() {
             <For each={list()} keyed={(row) => `${row.keys} ${row.description}`}>
               {(row) => (
                 <li class="flex items-center justify-between gap-3 px-3 py-1 font-mono text-[11.5px] text-foreground/85">
-                  <span class="min-w-0 truncate">{row().description}</span>
+                  <span class="min-w-0 truncate">
+                    {row().description ?? <span class="text-muted-foreground">no description</span>}
+                  </span>
                   <KbdGroup>
                     <For each={formatKeys(row().keys)}>{(key) => <Kbd>{key}</Kbd>}</For>
                   </KbdGroup>

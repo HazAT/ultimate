@@ -35,7 +35,7 @@ of these that wants it:
    `holdEscape(cancel)` from `@/sdk/solid` while it lasts (a screen recording, a dictation take). One press cancels
    once: held down, it reaches nothing beneath until the key comes up.
 3. The newest matching shortcut whose `when` holds, registered with `useShortcut(keys, run, options)` in a component
-   or `registerShortcut` (both `@/sdk/solid`), over a command's (an answer's undo window over Escape's stop). A modal
+   or `registerShortcut` (both `@/sdk/solid`; ui-sdk parts that register their own, such as a toast region's F6, join the same list), over a command's (an answer's undo window over Escape's stop). A modal
    dialog pauses page shortcuts, except one whose `layer` is in it. Keys match what a key types, not where it sits,
    so `mod+k` is the key labelled K on any layout; `chordOf(event)` spells a press that way, `sameKeys` compares two.
 
