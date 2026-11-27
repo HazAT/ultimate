@@ -1,10 +1,10 @@
 import { deadline } from '../../lib/timers.ts'
 import type { Cancel } from '../../lib/timers.ts'
-import { demo, demoLength, demoPlayer } from './agents.ts'
-import type { Happening } from './agents.ts'
-import type { Variant } from './variants.ts'
-import type { Band } from './engine.ts'
-import { engine } from './tones.ts'
+import { demo, demoLength, demoPlayer } from './agents.web.ts'
+import type { Happening } from './agents.web.ts'
+import type { Variant } from './variants.web.ts'
+import type { Band } from './engine.web.ts'
+import { engine } from './tones.web.ts'
 
 export type Stage = {
   variant?: Variant

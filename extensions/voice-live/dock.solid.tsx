@@ -22,7 +22,7 @@ import {
 import type { Recorded, Sink } from '../dictation/ui.solid.tsx'
 import { speech, splitReply } from '../read-aloud/ui.solid.tsx'
 import type { Sentence } from '../read-aloud/ui.solid.tsx'
-import { createCues } from './cues.ts'
+import { createCues } from './cues.web.ts'
 import {
   DiscardAction,
   EndAction,

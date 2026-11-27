@@ -11,7 +11,7 @@ import { ConversationRef, FeatureTag } from '../conversations/ui.solid.tsx'
 import { Branched, Rooted } from '../lineage/refs.ts'
 import { CheckRan, SubmissionLanded } from '../workspaces/refs.ts'
 import { CommitCount, useGithubRepo } from '../workspaces/ui.solid.tsx'
-import { Backup, Escalation, activityRules } from './events.ts'
+import { Backup, Escalation, activityRules } from './events.web.ts'
 
 export const { filters, shows, tone } = activityRules({
   landed: SubmissionLanded,

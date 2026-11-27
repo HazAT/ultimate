@@ -1,11 +1,11 @@
 import { createRoot, createSignal, onSettled } from 'solid-js'
 import { api, chordOf, formatKeys, ROOT, useAction } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.ts'
-import { capture } from './capture.ts'
-import type { Sink, Take } from './capture.ts'
+import { capture } from './capture.web.ts'
+import type { Sink, Take } from './capture.web.ts'
 import { SetSettingsAction, SettingsAction } from './refs.ts'
 import type { DictationSettings } from './refs.ts'
-import { createTalk } from './talk.ts'
+import { createTalk } from './talk.web.ts'
 
 const settings = createRoot(() => {
   const stored = useAction(SettingsAction, null, { conversation: ROOT, focus: true })

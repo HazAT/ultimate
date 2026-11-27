@@ -25,7 +25,7 @@ import {
   summaryHistory,
 } from './summary.ts'
 import { summaryModel, summaryModelSetting, summaryModelStatus } from './summary-model.ts'
-import { parseSummaryModel } from './summary-model-ref.ts'
+import { parseSummaryModel } from './summary-model-ref.shared.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import { updateSettings, userSettingsPath } from '../../lib/settings.ts'

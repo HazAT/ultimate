@@ -2,8 +2,14 @@ import { children, createMemo, Match, Switch } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import type { LinkRenderer } from '@/sdk/solid'
 import { cn, useExternal, useSystem } from '@/sdk/solid'
-import { at, label } from './links.ts'
-import { canFrameLoopbackPreviews, getPreviews, isLoopback, show, subscribe } from './previews.ts'
+import { at, label } from './links.web.ts'
+import {
+  canFrameLoopbackPreviews,
+  getPreviews,
+  isLoopback,
+  show,
+  subscribe,
+} from './previews.web.ts'
 import type { Preview } from './refs.ts'
 
 type Target =

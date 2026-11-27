@@ -2,8 +2,8 @@ import { ArrowRightIcon, CircleAlertIcon, MessageSquareIcon } from '@lucide/soli
 import { createSignal } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, PromptBox, writerNow, writingAs } from '@/sdk/solid'
-import { commentCount, limits } from './comments.ts'
-import type { Drafts } from './drafts.ts'
+import { commentCount, limits } from './comments.shared.ts'
+import type { Drafts } from './drafts.web.ts'
 
 export function Footer(props: {
   drafts: Drafts

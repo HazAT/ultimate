@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { ReviewComment } from './comments.ts'
+import type { ReviewComment } from './comments.shared.ts'
 
 export type Draft = Omit<ReviewComment, 'excerpt'> & { id: string }
 

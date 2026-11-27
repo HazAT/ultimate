@@ -26,7 +26,7 @@ import {
 } from '@/sdk/solid'
 import { ModelRow } from '../models/ui.solid.tsx'
 import { SetSummaryModelAction, SummaryModelAction } from './refs.ts'
-import { parseSummaryModel } from './summary-model-ref.ts'
+import { parseSummaryModel } from './summary-model-ref.shared.ts'
 
 export const summaryModelDialog = 'conversations.summary-model'
 

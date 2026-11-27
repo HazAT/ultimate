@@ -17,7 +17,7 @@ import { ConversationPhase } from '../../../conversations/ui.solid.tsx'
 import { RootsDoc } from '../../../lineage/refs.ts'
 import { MessagesDoc } from '../../../messages/refs.ts'
 import { RunsDoc, StandingDoc } from '../../../subagents/refs.ts'
-import { PreviewUp } from '../../points.ts'
+import { PreviewUp } from '../../points.web.ts'
 import { Conversations } from '../../sidebar.solid.tsx'
 
 const harness = vi.hoisted(() => ({

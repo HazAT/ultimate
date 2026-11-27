@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { criteriaOf, sectionsOf, verbatim } from '../../body.ts'
-import { criteriaCounts } from '../../progress.ts'
+import { criteriaOf, sectionsOf, verbatim } from '../../body.shared.ts'
+import { criteriaCounts } from '../../progress.shared.ts'
 
 const body = [
   'Request: pick 1a.',

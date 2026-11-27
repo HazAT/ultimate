@@ -3,7 +3,7 @@ import { PreviewUp } from '../sidebar/ui.solid.tsx'
 import { InstanceCall } from './call.solid.tsx'
 import { PreviewLink } from './link.solid.tsx'
 import { Embedded, Poll, previewUp } from './overlays.solid.tsx'
-import { canFrameLoopbackPreviews } from './previews.ts'
+import { canFrameLoopbackPreviews } from './previews.web.ts'
 import { Switcher } from './switcher.solid.tsx'
 
 export default defineWebExtension({

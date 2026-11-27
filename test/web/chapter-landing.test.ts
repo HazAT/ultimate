@@ -1,7 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { onboarded } from '../../extensions/onboarding/onboarded.ts'
-import { landing } from '../../extensions/subagents/landing.ts'
+import { onboarded } from '../../extensions/onboarding/onboarded.web.ts'
+import { landing } from '../../extensions/subagents/landing.web.ts'
 
 // A new chapter opens with empty UI state and a root without history: the page showed root #1's Start here card,
 // and its Set up button started onboarding in a project that was set up long ago.

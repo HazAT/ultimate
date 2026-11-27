@@ -5,7 +5,7 @@ import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 import { openQuestion } from '../../lib/message-state.ts'
 import type { Message } from '../messages/refs.ts'
-import type { InboxItem } from './points.ts'
+import type { InboxItem } from './points.web.ts'
 
 export const SURFACE = 'inbox'
 export const SELECTED = 'ext.inbox.selected'

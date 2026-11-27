@@ -29,8 +29,8 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import { familyTitle } from '../../lib/families.ts'
-import { agentsPanel, familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.ts'
-import { PickerRows } from './points.ts'
+import { agentsPanel, familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.web.ts'
+import { PickerRows } from './points.web.ts'
 import { FamilyDot, PickContext, useCurrentModel, useFamilies } from './readers.solid.tsx'
 import type { FamilyView } from './refs.ts'
 import {
@@ -41,8 +41,8 @@ import {
   modelKey,
   pickerTarget,
   termsOf,
-} from './state.ts'
-import type { ModelInfo, ProviderInfo } from './state.ts'
+} from './state.web.ts'
+import type { ModelInfo, ProviderInfo } from './state.web.ts'
 import { ModelRow } from './ui.solid.tsx'
 
 const LIMIT = 150

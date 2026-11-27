@@ -6,7 +6,7 @@ import {
   provide,
 } from '@/sdk/solid'
 import { CompactAnswer, MessageAnswerLabel, HiddenEntry } from './compact-answer.solid.tsx'
-import { scriptMessaged, threadRow, ultimateCompact } from './data.ts'
+import { scriptMessaged, threadRow, ultimateCompact } from './data.web.ts'
 import { JudgedAnswerLabel } from './judged.solid.tsx'
 import { MessageInput } from './message-input.solid.tsx'
 import { Speaker } from './speaker.solid.tsx'

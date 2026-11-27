@@ -1,6 +1,6 @@
 import { createPatch } from 'diff'
 import { expect, it } from 'vitest'
-import { parsePatch } from '../../diff.ts'
+import { parsePatch } from '../../diff.web.ts'
 
 it('keeps a removed Markdown rule and an added ++ line, which look like file headers inside a hunk', () => {
   const rows = parsePatch(

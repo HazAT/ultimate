@@ -11,7 +11,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   return { store: createStore(), uiState: createUiState(undefined), api: {} }
 })
 
-import { getShown, polled } from '../../previews.ts'
+import { getShown, polled } from '../../previews.web.ts'
 import { Switcher } from '../../switcher.solid.tsx'
 
 it('keeps the highlighted preview across polls and lets an agent switch to it and back', async () => {

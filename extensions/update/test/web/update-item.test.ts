@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { itemOf } from '../../item.ts'
+import { itemOf } from '../../item.web.ts'
 import type { UpdateState } from '../../refs.ts'
 
 const state = (extra: Partial<UpdateState> = {}): UpdateState => ({

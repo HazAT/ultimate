@@ -22,8 +22,8 @@ import {
   previewUrl,
   senderOf,
   tagOf,
-} from './items.ts'
-import type { Entry } from './items.ts'
+} from './items.web.ts'
+import type { Entry } from './items.web.ts'
 
 export function Reading(props: { entry: Entry; now: number; phone: boolean; onBack: () => void }) {
   const message = () => props.entry.message

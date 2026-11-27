@@ -1,9 +1,9 @@
 import { createEffect } from 'solid-js'
 import { ROOT, useDocOf, useUiState, writingAs } from '@/sdk/solid'
 import { MessagesDoc } from '../messages/refs.ts'
-import { forgetSettled } from './open.ts'
-import { CARDS_KEY } from './state.ts'
-import type { CardState } from './state.ts'
+import { forgetSettled } from './open.web.ts'
+import { CARDS_KEY } from './state.web.ts'
+import type { CardState } from './state.web.ts'
 
 export function CrossSurfaceDraftSweep() {
   const [cards, setCards] = useUiState<Record<string, CardState>>(CARDS_KEY, {})

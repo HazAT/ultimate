@@ -7,8 +7,8 @@ import { ConversationsApi } from '../conversations/api.ts'
 import { createRealtimeVoice } from './openai-voice.ts'
 import { PrepareAction, SpeakAction, SpeechStatusAction } from './refs.ts'
 import type { OpenAiVoice } from './refs.ts'
-import { plainSpeech, sections, words } from './text.ts'
-import { MAX_SPOKEN, VOICES } from './voices.ts'
+import { plainSpeech, sections, words } from './text.shared.ts'
+import { MAX_SPOKEN, VOICES } from './voices.shared.ts'
 
 const REWRITE_TIMEOUT_MS = 30_000
 const SPEAK_TIMEOUT_MS = 20_000

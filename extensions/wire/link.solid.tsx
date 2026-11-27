@@ -14,8 +14,8 @@ import { cacheBusts } from '../../lib/context-usage.ts'
 import { ListAction } from './refs.ts'
 import { SYSTEM_TAB_KEY } from '../system/ui.solid.tsx'
 import type { WireSummary } from './refs.ts'
-import { WIRE_PICKED_KEY } from './state.ts'
-import type { Picked } from './state.ts'
+import { WIRE_PICKED_KEY } from './state.web.ts'
+import type { Picked } from './state.web.ts'
 
 const MAX_RESPONSE_START_DISTANCE_MS = 60_000
 

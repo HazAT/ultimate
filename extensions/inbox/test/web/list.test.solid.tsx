@@ -8,7 +8,7 @@ import type { UiUpdateRequest } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import type { FakeSource } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import type { Row } from '../../items.ts'
+import type { Row } from '../../items.web.ts'
 import { List } from '../../list.solid.tsx'
 
 const harness = vi.hoisted(() => ({

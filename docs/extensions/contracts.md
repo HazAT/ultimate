@@ -66,7 +66,7 @@ whose documents or actions the browser uses describes them in `refs.ts`: `docRef
 `api-file-shape` holds it to the same documentation as `api.ts`: every action ref names its arguments and result,
 since agents read it before `tools.action`. It stays browser-safe: runtime imports of `shared/` and Pi Durable's
 `defineEntry` only, types only from packages, `shared/` and
-extensions' `refs.ts` or `types.ts`, and `tsconfig.web.json` type-checks it with the web.
+extensions' `refs.ts` or `types.ts`.
 
 ```ts
 /** Echo in the browser: the echo log, the action that echoes and its event. Browser-safe. */

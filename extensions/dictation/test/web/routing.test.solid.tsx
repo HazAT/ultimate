@@ -4,7 +4,7 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { PromptBox } from '@/sdk/solid'
 import type { DictationSink } from '@/sdk/solid'
 import { registry } from '../../../../web/src/sdk/client.ts'
-import { capture } from '../../capture.ts'
+import { capture } from '../../capture.web.ts'
 import { DictationShortcuts, setFallback, setTalkMode } from '../../routing.solid.tsx'
 import dictation from '../../web.solid.tsx'
 

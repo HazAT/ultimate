@@ -16,12 +16,12 @@ import {
   useSystem,
 } from '@/sdk/solid'
 import { AnsiOutput } from '@/components/ai/ansi-output.solid.tsx'
-import { looks } from './looks.ts'
+import { looks } from './looks.web.ts'
 import { Dot, Tag } from './parts.solid.tsx'
 import { ErrorLine, Toggle, useAct } from './row.solid.tsx'
 import { LogAction, RunAction, ScriptAction } from './refs.ts'
 import type { AutomationListItem } from './refs.ts'
-import { actions, automationLabel } from './words.ts'
+import { actions, automationLabel } from './words.web.ts'
 
 type Detail = { automation: AutomationListItem; live: boolean; now: number }
 export function ScriptDetail(props: Detail & { onBack: () => void }) {

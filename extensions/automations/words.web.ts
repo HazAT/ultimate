@@ -1,4 +1,4 @@
-import { clock } from './looks.ts'
+import { clock } from './looks.web.ts'
 import type { Automation, Schedule } from './refs.ts'
 
 export const automationLabel = (automation: Pick<Automation, 'name' | 'id'>) =>

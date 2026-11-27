@@ -12,7 +12,7 @@ import {
   setAsideIds,
 } from '../../web/src/app/compact.ts'
 import type { CompactPart, WorkRun } from '../../web/src/app/compact.ts'
-import { threadRow } from '../../extensions/messages/data.ts'
+import { threadRow } from '../../extensions/messages/data.web.ts'
 
 vi.mock('../../extensions/lineage/ui.tsx', async () => import('../../extensions/lineage/refs.ts'))
 vi.mock(

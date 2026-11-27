@@ -1,6 +1,6 @@
 import { createEffect, onCleanup } from 'solid-js'
-import { createHighlight } from './highlight.ts'
-import type { SpokenText } from './highlight.ts'
+import { createHighlight } from './highlight.web.ts'
+import type { SpokenText } from './highlight.web.ts'
 import { speech } from './voice.solid.tsx'
 
 const highlight = createHighlight(speech)

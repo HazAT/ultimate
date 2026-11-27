@@ -1,7 +1,7 @@
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
 import type { Dream, Prepared, Sleep } from '../refs.ts'
-import { dreamStage } from '../stage.ts'
+import { dreamStage } from '../stage.web.ts'
 
 const dream: Dream = { branch: 7 as ConversationId, requested: 1 as EntryId, at: 100 }
 const prepared: Prepared = { chapter: 'Two', learned: [], handoff: '', at: 200 }

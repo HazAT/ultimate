@@ -28,9 +28,9 @@ import {
   looks,
   stateLine,
   worstFirst,
-} from './looks.ts'
-import type { Look } from './looks.ts'
-import { openAutomation, openAutomationsPanel } from './navigation.ts'
+} from './looks.web.ts'
+import type { Look } from './looks.web.ts'
+import { openAutomation, openAutomationsPanel } from './navigation.web.ts'
 import { useAutomations } from './live.solid.tsx'
 import type { Automation } from './refs.ts'
 

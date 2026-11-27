@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { answered, cardOf, choiceForKey, choices, position } from '../../state.ts'
+import { answered, cardOf, choiceForKey, choices, position } from '../../state.web.ts'
 import type { Question } from '../../../messages/refs.ts'
 
 const lettered: Question = {

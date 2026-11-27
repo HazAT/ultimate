@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import type { FamiliesView } from '../../refs.ts'
 
-const { familyOf } = await import('../../family-state.ts')
+const { familyOf } = await import('../../family-state.web.ts')
 
 it('labels a conversation with the family it started on, not the first family sharing its model', () => {
   // #550837: a coordinator on Lead (Opus 5.5) showed as Design, the built-in family on the same model; while the

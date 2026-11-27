@@ -14,8 +14,8 @@ import {
   type EntryRecord,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { autoPlayMinutes } from './autoplay.ts'
-import { unwrappedProviderError } from './provider-error.ts'
+import { autoPlayMinutes } from './autoplay.shared.ts'
+import { unwrappedProviderError } from './provider-error.web.ts'
 import { PauseDoc } from './refs.ts'
 import type { AutoPlayed, HeldNote, PauseNote, RateLimit } from './refs.ts'
 import { playConfirmation, playPausedWork } from './status.solid.tsx'

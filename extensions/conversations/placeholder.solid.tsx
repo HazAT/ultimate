@@ -2,7 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import type { Accessor } from 'solid-js'
 import { createMemo } from 'solid-js'
 import { ROOT, useConversations, useDocOf } from '@/sdk/solid'
-import { agentTitle, standingPlaceholder as placeholderText } from './mark-style.ts'
+import { agentTitle, standingPlaceholder as placeholderText } from './mark-style.web.ts'
 import { MarksDoc } from './refs.ts'
 
 export function standingPlaceholder(

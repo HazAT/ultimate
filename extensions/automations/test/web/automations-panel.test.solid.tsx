@@ -12,7 +12,7 @@ import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { ROOT } from '../../../../web/src/sdk/api.ts'
 import { reads, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { Chip } from '../../chip.solid.tsx'
-import { contextCondition } from '../../form-draft.ts'
+import { contextCondition } from '../../form-draft.web.ts'
 import { AutomationsPanel } from '../../panel.solid.tsx'
 import type { AutomationListItem } from '../../refs.ts'
 

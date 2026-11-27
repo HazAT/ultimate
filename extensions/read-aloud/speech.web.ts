@@ -1,6 +1,6 @@
 import { cell } from '../../lib/cell.ts'
 import { inProcess, overshadowed } from '../../lib/errors.ts'
-import { MAX_SPOKEN } from './voices.ts'
+import { MAX_SPOKEN } from './voices.shared.ts'
 
 export const CHARS_PER_SECOND = 14.5
 

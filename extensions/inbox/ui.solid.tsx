@@ -3,8 +3,8 @@ import { createMemo } from 'solid-js'
 import { useAllProvided, ROOT, useDocOf } from '@/sdk/solid'
 import { MessagesDoc } from '../messages/refs.ts'
 import { emptyMessages } from '../messages/ui.solid.tsx'
-import { inboxItems } from './items.ts'
-import { InboxItems } from './points.ts'
+import { inboxItems } from './items.web.ts'
+import { InboxItems } from './points.web.ts'
 
 /**
  * Everything that waits on the user, oldest first: open questions and other extensions' items. `failures` holds the
@@ -20,11 +20,11 @@ export function Waiting() {
   return { entries, messages, failures, loaded }
 }
 /** Every provider's waiting items, merged in the Inbox and its counters in waiting order. */
-export { InboxItems } from './points.ts'
+export { InboxItems } from './points.web.ts'
 /** A pane to show instead of the focused question, or undefined to keep the Inbox's own pane. */
-export { QuestionPane } from './points.ts'
+export { QuestionPane } from './points.web.ts'
 /**
  * A waiting item, whose unique key selects it from `?inbox=<key>` or `inbox:open { key }`; `at` is when it started
  * waiting, in epoch milliseconds, and orders the list oldest first.
  */
-export type { InboxItem } from './points.ts'
+export type { InboxItem } from './points.web.ts'

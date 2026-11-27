@@ -1,10 +1,10 @@
 import { createMemo, Show } from 'solid-js'
 import { api, cn, useExternal } from '@/sdk/solid'
 import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'
-import { modelIdOf, refresh, runsOn } from './family-state.ts'
+import { modelIdOf, refresh, runsOn } from './family-state.web.ts'
 import { FamilyDot, useFamilies } from './readers.solid.tsx'
 import { FamiliesAction } from './refs.ts'
-import { picks } from './state.ts'
+import { picks } from './state.web.ts'
 
 export const refreshFamilies = () => refresh(() => api.action(FamiliesAction, null))
 export const usePicks = () => useExternal(picks.get, picks.subscribe)

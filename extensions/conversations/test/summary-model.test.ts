@@ -18,7 +18,7 @@ import type { ActionContext } from '../../../server/actions.ts'
 import { context } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { actions } from '../server.ts'
-import { parseSummaryModel } from '../summary-model-ref.ts'
+import { parseSummaryModel } from '../summary-model-ref.shared.ts'
 import { requestSummary, Summaries, summaryBehavior } from '../summary.ts'
 import {
   IntentSummarized,

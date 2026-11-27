@@ -1,4 +1,4 @@
-import { criteriaOf, sectionsOf } from './body.ts'
+import { criteriaOf, sectionsOf } from './body.shared.ts'
 import type { Estimate } from './refs.ts'
 
 type Progress = { key: string; status: string; tasks: Record<string, { status: string }> }

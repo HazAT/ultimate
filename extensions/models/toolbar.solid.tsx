@@ -7,10 +7,10 @@ import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmente
 import { cn, errorMessage, useDialog, useModels, writingAs } from '@/sdk/solid'
 import { familyTitle } from '../../lib/families.ts'
 import type { FamiliesView, FamilyView } from './refs.ts'
-import { familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.ts'
+import { familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.web.ts'
 import { FamilyDot, PickContext, useCurrentModel, useFamilies } from './readers.solid.tsx'
-import { dialogs, pickerTarget } from './state.ts'
-import type { ModelInfo, ModelPick, ThinkingLevel } from './state.ts'
+import { dialogs, pickerTarget } from './state.web.ts'
+import type { ModelInfo, ModelPick, ThinkingLevel } from './state.web.ts'
 
 const toolbarButton =
   'flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground'

@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button.solid.tsx'
 import { useToolDuration, cn, shortenPath, useSystem, type SolidToolProps } from '@/sdk/solid'
 import { usePreviewTarget } from './link.solid.tsx'
-import { label } from './links.ts'
+import { label } from './links.web.ts'
 
 interface Instance {
   id: string

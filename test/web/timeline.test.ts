@@ -1,7 +1,7 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
-import { switchAt } from '../../extensions/models/switches.ts'
-import { responseAfter, turnOf } from '../../extensions/status-line/turns.ts'
+import { switchAt } from '../../extensions/models/switches.web.ts'
+import { responseAfter, turnOf } from '../../extensions/status-line/turns.web.ts'
 
 let nextId = 1
 const record = (kind: string, message: object) =>

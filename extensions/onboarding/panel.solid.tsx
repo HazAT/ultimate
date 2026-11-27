@@ -31,10 +31,10 @@ import {
 import type { ExtensionInfo, SystemInfo } from '../../shared/protocol.ts'
 import { ListAction } from '../secrets/refs.ts'
 import type { Secret } from '../secrets/refs.ts'
-import { switchScope } from './choices.ts'
-import { projectDialog } from './dialogs.ts'
+import { switchScope } from './choices.web.ts'
+import { projectDialog } from './dialogs.web.ts'
 import { Heading, Line, Segmented, projectLists, sources, useDescribed } from './parts.solid.tsx'
-import { ExtensionDetails } from './points.ts'
+import { ExtensionDetails } from './points.web.ts'
 import { AdoptProjectSetupAction, DecideAction, DetailsAction, SetExtensionAction } from './refs.ts'
 
 type Scope = 'project' | 'user'

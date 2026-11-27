@@ -8,11 +8,11 @@ import {
   refreshModels,
 } from '@/sdk/solid'
 import { FellBack } from './fallback.solid.tsx'
-import { agentsPanel } from './family-state.ts'
+import { agentsPanel } from './family-state.web.ts'
 import { LoginDialog } from './login.solid.tsx'
 import { ModelPicker } from './picker.solid.tsx'
 import { RefreshCatalogAction } from './refs.ts'
-import { nextThinking, openLogin, openPicker, thinkingDialog } from './state.ts'
+import { nextThinking, openLogin, openPicker, thinkingDialog } from './state.web.ts'
 import { Switched } from './switched.solid.tsx'
 import { ModelControl } from './toolbar.solid.tsx'
 

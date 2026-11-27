@@ -1,4 +1,4 @@
-import type { Cue, Sound } from './cues.ts'
+import type { Cue, Sound } from './cues.web.ts'
 
 export type Line = { text?: string; sound: Sound }
 

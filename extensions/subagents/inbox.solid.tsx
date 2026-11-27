@@ -10,7 +10,7 @@ import {
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { openAgentSource } from './run-name.solid.tsx'
-import { senderAgent } from './source.ts'
+import { senderAgent } from './source.web.ts'
 import type { AgentOrigin } from './types.ts'
 
 export function AgentInbox(props: SolidInboxProps) {

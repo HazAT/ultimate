@@ -1,5 +1,5 @@
 import { basename, extname } from 'node:path'
-import { MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.ts'
+import { MAX_CHUNK_BYTES, MAX_UPLOAD_BYTES } from './limits.shared.ts'
 import type { AskArgs, Video } from './refs.ts'
 
 const videoMimes = {

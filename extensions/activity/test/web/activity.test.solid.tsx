@@ -58,7 +58,7 @@ import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import { ExtensionName, ROOT, events } from '../../../../web/src/sdk/solid.ts'
 import { writerNow } from '../../../../web/src/sdk/writer.ts'
 import { provide } from '../../../../web/src/sdk/types.ts'
-import { Review } from '../../../workspaces/landing-points.ts'
+import { Review } from '../../../workspaces/landing-points.web.ts'
 import { ActivityPanel } from '../../panel.solid.tsx'
 
 const agent = createAgent()

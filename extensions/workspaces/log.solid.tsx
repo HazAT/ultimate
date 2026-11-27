@@ -16,7 +16,7 @@ import {
   toneOf,
 } from './log-parts.solid.tsx'
 import { LanderReportEntry, WorkspacesDoc } from './refs.ts'
-import { inProgress, superseded, tookFor, visibleSteps } from './steps.ts'
+import { inProgress, superseded, tookFor, visibleSteps } from './steps.web.ts'
 import type { LanderEntry, LanderOutcome, LanderStep } from './types.ts'
 
 const isStep = (data: LanderEntry): data is LanderEntry & LanderStep => data.step !== undefined

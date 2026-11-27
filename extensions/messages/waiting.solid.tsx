@@ -11,10 +11,10 @@ import {
   useTranscript,
   useTranscriptElements,
 } from '@/sdk/solid'
-import { offscreen } from './data.ts'
-import type { Place } from './data.ts'
-import { questionsOf } from './waiting.ts'
-import type { Question } from './waiting.ts'
+import { offscreen } from './data.web.ts'
+import type { Place } from './data.web.ts'
+import { questionsOf } from './waiting.web.ts'
+import type { Question } from './waiting.web.ts'
 import { MessagesDoc } from './refs.ts'
 
 export function OffscreenQuestions() {

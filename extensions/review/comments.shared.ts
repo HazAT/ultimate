@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 
-import { sha256 } from './sha256.ts'
+import { sha256 } from './sha256.shared.ts'
 import type { ReviewComment, ReviewComments } from './types.ts'
 
 export type { ReviewComment, ReviewComments } from './types.ts'

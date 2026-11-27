@@ -13,8 +13,8 @@ import {
 } from '@/sdk/solid'
 import type { EntryId } from '@earendil-works/pi-durable'
 import type { EventRecord } from '../../shared/events.ts'
-import { joined } from './events.ts'
-import type { Filter } from './events.ts'
+import { joined } from './events.web.ts'
+import type { Filter } from './events.web.ts'
 import { Feed, filters, shows } from './feed.solid.tsx'
 import { PageAction } from './refs.ts'
 

@@ -4,7 +4,7 @@ import { createMemo } from 'solid-js'
 import { defineWebExtension, provide, ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { ConversationPhase } from '../conversations/ui.solid.tsx'
 import { PhasesDoc } from './refs.ts'
-import { subagentsBusy } from './subtree.ts'
+import { subagentsBusy } from './subtree.web.ts'
 import type { Phase } from './types.ts'
 
 const words: Record<Phase | 'waiting', string> = {

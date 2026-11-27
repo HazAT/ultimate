@@ -8,8 +8,15 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible.solid.tsx'
 import { useFold, useConversationId, useTranscript, type SolidEntryProps } from '@/sdk/solid'
-import { breakdownAt, diffAt, opensContext, ownStart, removesAll, systemOf } from './breakdown.ts'
-import type { Diff } from './breakdown.ts'
+import {
+  breakdownAt,
+  diffAt,
+  opensContext,
+  ownStart,
+  removesAll,
+  systemOf,
+} from './breakdown.shared.ts'
+import type { Diff } from './breakdown.shared.ts'
 import { changeCounts, DiffBody, Header, signed } from './parts.solid.tsx'
 import { InheritedPromptStart } from './pinned.solid.tsx'
 
