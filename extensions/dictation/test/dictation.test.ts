@@ -3,6 +3,7 @@ import { actions, MAX_AUDIO_BYTES } from '../server.ts'
 import { writeSecret } from '../../secrets/store.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { removeTemp, temp } from '../../../test/helpers.ts'
+import { readSettings, userSettingsPath } from '../../../lib/settings.ts'
 
 const cleanup: string[] = []
 afterEach(async () => {
@@ -141,4 +142,25 @@ it('reports a provider failure with its status, and an answer without text', asy
   await expect(actions.transcribe(audio, ctx)).rejects.toThrow(
     'Transcription failed (HTTP 502): no text in the answer',
   )
+})
+
+it('keeps the dictation settings in the user settings, with defaults until one is set', async () => {
+  const ctx = await context()
+  const { userHome } = ctx.host as unknown as { userHome: string }
+  expect(await actions.settings(null, ctx)).toEqual({
+    talk: 'tap',
+    shortcut: 'mod+shift+space',
+    cues: true,
+  })
+  await actions.setSettings({ shortcut: 'mod+\\' }, ctx)
+  expect(await actions.setSettings({ talk: 'hold', cues: false }, ctx)).toEqual({
+    talk: 'hold',
+    shortcut: 'mod+\\',
+    cues: false,
+  })
+  expect((await readSettings(userSettingsPath(userHome))).dictation).toEqual({
+    talk: 'hold',
+    shortcut: 'mod+\\',
+    cues: false,
+  })
 })

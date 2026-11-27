@@ -12,11 +12,19 @@ const harness = vi.hoisted(() => ({
 vi.mock('@/sdk/solid', async (original) => {
   const { createSignal: signal } = await import('solid-js')
   const real = await original<typeof import('@/sdk/solid')>()
+  const [dictation, setDictation] = signal({
+    talk: 'hold',
+    shortcut: 'mod+shift+space',
+    cues: true,
+  })
   return {
     ...real,
+    useAction: () => ({ data: dictation, refetch: async () => dictation() }),
     api: {
-      action: (ref: { name: string }, _args: unknown, call: { who?: string } = {}) => {
+      action: (ref: { name: string }, args: unknown, call: { who?: string } = {}) => {
         harness.calls.push({ name: ref.name, who: call.who })
+        if (ref.name === 'setSettings')
+          setDictation((current) => ({ ...current, ...(args as object) }))
         if (ref.name === 'status') return Promise.resolve({ route: 'text' })
         if (ref.name === 'record') return Promise.resolve({ audio: 'rec-1', session: 40 })
         if (ref.name === 'turn') return Promise.resolve({ conversation: 40 })
@@ -34,9 +42,7 @@ vi.mock('@/sdk/solid', async (original) => {
     events: { emit() {} },
     useConversation: () => () => ({ entries: [], live: {}, busy: false }),
     useUiState: (key: string, initial: unknown) =>
-      signal<unknown>(
-        key === 'ext.voice-live.cues' ? false : key === 'ext.dictation.talk' ? 'hold' : initial,
-      ),
+      signal<unknown>(key === 'ext.voice-live.cues' ? false : initial),
   }
 })
 

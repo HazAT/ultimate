@@ -35,6 +35,7 @@ vi.mock('@/sdk/solid', async () => {
     errorMessage: String,
     ROOT: 1,
     useConversation: () => () => ({ entries: [], live: {}, busy: false }),
+    useAction: () => ({ data: () => undefined, refetch: async () => undefined }),
     useUiState: (key: string, initial: unknown) =>
       solid.createSignal<unknown>(
         key === 'ext.voice-live.cues' ? false : key === 'ext.read-aloud.voice' ? 'system' : initial,

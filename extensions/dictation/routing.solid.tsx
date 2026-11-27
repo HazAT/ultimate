@@ -1,17 +1,39 @@
-import { createRoot, onSettled } from 'solid-js'
-import { chordOf, formatKeys, useUiState } from '@/sdk/solid'
+import { createRoot, createSignal, onSettled } from 'solid-js'
+import { api, chordOf, formatKeys, ROOT, useAction } from '@/sdk/solid'
 import { inProcess } from '../../lib/errors.ts'
 import { capture } from './capture.ts'
 import type { Sink, Take } from './capture.ts'
+import { SetSettingsAction, SettingsAction } from './refs.ts'
+import type { DictationSettings } from './refs.ts'
 import { createTalk } from './talk.ts'
 
-export const [talkMode, setTalkMode] = createRoot(() =>
-  useUiState<'hold' | 'tap'>('ext.dictation.talk', 'tap'),
-)
-export const [shortcut, setShortcut] = createRoot(() =>
-  useUiState('ext.dictation.shortcut', 'mod+shift+space'),
-)
-export const [soundCues, setSoundCues] = createRoot(() => useUiState('ext.dictation.cues', true))
+const settings = createRoot(() => {
+  const stored = useAction(SettingsAction, null, { conversation: ROOT, focus: true })
+  const [pending, setPending] = createSignal<Partial<DictationSettings>>({})
+  const read = <K extends keyof DictationSettings>(key: K, initial: DictationSettings[K]) =>
+    pending()[key] ?? stored.data()?.[key] ?? initial
+  const write = async (change: Partial<DictationSettings>) => {
+    setPending((current) => ({ ...current, ...change }))
+    try {
+      await api.action(SetSettingsAction, change, { conversationId: ROOT })
+      await stored.refetch()
+    } finally {
+      setPending(({ ...current }) => {
+        for (const key of Object.keys(change) as (keyof DictationSettings)[])
+          if (current[key] === change[key]) delete current[key]
+        return current
+      })
+    }
+  }
+  return { read, write }
+})
+
+export const talkMode = () => settings.read('talk', 'tap')
+export const setTalkMode = (talk: DictationSettings['talk']) => void settings.write({ talk })
+export const shortcut = () => settings.read('shortcut', 'mod+shift+space')
+export const setShortcut = (keys: string) => void settings.write({ shortcut: keys })
+export const soundCues = () => settings.read('cues', true)
+export const setSoundCues = (cues: boolean) => void settings.write({ cues })
 export const shortcutHint = () => ({
   gesture: talkMode(),
   keys: formatKeys(shortcut())[0].join('+'),

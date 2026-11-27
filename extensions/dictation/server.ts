@@ -5,7 +5,10 @@ import {
   openaiSecretOrNonOAuthKey,
   openaiTranscribe,
 } from '../../lib/openai.ts'
-import { StatusAction, TranscribeAction } from './refs.ts'
+import type { JsonObject } from '@earendil-works/pi-durable'
+import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
+import { SetSettingsAction, SettingsAction, StatusAction, TranscribeAction } from './refs.ts'
+import type { DictationSettings } from './refs.ts'
 
 const NO_KEY = `Voice needs an OpenAI API key: add ${SECRET} in ⌘K → Secrets`
 const TIMEOUT_MS = 65_000
@@ -30,6 +33,19 @@ function failure(status: number, detail: string | undefined) {
   return `Transcription failed (HTTP ${status})${detail ? `: ${detail}` : ''}`
 }
 
+const DEFAULTS: DictationSettings = { talk: 'tap', shortcut: 'mod+shift+space', cues: true }
+
+function dictationSettings(settings: JsonObject): DictationSettings {
+  const stored = settings.dictation
+  const { talk, shortcut, cues } =
+    stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {}
+  return {
+    talk: talk === 'hold' || talk === 'tap' ? talk : DEFAULTS.talk,
+    shortcut: typeof shortcut === 'string' && shortcut.trim() ? shortcut : DEFAULTS.shortcut,
+    cues: typeof cues === 'boolean' ? cues : DEFAULTS.cues,
+  }
+}
+
 export default defineExtension({ name: 'dictation' })
 
 export const actions = {
@@ -38,6 +54,33 @@ export const actions = {
       ? { available: true as const }
       : { available: false as const, reason: NO_KEY },
   ),
+
+  settings: implementAction(SettingsAction, async (_args, { host }) =>
+    dictationSettings(await readSettings(userSettingsPath(host.userHome))),
+  ),
+
+  setSettings: implementAction(SetSettingsAction, async (args, { host }) => {
+    const { talk, shortcut, cues } =
+      args && typeof args === 'object' && !Array.isArray(args) ? args : {}
+    if (
+      (talk !== undefined && talk !== 'hold' && talk !== 'tap') ||
+      (shortcut !== undefined && (typeof shortcut !== 'string' || !shortcut.trim())) ||
+      (cues !== undefined && typeof cues !== 'boolean')
+    )
+      throw new Error('Expected { talk?: "hold" | "tap", shortcut?: string, cues?: boolean }')
+    let next = DEFAULTS
+    await updateSettings(userSettingsPath(host.userHome), (settings) => {
+      const stored = settings.dictation
+      const dictation: JsonObject =
+        stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {}
+      if (talk !== undefined) dictation.talk = talk
+      if (shortcut !== undefined) dictation.shortcut = shortcut
+      if (cues !== undefined) dictation.cues = cues
+      settings.dictation = dictation
+      next = dictationSettings(settings)
+    })
+    return next
+  }),
 
   transcribe: implementAction(TranscribeAction, async (args, { host, signal }) => {
     const { audio, mimeType } = args && typeof args === 'object' && !Array.isArray(args) ? args : {}

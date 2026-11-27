@@ -26,6 +26,7 @@ const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
   server: undefined as ReturnType<typeof fakeSubscriptions> | undefined,
   status: { available: true } as VoiceStatus,
+  settings: { talk: 'tap', shortcut: 'mod+shift+space', cues: true },
   transcribe: vi.fn<(request: unknown, source: string | null) => void>(),
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
@@ -38,6 +39,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     const path = input as string
     if (path === '/api/extensions/dictation/actions/status')
       return Response.json({ result: harness.status })
+    if (path === '/api/extensions/dictation/actions/settings')
+      return Response.json({ result: harness.settings })
+    if (path === '/api/extensions/dictation/actions/setSettings') {
+      Object.assign(harness.settings, JSON.parse(init?.body as string).args)
+      return Response.json({ result: harness.settings })
+    }
     if (path === '/api/extensions/dictation/actions/transcribe') {
       harness.transcribe(
         JSON.parse(init?.body as string),
