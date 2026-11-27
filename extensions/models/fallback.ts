@@ -33,7 +33,9 @@ async function loginMissing(host: ExtensionHost, provider: string, checks: Login
   const snapshot = host.modelRuntime.getAvailableSnapshot()
   const checked = checks.get(provider)
   if (checked?.snapshot === snapshot) return checked.missing
-  const missing = !(await loginIsPresentOrUnconfirmed(host, provider))
+  const login = await loginCheck(host, provider)
+  if (login === 'inconclusive') return false
+  const missing = login === 'missing'
   checks.set(provider, { snapshot, missing })
   return missing
 }
@@ -54,6 +56,7 @@ export async function fallback(
   if (!needsCheck(host, from) || !(await loginMissing(host, from.provider, checks)))
     return undefined
   const fresh = runtime.getAvailableSnapshot()
+  if (hasLogin(fresh, from)) return undefined
   const requiresSubscriptionReplacement = providerDeclaresSubscriptionAuth(host, from.provider)
   const preservesSubscriptionBilling = (provider: string) =>
     !requiresSubscriptionReplacement || usesSubscriptionNotPerToken(host, provider)
@@ -97,14 +100,15 @@ export async function fallback(
 
 const INPUT_TRANSACTION_AUTH_CHECK_TIMEOUT_MS = 5_000
 
-async function loginIsPresentOrUnconfirmed(host: ExtensionHost, provider: string) {
+async function loginCheck(host: ExtensionHost, provider: string) {
   try {
-    return !!(await host.modelRuntime.checkAuth(provider, {
+    const found = await host.modelRuntime.checkAuth(provider, {
       signal: AbortSignal.timeout(INPUT_TRANSACTION_AUTH_CHECK_TIMEOUT_MS),
-    }))
+    })
+    return found ? 'present' : 'missing'
   } catch (error) {
     host.notice(`Checking the ${provider} login failed, keeping the model: ${String(error)}`)
-    return true
+    return 'inconclusive'
   }
 }
 

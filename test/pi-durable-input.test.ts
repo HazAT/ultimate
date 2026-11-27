@@ -334,6 +334,131 @@ it('refuses a steer queued before its conversation refuses input, at the tool ro
   }
 })
 
+it('refuses only the steer its tool round places, leaving the next one queued', async () => {
+  const home = await temp()
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  const gate = Promise.withResolvers<void>()
+  let held = false
+  let ended = false
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      hooks: [
+        hook(GenerationTask, {
+          refuseInput: (input) =>
+            ended && JSON.stringify(input.model).includes('steer one') ? 'refused one' : undefined,
+        }),
+      ],
+    }),
+  )
+  prepared.faux!.setResponses([
+    async () => {
+      held = true
+      await gate.promise
+      return fauxAssistantMessage([fauxToolCall('unknown', {})], { stopReason: 'toolUse' })
+    },
+    fauxAssistantMessage('answer'),
+    fauxAssistantMessage('answer two'),
+  ])
+  const f = await prepared.open()
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => held)
+    const steer = await f.root.submit(
+      { type: 'input', content: 'steer one', whenBusy: 'steer' },
+      context,
+    )
+    const second = await f.root.submit(
+      { type: 'input', content: 'steer two', whenBusy: 'steer' },
+      context,
+    )
+    ended = true
+    gate.resolve()
+    expect(await steer.wait(context)).toMatchObject({ status: 'unanswered', reason: 'refused' })
+    expect(await first.wait(context)).toMatchObject({ status: 'done' })
+    await second.wait(context)
+    const users = (await f.root.context(context)).messages.flatMap((message) =>
+      message.role === 'user' ? [message.content] : [],
+    )
+    expect(await second.wait(context)).toMatchObject({ status: 'done' })
+    expect(users).toEqual(['first', 'steer two'])
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
+it('places a compaction summary when a hook throws for the input a failed run left queued', async () => {
+  const home = await temp()
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  let throwing = false
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      hooks: [
+        hook(GenerationTask, {
+          beforeInput: () => {
+            if (throwing) throw new Error('note failed')
+            return undefined
+          },
+        }),
+      ],
+    }),
+  )
+  const gate = Promise.withResolvers<void>()
+  let held = false
+  prepared.faux!.setResponses([
+    async () => {
+      held = true
+      await gate.promise
+      return fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'bad request 400' })
+    },
+    fauxAssistantMessage('Summary'),
+  ])
+  const f = await prepared.open()
+  try {
+    await f.harness.commit(async (tx) => {
+      for (let n = 0; n < 8; n++)
+        await tx.appendEntry(f.root.id, {
+          kind: 'pi.user',
+          model: [{ role: 'user', content: `Part ${n} ${'word '.repeat(4000)}`, timestamp: n }],
+        })
+    }, context)
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => held)
+    const queued = await f.root.submit(
+      { type: 'input', content: 'queued', whenBusy: 'followUp' },
+      context,
+    )
+    gate.resolve()
+    expect(await first.wait(context)).toMatchObject({ status: 'unanswered', reason: 'model_error' })
+    throwing = true
+    const compaction = await f.root.compact(undefined, context)
+    expect((await f.harness.waitForTask(compaction, context)).state).toMatchObject({
+      outcome: { status: 'completed' },
+    })
+    expect((await f.root.context(context)).entries[0].kind).toBe('pi.compaction')
+    expect(await queued.wait(context)).toMatchObject({
+      status: 'unanswered',
+      reason: 'refused',
+      detail: 'note failed',
+    })
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
 it('starts one run with every follow-up queued while busy, and steers join the current run', async () => {
   const home = await temp()
   const prepared = await prepareHarness({

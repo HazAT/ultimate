@@ -21,7 +21,8 @@ export function fileMemo<T>(source: {
   const sign = async (paths: readonly string[]) =>
     `${source.key?.() ?? ''}|${await signature(paths)}`
   return async (): Promise<T> => {
-    if (last && (await sign(last.paths)) === last.signature) return last.value
+    const cached = last
+    if (cached && (await sign(cached.paths)) === cached.signature) return cached.value
     const paths = await source.paths()
     const before = await sign(paths)
     const value = await source.read()

@@ -525,10 +525,16 @@ it('keeps a model whose login check is pending or failed, and never trades a sub
     (tx) => configure(tx, dice, { model: { provider: 'openrouter', modelId: dead } }),
     context,
   )
-  const check = vi.spyOn(runtime, 'checkAuth').mockResolvedValueOnce({ type: 'api_key' })
-  await ask(f.server, dice, 'pending')
-  check.mockRejectedValueOnce(new Error('claude auth status timed out'))
+  const check = vi
+    .spyOn(runtime, 'checkAuth')
+    .mockRejectedValue(new Error('claude auth status timed out'))
   await ask(f.server, dice, 'failed')
+  expect(check).toHaveBeenCalled()
+  // A failed check is inconclusive and not kept: the next input checks again.
+  check.mockClear()
+  check.mockResolvedValue({ type: 'api_key' })
+  await ask(f.server, dice, 'pending')
+  expect(check).toHaveBeenCalled()
   expect(await model()).toEqual({ provider: 'openrouter', modelId: dead })
   expect(await fallbacks()).toEqual([])
   check.mockRestore()
