@@ -491,7 +491,6 @@ async function sendTurn(input: {
   const cancelled = () => {
     if (input.fromComposer) throw signal.reason
   }
-  if (dock.speak()) speech.warm()
   const sentBySaying =
     input.spokenSend === true
       ? '(The user ended this message by saying a send command such as "send it": that sent it to you, it is not a request to hand off.)'
@@ -523,6 +522,7 @@ async function sendTurn(input: {
     releaseBox?.()
     return 'empty' as const
   }
+  if (dock.speak()) speech.warm()
   let delivered = false
   const key = crypto.randomUUID()
   for (const clip of clips) sending.add(clip.audio)
