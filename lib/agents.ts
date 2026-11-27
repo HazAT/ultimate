@@ -17,6 +17,7 @@ import { projectDecision, readDecision, useProjectSetup } from './project-setup.
 import { discoverExtensions } from './discovery.ts'
 import { isMissing } from './errors.shared.ts'
 import { fileMemo } from './memo.ts'
+import type { FileMemoState } from './memo.ts'
 import type { ExtensionHost } from '../server/extensions.ts'
 
 type DeferredToolNamesWhenInheritingAll = string[]
@@ -465,24 +466,10 @@ export async function discoveryPaths(ultimateRoot: string, projectRoot: string, 
   ]
 }
 
-function cachedDiscovery(
-  ultimateRoot: string,
-  projectRoot: string,
-  userHome: string,
-  modelRuntime: ModelRuntime,
-) {
-  let snapshot: readonly unknown[] | undefined
-  let snapshots = 0
-  return fileMemo({
-    paths: () => discoveryPaths(ultimateRoot, projectRoot, userHome),
-    read: () => discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
-    key: () => {
-      const replacedWhenModelsOrLoginsChange = modelRuntime.getAvailableSnapshot()
-      if (replacedWhenModelsOrLoginsChange !== snapshot) snapshots++
-      snapshot = replacedWhenModelsOrLoginsChange
-      return String(snapshots)
-    },
-  })
+type DiscoveryCache = FileMemoState<AgentDiscovery> & {
+  readBy?: typeof discoverAgents
+  snapshot?: readonly unknown[]
+  snapshots: number
 }
 
 export function agentDefinitions(
@@ -492,8 +479,26 @@ export function agentDefinitions(
   >,
   projectRoot = host.projectRoot,
 ): Promise<AgentDiscovery> {
-  return host.resource(`agents.discovery:${projectRoot}`, () =>
-    cachedDiscovery(host.ultimateRoot, projectRoot, host.userHome, host.modelRuntime),
+  const { ultimateRoot, userHome, modelRuntime } = host
+  const cache = host.resource<DiscoveryCache>(`agents.discovery:${projectRoot}`, () => ({
+    snapshots: 0,
+  }))
+  if (cache.readBy !== discoverAgents) {
+    cache.readBy = discoverAgents
+    delete cache.last
+  }
+  return fileMemo(
+    {
+      paths: () => discoveryPaths(ultimateRoot, projectRoot, userHome),
+      read: () => discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
+      key: () => {
+        const replacedWhenModelsOrLoginsChange = modelRuntime.getAvailableSnapshot()
+        if (replacedWhenModelsOrLoginsChange !== cache.snapshot) cache.snapshots++
+        cache.snapshot = replacedWhenModelsOrLoginsChange
+        return String(cache.snapshots)
+      },
+    },
+    cache,
   )()
 }
 

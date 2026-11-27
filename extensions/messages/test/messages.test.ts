@@ -168,8 +168,11 @@ async function fixture(
                   branch: (input: BranchInput, ctx: Context) => startBranch(host, input, ctx),
                 }
               : undefined
+  const resources = new Map<string, unknown>()
   const host = {
     ...prepared,
+    resource: <T>(key: string, create: () => T) =>
+      (resources.get(key) ?? resources.set(key, create()).get(key)) as T,
     metadata: Metadata,
     emit,
     react: events.react,

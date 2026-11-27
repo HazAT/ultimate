@@ -12,22 +12,28 @@ export async function signature(paths: readonly string[]) {
     .join(',')
 }
 
-export function fileMemo<T>(source: {
-  paths: () => Promise<readonly string[]>
-  read: () => Promise<T>
-  key?: () => string
-}) {
-  let last: { value: T; paths: readonly string[]; signature: string } | undefined
+export type FileMemoState<T> = {
+  last?: { value: T; paths: readonly string[]; signature: string }
+}
+
+export function fileMemo<T>(
+  source: {
+    paths: () => Promise<readonly string[]>
+    read: () => Promise<T>
+    key?: () => string
+  },
+  state: FileMemoState<T> = {},
+) {
   const sign = async (paths: readonly string[]) =>
     `${source.key?.() ?? ''}|${await signature(paths)}`
   return async (): Promise<T> => {
-    const cached = last
+    const cached = state.last
     if (cached && (await sign(cached.paths)) === cached.signature) return cached.value
     const paths = await source.paths()
     const before = await sign(paths)
     const value = await source.read()
     const unchangedWhileRead = (await sign(paths)) === before
-    last = unchangedWhileRead ? { value, paths, signature: before } : undefined
+    state.last = unchangedWhileRead ? { value, paths, signature: before } : undefined
     return value
   }
 }

@@ -94,6 +94,9 @@ async function fixture(
     JSON.stringify({ retry: { baseDelayMs: 1 } }),
   )
   const errors: string[] = []
+  const resources = new Map<string, unknown>()
+  const resource = <T>(key: string, create: () => T) =>
+    (resources.get(key) ?? resources.set(key, create()).get(key)) as T
   const prepared = await prepareHarness({
     report: (notice) => {
       if (notice.level === 'error') errors.push(notice.message)
@@ -118,7 +121,7 @@ async function fixture(
     implement: services.implement,
     want: services.want,
     need,
-    resource: (_key, create) => create(),
+    resource,
     extensions: () => [],
     notice: () => {},
     onOpen: lifecycle.onOpen,
@@ -264,6 +267,7 @@ async function fixture(
   await open()
   return {
     prepared,
+    resource,
     opened: opened!,
     ultimateRoot,
     userHome,
@@ -2046,12 +2050,12 @@ describe('subagents', () => {
       expect(() => parseDefinition(definition().replace(from, to), 'test')).toThrow(error)
   })
   it('saves a definition as a project override that start uses, writes nothing when invalid, and deletes it', async () => {
-    const { prepared, opened, ultimateRoot, userHome } = await fixture()
+    const { prepared, resource, opened, ultimateRoot, userHome } = await fixture()
     const ctx = {
       host: {
         ...prepared,
         harness: () => opened.harness,
-        resource: (_key: string, create: () => unknown) => create(),
+        resource,
       },
     } as unknown as ActionContext
     const project = join(prepared.projectRoot, '.ultimate/agents')
@@ -2165,12 +2169,12 @@ describe('subagents', () => {
     ).rejects.toThrow('scope must be user or project')
   })
   it('saves only overlay changes and denies a removed inherited tool', async () => {
-    const { prepared, opened, userHome, ultimateRoot } = await fixture()
+    const { prepared, resource, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {
       host: {
         ...prepared,
         harness: () => opened.harness,
-        resource: (_key: string, create: () => unknown) => create(),
+        resource,
       },
     } as unknown as ActionContext
     const overlay = join(userHome, '.ultimate/agents/scout.md')
@@ -2227,12 +2231,12 @@ describe('subagents', () => {
     expect(await readFile(join(ultimateRoot, 'agents/scout.md'), 'utf8')).toBe(definition())
   })
   it('keeps headings in project instructions added over a user overlay', async () => {
-    const { prepared, opened, userHome } = await fixture()
+    const { prepared, resource, opened, userHome } = await fixture()
     const ctx = {
       host: {
         ...prepared,
         harness: () => opened.harness,
-        resource: (_key: string, create: () => unknown) => create(),
+        resource,
       },
     } as unknown as ActionContext
     new ProjectTrustStore(join(userHome, '.ultimate')).set(prepared.projectRoot, true)
@@ -2268,12 +2272,12 @@ describe('subagents', () => {
     expect(await readFile(userFile, 'utf8')).toBe(user)
   })
   it('keeps a lower layer denial and its own denial when an overlay is saved without a tool change', async () => {
-    const { prepared, opened, userHome, ultimateRoot } = await fixture()
+    const { prepared, resource, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {
       host: {
         ...prepared,
         harness: () => opened.harness,
-        resource: (_key: string, create: () => unknown) => create(),
+        resource,
       },
     } as unknown as ActionContext
     const base =
@@ -2324,12 +2328,12 @@ describe('subagents', () => {
     ).rejects.toThrow('An overlay cannot allow bash again')
   })
   it('keeps the tools an overlay adds to a base that inherits every tool when its form is saved', async () => {
-    const { prepared, opened, userHome, ultimateRoot } = await fixture()
+    const { prepared, resource, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {
       host: {
         ...prepared,
         harness: () => opened.harness,
-        resource: (_key: string, create: () => unknown) => create(),
+        resource,
       },
     } as unknown as ActionContext
     await writeFile(
