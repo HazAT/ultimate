@@ -96,7 +96,7 @@ index 54f3ef34ddf1bf85e3ad9c41bdbd216c081a476f..8a63b529154f0e896edb585fc20d3d43
                  firstKept,
              };
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
-index 56f3055ab58e51d429f91c90c9286531f3086106..3adaaa7f195dcbeb27b5f847453e839467c1a5d1 100644
+index 56f3055ab58e51d429f91c90c9286531f3086106..138d7cecf1d19d70c57b47a46890ac91c0316d06 100644
 --- a/dist/harness/generation.js
 +++ b/dist/harness/generation.js
 @@ -6,7 +6,7 @@ import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.j
@@ -116,8 +116,8 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..3adaaa7f195dcbeb27b5f847453e8394
              await runtime.commit(async (tx) => {
 -                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings);
                  const live = await tx.doc(LiveDoc, runtime.conversationId);
-+                const at = await answerBoundary(tx, runtime, live, continuation, afterRun);
-+                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings, at, runtime.now());
++                const { at, refusals } = await answerBoundary(tx, runtime, live, continuation, afterRun);
++                const boundary = await prepareBoundary(tx, runtime.conversationId, runtime.settings, at, runtime.now(), undefined, refusals);
                  if (live.run?.taskId === runtime.taskId)
                      delete live.run.yield;
                  return concludeAnswer(tx, runtime, live, boundary, answer, continuation, afterRun);
@@ -139,8 +139,8 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..3adaaa7f195dcbeb27b5f847453e8394
          // Queue modes are read on the Session line, when the boundary is decided.
 -        const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
          const live = await tx.doc(LiveDoc, conversationId);
-+        const at = await answerBoundary(tx, runtime, live, continuation, afterRun);
-+        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, at, runtime.now());
++        const { at, refusals } = await answerBoundary(tx, runtime, live, continuation, afterRun);
++        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, at, runtime.now(), undefined, refusals);
          const entry = await appendAssistant(tx, conversationId, message);
          return concludeAnswer(tx, runtime, live, boundary, entry.id, continuation, afterRun);
      }, context);
@@ -155,12 +155,12 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..3adaaa7f195dcbeb27b5f847453e8394
 +/** The boundary `concludeAnswer()` applies: none when an `afterRun` hold keeps the queued items queued. */
 +async function answerBoundary(tx, runtime, live, continuation, afterRun) {
 +    if (!afterRun || live.run?.taskId !== runtime.taskId)
-+        return "final";
++        return { at: "final" };
 +    if (continuation === undefined)
-+        return "none";
++        return { at: "none" };
 +    const inbox = await tx.doc(InboxDoc, runtime.conversationId);
 +    const refusals = await refusedInputs(tx, runtime.conversationId, inbox.items, true, runtime.settings, runtime.now());
-+    return takesContinuation(continuation, { inbox, refusals }) ? "final" : "none";
++    return takesContinuation(continuation, { inbox, refusals }) ? { at: "final", refusals } : { at: "none" };
 +}
  /**
   * Settle an answer that stands, or take its continuation: shared by `answer()` and the `yield` phase. A continuation is
@@ -301,7 +301,7 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..e02c57037c82c9d1dd0be7e59d4ec90a
          this.assertUsable();
          return this.#tasks.wake();
 diff --git a/dist/harness/inbox.d.ts b/dist/harness/inbox.d.ts
-index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..0d89233c5b29c61e9a47d8e71e01a8e2918f827f 100644
+index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..d284241b7f0d24abfe77b0174de4bc2cefd90c18 100644
 --- a/dist/harness/inbox.d.ts
 +++ b/dist/harness/inbox.d.ts
 @@ -26,6 +26,9 @@ export declare const InboxDoc: import("../types.ts").ConversationDocToken<InboxS
@@ -319,7 +319,7 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..0d89233c5b29c61e9a47d8e71e01a8e2
   * boundary at the start of their commit.
   */
 -export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes): Promise<Boundary>;
-+export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes, at: "postTools" | "final" | "none", now: number, incoming?: EntryDraft): Promise<Boundary>;
++export declare function prepareBoundary(tx: Tx, conversationId: ConversationId, modes: QueueModes, at: "postTools" | "final" | "none", now: number, incoming?: EntryDraft, decided?: Map<SubmissionId, string>): Promise<Boundary>;
  /**
   * Place the queued items a boundary selects (spec §6): every write, the first or all steers, and at `final` the first
   * or all follow-ups. A selected reset turns a `postTools` boundary into `final`. Writes are placed first and user
@@ -332,7 +332,7 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..0d89233c5b29c61e9a47d8e71e01a8e2
  /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
  export declare function pickInputEntry({ kind, data }: InputEntry): JsonRepresentation<InputEntry>;
 diff --git a/dist/harness/inbox.js b/dist/harness/inbox.js
-index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..e29b1b21037262b68beef9d84c8646a05e8cef25 100644
+index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..b04728fce33844f75439745e2a3048ac06184037 100644
 --- a/dist/harness/inbox.js
 +++ b/dist/harness/inbox.js
 @@ -1,6 +1,7 @@
@@ -348,11 +348,11 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..e29b1b21037262b68beef9d84c8646a0
   * boundary at the start of their commit.
   */
 -export async function prepareBoundary(tx, conversationId, modes) {
-+export async function prepareBoundary(tx, conversationId, modes, at, now, incoming) {
++export async function prepareBoundary(tx, conversationId, modes, at, now, incoming, decided) {
      const head = (await tx.latestHeadMarker(conversationId))?.head;
      const inbox = await tx.doc(InboxDoc, conversationId);
 +    const final = at === "final" || (at === "postTools" && hasQueuedReset(inbox.items));
-+    const refusals = at === "none" ? new Map() : await refusedInputs(tx, conversationId, inbox.items, final, modes, now);
++    const refusals = at === "none" ? new Map() : decided ?? (await refusedInputs(tx, conversationId, inbox.items, final, modes, now));
 +    const remaining = inbox.items.filter((item) => !refusals.has(item.id));
 +    const first = at === "none" ? undefined : remaining[selectUsers(remaining, final, modes)[0]];
 +    const input = first === undefined ? incoming : inputDraft(first.content, first.entry, now);
@@ -373,14 +373,13 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..e29b1b21037262b68beef9d84c8646a0
          conversationId,
          inbox,
          steeringMode: modes.steeringMode,
-@@ -25,25 +44,64 @@ export async function prepareBoundary(tx, conversationId, modes) {
+@@ -25,25 +44,63 @@ export async function prepareBoundary(tx, conversationId, modes) {
          head,
      };
  }
 +/**
-+ * The queued inputs a boundary would place that a `refuseInput` hook refuses, by submission, with the reason. Checks
-+ * every input the selection would place and selects again among the rest until nothing new is selected; runs no
-+ * `beforeInput`.
++ * The queued inputs a boundary would place that a `refuseInput` hook refuses, by submission, with the reason. Runs no
++ * `beforeInput`; `prepareBoundary()` takes the result as `decided`, so one commit decides refusals once.
 + */
 +export async function refusedInputs(tx, conversationId, items, final, modes, now) {
 +    const refusals = new Map();
@@ -446,7 +445,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..e29b1b21037262b68beef9d84c8646a0
      // `appendEntry()` copies the drafts' values; the items are removed only afterwards.
      let first;
      for (const index of writes) {
-@@ -61,6 +119,9 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -61,6 +118,9 @@ export async function applyBoundary(tx, boundary, at, now) {
      }
      const placed = [];
      for (const index of users) {
@@ -456,7 +455,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..e29b1b21037262b68beef9d84c8646a0
          const item = items[index];
          const entry = await appendInput(tx, conversationId, item.content, item.entry, now);
          tx.placeSubmission(item.id, entry.id);
-@@ -74,10 +135,11 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -74,10 +134,11 @@ export async function applyBoundary(tx, boundary, at, now) {
  }
  /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
  export function appendInput(tx, conversationId, content, entry, now) {
