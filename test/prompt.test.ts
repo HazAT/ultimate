@@ -71,7 +71,7 @@ it('renders only enabled guidance, lists off building blocks, and adds self guid
     const skillsCall = vi.spyOn(server.host, 'skills')
     for (const useEnv of [true, false]) {
       const isolated = await render(checkout, useEnv)
-      expect(isolated.cwd).toBe(checkout)
+      expect(isolated.environment).toContain(`Work checkout (effective cwd): ${checkout}`)
       expect(isolated.project_context).toContain('Isolated project instructions.')
       expect(isolated.project_context).toContain('Ultimate personal instructions.')
       expect(isolated.project_context).not.toContain('Pi personal instructions.')
@@ -85,10 +85,10 @@ it('renders only enabled guidance, lists off building blocks, and adds self guid
     await mkdir(second, { recursive: true })
     await writeFile(join(second, 'SKILL.md'), '---\nname: second\ndescription: Second\n---\n')
     await mkdir(join(home, '.ultimate/agents'), { recursive: true })
-    const agent = (name: string, skills: string) =>
+    const agent = (name: string, skills: string, family = 'default') =>
       writeFile(
         join(home, `.ultimate/agents/${name}.md`),
-        `---\nname: ${name}\ndescription: d\nskills: ${skills}\n---\n\nBody.\n`,
+        `---\nname: ${name}\ndescription: d\nfamily: ${family}\nskills: ${skills}\n---\n\nBody.\n`,
       )
     await agent('limited', '[ultimate-only]')
     await agent('none', '[]')
@@ -103,6 +103,14 @@ it('renders only enabled guidance, lists off building blocks, and adds self guid
     expect(limited).toContain('ultimate-only')
     expect(limited).not.toContain('second')
     expect(await labelled('none')).toBeUndefined()
+
+    await agent('lookup', '[]', 'tiny')
+    await server.harness.commit(async (tx) => {
+      ;(await tx.doc(Profile, server.root.id)).definition = 'lookup'
+    }, context)
+    expect((await render(checkout)).project_context).toBe(
+      `Project instructions, to read when your task needs them: ${join(home, '.ultimate/AGENTS.md')}, ${join(checkout, 'AGENTS.md')}`,
+    )
   } finally {
     await server.close()
     await removeTemp(home)

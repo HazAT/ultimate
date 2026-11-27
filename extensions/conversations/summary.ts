@@ -848,17 +848,20 @@ export function summaryBehavior(host: SummaryHost, generate = generateSummary) {
       hook(GenerationTask, {
         beforeRequest: async (_request, api, context) => {
           const model = await summaryModel(host)
-          await host.harness().commit(async (tx) => {
-            await requestSummary(
-              tx,
-              host,
-              api.conversationId,
-              { reason: 'intent' },
-              model,
-              generate,
+          await host
+            .harness()
+            .commit(
+              (tx) =>
+                requestSummary(tx, host, api.conversationId, { reason: 'intent' }, model, generate),
+              context,
             )
-            await requestSummary(tx, host, api.conversationId, { reason: 'steer' }, model, generate)
-          }, context)
+          await host
+            .harness()
+            .commit(
+              (tx) =>
+                requestSummary(tx, host, api.conversationId, { reason: 'steer' }, model, generate),
+              context,
+            )
           return undefined
         },
         onYield: async (_answer, api, context) => {

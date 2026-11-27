@@ -147,6 +147,7 @@ it('runs a definition with fast: true on the priority tier, and only on OpenAI m
       registerProvider: (name: string, overlay: { streamSimple: ReturnType<typeof fastStream> }) =>
         providers.set(name, overlay),
       registry: { getAll: () => [] },
+      getAvailableSnapshot: () => [],
     },
   } as unknown as Parameters<typeof fastExtension>[0])
   const hooks = extension.hooks![0].handlers as GenerationHooks

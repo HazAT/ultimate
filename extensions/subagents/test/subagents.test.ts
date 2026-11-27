@@ -2048,7 +2048,11 @@ describe('subagents', () => {
   it('saves a definition as a project override that start uses, writes nothing when invalid, and deletes it', async () => {
     const { prepared, opened, ultimateRoot, userHome } = await fixture()
     const ctx = {
-      host: { ...prepared, harness: () => opened.harness },
+      host: {
+        ...prepared,
+        harness: () => opened.harness,
+        resource: (_key: string, create: () => unknown) => create(),
+      },
     } as unknown as ActionContext
     const project = join(prepared.projectRoot, '.ultimate/agents')
     const override = {
@@ -2163,7 +2167,11 @@ describe('subagents', () => {
   it('saves only overlay changes and denies a removed inherited tool', async () => {
     const { prepared, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {
-      host: { ...prepared, harness: () => opened.harness },
+      host: {
+        ...prepared,
+        harness: () => opened.harness,
+        resource: (_key: string, create: () => unknown) => create(),
+      },
     } as unknown as ActionContext
     const overlay = join(userHome, '.ultimate/agents/scout.md')
     await mkdir(join(userHome, '.ultimate/agents'), { recursive: true })
@@ -2221,7 +2229,11 @@ describe('subagents', () => {
   it('keeps headings in project instructions added over a user overlay', async () => {
     const { prepared, opened, userHome } = await fixture()
     const ctx = {
-      host: { ...prepared, harness: () => opened.harness },
+      host: {
+        ...prepared,
+        harness: () => opened.harness,
+        resource: (_key: string, create: () => unknown) => create(),
+      },
     } as unknown as ActionContext
     new ProjectTrustStore(join(userHome, '.ultimate')).set(prepared.projectRoot, true)
     const userDir = join(userHome, '.ultimate/agents')
@@ -2258,7 +2270,11 @@ describe('subagents', () => {
   it('keeps a lower layer denial and its own denial when an overlay is saved without a tool change', async () => {
     const { prepared, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {
-      host: { ...prepared, harness: () => opened.harness },
+      host: {
+        ...prepared,
+        harness: () => opened.harness,
+        resource: (_key: string, create: () => unknown) => create(),
+      },
     } as unknown as ActionContext
     const base =
       '---\nname: helper\ndescription: Helps\ntools: [read, bash]\ndenyTools: [bash]\n---\nHelp.\n'
@@ -2310,7 +2326,11 @@ describe('subagents', () => {
   it('keeps the tools an overlay adds to a base that inherits every tool when its form is saved', async () => {
     const { prepared, opened, userHome, ultimateRoot } = await fixture()
     const ctx = {
-      host: { ...prepared, harness: () => opened.harness },
+      host: {
+        ...prepared,
+        harness: () => opened.harness,
+        resource: (_key: string, create: () => unknown) => create(),
+      },
     } as unknown as ActionContext
     await writeFile(
       join(ultimateRoot, 'agents/helper.md'),
