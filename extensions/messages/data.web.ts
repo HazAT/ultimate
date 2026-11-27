@@ -194,8 +194,9 @@ export function threadRow(
   const { entry, calls } = row
   if (hiddenUncountedCompactKinds.has(entry.kind) || entry.kind === 'pi.system') return 'hidden'
   if (entry.kind === 'pi.user') return true
-  const userSentSummaryOfTheirSideChat = entry.kind === 'sidechat.summary'
-  if (userSentSummaryOfTheirSideChat) return true
+  const summaryOfTheUsersOwnTalk =
+    entry.kind === 'sidechat.summary' || entry.kind === 'voice.summary'
+  if (summaryOfTheUsersOwnTalk) return true
   if (MessageEntry.is(entry) || ReplyEntry.is(entry)) {
     const data: { from?: unknown } | undefined = entry.data
     return data?.from === 'user'
