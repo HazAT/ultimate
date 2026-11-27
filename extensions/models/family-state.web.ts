@@ -1,5 +1,5 @@
-import { cell } from '../../lib/cell.ts'
-import { DEFAULT_FAMILY } from '../../lib/families.ts'
+import { cell } from '../../lib/cell.web.ts'
+import { DEFAULT_FAMILY } from '../../lib/families.shared.ts'
 import type { FamiliesView, FamilyView } from './refs.ts'
 
 export const agentsPanel = 'agents'

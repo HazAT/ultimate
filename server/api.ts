@@ -1,4 +1,4 @@
-import { parseConversationId, parseEntryId, offsetEntryId } from '../lib/ids.ts'
+import { parseConversationId, parseEntryId, offsetEntryId } from '../lib/ids.shared.ts'
 import type {
   ConversationId,
   ConversationDocToken,
@@ -10,7 +10,7 @@ import type {
 } from '@earendil-works/pi-durable'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { onCommit } from '../lib/commits.ts'
-import { inProcess } from '../lib/errors.ts'
+import { inProcess } from '../lib/errors.shared.ts'
 import type {
   ServerEvents,
   ConversationSummary,
@@ -48,7 +48,7 @@ import { admit, deviceOf, sourceOf } from './request-security.ts'
 import type { Access } from './request-security.ts'
 import { conversationIndex } from './project.ts'
 import { shortTitle } from '../lib/title.ts'
-import { batch, every } from '../lib/timers.ts'
+import { batch, every } from '../lib/timers.shared.ts'
 
 class HttpError extends Error {
   status: number

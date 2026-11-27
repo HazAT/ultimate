@@ -1,5 +1,5 @@
 import type { Readable, Writable } from 'node:stream'
-import { inProcess } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 type Message = {

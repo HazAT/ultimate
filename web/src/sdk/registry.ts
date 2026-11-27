@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js'
-import { deadline } from '../../../lib/timers.ts'
-import type { Cancel } from '../../../lib/timers.ts'
+import { deadline } from '../../../lib/timers.shared.ts'
+import type { Cancel } from '../../../lib/timers.shared.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
 import { events } from './events.ts'
 import { errorMessage } from './format.ts'

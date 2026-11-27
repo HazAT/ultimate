@@ -11,7 +11,7 @@ import type { ExtensionHost } from '../../../../server/extensions.ts'
 import workspaceExtension from '../../server.ts'
 import { workspaces } from '../../workspaces.ts'
 import { git } from '../../../../lib/git.ts'
-import { ignoring, isNoProcess } from '../../../../lib/errors.ts'
+import { ignoring, isNoProcess } from '../../../../lib/errors.shared.ts'
 import { groupTarget } from '../../../../lib/process-group.ts'
 import { temp, until } from '../../../../test/helpers.ts'
 

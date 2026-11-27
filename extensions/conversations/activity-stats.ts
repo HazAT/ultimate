@@ -7,8 +7,8 @@ import type {
   Harness,
 } from '@earendil-works/pi-durable'
 import { UsageDoc } from '@earendil-works/pi-durable'
-import { isInput } from '../../lib/entries.ts'
-import { offsetEntryId, parseEntryId } from '../../lib/ids.ts'
+import { isInput } from '../../lib/entries.shared.ts'
+import { offsetEntryId, parseEntryId } from '../../lib/ids.shared.ts'
 
 type Counts = { turns: number; calls: number; lastAt?: number }
 type Checkpoint = Counts & { entry: EntryId }

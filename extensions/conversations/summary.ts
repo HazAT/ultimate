@@ -1,4 +1,4 @@
-import { offsetEntryId } from '../../lib/ids.ts'
+import { offsetEntryId } from '../../lib/ids.shared.ts'
 import type {
   ContextView,
   ConversationId,
@@ -30,7 +30,7 @@ import type {
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Trees } from './api.ts'
 import { summaryModel } from './summary-model.ts'
-import { isInput } from '../../lib/entries.ts'
+import { isInput } from '../../lib/entries.shared.ts'
 import type { SummaryModel, SummaryModelHost } from './summary-model.ts'
 import type { SummaryRecord, SummaryStatus, SummaryDiscard } from './types.ts'
 import {
@@ -40,7 +40,7 @@ import {
   SpawnSummarized,
   ReplySummarized,
   SummaryDiscarded,
-} from './entries.ts'
+} from './entries.shared.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export type SummaryResult = {

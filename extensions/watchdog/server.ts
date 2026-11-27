@@ -1,4 +1,4 @@
-import { parseEntryId, offsetEntryId } from '../../lib/ids.ts'
+import { parseEntryId, offsetEntryId } from '../../lib/ids.shared.ts'
 import type {
   ConversationId,
   Cursor,
@@ -28,7 +28,7 @@ import { Roots, Tally } from '../lineage/api.ts'
 import { WatchdogApi } from './api.ts'
 import type { ReportedFailure } from './api.ts'
 import type { Failure } from './refs.ts'
-import { FailureEntry, StandingFailureEntry } from './entries.ts'
+import { FailureEntry, StandingFailureEntry } from './entries.shared.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 async function isTally(tx: Tx, id: ConversationId) {

@@ -27,7 +27,7 @@ import {
   useUiState,
   writingAs,
 } from '@/sdk/solid'
-import { parseConversationId, parseEntryId } from '../../lib/ids.ts'
+import { parseConversationId, parseEntryId } from '../../lib/ids.shared.ts'
 import { ConversationRef, Unsummarized } from '../conversations/ui.solid.tsx'
 import { RootComposer } from './banner.solid.tsx'
 import { MemoryCall, NotifyCall, RememberCall } from './calls.solid.tsx'

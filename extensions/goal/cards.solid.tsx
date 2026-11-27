@@ -20,7 +20,7 @@ import {
   type EntryRecord,
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { GoalStartedEntry, GoalReportEntry } from './entries.ts'
+import { GoalStartedEntry, GoalReportEntry } from './entries.shared.ts'
 import { EndAction, GoalDoc, ImagesAction } from './refs.ts'
 import type { Criterion, Decision, Goal } from './refs.ts'
 

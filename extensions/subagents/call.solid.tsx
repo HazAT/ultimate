@@ -26,7 +26,7 @@ import {
   useDocOf,
   type SolidToolProps,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { ConversationTaskChip } from '../conversations/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
 import type { LandResult } from '../workspaces/types.ts'

@@ -1,7 +1,7 @@
 import { settle } from '@ui-sdk/core/testing'
 import { flush } from 'solid-js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { parseConversationId } from '../../../../lib/ids.ts'
+import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { composerDraft, getDraft } from '../../../../web/src/app/drafts.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'

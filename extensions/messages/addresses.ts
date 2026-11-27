@@ -1,4 +1,4 @@
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import type {
   ConversationId,
   EntryId,
@@ -17,7 +17,7 @@ import { Standing, Subagents, SubagentsApi } from '../subagents/api.ts'
 import type { Remote, Serves } from './refs.ts'
 import { Messages } from './api.ts'
 import { Roots, Tally } from '../lineage/api.ts'
-import { isOpen } from '../../lib/message-state.ts'
+import { isOpen } from '../../lib/message-state.shared.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export type { Serves }

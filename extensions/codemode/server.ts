@@ -1,4 +1,4 @@
-import { offsetEntryId } from '../../lib/ids.ts'
+import { offsetEntryId } from '../../lib/ids.shared.ts'
 import type {
   ConversationId,
   Cursor,

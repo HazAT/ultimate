@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { afterEach, expect, it, vi } from 'vitest'
-import { fetchAssets, sourceFrames } from '../lib/source-frames.ts'
+import { fetchAssets, sourceFrames } from '../lib/source-frames.shared.ts'
 
 // `function Crash(){throw new Error("x")}` from /repo/extensions/a/web.tsx line 3, column 9, in one minified line.
 const script = 'function Crash(){throw new Error("x")}\n//# sourceMappingURL=web-1.js.map\n'

@@ -5,7 +5,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { configuredModel, familyDefault, hasLogin } from '../../lib/agents.ts'
 import { Family, Pin } from './api.ts'
 import type { Fallback } from './refs.ts'
-import { FallbackEntry } from './entries.ts'
+import { FallbackEntry } from './entries.shared.ts'
 
 type Ref = { provider: string; modelId: string }
 const name = (ref: Ref) => `${ref.provider}/${ref.modelId}`

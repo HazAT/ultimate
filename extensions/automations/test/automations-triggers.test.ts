@@ -22,7 +22,7 @@ import type { SubagentsService } from '../../subagents/api.ts'
 import { createChild } from '../../subagents/children.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions, Automations } from '../server.ts'
-import type { Automation } from '../types.ts'
+import type { Automation } from '../types.shared.ts'
 import { IDLE_WAKER } from '../triggers.ts'
 import { temp, eventHost, until, apis, openers } from '../../../test/helpers.ts'
 

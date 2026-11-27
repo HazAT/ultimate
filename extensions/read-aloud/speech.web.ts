@@ -1,5 +1,5 @@
-import { cell } from '../../lib/cell.ts'
-import { inProcess, overshadowed } from '../../lib/errors.ts'
+import { cell } from '../../lib/cell.web.ts'
+import { inProcess, overshadowed } from '../../lib/errors.shared.ts'
 import { MAX_SPOKEN } from './voices.shared.ts'
 
 export const CHARS_PER_SECOND = 14.5
@@ -196,8 +196,7 @@ export function fetchedVoice(options: {
       parts.push(
         (parts.at(-1) ?? Promise.resolve('')).then(() => options.load(part, controller.signal)),
       )
-    for (const part of parts)
-      inProcess('speech fetched for this open page only', part.catch(overshadowed))
+    for (const part of parts) void part.catch(overshadowed)
     fetched.set(text, { controller, parts })
     return parts
   }
@@ -225,13 +224,10 @@ export function fetchedVoice(options: {
       clipEvents = events
       audio.src = src
       audio.playbackRate = rate
-      inProcess(
-        'audio plays on this open page only',
-        audio
-          .play()
-          .then(() => (unlocked = true))
-          .catch((error: unknown) => clipEvents === events && (settle(), reject(error))),
-      )
+      void audio
+        .play()
+        .then(() => (unlocked = true))
+        .catch((error: unknown) => clipEvents === events && (settle(), reject(error)))
     })
   async function play(text: string, rate: number, events: SpeechEvents, mine: number) {
     const parts = request(text)
@@ -266,13 +262,10 @@ export function fetchedVoice(options: {
     unlock() {
       if (unlocked || clipEvents.ended) return
       audio.src = SILENCE
-      inProcess(
-        'unlocking sound concerns this open page only',
-        audio
-          .play()
-          .then(() => (unlocked = true))
-          .catch(overshadowed),
-      )
+      void audio
+        .play()
+        .then(() => (unlocked = true))
+        .catch(overshadowed)
     },
     halt,
     reset() {

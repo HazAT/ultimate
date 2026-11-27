@@ -1,4 +1,4 @@
-import { parseConversationId, parseEntryId } from '../../../../lib/ids.ts'
+import { parseConversationId, parseEntryId } from '../../../../lib/ids.shared.ts'
 export const mentionPattern = /(?<![\w/#&])#(\d{3,})(?:\/(\d+))?(?![\w/])/g
 
 export const mentionHref = (conversation: string, entry?: string) =>

@@ -8,7 +8,11 @@ import { icons } from '@lucide/solid'
 import { dynamic } from '@solidjs/web'
 import { Show, createMemo } from 'solid-js'
 import { ROOT, cn, useConversations, useDocOf, useUiState } from '@/sdk/solid'
-import { conversationRefParts, featureHue, featureTagClass } from '../../lib/conversation-ref.ts'
+import {
+  conversationRefParts,
+  featureHue,
+  featureTagClass,
+} from '../../lib/conversation-ref.web.ts'
 import { agentMark, agentTitle } from './mark-style.web.ts'
 import { MarksDoc, OverviewDoc } from './refs.ts'
 

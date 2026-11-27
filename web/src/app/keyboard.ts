@@ -1,4 +1,4 @@
-import { debounce } from '../../../lib/timers.ts'
+import { debounce } from '../../../lib/timers.shared.ts'
 import { allCommands, applies, currentContext, runCommand } from '../sdk/actions.ts'
 import { store } from '../sdk/client.ts'
 import { scopeOf } from '../sdk/scope.ts'

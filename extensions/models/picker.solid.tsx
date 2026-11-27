@@ -28,7 +28,7 @@ import {
   useModels,
   writingAs,
 } from '@/sdk/solid'
-import { familyTitle } from '../../lib/families.ts'
+import { familyTitle } from '../../lib/families.shared.ts'
 import { agentsPanel, familyOf, modelIdOf, runsOn, thinkingOf } from './family-state.web.ts'
 import { PickerRows } from './points.web.ts'
 import { FamilyDot, PickContext, useCurrentModel, useFamilies } from './readers.solid.tsx'

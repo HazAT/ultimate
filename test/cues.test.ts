@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { startCue, stopCue } from '../lib/cues.ts'
+import { startCue, stopCue } from '../lib/cues.web.ts'
 
 afterEach(() => {
   vi.unstubAllGlobals()

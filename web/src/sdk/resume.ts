@@ -1,4 +1,4 @@
-import { debounce, deadline } from '../../../lib/timers.ts'
+import { debounce, deadline } from '../../../lib/timers.shared.ts'
 import { capturePlace, restorePlace } from './resume-place.ts'
 import type { Place } from './resume-place.ts'
 

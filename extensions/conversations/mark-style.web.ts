@@ -1,5 +1,5 @@
-import { isMarkTint } from '../../lib/marks.ts'
-import type { MarkTint } from '../../lib/marks.ts'
+import { isMarkTint } from '../../lib/marks.shared.ts'
+import type { MarkTint } from '../../lib/marks.shared.ts'
 import type { AgentMarkStyle } from './refs.ts'
 
 type Marks = Record<string, AgentMarkStyle> | null | undefined

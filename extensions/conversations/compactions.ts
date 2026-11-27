@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { onCommit } from '../../lib/commits.ts'
-import { rebuiltOnOpen } from '../../lib/errors.ts'
-import { offsetEntryId, parseEntryId } from '../../lib/ids.ts'
+import { rebuiltOnOpen } from '../../lib/errors.shared.ts'
+import { offsetEntryId, parseEntryId } from '../../lib/ids.shared.ts'
 import {
   CompactionEntry,
   CompactionTask,

@@ -22,7 +22,7 @@ export type Definition = {
   source: Source
   model?: ModelRef
   thinking?: string
-  /** The model family its file names (lib/families.ts). */
+  /** The model family its file names (lib/families.shared.ts). */
   family?: string
   /** What it runs on once the families apply: its pin, its family, else the default. */
   runs?: { family?: string; model?: ModelRef; thinking?: string; via: 'pin' | 'family' }

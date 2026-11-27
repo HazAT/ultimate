@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { definitionRuns, mergeFamilies, parseFamilies } from '../lib/families.ts'
+import { definitionRuns, mergeFamilies, parseFamilies } from '../lib/families.shared.ts'
 import { readFamilies, readFamilyLayers, writeFamilies } from '../lib/families-settings.ts'
 import { temp } from './helpers.ts'
 

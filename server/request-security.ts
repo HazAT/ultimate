@@ -2,7 +2,7 @@ import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { BlockList, isIP } from 'node:net'
 import type { Device, UiSource } from '../shared/events.ts'
 import { SOURCE_HEADER } from '../shared/protocol.ts'
-import { meansNone } from '../lib/errors.ts'
+import { meansNone } from '../lib/errors.shared.ts'
 
 export interface AccessRule {
   origin: string

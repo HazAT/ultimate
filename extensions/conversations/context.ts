@@ -1,4 +1,4 @@
-import { offsetEntryId } from '../../lib/ids.ts'
+import { offsetEntryId } from '../../lib/ids.shared.ts'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AgentDoc } from '@earendil-works/pi-durable'
@@ -7,7 +7,7 @@ import {
   estimateAfterHead,
   lastAssistant,
   promptTokens,
-} from '../../lib/context-usage.ts'
+} from '../../lib/context-usage.shared.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ContextUsageDoc } from './api.ts'
 import { projection } from './projection.ts'

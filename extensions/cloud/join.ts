@@ -1,7 +1,7 @@
 import { machineHostname } from '../../lib/machine.ts'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import { httpBase } from '../../lib/cloud.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { secretMetadata } from '../../lib/secrets.ts'
 import { readSettings, updateSettings, userSettingsPath } from '../../lib/settings.ts'
 import type { JoinResult, JoinState } from './refs.ts'

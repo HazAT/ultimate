@@ -1,6 +1,6 @@
 import { createMemo, Show } from 'solid-js'
 import { api, cn, useExternal } from '@/sdk/solid'
-import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.ts'
+import { DEFAULT_FAMILY, familyColor, familyTitle } from '../../lib/families.shared.ts'
 import { modelIdOf, refresh, runsOn } from './family-state.web.ts'
 import { FamilyDot, useFamilies } from './readers.solid.tsx'
 import { FamiliesAction } from './refs.ts'

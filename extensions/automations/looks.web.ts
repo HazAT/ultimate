@@ -1,4 +1,4 @@
-import { formatAgo, formatDuration } from '../../lib/format.ts'
+import { formatAgo, formatDuration } from '../../lib/format.shared.ts'
 import type { Automation, Run } from './refs.ts'
 
 export const spent = (automation: Automation, now: number) =>

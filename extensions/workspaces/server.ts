@@ -1,4 +1,4 @@
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { onCommit } from '../../lib/commits.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
@@ -36,7 +36,7 @@ import type { GithubRepo } from './refs.ts'
 import { githubRepo, readGithubRepo } from '../../lib/project-identity.ts'
 import { sweepChecks } from './lander.ts'
 import { landingPending, pendingLandingCards, Workspaces, workspaces } from './workspaces.ts'
-import { rebuiltOnOpen } from '../../lib/errors.ts'
+import { rebuiltOnOpen } from '../../lib/errors.shared.ts'
 export const order = -200
 export const docs = [Workspaces]
 export const userActions = ['setupGit']

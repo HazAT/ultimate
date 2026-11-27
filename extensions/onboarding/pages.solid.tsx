@@ -42,8 +42,8 @@ import {
   writerNow,
   writingAs,
 } from '@/sdk/solid'
-import { DEFAULT_FAMILY, RECOMMENDED_MODELS } from '../../lib/families.ts'
-import { nextTurn } from '../../lib/timers.ts'
+import { DEFAULT_FAMILY, RECOMMENDED_MODELS } from '../../lib/families.shared.ts'
+import { nextTurn } from '../../lib/timers.shared.ts'
 import { SetDefaultAction } from '../models/refs.ts'
 import {
   modelDialogs,

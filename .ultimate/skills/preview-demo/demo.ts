@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { groupAlive, identify, stopGroup } from '../../../lib/process-group.ts'
-import { pace } from '../../../lib/timers.ts'
+import { pace } from '../../../lib/timers.shared.ts'
 
 const { values, positionals } = parseArgs({
   options: {

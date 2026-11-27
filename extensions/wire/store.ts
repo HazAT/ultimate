@@ -2,7 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
-import { settled } from '../../lib/errors.ts'
+import { settled } from '../../lib/errors.shared.ts'
 import type { WireCall, WireSummary } from './refs.ts'
 
 export const PER_CONVERSATION = 20
