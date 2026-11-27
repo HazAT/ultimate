@@ -327,20 +327,26 @@ function AnswerCard(props: CardProps & { id: number }) {
     )
     return () => off.forEach((release) => release())
   })
-  const named = (when: () => boolean, description: string) => () => ({
-    when,
-    description: `${description} on message ${props.id}`,
-  })
+  const named =
+    (when: () => boolean, description: string, allowInInput = false) =>
+    () => ({
+      when,
+      allowInInput,
+      description: `${description} on message ${props.id}`,
+    })
   useShortcut('u', undo, named(undoing, 'Undo the answer'))
   const inComposerOrPage = () => {
     const focused = document.activeElement
-    const typing = focused?.closest('input, textarea, select, [contenteditable="true"]')
-    return !typing || !!focused?.closest('[data-composer-target="conversation"]')
+    const typing =
+      focused instanceof HTMLElement &&
+      (focused.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(focused.tagName))
+    return !typing || !!focused.closest('[data-composer-target="conversation"]')
   }
-  useShortcut('escape', undo, () => ({
-    ...named(() => undoing() && inComposerOrPage(), 'Undo the answer')(),
-    allowInInput: true,
-  }))
+  useShortcut(
+    'escape',
+    undo,
+    named(() => undoing() && inComposerOrPage(), 'Undo the answer', true),
+  )
   useShortcut(
     'enter',
     () => (phase() === 'undo' ? flushAnswer() : enter()),
