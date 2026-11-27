@@ -964,7 +964,7 @@ const quiet = (host: ExtensionHost) => {
   return task
 }
 
-const summaryWriteRequest = (id: ConversationId) => `voice:summary:${id}`
+const summaryWriteRequest = (id: ConversationId, at: number) => `voice:summary:${id}:${at}`
 
 function quietTask(host: ExtensionHost) {
   const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
@@ -1041,7 +1041,7 @@ function quietTask(host: ExtensionHost) {
           await (await host.harness().conversation(fork.of!, ctx))!.submit(
             {
               type: 'write',
-              requestId: summaryWriteRequest(id),
+              requestId: summaryWriteRequest(id, at),
               entry: {
                 kind: VoiceSummaryEntry.kind,
                 data,
@@ -1061,8 +1061,7 @@ function quietTask(host: ExtensionHost) {
         await runtime.commit(async (tx) => {
           const state = await tx.doc(Fork, id)
           if (state.ended) return terminal
-          const summarized = !!(await tx.submissionByRequest(fork.of!, summaryWriteRequest(id)))
-          if (!summarized && (await quietUntil(tx, id, at)) > at)
+          if ((await quietUntil(tx, id, at)) > at)
             return { status: 'running' as const, checkpoint: { phase: 'wait' as const } }
           const session = await tx.doc(Session, ROOT_CONVERSATION_ID)
           state.ended = true
