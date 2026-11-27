@@ -15,8 +15,9 @@ lightly rewritten for listening.
   flight, which cancels its response.
 - **The Speech setting** is shared by read-aloud and voice: voice (OpenAI by default when a key is set, else the
   system voice), the OpenAI voice (cedar by default) and the speed (1.1× by default), in UI state
-  `ext.read-aloud.voice`, `ext.read-aloud.openai-voice` and `ext.read-aloud.rate`. Voice settings shows them all;
-  the reading strip cycles the speed.
+  `ext.read-aloud.voice`, `ext.read-aloud.openai-voice` and `ext.read-aloud.rate`. Read aloud owns their controls
+  (`SpeechOptions`, `options.solid.tsx`): the playback bar's speed opens them in a small popover, and Voice settings
+  shows the same component.
 - **The button** sits in the hover action row of agent answers and message cards (`messageActions`), between Go back
   and Copy reference; user messages get none. While its message plays it turns into pause.
 - **The rewrite** keeps the full text: every sentence and point, in order. The summary model (`summaryModel`, see
@@ -36,7 +37,7 @@ lightly rewritten for listening.
   player holds a message (its bar shows), a click on one of its parts plays from there; the speaker prepares from
   that section when it was not read yet. A click never starts reading. Code blocks, tool calls and anything `not-prose` are skipped.
 - **The playback bar** (`bar.solid.tsx`) is the one bar for the player, shared with voice: Preparing, Reading,
-  Speaking or Paused, then paragraph, sentence and time left, the speed, skip by paragraph or sentence, pause and
+  Speaking or Paused, then paragraph, sentence and time left, the speed (it opens the Speech settings), skip by paragraph or sentence, pause and
   stop, with a progress line. Above the main composer its status opens and scrolls to the message being read; a
   redirected composer (the voice panel) shows none; the open voice panel shows voice's bar, or the speaker's
   (`SpeakerBar`, with Stop and Resume) while the speaker prepares, reads or failed.

@@ -10,7 +10,7 @@ type Controls = { pause: () => void; resume: () => void; stop: () => void }
 export function ReadingBar(props: {
   reading: Reading
   player: Controls
-  name?: string
+  name: string
   onShow?: () => void
 }) {
   const playing = () => props.reading.status === 'playing'
