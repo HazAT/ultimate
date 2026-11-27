@@ -27,21 +27,26 @@ function needsCheck(host: ExtensionHost, model: Ref | undefined): model is Ref {
   )
 }
 
-export type LoginChecks = Map<string, { snapshot: readonly unknown[]; missing: boolean }>
+type Login = Awaited<ReturnType<typeof loginCheck>>
+export type LoginChecks = Map<string, { snapshot: readonly unknown[]; login: Login }>
 
 async function loginMissing(host: ExtensionHost, provider: string, checks: LoginChecks) {
   const snapshot = host.modelRuntime.getAvailableSnapshot()
   const checked = checks.get(provider)
-  if (checked?.snapshot === snapshot) return checked.missing
+  if (checked?.snapshot === snapshot) {
+    if (checked.login === 'inconclusive') checks.delete(provider)
+    return checked.login === 'missing'
+  }
   const login = await loginCheck(host, provider)
-  if (login === 'inconclusive') return false
-  const missing = login === 'missing'
-  checks.set(provider, { snapshot, missing })
-  return missing
+  if (login !== 'inconclusive') checks.set(provider, { snapshot, login })
+  return login === 'missing'
 }
 
 export async function checkLogin(host: ExtensionHost, model: Ref | undefined, checks: LoginChecks) {
-  if (needsCheck(host, model)) await loginMissing(host, model.provider, checks)
+  if (!needsCheck(host, model)) return
+  const snapshot = host.modelRuntime.getAvailableSnapshot()
+  if (checks.get(model.provider)?.snapshot === snapshot) return
+  checks.set(model.provider, { snapshot, login: await loginCheck(host, model.provider) })
 }
 
 export async function fallback(

@@ -61,16 +61,17 @@ index d1530da2acd24090992c767fd20a91b78e91de9e..eb5ea05fca4548b18070a8cbcc9d8fb8
                      child.stdin?.on("error", () => { });
                      child.stdin?.end(stdinCommand);
 diff --git a/dist/errors.js b/dist/errors.js
-index 555bc15b3d8d0feb67c4678023838f436a31f901..7a1c19f1305a5f40325acf8736e60812ca25c03b 100644
+index 555bc15b3d8d0feb67c4678023838f436a31f901..1d7cc0acab3b2eaad618ced5bddedb5186e04003 100644
 --- a/dist/errors.js
 +++ b/dist/errors.js
-@@ -74,3 +74,15 @@ export class ConversationIdle extends Error {
+@@ -74,3 +74,16 @@ export class ConversationIdle extends Error {
      }
  }
  //# sourceMappingURL=errors.js.map
 +/**
-+ * Internal: a `beforeInput` hook threw for the queued submission `submission`. The commit rolls back and runs again with
-+ * that submission refused (`Tx.refusedPlacement()`), so what else the commit settles, such as a finished answer, stands.
++ * Internal: a `beforeInput` hook threw for the queued submission `submission`. The Session rolls the commit back and
++ * runs its whole callback again with that submission refused, at most once per submission: the callback's transaction
++ * writes roll back with it, effects outside the transaction do not.
 + */
 +export class PlacementRefused extends Error {
 +    submission;
@@ -271,7 +272,7 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..e02c57037c82c9d1dd0be7e59d4ec90a
          this.assertUsable();
          return this.#tasks.wake();
 diff --git a/dist/harness/inbox.d.ts b/dist/harness/inbox.d.ts
-index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..f3ef805b9bbb56a3924eb70adf3102dfeb808a60 100644
+index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..e147f84987e7f5dbb6e7cab2186198274a76c05d 100644
 --- a/dist/harness/inbox.d.ts
 +++ b/dist/harness/inbox.d.ts
 @@ -26,6 +26,9 @@ export declare const InboxDoc: import("../types.ts").ConversationDocToken<InboxS
@@ -279,8 +280,8 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..f3ef805b9bbb56a3924eb70adf3102df
  /** What a boundary reads before the commit's first table write, and the newest head it has seen so far. */
  export type Boundary = {
 +    readonly entries: readonly EntryDraft[];
-+    /** Why a `refuseInput` hook refused the first queued input, or the error a `beforeInput` hook threw for it: the boundary settles every queued input `unanswered` instead of placing it. */
-+    readonly refused?: string;
++    /** Queued inputs a `refuseInput` hook refused, already out of `inbox`; `applyBoundary()` settles them `unanswered`, reason `refused`. */
++    refusals: { readonly id: SubmissionId; readonly reason: string }[];
      readonly conversationId: ConversationId;
      readonly inbox: Draft<InboxState>;
      readonly steeringMode: QueueMode;
@@ -302,7 +303,7 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..f3ef805b9bbb56a3924eb70adf3102df
  /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
  export declare function pickInputEntry({ kind, data }: InputEntry): JsonRepresentation<InputEntry>;
 diff --git a/dist/harness/inbox.js b/dist/harness/inbox.js
-index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..44c01f59b5ce7c3659748efc5a29a3a8edcce8da 100644
+index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780bd6bfa772 100644
 --- a/dist/harness/inbox.js
 +++ b/dist/harness/inbox.js
 @@ -1,6 +1,7 @@
@@ -313,7 +314,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..44c01f59b5ce7c3659748efc5a29a3a8
  export const InboxDoc = defineDoc({
      kind: "pi.inbox",
      version: 1,
-@@ -14,10 +15,38 @@ export const InboxDoc = defineDoc({
+@@ -14,10 +15,41 @@ export const InboxDoc = defineDoc({
   * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
   * boundary at the start of their commit.
   */
@@ -321,23 +322,26 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..44c01f59b5ce7c3659748efc5a29a3a8
 +export async function prepareBoundary(tx, conversationId, modes, at, now, incoming) {
      const head = (await tx.latestHeadMarker(conversationId))?.head;
      const inbox = await tx.doc(InboxDoc, conversationId);
-+    const items = inbox.items;
-+    const final = at === "final" || (at === "postTools" && hasQueuedReset(items));
-+    const users = at === "none" ? [] : selectUsers(items, final, modes);
-+    const first = users.length > 0 ? items[users[0]] : undefined;
++    const final = at === "final" || (at === "postTools" && hasQueuedReset(inbox.items));
++    // Refused items leave the queue here and are settled when the boundary is applied, after the table reads; the
++    // boundary then places what it selects among the rest, as if they had never been queued.
++    const refusals = [];
++    let first;
++    while (at !== "none") {
++        const users = selectUsers(inbox.items, final, modes);
++        first = users.length > 0 ? inbox.items[users[0]] : undefined;
++        if (first === undefined)
++            break;
++        const reason = tx.refusedPlacement(first.id) ?? (await refusal(tx, conversationId, inputDraft(first.content, first.entry, now)));
++        if (reason === undefined)
++            break;
++        refusals.push({ id: first.id, reason });
++        inbox.items.splice(users[0], 1);
++        first = undefined;
++    }
 +    const input = first === undefined ? incoming : inputDraft(first.content, first.entry, now);
 +    let entries = [];
-+    let refused = first === undefined ? undefined : tx.refusedPlacement(first.id);
-+    if (first !== undefined && refused === undefined) {
-+        try {
-+            refused = await tx.refuseInput(conversationId, input);
-+        }
-+        catch (error) {
-+            refused = errorMessage(error);
-+        }
-+    }
-+    const startsRun = final && (first !== undefined || incoming !== undefined);
-+    if (input !== undefined && startsRun && refused === undefined) {
++    if (input !== undefined && final) {
 +        try {
 +            entries = await tx.beforeInput(conversationId, input);
 +        }
@@ -349,14 +353,22 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..44c01f59b5ce7c3659748efc5a29a3a8
 +    }
      return {
 +        entries,
-+        refused,
++        refusals,
          conversationId,
          inbox,
          steeringMode: modes.steeringMode,
-@@ -25,25 +54,31 @@ export async function prepareBoundary(tx, conversationId, modes) {
+@@ -25,25 +57,39 @@ export async function prepareBoundary(tx, conversationId, modes) {
          head,
      };
  }
++async function refusal(tx, conversationId, input) {
++    try {
++        return await tx.refuseInput(conversationId, input);
++    }
++    catch (error) {
++        return errorMessage(error);
++    }
++}
 +/** Indexes of the user items a boundary places, in ID order: the first or all steers, and at `final` the first or all follow-ups. */
 +function selectUsers(items, final, modes) {
 +    const pick = (mode, queueMode) => {
@@ -371,7 +383,8 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..44c01f59b5ce7c3659748efc5a29a3a8
   * items after them, each in ID order, so user items queued before a reset run in the new context. A write whose head
   * targets an entry before the active range, including a range started earlier in this commit, is stale. Selected and
 - * stale items are removed positionally.
-+ * stale items are removed positionally. A refused boundary settles its selected user items `unanswered` instead.
++ * stale items are removed positionally. The items a `refuseInput` hook refused when the boundary was prepared settle
++ * `unanswered`, reason `refused`.
   */
  export async function applyBoundary(tx, boundary, at, now) {
      const { conversationId, inbox } = boundary;
@@ -382,30 +395,27 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..44c01f59b5ce7c3659748efc5a29a3a8
 -        const indexes = items.flatMap((item, index) => (item.mode === mode ? [index] : []));
 -        return queueMode === "all" ? indexes : indexes.slice(0, 1);
 -    };
++    for (const { id, reason } of boundary.refusals)
++        tx.settleSubmission(id, { status: "unanswered", reason: "refused", detail: reason });
++    boundary.refusals = [];
      const writes = items.flatMap((item, index) => (item.mode === "write" ? [index] : []));
 -    const users = [...pick("steer", boundary.steeringMode), ...(final ? pick("followUp", boundary.followUpMode) : [])];
 -    users.sort((a, b) => a - b);
 +    const users = selectUsers(items, at === "final" || reset, boundary);
-+    if (boundary.refused !== undefined) {
-+        for (const index of users)
-+            tx.settleSubmission(items[index].id, { status: "unanswered", reason: "refused", detail: boundary.refused });
-+    }
      // `appendEntry()` copies the drafts' values; the items are removed only afterwards.
      let first;
      for (const index of writes) {
-@@ -60,7 +95,10 @@ export async function applyBoundary(tx, boundary, at, now) {
-         first ??= entry.id;
+@@ -61,6 +107,9 @@ export async function applyBoundary(tx, boundary, at, now) {
      }
      const placed = [];
--    for (const index of users) {
-+    for (const index of boundary.refused === undefined ? users : []) {
+     for (const index of users) {
 +        if (placed.length === 0)
 +            for (const draft of boundary.entries)
 +                await tx.appendEntry(conversationId, draft);
          const item = items[index];
          const entry = await appendInput(tx, conversationId, item.content, item.entry, now);
          tx.placeSubmission(item.id, entry.id);
-@@ -74,10 +112,11 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -74,10 +123,11 @@ export async function applyBoundary(tx, boundary, at, now) {
  }
  /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
  export function appendInput(tx, conversationId, content, entry, now) {
@@ -500,7 +510,7 @@ index 1a6472ef7931838d30c9e418540bc225dfea315a..69139c51000d76e1b9f102169ebee648
                      catch (error) {
                          if (invocation.controller.signal.aborted)
 diff --git a/dist/harness/submissions.js b/dist/harness/submissions.js
-index 908492f520c857c8198355820ad9de96fc6ff713..e689f356f90f90570f38c4618c2d7a44d2d51875 100644
+index 908492f520c857c8198355820ad9de96fc6ff713..eabaa84bfc9e8589a5b5b3f1b629f06b28c90341 100644
 --- a/dist/harness/submissions.js
 +++ b/dist/harness/submissions.js
 @@ -4,7 +4,7 @@ import { createTypedSpanStarter, NOOP_TELEMETRY_CONTEXT, } from "@earendil-works
@@ -542,21 +552,23 @@ index 908492f520c857c8198355820ad9de96fc6ff713..e689f356f90f90570f38c4618c2d7a44
          const { id } = await tx.createSubmission({ ...fields, type: "continue", status: "placed" });
          // Items an earlier failed run left queued (`afterFailedRun: "keep"`) are placed first and join the run. Its history
          // starts with the failed run's, so `afterRun` hooks see what that run did.
-@@ -217,7 +224,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+@@ -217,8 +224,8 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
          return { id, status: "placed" };
      }
      // A boundary reads the table, so it is prepared before the first table write; a busy one needs none.
 -    const boundary = busy ? undefined : await prepareBoundary(tx, conversationId, queueModes);
+-    if (boundary === undefined || boundary.inbox.items.length > 0) {
 +    const boundary = busy ? undefined : await prepareBoundary(tx, conversationId, queueModes, "final", now, draft.type === "input" ? inputDraft(draft.content, draft.entry, now) : undefined);
-     if (boundary === undefined || boundary.inbox.items.length > 0) {
++    if (boundary === undefined || boundary.inbox.items.length > 0 || boundary.refusals.length > 0) {
          const { id } = await tx.createSubmission({
              ...fields,
+             type: draft.type,
 @@ -242,7 +249,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
          const { users, first } = await applyBoundary(tx, boundary, "final", now);
          if (users.length > 0)
              await startRun(tx, conversationId, live, { inputs: users, first });
 -        return { id, status: draft.type === "write" ? "done" : users.at(-1) === id ? "placed" : "queued" };
-+        return { id, status: draft.type === "write" || boundary.refused !== undefined ? "done" : users.at(-1) === id ? "placed" : "queued" };
++        return { id, status: draft.type === "write" ? "done" : users.includes(id) ? "placed" : "queued" };
      }
      if (draft.type === "write") {
          if (isStale(boundary, draft.entry)) {
@@ -645,7 +657,7 @@ index c7843cd0c2e0a722f4aa3324d1c8cf58863a3f21..8c1d00290ab5cd08b65359940603e4b1
       * Runs inside every transaction that creates or forks a conversation, after the conversation record is staged. A
       * plain Session stages nothing; a Harness stages its built-in documents.
 diff --git a/dist/session/session.js b/dist/session/session.js
-index 86978d80b597c7cd059f36ab23cd4fa115da55f5..80b539a5d279a4d6bf2419cb7302301fdf648ed3 100644
+index 86978d80b597c7cd059f36ab23cd4fa115da55f5..93ee2bd8d764cd88d2d1424a2cdb2db08a401adc 100644
 --- a/dist/session/session.js
 +++ b/dist/session/session.js
 @@ -2,7 +2,7 @@ import { awaitWithContext, BACKGROUND_CONTEXT, withoutAbortSignal } from "@earen
@@ -680,7 +692,7 @@ index 86978d80b597c7cd059f36ab23cd4fa115da55f5..80b539a5d279a4d6bf2419cb7302301f
      /**
       * Runs inside every transaction that creates or forks a conversation, after the conversation record is staged. A
       * plain Session stages nothing; a Harness stages its built-in documents.
-@@ -788,9 +797,24 @@ export class SessionImpl {
+@@ -788,9 +797,22 @@ export class SessionImpl {
          };
      }
      async #runCommit(change, context, scope, withinMs, index) {
@@ -690,8 +702,6 @@ index 86978d80b597c7cd059f36ab23cd4fa115da55f5..80b539a5d279a4d6bf2419cb7302301f
 +                return await this.#runCommitOnce(change, context, scope, withinMs, index, refusedPlacements);
 +            }
 +            catch (error) {
-+                // A hook threw while placing a queued input: everything the attempt wrote is rolled back, and the
-+                // commit runs again with that input refused. Each submission is refused at most once.
 +                if (!(error instanceof PlacementRefused) || refusedPlacements.has(error.submission))
 +                    throw error;
 +                refusedPlacements.set(error.submission, error.message);
@@ -731,10 +741,10 @@ index 8bdc8172d99887b77ec37991ab3538c38b8f26f4..86e690609b7384eac4c2500fb47994f3
      appendEntry<D extends JsonValue>(token: Entry<D>, conversationId: ConversationId, value: TypedEntryDraft<NoInfer<D>>): Promise<TypedEntry<D>>;
      createTask<I, S extends {
 diff --git a/dist/session/transaction.js b/dist/session/transaction.js
-index 982db5f1c65c11082c91cb59ce6a2cba941047f1..8c20bea0ec758c859e0570df10046167f5de4823 100644
+index 982db5f1c65c11082c91cb59ce6a2cba941047f1..060a4a2a20825e0cf16b7627ca5dad2c20e30e7d 100644
 --- a/dist/session/transaction.js
 +++ b/dist/session/transaction.js
-@@ -59,10 +59,16 @@ export class Transaction {
+@@ -59,10 +59,15 @@ export class Transaction {
      #documents = [];
      /** Latest transaction-local incarnation or retirement marker at each logical address. */
      #latestDocumentByAddress = new Map();
@@ -746,13 +756,12 @@ index 982db5f1c65c11082c91cb59ce6a2cba941047f1..8c20bea0ec758c859e0570df10046167
          this.#scope = scope;
 +        this.#refusedPlacements = refusedPlacements;
 +    }
-+    /** Internal: why an earlier attempt of this commit refused placing queued submission `id`, if it did. */
 +    refusedPlacement(id) {
 +        return this.#refusedPlacements.get(id);
      }
      /** Internal: the context of the commit this transaction belongs to. */
      get context() {
-@@ -168,6 +174,12 @@ export class Transaction {
+@@ -168,6 +173,12 @@ export class Transaction {
          this.#assertOpen();
          return record;
      }

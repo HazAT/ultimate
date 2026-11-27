@@ -459,6 +459,111 @@ it('places a compaction summary when a hook throws for the input a failed run le
   }
 })
 
+it('starts the next run with what a refusal leaves queued when an answer ends the run', async () => {
+  const home = await temp()
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  const gate = Promise.withResolvers<void>()
+  let held = false
+  let refusing = false
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      hooks: [
+        hook(GenerationTask, {
+          refuseInput: (input) =>
+            refusing && JSON.stringify(input.model).includes('refused steer')
+              ? 'refused'
+              : undefined,
+        }),
+      ],
+    }),
+  )
+  prepared.faux!.setResponses([
+    async () => {
+      held = true
+      await gate.promise
+      return fauxAssistantMessage('first answer')
+    },
+    fauxAssistantMessage('second answer'),
+  ])
+  const f = await prepared.open()
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => held)
+    const refused = await f.root.submit(
+      { type: 'input', content: 'refused steer', whenBusy: 'steer' },
+      context,
+    )
+    const next = await f.root.submit(
+      { type: 'input', content: 'next steer', whenBusy: 'steer' },
+      context,
+    )
+    refusing = true
+    gate.resolve()
+    expect(await first.wait(context)).toMatchObject({ status: 'done' })
+    expect(await refused.wait(context)).toMatchObject({ status: 'unanswered', reason: 'refused' })
+    expect(await next.wait(context)).toMatchObject({ status: 'done' })
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
+it('places idle input behind what a refusal took out of the queue', async () => {
+  const home = await temp()
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  let refusing = false
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      hooks: [
+        hook(GenerationTask, {
+          refuseInput: (input) =>
+            refusing && JSON.stringify(input.model).includes('left queued') ? 'refused' : undefined,
+        }),
+      ],
+    }),
+  )
+  const gate = Promise.withResolvers<void>()
+  let held = false
+  prepared.faux!.setResponses([
+    async () => {
+      held = true
+      await gate.promise
+      return fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'bad request 400' })
+    },
+    fauxAssistantMessage('answer'),
+  ])
+  const f = await prepared.open()
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => held)
+    const left = await f.root.submit(
+      { type: 'input', content: 'left queued', whenBusy: 'steer' },
+      context,
+    )
+    gate.resolve()
+    expect(await first.wait(context)).toMatchObject({ status: 'unanswered', reason: 'model_error' })
+    refusing = true
+    const fresh = await f.root.submit({ type: 'input', content: 'fresh' }, context)
+    expect(await left.wait(context)).toMatchObject({ status: 'unanswered', reason: 'refused' })
+    expect(await fresh.wait(context)).toMatchObject({ status: 'done' })
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
 it('starts one run with every follow-up queued while busy, and steers join the current run', async () => {
   const home = await temp()
   const prepared = await prepareHarness({

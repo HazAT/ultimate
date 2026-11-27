@@ -529,12 +529,13 @@ it('keeps a model whose login check is pending or failed, and never trades a sub
     .spyOn(runtime, 'checkAuth')
     .mockRejectedValue(new Error('claude auth status timed out'))
   await ask(f.server, dice, 'failed')
-  expect(check).toHaveBeenCalled()
-  // A failed check is inconclusive and not kept: the next input checks again.
+  // Checked once, off the commit line; the placement keeps the model without checking again.
+  expect(check).toHaveBeenCalledTimes(1)
+  // A failed check is inconclusive and kept only for that input: the next input checks again.
   check.mockClear()
   check.mockResolvedValue({ type: 'api_key' })
   await ask(f.server, dice, 'pending')
-  expect(check).toHaveBeenCalled()
+  expect(check).toHaveBeenCalledTimes(1)
   expect(await model()).toEqual({ provider: 'openrouter', modelId: dead })
   expect(await fallbacks()).toEqual([])
   check.mockRestore()
