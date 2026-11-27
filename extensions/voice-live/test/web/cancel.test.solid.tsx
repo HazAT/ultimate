@@ -131,10 +131,12 @@ it('a retake started while a cancel stops the mic keeps the interruption the can
 })
 
 it('cancelling a retake before its mic starts resumes the reply the first take paused', async () => {
+  dock.player.load('reply', [], false)
   await press()
   const resume = vi.spyOn(dock.player, 'resume')
   vi.spyOn(dock.player.state, 'get').mockReturnValue({
     ...dock.player.state.get(),
+    key: 'reply',
     paused: true,
   })
   dispatch({ type: 'press', busy: true })

@@ -37,14 +37,14 @@ export type Phase = DockState['phase']
 export type DockEvent =
   | { type: 'press'; busy: boolean }
   | { type: 'open' }
-  | { type: 'cancel'; paused: boolean }
+  | { type: 'cancel'; paused?: string }
   | { type: 'enter'; typed?: Typed }
   | {
       type: 'stop'
       retaking: boolean
       spoke: boolean
       collect: boolean
-      paused: boolean
+      paused?: string
       note?: Note
     }
   | { type: 'abandon' }
@@ -225,7 +225,8 @@ function stopped(state: Recording, event: Event<'stop'>): DockState {
   if (event.spoke && event.collect)
     return typed ? { phase: 'sending', voice: true, typed } : noting(before, 'collecting')
   if (event.spoke) return { phase: 'sending', voice: true }
-  if (event.paused) return noting(resumed(before), 'kept going')
+  if (event.paused !== undefined && following(before, event.paused))
+    return noting(resumed(before), 'kept going')
   const back = quiet(before)
   return event.note ? noting(back, event.note) : back
 }
@@ -237,7 +238,10 @@ const recording: Handlers<Recording, DockState> = {
     const { typed: _replaced, ...rest } = state
     return event.typed ? { ...rest, typed: event.typed } : rest
   },
-  cancel: (state, event) => (event.paused ? resumed(state.before) : quiet(state.before)),
+  cancel: (state, event) =>
+    event.paused !== undefined && following(state.before, event.paused)
+      ? resumed(state.before)
+      : quiet(state.before),
   stop: stopped,
   ended: () => ({ phase: 'idle' }),
   abandon: meanwhile,

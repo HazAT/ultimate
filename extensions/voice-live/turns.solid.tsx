@@ -87,13 +87,11 @@ function useSpokenReply(key: () => string) {
     const content = transcript.content()
     if (!content) return []
     const state = conversation()
-    const { turns } = turnsIn(state)
-    const turn = turns.find((each) => each.key === key())
+    const turn = turnsIn(state).turns.find((each) => each.key === key())
     const rows = (turn?.entries ?? []).flatMap((id) => [
       ...content.querySelectorAll(`[data-entry-id="${id}"]`),
     ])
-    const live =
-      turn && turns.at(-1) === turn && state.busy ? [...content.querySelectorAll(streaming)] : []
+    const live = turn?.live ? [...content.querySelectorAll(streaming)] : []
     return [...rows, ...live].filter(
       (element, _index, all) => !all.some((other) => other !== element && other.contains(element)),
     )

@@ -9,7 +9,7 @@ const thinking = run(
   { type: 'sent', key: 'a' },
 )
 const speaking = run(thinking, { type: 'words', key: 'a' }, { type: 'playing', key: 'a' })
-const spoke = { type: 'stop', retaking: false, spoke: true, collect: false, paused: false } as const
+const spoke = { type: 'stop', retaking: false, spoke: true, collect: false } as const
 
 it('Enter while recording holds the typed text for the recording, which sends it with its words', () => {
   const typed = { text: 'look at this', images: [] }
@@ -63,7 +63,7 @@ it('the reply that ends during a recording is done when a cancel returns to it',
   const recording = run(speaking, { type: 'press', busy: true }, { type: 'open' })
   const finished = transition(recording, { type: 'finished', key: 'a' })
   expect(statusOf(finished)).toBe('Recording · say something to interrupt')
-  expect(transition(finished, { type: 'cancel', paused: false })).toMatchObject({
+  expect(transition(finished, { type: 'cancel' })).toMatchObject({
     phase: 'done',
     key: 'a',
   })
@@ -71,15 +71,28 @@ it('the reply that ends during a recording is done when a cancel returns to it',
 
 it('cancel resumes a paused reply, also when a retake was cancelled before its mic opened', () => {
   const recording = run(speaking, { type: 'press', busy: true }, { type: 'open' })
-  const resumed = transition(recording, { type: 'cancel', paused: true })
+  const resumed = transition(recording, { type: 'cancel', paused: 'a' })
   expect(resumed).toEqual({ phase: 'speaking', key: 'a' })
   expect(statusOf(resumed)).toBe('Speaking')
   const retake = run(
     resumed,
     { type: 'press', busy: replying(resumed) },
-    { type: 'cancel', paused: true },
+    { type: 'cancel', paused: 'a' },
   )
   expect(retake).toEqual({ phase: 'speaking', key: 'a' })
+})
+
+it('cancelling a take that paused the previous reply leaves a newer send in flight', () => {
+  const sending = run(speaking, { type: 'send', key: 'b', voice: false })
+  const next = run(
+    sending,
+    { type: 'press', busy: true },
+    { type: 'open' },
+    { type: 'cancel', paused: 'a' },
+    { type: 'playing', key: 'a' },
+    { type: 'sent', key: 'b' },
+  )
+  expect(next).toEqual({ phase: 'thinking', key: 'b' })
 })
 
 it('a recording too short to send says why and returns to the reply it paused', () => {
@@ -87,7 +100,7 @@ it('a recording too short to send says why and returns to the reply it paused', 
   const kept = transition(recording, {
     ...spoke,
     spoke: false,
-    paused: true,
+    paused: 'a',
     note: 'too short hold',
   })
   expect(statusOf(kept)).toBe('Not enough audio · kept going')
@@ -129,7 +142,5 @@ it('a failed send shows its error until the next press', () => {
     { type: 'failed', key: 'a', message: 'offline' },
   )
   expect(statusOf(failed)).toBe('offline')
-  expect(
-    statusOf(run(failed, { type: 'press', busy: false }, { type: 'cancel', paused: false })),
-  ).toBeUndefined()
+  expect(statusOf(run(failed, { type: 'press', busy: false }, { type: 'cancel' }))).toBeUndefined()
 })

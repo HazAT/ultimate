@@ -271,9 +271,9 @@ export const voiceSink: Sink = {
   },
   cancel() {
     if (state().phase !== 'recording') return
-    const paused = dock.player.state.get().paused
-    dispatch({ type: 'cancel', paused: paused && owned() })
-    if (paused) dock.player.resume()
+    const paused = ours().paused ? ours().key : undefined
+    dispatch({ type: 'cancel', ...(paused !== undefined ? { paused } : {}) })
+    if (paused !== undefined) dock.player.resume()
   },
   error: dock.setError,
   finish: finishRecording,
@@ -297,13 +297,13 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
   const interrupted = before.phase === 'recording' && before.busy
   const typed = typedIn(before)
   if (typed && recorded.spoke) taken.add(typed)
-  const paused = !recorded.spoke && ours().paused
+  const paused = !recorded.spoke && ours().paused ? ours().key : undefined
   dispatch({
     type: 'stop',
     retaking,
     spoke: recorded.spoke,
     collect: dock.collect(),
-    paused,
+    ...(paused !== undefined ? { paused } : {}),
     ...(recorded.spoke
       ? {}
       : {
@@ -316,11 +316,11 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
         }),
   })
   if (!recorded.spoke) {
-    if (paused) dock.player.resume()
+    if (paused !== undefined) dock.player.resume()
     return
   }
   if (dock.collect()) {
-    await collectClip(recorded, typed, who, interrupted)
+    await collectClip(recorded, typed, who, interrupted || ours().paused)
     return
   }
   await sendTurn({
@@ -355,7 +355,7 @@ async function collectClip(
   } catch (failure) {
     if (!signal.aborted) dock.setError(errorMessage(failure))
     if (!typed) return
-    dispatch({ type: 'abandon' })
+    if (typedIn(state()) === typed) dispatch({ type: 'abandon' })
     throw signal.aborted ? signal.reason : failure
   }
   if (typed) {
