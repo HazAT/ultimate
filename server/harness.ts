@@ -22,6 +22,7 @@ import { projectSkills } from './skills.ts'
 import { writeProject } from './project.ts'
 import { projectName, projectSettings } from '../lib/project-setup.ts'
 import { requestSwap } from './supervisor-protocol.ts'
+import type { HoldWebForSwap } from './supervisor-protocol.ts'
 import { activeChapter, prepareChapterSwitch } from '../lib/chapters.ts'
 import { defaultAgent } from '../lib/agents.ts'
 import { secretsAuthContext } from '../lib/secrets.ts'
@@ -126,7 +127,7 @@ export interface HostOptions {
   faux?: FauxProviderHandle
   report?: (notice: Notice) => void
 }
-export async function prepareHarness(options: HostOptions) {
+export async function prepareHarness(options: HostOptions, holdWebForSwap?: HoldWebForSwap) {
   const { ultimateRoot } = options
   const projectRoot = await realpath(options.projectRoot ?? ultimateRoot)
   const userHome = options.userHome ?? process.env.ULTIMATE_USER_HOME ?? homedir()
@@ -193,7 +194,7 @@ export async function prepareHarness(options: HostOptions) {
     model: (ref: ModelRef) => guardedRuntime.getModel(ref.provider, ref.modelId),
     skills: (cwd: string) => projectSkills({ ultimateRoot, projectRoot, userHome }, cwd).skills,
     restart: (approved: (generation: number) => Promise<void>) =>
-      requestSwap(approved, builds.current()),
+      requestSwap(approved, builds.current(), holdWebForSwap),
     images: await createNodePhotonImages(),
     ultimateRoot,
     projectRoot,

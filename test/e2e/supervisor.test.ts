@@ -99,17 +99,19 @@ describe('supervisor restart', () => {
         file,
         api.replace(
           'if (!response.writableEnded) json(500, { ok: false, error })',
-          "console.log('Restart request settled:', error); if (!response.writableEnded) json(500, { ok: false, error })",
+          "await host.uiState(context); console.log('Restart request settled with storage open:', error); if (!response.writableEnded) json(500, { ok: false, error })",
         ),
       )
     })
     const stream = await attach(running.url)
     const pid = stream.system().process.pid
     await activationFailure(running.ultimateRoot)
-    // The API responds to the early swap acknowledgement. Observe the original handler beyond it.
+    // The API responds to the early swap acknowledgement; the original handler then reads the reopened Harness.
     expect((await post(running.url, '/api/restart')).status).toBe(202)
     await until(() =>
-      /Restart request settled: .*Injected activation failure/.test(running.output()),
+      /Restart request settled with storage open: .*Injected activation failure/.test(
+        running.output(),
+      ),
     )
     await until(() => stream.connections() > 1 && !!stream.system().process.activationError)
     expect(stream.system().process.activationError).toContain('Injected activation failure')

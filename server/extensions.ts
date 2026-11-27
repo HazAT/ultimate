@@ -884,6 +884,11 @@ export async function loadExtensions(
       for (const event of structure) watcher.off(event, onStructure)
     }
   })
+  function stopWatching() {
+    if (closed) return
+    closed = true
+    unwatch()
+  }
   return {
     info: Object.assign(info, {
       diagnostics: async () => {
@@ -934,9 +939,9 @@ export async function loadExtensions(
       await Promise.all([...openRuns.keys()].map(endOpen))
       trace.close()
     },
+    stopWatching,
     async close() {
-      closed = true
-      unwatch()
+      stopWatching()
       await chain
       for (const facetHost of subscriptions.keys()) await dispose(facetHost)
       await Promise.all([...openRuns.keys()].map(endOpen))
