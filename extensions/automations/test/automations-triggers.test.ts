@@ -24,7 +24,14 @@ import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../types.shared.ts'
 import { IDLE_WAKER } from '../triggers.ts'
-import { temp, eventHost, until, apis, openers } from '../../../test/helpers.ts'
+import {
+  temp,
+  eventHost,
+  until,
+  apis,
+  openers,
+  createTestExtensionHost,
+} from '../../../test/helpers.ts'
 
 const closes: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -47,7 +54,22 @@ async function fixture() {
   let fail = false
   let rolledBack = false
   const send = vi.fn<() => Promise<object>>(async () => ({}))
-  const host = {
+  const services = apis(
+    new Map<string, unknown>([
+      [
+        'messages',
+        {
+          send,
+          owed: async () => ({}),
+          dropped: async () => {},
+          submitFire: (tx: Tx, to: Conversation, input: InputSubmissionDraft) =>
+            to.submit(tx, input),
+        },
+      ],
+      ['workspaces', { doc: Workspaces }],
+    ]),
+  )
+  const host = createTestExtensionHost({
     ...prepared,
     ...events,
     react: ((name, tokens, handler) =>
@@ -66,28 +88,14 @@ async function fixture() {
       return resources.get(key)
     },
     onOpen: lifecycle.onOpen,
-    ...apis(
-      new Map<string, unknown>([
-        [
-          'messages',
-          {
-            send,
-            owed: async () => ({}),
-            dropped: async () => {},
-            submitFire: (tx: Tx, to: Conversation, input: InputSubmissionDraft) =>
-              to.submit(tx, input),
-          },
-        ],
-        ['workspaces', { doc: Workspaces }],
-      ]),
-    ),
+    ...services,
     extensions: () => [{ name: 'subagents', enabled: true }],
     projectSetup: async () => ({ decision: false }),
     notice: (message: string) => {
       throw new Error(message)
     },
-  }
-  host.provided.set('subagents', {
+  })
+  services.provided.set('subagents', {
     residents: async () => [{ name: 'ultimate', description: '' }],
     // As the real one: the standing agent's conversation of the moment, the fixture's target before one is recorded.
     standing: async (name: string) =>
@@ -98,7 +106,7 @@ async function fixture() {
     createChild: (tx: Tx, options: Parameters<SubagentsService['createChild']>[1]) =>
       createChild(host, tx, options),
   })
-  prepared.registry.install(automations(host as unknown as ExtensionHost))
+  prepared.registry.install(automations(host))
   const answer = () => {
     prepared.faux!.appendResponses([answer])
     return fauxAssistantMessage([fauxText('OK')])

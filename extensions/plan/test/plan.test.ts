@@ -7,12 +7,11 @@ import {
 import { defineExtension, section } from '@earendil-works/pi-durable'
 import type { ConversationId, JsonObject, Tx } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import planExtension, { Plan, Progress, TaskIndex } from '../server.ts'
 import type { PlanService } from '../api.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import { Metadata } from '../../../server/metadata.ts'
-import { temp, removeTemp } from '../../../test/helpers.ts'
+import { temp, removeTemp, createTestExtensionHost } from '../../../test/helpers.ts'
 
 it('shares the root ledger read-only with descendants, saves verdicts, and replays nested calls separately', async () => {
   const directory = await temp('ultimate-plan-')
@@ -22,12 +21,14 @@ it('shares the root ledger read-only with descendants, saves verdicts, and repla
     home: join(directory, 'home'),
     faux: fauxProvider(),
   })
-  const plan = planExtension({
-    react: () => {},
-    implement: () => {},
-    metadata: Metadata,
-    onOpen: () => {},
-  } as unknown as ExtensionHost)
+  const plan = planExtension(
+    createTestExtensionHost({
+      react: () => {},
+      implement: () => {},
+      metadata: Metadata,
+      onOpen: () => {},
+    }),
+  )
   const tool = plan.tools![0]
   const replayResults: unknown[][] = []
   let childId: ConversationId
@@ -265,13 +266,15 @@ it('indexes linked children with their task and renames them after it', async ()
   let opened!: Awaited<ReturnType<typeof prepared.open>>
   const openers: (() => Promise<void>)[] = []
   prepared.registry.install(
-    planExtension({
-      react: () => {},
-      implement: () => {},
-      metadata: Metadata,
-      harness: () => opened.harness,
-      onOpen: (callback: () => Promise<void>) => openers.push(callback),
-    } as unknown as ExtensionHost),
+    planExtension(
+      createTestExtensionHost({
+        react: () => {},
+        implement: () => {},
+        metadata: Metadata,
+        harness: () => opened.harness,
+        onOpen: (callback: () => Promise<void>) => openers.push(callback),
+      }),
+    ),
   )
   const open = async () => {
     opened = await prepared.open()
@@ -366,17 +369,19 @@ it('confirms criteria with met, raises estimates only upward, drops changed crit
     event: { data: { conversationId: ConversationId; sha: string; submission: string } },
   ) => Promise<void>
   prepared.registry.install(
-    planExtension({
-      react: (_name: string, _tokens: unknown, handler: typeof landed) => {
-        landed = handler
-      },
-      implement: (_api: unknown, value: PlanService) => {
-        service = value
-      },
-      metadata: Metadata,
-      harness: () => opened.harness,
-      onOpen: () => {},
-    } as unknown as ExtensionHost),
+    planExtension(
+      createTestExtensionHost({
+        react: (_name: string, _tokens: unknown, handler: unknown) => {
+          landed = handler as typeof landed
+        },
+        implement: (_api: unknown, value: PlanService) => {
+          service = value
+        },
+        metadata: Metadata,
+        harness: () => opened.harness,
+        onOpen: () => {},
+      }),
+    ),
   )
   opened = await prepared.open()
   const failed: string[] = []
@@ -492,12 +497,14 @@ it('patches only the plan section, in its declared place, when it appears, leave
     faux: fauxProvider(),
   })
   prepared.registry.install(
-    planExtension({
-      react: () => {},
-      implement: () => {},
-      metadata: Metadata,
-      onOpen: () => {},
-    } as unknown as ExtensionHost),
+    planExtension(
+      createTestExtensionHost({
+        react: () => {},
+        implement: () => {},
+        metadata: Metadata,
+        onOpen: () => {},
+      }),
+    ),
   )
   prepared.registry.install(
     defineExtension({ name: 'tail', sections: [section('tail', async () => 'Always here.')] }),

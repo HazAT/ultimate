@@ -4,8 +4,7 @@ import parallel from '../server.ts'
 import { parallelRequest } from '../client.ts'
 import { truncateToolOutput } from '../output.ts'
 import { writeSecret } from '../../secrets/store.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
-import { removeTemp, temp } from '../../../test/helpers.ts'
+import { removeTemp, temp, createTestExtensionHost } from '../../../test/helpers.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -17,12 +16,12 @@ async function fixture(enabled = true) {
   const root = await temp()
   cleanup.push(() => removeTemp(root))
   const notice = vi.fn<(message: string) => void>()
-  const host = {
+  const host = createTestExtensionHost({
     userHome: root,
     notice,
     resource: <T>(_key: string, create: () => T) => create(),
     extensions: () => (enabled ? [{ name: 'secrets', enabled: true, server: {} }] : []),
-  } as unknown as ExtensionHost
+  })
   const tools = parallel(host).tools!
   const details = vi.fn<(value: unknown, context: unknown) => Promise<void>>(async () => {})
   const api = { details, agent: async () => ({ model: { modelId: 'test-model' } }) }

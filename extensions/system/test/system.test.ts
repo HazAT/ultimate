@@ -6,11 +6,15 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { actions, lanes } from '../server.ts'
 import type { SystemRow } from '../refs.ts'
 import type { ActionContext } from '../../../server/actions.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { callTrace } from '../../../server/trace.ts'
 import type { EventRecord } from '../../../shared/events.ts'
 import type { ConversationSummary } from '../../../shared/protocol.ts'
-import { fauxServer, linkDependencies, temp } from '../../../test/helpers.ts'
+import {
+  fauxServer,
+  linkDependencies,
+  temp,
+  createTestExtensionHost,
+} from '../../../test/helpers.ts'
 
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 afterAll(async () => {
@@ -115,12 +119,12 @@ async function fixture(events: EventRecord[] = [], summaries: ConversationSummar
       stop: async () => {},
     }),
   }
-  const host = {
+  const host = createTestExtensionHost({
     trace: trace.reader,
     eventLog: log,
     harness: () => harness,
     conversations: () => summaries,
-  } as unknown as ExtensionHost
+  })
   const ctx = { host } as ActionContext
   const stream = (args: Record<string, unknown> = {}) =>
     actions.stream(args as JsonValue, ctx) as Promise<{

@@ -7,6 +7,7 @@ import {
   until,
   fauxServer,
   linkDependencies,
+  createTestExtensionHost,
 } from '../../../test/helpers.ts'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -33,7 +34,6 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { afterEach, expect, it } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { emit } from '../../../server/events.ts'
@@ -169,10 +169,10 @@ async function fixture(
                 }
               : undefined
   const resources = new Map<string, unknown>()
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
-    resource: <T>(key: string, create: () => T) =>
-      (resources.get(key) ?? resources.set(key, create()).get(key)) as T,
+    resource: (key: string, create: () => unknown) =>
+      resources.get(key) ?? resources.set(key, create()).get(key),
     metadata: Metadata,
     emit,
     react: events.react,
@@ -190,7 +190,7 @@ async function fixture(
     },
     conversations: () => [],
     doc: () => undefined,
-  } as unknown as ExtensionHost
+  })
   let backend = messagesExtension(host)
   if (sendGate)
     backend = {
@@ -2428,17 +2428,17 @@ it('recovers once after the answer is recorded but before reply submission', asy
 /** The pause extension's actions over the fixture's harness. */
 function pauser(f: Awaited<ReturnType<typeof fixture>>) {
   const resources = new Map<string, unknown>()
-  const host = {
+  const host = createTestExtensionHost({
     harness: () => f.opened.harness,
-    resource: <T>(key: string, create: () => T) => {
+    resource: (key: string, create: () => unknown) => {
       if (!resources.has(key)) resources.set(key, create())
-      return resources.get(key) as T
+      return resources.get(key)
     },
     onOpen: () => {},
     onClose: () => {},
     implement: () => {},
     conversations: () => [],
-  } as unknown as ExtensionHost
+  })
   pauseExtension(host)
   return (name: keyof typeof pauseActions) =>
     pauseActions[name](null, { host } as unknown as ActionContext)

@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { exec } from '../../../lib/exec.ts'
 import { loadable } from '../server.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 vi.mock('../../../lib/exec.ts', () => ({ exec: vi.fn<typeof exec>() }))
 vi.mock('node:fs/promises', async (importOriginal) => ({
@@ -22,10 +22,10 @@ it('waits while index.lock exists and resolves only after its removal', async ()
   const index = join(root, 'index.lock')
   writeFileSync(index, '')
   vi.mocked(exec).mockResolvedValue({ stdout: index, stderr: '' })
-  const host = {
+  const host = createTestExtensionHost({
     ultimateRoot: root,
     resource: (_name: string, create: () => unknown) => create(),
-  } as unknown as ExtensionHost
+  })
   vi.useFakeTimers()
   const resolved = vi.fn<() => void>()
   const loading = loadable(host).then(resolved)

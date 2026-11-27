@@ -1,7 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { locate, selfAddress } from '../lib/remote.ts'
-import { temp } from './helpers.ts'
-import type { ExtensionHost } from '../server/extensions.ts'
+import { temp, createTestExtensionHost } from './helpers.ts'
 
 const network = vi.hoisted(() => ({ hostname: 'my-mac' }))
 
@@ -16,11 +15,11 @@ vi.mock('node:child_process', async (original) => ({
 }))
 
 it('keeps answering locally to a stamp made before the network renamed the hostname', async () => {
-  const host = {
+  const host = createTestExtensionHost({
     userHome: await temp(),
     notice: () => {},
     projects: async () => [{ name: 'my-app', current: true }],
-  } as unknown as ExtensionHost
+  })
   const { machine } = await selfAddress(host)
   expect(machine).toBe('my-mac-local')
   network.hostname = 'my-mac.local'

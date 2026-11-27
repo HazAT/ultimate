@@ -30,7 +30,14 @@ import {
   PAUSE_NAME,
   PauseDoc,
 } from '../built-ins.ts'
-import { apis, eventHost, openers, temp, until } from '../../../test/helpers.ts'
+import {
+  apis,
+  eventHost,
+  openers,
+  temp,
+  until,
+  createTestExtensionHost,
+} from '../../../test/helpers.ts'
 
 const openedHosts: OpenHost[] = []
 /** The extensions' close callbacks: automations' minute timer stops before its harness closes. */
@@ -78,7 +85,7 @@ async function fixture() {
     if (extension !== 'automations') throw new Error(`Unexpected ${extension}/${action}`)
     return automationActions[action as 'list'](args, { host } as ActionContext)
   })
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     ...events,
     ...services,
@@ -104,7 +111,7 @@ async function fixture() {
       tokens.find((token) => token.definition.kind === kind) ?? events.doc(kind),
     notice: () => {},
     invoke,
-  } as unknown as ExtensionHost
+  })
   prepared.registry.install(defineExtension({ name: 'conversations', tasks: [SubmitAfter] }))
   prepared.registry.install(automations(host))
   prepared.registry.install(dream(host))

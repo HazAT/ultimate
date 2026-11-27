@@ -1,5 +1,5 @@
 import { fauxProvider } from '@earendil-works/pi-ai/providers/faux'
-import { apis, eventHost, temp, until } from './helpers.ts'
+import { apis, eventHost, temp, until, createTestExtensionHost } from './helpers.ts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
@@ -7,7 +7,6 @@ import { configure, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { context, prepareHarness } from '../server/harness.ts'
 import type { OpenHost } from '../server/harness.ts'
-import type { ExtensionHost } from '../server/extensions.ts'
 import type { ActionContext } from '../server/actions.ts'
 import messagesExtension, {
   actions as messageActions,
@@ -75,7 +74,7 @@ async function fixture() {
   const events = eventHost(() => opened.harness, 'questions')
   openers.push(async () => void (await events.start()))
   closers.push(async () => void (await events.stop()))
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     userHome: home,
     projectSettings: async () => ({}),
@@ -89,7 +88,7 @@ async function fixture() {
     notice: (message: string) => {
       throw new Error(message)
     },
-  } as unknown as ExtensionHost
+  })
   // Messages’ core dependencies: no standing agents to list, no worktrees, no concluded conversations.
   services.set('subagents', { residents: async () => [] } satisfies Partial<SubagentsService>)
   services.set('workspaces', { doc: Workspaces, landingPending, pendingLandingCards })

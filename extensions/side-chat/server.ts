@@ -580,6 +580,7 @@ export function tracksEffect(name: string, args: Record<string, unknown>) {
     'edit',
     'write',
     'action',
+    'bash',
   ].includes(name)
 }
 
