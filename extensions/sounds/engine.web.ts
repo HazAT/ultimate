@@ -1,6 +1,6 @@
 import * as Tone from 'tone'
-import { deadline, pace } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { deadline, pace } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 import type { Sound } from './cues.web.ts'
 import type { Happening, Role, Tool } from './agents.web.ts'
 import type { Variant } from './variants.web.ts'

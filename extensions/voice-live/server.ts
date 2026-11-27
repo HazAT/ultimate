@@ -23,8 +23,8 @@ import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
 import { openaiSecretOrNonOAuthKey, openaiTranscribe } from '../../lib/openai.ts'
 import { readSecret } from '../../lib/secrets.ts'
-import { imagesOf, isInput } from '../../lib/entries.ts'
-import { offsetEntryId } from '../../lib/ids.ts'
+import { imagesOf, isInput } from '../../lib/entries.shared.ts'
+import { offsetEntryId } from '../../lib/ids.shared.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import {
   answerIncludingClosingToolResults,
@@ -38,7 +38,7 @@ import { Family } from '../models/api.ts'
 import { Branch } from '../lineage/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { VideoApi } from '../video/api.ts'
-import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.ts'
+import { VoiceHandoffEntry, VoiceTurnEntry } from './entries.shared.ts'
 import {
   EndAction,
   RecordAction,

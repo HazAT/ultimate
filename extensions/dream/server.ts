@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { defineExtension, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
-import { rebuiltOnOpen, meansNone, settled } from '../../lib/errors.ts'
+import { rebuiltOnOpen, meansNone, settled } from '../../lib/errors.shared.ts'
 import {
   chapterFiles,
   chapterName,
@@ -34,7 +34,7 @@ import {
 } from './refs.ts'
 import type { Ask, Prepared, RequestedEntry, Sleep, ToolStats } from './refs.ts'
 import { Next } from './next.ts'
-import { busyElsewhere } from './types.ts'
+import { busyElsewhere } from './types.shared.ts'
 import { applySeed, buildSeed, SeedState, writeSeed } from './seed.ts'
 import { BuiltInDoc, builtInOf, DREAM_ASK, ensureAutomation, fired, PauseDoc } from './built-ins.ts'
 

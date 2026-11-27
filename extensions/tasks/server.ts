@@ -1,4 +1,4 @@
-import { parseConversationId, parseTaskId } from '../../lib/ids.ts'
+import { parseConversationId, parseTaskId } from '../../lib/ids.shared.ts'
 import type { EntryId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import { AssistantEntry } from '@earendil-works/pi-durable'

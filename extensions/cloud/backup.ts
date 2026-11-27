@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { httpBase } from '../../lib/cloud.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { readJson, writeJson } from '../../lib/json-file.ts'
 import { uploadSnapshot } from './snapshot.ts'
 import type { LastBackup } from './types.ts'

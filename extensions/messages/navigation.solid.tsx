@@ -12,7 +12,7 @@ import {
   useReady,
   useStore,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { callerOf } from './caller.shared.ts'
 import { openQuestion } from './data.web.ts'
 import { CallerAction, MessagesDoc } from './refs.ts'

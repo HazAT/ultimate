@@ -23,7 +23,7 @@ agents.
 
 Each event sounds once. Whatever the documents show when a tab opens has been heard already, and of several open tabs
 the first that may play claims the event under a Web Lock in local storage. Browsers let a page play only after
-someone clicked or typed in it, so a tab that never had input leaves the event to another. `cues.ts` decides what
+someone clicked or typed in it, so a tab that never had input leaves the event to another. `cues.web.ts` decides what
 sounds.
 
 ## Narrator

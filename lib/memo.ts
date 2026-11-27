@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises'
-import { errnoCode, ignoring } from './errors.ts'
+import { errnoCode, ignoring } from './errors.shared.ts'
 
 const absent = (error: unknown) => ['ENOENT', 'ENOTDIR'].includes(errnoCode(error) ?? '')
 

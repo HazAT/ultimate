@@ -26,7 +26,7 @@ import {
   createReadTool,
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
-import { formatDuration } from '../../lib/format.ts'
+import { formatDuration } from '../../lib/format.shared.ts'
 import { git } from '../../lib/git.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
@@ -52,7 +52,7 @@ import {
   takeStarted,
 } from './background.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
-import { inProcess } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
 
 function defaultBashTimeout() {
   const seconds = Number(process.env.ULTIMATE_BASH_TIMEOUT ?? 600)

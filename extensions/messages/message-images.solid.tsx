@@ -2,8 +2,8 @@ import type { ConversationId, EntryId, EntryRecord } from '@earendil-works/pi-du
 import { createMemo, Errored, For, Loading, onCleanup, Show } from 'solid-js'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
 import { api, useTranscript } from '@/sdk/solid'
-import { imagesOf } from '../../lib/entries.ts'
-import { offsetEntryId } from '../../lib/ids.ts'
+import { imagesOf } from '../../lib/entries.shared.ts'
+import { offsetEntryId } from '../../lib/ids.shared.ts'
 
 export function InputImages(props: { entry: EntryRecord }) {
   return <Thumbnails images={imagesOf(props.entry)} />

@@ -2,7 +2,7 @@ import { Zap } from '@lucide/solid'
 import { Match, Show, Switch, createMemo, createSignal, onSettled } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { switchConversation, switched, useEvents } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { SubmissionLanded } from '../workspaces/refs.ts'
 

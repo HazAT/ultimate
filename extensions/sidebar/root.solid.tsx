@@ -14,7 +14,7 @@ import {
   useDocOf,
   useEvents,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { Committed } from '../coding-tools/refs.ts'
 import { ActivityAction } from '../conversations/refs.ts'
 import { AgentMark, ConversationPhase, FeatureTag } from '../conversations/ui.solid.tsx'

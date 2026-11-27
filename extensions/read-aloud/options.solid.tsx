@@ -7,8 +7,8 @@ import { VOICES } from './voices.shared.ts'
 
 const speed = () => `${Number(speech.rate().toFixed(2))}×`
 
-export function SpeechSettings(props: { name?: string }) {
-  const named = (label: string) => (props.name ? `${label} in ${props.name}` : label)
+export function SpeechSettings(props: { name: string }) {
+  const named = (label: string) => `${label} in ${props.name}`
   return (
     <Popover>
       <PopoverTrigger
@@ -34,8 +34,8 @@ export function SpeechSettings(props: { name?: string }) {
   )
 }
 
-export function SpeechOptions(props: { name?: string }) {
-  const named = (label: string) => (props.name ? `${label} in ${props.name}` : label)
+export function SpeechOptions(props: { name: string }) {
+  const named = (label: string) => `${label} in ${props.name}`
   const keyed = () => speech.keyed() === true
   const voiceNote = () => {
     const needsKey = speech.keyed() === false && 'OpenAI voice needs OPENAI_API_KEY in ⌘K → Secrets'

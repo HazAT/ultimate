@@ -3,7 +3,7 @@ import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { createTranscriptFrame, events, Transcript } from '@/sdk/solid'
-import { parseConversationId } from '../../../../lib/ids.ts'
+import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { OffscreenQuestions } from '../../waiting.solid.tsx'
 

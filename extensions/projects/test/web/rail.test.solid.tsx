@@ -5,7 +5,7 @@ import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { RunningProject } from '../../refs.ts'
-import { parseConversationId } from '../../../../lib/ids.ts'
+import { parseConversationId } from '../../../../lib/ids.shared.ts'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],

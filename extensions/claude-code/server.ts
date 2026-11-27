@@ -13,7 +13,7 @@ import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-wo
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { spawn } from '../../lib/spawn.ts'
-import { rebuiltOnOpen, inProcess } from '../../lib/errors.ts'
+import { rebuiltOnOpen, inProcess } from '../../lib/errors.shared.ts'
 import { ClaudeCodeEnv, ClaudeCodeExchanges } from './api.ts'
 import type { ClaudeCodeEnvService } from './api.ts'
 import { StatusAction } from './refs.ts'

@@ -7,7 +7,7 @@ import { webModule } from '../lib/web-alias.ts'
 import { discoveryRoots } from '../lib/project-paths.ts'
 import { useProjectSetup } from '../lib/project-setup.ts'
 import { extensionTests } from '../shared/extension-api.ts'
-import { ignoring, isMissing } from '../lib/errors.ts'
+import { ignoring, isMissing } from '../lib/errors.shared.ts'
 
 const virtual = 'virtual:ultimate/web-facets'
 const resolved = '\0' + virtual

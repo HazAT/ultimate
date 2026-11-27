@@ -5,7 +5,7 @@ import { chmod, lstat, readdir, realpath, rm, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { alive as storageOwnerAlive, readOwner as readStorageOwner } from '../../lib/lock.ts'
 import { git } from '../../lib/git.ts'
-import { sqliteCode } from '../../lib/errors.ts'
+import { sqliteCode } from '../../lib/errors.shared.ts'
 
 export async function makeOwnerWritable(path: string) {
   const entry = await lstat(path)

@@ -10,7 +10,7 @@ import {
   useUiState,
   useViewport,
 } from '@/sdk/solid'
-import { RunLabel, WatcherLabel } from './types.ts'
+import { RunLabel, WatcherLabel } from './types.shared.ts'
 import { ListAction } from './refs.ts'
 import type { AutomationListItem } from './refs.ts'
 

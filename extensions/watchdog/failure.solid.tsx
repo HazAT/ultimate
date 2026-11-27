@@ -4,7 +4,7 @@ import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { renderEntry, switchConversation, useConversationId } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
-import { FailureEntry, StandingFailureEntry } from './entries.ts'
+import { FailureEntry, StandingFailureEntry } from './entries.shared.ts'
 import type { Failure as FailureData } from './refs.ts'
 
 function FailureCard(props: { failure: FailureData; id: number }) {

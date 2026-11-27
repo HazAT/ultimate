@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { formatAgo, formatDuration } from '../lib/format.ts'
+import { formatAgo, formatDuration } from '../lib/format.shared.ts'
 
 const minute = 60_000
 const day = 24 * 60 * minute

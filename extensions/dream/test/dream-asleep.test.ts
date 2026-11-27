@@ -22,7 +22,7 @@ import { Messages } from '../../messages/api.ts'
 import { Todos } from '../../todos/server.ts'
 import { actions, Next, userActions } from '../server.ts'
 import type { Sleep } from '../refs.ts'
-import type { Seed } from '../types.ts'
+import type { Seed } from '../types.shared.ts'
 import { temp } from '../../../test/helpers.ts'
 
 const harnesses: Harness[] = []

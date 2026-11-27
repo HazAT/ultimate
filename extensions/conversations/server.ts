@@ -1,4 +1,4 @@
-import { conversationIdentity, parseConversationId } from '../../lib/ids.ts'
+import { conversationIdentity, parseConversationId } from '../../lib/ids.shared.ts'
 import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import { join } from 'node:path'
 import type { Context } from '@earendil-works/chord/context'

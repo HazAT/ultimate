@@ -4,7 +4,7 @@ Inline setup choices, the first-run prerequisites, and the Extensions panel that
 
 The first run has only **Get ready**: connect a provider and choose an available model. The model row recommends a
 1M+ context window for @ultimate, and names the chosen model's window when it is smaller. While no default model is
-configured it pre-selects the first of `RECOMMENDED_MODELS` (`lib/families.ts`: Opus 5.5 through Claude Code, then
+configured it pre-selects the first of `RECOMMENDED_MODELS` (`lib/families.shared.ts`: Opus 5.5 through Claude Code, then
 `openai-codex/gpt-6-astra`) with a login, else the first model with one, and links to Claude Code's setup while that is
 logged out. Continue saves the pre-selection, or a model picked in the dialog, as the default family's model with
 thinking high (the models extension's `setDefault`), so @ultimate, new conversations and branches start on it; a

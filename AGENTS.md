@@ -129,7 +129,7 @@ table once its mistake can no longer happen.
 
 | Rule                                                                        | Enforced by                                                         |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Time is never a stand-in for an event; timers only through named helpers    | `ultimate/no-raw-timer`, `lib/timers.ts`                            |
+| Time is never a stand-in for an event; timers only through named helpers    | `ultimate/no-raw-timer`, `lib/timers.shared.ts`                     |
 | Extensions meet only at contracts; the core tier runs without the rest      | `ultimate/api-only-imports`, `ultimate/core-tier-deps`, `pnpm deps` |
 | An optional extension declares the optional ones whose browser code it runs | `ultimate/declared-requires`, discovery's `requires`                |
 | Contract files hold only documented contracts, named for their owner        | `ultimate/api-file-shape`, `ultimate/api-naming`                    |
@@ -137,7 +137,7 @@ table once its mistake can no longer happen.
 | No swallowed errors                                                         | `ultimate/no-silent-catch`                                          |
 | Product code explains itself; comments only document contracts              | `ultimate/no-comments`                                              |
 | A call is replay-safe only when a rerun cannot do harm                      | `ultimate/replay-safe-by-name`, `lib/replay.ts`                     |
-| Server work is a durable task, or says why a crash loses nothing            | `ultimate/no-unowned-work`, `lib/effect.ts`, `lib/errors.ts`        |
+| Server work is a durable task, or says why a crash loses nothing            | `ultimate/no-unowned-work`, `lib/effect.ts`, `lib/errors.shared.ts` |
 | Fast tests are in-process, deterministic and keep the default timeout       | `ultimate/no-real-wait-in-fast-tests`, `ultimate/no-test-timeout`   |
 | One polling helper in tests                                                 | `ultimate/no-local-test-polling`                                    |
 | A switch over a union names every case                                      | `typescript/switch-exhaustiveness-check`                            |

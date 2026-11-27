@@ -1,5 +1,5 @@
 import { exec } from './exec.ts'
-import { meansNone } from './errors.ts'
+import { meansNone } from './errors.shared.ts'
 import { git } from './git.ts'
 
 export type GithubRepo = {

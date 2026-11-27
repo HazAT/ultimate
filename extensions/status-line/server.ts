@@ -7,7 +7,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { createRateSampler, keys, zero, type Rates, type RateSample } from './rates.ts'
 import { usageTotals } from './context.shared.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { every } from '../../lib/timers.ts'
+import { every } from '../../lib/timers.shared.ts'
 import { RatesAction } from './refs.ts'
 
 type Totals = ReturnType<typeof usageTotals>

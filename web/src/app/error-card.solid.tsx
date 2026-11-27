@@ -4,7 +4,7 @@ import { Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { useSystem, writerNow, writingAs } from '../sdk/hooks.ts'
-import { fetchAssets, sourceFrames } from '../../../lib/source-frames.ts'
+import { fetchAssets, sourceFrames } from '../../../lib/source-frames.shared.ts'
 import { errorReport } from './error-report.ts'
 
 export type Report = { title: string; send: (report: string) => void }

@@ -3,7 +3,7 @@ import { InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-dura
 import type { ConversationId, Cursor, SubmissionRecord } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { resetAfter, Summaries } from './summary.ts'
-import { isInput } from '../../lib/entries.ts'
+import { isInput } from '../../lib/entries.shared.ts'
 import { Overview } from './api.ts'
 import { projection } from './projection.ts'
 import type { OverviewRow } from './types.ts'

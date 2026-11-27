@@ -14,7 +14,7 @@ import {
   estimateAfterHead,
   lastAssistant,
   promptTokens,
-} from '../../../lib/context-usage.ts'
+} from '../../../lib/context-usage.shared.ts'
 import { openers, until } from '../../../test/helpers.ts'
 
 const cleanups: (() => Promise<void>)[] = []

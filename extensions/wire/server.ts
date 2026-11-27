@@ -4,7 +4,7 @@ import { getOpenAICodexWebSocketDebugStats } from '@earendil-works/pi-ai/api/ope
 import { defineExtension, GenerationTask, hook, ProviderDoc } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { inProcess } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
 import { ClaudeCodeExchanges } from '../claude-code/api.ts'
 import type { ClaudeCodeExchange } from '../claude-code/api.ts'
 import { diffBodies } from './diff.ts'

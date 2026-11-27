@@ -2,7 +2,7 @@ import {
   answerIncludingClosingToolResults,
   lastSettledInputAnswer,
 } from '../../lib/settled-answer.ts'
-import { parseConversationId, offsetEntryId } from '../../lib/ids.ts'
+import { parseConversationId, offsetEntryId } from '../../lib/ids.shared.ts'
 import type { ConversationId, Cursor, TaskId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import {
@@ -22,7 +22,7 @@ import { safeToRerun } from '../../lib/replay.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import type { Device } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { openQuestion } from '../../lib/message-state.ts'
+import { openQuestion } from '../../lib/message-state.shared.ts'
 import { checkReply, replyText } from '../../lib/question-answers.ts'
 import {
   cardKey,
@@ -33,8 +33,8 @@ import {
   keyOf,
   position,
   questionIndex,
-} from '../../lib/question-cards.ts'
-import type { CardQuestion, CardState } from '../../lib/question-cards.ts'
+} from '../../lib/question-cards.shared.ts'
+import type { CardQuestion, CardState } from '../../lib/question-cards.shared.ts'
 import type { Reply } from '../../lib/question-answers.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
@@ -50,7 +50,7 @@ import {
   SideChatsDoc,
 } from './refs.ts'
 import type { QuestionSide, SideChat, SideChatIndex, SideChatSummary } from './refs.ts'
-import { SideChatSummaryEntry } from './entries.ts'
+import { SideChatSummaryEntry } from './entries.shared.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 export const Side = defineDoc<Partial<SideChat>>({

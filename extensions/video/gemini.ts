@@ -1,6 +1,6 @@
 import { openAsBlob } from 'node:fs'
 import { secretsAuthContext } from '../../lib/secrets.ts'
-import { pace } from '../../lib/timers.ts'
+import { pace } from '../../lib/timers.shared.ts'
 import type { GeminiUsage, RemoteFile } from './types.ts'
 
 export const GEMINI = 'https://generativelanguage.googleapis.com'

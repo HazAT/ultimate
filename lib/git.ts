@@ -1,7 +1,7 @@
 import { readdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { exec } from './exec.ts'
-import { meansNone } from './errors.ts'
+import { meansNone } from './errors.shared.ts'
 
 export type GitOptions = { cwd: string; timeout?: number; maxBuffer?: number; signal?: AbortSignal }
 

@@ -10,11 +10,11 @@ import { DEFAULT_IMAGE_LIMITS, type ImageProcessor } from '@earendil-works/pi-du
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { groupTarget, identify } from '../../lib/process-group.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
-import { fetchAssets, sourceFrames } from '../../lib/source-frames.ts'
+import { fetchAssets, sourceFrames } from '../../lib/source-frames.shared.ts'
 import { watchSteer } from '../../lib/steer.ts'
-import { within as withinDeadline } from '../../lib/timers.ts'
+import { within as withinDeadline } from '../../lib/timers.shared.ts'
 import { safeToRerun } from '../../lib/replay.ts'
-import { errnoCode, inProcess, ignoring, meansNone } from '../../lib/errors.ts'
+import { errnoCode, inProcess, ignoring, meansNone } from '../../lib/errors.shared.ts'
 import type { TestHook } from '../../web/src/sdk/test-hook.ts'
 
 declare global {

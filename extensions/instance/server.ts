@@ -31,15 +31,21 @@ import type { WorkspaceService } from '../workspaces/api.ts'
 import { cleanPreview, makeOwnerWritable, sweepPreviews } from './cleanup.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { git, isolatable } from '../../lib/git.ts'
-import { ignoring, isMissing, rebuiltOnOpen, meansNone, overshadowed } from '../../lib/errors.ts'
+import {
+  ignoring,
+  isMissing,
+  rebuiltOnOpen,
+  meansNone,
+  overshadowed,
+} from '../../lib/errors.shared.ts'
 import { spawnGroup, stopGroup, sweepPidFiles } from '../../lib/process-group.ts'
-import { within } from '../../lib/timers.ts'
+import { within } from '../../lib/timers.shared.ts'
 import type { Group, GroupProcess } from '../../lib/process-group.ts'
 import { Previews } from '../conversations/api.ts'
 import { ListAction } from './refs.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
-import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES } from '../../lib/families.ts'
+import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES } from '../../lib/families.shared.ts'
 
 export const DEFAULT_PREVIEW_MODEL = BUILTIN_FAMILIES[FEATURES.preview.family].model!
 

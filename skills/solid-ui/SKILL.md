@@ -46,7 +46,7 @@ The UI is Solid, and so is every facet: `web.solid.tsx`. A leftover React `web.t
   ([Solid facets](../../docs/extensions/sdk.md#solid-facets)).
 - **Other extensions through their contracts.** A Solid file imports another extension's `refs.ts` (its documents and
   actions) or its `ui.solid.tsx` (its components, such as conversations' `ConversationRef`). Shared data goes in a
-  `.ts` file or `lib/` (`lib/conversation-ref.ts`, `extensions/sounds/variants.web.ts`). Lint: `ultimate/api-only-imports`.
+  `*.web.ts` or `*.shared.ts` file or `lib/` (`lib/conversation-ref.web.ts`, `extensions/sounds/variants.web.ts`). Lint: `ultimate/api-only-imports`.
 - **Module stores** that several parts read (a cache, a picker's target) live in a `.ts` file as one small cell with
   `get`, `set` and `subscribe`; Solid reads it with a signal set from `subscribe` (`extensions/models/state.web.ts`,
   `readers.solid.tsx`).
@@ -314,7 +314,8 @@ ui-sdk:
 Tooling:
 
 - A browser helper extracted to `.ts` is named `*.web.ts`; one the server imports too is `*.shared.ts` (no Node, no
-  browser modules). Lint holds both to it. Keep shared pure helpers independent
+  browser modules), in an extension and in `lib/` alike. Lint holds both to it, and the page imports no unsuffixed
+  `.ts` from `extensions/` or `lib/` at runtime (`ultimate/browser-file-names`). Keep shared pure helpers independent
   of the SDK: pass SDK functions in or use `lib/`. Another extension reaches an extension-local browser helper
   through the owner's `ui.solid.tsx` (a re-export is enough: `extensions/system/ui.solid.tsx`), not the `.ts` file.
 - A test fixture that registers a facet names it `web.solid.tsx`.

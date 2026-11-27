@@ -1,6 +1,6 @@
 import { api } from '@/sdk/solid'
-import { imagesOf } from '../../lib/entries.ts'
-import { offsetEntryId } from '../../lib/ids.ts'
+import { imagesOf } from '../../lib/entries.shared.ts'
+import { offsetEntryId } from '../../lib/ids.shared.ts'
 import type { Frame } from './refs.ts'
 
 const KEPT = 12

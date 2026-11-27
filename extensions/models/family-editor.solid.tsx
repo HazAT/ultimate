@@ -22,7 +22,7 @@ import {
   familyColor,
   familyTitle,
   isFamilyName,
-} from '../../lib/families.ts'
+} from '../../lib/families.shared.ts'
 import { refreshFamilies } from './families.solid.tsx'
 import { modelIdOf } from './family-state.web.ts'
 import { ModelSelect } from './model-select.solid.tsx'

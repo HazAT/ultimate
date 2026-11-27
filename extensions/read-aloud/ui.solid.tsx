@@ -36,8 +36,8 @@ export type { SpokenText } from './highlight.web.ts'
 /**
  * The one playback bar for the page's player: `status` (Speaking, Reading, Paused…), then paragraph, sentence and time
  * left, the speed, skip by paragraph or sentence, `toggle` (pause or resume), and `stop` when given. `onShow` makes the
- * status a link to the source; `loading` shows a spinner on the toggle; `error` colours the icon and titles the bar; `name`
- * names its controls when another bar may show beside it (`Pause speech in Voice dock`).
+ * status a link to the source; `loading` shows a spinner on the toggle; `error` colours the icon and titles the bar; `name`,
+ * where it shows, names its controls apart from another bar beside it (`Pause speech in Voice dock`).
  */
 export { PlaybackBar } from './bar.solid.tsx'
 /**
@@ -47,6 +47,6 @@ export { PlaybackBar } from './bar.solid.tsx'
 export { SpeakerBar } from './reading-bar.solid.tsx'
 /**
  * The Speech setting's controls (Voice, OpenAI voice, Speed), for a settings popover that shows them among its own;
- * `name` names them apart from another copy on the page. The playback bar opens the same controls from its speed.
+ * `name`, where they show, names them apart from another copy on the page. The playback bar opens the same controls from its speed.
  */
 export { SpeechOptions } from './options.solid.tsx'

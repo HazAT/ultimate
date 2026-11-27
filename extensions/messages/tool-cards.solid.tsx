@@ -12,7 +12,7 @@ import {
   useTranscript,
   type ToolCallView,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { Bubble } from './bubble.solid.tsx'
 import { callerOf } from './caller.shared.ts'

@@ -1,5 +1,5 @@
 import { implementAction } from '../../lib/actions.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { locate, postAction } from '../../lib/remote.ts'
 import { RemoteProgressAction } from './refs.ts'
 import type { RemoteProgress } from './refs.ts'

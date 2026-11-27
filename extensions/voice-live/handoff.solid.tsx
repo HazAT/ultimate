@@ -19,7 +19,7 @@ import {
   useDocOf,
   type ToolCallView,
 } from '@/sdk/solid'
-import { VoiceHandoffEntry } from './entries.ts'
+import { VoiceHandoffEntry } from './entries.shared.ts'
 import { VoiceForkDoc, type VoiceHandoff } from './refs.ts'
 
 type Brief = Omit<VoiceHandoff, 'from'>

@@ -1,5 +1,5 @@
 import { defineWebExtension, provide, renderEntry } from '@/sdk/solid'
-import { VoiceTurnEntry } from './entries.ts'
+import { VoiceTurnEntry } from './entries.shared.ts'
 import { HandoffCall, HandoffCard } from './handoff.solid.tsx'
 import { KEYS, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
 import { SheetComposer, VoicePanel, VoiceToggle } from './panel.solid.tsx'

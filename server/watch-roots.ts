@@ -1,6 +1,6 @@
 import { existsSync, watch } from 'node:fs'
 import { dirname } from 'node:path'
-import { isMissing } from '../lib/errors.ts'
+import { isMissing } from '../lib/errors.shared.ts'
 import { closeOnWatchError } from '../lib/watch.ts'
 
 export function watchRoots(roots: string[], appeared: (root: string) => void) {

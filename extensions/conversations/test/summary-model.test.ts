@@ -26,7 +26,7 @@ import {
   SpawnSummarized,
   SummaryDiscarded,
   TitleChanged,
-} from '../entries.ts'
+} from '../entries.shared.ts'
 import type { SummaryHost } from '../summary.ts'
 import { temp, until } from '../../../test/helpers.ts'
 

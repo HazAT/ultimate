@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { compareUrl } from '../lib/compare.ts'
+import { compareUrl } from '../lib/compare.shared.ts'
 import { projectKey } from '../lib/project-identity.ts'
 
 it('opens a GitHub compare range on DiffsHub', () => {

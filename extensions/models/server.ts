@@ -28,10 +28,10 @@ import {
   SetFamilyAction,
 } from './refs.ts'
 import type { SaveFamilies } from './refs.ts'
-import { DEFAULT_FAMILY } from '../../lib/families.ts'
+import { DEFAULT_FAMILY } from '../../lib/families.shared.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
 import { checkLogin, fallback, loginChecks as newLoginChecks } from './fallback.ts'
-import { inProcess } from '../../lib/errors.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
 type MutableJson<T> = T extends readonly (infer U)[]

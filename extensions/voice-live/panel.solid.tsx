@@ -310,7 +310,7 @@ function Settings(props: { name?: string }) {
             Sound cues
             <Toggle aria-label="Voice sound cues" bind={[dock.cuesOn, dock.setCuesOn]} />
           </label>
-          <SpeechOptions />
+          <SpeechOptions name={name()} />
           <label class="flex items-start justify-between gap-3">
             <span class="flex flex-col gap-0.5">
               Collect until send

@@ -27,21 +27,33 @@ const agent = createAgent()
 
 it("the playback bar's speed opens read aloud's own voice and speed settings", async () => {
   speech.setKeyed(true)
-  const view = renderSolid(() => <PlaybackBar status="Reading" toggle={() => undefined} />)
+  const view = renderSolid(() => (
+    <>
+      <PlaybackBar name="Composer" status="Reading" toggle={() => undefined} />
+      <PlaybackBar name="Voice dock" status="Speaking" toggle={() => undefined} />
+    </>
+  ))
+  await expectDistinctAgentNames(agent)
   await settle()
-  const trigger = view.querySelector<HTMLElement>('[aria-label="Speech settings"]')!
+  const trigger = view.querySelector<HTMLElement>('[aria-label="Speech settings in Composer"]')!
   expect(trigger.textContent).toBe('1.1×')
   trigger.click()
   flush()
-  expect(document.querySelector('[aria-label="Speech settings options"]')).not.toBeNull()
+  expect(
+    document.querySelector('[aria-label="Speech settings options in Composer"]'),
+  ).not.toBeNull()
   await expectDistinctAgentNames(agent)
-  await agent.act({ steps: [{ ref: 'OpenAI voice', action: 'setValue', args: ['marin'] }] })
+  await agent.act({
+    steps: [{ ref: 'OpenAI voice in Composer', action: 'setValue', args: ['marin'] }],
+  })
   expect(speech.openaiVoice()).toBe('marin')
-  await agent.act({ steps: [{ ref: 'Speech speed', action: 'setValue', args: [1.5] }] })
+  await agent.act({ steps: [{ ref: 'Speech speed in Composer', action: 'setValue', args: [1.5] }] })
   flush()
   expect(trigger.textContent).toBe('1.5×')
-  await agent.act({ steps: [{ ref: 'Speech voice', action: 'setValue', args: ['system'] }] })
+  await agent.act({
+    steps: [{ ref: 'Speech voice in Composer', action: 'setValue', args: ['system'] }],
+  })
   flush()
   expect(speech.voice()).toBe('system')
-  expect(document.querySelector('[aria-label="OpenAI voice"]')).toBeNull()
+  expect(document.querySelector('[aria-label="OpenAI voice in Composer"]')).toBeNull()
 })

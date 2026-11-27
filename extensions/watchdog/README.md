@@ -6,6 +6,6 @@ Provider errors classified as temporary by Pi, Claude Code relay responses that 
 
 A root receipt and background task are created atomically for each failed generation; retry/report submissions use stable request IDs. On open, missed failures are scanned above the stored high-water mark, never advancing past unfinished work. Fresh installation marks existing tasks as historical and reports none of them.
 
-Older transcripts may hold `watchdog.idle` notes from a retired idle-branches reminder; they still render. What each branch waits on now shows in the sidebar (`lib/waits.ts`).
+Older transcripts may hold `watchdog.idle` notes from a retired idle-branches reminder; they still render. What each branch waits on now shows in the sidebar (`lib/waits.web.ts`).
 
 Watchdog keeps the last 20 reported failures (`watchdog.reported` on the root, written with each report, including @ultimate's own) and serves them through `WatchdogApi.failures(since)`, newest first; the `status` extension reports them.

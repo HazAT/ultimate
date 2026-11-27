@@ -16,7 +16,7 @@ import {
   type SolidToolProps,
   type ToolCallView,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { MemoryChip } from './ui.solid.tsx'
 

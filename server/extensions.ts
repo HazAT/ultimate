@@ -42,7 +42,7 @@ import { inExtensionTests } from '../shared/extension-api.ts'
 import { secretMetadata } from '../lib/secrets.ts'
 import { ChangedEvent } from '../shared/events.ts'
 import type { Device, UiSource } from '../shared/events.ts'
-import { inProcess, isMissing, meansNone } from '../lib/errors.ts'
+import { inProcess, isMissing, meansNone } from '../lib/errors.shared.ts'
 import { closeOnWatchError } from '../lib/watch.ts'
 
 export type ExtensionHost = Pick<

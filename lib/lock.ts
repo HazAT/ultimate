@@ -1,8 +1,8 @@
 import { readFile, writeFile, unlink, rename } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { identify } from './process-group.ts'
-import { pace } from './timers.ts'
-import { isMissing, isNoProcess, sqliteCode } from './errors.ts'
+import { pace } from './timers.shared.ts'
+import { isMissing, isNoProcess, sqliteCode } from './errors.shared.ts'
 export function alive(pid: number) {
   try {
     process.kill(pid, 0)

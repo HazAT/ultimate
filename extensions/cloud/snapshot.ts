@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createZstdCompress, createZstdDecompress } from 'node:zlib'
-import { pace } from '../../lib/timers.ts'
+import { pace } from '../../lib/timers.shared.ts'
 import { vacuum } from '../../lib/database-files.ts'
 import { git as gitIn } from '../../lib/git.ts'
 

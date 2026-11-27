@@ -1,4 +1,4 @@
-import { pace } from '../../lib/timers.ts'
+import { pace } from '../../lib/timers.shared.ts'
 import type { Cue } from './cues.web.ts'
 import { linesOf } from './narration.web.ts'
 import type { Line } from './narration.web.ts'

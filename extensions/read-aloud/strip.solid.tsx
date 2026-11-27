@@ -69,7 +69,12 @@ export function readingStrip(player: Player) {
             }
             return (
               <div class={cn(column(props.dock), 'pb-1.5')} data-read-aloud-strip={current().entry}>
-                <ReadingBar onShow={goToMessage} player={player} reading={current()} />
+                <ReadingBar
+                  name="Composer"
+                  onShow={goToMessage}
+                  player={player}
+                  reading={current()}
+                />
               </div>
             )
           }}

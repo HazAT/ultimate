@@ -13,9 +13,9 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import type { Dictation } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { base64, capture, unsupported } from './capture.web.ts'
-import { startCue, stopCue } from '../../lib/cues.ts'
+import { startCue, stopCue } from '../../lib/cues.web.ts'
 import type { Sink, Take } from './capture.web.ts'
 import { StatusAction, TranscribeAction } from './refs.ts'
 import { registerBox, soundCues, talkMode } from './routing.solid.tsx'
