@@ -1,7 +1,7 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { afterAll, expect, it } from 'vitest'
+import { afterAll, expect, it, onTestFinished, vi } from 'vitest'
 import { context } from '../../../server/harness.ts'
 import { apiSummary } from '../../../lib/api-files.ts'
 import { fauxServer, linkDependencies, removeTemp, temp, until } from '../../../test/helpers.ts'
@@ -85,6 +85,8 @@ const signal = new AbortController().signal
 
 it('shows events, reactor failures, the catalogue and a trace tree, within limits', async () => {
   const { server, debug } = await start()
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  onTestFinished(() => void vi.useRealTimers())
   for (const n of [1, 2, 3])
     expect(await server.extensions.invoke('alpha', 'go', { n }, signal, 1 as ConversationId)).toBe(
       'pong',
@@ -124,8 +126,10 @@ it('shows events, reactor failures, the catalogue and a trace tree, within limit
   for (const row of rows)
     expect(row).toMatch(/^\d+(\.\d)?m?s\s+\w+ {2}\S+ → \S+ {2}\d+ms .* trace=\S+ conversation=1$/)
   const first = server.extensions.trace.query().find((row) => row.name === 'alpha/go')!
-  // Each later event's commit retries the first event, whose reactor runs join the first trace.
-  await until(() => server.extensions.trace.query({ trace: first.trace }).length >= 5)
+  // Both timer retries join the first event's trace.
+  await vi.advanceTimersByTimeAsync(1_000)
+  await vi.advanceTimersByTimeAsync(2_000)
+  expect(server.extensions.trace.query({ trace: first.trace })).toHaveLength(5)
   const tree = (await debug({ call: 'trace', trace: first.trace })).split('\n')
   expect(tree.slice(0, 3)).toEqual([
     expect.stringMatching(/^action {2}ui → alpha\/go {2}\d+ms {2}ok {2}args=\{"n":1\}$/),
