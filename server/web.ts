@@ -111,7 +111,7 @@ export async function createWeb(options: {
   let brokenRoots = manifest?.broken ?? []
   const retired = new Map(Object.entries(manifest?.retired ?? {}))
   let stale = !manifest || !(await fresh(manifest))
-  let manifestMatchesThisCore = !stale
+  let servableWhileStale = !stale
   let identity = await appIdentity(projectRoot, userHome)
   let building: Promise<void> | undefined
   let changedFiles: string[] = []
@@ -139,7 +139,9 @@ export async function createWeb(options: {
   async function settingsChanged(file: string) {
     try {
       identity = await appIdentity(projectRoot, userHome)
-      if (!manifest || !(await builtWithCurrentSettings(manifest))) touched(file)
+      if (manifest && (await builtWithCurrentSettings(manifest))) return
+      servableWhileStale = false
+      touched(file)
     } catch (error) {
       options.notice(`${file} could not be read: ${String(error)}`)
     }
@@ -269,13 +271,12 @@ export async function createWeb(options: {
     next.retired = Object.fromEntries(retired)
     await writeTextAtomically(join(folder, 'manifest.json'), JSON.stringify(next))
     manifest = next
-    manifestMatchesThisCore = true
     identity = await appIdentity(projectRoot, userHome)
     inputs = new Set(next.inputs)
     brokenRoots = next.broken
+    servableWhileStale = await builtWithCurrentSettings(next)
     const staleOnPublish =
-      (await savedSince(result.inputs, buildStartedEpochMs)) ||
-      !(await builtWithCurrentSettings(next))
+      (await savedSince(result.inputs, buildStartedEpochMs)) || !servableWhileStale
     if (staleOnPublish) stale = true
     for (const name of await readdir(folder))
       if (name !== id && !name.startsWith('.') && name !== 'manifest.json' && !retired.has(name))
@@ -385,7 +386,7 @@ export async function createWeb(options: {
       if (options.pages() > 0 || building) await buildUntilFreshSerially()
     },
     async handle(request: IncomingMessage, response: ServerResponse) {
-      if (!manifest || !manifestMatchesThisCore) await buildUntilFreshSerially()
+      if (!manifest || !servableWhileStale) await buildUntilFreshSerially()
       else if (stale) scheduleUpdate()
       const bundleForEntireRequest = manifest
       if (!bundleForEntireRequest && options.held()) {
