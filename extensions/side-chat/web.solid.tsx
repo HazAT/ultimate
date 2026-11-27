@@ -236,7 +236,6 @@ function SidePane(props: {
   const endingState = useExternal(() => sideEndings.get(props.side), sideEndings.subscribe)
   const ending = () => endingState().ending
   const error = () => endingState().error
-  const openedAt = () => props.index?.sides.find((item) => item.id === props.side)?.openedAt
   createEffect(
     () => (props.front ? props.side : undefined),
     (side) => {
@@ -274,9 +273,6 @@ function SidePane(props: {
           <MinimizeIcon class="size-3.5" />
         </Button>
       </header>
-      <Show when={openedAt()}>
-        {(at) => <Cut at={at()} from={question() === undefined ? '@ultimate' : `#${asker()}`} />}
-      </Show>
       <Show when={questionCards() && question()}>
         {(id) => (
           <PinnedQuestion
@@ -534,20 +530,6 @@ function QuestionSideStart(props: { conversation: ConversationId; core: JSX.Elem
         </div>
       )}
     </Show>
-  )
-}
-
-function Cut(props: { at: number; from: string }) {
-  return (
-    <div class="flex shrink-0 items-center gap-3 px-5 pt-3 font-mono text-[11px] text-muted-foreground">
-      <hr class="h-px flex-1 border-0 border-t border-dashed border-border" />
-      <span class="flex shrink-0 items-center gap-1.5">
-        <GitForkIcon class="size-3 text-brand" />
-        forked from {props.from} at {formatTime(props.at)}
-        <span class="max-sm:hidden">· knows everything up to here</span>
-      </span>
-      <hr aria-hidden="true" class="h-px flex-1 border-0 border-t border-dashed border-border" />
-    </div>
   )
 }
 

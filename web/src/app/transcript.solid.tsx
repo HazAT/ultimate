@@ -27,6 +27,7 @@ import {
 import type { AsideGroup, BetweenGroup, CompactPart, WorkRun } from './compact.ts'
 import { ContributionError } from './contribution-error.solid.tsx'
 import { EmptyState } from './empty-state.solid.tsx'
+import { ForkMarker } from './fork-marker.solid.tsx'
 import { AssistantView, EntryView } from './entry.solid.tsx'
 import { reportedFailure } from './error-stack.solid.tsx'
 import { createHistory } from './history.solid.tsx'
@@ -391,6 +392,9 @@ function TranscriptView(props: {
             </Show>
             <Show when={!props.loading && visible().length > 0 && history.cursor() === undefined}>
               <Slot fallback={reportedFailure} name="transcript.start" />
+              <Show when={id}>
+                {(own) => <ForkMarker entries={history.entries()} id={own()} />}
+              </Show>
             </Show>
             <For each={threaded()} keyed={shownKey}>
               {(item, index) => {

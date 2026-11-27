@@ -1,6 +1,6 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { expect, it } from 'vitest'
-import { reachedFork } from '../../web/src/app/fork.ts'
+import { forkStart, reachedFork } from '../../web/src/app/fork.ts'
 
 const row = (id: number, conversationId: number, kind = 'pi.user') =>
   ({ id, conversationId, kind, createdAt: 0 }) as unknown as EntryRecord
@@ -37,4 +37,17 @@ it('stops at the fork point when the fork starts its own context', () => {
 it('never stops a conversation that is not a fork', () => {
   expect(reachedFork([row(1, 9), row(2, 9)], 9)).toBe(false)
   expect(reachedFork([], 9)).toBe(false)
+})
+
+it('dates a fork from the last inherited entry and tells a fresh start from a full copy', () => {
+  const timed = (id: number, conversationId: number, timestamp: number, kind = 'pi.user') =>
+    ({
+      ...row(id, conversationId, kind),
+      model: [{ role: 'user', content: '', timestamp }],
+    }) as EntryRecord
+  const copy = [timed(40, 1, 1000), timed(50, 1, 2000), timed(60, 1, 9000), timed(100, 9, 3000)]
+  expect(forkStart(copy, 9, 50)).toEqual({ at: 2000, fresh: false })
+  const brief = [timed(50, 1, 2000), timed(100, 9, 3000, 'pi.reset')]
+  expect(forkStart(brief, 9, 50)).toEqual({ at: 2000, fresh: true })
+  expect(forkStart([timed(50, 1, 2000)], 9, 50)).toBeUndefined()
 })

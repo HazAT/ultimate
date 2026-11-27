@@ -55,6 +55,7 @@ export interface ConversationSummary {
   id: ConversationId
   parentConversationId?: ConversationId
   branchOf?: { conversationId: ConversationId; at: EntryId }
+  forkOf?: { conversationId: ConversationId; at: EntryId }
   ownerTaskId?: TaskId
   label?: string
   external?: string
