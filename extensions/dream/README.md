@@ -80,7 +80,7 @@ made active again (`lib/chapters.ts`).
 `seed.ts` builds a JSON manifest with `buildSeed(host, prepared)` and atomically writes it with
 `writeSeed(chapterDir, seed)` to `seed.json`. It carries the prepared learned lines and handover (`continues`), every
 root's memories (slug collisions keep the newest `updated`; a lost `about-*` memory fails the seed), open to-dos and
-questions, and enabled automations and scripts, with counts. The built-in dream automations are not among them: the
+questions, and enabled automations, enabled user scripts and every project script (armed or not), with counts. The built-in dream automations are not among them: the
 seed says only whether each was enabled, and the new chapter makes its own. Conversation docs are read through the
 host's exported tokens; both trigger kinds are read through the single automations list action. Enabled schedule
 records keep name, optional prompt, schedule and run profile, but no subscribers: conversation ids do not survive a
@@ -96,8 +96,12 @@ that work. Reopening does not reapply those documents.
 Automations are recreated through their create action after the commit, with per-name receipts in `dream.seed`.
 A seed carries at most one enabled automation per name: building rejects duplicates. The destination starts empty;
 before each create, dream checks existing names, so a create committed just before a crash is not repeated when its
-receipt is missing. Project scripts are rediscovered, stopped, from trusted `.ultimate/automations` manifests by
-automations' own open hook; each enabled user script becomes an @ultimate-owned "Recreate script" to-do.
+receipt is missing. Each script carries its `once`, named `secrets` and `to`; each enabled user script becomes an
+@ultimate-owned "Recreate script" to-do naming them, while project scripts are re-armed exactly as a restart re-arms
+them, with per-id receipts: automations copies each one's `state/` folder from the earlier chapter's runtime folder
+(`carryScriptState`) so a finished `once` script does not re-fire on stale output, and a script that was running is
+resumed instead of waiting for its watcher. Discovery still happens first: automations' own open hook rediscovers
+stopped records from trusted `.ultimate/automations` manifests.
 
 ### Fall asleep and switch
 

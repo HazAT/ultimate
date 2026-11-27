@@ -867,6 +867,7 @@ export default function automations(host: ExtensionHost) {
     resume: async (id) => (await api.operate({ action: 'resume', id }), api.status(id)),
     pause: async (id) => (await api.operate({ action: 'pause', id }), api.status(id)),
     run: async (id) => (await api.operate({ action: 'run', id }), api.status(id)),
+    carryScriptState: api.carryScriptState,
     status: api.status,
     read: async (tx, id) => {
       const a = (await tx.doc(Automations)).automations[id]

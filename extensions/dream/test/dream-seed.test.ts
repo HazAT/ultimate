@@ -15,6 +15,7 @@ import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
 import todosExtension, { Todos } from '../../todos/server.ts'
 import { Standing, SubagentsApi } from '../../subagents/api.ts'
+import { AutomationsApi, type AutomationsService } from '../../automations/api.ts'
 import automations, { actions as automationActions, Automations } from '../../automations/server.ts'
 import type { Automation } from '../../automations/types.ts'
 import type { Seed } from '../types.ts'
@@ -52,7 +53,16 @@ async function fixture({ todos = true } = {}) {
     return action === 'list'
       ? [
           ...(result as Automation[]),
-          ...scripts.map(({ ask, ...item }) => ({ ...item, script: { ask } })),
+          ...scripts.map(({ ask, once, secrets, to, armed, ...item }) => ({
+            ...item,
+            script: {
+              ask,
+              once,
+              ...(secrets ? { secrets } : {}),
+              ...(to ? { to } : {}),
+              state: armed ? ('running' as const) : ('stopped' as const),
+            },
+          })),
         ]
       : result
   })
@@ -79,19 +89,22 @@ async function fixture({ todos = true } = {}) {
     react: () => {},
     notice: () => {},
     want: services.want,
-    need: () => ({
-      residents: async () => [{ name: 'ultimate', description: '' }],
-      standing: async () =>
-        opened.harness.commit(async (tx) => {
-          const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
-          if (!standing.ultimate) {
-            const created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
-            await configure(tx, created.id, {})
-            standing.ultimate = created.id
-          }
-          return standing.ultimate
-        }, context),
-    }),
+    need: (api: { name: string }) =>
+      api.name === 'automations'
+        ? services.need(api)
+        : {
+            residents: async () => [{ name: 'ultimate', description: '' }],
+            standing: async () =>
+              opened.harness.commit(async (tx) => {
+                const standing = await tx.doc(Standing, ROOT_CONVERSATION_ID)
+                if (!standing.ultimate) {
+                  const created = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+                  await configure(tx, created.id, {})
+                  standing.ultimate = created.id
+                }
+                return standing.ultimate
+              }, context),
+          },
     invoke,
   } as unknown as ExtensionHost
   prepared.registry.install(automations(host))
@@ -210,9 +223,23 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
     new AbortController().signal,
   )
   f.scripts([
-    { id: 'A1', name: 'Watch it', ask: 'Watch the build', prompt: 'Summarise', enabled: true },
-    { id: 'build-watch', scope: 'project', name: 'Project watch', ask: 'Watch CI', enabled: true },
-    { id: 'A2', name: 'Stopped', ask: 'Ignore', enabled: false },
+    {
+      id: 'A1',
+      name: 'Watch it',
+      ask: 'Watch the build',
+      once: true,
+      prompt: 'Summarise',
+      enabled: true,
+    },
+    {
+      id: 'build-watch',
+      scope: 'project',
+      name: 'Project watch',
+      ask: 'Watch CI',
+      once: false,
+      enabled: true,
+    },
+    { id: 'A2', name: 'Stopped', ask: 'Ignore', once: true, enabled: false },
   ])
   const seed = await buildSeed(f.host, PREPARED)
   expect(seed.counts).toEqual({
@@ -304,7 +331,9 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
     delete records.A1
     ;(await tx.doc(SeedState, ROOT_CONVERSATION_ID)).automations = []
   }, context)
-  f.scripts([{ id: 'daily', scope: 'project', name: 'Daily', ask: 'Watch', enabled: true }])
+  f.scripts([
+    { id: 'daily', scope: 'project', name: 'Daily', ask: 'Watch', once: true, enabled: true },
+  ])
   await applySeed(f.host)
   expect(
     Object.values((await contents()).automations.automations).map((item) => [
@@ -322,6 +351,99 @@ it('carries the seed into a fresh chapter once, including user memory, the hando
   expect(again.seed).toEqual(after.seed)
   expect(again.automations).toEqual(settled.automations)
   expect(await chapterEntries()).toEqual([entry])
+})
+
+it('re-arms the carried project scripts a restart would re-arm: state carries, armed ones resume, receipts stop repeats', async () => {
+  const f = await fixture()
+  await f.source()
+  f.scripts([
+    {
+      id: 'watch-ci',
+      scope: 'project',
+      name: 'Watch CI',
+      ask: 'Watch CI',
+      once: true,
+      armed: true,
+      enabled: true,
+      secrets: ['GH_TOKEN'],
+      to: '@reviewer',
+    },
+    {
+      id: 'watch-done',
+      scope: 'project',
+      name: 'Watch done',
+      ask: 'Watch done',
+      once: true,
+      enabled: false,
+    },
+    {
+      id: 'A1',
+      name: 'Watch it',
+      ask: 'Watch the build',
+      once: false,
+      to: '@reviewer',
+      secrets: ['GH_TOKEN'],
+      prompt: 'Summarise',
+      enabled: true,
+    },
+  ])
+  const seed = await buildSeed(f.host, PREPARED)
+  expect(seed.scripts).toEqual([
+    {
+      id: 'watch-ci',
+      scope: 'project',
+      name: 'Watch CI',
+      ask: 'Watch CI',
+      once: true,
+      armed: true,
+      secrets: ['GH_TOKEN'],
+      to: '@reviewer',
+    },
+    {
+      id: 'watch-done',
+      scope: 'project',
+      name: 'Watch done',
+      ask: 'Watch done',
+      once: true,
+    },
+    {
+      id: 'A1',
+      name: 'Watch it',
+      ask: 'Watch the build',
+      once: false,
+      to: '@reviewer',
+      secrets: ['GH_TOKEN'],
+      prompt: 'Summarise',
+    },
+  ])
+  const service = f.host.want(AutomationsApi)!
+  const carried = vi.spyOn(service, 'carryScriptState').mockResolvedValue(undefined)
+  const resumed = vi
+    .spyOn(service, 'resume')
+    .mockResolvedValue({} as Awaited<ReturnType<AutomationsService['resume']>>)
+  await writeSeed(join(f.home, 'chapters', 'fresh-roots'), seed)
+  await f.close()
+  await requestChapter(f.home, 'fresh-roots')
+  await f.open()
+  expect(carried.mock.calls).toEqual([
+    ['watch-ci', 'the-beginning'],
+    ['watch-done', 'the-beginning'],
+  ])
+  expect(resumed.mock.calls).toEqual([['watch-ci']])
+  expect((await f.harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context))!.carried).toEqual([
+    'watch-ci',
+    'watch-done',
+  ])
+  // A reopen (what a facet reload does) carries and resumes nothing again.
+  await f.reopen()
+  expect(carried).toHaveBeenCalledTimes(2)
+  expect(resumed).toHaveBeenCalledTimes(1)
+  // The to-do for the user script keeps its once, secrets and to.
+  const todos = (await f.harness.snapshot(Todos, ROOT_CONVERSATION_ID, context))!
+  expect(todos.items.map(({ text }) => text)).toContain(
+    'Recreate script A1 (Watch it, recurring, secrets: GH_TOKEN, wake @reviewer): Watch the build · prompt: Summarise',
+  )
+  await f.close()
 })
 
 it.each(['on', 'off'] as const)(

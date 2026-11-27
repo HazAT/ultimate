@@ -13,6 +13,12 @@ export type AutomationsService = {
   pause(id: string): Promise<AutomationListItem>
   /** Fire a schedule, event or condition now, or relaunch a script. Commits. */
   run(id: string): Promise<AutomationListItem>
+  /**
+   * Copies a script's persistent `state/` folder from an earlier chapter's runtime folder into the current chapter's,
+   * once: a folder the current chapter already has is left alone. For a chapter rollover that must re-arm project
+   * scripts exactly as a restart does. Commits nothing; safe any time before the script starts.
+   */
+  carryScriptState(id: string, fromChapter: string): Promise<void>
   /** The record, including whether its script process is alive. */
   status(id: string): Promise<AutomationListItem>
   /**

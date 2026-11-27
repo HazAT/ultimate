@@ -5,6 +5,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { readJson, writeJson } from '../../lib/json-file.ts'
 import { openQuestion } from '../../lib/message-state.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
+import { AutomationsApi } from '../automations/api.ts'
 import type { MemoryItem } from '../lineage/refs.ts'
 import { TodosApi } from '../todos/api.ts'
 import { Memory, Roots } from '../lineage/api.ts'
@@ -15,14 +16,18 @@ import type { Prepared } from './refs.ts'
 import type { Seed } from './types.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
-export const SeedState = defineDoc<{ applied?: number; automations: string[] }>({
+export const SeedState = defineDoc<{
+  applied?: number
+  automations: string[]
+  carried?: string[]
+}>({
   kind: 'dream.seed',
   checkpointWhen: checkpointEvery(100),
   version: 1,
   scope: 'conversation',
   history: 'latest',
   fork: 'initial',
-  initial: () => ({ automations: [] }),
+  initial: () => ({ automations: [], carried: [] }),
 })
 
 const portableTrigger = (item: Seed['automations'][number]) =>
@@ -121,12 +126,16 @@ export async function buildSeed(host: ExtensionHost, prepared: Prepared): Promis
       names.add(name)
     }
     const watchers = automations
-      .filter((item) => item.enabled && item.script)
-      .map(({ id, scope, name, script, prompt, agent, model, thinking }) => ({
+      .filter((item) => item.script && (item.scope === 'project' || item.enabled))
+      .map(({ id, scope, name, script, enabled, prompt, agent, model, thinking }) => ({
         id,
         ...(scope ? { scope } : {}),
         name,
         ask: script!.ask,
+        once: script!.once,
+        ...(script!.secrets?.length ? { secrets: script!.secrets } : {}),
+        ...(script!.to ? { to: script!.to } : {}),
+        ...(enabled && script!.state === 'running' ? { armed: true } : {}),
         ...(prompt ? { prompt } : {}),
         ...(agent ? { agent } : {}),
         ...(model ? { model } : {}),
@@ -206,9 +215,9 @@ export async function applySeed(host: ExtensionHost) {
           })),
           ...seed.scripts
             .filter((item) => item.scope !== 'project')
-            .map(({ id, name, ask, prompt, agent }) => ({
+            .map(({ id, name, ask, once, secrets, to, prompt, agent }) => ({
               owner: 'ultimate' as const,
-              text: `Recreate script ${id} (${name}): ${ask}${prompt ? ` · prompt: ${prompt}${agent ? ` (agent ${agent})` : ''}` : ''}`,
+              text: `Recreate script ${id} (${name}${once ? '' : ', recurring'}${secrets?.length ? `, secrets: ${secrets.join(', ')}` : ''}${to && to !== '@ultimate' ? `, wake ${to}` : ''}): ${ask}${prompt ? ` · prompt: ${prompt}${agent ? ` (agent ${agent})` : ''}` : ''}`,
             })),
           ...seed.automations
             .filter((item) => !portableTrigger(item))
@@ -255,6 +264,34 @@ export async function applySeed(host: ExtensionHost) {
       const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
       if (!saved.automations.includes(automation.name)) saved.automations.push(automation.name)
     }, context)
+  }
+  const automationsApi = host.need(AutomationsApi)
+  const receipt = await harness.snapshot(SeedState, ROOT_CONVERSATION_ID, context)
+  const pending = seed.scripts.filter(
+    (item) => item.scope === 'project' && !receipt?.carried?.includes(item.id),
+  )
+  if (pending.length) await host.invoke('automations', 'list', null, signal)
+  const untouchedSinceDiscovery = (a: Automation | undefined) =>
+    !!a && !a.enabled && a.script?.state === 'stopped' && !a.script.startedAt && !a.fires
+  for (const script of pending) {
+    const { id } = script
+    await automationsApi.carryScriptState(id, seed.from.name)
+    if (script.armed)
+      await automationsApi
+        .resume(id)
+        .catch((error: unknown) =>
+          host.notice(`Chapter seed could not resume automation ${id}: ${String(error)}`),
+        )
+    const record = await harness.commit((tx) => automationsApi.read(tx, id), context)
+    if (!record)
+      host.notice(`Chapter seed carried automation ${id}, but it has no record in this chapter`)
+    const retryWhileUntouched = script.armed && untouchedSinceDiscovery(record)
+    if (!retryWhileUntouched)
+      await harness.commit(async (tx) => {
+        const saved = await tx.doc(SeedState, ROOT_CONVERSATION_ID)
+        saved.carried ??= []
+        if (!saved.carried.includes(id)) saved.carried.push(id)
+      }, context)
   }
   harness.resume()
   return seed
