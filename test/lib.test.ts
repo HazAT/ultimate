@@ -1,6 +1,8 @@
 import { lstat, mkdir, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { expect, it } from 'vitest'
+import { agentDefinitions } from '../lib/agents.ts'
 import { git, isolatable, noCommit, noRepository } from '../lib/git.ts'
 import { readJson, updateJson, writeJson } from '../lib/json-file.ts'
 import { readSettings, updateSettings } from '../lib/settings.ts'
@@ -14,6 +16,29 @@ it('titles a long Markdown prompt by its first meaningful line, cut short', () =
   expect(title.length).toBeLessThanOrEqual(60)
   expect(shortTitle('**Task:** find the callers')).toBe('Task: find the callers')
   expect(shortTitle('fork task')).toBe('fork task')
+})
+
+it('reports a looping agent symlink as one error and keeps discovering the rest', async () => {
+  const root = await temp('ultimate-lib-')
+  await mkdir(join(root, 'agents'))
+  await writeFile(
+    join(root, 'agents/good.md'),
+    '---\nname: good\ndescription: Good helper\n---\nDo the work.\n',
+  )
+  await symlink('loop.md', join(root, 'agents/loop.md'))
+  const resources = new Map<string, unknown>()
+  const discovery = await agentDefinitions({
+    ultimateRoot: root,
+    projectRoot: root,
+    userHome: root,
+    modelRuntime: await ModelRuntime.create(),
+    resource: <T>(key: string, create: () => T) =>
+      (resources.get(key) ?? resources.set(key, create()).get(key)) as T,
+  })
+  expect(discovery.definitions.map((definition) => definition.name)).toEqual(['good'])
+  expect(discovery.errors).toMatchObject([
+    { name: 'loop', path: join(root, 'agents/loop.md'), error: expect.stringContaining('ELOOP') },
+  ])
 })
 
 it('reads a missing JSON file as the fallback and rejects unreadable JSON', async () => {
