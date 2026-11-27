@@ -4,7 +4,7 @@ import { createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { dock, setVoiceOpen } from '../../dock.solid.tsx'
+import { dispatch, setVoiceOpen } from '../../dock.solid.tsx'
 import { VoicePanel } from '../../panel.solid.tsx'
 
 const ui = vi.hoisted(() => ({ folded: false }))
@@ -62,10 +62,11 @@ it('before a session exists, the prompt box shows the voice model chip', async (
   const chip = () => view.querySelector('[data-ui="prompt-box"] [aria-label="Voice model"]')
   expect(chip()?.textContent).toContain('gemini-4-neon·low')
   await expectDistinctAgentNames(agent)
-  dock.setPhase('recording')
+  dispatch({ type: 'press', busy: false })
+  dispatch({ type: 'open' })
   flush()
   expect(chip()).toBeNull()
-  dock.setPhase('idle')
+  dispatch({ type: 'ended' })
   flush()
   expect(chip()).not.toBeNull()
 })
@@ -79,8 +80,9 @@ it('folded, the dock is its prompt box, with a status line only while voice has 
   expect(view.querySelectorAll('[data-ui="prompt-box"]')).toHaveLength(1)
   expect(view.querySelector('[data-voice-line]')).toBeNull()
   await expectDistinctAgentNames(agent)
-  dock.setStatus('Thinking…')
+  dispatch({ type: 'send', key: 'turn', voice: false })
+  dispatch({ type: 'sent', key: 'turn' })
   flush()
   expect(view.querySelector('[data-voice-line]')?.textContent).toBe('Thinking…')
-  dock.setStatus(undefined)
+  dispatch({ type: 'ended' })
 })

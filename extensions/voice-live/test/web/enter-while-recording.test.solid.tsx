@@ -5,6 +5,7 @@ import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
 import {
   composeIn,
+  dispatch,
   dock,
   sendDraft,
   sendTyped,
@@ -13,6 +14,8 @@ import {
 } from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
+  stops: 0,
+  stopFails: false,
   turns: [] as Record<string, unknown>[],
   record: undefined as Promise<void> | undefined,
 }))
@@ -23,6 +26,10 @@ vi.mock('@/sdk/solid', async () => {
     writingAs: <T,>(_who: unknown, write: () => T) => write(),
     api: {
       action: (ref: { name: string }, args: Record<string, unknown>) => {
+        if (ref.name === 'stop') {
+          harness.stops++
+          if (harness.stopFails) return Promise.reject(new Error('stop failed'))
+        }
         if (ref.name === 'status') return Promise.resolve({ route: 'text' })
         if (ref.name === 'record')
           return Promise.resolve(harness.record).then(() => ({ audio: 'rec-1', session: 40 }))
@@ -98,6 +105,8 @@ const speak = () => {
 beforeEach(async () => {
   await serverEndedSession(composeIn)
   harness.turns.length = 0
+  harness.stops = 0
+  harness.stopFails = false
   harness.record = undefined
   composeIn(parseConversationId(40))
 })
@@ -141,6 +150,7 @@ it('Enter during a recording while collecting sends the collected clips, the new
     session,
   )
   await sent
+  expect(harness.stops).toBe(0)
   expect(harness.turns).toEqual([
     expect.objectContaining({
       text: 'first second\n\nlook at this',
@@ -148,6 +158,53 @@ it('Enter during a recording while collecting sends the collected clips, the new
       images: [shot],
     }),
   ])
+})
+
+it('an earlier turn acknowledged while Enter uploads its clip leaves Follow-up nothing to send', async () => {
+  dock.setCollect(true)
+  flush()
+  const earlier = { audio: 'clip-0', seconds: 2 }
+  settleTranscripts({ draft: [earlier] }, session)
+  dispatch({ type: 'send', key: 'earlier', voice: false })
+  await capture.press(voiceSink)?.started
+  speak()
+  let uploaded = () => {}
+  harness.record = new Promise((resolve) => (uploaded = resolve))
+  const sent = sendTyped('look at this')
+  await vi.waitFor(() => expect(dock.state().phase).toBe('sending'))
+  dispatch({ type: 'sent', key: 'earlier' })
+  await sendDraft('followUp')
+  uploaded()
+  settleTranscripts(
+    { draft: [earlier], transcripts: { 'clip-0': 'first', 'rec-1': 'second' } },
+    session,
+  )
+  await sent
+  expect(harness.turns).toEqual([
+    expect.objectContaining({ text: 'first second\n\nlook at this', clips: ['clip-0', 'rec-1'] }),
+  ])
+})
+
+it('an Enter whose Stop fails leaves Follow-up able to send the clips it held', async () => {
+  dock.setCollect(true)
+  flush()
+  const earlier = { audio: 'clip-0', seconds: 2 }
+  settleTranscripts({ draft: [earlier] }, session)
+  dispatch({ type: 'send', key: 'earlier', voice: false })
+  await capture.press(voiceSink)?.started
+  speak()
+  harness.stopFails = true
+  let uploaded = () => {}
+  harness.record = new Promise((resolve) => (uploaded = resolve))
+  const sent = sendTyped('look at this').catch((failure: Error) => failure.message)
+  await vi.waitFor(() => expect(dock.state().phase).toBe('sending'))
+  dispatch({ type: 'sent', key: 'earlier' })
+  uploaded()
+  expect(await sent).toBe('stop failed')
+  harness.stopFails = false
+  settleTranscripts({ draft: [earlier], transcripts: { 'clip-0': 'first' } }, session)
+  await sendDraft('followUp')
+  expect(harness.turns).toEqual([expect.objectContaining({ clips: ['clip-0'] })])
 })
 
 it('a session that ends while Enter stops the recording sends nothing and leaves the typed text in the box', async () => {

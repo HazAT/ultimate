@@ -10,6 +10,7 @@ import {
   COLD_DRAFT,
   composeIn,
   coldHolds,
+  dispatch,
   dock,
   draftOf,
   sendDraft,
@@ -262,7 +263,8 @@ it('a spoken turn that ends without sending leaves the cold text and screenshot 
 it('a cut-in holds the collected clip and the box from the start, so follow-up during its stop sends nothing', async () => {
   let stopped = () => {}
   harness.stop = new Promise((resolve) => (stopped = resolve))
-  dock.setPhase('thinking')
+  dispatch({ type: 'send', key: 'earlier', voice: false })
+  dispatch({ type: 'sent', key: 'earlier' })
   flush()
   const steer = sendDraft('steer', '', true, [clip])
   await vi.waitFor(() => expect(harness.stops).toBe(1))
