@@ -1,5 +1,3 @@
-# Questions
-
 Answer cards for questions to the user from @ultimate and branches. One thing asks: a reply-expected message to the user
 that carries `questions`. The asker's `message { to: 'user', text, questions }` declares them; messages validates them at the tool
 boundary (`extensions/messages/questions.ts`) and stores them on the message, and the card renders exactly what was

@@ -1,5 +1,3 @@
-# Workspaces
-
 An isolated conversation gets its own Git checkout. Coordinator branches started by @ultimate are isolated by
 default. Subagents can select `isolate: "worktree"` for the same setup. Uncommitted source changes are not included.
 

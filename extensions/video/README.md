@@ -1,5 +1,3 @@
-# Video
-
 Ask Gemini questions about a video from any agent, regardless of its own model, through the official Gemini API.
 Questions need `GEMINI_API_KEY` in Secrets (⌘K → Secrets) and are billed to that key; uploads and preparation work
 without it. The default model is `google/gemini-4-neon` with thinking `low`. Video costs about 105 tokens per

@@ -1,5 +1,3 @@
-# Page agent
-
 Lets an agent drive the user's own Ultimate page: its `ui` tool runs ui-sdk `snapshot`, `query` and `act` on a page
 open in the user's browser and returns the result.
 
