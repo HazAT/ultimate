@@ -223,6 +223,41 @@ it("shows the coordinator's own turns and calls, the tree's cost, its workers an
   harness.activity = {}
 })
 
+it("folds a branch's subagents by default, says what they do, and persists its toggle", async ({
+  onTestFinished,
+}) => {
+  await registry.setLoaders({})
+  const { container, root, stream } = await mount(onTestFinished)
+  const grandchild = parseConversationId(14)
+  stream.send('conversations', [
+    ...conversations,
+    { id: child, parentConversationId: branch, ownerTaskId: 3 as TaskId, busy: true },
+    { id: grandchild, parentConversationId: child, ownerTaskId: 4 as TaskId, busy: false },
+  ])
+  root().send('doc', {
+    kind: OverviewDoc.kind,
+    value: { conversations: { [child]: { runState: 'working' } } },
+  })
+  flush()
+  const toggle = () => container.querySelector(`[data-flight-children="${branch}"]`)
+  expect(toggle()?.textContent).toBe('Sub-agents · 2· 1 working')
+  expect(container.querySelector(`[data-child-conversation="${child}"]`)).toBeNull()
+  await expectDistinctAgentNames(agent)
+  expect(
+    await agent.act({ steps: [{ ref: 'Sub-agents of #12', action: 'setOpen', args: [true] }] }),
+  ).toMatchObject({ ok: true })
+  flush()
+  expect(container.querySelector(`[data-child-conversation="${child}"]`)).not.toBeNull()
+  expect(container.querySelector(`[data-child-conversation="${grandchild}"]`)).not.toBeNull()
+  expect(toggle()?.textContent).toBe('Sub-agents · 2')
+  await uiState.flush()
+  expect(harness.writes).toContainEqual({
+    key: 'ext.conversations.expanded',
+    value: [branch],
+    source: 'agent',
+  })
+})
+
 it('uses the running preview for user waits and idle branches', async ({ onTestFinished }) => {
   await registry.setLoaders({})
   const { container, root } = await mount(onTestFinished)
