@@ -30,6 +30,7 @@ import {
 import { parseConversationId, parseEntryId } from '../../lib/ids.shared.ts'
 import { ConversationRef, Unsummarized } from '../conversations/ui.solid.tsx'
 import { RootComposer } from './banner.solid.tsx'
+import { ForkMarker } from './fork.solid.tsx'
 import { MemoryCall, NotifyCall, RememberCall } from './calls.solid.tsx'
 import { ForgetAction, MemoryDoc, TallyDoc } from './refs.ts'
 import type { MemoryItem } from './refs.ts'
@@ -337,7 +338,7 @@ export default defineWebExtension({
       component: MemorySurface,
     },
   ],
-  slots: { overlay: [StreamRootsForCommands] },
+  slots: { overlay: [StreamRootsForCommands], 'transcript.start': [ForkMarker] },
   provides: [
     provide(Unsummarized, (id) => {
       const roots = useRoots()

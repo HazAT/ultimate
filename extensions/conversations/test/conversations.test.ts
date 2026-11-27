@@ -137,6 +137,7 @@ it('tells each top-level conversation about the others in a fixed text', async (
   expect(child.inputAt).toEqual(expect.any(Number))
   expect(child.parentConversationId).toBe(root)
   expect(child.branchOf).toBeUndefined()
+  expect(child.forkOf).toBeUndefined()
   expect(await render('conversations', child.id)).toBeUndefined()
   const childContext = await (await server.harness.conversation(child.id, context))!.context(
     context,
@@ -162,7 +163,10 @@ it('tells each top-level conversation about the others in a fixed text', async (
   const fork = await server.root.fork(entry.id, { ownership: { kind: 'ownerless' } }, context)
   await until(() => summary(fork.id)?.inputAt !== undefined)
   expect(summary(fork.id)!.inputAt).toEqual(expect.any(Number))
-  expect(summary(fork.id)).toMatchObject({ branchOf: { conversationId: root, at: entry.id } })
+  expect(summary(fork.id)).toMatchObject({
+    branchOf: { conversationId: root, at: entry.id },
+    forkOf: { conversationId: root, at: entry.id },
+  })
   expect(summary(fork.id)).not.toHaveProperty('parentConversationId')
   const stream = await attach(server)
   try {

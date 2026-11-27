@@ -345,6 +345,7 @@ export async function createApi(
         id: record.id,
         ...(record.owner ? { parentConversationId: record.owner.conversationId } : {}),
         ...(!record.owner && record.parent ? { branchOf: record.parent } : {}),
+        ...(record.parent ? { forkOf: record.parent } : {}),
         ...(record.owner ? { ownerTaskId: record.owner.taskId } : {}),
         ...(metadata?.label ? { label: metadata.label } : {}),
         ...(metadata?.external ? { external: metadata.external } : {}),
