@@ -466,8 +466,7 @@ export async function discoveryPaths(ultimateRoot: string, projectRoot: string, 
   ]
 }
 
-type DiscoveryCache = {
-  readBy: WeakMap<typeof discoverAgents, FileMemoState<AgentDiscovery>>
+type DiscoveryState = FileMemoState<AgentDiscovery> & {
   snapshot?: readonly unknown[]
   snapshots: number
 }
@@ -480,21 +479,21 @@ export function agentDefinitions(
   projectRoot = host.projectRoot,
 ): Promise<AgentDiscovery> {
   const { ultimateRoot, userHome, modelRuntime } = host
-  const cache = host.resource<DiscoveryCache>(`agents.discovery:${projectRoot}`, () => ({
-    readBy: new WeakMap(),
-    snapshots: 0,
-  }))
-  const state = cache.readBy.get(discoverAgents) ?? {}
-  cache.readBy.set(discoverAgents, state)
+  const byReader = host.resource(
+    `agents.discovery-by-reader:${projectRoot}`,
+    () => new WeakMap<typeof discoverAgents, DiscoveryState>(),
+  )
+  const state = byReader.get(discoverAgents) ?? { snapshots: 0 }
+  byReader.set(discoverAgents, state)
   return fileMemo(
     {
       paths: () => discoveryPaths(ultimateRoot, projectRoot, userHome),
       read: () => discoverAgents(ultimateRoot, projectRoot, userHome, modelRuntime),
       key: () => {
         const replacedWhenModelsOrLoginsChange = modelRuntime.getAvailableSnapshot()
-        if (replacedWhenModelsOrLoginsChange !== cache.snapshot) cache.snapshots++
-        cache.snapshot = replacedWhenModelsOrLoginsChange
-        return String(cache.snapshots)
+        if (replacedWhenModelsOrLoginsChange !== state.snapshot) state.snapshots++
+        state.snapshot = replacedWhenModelsOrLoginsChange
+        return String(state.snapshots)
       },
     },
     state,
