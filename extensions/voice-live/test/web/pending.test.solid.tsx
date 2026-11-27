@@ -33,7 +33,7 @@ vi.mock('@/sdk/solid', async (original) => ({
   }),
   useDocOf: (_id: unknown, ref: { kind: string }) => () =>
     ref.kind === 'voice.session'
-      ? { id: 40 }
+      ? { sessions: { 2: { id: 40 } } }
       : ref.kind === 'voice.fork'
         ? harness.fork
         : undefined,

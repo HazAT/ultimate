@@ -25,7 +25,7 @@ export async function lastSettledInputAnswer(
         answer = input.answer
     cursor = page.next
   } while (cursor)
-  if (answer === undefined) throw new Error('@ultimate has no finished turn to fork yet')
+  if (answer === undefined) throw new Error(`#${conversation} has no finished turn to fork yet`)
   return answer
 }
 

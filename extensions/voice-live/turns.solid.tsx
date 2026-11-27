@@ -231,7 +231,11 @@ export function PendingTurns() {
   const conversation = useConversation()
   const pending = createMemo(() => {
     const here = id()
-    if (here === undefined || here !== session()?.id) return []
+    if (
+      here === undefined ||
+      !Object.values(session()?.sessions ?? {}).some((each) => each?.id === here)
+    )
+      return []
     const state = conversation()
     const candidates = [
       ...Object.entries(dock.local()).flatMap(([key, each]) =>

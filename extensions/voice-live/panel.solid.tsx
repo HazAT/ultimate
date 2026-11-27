@@ -75,6 +75,7 @@ import {
   voiceSink,
 } from './dock.solid.tsx'
 import { PickAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
+import { StandingDoc } from '../subagents/refs.ts'
 import { PickControl } from '../models/ui.solid.tsx'
 import type { ModelPick } from '../models/ui.solid.tsx'
 import {
@@ -471,11 +472,21 @@ function SetupList() {
   )
 }
 
+function useDefaultSession() {
+  const standing = useDocOf(() => ROOT, StandingDoc)
+  const state = useDocOf(() => ROOT, VoiceSessionDoc)
+  const session = () => {
+    const source = standing()?.ultimate
+    return source === undefined ? undefined : state()?.sessions?.[source]
+  }
+  return { state, session }
+}
+
 function useVoicePick(): ModelPick {
-  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+  const { state, session } = useDefaultSession()
   const status = useAction(StatusAction, null, {
     conversation: ROOT,
-    on: () => [session()?.id, session()?.model, session()?.thinking],
+    on: () => [session()?.id, state()?.model, state()?.thinking],
   })
   const ref = () => {
     const model = status.data()?.model
@@ -575,7 +586,7 @@ function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
 }
 
 export function VoicePanel() {
-  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+  const { session } = useDefaultSession()
   const fork = useDocOf(() => session()?.id, VoiceForkDoc)
   const viewport = useViewport()
   const id = () => session()?.id
@@ -880,7 +891,7 @@ export function VoicePanel() {
 }
 
 export function VoiceToggle() {
-  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+  const { session } = useDefaultSession()
   return (
     <Button
       aria-label={voiceOpen() ? 'Hide voice' : 'Open voice'}

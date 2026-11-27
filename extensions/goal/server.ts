@@ -11,7 +11,6 @@ import {
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { actingAs } from '../../lib/acting-as.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { imagesOf, latestImagesEntry } from '../../lib/entries.shared.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -347,13 +346,12 @@ export default function goalExtension(host: ExtensionHost) {
           summary: opt(str()),
         }),
         async execute(args, api, ctx) {
-          const actingMain = await actingAs(host, api.conversationId, ctx)
           const result = await api.commit(async (tx) => {
-            if ((await ultimateOf(tx)) !== actingMain)
+            if ((await ultimateOf(tx)) !== api.conversationId)
               throw new Error('Only @ultimate keeps the hands-off goal.')
             const acted = await act(
               tx,
-              actingMain,
+              api.conversationId,
               {
                 ...args,
                 conversation:

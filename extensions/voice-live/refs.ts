@@ -1,28 +1,42 @@
-/** Voice mode: a push-to-talk fork of @ultimate, its actions, session document and handoff entry. Browser-safe. */
+/** Side chats: typed and spoken forks, their actions, session document and handoff entry. Browser-safe. */
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { ConversationId, EntryId } from '@earendil-works/pi-durable'
 import { actionRef, docRef } from '../../shared/extension-api.ts'
+import type { Reply } from '../questions/refs.ts'
 
 /** How one turn reached the model: the recording itself (`audio`) or its transcript (`text`). */
 export type VoiceRoute = 'audio' | 'text'
 
-/** The voice session on the root: the fork in use, while one is open. */
-export type VoiceSession = {
+/** What ended a side chat: inactivity, Start fresh, or sending the answer on its pinned card. */
+export type VoiceEndReason = 'quiet' | 'fresh' | 'answered'
+
+/** One source's open fork, or its last ended fork until the next one opens. */
+export type VoiceSourceSession = {
   id?: ConversationId
-  of?: ConversationId
   at?: EntryId
   startedAt?: number
-  /** Every fork voice made, so the sidebar never lists them: voice shows as one live row while a session is open. */
+  /** The pinned question's message id, only while discussing it. */
+  question?: number
+  /** The previous fork to display. `handedOff` reports an explicit handoff, independently of `summary`. */
+  last?: {
+    id: ConversationId
+    endedAt: number
+    reason: VoiceEndReason
+    handedOff: boolean
+    summary?: string
+    failed?: string
+  }
+}
+
+/** The side chat state on the root. `sessions` is keyed by source conversation id. */
+export type VoiceSession = {
+  sessions: Record<number, VoiceSourceSession>
+  /** Every side chat fork, so the sidebar never lists it as a regular conversation. */
   forks?: ConversationId[]
   /** The model the next session starts on, `provider/model`, as last picked in a voice prompt box; unset, the default. */
   model?: string
   /** Its thinking level, likewise; unset, `low`. A model without it uses its closest level. */
   thinking?: ModelThinkingLevel
-  /**
-   * The session that last ended after a quiet stretch, until the next one opens: when, and the summary it handed back to
-   * @ultimate (unset when nothing was decided or left open), or why the summary failed.
-   */
-  last?: { id: ConversationId; endedAt: number; summary?: string; failed?: string }
 }
 
 /**
@@ -50,17 +64,19 @@ export type VoiceTurn = {
 }
 
 /**
- * What a voice session that ended after a quiet stretch hands back, written as a passive `voice.summary` entry in
- * @ultimate: the fork, when it started and ended, and the summary of what was decided or left open.
+ * What an ended side chat hands back, written as a passive `voice.summary` entry in the source conversation:
+ * the fork, when it started and ended, and the summary of what was decided or left open.
  */
 export type VoiceSummary = {
   from: ConversationId
   startedAt?: number
   endedAt: number
+  /** Absent on summaries written before side chats could end explicitly. */
+  reason?: VoiceEndReason
   text: string
 }
 
-/** A handoff to @ultimate, written as a `voice.handoff` input entry in @ultimate and as the tool's result in the fork. */
+/** A handoff from the fork, written as a `voice.handoff` input in the target conversation. */
 export type VoiceHandoff = {
   title: string
   outcome: string
@@ -83,6 +99,8 @@ export type VoiceHandoff = {
 export type VoiceFork = {
   of?: ConversationId
   at?: EntryId
+  /** The message id of the open question this fork is talking through. */
+  question?: number
   transcripts?: Record<string, string>
   failed?: Record<string, string>
   /** Recordings collected but not sent yet, in order, when the user sends on Enter or by saying so. */
@@ -93,7 +111,7 @@ export type VoiceFork = {
   handedOff?: EntryId
   /** The conversation on the user's screen at the latest turn, the one a handoff `to` may name. */
   screen?: ConversationId
-  /** When the fork last read what @ultimate did: at the fork, then at the start of each turn. */
+  /** When the fork last read what its source did: at the fork, then at the start of each turn. */
   caughtUp?: number
 }
 
@@ -103,10 +121,13 @@ export type VoiceClip = { audio: string; seconds: number; envelope?: number[] }
 /** How a turn reaches a busy model: `steer` interrupts the run, `followUp` waits until it ends. */
 export type VoiceDelivery = 'steer' | 'followUp'
 
-/** The open voice session on the root: the fork's id, the conversation and entry it forked from, and when. */
+/** On the root: open and most recently ended side chats per source, all fork ids, and the shared model pick. */
 export const VoiceSessionDoc = docRef<VoiceSession>('voice.session')
-/** The voice fork's own document, on the fork: see `VoiceFork`. */
+/** The side chat fork's own document, on the fork: see `VoiceFork`. */
 export const VoiceForkDoc = docRef<VoiceFork>('voice.fork')
+
+/** Which conversation to fork. Omit `source` to use the primary standing agent. */
+export type VoiceSource = { source?: ConversationId }
 
 /**
  * `{ audio: base64, mimeType }` → `{ audio, session }`, the id of the recording kept for the session's next turn and
@@ -120,7 +141,7 @@ export const RecordAction = actionRef<
     mimeType: string
     collect?: { seconds: number; envelope?: number[] }
     session?: ConversationId
-  },
+  } & VoiceSource,
   { audio: string; session: ConversationId }
 >('voice-live', 'record')
 
@@ -146,12 +167,33 @@ export const TurnAction = actionRef<
     /** The page that sent it (page-agent's `pageId`): `ui` calls answering this turn run there. */
     page?: string
     images?: { data: string; mimeType: string }[]
-  },
+  } & VoiceSource,
   { conversation: ConversationId; route: VoiceRoute; dropped?: true }
 >('voice-live', 'turn')
 
-/** Open the session without a turn yet: forks @ultimate unless a session is open. Returns its conversation. */
-export const OpenAction = actionRef<null, { conversation: ConversationId }>('voice-live', 'open')
+/** `{source?}` → `{conversation}`: open a side chat without a turn yet, or return the source's open fork. */
+export const OpenAction = actionRef<VoiceSource | null, { conversation: ConversationId }>(
+  'voice-live',
+  'open',
+)
+
+/** `{source?}` → `{conversation}`: Start fresh. Summarize and conclude the open side chat; refuse if none is open. */
+export const EndAction = actionRef<VoiceSource | null, { conversation: ConversationId }>(
+  'voice-live',
+  'end',
+)
+
+/** `{message}` → `{conversation, source}`: open or reuse a side chat about this question, forked from its asker. */
+export const QuestionAction = actionRef<
+  { message: number },
+  { conversation: ConversationId; source: ConversationId }
+>('voice-live', 'question')
+
+/** `{source?, answer}` → `{conversation}`: summarize, send the answer unless the card was already closed, and conclude. */
+export const AnswerAction = actionRef<
+  VoiceSource & { answer: Reply },
+  { conversation: ConversationId }
+>('voice-live', 'answer')
 
 /**
  * The model or thinking level the next session starts on, picked in the cold prompt box; either may be left out.
@@ -162,8 +204,8 @@ export const PickAction = actionRef<
   Record<string, never>
 >('voice-live', 'pick')
 
-/** Stop the session's current reply, for an interruption. */
-export const StopAction = actionRef<null, Record<string, never>>('voice-live', 'stop')
+/** `{source?}` → `{}`: stop the fork's current reply, for an interruption. */
+export const StopAction = actionRef<VoiceSource | null, Record<string, never>>('voice-live', 'stop')
 
 /** One piece of voice mode's setup: whether it is ready, and what to do when it is not. */
 export type VoiceSetupItem = { ready: boolean; detail: string; fix?: string }
@@ -173,7 +215,7 @@ export type VoiceSetupItem = { ready: boolean; detail: string; fix?: string }
  * voice model's login, OpenAI transcription (required), and Jev for spoken send in collect mode (optional).
  */
 export const StatusAction = actionRef<
-  null,
+  VoiceSource | null,
   {
     model: string
     /** Where the model comes from: a pick stored in `voice.session`, `voice.model` in user settings, or the default. */
@@ -187,8 +229,11 @@ export const StatusAction = actionRef<
   }
 >('voice-live', 'status')
 
-/** Drop every collected recording that was not sent. */
-export const DiscardAction = actionRef<null, Record<string, never>>('voice-live', 'discard')
+/** `{source?}` → `{}`: drop every collected recording that was not sent. */
+export const DiscardAction = actionRef<VoiceSource | null, Record<string, never>>(
+  'voice-live',
+  'discard',
+)
 
 /**
  * `{ audio }`, a collected recording with its transcript in → whether it ends the message with a spoken send ("send it",
@@ -198,6 +243,6 @@ export const DiscardAction = actionRef<null, Record<string, never>>('voice-live'
  * `unavailable` says why it cannot tell (no classifier key).
  */
 export const IntentAction = actionRef<
-  { audio: string },
+  { audio: string } & VoiceSource,
   { send?: VoiceDelivery; clips?: string[]; dropped?: true; answered?: true; unavailable?: string }
 >('voice-live', 'intent')

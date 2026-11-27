@@ -55,7 +55,8 @@ function Level(props: { live: Live }) {
 
 export function VoiceRow(props: { conversation: ConversationId | undefined }) {
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
-  const id = () => session()?.id
+  const id = () =>
+    props.conversation === undefined ? undefined : session()?.sessions?.[props.conversation]?.id
   const conversations = useConversations()
   const busy = () => conversations().some((row) => row.id === id() && row.busy)
   const live = createMemo((): Live => {
@@ -102,11 +103,5 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
 
 export function voiceForks() {
   const session = useDocOf(() => ROOT, VoiceSessionDoc)
-  return createMemo(() => {
-    const current = session()
-    return new Set<number>([
-      ...(current?.forks ?? []),
-      ...(current?.id === undefined ? [] : [current.id]),
-    ])
-  })
+  return createMemo(() => new Set<number>(session()?.forks ?? []))
 }

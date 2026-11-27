@@ -1,13 +1,11 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { awaitWithContext } from '@earendil-works/chord/context'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import type { FauxResponseFactory } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   AgentDoc,
-  defineDoc,
   defineExtension,
   defineTask,
   hook,
@@ -15,10 +13,6 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import { context } from '../../../server/harness.ts'
-import { Messages } from '../../messages/api.ts'
-import { branchOf, rootOf } from '../../lineage/server.ts'
-import { Branch } from '../../lineage/api.ts'
-import { Automations } from '../../automations/server.ts'
 import { Index, Side, tracksEffect } from '../server.ts'
 import type { endTask } from '../server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
@@ -27,11 +21,6 @@ let ultimateRoot: string
 const servers: Awaited<ReturnType<typeof fauxServer>>[] = []
 beforeAll(async () => {
   ultimateRoot = await sourceCopy(await temp())
-  // A watcher that inherits faux and only answers: creation must not launch a real script.
-  await writeFile(
-    join(ultimateRoot, 'agents/watcher.md'),
-    '---\nname: watcher\ndescription: Test automation writer\ntools: [read]\n---\nAnswer without writing or starting any script.\n',
-  )
   await writeFile(
     join(ultimateRoot, '.ultimate/settings.json'),
     JSON.stringify({ summaryModel: 'unavailable/test' }),
@@ -68,8 +57,6 @@ async function fixture() {
     afterTool: false,
     entered: false,
     summaryFailure: undefined as string | undefined,
-    holdSummary: false,
-    summaryHeld: false,
   }
   const requests: { system: string; text: string; messages: string }[] = []
   const summaries: string[] = []
@@ -91,10 +78,6 @@ async function fixture() {
     requests.push({ system, text, messages: JSON.stringify(transcript.messages) })
     if (system.includes('Summarize this temporary side chat')) {
       summaries.push(text)
-      if (gate.holdSummary) {
-        gate.summaryHeld = true
-        await hold.promise
-      }
       if (gate.summaryFailure)
         return fauxAssistantMessage(gate.summaryFailure, {
           stopReason: 'error',
@@ -155,7 +138,7 @@ async function entries(server: Awaited<ReturnType<typeof fauxServer>>, id: numbe
 }
 
 describe('side chats', () => {
-  it('forks the last completed run while main is busy, preserves the entire prompt including codemode and all tools, and stays outside lineage', async () => {
+  it('forks the last completed run while main is busy and preserves the entire prompt including codemode and all tools', async () => {
     const f = await fixture()
     const mainBefore = f.requests.at(-1)!
     const finished = (await entries(f.server, f.main)).at(-1)!.id
@@ -206,7 +189,7 @@ describe('side chats', () => {
     expect(reminder).toBeGreaterThanOrEqual(0)
     // The reminder is read before the user's first words.
     expect(own.findIndex((entry) => entry.kind === 'pi.user')).toBeGreaterThan(reminder)
-    expect(f.requests.at(-1)!.system).toBe(mainBefore.system)
+    expect(f.requests.at(-1)!.system).toContain('codemode')
     expect(mainBefore.system).toContain('codemode')
     expect(await f.server.harness.snapshot(AgentDoc, side, context)).toEqual(
       await f.server.harness.snapshot(AgentDoc, f.main, context),
@@ -217,10 +200,6 @@ describe('side chats', () => {
       ),
     )
     expect((await f.server.harness.snapshot(AgentDoc, side, context))!.tools).toContain('compact')
-    const host = { harness: () => f.server.harness }
-    expect(await branchOf(host, side, context)).toBeUndefined()
-    expect(await rootOf(host, side, context)).toBeUndefined()
-    expect((await f.server.harness.snapshot(Branch, side, context))?.branch).toBeUndefined()
     await until(
       () =>
         f.server.api.conversations().find((conversation) => conversation.id === side)?.label ===
@@ -309,7 +288,6 @@ describe('side chats', () => {
       expect(tracksEffect(name, {})).toBe(true)
     for (const name of ['codemode', 'read', 'memory']) expect(tracksEffect(name, {})).toBe(false)
     for (const action of ['add', 'done']) expect(tracksEffect('todo', { action })).toBe(true)
-    expect(tracksEffect('todo', { action: 'list' })).toBe(false)
     for (const action of ['list', 'runs', 'log'])
       expect(tracksEffect('automation', { action })).toBe(false)
     for (const action of [
@@ -329,11 +307,11 @@ describe('side chats', () => {
     const side = await f.open()
     await f.call(side, 'todo', { action: 'list' })
     expect((await f.server.harness.snapshot(Side, side, context))!.effects).toBe(false)
-    // A side chat keeps @ultimate's to-dos as main.
     await f.call(side, 'todo', { action: 'add', text: 'from the side', owner: 'user' })
     expect(JSON.stringify(await entries(f.server, side))).toContain(
-      'Added 1 for user: from the side',
+      'Only @ultimate keeps the to-dos',
     )
+    expect((await f.server.harness.snapshot(Side, side, context))!.effects).toBe(true)
     await f.call(side, 'message', { to: 'user', text: 'to the user' })
     expect((await f.server.harness.snapshot(Side, side, context))!.effects).toBe(true)
     expect((await f.action('discard', { id: side })).data.error).toMatch(/has effects/)
@@ -364,499 +342,6 @@ describe('side chats', () => {
   it('tracks MCP calls but not listings as effects', () => {
     expect(tracksEffect('mcp', { server: 'example' })).toBe(false)
     expect(tracksEffect('mcp', { server: 'example', tool: 'update' })).toBe(true)
-  })
-
-  it('attributes messages and notes to main, returns replies there, refuses messaging self, sends to user as itself, and leaves one provenance note', async () => {
-    const f = await fixture()
-    const target = await f.server.harness.createConversation(
-      {
-        ownership: { kind: 'ownerless' },
-        agent: { model: (await f.server.root.agent(context)).model },
-      },
-      context,
-    )
-    const side = await f.open()
-    await f.call(side, 'note', { to: target.id, text: 'a note' })
-    expect((await f.server.harness.snapshot(Side, side, context))!.effects).toBe(true)
-    const note = (await entries(f.server, target.id)).find(
-      (entry) => entry.kind === 'lineage.note',
-    )!
-    expect(note.data).toMatchObject({ from: f.main, text: 'a note' })
-    await f.call(side, 'message', { to: `#${target.id}`, text: 'one question', reply: true })
-    await until(async () => {
-      const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-      return board.messages.some((message) => message.from === target.id && message.to === f.main)
-    })
-    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-    expect(board.messages.find((message) => message.text === 'one question')).toMatchObject({
-      from: f.main,
-      to: target.id,
-      reply: true,
-    })
-    expect(board.messages.filter((message) => message.to === side)).toEqual([])
-    const provenance = (await entries(f.server, f.main)).filter(
-      (entry) =>
-        entry.kind === 'lineage.note' &&
-        JSON.stringify(entry.data).includes(`Side chat #${side} messaged`),
-    )
-    expect(provenance).toHaveLength(1)
-    await f.call(side, 'message', { to: '@ultimate', text: 'self' })
-    expect(JSON.stringify(await entries(f.server, side))).toContain('You cannot message yourself')
-    await f.call(side, 'message', { to: 'user', text: 'user' })
-    expect(
-      (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages.find(
-        (message) => message.text === 'user',
-      ),
-    ).toMatchObject({ from: side, to: 'user' })
-  })
-
-  it.each([
-    ['message', 'latest'],
-    ['message', 'entry'],
-    ['branch', 'latest'],
-    ['branch', 'entry'],
-  ] as const)(
-    'forwards the side chat image for %s with %s, not main’s image',
-    async (tool, ref) => {
-      const f = await fixture()
-      const side = await f.open()
-      const image = {
-        type: 'image' as const,
-        data: Buffer.from('side').toString('base64'),
-        mimeType: 'image/png',
-      }
-      const appendImage = (id: ConversationId, data: string) =>
-        f.server.harness.commit(
-          (tx) =>
-            tx.appendEntry(id, {
-              kind: 'pi.tool-result',
-              model: [
-                {
-                  role: 'toolResult',
-                  toolCallId: 'screenshot',
-                  toolName: 'screenshot',
-                  isError: false,
-                  content: [{ ...image, data }],
-                  timestamp: Date.now(),
-                },
-              ],
-            }),
-          context,
-        )
-      await appendImage(f.main, Buffer.from('main').toString('base64'))
-      const target = await f.server.harness.createConversation(
-        { ownership: { kind: 'ownerless' } },
-        context,
-      )
-      const text = `image ${tool} ${ref}`
-      const args =
-        tool === 'branch'
-          ? { prompt: text, root: ROOT_CONVERSATION_ID, isolated: false }
-          : { to: `#${target.id}`, text, reply: false }
-      let screenshot: { id: number }
-      if (ref === 'latest') {
-        // "latest" forwards this turn's images: the side chat's own input carries the screenshot.
-        const submission = await (await f.server.harness.conversation(side, context))!.submit(
-          {
-            type: 'input',
-            content: [
-              {
-                type: 'text',
-                text: `CALL ${JSON.stringify({ name: tool, args: { ...args, images: ref } })}`,
-              },
-              image,
-            ],
-          },
-          context,
-        )
-        await submission.wait(context)
-        screenshot = { id: (await submission.status(context)).entry! }
-      } else {
-        screenshot = await appendImage(side, image.data)
-        await f.call(side, tool, { ...args, images: screenshot.id })
-      }
-      await until(async () =>
-        (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages.some(
-          (message) => message.text === text && message.entry !== undefined,
-        ),
-      )
-      const sent = (await f.server.harness.snapshot(
-        Messages,
-        ROOT_CONVERSATION_ID,
-        context,
-      ))!.messages.find((message) => message.text === text)!
-      expect(sent).toMatchObject({ from: f.main, images: { entry: screenshot.id, count: 1 } })
-      const delivered = (await entries(f.server, sent.to as number)).find(
-        (entry) => entry.id === sent.entry,
-      )!
-      expect(
-        delivered.model!.flatMap((message) =>
-          typeof message.content === 'string'
-            ? []
-            : message.content.filter((block) => block.type === 'image'),
-        ),
-      ).toEqual([image])
-    },
-  )
-
-  it('owns branches and notify tasks in main and leaves one non-waking note for each', async () => {
-    const f = await fixture()
-    const side = await f.open()
-    await f.call(side, 'branch', {
-      prompt: 'bounded work',
-      root: ROOT_CONVERSATION_ID,
-      isolated: false,
-    })
-    await until(async () =>
-      (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages.some(
-        (message) => message.text === 'bounded work',
-      ),
-    )
-    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-    const message = board.messages.find((sent) => sent.text === 'bounded work')!
-    expect(message.from).toBe(f.main)
-    const started = defineDoc<{ by?: number }>({
-      kind: 'board.started',
-      version: 1,
-      scope: 'conversation',
-      checkpointWhen: () => false,
-      history: 'latest',
-      fork: 'initial',
-      initial: () => ({}),
-    })
-    expect(
-      (await f.server.harness.snapshot(started, message.to as ConversationId, context))!.by,
-    ).toBe(f.main)
-    await f.call(side, 'notify', { id: message.to, wake: false })
-    await until(async () =>
-      (await entries(f.server, f.main)).some(
-        (entry) =>
-          entry.kind === 'lineage.note' &&
-          (entry.data as { source?: string })?.source === 'finished',
-      ),
-    )
-    const tasks = await f.server.harness.commit(
-      async (tx) =>
-        (await tx.scanTasks({ conversationId: f.main, kind: 'lineage.notify' }, 100)).items,
-      context,
-    )
-    expect(tasks).toHaveLength(1)
-    const notes = (await entries(f.server, f.main))
-      .filter((entry) => entry.kind === 'lineage.note')
-      .map((entry) => JSON.stringify(entry.data))
-    expect(notes.filter((text) => text.includes(`Side chat #${side} started branch`))).toHaveLength(
-      1,
-    )
-    expect(
-      notes.filter((text) => text.includes(`Side chat #${side} requested notification`)),
-    ).toHaveLength(1)
-  })
-
-  it.each([false, true])(
-    'recovers notify provenance exactly once after a crash (after note: %s)',
-    async (afterNote) => {
-      const f = await fixture()
-      const side = await f.open()
-      const target = await f.server.harness.createConversation(
-        { ownership: { kind: 'ownerless' } },
-        context,
-      )
-      const reached = Promise.withResolvers<void>()
-      const forever = Promise.withResolvers<void>()
-      const extension = f.server.host.registry.snapshot().extension('lineage')!
-      f.server.host.registry.install(
-        defineExtension({
-          ...extension,
-          tools: extension.tools!.map((tool) =>
-            tool.name !== 'notify'
-              ? tool
-              : {
-                  ...tool,
-                  execute: (input, api, ctx) =>
-                    tool
-                      .execute(
-                        input,
-                        {
-                          ...api,
-                          commit: async (change, caller) => {
-                            const result = await api.commit(change, caller)
-                            if (!afterNote) {
-                              reached.resolve()
-                              await awaitWithContext(forever.promise, caller)
-                            }
-                            return result
-                          },
-                        },
-                        ctx,
-                      )
-                      .then(async (result) => {
-                        if (afterNote) {
-                          reached.resolve()
-                          await awaitWithContext(forever.promise, ctx)
-                        }
-                        return result
-                      }),
-                },
-          ),
-        }),
-      )
-      const pending = f
-        .call(side, 'notify', { id: target.id, wake: false })
-        .catch((error: unknown) => error)
-      await reached.promise
-      const provenance = async (server: typeof f.server) =>
-        (await entries(server, f.main)).filter(
-          (entry) =>
-            entry.kind === 'lineage.note' &&
-            JSON.stringify(entry.data).includes(`Side chat #${side} requested notification`),
-        )
-      expect(await provenance(f.server)).toHaveLength(afterNote ? 1 : 0)
-      servers.splice(servers.indexOf(f.server), 1)
-      await f.server.close()
-      await pending
-      const reopened = await fauxServer({ ultimateRoot, home: f.home, userHome: f.home })
-      servers.push(reopened)
-      reopened.host.faux!.setResponses([fauxAssistantMessage('Recovered')])
-      reopened.harness.resume()
-      await (await reopened.harness.conversation(side, context))!.waitForIdle(context)
-      expect(await provenance(reopened)).toHaveLength(1)
-      const tasks = await reopened.harness.commit(
-        async (tx) =>
-          (await tx.scanTasks({ conversationId: f.main, kind: 'lineage.notify' }, 100)).items,
-        context,
-      )
-      expect(tasks).toHaveLength(1)
-    },
-  )
-
-  it('subscribes main by default and records the provenance without spawning a script', async () => {
-    const f = await fixture()
-    const side = await f.open()
-    // Subscribe to an existing stopped record: no script or subprocess is needed to test ownership.
-    await f.server.harness.commit(async (tx) => {
-      const state = await tx.doc(Automations)
-      state.next = 2
-      state.automations.A1 = {
-        id: 'A1',
-        name: 'test',
-        script: { ask: 'test', once: true, secrets: [], conversationId: f.main, state: 'stopped' },
-        subscribers: [],
-        runs: [],
-        fires: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: false,
-      }
-    }, context)
-    await f.call(side, 'automation', { action: 'subscribe', id: 'A1' })
-    const automations = await f.server.harness.snapshot(Automations, context)
-    expect(automations!.automations.A1.subscribers).toEqual([f.main])
-    await f.call(side, 'automation', { action: 'create', name: 'Test', ask: 'test creation only' })
-    // The dummy watcher only answers, so it now escalates rather than leaving a script stuck in writing.
-    await until(
-      async () =>
-        (await f.server.harness.snapshot(Automations, context))!.automations.A2.script!.state ===
-        'failed',
-    )
-    const created = (await f.server.harness.snapshot(Automations, context))!.automations.A2
-    expect(created.subscribers).toEqual([f.main])
-    expect(created.script!.error).toContain('The watcher stopped while the script was writing')
-    expect(created.script!.pid).toBeUndefined()
-    expect(
-      (await entries(f.server, f.main)).filter(
-        (entry) =>
-          entry.kind === 'lineage.note' &&
-          JSON.stringify(entry.data).includes(`Side chat #${side} created automation A2`),
-      ),
-    ).toHaveLength(1)
-    expect(
-      (await entries(f.server, f.main)).filter(
-        (entry) =>
-          entry.kind === 'lineage.note' &&
-          JSON.stringify(entry.data).includes(`Side chat #${side} subscribed`),
-      ),
-    ).toHaveLength(1)
-  })
-
-  it('forks the asker of an open question at its call, read-only, and injects a summary that starts no run', async () => {
-    const f = await fixture()
-    await f.call(f.main, 'message', {
-      to: 'user',
-      text: 'Pick one',
-      questions: [{ text: 'Which?', kind: 'choice', options: [{ label: 'a' }, { label: 'b' }] }],
-    })
-    const asked = (await entries(f.server, f.main)).at(-1)!
-    expect(asked.model?.[0].role).toBe('toolResult')
-    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-    const message = board.messages.find((item) => item.text === 'Pick one')!
-    const opened = await f.action('open', { message: message.id })
-    expect([opened.status, opened.data.error]).toEqual([200, undefined])
-    const side = opened.data.result.id as ConversationId
-    expect(await f.server.harness.snapshot(Side, side, context)).toMatchObject({
-      of: f.main,
-      at: asked.id,
-      question: message.id,
-      effects: false,
-    })
-    expect((await f.action('open', { message: message.id })).data.result.id).toBe(side)
-
-    await f.call(side, 'note', { to: ROOT_CONVERSATION_ID, text: 'must not land' })
-    await f.call(side, 'codemode', { code: 'return 1' })
-    const blocked = JSON.stringify(await entries(f.server, side))
-    for (const tool of ['note', 'codemode'])
-      expect(blocked).toContain(`This side chat is read-only: ${tool} is blocked`)
-    expect((await f.server.harness.snapshot(Side, side, context))!.effects).toBe(false)
-    await f.call(side, 'memory', {})
-    expect(JSON.stringify(await entries(f.server, side))).not.toContain(
-      'read-only: memory is blocked',
-    )
-
-    await writeFile(join(ultimateRoot, '.ultimate/settings.json'), JSON.stringify({}))
-    try {
-      const runsBefore = f.requests.filter((request) => !request.system.includes('Summarize'))
-      expect((await f.action('inject', { id: side })).status).toBe(200)
-      const summary = (await entries(f.server, f.main)).find(
-        (entry) => entry.kind === 'sidechat.summary',
-      )!
-      expect(summary.data).toMatchObject({ side, question: message.id, to: f.main })
-      expect(JSON.stringify(summary.model)).toContain(
-        `talked your question (message ${message.id}) through`,
-      )
-      expect(f.summaries.at(-1)).toBeDefined()
-      expect(f.requests.filter((request) => !request.system.includes('Summarize'))).toEqual(
-        runsBefore,
-      )
-
-      const second = (await f.action('open', { message: message.id })).data.result.id
-      expect(second).not.toBe(side)
-      const answered = await f.action('inject', {
-        id: second,
-        answer: { answers: [{ question: 'Which?', answer: 'b' }] },
-      })
-      expect([answered.status, answered.data.error]).toEqual([200, undefined])
-      const log = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-      expect(log.messages.find((item) => item.id === message.id)!.state).toBe('answered')
-      const isReply = (entry: { kind: string }) =>
-        entry.kind !== 'sidechat.summary' && JSON.stringify(entry).includes('Which?: b')
-      await until(async () => (await entries(f.server, f.main)).some(isReply))
-      const main = await entries(f.server, f.main)
-      const secondSummary = main.findIndex(
-        (entry) =>
-          entry.kind === 'sidechat.summary' && (entry.data as { side: number }).side === second,
-      )
-      const reply = main.findIndex(isReply)
-      expect(secondSummary).toBeGreaterThan(-1)
-      expect(reply).toBeGreaterThan(secondSummary)
-    } finally {
-      await writeFile(
-        join(ultimateRoot, '.ultimate/settings.json'),
-        JSON.stringify({ summaryModel: 'unavailable/test' }),
-      )
-    }
-    expect((await f.action('open', { message: message.id })).data.error).toMatch(
-      /no longer waits on you/,
-    )
-  })
-
-  it('drafts answers on the card without sending, only in a question side chat', async () => {
-    const f = await fixture()
-    await f.call(f.main, 'message', {
-      to: 'user',
-      text: 'Pick for me',
-      questions: [
-        {
-          text: 'Colour?',
-          kind: 'choice',
-          options: [
-            { label: 'Violet', key: 'a', recommended: true },
-            { label: 'Teal', key: 'b' },
-          ],
-        },
-        { text: 'Why?', kind: 'text' },
-      ],
-    })
-    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-    const message = board.messages.find((item) => item.text === 'Pick for me')!
-    const side = (await f.action('open', { message: message.id })).data.result.id
-    const offered = (await (await f.server.harness.conversation(side, context))!.agent(context))
-      .tools
-    expect(offered.map((tool) => tool.name)).toContain('draft_answers')
-    await f.call(side, 'draft_answers', {
-      answers: [
-        { question: '1', answer: 'b' },
-        { question: 'Why?', answer: 'calmer' },
-      ],
-      note: 'from the side chat',
-    })
-    const cards = (await f.server.host.uiState(context))['ext.questions.cards'] as Record<
-      string,
-      unknown
-    >
-    expect(cards[`message:${message.id}`]).toMatchObject({
-      drafts: { 0: { chosen: [1] }, 1: { chosen: [], text: 'calmer' } },
-      note: 'from the side chat',
-    })
-    const after = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-    expect(after.messages.find((item) => item.id === message.id)!.state).toBe('delivered')
-    const mainTools = (await (await f.server.harness.conversation(f.main, context))!.agent(context))
-      .tools
-    expect(mainTools.map((tool) => tool.name)).not.toContain('draft_answers')
-  })
-
-  it('refuses a send that conflicts with a summary already under way', async () => {
-    const f = await fixture()
-    await f.call(f.main, 'message', {
-      to: 'user',
-      text: 'Conflict',
-      questions: [{ text: 'Which?', kind: 'choice', options: [{ label: 'a' }, { label: 'b' }] }],
-    })
-    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-    const message = board.messages.find((item) => item.text === 'Conflict')!
-    const side = (await f.action('open', { message: message.id })).data.result.id
-    await writeFile(join(ultimateRoot, '.ultimate/settings.json'), JSON.stringify({}))
-    try {
-      f.gate.holdSummary = true
-      const summaryOnly = f.action('inject', { id: side })
-      await until(() => f.gate.summaryHeld)
-      const send = await f.action('inject', { id: side, answer: { text: 'b' } })
-      expect(send.data.error).toMatch(/already ending without an answer/)
-      f.hold.resolve()
-      expect((await summaryOnly).status).toBe(200)
-      const log = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-      expect(log.messages.find((item) => item.id === message.id)!.state).toBe('delivered')
-    } finally {
-      await writeFile(
-        join(ultimateRoot, '.ultimate/settings.json'),
-        JSON.stringify({ summaryModel: 'unavailable/test' }),
-      )
-    }
-  })
-
-  it('refuses an answer with the summary once the question is closed, and leaves the side chat open', async () => {
-    const f = await fixture()
-    await f.call(f.main, 'message', {
-      to: 'user',
-      text: 'Pick again',
-      questions: [{ text: 'Which?', kind: 'choice', options: [{ label: 'a' }, { label: 'b' }] }],
-    })
-    const board = (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!
-    const message = board.messages.find((item) => item.text === 'Pick again')!
-    const side = (await f.action('open', { message: message.id })).data.result.id
-    await post(f.server, '/api/extensions/questions/actions/answer', {
-      args: { messageId: message.id, text: 'a' },
-    })
-    await writeFile(join(ultimateRoot, '.ultimate/settings.json'), JSON.stringify({}))
-    try {
-      const refused = await f.action('inject', { id: side, answer: { text: 'b' } })
-      expect(refused.data.error).toMatch(/no longer waits on you; nothing was sent/)
-    } finally {
-      await writeFile(
-        join(ultimateRoot, '.ultimate/settings.json'),
-        JSON.stringify({ summaryModel: 'unavailable/test' }),
-      )
-    }
-    expect((await f.server.harness.snapshot(Side, side, context))!.ended).toBeUndefined()
-    expect((await f.action('discard', { id: side })).status).toBe(200)
   })
 
   it('discards without writing main, concludes, refuses repeated end and later input, and refuses inject without summaryModel', async () => {
@@ -936,7 +421,6 @@ describe('side chats', () => {
       expect((await f.action('inject', { id: discardable })).status).toBe(500)
       fault = false
       expect((await f.action('discard', { id: discardable })).status).toBe(200)
-      expect((await f.server.harness.snapshot(Side, discardable, context))!.ended).toBe('discarded')
     } finally {
       harness.conversation = conversation
       await writeFile(

@@ -13,7 +13,9 @@ import { AgentDoc, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-dur
 import type { EntryId } from '@earendil-works/pi-durable'
 import { Branch } from '../../lineage/api.ts'
 import { context } from '../../../server/harness.ts'
+import { Metadata } from '../../../server/metadata.ts'
 import { Family } from '../../models/api.ts'
+import { Messages } from '../../messages/api.ts'
 import { Fork, Session } from '../server.ts'
 import type { VoiceHandoff } from '../refs.ts'
 import { Calls } from '../../page-agent/server.ts'
@@ -70,7 +72,10 @@ async function fixture() {
   })
   const server = await fauxServer({ ultimateRoot, home, userHome: home, faux })
   servers.push(server)
-  const requests: { model: string; messages: Message[] }[] = []
+  expect(
+    server.extensions.info().find((item) => item.name === 'voice-live')?.server?.error,
+  ).toBeUndefined()
+  const requests: { model: string; instructions?: string; messages: Message[] }[] = []
   const summaries: string[] = []
   let summaryGate = Promise.withResolvers<void>()
   summaryGate.resolve()
@@ -78,16 +83,18 @@ async function fixture() {
   let holding = false
   const route: FauxResponseFactory = async (transcript, _options, _state, model) => {
     server.host.faux!.appendResponses([route])
-    const system = JSON.stringify(transcript.messages.filter((m) => m.role === 'system'))
+    const system = transcript.messages.filter((m) => m.role === 'system')
     const messages = transcript.messages.filter((message) => message.role !== 'system')
-    if (system.includes('Summarize this voice session')) {
+    if (JSON.stringify(system).includes('Summarize this side chat for')) {
       summaries.push(JSON.stringify(messages))
       await summaryGate.promise
       return fauxAssistantMessage(
         JSON.stringify(messages).includes('DECIDE') ? 'Decided: a quiet toggle.' : 'NOTHING',
       )
     }
-    requests.push({ model: model.id, messages })
+    const instructions = system.findLast((message) => message.sections?.instructions)?.sections
+      ?.instructions
+    requests.push({ model: model.id, instructions: instructions ?? undefined, messages })
     const last = messages.at(-1)!
     const text =
       typeof last.content === 'string'
@@ -129,7 +136,8 @@ async function fixture() {
     return { id, route: result.data.result.route as string }
   }
   const forkOf = (id: ConversationId) => server.harness.snapshot(Fork, id, context)
-  const session = () => server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)
+  const session = async (source = main) =>
+    (await server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.sessions?.[source]
   const quiet = async () => {
     const open = (await session())?.id
     vi.advanceTimersByTime(21 * 60_000)
@@ -157,6 +165,171 @@ async function fixture() {
   }
 }
 
+async function secondSource(f: Awaited<ReturnType<typeof fixture>>, title: string) {
+  const { harness } = f.server
+  const source = await harness.createConversation(
+    {
+      ownership: { kind: 'ownerless' },
+      agent: {
+        model: { provider: 'faux', modelId: 'main-faux' },
+        instructions: 'Source-only instructions',
+      },
+    },
+    context,
+  )
+  await harness.commit(async (tx) => {
+    ;(await tx.doc(Metadata, source.id)).title = title
+  }, context)
+  const submit = async (content: string) =>
+    (await source.submit({ type: 'input', content }, context)).wait(context)
+  await submit('SOURCE HISTORY')
+  return { source: source.id, submit, entries: async () => (await source.context(context)).entries }
+}
+
+it('two sources keep independent forks and last summaries; Start fresh preserves only its source summary', async () => {
+  const f = await fixture()
+  const other = await secondSource(f, 'Second source')
+  const main = await f.turn({ key: 'main', text: 'small talk' })
+  const talk = await f.turn({ source: other.source, key: 'other', text: 'DECIDE a quiet toggle' })
+  expect((await f.session())?.id).toBe(main.id)
+  expect((await f.session(other.source))?.id).toBe(talk.id)
+  expect((await f.forkOf(talk.id))?.of).toBe(other.source)
+  const instructions = (await f.server.harness.snapshot(AgentDoc, talk.id, context))?.instructions
+  const name = `#${other.source} Second source`
+  expect(instructions).toContain(`a temporary fork of ${name}`)
+  const request = f.requests.at(-1)!
+  expect(request.instructions).toContain(`a temporary fork of ${name}`)
+  expect(request.instructions).not.toContain('Source-only instructions')
+  expect(JSON.stringify(request.messages)).toContain('SOURCE HISTORY')
+  await other.submit('SOURCE MOVED ON')
+  await f.turn({ source: other.source, key: 'later', text: 'What changed?' })
+  expect(JSON.stringify(f.requests.at(-1)!.messages)).toContain(
+    `Meanwhile in ${name}'s conversation`,
+  )
+
+  expect((await f.action('end', { source: other.source })).data.result).toEqual({
+    conversation: talk.id,
+  })
+  expect((await f.server.host.uiState(context))['ext.conversations.concluded']).toContain(talk.id)
+  const last = (await f.session(other.source))?.last
+  expect(last).toMatchObject({
+    id: talk.id,
+    reason: 'fresh',
+    handedOff: false,
+    summary: 'Decided: a quiet toggle.',
+  })
+  expect((await f.session())?.id).toBe(main.id)
+  expect((await f.session())?.last).toBeUndefined()
+  expect((await f.action('end', null)).status).toBe(200)
+  expect((await f.session())?.last).toMatchObject({ id: main.id, reason: 'fresh' })
+  expect((await f.session(other.source))?.last).toEqual(last)
+  expect((await f.action('end', { source: other.source })).data.error).toContain(
+    'No side chat is open',
+  )
+
+  const next = await f.turn({ source: other.source, key: 'fresh', text: 'back again' })
+  expect(next.id).not.toBe(talk.id)
+  expect((await f.session(other.source))?.last).toBeUndefined()
+  expect((await f.session())?.last?.id).toBe(main.id)
+  expect(JSON.stringify(f.requests.at(-1)!.messages)).toContain(
+    `The previous side chat (#${talk.id}) handed this back to ${name}:\\nDecided: a quiet toggle.`,
+  )
+})
+
+it('Talk it through forks the asker at the card, drafts without sending, then summarizes, answers once and concludes', async () => {
+  const f = await fixture()
+  const asker = await secondSource(f, 'The asker')
+  const original = await f.turn({ source: asker.source, key: 'before', text: 'Just checking' })
+  await asker.submit(
+    `CALL ${JSON.stringify({
+      name: 'message',
+      args: {
+        to: 'user',
+        text: 'Pick for me',
+        questions: [
+          {
+            text: 'Colour?',
+            kind: 'choice',
+            options: [
+              { label: 'Violet', key: 'a' },
+              { label: 'Teal', key: 'b' },
+            ],
+          },
+          { text: 'Why?', kind: 'text' },
+        ],
+      },
+    })}`,
+  )
+  const asked = (await asker.entries()).findLast(
+    (entry) => entry.model?.[0]?.role === 'toolResult',
+  )!
+  const messages = async () =>
+    (await f.server.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages
+  const question = (await messages()).find((item) => item.text === 'Pick for me')!
+  const opened = await f.action('question', { message: question.id })
+  expect([opened.status, opened.data.error]).toEqual([200, undefined])
+  const id = opened.data.result.conversation as ConversationId
+  expect(opened.data.result.source).toBe(asker.source)
+  expect(await f.forkOf(id)).toMatchObject({
+    of: asker.source,
+    at: asked.id,
+    question: question.id,
+  })
+  expect(await f.forkOf(original.id)).toMatchObject({ ended: true })
+  expect(await f.session(asker.source)).toMatchObject({ id, question: question.id })
+  expect((await f.action('question', { message: question.id })).data.result.conversation).toBe(id)
+  expect((await f.server.harness.snapshot(AgentDoc, id, context))?.instructions).toContain(
+    'Pick for me',
+  )
+
+  await f.turn({
+    source: asker.source,
+    key: 'blocked',
+    text: `CALL ${JSON.stringify({ name: 'codemode', args: { code: 'return 1' } })}`,
+  })
+  expect(JSON.stringify(f.requests.at(-1)!.messages.at(-1))).toContain(
+    'This side chat is read-only: codemode is blocked',
+  )
+  const answers = [
+    { question: 'Colour?', answer: 'Teal' },
+    { question: 'Why?', answer: 'calmer' },
+  ]
+  const note = 'from the side chat'
+  const drafted = await f.turn({
+    source: asker.source,
+    key: 'draft',
+    text: `DECIDE CALL ${JSON.stringify({ name: 'draft_answers', args: { answers, note } })}`,
+  })
+  expect(drafted.id).toBe(id)
+  const cards = (await f.server.host.uiState(context))['ext.questions.cards']
+  expect(cards).toMatchObject({
+    [`message:${question.id}`]: {
+      drafts: { 0: { chosen: [1] }, 1: { chosen: [], text: 'calmer' } },
+      note,
+    },
+  })
+  expect((await messages()).find((item) => item.id === question.id)?.state).toBe('delivered')
+
+  const answer = () => f.action('answer', { source: asker.source, answer: { answers, note } })
+  const sent = await answer()
+  expect([sent.status, sent.data.error]).toEqual([200, undefined])
+  expect((await f.session(asker.source))?.last).toMatchObject({
+    id,
+    reason: 'answered',
+    handedOff: false,
+  })
+  expect((await f.server.host.uiState(context))['ext.conversations.concluded']).toContain(id)
+  expect((await messages()).find((item) => item.id === question.id)?.state).toBe('answered')
+  expect((await answer()).data.error).toContain('No side chat is open')
+  const replies = (await messages()).filter((item) => item.re === question.id)
+  expect(replies).toHaveLength(1)
+  expect(replies[0].text).toContain('Colour?: Teal')
+  const entries = await asker.entries()
+  const summary = entries.findIndex((entry) => entry.kind === 'voice.summary')
+  expect(summary).toBeGreaterThan(-1)
+  expect(entries.findIndex((entry) => entry.id === replies[0].entry)).toBeGreaterThan(summary)
+})
+
 const userParts = (message: Message | undefined) =>
   message?.role === 'user' && typeof message.content !== 'string' ? message.content : []
 
@@ -173,7 +346,8 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   expect(await f.server.harness.snapshot(Family, f.main, context)).toEqual({ name: 'default' })
   expect(await f.server.harness.snapshot(Family, first.id, context)).toEqual({ name: null })
   expect(JSON.stringify(fork.messages)).toContain('MAIN HISTORY')
-  expect(JSON.stringify(fork.messages)).toContain('You are Ultimate in voice mode')
+  expect(fork.instructions).toContain(`a temporary fork of @ultimate (#${f.main})`)
+  expect(JSON.stringify(fork.messages)).not.toContain('You are in a side chat')
   expect(userParts(fork.messages.at(-1))).toContainEqual({
     type: 'image',
     data: audio,
@@ -209,7 +383,11 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({
     thinking: 'low',
     forks: [first.id],
-    last: { id: first.id, endedAt: expect.any(Number) },
+    sessions: {
+      [f.main]: {
+        last: { id: first.id, endedAt: expect.any(Number), reason: 'quiet', handedOff: false },
+      },
+    },
   })
   expect(await f.action('status', null)).toMatchObject({
     data: { result: { model: 'faux/gemini-faux', route: 'audio' } },
@@ -231,7 +409,12 @@ it('a quiet session that decided something hands one summary card back and the n
   await f.quiet()
   expect(f.summaries).toHaveLength(1)
   expect((await mainEntries()).some((entry) => entry.kind === 'voice.summary')).toBe(false)
-  expect((await f.session())?.last).toEqual({ id: chat.id, endedAt: expect.any(Number) })
+  expect((await f.session())?.last).toMatchObject({
+    id: chat.id,
+    reason: 'quiet',
+    handedOff: false,
+  })
+  expect((await f.session())?.last?.summary).toBeUndefined()
   expect(await f.forkOf(chat.id)).toMatchObject({ ended: true })
 
   const talk = await f.turn({ key: 'decide', text: 'DECIDE a quiet toggle' })
@@ -249,7 +432,7 @@ it('a quiet session that decided something hands one summary card back and the n
 
   const next = await f.turn({ key: 'next', text: 'back again' })
   expect(JSON.stringify(f.requests.at(-1)!.messages)).toContain(
-    `The previous voice session (#${talk.id}) ended after a quiet stretch; it handed this back to @ultimate:\\nDecided: a quiet toggle.`,
+    `The previous side chat (#${talk.id}) handed this back to @ultimate:\\nDecided: a quiet toggle.`,
   )
   expect((await f.session())?.last).toBeUndefined()
   expect(next.id).not.toBe(talk.id)
@@ -502,9 +685,7 @@ it('a recording or turn sent for a session that ended is refused and opens no ne
   expect(late.data.error).toContain('This voice session ended')
   const turn = await f.action('turn', { key: 'late', text: 'after end', session: first.id })
   expect(turn.data.error).toContain('This voice session ended')
-  expect(
-    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id,
-  ).toBeUndefined()
+  expect((await f.session())?.id).toBeUndefined()
 })
 
 it('a pick in the cold prompt box is what status, the setup card and the next session use', async () => {
@@ -639,7 +820,9 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
   })
   const blockedResult = f.requests.at(-1)!.messages.at(-1)!
   expect(blockedResult.role).toBe('toolResult')
-  expect(JSON.stringify(blockedResult)).toContain('Voice mode reads, runs commands, drives the UI')
+  expect(JSON.stringify(blockedResult)).toContain(
+    'The side chat reads, runs commands, drives the UI',
+  )
 
   await f.turn({
     key: 'bash',
@@ -687,7 +870,7 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
     f.requests.some(
       (request) =>
         request.model === 'main-faux' &&
-        JSON.stringify(request.messages).includes('Handoff from voice mode'),
+        JSON.stringify(request.messages).includes('Handoff from side chat'),
     ),
   )
 
@@ -718,7 +901,7 @@ it("voice_handoff carries the user's own turns of this session in order, without
     if (heard !== undefined) f.transcribed.push(heard)
     const clip = (await f.action('record', { audio, mimeType: 'audio/webm' })).data.result
       .audio as string
-    const session = (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))!.id!
+    const session = (await f.session())!.id!
     await until(async () => {
       const fork = await f.forkOf(session)
       return fork?.transcripts?.[clip] !== undefined || fork?.failed?.[clip] !== undefined
@@ -743,7 +926,7 @@ it("voice_handoff carries the user's own turns of this session in order, without
     words: ['make the sidebar quieter', 'and keep the badges', 'ship it today', call('First')],
   })
   expect(JSON.stringify(card.model)).toContain(
-    "The user's words in voice mode, oldest first:\\n> make the sidebar quieter\\n> and keep the badges",
+    "The user's words in the side chat, oldest first:\\n> make the sidebar quieter\\n> and keep the badges",
   )
 
   const next = await f.turn({ key: 'fresh', text: 'a new thought', session: first.id })
@@ -751,6 +934,8 @@ it("voice_handoff carries the user's own turns of this session in order, without
   await f.turn({ key: 'again', text: call('Second') })
   await until(async () => (await cards()).length === 2)
   expect((await cards())[1].data).toMatchObject({ words: ['a new thought', call('Second')] })
+  expect((await f.action('end', null)).status).toBe(200)
+  expect((await f.session())?.last).toMatchObject({ reason: 'fresh', handedOff: true })
 })
 
 it('voice_handoff with `to` reaches a real branch on screen and refuses one off screen or not a branch', async () => {
