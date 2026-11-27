@@ -22,6 +22,7 @@ export default function secrets(host: ExtensionHost) {
   })
 }
 export const userActions = ['set', 'delete']
+export const traceSealed = true
 
 export const actions: Record<string, ExtensionAction> = {
   list: implementAction(ListAction, async (_args, { host }) => {

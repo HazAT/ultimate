@@ -1,12 +1,9 @@
-import { defineEvent, NoticeEvent } from '../../shared/events.ts'
-import type { EventData, EventRecord } from '../../shared/events.ts'
-import type { Escalated } from '../automations/refs.ts'
-import type { BackupEvent } from '../cloud/refs.ts'
+import { NoticeEvent } from '../../shared/events.ts'
+import type { EventRecord } from '../../shared/events.ts'
+import { Escalated } from '../automations/refs.ts'
+import { BackupEvent } from '../cloud/refs.ts'
 import type { Branched, Rooted } from '../lineage/refs.ts'
 import type { CheckRan, SubmissionLanded } from '../workspaces/refs.ts'
-
-export const Backup = defineEvent<EventData<typeof BackupEvent>>('cloud.backup')
-export const Escalation = defineEvent<EventData<typeof Escalated>>('automations.escalated')
 
 export function activityRules(tokens: {
   landed: typeof SubmissionLanded
@@ -15,7 +12,7 @@ export function activityRules(tokens: {
   check: typeof CheckRan
 }) {
   const branches = [tokens.branched, tokens.rooted] as const
-  const problems = [NoticeEvent, tokens.check, Backup, Escalation] as const
+  const problems = [NoticeEvent, tokens.check, BackupEvent, Escalated] as const
   const filters = {
     all: [tokens.landed, ...branches, ...problems],
     landed: [tokens.landed],
@@ -34,13 +31,13 @@ export function activityRules(tokens: {
         : event.data.result === 'flaky'
           ? 'warning'
           : 'error'
-    if (Backup.is(event))
+    if (BackupEvent.is(event))
       return event.data.phase === 'failed'
         ? 'error'
         : event.data.phase === 'started'
           ? 'quiet'
           : undefined
-    if (Escalation.is(event)) return 'error'
+    if (Escalated.is(event)) return 'error'
     return undefined
   }
 

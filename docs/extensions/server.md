@@ -6,7 +6,8 @@ Part of the [extension guide](../../extensions/README.md).
 receiving the `ExtensionHost` below. See `prompt/` for prompt sections and `coding-tools/server.ts` for tools; the
 root `AGENTS.md` explains reloads and durability. Local imported modules reload with the facet; a failed load leaves
 the previous version installed. Besides the extension it may export `docs` ([documents](documents.md)), `actions`,
-`userActions` and `pollActions` ([actions](actions.md)), `secrets` ([secrets](places.md#secrets)),
+`userActions` and `pollActions` ([actions](actions.md)), `traceSealed` (its calls keep no arguments, results or error
+messages in the [call trace](introspection.md)), `secrets` ([secrets](places.md#secrets)),
 `reloadOnSettings` (below) and `order`.
 
 ## Order and prompt sections

@@ -4,7 +4,6 @@
  */
 import type {
   ConversationHandle,
-  EntryId,
   InputSubmissionDraft,
   SubmissionId,
   TaskId,

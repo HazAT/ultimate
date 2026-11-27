@@ -22,7 +22,7 @@ import type { ExtensionHost } from '../../server/extensions.ts'
 import { Branches, WorkspacesApi } from '../workspaces/api.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { LineageApi, Replies } from '../lineage/api.ts'
-import { Judgements, Messages, MessagesApi } from './api.ts'
+import { Judgements, Messages, MessagesApi, MessageSent } from './api.ts'
 import { gist, openQuestion, openQuestionsNote, questionsParameter } from './questions.ts'
 import { callerOf } from './caller.shared.ts'
 import { CallerAction, SettleAction } from './refs.ts'
@@ -50,6 +50,8 @@ import {
 import { branchTool } from './branch.ts'
 import { remoteProgress } from './progress.ts'
 import { safeToRerun } from '../../lib/replay.ts'
+
+const EVENTS_PER_PAGE = 5000
 export { gist, openQuestionsNote } from './questions.ts'
 export const docs = [Messages, Started, Serving, Judgements]
 
@@ -262,6 +264,22 @@ export default function messages(host: ExtensionHost) {
           (m) => m.from === from && m.to === to && m.answer === entry,
         ),
       ),
+    messaged: async (from, after) => {
+      const found = new Set<ConversationId>()
+      for (let since = after; ;) {
+        const page = await host.eventLog.recent({
+          events: [MessageSent],
+          since,
+          order: 'ascending',
+          limit: EVENTS_PER_PAGE,
+        })
+        for (const { data } of page)
+          if (data.from === from && typeof data.to === 'number' && data.to !== from)
+            found.add(data.to)
+        if (page.length < EVENTS_PER_PAGE) return [...found]
+        since = page.at(-1)!.id
+      }
+    },
   })
   host.implement(MessagesApi, {
     answer: (messageId, text, ctx, device, call) =>

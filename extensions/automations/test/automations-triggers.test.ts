@@ -23,6 +23,9 @@ import { createChild } from '../../subagents/children.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../types.shared.ts'
+import type { AutomationsService } from '../api.ts'
+import { Changed } from '../../health/refs.ts'
+import { Applied } from '../../update/refs.ts'
 import { IDLE_WAKER } from '../triggers.ts'
 import {
   temp,
@@ -107,6 +110,25 @@ async function fixture() {
       createChild(host, tx, options),
   })
   prepared.registry.install(automations(host))
+  const owner = eventHost(() => opened.harness, 'update')
+  const ownerLifecycle = openers()
+  const service = services.provided.get('automations') as AutomationsService
+  const ownTriggers = () => {
+    ownerLifecycle.onOpen(async (opened) => {
+      opened.defer(
+        service.trigger({ event: Applied, description: 'An update was applied', fields: {} }),
+      )
+      opened.defer(
+        service.trigger({
+          event: Changed,
+          description: 'Provider health changed',
+          fields: { provider: 'Provider name', state: 'ok | failing | unknown' },
+        }),
+      )
+    })
+    owner.react('automations', [Applied, Changed], (tx, event) => service.matched(tx, event))
+  }
+  ownTriggers()
   const answer = () => {
     prepared.faux!.appendResponses([answer])
     return fauxAssistantMessage([fauxText('OK')])
@@ -120,7 +142,11 @@ async function fixture() {
   }, context)
   await lifecycle.open()
   await events.start()
+  await ownerLifecycle.open()
+  await owner.start()
   closes.push(async () => {
+    await owner.stop()
+    await ownerLifecycle.close()
     await events.stop()
     await lifecycle.close()
     await opened.close()
@@ -131,7 +157,7 @@ async function fixture() {
   const record = async (id: string) => (await records())[id]
   const emit = (name: string, data: JsonValue = {}) =>
     opened.harness.commit((tx) => host.emit(tx, defineEvent(name), data), context)
-  const settle = () => until(events.settled)
+  const settle = () => until(async () => (await events.settled()) && (await owner.settled()))
   const usage = (percent: number) =>
     opened.harness.commit(async (tx) => {
       Object.assign(await tx.doc(ContextUsageDoc, target), {
@@ -171,6 +197,14 @@ async function fixture() {
       fail = true
     },
     rolledBack: () => rolledBack,
+    unloadOwner: async () => {
+      await owner.stop()
+      await ownerLifecycle.close()
+    },
+    reloadOwner: async () => {
+      await ownerLifecycle.open()
+      await owner.start()
+    },
   }
 }
 
@@ -306,6 +340,30 @@ it('skips events from its own prompt runs, by trace or by the conversation they 
   expect((await f.record(own.id)).fires).toBe(2)
 })
 
+it("lists an owner's trigger only while it is loaded and keeps its reactor's cursor across a reload", async () => {
+  const f = await fixture()
+  const names = async () =>
+    ((await f.action('events')) as { name: string }[]).map(({ name }) => name)
+  const a = (await f.action('create', {
+    name: 'Update',
+    event: { name: 'update.applied' },
+  })) as Automation
+  await f.emit('update.applied')
+  await f.settle()
+  expect((await f.record(a.id)).fires).toBe(1)
+  await f.unloadOwner()
+  expect(await names()).not.toContain('update.applied')
+  await expect(
+    f.action('create', { name: 'Gone', event: { name: 'update.applied' } }),
+  ).rejects.toThrow('Unknown event: update.applied')
+  // Emitted while the owner is unloaded: its reactor handles it once it is back, the earlier one never again.
+  await f.emit('update.applied')
+  await f.reloadOwner()
+  expect(await names()).toContain('update.applied')
+  await f.settle()
+  expect((await f.record(a.id)).fires).toBe(2)
+})
+
 it('fires multiple prompt automations for one event in the same transaction', async () => {
   const f = await fixture()
   const first = (await f.action('create', {
@@ -359,12 +417,12 @@ it('uses strict top-level filter equality and bounded one-line event summaries',
 it('rolls back a fire and its cursor together, then retries exactly once', async () => {
   const f = await fixture()
   const a = (await f.action('create', {
-    name: 'Update',
-    event: { name: 'update.applied' },
+    name: 'Branched',
+    event: { name: 'lineage.branched' },
   })) as Automation
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   f.fail()
-  await f.emit('update.applied')
+  await f.emit('lineage.branched')
   await until(f.rolledBack)
   await until(async () => (await f.host.eventLog.reactors()).some((r) => !!r.failure))
   expect((await f.record(a.id)).fires).toBe(0)
@@ -601,15 +659,15 @@ it('counts only fires that start a run toward the hourly cap', async () => {
   ).toEqual({ id: a.id, reason: 'Fired more than 6 times in an hour; paused' })
 })
 
-it('lists ten event definitions and validates trigger inputs and kind changes', async () => {
+it('lists the core and registered event definitions and validates trigger inputs and kind changes', async () => {
   const f = await fixture()
   const events = (await f.action('events')) as {
     name: string
     description: string
     fields: object
   }[]
-  expect(events).toHaveLength(10)
-  expect(new Set(events.map((e) => e.name)).size).toBe(10)
+  expect(events).toHaveLength(8)
+  expect(new Set(events.map((e) => e.name)).size).toBe(8)
   for (const event of events) {
     expect(event.description).toBeTruthy()
     expect(event.fields).toBeTypeOf('object')

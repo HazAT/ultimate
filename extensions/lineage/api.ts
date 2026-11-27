@@ -108,8 +108,13 @@ export const MemorySearch = defineApi<MemorySearchService>()('lineage.memory-sea
 export type RepliesService = {
   /** Whether answer `answer` of conversation `from` already reached conversation `to` as a message reply. */
   replied(from: ConversationId, to: ConversationId, answer: EntryId, ctx: Context): Promise<boolean>
+  /** The conversations other than itself that conversation `from` posted a message to after event-log entry `after`. */
+  messaged(from: ConversationId, after: EntryId): Promise<ConversationId[]>
 }
-/** The extension point through which `notify` skips an answer its caller already got as a reply; messages provides it. */
+/**
+ * The extension point through which `notify` skips an answer its caller already got as a reply, and going back finds
+ * the conversations a message built on; messages provides it.
+ */
 export const Replies = defineApi<RepliesService>()('lineage.replies')
 
 /** Trees, branches and notes; core, so `need` it. */

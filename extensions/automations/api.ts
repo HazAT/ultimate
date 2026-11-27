@@ -1,6 +1,7 @@
 /** Automations: resume, pause, run and inspect scheduled, event, context or supervised script triggers. */
 import type { Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
+import type { EventRecord, EventToken } from '../../shared/events.ts'
 import type { Automation, AutomationListItem, CreateArgs } from './types.shared.ts'
 export type AutomationsService = {
   /** Create an automation as the tool's create does; `subscribers` stand in for a caller. Commits. */
@@ -22,6 +23,18 @@ export type AutomationsService = {
   read(tx: Tx, id: string): Promise<Automation | undefined>
   /** Like `read`, the record `create` made with this `key`. */
   readByKey(tx: Tx, key: string): Promise<Automation | undefined>
+  /**
+   * List the owner's `event` as an event trigger, with what it means and its filter fields, until the returned function
+   * removes it; call it at setup and remove it in `onClose`. The owner reacts to the event and passes each one to
+   * `matched`.
+   */
+  trigger(trigger: {
+    event: EventToken
+    description: string
+    fields: Record<string, string>
+  }): () => void
+  /** In the owner's reactor transaction, fire every enabled automation whose event trigger matches `event`. */
+  matched(tx: Tx, event: EventRecord): Promise<void>
 }
 /** The automations service. */
 export const AutomationsApi = defineApi<AutomationsService>()('automations')
