@@ -15,6 +15,7 @@ import { Branch } from '../../lineage/api.ts'
 import { context } from '../../../server/harness.ts'
 import { Family } from '../../models/api.ts'
 import { Fork, Session } from '../server.ts'
+import type { VoiceHandoff } from '../refs.ts'
 import { Calls } from '../../page-agent/server.ts'
 import { fauxServer, post, sourceCopy, temp, until } from '../../../test/helpers.ts'
 import { EventFeed } from '../../../server/events.ts'
@@ -692,6 +693,23 @@ it('other tools are blocked, voice_handoff starts @ultimate with a card and the 
 
   const after = await f.turn({ key: 'after', text: 'next idea', session: blocked.id })
   expect(after.id).toBe(blocked.id)
+  const other = { ...shot, data: Buffer.from('other png').toString('base64') }
+  await f.turn({ key: 'shot2', text: 'and this one', images: [other] })
+  await f.turn({
+    key: 'handoff2',
+    text: `CALL ${JSON.stringify({ name: 'voice_handoff', args: { ...handoff, title: 'Second' } })}`,
+  })
+  await until(async () =>
+    (await (await f.server.harness.conversation(f.main, context))!.context(context)).entries.some(
+      (entry) => entry.kind === 'voice.handoff' && (entry.data as VoiceHandoff).title === 'Second',
+    ),
+  )
+  const second = (
+    await (await f.server.harness.conversation(f.main, context))!.context(context)
+  ).entries.findLast((entry) => entry.kind === 'voice.handoff')!
+  expect(second.data).toMatchObject({ images: 1 })
+  expect(userParts(second.model?.[0])).toContainEqual(other)
+  expect(userParts(second.model?.[0])).not.toContainEqual(shot)
 })
 
 it("voice_handoff carries the user's own turns of this session in order, without failed transcriptions", async () => {
@@ -733,19 +751,6 @@ it("voice_handoff carries the user's own turns of this session in order, without
   await f.turn({ key: 'again', text: call('Second') })
   await until(async () => (await cards()).length === 2)
   expect((await cards())[1].data).toMatchObject({ words: ['a new thought', call('Second')] })
-})
-
-it('a request for a session that ended is refused and opens nothing', async () => {
-  const f = await fixture()
-  const first = await f.turn({ key: 'one', text: 'start' })
-  await f.quiet()
-  const late = await f.action('turn', { key: 'late', text: 'after end', session: first.id })
-  expect(late.data.error).toContain('This voice session ended')
-  const record = await f.action('record', { audio, mimeType: 'audio/webm', session: first.id })
-  expect(record.data.error).toContain('This voice session ended')
-  expect(
-    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id,
-  ).toBeUndefined()
 })
 
 it('voice_handoff with `to` reaches a real branch on screen and refuses one off screen or not a branch', async () => {

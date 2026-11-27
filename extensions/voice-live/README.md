@@ -22,8 +22,10 @@ collect mode (optional), each with what to do when it is missing. The model line
 2. **Talk** with the mic in the dock's prompt box, which talks to the voice conversation instead of typing (its
    `dictation` is the voice sink), or use the talk shortcut (`Ctrl/⌘+Shift+Space` by default) while that box is
    focused or no other dictation-enabled prompt box is. The page records Opus; a press cue confirms it hears you, and
-   a status line above the box shows the live waveform. Release (or the mic's stop button) sends; its X or Esc
-   cancels. A press shorter than 0.6 s or without voice sends nothing. The cog next to the mic changes the shortcut
+   a status line above the box shows the live waveform. Release (or the mic's stop button) sends the recording with
+   whatever the box holds (typed text, screenshots, finished attachments) as one turn and clears the box; its X or
+   Esc cancels. A press shorter than 0.6 s sends nothing; one that heard no voice sends only what the box holds,
+   and nothing (a paused reply resumes) when the box is empty. The cog next to the mic changes the shortcut
    and the Hold/Tap setting. With Talk set to **Tap** (for VR controllers and phones), one tap of the shortcut starts
    recording and the next tap sends; closing Voice discards the recording, and a held key's autorepeat never counts
    as a second tap. The status line shows only while voice has something to say: recording, sending, thinking, the

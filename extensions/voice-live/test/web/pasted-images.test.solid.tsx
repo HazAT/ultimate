@@ -349,3 +349,23 @@ it('a recording that heard nothing still sends what was typed and pasted into th
   expect(harness.turns[0]).not.toHaveProperty('audio')
   expect(getDraft(session).get()).toMatchObject({ text: '', images: [], sending: false })
 })
+
+it('a silent stop whose box holds nothing it can send stops no reply and sends nothing', async () => {
+  dock.setCollect(false)
+  const pending = { id: 'f', name: 'spec.pdf', size: '1 KB', mimeType: 'application/pdf', path: '' }
+  getDraft(session).set({ text: '', images: [], files: [pending] })
+  dispatch({ type: 'send', key: 'earlier', voice: false })
+  dispatch({ type: 'sent', key: 'earlier' })
+  flush()
+  const recorded = { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: false }
+  dispatch({ type: 'press', busy: true })
+  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  getDraft(session).set({ images: [shot], sending: true })
+  dispatch({ type: 'press', busy: true })
+  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  await settle()
+  expect(harness.stops).toBe(0)
+  expect(harness.turns).toEqual([])
+  expect(getDraft(session).get().files).toEqual([pending])
+  getDraft(session).set({ files: [], sending: false })
+})

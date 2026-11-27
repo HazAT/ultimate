@@ -1240,15 +1240,23 @@ export default function voiceExtension(host: ExtensionHost) {
             if (await tx.submissionByRequest(target, requestId)) return
             if (branch !== undefined)
               await checkBranch(host, tx, branch, (await tx.doc(Fork, api.conversationId)).screen)
+            const session = await tx.doc(Fork, api.conversationId)
             const shared = args.attachments?.length
-              ? (await tx.scanEntries({ conversationId: api.conversationId }, 200)).items
+              ? (
+                  await tx.scanEntries(
+                    {
+                      conversationId: api.conversationId,
+                      minEntryId: offsetEntryId(session.handedOff ?? session.at!, 1),
+                    },
+                    200,
+                  )
+                ).items
                   .filter((entry) => VoiceTurnEntry.is(entry))
                   .flatMap((entry) => imagesOf(entry).toReversed())
                   .slice(0, maxImages)
                   .toReversed()
               : []
             if (shared.length) handoff.images = shared.length
-            const session = await tx.doc(Fork, api.conversationId)
             const { words, earlier } = await wordsOf(tx, api.conversationId, session)
             if (words.length) handoff.words = words
             if (earlier) handoff.earlier = earlier

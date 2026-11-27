@@ -317,15 +317,15 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
         }),
   })
   if (!recorded.spoke) {
-    if (
-      !retaking &&
-      !typed &&
-      !dock.collect() &&
-      recorded.seconds >= MIN_SPOKEN_SECONDS &&
-      boxHolds()
-    )
-      await sendTurn({ who, interrupted: interrupted || paused !== undefined, wholeBox: true })
-    else if (paused !== undefined) dock.player.resume()
+    const tried = !retaking && !typed && !dock.collect() && recorded.seconds >= MIN_SPOKEN_SECONDS
+    const sent =
+      tried &&
+      (await sendTurn({
+        who,
+        interrupted: interrupted || paused !== undefined,
+        wholeBox: true,
+      })) !== 'empty'
+    if (!sent && paused !== undefined) dock.player.resume()
     return
   }
   if (dock.collect()) {
@@ -341,11 +341,6 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
       ? { typed: typed.text.trim(), images: typed.images, fromComposer: true }
       : { wholeBox: true }),
   })
-}
-
-function boxHolds() {
-  const id = session().id
-  return coldHolds(composerDraft(COLD_DRAFT)) || (id !== undefined && coldHolds(composerDraft(id)))
 }
 
 async function collectClip(
@@ -523,9 +518,13 @@ async function sendTurn(input: {
   const typed = [input.typed, carried?.text.trim(), pasted?.attachments.join('\n')]
     .filter(Boolean)
     .join('\n\n')
+  const clips = input.clips ?? []
+  if (!input.recorded && !clips.length && !typed && !images.length) {
+    releaseBox?.()
+    return 'empty' as const
+  }
   let delivered = false
   const key = crypto.randomUUID()
-  const clips = input.clips ?? []
   for (const clip of clips) sending.add(clip.audio)
   try {
     if (input.interrupted) {
