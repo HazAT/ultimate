@@ -25,7 +25,7 @@ import type { EventData, EventToken } from '../shared/events.ts'
 import { EventFeed, eventLog } from '../server/events.ts'
 import { copySource } from './source-copy.ts'
 import type { Reactor } from '../server/events.ts'
-import type { Opener } from '../server/extensions.ts'
+import type { ExtensionHost, Opener } from '../server/extensions.ts'
 
 vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
   const original = await importOriginal<typeof import('@earendil-works/pi-ai/providers/faux')>()
@@ -36,10 +36,84 @@ vi.mock('@earendil-works/pi-ai/providers/faux', async (importOriginal) => {
   }
 })
 
+const hostMembers = {
+  ultimateRoot: true,
+  projectRoot: true,
+  userHome: true,
+  home: true,
+  modelRuntime: true,
+  settings: true,
+  build: true,
+  images: true,
+  uiState: true,
+  scanSubmissions: true,
+  models: true,
+  skills: true,
+  restart: true,
+  chapter: true,
+  access: true,
+  notice: true,
+  implement: true,
+  need: true,
+  want: true,
+  catalogue: true,
+  trace: true,
+  resource: true,
+  onOpen: true,
+  onClose: true,
+  onLoadError: true,
+  onBeforeLoad: true,
+  coreChanged: true,
+  harness: true,
+  system: true,
+  conversations: true,
+  projects: true,
+  extensions: true,
+  projectSetup: true,
+  projectSettings: true,
+  projectExtensions: true,
+  setProjectDecision: true,
+  reloadExtensions: true,
+  invoke: true,
+  doc: true,
+  metadata: true,
+  emit: true,
+  react: true,
+  eventLog: true,
+} satisfies Record<keyof ExtensionHost, true>
+
+/**
+ * An extension host built by hand from the members a test needs. The member names are checked against `ExtensionHost`
+ * (a member added to it fails here, one renamed or removed fails in every test that sets it); their values stay as
+ * partial as the test needs.
+ */
+export function createTestExtensionHost(members: {
+  [K in keyof typeof hostMembers]?: ExtensionHost[K] extends (...args: infer A) => unknown
+    ? { method(...args: A): unknown }['method']
+    : unknown
+}) {
+  return members as ExtensionHost
+}
+
 /**
  * `implement`, `need` and `want` over a plain map, for extension hosts built by hand. `need` resolves the provider on
  * each member access like the real handle, so a fixture may implement an API after its consumer took the handle.
  */
+export function apis(provided = new Map<string, unknown>()) {
+  return {
+    provided,
+    implement: <S>(api: Api<string, S>, value: S) => void provided.set(api.name, value),
+    want: <S>(api: Api<string, S>) => provided.get(api.name) as S | undefined,
+    need: <S>(api: Api<string, S>) =>
+      new Proxy(
+        {},
+        {
+          get: (_, key) => (provided.get(api.name) as Record<string | symbol, unknown>)?.[key],
+        },
+      ) as S,
+  }
+}
+
 /**
  * `need` for a hand-built host whose core services stay out of the test: every method resolves undefined, as a worktree
  * lookup for a conversation without one does.
@@ -66,21 +140,6 @@ export function openers() {
     close: async () => {
       for (const opened of ends.splice(0).toReversed()) await opened.disposeAsync()
     },
-  }
-}
-
-export function apis(provided = new Map<string, unknown>()) {
-  return {
-    provided,
-    implement: <S>(api: Api<string, S>, value: S) => void provided.set(api.name, value),
-    want: <S>(api: Api<string, S>) => provided.get(api.name) as S | undefined,
-    need: <S>(api: Api<string, S>) =>
-      new Proxy(
-        {},
-        {
-          get: (_, key) => (provided.get(api.name) as Record<string | symbol, unknown>)?.[key],
-        },
-      ) as S,
   }
 }
 

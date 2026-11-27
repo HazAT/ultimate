@@ -3,7 +3,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { actions } from '../server.ts'
 import type { ActionContext } from '../../../server/actions.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 /** An assistant response calling `calls`, or a user input when there are none. */
 const entry = (id: number, calls: string[] = []) =>
@@ -26,7 +26,7 @@ const history = Array.from({ length: 700 }, (_, n) =>
 )
 const scanned: number[] = []
 const ctx = {
-  host: {
+  host: createTestExtensionHost({
     harness: () => ({
       // As the store's: newest first, in pages, with a cursor while more is left.
       async commit<T>(change: (tx: unknown) => Promise<T>) {
@@ -41,7 +41,7 @@ const ctx = {
         })
       },
     }),
-  } as unknown as ExtensionHost,
+  }),
 } as ActionContext
 const caller = (args: Record<string, unknown>) =>
   actions.caller(args as JsonValue, ctx) as Promise<{ entry?: number }>

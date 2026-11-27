@@ -9,7 +9,7 @@ import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { expect, it } from 'vitest'
 import { reminderTask } from '../reminder.ts'
 import goalExtension, { act, actions, end, Goals, openGoal, start, TRIES } from '../server.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
+import { createTestExtensionHost } from '../../../test/helpers.ts'
 
 const ULTIMATE = 5 as ConversationId
 const screenshot = { type: 'image', data: 'aGk=', mimeType: 'image/png' }
@@ -95,12 +95,12 @@ function fakeHost(tx: ReturnType<typeof fakeTx>) {
     readByKey: async (_tx: Tx, key: string) =>
       structuredClone([...ledger.values()].find((item) => item.key === key)),
   }
-  const host = {
+  const host = createTestExtensionHost({
     harness: () => ({ commit: (fn: (tx: Tx) => unknown) => fn(tx) }),
     need: () => service,
     want: () => service,
     doc: () => undefined,
-  } as unknown as ExtensionHost
+  })
   const sync = async () => {
     const runtime = { commit: (fn: (tx: Tx) => unknown) => fn(tx) }
     for (const task of tx.tasks.splice(0).filter((item) => item.name === 'goal.reminder'))
@@ -209,14 +209,16 @@ it('never takes an earlier turn\'s screenshot for images: "latest"', async () =>
 
 it("notes the open goal on @ultimate's runs only, and lets only @ultimate keep it", async () => {
   const tx = fakeTx()
-  const extension = goalExtension({
-    doc: () => undefined,
-    need: () => ({
-      submitAfter: async (_tx: Tx, to: number, draft: SubmissionDraft) =>
-        void tx.submitted.push({ to, draft }),
+  const extension = goalExtension(
+    createTestExtensionHost({
+      doc: () => undefined,
+      need: () => ({
+        submitAfter: async (_tx: Tx, to: number, draft: SubmissionDraft) =>
+          void tx.submitted.push({ to, draft }),
+      }),
+      want: () => undefined,
     }),
-    want: () => undefined,
-  } as unknown as ExtensionHost)
+  )
   const hooks = extension.hooks![0].handlers as GenerationHooks
   const before = (conversationId: ConversationId, kind = 'pi.user') =>
     hooks.beforeInput(

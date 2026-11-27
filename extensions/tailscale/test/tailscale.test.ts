@@ -3,12 +3,18 @@ import { join, resolve } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import tailscale, { actions } from '../server.ts'
 import type { Status } from '../api.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { admit, createAccess } from '../../../server/request-security.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { createServer } from '../../../server/main.ts'
 import { projectHome } from '../../../lib/project-paths.ts'
-import { copyApis, linkDependencies, post, temp, until } from '../../../test/helpers.ts'
+import {
+  copyApis,
+  linkDependencies,
+  post,
+  temp,
+  until,
+  createTestExtensionHost,
+} from '../../../test/helpers.ts'
 
 // The host's own macOS app is the default CLI's fallback: hide it, so "not installed" holds on a Mac with Tailscale too.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -90,7 +96,7 @@ else if (args[0] === 'serve') {
     const cleanups: (() => Promise<void>)[] = []
     const notices: string[] = []
     const access = createAccess()
-    const host = {
+    const host = createTestExtensionHost({
       userHome: home,
       home: serverHome,
       projectRoot,
@@ -101,7 +107,7 @@ else if (args[0] === 'serve') {
       onOpen: (fn: () => Promise<void>) => openers.push(fn),
       onClose: (fn: () => Promise<void>) => cleanups.push(fn),
       implement: () => {},
-    } as unknown as ExtensionHost
+    })
     tailscale(host)
     let closed = false
     const close = async () => {

@@ -6,9 +6,8 @@ import { createNodePhotonImages } from '@earendil-works/pi-durable/images/node'
 import { expect, it, vi } from 'vitest'
 import { context } from '../../../../server/harness.ts'
 import browserExtension, { browserBinary } from '../../server.ts'
-import type { ExtensionHost } from '../../../../server/extensions.ts'
 import { groupAlive } from '../../../../lib/process-group.ts'
-import { removeTemp, temp, until } from '../../../../test/helpers.ts'
+import { removeTemp, temp, until, createTestExtensionHost } from '../../../../test/helpers.ts'
 
 // A managed Mac's Chrome dropped its CDP pipe seconds after each first page and kept running; every call launched
 // another one, each failed context close raised a notice, and the dropped browsers piled up until the host exited.
@@ -19,14 +18,14 @@ it('kills a browser that drops its connection and keeps running, without a notic
   vi.stubEnv('DROPPING_CHROME_PID', pidFile)
   const closers: (() => Promise<void>)[] = []
   const notices: string[] = []
-  const host = {
+  const host = createTestExtensionHost({
     home: join(directory, 'home'),
     projectRoot: directory,
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     notice: (message: string) => notices.push(message),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const screenshot = browserExtension(host).tools!.find((tool) => tool.name === 'screenshot')!
   const api = { output() {} } as unknown as ToolExecutionApi
   let pid: number | undefined
@@ -55,14 +54,14 @@ it('times out a hung step, closes its page and keeps later calls working', async
   vi.stubEnv('ULTIMATE_CHROMIUM', slowChrome)
   const closers: (() => Promise<void>)[] = []
   const notices: string[] = []
-  const host = {
+  const host = createTestExtensionHost({
     home: join(directory, 'home'),
     projectRoot: directory,
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     notice: (message: string) => notices.push(message),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {} } as unknown as ToolExecutionApi
   const url = 'data:text/html,<title>Hang</title>'
@@ -100,13 +99,13 @@ it('marks the page as driven without a page error from a sandboxed frame', async
     ),
   )
   await new Promise<void>((done) => page.listen(0, '127.0.0.1', done))
-  const host = {
+  const host = createTestExtensionHost({
     home: join(directory, 'home'),
     projectRoot: directory,
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {} } as unknown as ToolExecutionApi
   try {
@@ -134,13 +133,13 @@ it('marks the page as driven without a page error from a sandboxed frame', async
 it('drives the page at the given viewport width and height', async () => {
   const directory = await temp('ultimate-browser-viewport-')
   const closers: (() => Promise<void>)[] = []
-  const host = {
+  const host = createTestExtensionHost({
     home: join(directory, 'home'),
     projectRoot: directory,
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {} } as unknown as ToolExecutionApi
   try {
@@ -168,13 +167,13 @@ it('drives the page at the given viewport width and height', async () => {
 it('names the failure before the console errors', async () => {
   const directory = await temp('ultimate-browser-failure-')
   const closers: (() => Promise<void>)[] = []
-  const host = {
+  const host = createTestExtensionHost({
     home: join(directory, 'home'),
     projectRoot: directory,
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {} } as unknown as ToolExecutionApi
   try {
@@ -202,13 +201,13 @@ it('names the failure before the console errors', async () => {
 it('names each match of an ambiguous selector by role and name, and suggests scoping it', async () => {
   const directory = await temp('ultimate-browser-strict-')
   const closers: (() => Promise<void>)[] = []
-  const host = {
+  const host = createTestExtensionHost({
     home: join(directory, 'home'),
     projectRoot: directory,
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const browser = browserExtension(host).tools!.find((tool) => tool.name === 'browser')!
   const api = { output() {} } as unknown as ToolExecutionApi
   const wide = 'x'.repeat(400)
@@ -238,14 +237,14 @@ it('names each match of an ambiguous selector by role and name, and suggests sco
 it('saves screenshots at the given path, relative to the conversation cwd, creating parents', async () => {
   const directory = await temp('ultimate-browser-path-')
   const closers: (() => Promise<void>)[] = []
-  const host = {
+  const host = createTestExtensionHost({
     images: await createNodePhotonImages(),
     home: join(directory, 'home'),
     projectRoot: join(directory, 'project'),
     resource: <T>(_name: string, create: () => T) => create(),
     onClose: (close: () => Promise<void>) => closers.push(close),
     system: () => ({ process: { url: 'http://127.0.0.1:1/' } }),
-  } as unknown as ExtensionHost
+  })
   const tools = new Map(browserExtension(host).tools!.map((tool) => [tool.name, tool]))
   const cwd = join(directory, 'worktree')
   const api = (env = true) =>

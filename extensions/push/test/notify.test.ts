@@ -1,12 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import pushExtension, { actions, docs } from '../server.ts'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import type { PushService } from '../api.ts'
 import type { Push } from '../rules.ts'
-import { openers, temp, until } from '../../../test/helpers.ts'
+import { openers, temp, until, createTestExtensionHost } from '../../../test/helpers.ts'
 
 const sending = vi.hoisted(() => ({
   sent: [] as { endpoint: string; payload: object }[],
@@ -53,7 +52,7 @@ async function fixture() {
   let current: OpenHost
   const resources = new Map<string, unknown>()
   const lifecycle = openers()
-  const host = {
+  const host = createTestExtensionHost({
     ...prepared,
     harness: () => current.harness,
     need: () => ({}),
@@ -67,7 +66,7 @@ async function fixture() {
       if (!resources.has(key)) resources.set(key, create())
       return resources.get(key)
     },
-  } as unknown as ExtensionHost
+  })
   prepared.registry.install(pushExtension(host))
   const open = async () => {
     await lifecycle.close()

@@ -1,11 +1,10 @@
 import { expect, it, vi } from 'vitest'
-import type { ExtensionHost } from '../../../server/extensions.ts'
 import { cloudConfig } from '../../../lib/cloud.ts'
 import { projectIdentity } from '../../../lib/project-identity.ts'
 import { backUp } from '../backup.ts'
 import { CloudApi } from '../api.ts'
 import cloud, { backup } from '../server.ts'
-import { apis } from '../../../test/helpers.ts'
+import { apis, createTestExtensionHost } from '../../../test/helpers.ts'
 
 vi.mock('../../../lib/cloud.ts', async (original) => ({
   ...(await original<typeof import('../../../lib/cloud.ts')>()),
@@ -23,7 +22,7 @@ vi.mock('../backup.ts', async (original) => ({
 it('publishes optional status and non-forced backup services for the active chapter', async () => {
   const resources = new Map<string, unknown>()
   const services = apis()
-  const host = {
+  const host = createTestExtensionHost({
     ...services,
     projectRoot: '/project',
     chapter: { name: 'fresh-roots', number: 2, dir: '/home/chapters/fresh-roots' },
@@ -34,7 +33,7 @@ it('publishes optional status and non-forced backup services for the active chap
     harness: () => ({ commit: async (run: (tx: unknown) => unknown) => run({}) }),
     emit: () => {},
     notice: () => {},
-  } as unknown as ExtensionHost
+  })
   cloud(host)
   const service = host.want(CloudApi)!
   vi.mocked(cloudConfig).mockResolvedValue(undefined)
