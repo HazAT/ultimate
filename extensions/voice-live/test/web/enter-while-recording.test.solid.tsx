@@ -5,12 +5,17 @@ import { capture } from '../../../dictation/ui.solid.tsx'
 import {
   composeIn,
   dock,
-  endSession,
   sendDraft,
   sendTyped,
   settleTranscripts,
   voiceSink,
 } from '../../dock.solid.tsx'
+
+const serverEndedSession = async () => {
+  composeIn(parseConversationId(999))
+  composeIn(undefined)
+  await Promise.resolve()
+}
 
 const harness = vi.hoisted(() => ({
   turns: [] as Record<string, unknown>[],
@@ -96,7 +101,7 @@ const speak = () => {
 }
 
 beforeEach(async () => {
-  await endSession()
+  await serverEndedSession()
   harness.turns.length = 0
   harness.record = undefined
   composeIn(parseConversationId(40))
@@ -150,12 +155,12 @@ it('Enter during a recording while collecting sends the collected clips, the new
   ])
 })
 
-it('End while Enter stops the recording sends nothing and leaves the typed text in the box', async () => {
+it('a session that ends while Enter stops the recording sends nothing and leaves the typed text in the box', async () => {
   dock.setCollect(false)
   await capture.press(voiceSink)?.started
   speak()
   const sent = sendTyped('look at this')
-  await endSession()
+  await serverEndedSession()
   await expect(sent).rejects.toThrow('The voice session ended')
   expect(harness.turns).toEqual([])
 })

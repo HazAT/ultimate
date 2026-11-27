@@ -1,6 +1,6 @@
 import { defineWebExtension, provide, renderEntry } from '@/sdk/solid'
 import { VoiceTurnEntry } from './entries.shared.ts'
-import { HandoffCall, HandoffCard } from './handoff.solid.tsx'
+import { HandoffCall, HandoffCard, SummaryCard } from './handoff.solid.tsx'
 import { KEYS, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
 import { SheetComposer, VoicePanel, VoiceToggle } from './panel.solid.tsx'
 import { VoiceRow, voiceForks } from './row.solid.tsx'
@@ -18,6 +18,7 @@ export default defineWebExtension({
   composer: SheetComposer,
   entries: {
     'voice.handoff': HandoffCard,
+    'voice.summary': SummaryCard,
     'voice.turn': TurnRow,
   },
   provides: [provide(UnderUltimate, VoiceRow), provide(Unlisted, voiceForks)],

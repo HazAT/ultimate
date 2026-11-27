@@ -2,6 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { AudioLinesIcon, ChevronRight, SquareArrowOutUpRightIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For, Show, useContext } from 'solid-js'
+import { Markdown } from '@/components/markdown/markdown.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
   Collapsible,
@@ -12,6 +13,7 @@ import { ToolStatusIcon } from '@/components/ai/tool.solid.tsx'
 import {
   Card,
   ConversationScope,
+  formatTime,
   renderEntry,
   showSurface,
   switchConversation,
@@ -19,7 +21,7 @@ import {
   useDocOf,
   type ToolCallView,
 } from '@/sdk/solid'
-import { VoiceHandoffEntry } from './entries.shared.ts'
+import { QUIET_MINUTES, VoiceHandoffEntry, VoiceSummaryEntry } from './entries.shared.ts'
 import { VoiceForkDoc, type VoiceHandoff } from './refs.ts'
 
 type Brief = Omit<VoiceHandoff, 'from'>
@@ -185,3 +187,38 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
     </Show>
   )
 }
+
+export const SummaryCard = renderEntry(VoiceSummaryEntry, function SummaryCard(props) {
+  const data = () => props.entry.data
+  return (
+    <Card data-voice-summary={props.entry.id}>
+      <Collapsible class="group/voice-summary">
+        <header class="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+          <CollapsibleTrigger
+            aria-label={`Summary of voice session #${data().from}`}
+            class="flex min-w-0 items-center gap-2 hover:text-foreground"
+          >
+            <ChevronRight class="size-3 shrink-0 transition-transform group-data-open/voice-summary:rotate-90" />
+            <AudioLinesIcon class="size-3.5 shrink-0 text-brand" />
+            <span class="text-foreground">Voice</span>
+            <span>summary</span>
+            <span class="truncate">
+              {data().startedAt ? `${formatTime(data().startedAt!)}–` : ''}
+              {formatTime(data().endedAt)} · ended after {QUIET_MINUTES} min quiet
+            </span>
+          </CollapsibleTrigger>
+          <OpenLink
+            label={`Read voice session #${data().from} from summary #${props.entry.id}`}
+            text="voice session"
+            to={data().from}
+          />
+        </header>
+        <CollapsibleContent>
+          <div class="min-w-0 border-t border-border/60 px-3 py-2.5 text-[13px] leading-relaxed">
+            <Markdown text={data().text} />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  )
+})

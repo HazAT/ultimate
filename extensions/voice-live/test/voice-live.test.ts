@@ -33,17 +33,19 @@ beforeAll(async () => {
 })
 afterEach(async () => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
   await Promise.all(servers.splice(0).map((server) => server.close()))
 })
 
 const audio = Buffer.from('voice recording bytes').toString('base64')
 
 async function fixture() {
+  vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true })
   const home = await temp('ultimate-voice-')
   await mkdir(join(home, '.ultimate'), { recursive: true })
   await writeFile(
     join(home, '.ultimate/settings.json'),
-    JSON.stringify({ voice: { model: 'faux/gemini-faux' } }),
+    JSON.stringify({ voice: { model: 'faux/gemini-faux' }, summaryModel: 'faux/main-faux:off' }),
   )
   await writeFile(
     join(home, '.ultimate/model-families.json'),
@@ -68,11 +70,19 @@ async function fixture() {
   const server = await fauxServer({ ultimateRoot, home, userHome: home, faux })
   servers.push(server)
   const requests: { model: string; messages: Message[] }[] = []
+  const summaries: string[] = []
   const hold = Promise.withResolvers<void>()
   let holding = false
   const route: FauxResponseFactory = async (transcript, _options, _state, model) => {
     server.host.faux!.appendResponses([route])
+    const system = JSON.stringify(transcript.messages.filter((m) => m.role === 'system'))
     const messages = transcript.messages.filter((message) => message.role !== 'system')
+    if (system.includes('Summarize this voice session')) {
+      summaries.push(JSON.stringify(messages))
+      return fauxAssistantMessage(
+        JSON.stringify(messages).includes('DECIDE') ? 'Decided: a quiet toggle.' : 'NOTHING',
+      )
+    }
     requests.push({ model: model.id, messages })
     const last = messages.at(-1)!
     const text =
@@ -115,6 +125,13 @@ async function fixture() {
     return { id, route: result.data.result.route as string }
   }
   const forkOf = (id: ConversationId) => server.harness.snapshot(Fork, id, context)
+  const session = () => server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)
+  const quiet = async () => {
+    const open = (await session())?.id
+    vi.advanceTimersByTime(21 * 60_000)
+    server.harness.resume()
+    await until(async () => (await session())?.id !== open)
+  }
   return {
     server,
     home,
@@ -124,6 +141,9 @@ async function fixture() {
     turn,
     transcribed,
     forkOf,
+    session,
+    quiet,
+    summaries,
     hold,
     holding: () => holding,
   }
@@ -177,10 +197,11 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
     ),
   ).toHaveLength(1)
 
-  await f.action('end', null)
+  await f.quiet()
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toEqual({
     thinking: 'low',
     forks: [first.id],
+    last: { id: first.id, endedAt: expect.any(Number) },
   })
   expect(await f.action('status', null)).toMatchObject({
     data: { result: { model: 'faux/gemini-faux', route: 'audio' } },
@@ -192,6 +213,49 @@ it('forks @ultimate once per session, hears the newest recording and keeps histo
     first.id,
     next.id,
   ])
+})
+
+it('a quiet session that decided something hands one summary card back and the next fork starts from it; small talk sends nothing', async () => {
+  const f = await fixture()
+  const mainEntries = async () =>
+    (await (await f.server.harness.conversation(f.main, context))!.context(context)).entries
+  const chat = await f.turn({ key: 'chat', text: 'how is the weather' })
+  await f.quiet()
+  expect(f.summaries).toHaveLength(1)
+  expect((await mainEntries()).some((entry) => entry.kind === 'voice.summary')).toBe(false)
+  expect((await f.session())?.last).toEqual({ id: chat.id, endedAt: expect.any(Number) })
+  expect(await f.forkOf(chat.id)).toMatchObject({ ended: true })
+
+  const talk = await f.turn({ key: 'decide', text: 'DECIDE a quiet toggle' })
+  expect(talk.id).not.toBe(chat.id)
+  const busy = f.requests.length
+  await f.quiet()
+  const cards = (await mainEntries()).filter((entry) => entry.kind === 'voice.summary')
+  expect(cards).toHaveLength(1)
+  expect(cards[0].data).toMatchObject({ from: talk.id, text: 'Decided: a quiet toggle.' })
+  expect(cards[0].input).toBeUndefined()
+  expect(f.requests).toHaveLength(busy)
+
+  const next = await f.turn({ key: 'next', text: 'back again' })
+  expect(JSON.stringify(f.requests.at(-1)!.messages)).toContain(
+    `The previous voice session (#${talk.id}) ended after a quiet stretch; it handed this back to @ultimate:\\nDecided: a quiet toggle.`,
+  )
+  expect((await f.session())?.last).toBeUndefined()
+  expect(next.id).not.toBe(talk.id)
+})
+
+it('after a long gap the fork catches up on the newest of what @ultimate did, not the oldest', async () => {
+  const f = await fixture()
+  const first = await f.turn({ key: 'one', text: 'start' })
+  const main = (await f.server.harness.conversation(f.main, context))!
+  for (let n = 1; n <= 30; n++)
+    await (await main.submit({ type: 'input', content: `MAIN ${n}` }, context)).wait(context)
+  await f.turn({ key: 'two', text: 'what happened', session: first.id })
+  const digest = JSON.stringify(f.requests.at(-1)!.messages)
+  expect(digest).toContain('earlier entries left out')
+  expect(digest).toContain('echo MAIN 30')
+  expect(digest).not.toContain('In: MAIN 1\\n')
+  expect((await f.forkOf(first.id))?.caughtUp).toEqual(expect.any(Number))
 })
 
 it('switching to a model that does not hear audio sends it the transcript instead', async () => {
@@ -224,13 +288,13 @@ it('voice starts at low thinking; the next session keeps the level picked in its
   const configure = (id: ConversationId, data: object) =>
     post(f.server, `/api/conversations/${id}/configure`, data)
   expect((await configure(first.id, { thinkingLevel: 'medium' })).status).toBe(200)
-  await f.action('end', null)
+  await f.quiet()
   const second = await f.turn({ key: 'two', text: 'again' })
   expect(await thinking(second.id)).toBe('medium')
 
   const model = { provider: 'faux', modelId: 'main-faux' }
   expect((await configure(second.id, { model })).status).toBe(200)
-  await f.action('end', null)
+  await f.quiet()
   const third = await f.turn({ key: 'three', text: 'no thinking' })
   expect(await thinking(third.id)).toBe('off')
   expect(await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context)).toMatchObject({
@@ -238,7 +302,7 @@ it('voice starts at low thinking; the next session keeps the level picked in its
     thinking: 'off',
   })
 
-  await f.action('end', null)
+  await f.quiet()
   await f.server.harness.commit(async (tx) => {
     Object.assign(await tx.doc(Session, ROOT_CONVERSATION_ID), {
       model: 'faux/gemini-faux',
@@ -378,7 +442,7 @@ it('a send keeps the draft unless it is admitted, and accepts a screenshot alone
 it('a recording or turn sent for a session that ended is refused and opens no new one', async () => {
   const f = await fixture()
   const first = await f.turn({ key: 'one', text: 'start' })
-  await f.action('end', null)
+  await f.quiet()
   const late = await f.action('record', {
     audio,
     mimeType: 'audio/webm',
@@ -459,7 +523,7 @@ it('status says whether the model is a stored pick or from settings, and Use def
   expect(await status()).toMatchObject({ model: 'faux/gemini-faux', source: 'settings' })
   await f.turn({ key: 'one', text: 'start' })
   expect(await status()).toMatchObject({ source: 'settings' })
-  await f.action('end', null)
+  await f.quiet()
   expect(
     (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.model,
   ).toBeUndefined()
@@ -496,7 +560,7 @@ it('a model picked in the fork itself carries over to the next session', async (
   await f.server.harness.commit(async (tx) => {
     ;(await tx.doc(AgentDoc, first.id)).model = { provider: 'faux', modelId: 'main-faux' }
   }, context)
-  await f.action('end', null)
+  await f.quiet()
   const next = await f.turn({ key: 'two', text: 'fresh' })
   expect(next.id).not.toBe(first.id)
   expect(f.requests.at(-1)!.model).toBe('main-faux')
@@ -652,7 +716,7 @@ it('a request for a session that handed off and was then ended is refused and op
   await f.server.harness.commit(async (tx) => {
     ;(await tx.doc(Fork, first.id)).handedOff = true
   }, context)
-  await f.action('end', null)
+  await f.quiet()
   const late = await f.action('turn', { key: 'late', text: 'after end', session: first.id })
   expect(late.data.error).toContain('This voice session ended')
   const record = await f.action('record', { audio, mimeType: 'audio/webm', session: first.id })
@@ -660,38 +724,6 @@ it('a request for a session that handed off and was then ended is refused and op
   expect(
     (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id,
   ).toBeUndefined()
-})
-
-it('End racing a rollover leaves voice cold, and a stale request never touches the current session', async () => {
-  const f = await fixture()
-  const first = await f.turn({ key: 'one', text: 'start' })
-  await f.server.harness.commit(async (tx) => {
-    ;(await tx.doc(Fork, first.id)).handedOff = true
-  }, context)
-  const [, ended] = await Promise.all([
-    f.action('turn', { key: 'roll', text: 'next', session: first.id }),
-    f.action('end', null),
-  ])
-  expect(ended.status).toBe(200)
-  const after = (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id
-  expect(after).toBeUndefined()
-  const late = await f.action('turn', { key: 'late', text: 'late', session: first.id })
-  expect(late.data.error).toContain('This voice session ended')
-  expect(
-    (await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id,
-  ).toBeUndefined()
-
-  const current = await f.turn({ key: 'current', text: 'now' })
-  await f.server.harness.commit(async (tx) => {
-    ;(await tx.doc(Fork, current.id)).handedOff = true
-  }, context)
-  const stale = await f.action('turn', { key: 'stale', text: 'old', session: first.id })
-  expect(stale.data.error).toContain('This voice session ended')
-  expect(await f.forkOf(current.id)).toMatchObject({ handedOff: true })
-  expect((await f.forkOf(current.id))?.ended).toBeUndefined()
-  expect((await f.server.harness.snapshot(Session, ROOT_CONVERSATION_ID, context))?.id).toBe(
-    current.id,
-  )
 })
 
 it('voice_handoff with `to` reaches a real branch on screen and refuses one off screen or not a branch', async () => {

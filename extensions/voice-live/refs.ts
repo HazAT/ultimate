@@ -18,6 +18,11 @@ export type VoiceSession = {
   model?: string
   /** Its thinking level, likewise; unset, `low`. A model without it uses its closest level. */
   thinking?: ModelThinkingLevel
+  /**
+   * The session that last ended after a quiet stretch, until the next one opens: when, and the summary it handed back to
+   * @ultimate (unset when nothing was decided or left open), or why the summary failed.
+   */
+  last?: { id: ConversationId; endedAt: number; summary?: string; failed?: string }
 }
 
 /**
@@ -42,6 +47,17 @@ export type VoiceTurn = {
   images?: number
   /** The page that sent it (page-agent's `pageId`): `ui` calls answering it run there. */
   page?: string
+}
+
+/**
+ * What a voice session that ended after a quiet stretch hands back, written as a passive `voice.summary` entry in
+ * @ultimate: the fork, when it started and ended, and the summary of what was decided or left open.
+ */
+export type VoiceSummary = {
+  from: ConversationId
+  startedAt?: number
+  endedAt: number
+  text: string
 }
 
 /** A handoff to @ultimate, written as a `voice.handoff` input entry in @ultimate and as the tool's result in the fork. */
@@ -77,6 +93,8 @@ export type VoiceFork = {
   handedOff?: true
   /** The conversation on the user's screen at the latest turn, the one a handoff `to` may name. */
   screen?: ConversationId
+  /** When the fork last read what @ultimate did: at the fork, then at the start of each turn. */
+  caughtUp?: number
 }
 
 /** One collected recording: its id, length in seconds and loudness envelope. */
@@ -147,9 +165,6 @@ export const PickAction = actionRef<
 
 /** Stop the session's current reply, for an interruption. */
 export const StopAction = actionRef<null, Record<string, never>>('voice-live', 'stop')
-
-/** End the session: the fork is concluded and the next turn forks @ultimate again. */
-export const EndAction = actionRef<null, Record<string, never>>('voice-live', 'end')
 
 /** One piece of voice mode's setup: whether it is ready, and what to do when it is not. */
 export type VoiceSetupItem = { ready: boolean; detail: string; fix?: string }

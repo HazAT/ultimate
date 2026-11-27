@@ -26,7 +26,6 @@ import type { Sentence } from '../read-aloud/ui.solid.tsx'
 import { createCues } from './cues.web.ts'
 import {
   DiscardAction,
-  EndAction,
   IntentAction,
   RecordAction,
   StatusAction,
@@ -748,11 +747,6 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
       dock.setStatus('Speaking')
     },
   )
-}
-
-export function endSession() {
-  endLocally()
-  return api.action(EndAction, null)
 }
 
 function endLocally() {

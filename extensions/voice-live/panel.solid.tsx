@@ -35,6 +35,7 @@ import {
   ConversationTranscript,
   composerDraft,
   PromptBox,
+  formatAgo,
   formatKeys,
   ROOT,
   ScopedConversation,
@@ -46,6 +47,7 @@ import {
   useDocOf,
   useExtensionUiState,
   useExternal,
+  useNow,
   useSurface,
   useViewport,
 } from '@/sdk/solid'
@@ -53,6 +55,7 @@ import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
 import type { JSX } from '@solidjs/web'
 import { DictationOptions, shortcut, talkMode } from '../dictation/ui.solid.tsx'
 import { ModeSwitch, TalkBar } from './talk.solid.tsx'
+import { QUIET_MINUTES } from './entries.shared.ts'
 import {
   activity,
   COLD_DRAFT,
@@ -62,7 +65,6 @@ import {
   dock,
   playerState,
   draftOf,
-  endSession,
   KEYS,
   registerVoiceFallback,
   sendDraft,
@@ -577,6 +579,7 @@ export function VoicePanel() {
   const fork = useDocOf(() => session()?.id, VoiceForkDoc)
   const viewport = useViewport()
   const id = () => session()?.id
+  const now = useNow(30_000, () => id() !== undefined)
   const surface = useSurface()
   const shown = useConversationId()
   const summary = useConversationSummary(shown)
@@ -783,9 +786,21 @@ export function VoicePanel() {
           <span class="text-[13px] font-semibold">Voice</span>
           <Show when={!folded()}>
             <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
-              {id()
-                ? `hot · fork of @ultimate${fork()?.of ? ` #${fork()!.of}` : ''} · #${id()}`
-                : 'cold · forks @ultimate when you talk'}
+              {id() ? (
+                `hot · ${fork()?.caughtUp ? `caught up ${formatAgo(fork()!.caughtUp!, now(), { ago: true })}` : `fork of @ultimate`} · #${id()}`
+              ) : session()?.last ? (
+                <span title={session()!.last!.failed}>
+                  {`ended after ${QUIET_MINUTES} min quiet · ${
+                    session()!.last!.summary
+                      ? 'summary sent to @ultimate'
+                      : session()!.last!.failed
+                        ? 'summary failed'
+                        : 'nothing to hand back'
+                  }`}
+                </span>
+              ) : (
+                'cold · forks @ultimate when you talk'
+              )}
             </span>
           </Show>
           <span class="ml-auto flex shrink-0 items-center gap-1">
@@ -801,16 +816,6 @@ export function VoicePanel() {
                   variant={null}
                 >
                   <SquareArrowOutUpRight class="size-3.5" />
-                </Button>
-                <Button
-                  aria-label="End voice session"
-                  class="h-7 rounded-md px-2 font-mono text-[11px] font-normal text-muted-foreground hover:bg-error/10 hover:text-error"
-                  onClick={() => endSession()}
-                  size={null}
-                  title="End the session: the fork concludes and the next turn forks @ultimate again"
-                  variant={null}
-                >
-                  end
                 </Button>
               </Show>
             </Show>

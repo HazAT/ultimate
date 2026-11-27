@@ -45,34 +45,43 @@ collect mode (optional), each with what to do when it is missing. The model line
    hides the panel. It keeps the fork's tools and adds
    `voice_handoff` and `ui`; `beforeTool` lets it only read (read, memory, web search and fetch), run bash for quick checks and operations, run codemode, drive the UI and hand off: no file edits.
    Its first input carries the voice-mode prompt (`prompt.ts`) as a hidden `conversations.identity` entry; each later
-   input carries a short digest of what @ultimate did since the last turn, and every turn says which surface and
-   conversation are on screen. The session stays hot until it hands off or End: after a handoff the next turn
-   concludes it and forks @ultimate afresh; End concludes it and deletes the session's recordings.
-5. **The transcript** in the panel is the core one (`ConversationTranscript` in its compact `dock` column, scoped to
+   input carries a short digest of what @ultimate did since the last turn (its newest 12 signal lines: inputs, card
+   answers, summaries and final answers, never tool chatter, with a note when earlier ones were left out), and every
+   turn says which surface and conversation are on screen. The panel header shows when the fork last caught up
+   ("caught up 5m ago"). The session stays hot until it hands off or goes quiet: after a handoff the next turn
+   concludes it and forks @ultimate afresh. There is no End: closing the panel only hides it.
+5. **Quiet end**: a durable `voice-live.quiet` task, started with the session's first turn, ends it after
+   `QUIET_MINUTES` (20) without a turn or a reply, never during a run. It asks the summary model about the talk
+   since the fork: when something was decided or left open beyond its handoffs, it writes one passive `voice.summary`
+   entry in @ultimate (a collapsed card; @ultimate reads it with its next input, no extra turn); small talk writes
+   nothing. It then concludes the fork and deletes its recordings; the panel reads "ended after 20 min quiet" and
+   whether a summary went back. The next talk forks @ultimate afresh, and that fork's first input carries the
+   previous session's summary.
+6. **The transcript** in the panel is the core one (`ConversationTranscript` in its compact `dock` column, scoped to
    the fork), so its own entries show and the history it forked from does not: replies, thinking, every tool call
    with its extension's card (`video_ask` included), attachment chips and message actions all come from the core. Your
    turns are `voice.turn` entries, drawn by voice's one turn renderer wherever the fork is read (the panel, the main
    transcript, a side chat): length and waveform, "transcribing…", a failure, screenshots and "sent as your answer".
    A turn shows the moment you send it: until the server stores it, voice draws it in the fork's `transcript.end`.
-6. **Replies** stream from the fork's live partial. Each finished sentence is spoken through read-aloud's page-wide
+7. **Replies** stream from the fork's live partial. Each finished sentence is spoken through read-aloud's page-wide
    speech player (`extensions/read-aloud/README.md`), with the shared Speech setting (voice, OpenAI voice, speed): Voice settings shows
    read-aloud's `SpeechOptions`, the same controls the playback bar's speed opens; read-aloud's highlight marks the sentence being read and plays any sentence on click. Starting a read-aloud elsewhere stops voice's reply, and a new voice
    reply stops a read-aloud. The highlight follows the spoken sentence across every message of that turn's reply,
    since a reply with tool calls spans several. Folded, the status line shows the whole paragraph being read with that
    sentence highlighted, and grows to fit it. The playback bar shows the paragraph, sentence and time left, and skips
    by sentence or paragraph; each reply message's speaker plays it again.
-7. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
+8. **Interrupting**: voice never talks over you: a reply that arrives while you hold waits, paused, and no cue plays.
    A press while it speaks pauses at once. With real speech it cuts: speech stops, the running turn is stopped
    (`stop`) and the rest of that reply stays silent. Without speech it resumes where it paused.
-8. **The UI and codemode**: voice may use `codemode` (its scripts reach `tools.action`) and a `ui` tool that drives the
+9. **The UI and codemode**: voice may use `codemode` (its scripts reach `tools.action`) and a `ui` tool that drives the
    user's own page. The `ui` tool belongs to [page-agent](../page-agent/README.md): the fork enables and loads it, and
    each turn names the page that sent it, so that page runs the session's requests. The prompt has voice say each
    action in one short line before it runs it; the folded status line names the call running now.
-9. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
-   @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With
-   `attachments`, the images the user pasted into the session's turns (the latest four) go along with it. With `to`, it
-   goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`), as a
-   steer a busy coordinator reads after its current tool round; a conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
+10. **Handoff**: `voice_handoff {title, outcome, decided, open, instruction, attachments}` submits an input to
+    @ultimate with a `voice.handoff` entry, shown there as a card that links back to the voice session. With
+    `attachments`, the images the user pasted into the session's turns (the latest four) go along with it. With `to`, it
+    goes to the branch conversation on the user's screen instead (each turn records it as the fork's `screen`), as a
+    steer a busy coordinator reads after its current tool round; a conversation that is not on screen, a subagent, a root, @ultimate itself or a concluded one is refused.
 
 ## Collect until send
 
@@ -98,5 +107,6 @@ done and errors; Speak replies and Sound cues are UI state (`ext.voice-live.spea
 
 ## Contract
 
-`refs.ts`: `RecordAction`, `TurnAction`, `StopAction`, `EndAction` (user-only), `StatusAction`, `VoiceSessionDoc`
-(`voice.session` on the root: the open fork) and the `VoiceTurn` and `VoiceHandoff` entry data.
+`refs.ts`: `RecordAction`, `TurnAction`, `StopAction`, `StatusAction`, `VoiceSessionDoc` (`voice.session` on the
+root: the open fork, and `last`, the session that ended quietly) and the `VoiceTurn`, `VoiceHandoff` and
+`VoiceSummary` entry data.
