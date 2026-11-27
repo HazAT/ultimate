@@ -92,6 +92,18 @@ async function fixture(
   const services = apis()
   services.provided.set('conversations', { concludedIn })
   services.provided.set('workspaces', { doc: Workspaces, get: async () => undefined })
+  const sent: { from: ConversationId; to: string; text: string; requestId: string }[] = []
+  const sentIds = new Map<string, number>()
+  services.provided.set('messages', {
+    send: async (from: ConversationId, input: { to: string; text: string }, requestId: string) => {
+      const known = sentIds.get(requestId)
+      if (known !== undefined) return known
+      const id = sent.length + 1
+      sentIds.set(requestId, id)
+      sent.push({ from, to: input.to, text: input.text, requestId })
+      return id
+    },
+  })
   const host = {
     ...services,
     harness: () => harness,
@@ -241,6 +253,7 @@ async function fixture(
     registry,
     host,
     failures: (since: number) => services.need(WatchdogApi).failures(since),
+    userMessages: () => sent,
     ultimate,
     notices,
     conversation,
@@ -923,6 +936,70 @@ it('writes a display-only card into @ultimate’s own transcript when it fails a
   })
   expect(f.notices).toEqual([])
   expect(modelCalls).toBe(RETRY_DELAYS_MS.length + 1)
+})
+
+it('sends the user exactly one message for @ultimate’s own failure, deduped across a replay', async () => {
+  const barrier = Promise.withResolvers<void>()
+  const held = { phase: 'report' as const, entered: false, promise: barrier.promise }
+  const f = await fixture(
+    (transcript) =>
+      inputText(transcript) === 'fail'
+        ? error(
+            'Claude Code is installed but not logged in. Run `claude auth login` and try again.',
+          )
+        : fauxAssistantMessage('ok'),
+    true,
+    held,
+  )
+  await (await f.submit(f.ultimate, 'fail')).wait(context)
+  await until(async () => held.entered)
+  await f.reopen()
+  barrier.resolve()
+  const own = () => f.entries(f.ultimate, 'watchdog.standing-failure')
+  await until(async () => (await own()).length === 1)
+  await until(async () => (await f.tasks()).every((task) => task.state.status === 'terminal'))
+  await f.reopen()
+  await f.harness.waitForIdle(context)
+  expect(f.userMessages()).toHaveLength(1)
+  expect(f.userMessages()[0]).toMatchObject({
+    from: f.ultimate,
+    to: 'user',
+    text: 'My run failed: Claude Code is installed but not logged in. Run `claude auth login` and try again.. Last step: model request. Run `claude auth login` in a terminal.',
+  })
+  expect(f.userMessages()[0].requestId).toMatch(/^watchdog-user:\d+$/)
+})
+
+it('sends the user nothing when @ultimate recovers on its own retry', async () => {
+  const f = await fixture((transcript) =>
+    inputText(transcript) === 'fail' ? error(overloaded) : fauxAssistantMessage('ok'),
+  )
+  await (await f.submit(f.ultimate, 'fail')).wait(context)
+  await f.sleeping()
+  f.advance(RETRY_DELAYS_MS[0])
+  await f.harness.waitForIdle(context)
+  await until(async () => (await f.tasks()).every((task) => task.state.status === 'terminal'))
+  expect(f.userMessages()).toEqual([])
+  expect(await f.entries(f.ultimate, 'watchdog.standing-failure')).toEqual([])
+})
+
+it('sends the user nothing for another conversation’s failure', async () => {
+  const f = await fixture((transcript) =>
+    inputText(transcript) === 'fail' ? error() : fauxAssistantMessage('ok'),
+  )
+  const branch = await f.conversation('Fix the build', f.ultimate)
+  await f.harness.commit(async (tx) => {
+    await tx.appendEntry(branch, {
+      kind: 'pi.assistant',
+      model: [
+        fauxAssistantMessage([fauxToolCall('read', { path: 'README.md' })], {
+          stopReason: 'toolUse',
+        }),
+      ],
+    })
+  }, context)
+  await (await f.submit(branch, 'fail')).wait(context)
+  await until(async () => (await f.entries()).length === 1)
+  expect(f.userMessages()).toEqual([])
 })
 
 it('reports a broken login at once, with a hint to log in again and no retry', async () => {
