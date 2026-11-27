@@ -21,7 +21,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { rateLimited } from '../../lib/rate-limit.ts'
-import { Messages } from '../messages/api.ts'
+import { Messages, MessagesApi } from '../messages/api.ts'
 import type { Message } from '../messages/api.ts'
 import { ChildFailures, Standing, SubagentsApi } from '../subagents/api.ts'
 import { Roots, Tally } from '../lineage/api.ts'
@@ -242,6 +242,7 @@ type WatchdogInput = Failure & {
 
 export default function watchdog(host: ExtensionHost) {
   const subagents = host.need(SubagentsApi)
+  const board = host.need(MessagesApi)
   const Watchdog = defineTask<
     WatchdogInput,
     { phase: 'wait' } | { phase: 'retry' } | { phase: 'report' },
@@ -309,6 +310,16 @@ export default function watchdog(host: ExtensionHost) {
               requestId: `watchdog-report:${failedTask}`,
               entry: { kind: StandingFailureEntry.kind, data },
             },
+            ctx,
+          )
+          await board.send(
+            conversation,
+            {
+              to: 'user',
+              text: `My run failed: ${error}. Last step: ${step}.${retries ? ` After ${retries === 1 ? 'one automatic retry' : `${retries} automatic retries`}.` : ''}${hint ? ` ${hint}.` : ''}`,
+              reply: false,
+            },
+            `watchdog-user:${failedTask}`,
             ctx,
           )
         } else {
