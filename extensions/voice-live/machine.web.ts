@@ -172,7 +172,12 @@ const settling: Handlers<Settled, Settled> = {
   enter: unchanged,
   stop: unchanged,
   ended: () => ({ phase: 'idle' }),
-  abandon: (state) => ({ phase: 'idle', ...keyed(state.key) }),
+  abandon: (state) =>
+    state.key === undefined
+      ? { phase: 'idle' }
+      : state.phase !== 'error' && state.replied
+        ? { phase: 'done', key: state.key, replied: true }
+        : { phase: 'thinking', key: state.key, words: true },
   interrupt: (state) =>
     state.phase === 'error'
       ? { phase: 'idle' }
@@ -191,19 +196,25 @@ const settling: Handlers<Settled, Settled> = {
   words: (state, event) =>
     state.phase === 'thinking' && ours(state, event.key) ? { ...state, words: true } : state,
   playing: (state, event) =>
-    !following(state, event.key) || (state.phase === 'speaking' && !state.note)
+    !following(state, event.key) ||
+    state.phase === 'sending' ||
+    (state.phase === 'speaking' && !state.note)
       ? state
       : resumed(state),
   generated: (state, event) =>
     ours(state, event.key) && state.phase !== 'error' ? { ...state, replied: true } : state,
   stopped: (state, event) =>
-    ours(state, event.key) && state.phase !== 'error' && state.phase !== 'done'
-      ? { phase: 'done', key: event.key, stopped: true, replied: true }
-      : state,
+    !ours(state, event.key) || state.phase === 'error' || state.phase === 'done'
+      ? state
+      : state.phase === 'sending'
+        ? { ...state, replied: true }
+        : { phase: 'done', key: event.key, stopped: true, replied: true },
   finished: (state, event) =>
-    ours(state, event.key) && state.phase !== 'error'
-      ? { phase: 'done', key: event.key, replied: true }
-      : state,
+    !ours(state, event.key) || state.phase === 'error'
+      ? state
+      : state.phase === 'sending'
+        ? { ...state, replied: true }
+        : { phase: 'done', key: event.key, replied: true },
   note: (state, event) => noting(state, event.note),
 }
 
@@ -223,7 +234,17 @@ function stopped(state: Recording, event: Event<'stop'>): DockState {
     return rest
   }
   if (event.spoke && event.collect)
-    return typed ? { phase: 'sending', voice: true, typed } : noting(before, 'collecting')
+    return typed
+      ? {
+          phase: 'sending',
+          voice: true,
+          typed,
+          ...(before.phase === 'error' ? {} : keyed(before.key)),
+          ...(before.phase === 'done' || (before.phase !== 'error' && before.replied)
+            ? { replied: true }
+            : {}),
+        }
+      : noting(before, 'collecting')
   if (event.spoke) return { phase: 'sending', voice: true }
   if (event.paused !== undefined && following(before, event.paused))
     return noting(resumed(before), 'kept going')

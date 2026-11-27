@@ -13,6 +13,7 @@ import {
 } from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
+  stops: 0,
   turns: [] as Record<string, unknown>[],
   record: undefined as Promise<void> | undefined,
 }))
@@ -23,6 +24,7 @@ vi.mock('@/sdk/solid', async () => {
     writingAs: <T,>(_who: unknown, write: () => T) => write(),
     api: {
       action: (ref: { name: string }, args: Record<string, unknown>) => {
+        if (ref.name === 'stop') harness.stops++
         if (ref.name === 'status') return Promise.resolve({ route: 'text' })
         if (ref.name === 'record')
           return Promise.resolve(harness.record).then(() => ({ audio: 'rec-1', session: 40 }))
@@ -98,6 +100,7 @@ const speak = () => {
 beforeEach(async () => {
   await serverEndedSession(composeIn)
   harness.turns.length = 0
+  harness.stops = 0
   harness.record = undefined
   composeIn(parseConversationId(40))
 })
@@ -141,6 +144,7 @@ it('Enter during a recording while collecting sends the collected clips, the new
     session,
   )
   await sent
+  expect(harness.stops).toBe(0)
   expect(harness.turns).toEqual([
     expect.objectContaining({
       text: 'first second\n\nlook at this',

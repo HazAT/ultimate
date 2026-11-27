@@ -135,6 +135,21 @@ it('after a finished reply, a collected clip or a too-short take still says what
   expect(statusOf(short)).toBe('Too short: hold while you talk')
 })
 
+it('a collected clip sent with Enter keeps following the reply until it is sent, and after a failed upload', () => {
+  const typed = { text: 'and this', images: [] }
+  const uploading = run(
+    thinking,
+    { type: 'press', busy: true },
+    { type: 'open' },
+    { type: 'enter', typed },
+    { ...spoke, collect: true },
+  )
+  expect(uploading).toMatchObject({ phase: 'sending', key: 'a', typed })
+  expect(run(uploading, { type: 'playing', key: 'a' })).toBe(uploading)
+  const failed = run(uploading, { type: 'abandon' }, { type: 'playing', key: 'a' })
+  expect(failed).toEqual({ phase: 'speaking', key: 'a' })
+})
+
 it('a failed send shows its error until the next press', () => {
   const failed = run(
     { phase: 'idle' },
