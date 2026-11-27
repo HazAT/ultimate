@@ -15,6 +15,7 @@ import { RUN_TASK } from './types.ts'
 import { settledSubmission, submitAndSleep } from '../../lib/settled.ts'
 import type { Automations as Ledger } from './server.ts'
 import { Escalated, Fired } from './refs.ts'
+import { RunEntry } from './entries.ts'
 import { Hold } from './api.ts'
 import { RunLabel } from './types.ts'
 const MAX_FIRES_PER_HOUR = 6
@@ -109,6 +110,7 @@ export function scheduler(
               content:
                 task.input.automation.prompt! +
                 (task.input.text ? `\n\nFired: ${task.input.text}` : ''),
+              entry: { kind: RunEntry.kind },
               requestId: `automation-run:${task.id}`,
             },
             { phase: 'settled', conversationId },

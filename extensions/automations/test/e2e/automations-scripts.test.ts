@@ -9,6 +9,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { InboxDoc, LiveDoc } from '@earendil-works/pi-durable'
 import { Messages } from '../../../messages/api.ts'
 import { launchHandshake, Automations } from '../../server.ts'
+import { RunEntry } from '../../entries.ts'
 import { Done, Exited } from '../../refs.ts'
 import type { Automation, AutomationListItem } from '../../types.ts'
 import { requestChapter } from '../../../../lib/chapters.ts'
@@ -125,7 +126,7 @@ it('starts a prompt run from script FIRE with its payload', async () => {
   const entries = (await child.context(context)).entries.filter(
     (e) => e.conversationId === child.id,
   )
-  const first = entries.find((e) => e.kind === 'pi.user')!.model![0]
+  const first = entries.find((e) => e.kind === RunEntry.kind)!.model![0]
   expect(first.content).toContain('Summarize')
   expect(first.content).toContain('Fired: hello')
   expect((await app.harness.snapshot(Metadata, child.id, context))?.label).toBe('automation')

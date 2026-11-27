@@ -6,3 +6,5 @@ export const FailureEntry = defineEntry<Failure>('watchdog.failure')
 export const StandingFailureEntry = defineEntry<Failure>('watchdog.standing-failure')
 
 export const IdleEntry = defineEntry<{ text: string }>('watchdog.idle')
+
+export const RetryEntry = defineEntry('watchdog.retry')
