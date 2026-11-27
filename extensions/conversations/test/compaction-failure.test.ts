@@ -7,7 +7,7 @@ import type { JsonValue } from '@earendil-works/chord/json'
 import { expect, it } from 'vitest'
 import { compactionEvents } from '../compactions.ts'
 import { openers, until } from '../../../test/helpers.ts'
-import { parseConversationId } from '../../../lib/ids.ts'
+import { parseConversationId } from '../../../lib/ids.shared.ts'
 
 async function watched(storage = new MemoryStorage()) {
   const models = createModels()

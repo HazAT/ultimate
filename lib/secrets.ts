@@ -3,7 +3,7 @@ import { defaultProviderAuthContext } from '@earendil-works/pi-ai'
 import type { AuthContext } from '@earendil-works/pi-ai'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
-import { isMissing, meansNone } from './errors.ts'
+import { isMissing, meansNone } from './errors.shared.ts'
 
 export type Store = { secrets: Record<string, { value: string; updatedAt: string }> }
 export function validateName(name: unknown): asserts name is string {

@@ -37,7 +37,7 @@ import {
 import type { SolidComposerProps, ToolCallView } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { ToolCall } from '@earendil-works/pi-ai'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { ExternalSpeaker, SpeakerBadge } from '../messages/ui.solid.tsx'
 import { PickerRows } from '../models/ui.solid.tsx'
 import { AntigravityMark } from './mark.solid.tsx'

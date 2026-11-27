@@ -14,7 +14,7 @@ import {
   useUiState,
   writingAs,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import {
   ConversationEpic,
   ConversationTask,

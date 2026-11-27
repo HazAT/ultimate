@@ -17,7 +17,7 @@ import {
 import { OverviewDoc } from '../conversations/refs.ts'
 import { useConcluded } from '../conversations/ui.solid.tsx'
 import { WorkspacesDoc } from '../workspaces/refs.ts'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { openMessages } from './data.web.ts'
 import { WaitTimers } from './points.web.ts'
 import { MessagesDoc, StartedDoc } from './refs.ts'

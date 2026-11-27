@@ -73,7 +73,7 @@ export default defineConfig({
       },
       {
         files: ['**/*'],
-        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/errors.ts'],
+        excludeFiles: ['test/**', 'extensions/*/test/**', 'lib/errors.shared.ts'],
         rules: { 'ultimate/no-silent-catch': 'error' },
       },
       {
@@ -86,8 +86,9 @@ export default defineConfig({
         excludeFiles: [
           'test/**',
           'extensions/*/test/**',
-          'lib/errors.ts',
+          'lib/errors.shared.ts',
           'extensions/**/*.web.ts',
+          'lib/**/*.web.ts',
         ],
         rules: { 'ultimate/no-unowned-work': 'error' },
       },
@@ -102,7 +103,11 @@ export default defineConfig({
           'shared/**',
           'web/**',
         ],
-        excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**', 'lib/timers.ts'],
+        excludeFiles: [
+          'extensions/*/test/**',
+          '.ultimate/extensions/*/test/**',
+          'lib/timers.shared.ts',
+        ],
         rules: { 'ultimate/no-raw-timer': 'error' },
       },
       {
@@ -165,6 +170,12 @@ export default defineConfig({
                   allowTypeImports: true,
                   message:
                     'lib/ holds pure helpers; core runtime behaviour comes from host capabilities.',
+                },
+                {
+                  group: ['**/*.web.ts', '**/*.solid.tsx'],
+                  allowTypeImports: true,
+                  message:
+                    'Server code cannot run browser modules; move what both need into a *.shared.ts file.',
                 },
               ],
             },
@@ -240,11 +251,13 @@ export default defineConfig({
       {
         files: [
           'web/src/**',
+          'lib/**/*.{web,shared}.ts',
           'extensions/**/*.{tsx,web.ts,shared.ts}',
           '.ultimate/extensions/**/*.{tsx,web.ts,shared.ts}',
         ],
         excludeFiles: ['extensions/*/test/**', '.ultimate/extensions/*/test/**'],
         rules: {
+          'ultimate/browser-file-names': 'error',
           // In the page `void` marks a call not awaited on purpose: client.ts turns an unhandled action failure into a
           // notice, and nothing can take the process down.
           'typescript/no-floating-promises': ['error', { ignoreVoid: true }],
@@ -280,6 +293,55 @@ export default defineConfig({
                 },
                 {
                   group: ['**/bin/**', '**/*.web.ts', '**/*.solid.tsx'],
+                  allowTypeImports: true,
+                  message:
+                    'The server runs a *.shared.ts file too, so it imports no browser module.',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        // Replaces the browser restriction above for lib/, so it repeats it and adds what lib/ never imports.
+        files: ['lib/**/*.web.ts'],
+        rules: {
+          'no-restricted-imports': [
+            'error',
+            {
+              patterns: [
+                {
+                  group: ['node:*', 'node:*/**', '**/server/**'],
+                  message: 'Browser code cannot import Node or server modules.',
+                },
+                {
+                  group: ['**/extensions/**', '**/web/**', '**/bin/**'],
+                  message:
+                    'lib/ holds pure helpers that extensions share; it imports none of them.',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        files: ['lib/**/*.shared.ts'],
+        rules: {
+          'no-restricted-imports': [
+            'error',
+            {
+              patterns: [
+                {
+                  group: ['node:*', 'node:*/**', '**/server/**'],
+                  message: 'Browser code cannot import Node or server modules.',
+                },
+                {
+                  group: ['**/extensions/**', '**/web/**', '**/bin/**'],
+                  message:
+                    'lib/ holds pure helpers that extensions share; it imports none of them.',
+                },
+                {
+                  group: ['**/*.web.ts', '**/*.solid.tsx'],
                   allowTypeImports: true,
                   message:
                     'The server runs a *.shared.ts file too, so it imports no browser module.',

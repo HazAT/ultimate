@@ -12,7 +12,7 @@ import {
   useAction,
   useConversationSummary,
 } from '@/sdk/solid'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { MessageAnswers, MessageExtras } from '../messages/ui.solid.tsx'
 import type { Message } from '../messages/refs.ts'
 import { LandingExtras } from '../workspaces/ui.solid.tsx'

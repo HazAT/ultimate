@@ -1,4 +1,4 @@
-import { plural } from '../../lib/plural.ts'
+import { plural } from '../../lib/plural.web.ts'
 
 export type Json = null | boolean | number | string | Json[] | JsonObject
 export type JsonObject = { [key: string]: Json }

@@ -39,7 +39,7 @@ import {
   writerNow,
   writingAs,
 } from '@/sdk/solid'
-import { waitedOn } from '../../lib/waits.ts'
+import { waitedOn } from '../../lib/waits.web.ts'
 import { ConcludeAction, ResumeAction } from '../conversations/refs.ts'
 import type { KeptWork } from '../conversations/types.ts'
 import {

@@ -1,4 +1,4 @@
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import type {
   ConversationId,
   ConversationRecord,

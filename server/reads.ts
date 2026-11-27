@@ -1,7 +1,7 @@
 import type { JsonValue } from '@earendil-works/chord/json'
-import { inProcess } from '../lib/errors.ts'
-import { retryAfter } from '../lib/timers.ts'
-import type { Cancel } from '../lib/timers.ts'
+import { inProcess } from '../lib/errors.shared.ts'
+import { retryAfter } from '../lib/timers.shared.ts'
+import type { Cancel } from '../lib/timers.shared.ts'
 import type { ReadEvent, ReadPayload, ReadSpec } from '../shared/protocol.ts'
 
 type Send = (event: ReadEvent) => void

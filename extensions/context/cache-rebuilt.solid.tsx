@@ -2,8 +2,8 @@ import { DatabaseZap } from '@lucide/solid'
 import { Show } from 'solid-js'
 import { formatDuration, formatTokens, useTranscript } from '@/sdk/solid'
 import type { SolidEntryProps } from '@/sdk/solid'
-import { cacheBusts } from '../../lib/context-usage.ts'
-import type { CacheBust } from '../../lib/context-usage.ts'
+import { cacheBusts } from '../../lib/context-usage.shared.ts'
+import type { CacheBust } from '../../lib/context-usage.shared.ts'
 
 const causes: Record<CacheBust['cause'], (bust: CacheBust) => string> = {
   system: () => 'after the system prompt change',

@@ -1,4 +1,4 @@
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import type {
   Agent,
   ConversationId,
@@ -59,7 +59,7 @@ import type { AgentDefinition, DefinitionFields } from '../../lib/agents.ts'
 import { createChild, reconfigure, started } from './children.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { exec } from '../../lib/exec.ts'
-import { meansNone } from '../../lib/errors.ts'
+import { meansNone } from '../../lib/errors.shared.ts'
 import { shortTitle } from '../../lib/title.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
@@ -68,7 +68,7 @@ import type { AgentMarkStyle } from '../conversations/refs.ts'
 import { Pin } from '../models/api.ts'
 import { ChildFailures, Profile, Runs, Standing, Subagents, SubagentsApi } from './api.ts'
 import type { ChildFailuresService, SubagentsService } from './api.ts'
-import { definitionRuns, refName, refOf } from '../../lib/families.ts'
+import { definitionRuns, refName, refOf } from '../../lib/families.shared.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
 import {
   DefinitionAction,

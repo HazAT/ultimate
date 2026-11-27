@@ -8,7 +8,7 @@ import type {
   Run,
   Schedule,
   TriggerEvent,
-} from './types.ts'
+} from './types.shared.ts'
 export type {
   Automation,
   AutomationListItem,
@@ -16,7 +16,7 @@ export type {
   Run,
   Schedule,
   TriggerEvent,
-} from './types.ts'
+} from './types.shared.ts'
 export type { AutomationInput } from '../entries/refs.ts'
 export type Described = { schedule: Schedule; description: string; next: number[] }
 type Id = { id: string }

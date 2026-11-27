@@ -1,4 +1,4 @@
-import { parseConversationId, parseTaskId } from '../../lib/ids.ts'
+import { parseConversationId, parseTaskId } from '../../lib/ids.shared.ts'
 import type { TaskId, Tx, ConversationId } from '@earendil-works/pi-durable'
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -24,7 +24,7 @@ import { EVENT_FEED } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { actingAs } from '../../lib/acting-as.ts'
-import { errnoCode, isMissing } from '../../lib/errors.ts'
+import { errnoCode, isMissing } from '../../lib/errors.shared.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { validateName } from '../../lib/secrets.ts'
 import { groupAlive } from '../../lib/process-group.ts'
@@ -64,11 +64,11 @@ import type {
   Run,
   Manifest,
   Subscriber,
-} from './types.ts'
-import { isSlug, STANDING } from './types.ts'
+} from './types.shared.ts'
+import { isSlug, STANDING } from './types.shared.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
-export type { Automation, Run } from './types.ts'
+export type { Automation, Run } from './types.shared.ts'
 export { launchHandshake } from './supervisor.ts'
 type Ledger = { next: number; automations: Record<string, Automation> }
 export const Automations = defineDoc<Ledger>({

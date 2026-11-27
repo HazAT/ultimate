@@ -1,5 +1,5 @@
-import { inProcess } from '../../lib/errors.ts'
-import { within } from '../../lib/timers.ts'
+import { inProcess } from '../../lib/errors.shared.ts'
+import { within } from '../../lib/timers.shared.ts'
 import type { OpenAiVoice } from './refs.ts'
 
 const MODEL = 'gpt-realtime-2.1-mini'

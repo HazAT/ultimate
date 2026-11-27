@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { cell } from '../../lib/cell.ts'
+import { cell } from '../../lib/cell.web.ts'
 import type { ConfigureRequest, ModelsResponse } from '../../shared/protocol.ts'
 
 type OpenContext = { open: (id: string) => void; conversationId?: ConversationId }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, readlink, realpath, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { errnoCode, isMissing, settled } from './errors.ts'
+import { errnoCode, isMissing, settled } from './errors.shared.ts'
 
 export async function readJson<T>(path: string, fallback: T): Promise<T> {
   try {

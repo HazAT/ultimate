@@ -15,7 +15,7 @@ import {
   SpawnSummarized,
   ReplySummarized,
   SummaryDiscarded,
-} from './entries.ts'
+} from './entries.shared.ts'
 import { Unsummarized } from './ui.solid.tsx'
 
 function summary(entry: EntryRecord) {

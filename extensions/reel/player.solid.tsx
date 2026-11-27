@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog.solid.tsx'
 import { cn, useUiState } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
 import { imageOf, thumbOf } from './frames.solid.tsx'
 import type { Frame } from './refs.ts'
 

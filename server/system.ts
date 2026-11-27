@@ -19,10 +19,10 @@ import type { Watch } from './extensions.ts'
 import type { PreparedHost } from './harness.ts'
 import { watchRoots } from './watch-roots.ts'
 import { exec as run } from '../lib/exec.ts'
-import { deadline } from '../lib/timers.ts'
+import { deadline } from '../lib/timers.shared.ts'
 import { corePath } from '../lib/layers.ts'
-import { rebuiltOnOpen } from '../lib/errors.ts'
-import type { Cancel } from '../lib/timers.ts'
+import { rebuiltOnOpen } from '../lib/errors.shared.ts'
+import type { Cancel } from '../lib/timers.shared.ts'
 
 export function skillInfo({
   skills,

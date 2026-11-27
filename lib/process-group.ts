@@ -5,7 +5,7 @@ import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
-import { pace } from './timers.ts'
+import { pace } from './timers.shared.ts'
 import { enterWork } from './cgroup.ts'
 import {
   inProcess,
@@ -14,7 +14,7 @@ import {
   isMissing,
   isNoProcess,
   isPermissionDenied,
-} from './errors.ts'
+} from './errors.shared.ts'
 
 export const handshake = 'read -r _ || exit 1; exec "$0" "$@"'
 

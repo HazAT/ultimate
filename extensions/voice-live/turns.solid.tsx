@@ -28,7 +28,7 @@ import {
   useSpeaking,
   useTurns,
 } from './dock.solid.tsx'
-import { VoiceTurnEntry } from './entries.ts'
+import { VoiceTurnEntry } from './entries.shared.ts'
 import { UiAnswerAction, UiClaimAction, VoiceForkDoc, VoiceSessionDoc, VoiceUiDoc } from './refs.ts'
 import type { VoiceFork, VoiceTurn, VoiceUiCall } from './refs.ts'
 import { splitReply, useSpokenText } from '../read-aloud/ui.solid.tsx'

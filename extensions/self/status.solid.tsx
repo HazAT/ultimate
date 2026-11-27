@@ -14,8 +14,8 @@ import { Popover, PopoverContent } from '@/components/ui/popover.solid.tsx'
 import { StatusPopoverTrigger } from '@/components/ui/status-trigger.solid.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.solid.tsx'
 import { bundle, cn, formatTime, switched, useNow, useRestart, useSystem } from '@/sdk/solid'
-import { deadline } from '../../lib/timers.ts'
-import type { Cancel } from '../../lib/timers.ts'
+import { deadline } from '../../lib/timers.shared.ts'
+import type { Cancel } from '../../lib/timers.shared.ts'
 
 const short = (id: string) => id.slice(0, 7)
 const switching = (id?: string) => Boolean(id && bundle && id !== bundle)

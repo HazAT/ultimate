@@ -650,7 +650,7 @@ export default {
       meta: { schema: [] },
       create(context: Context) {
         const message =
-          'A timer guesses when something has happened, so it is slow when it waits too long and wrong when it waits too little: react to the event, document, observer or AbortSignal that says so. When time itself is the reason, use the helper from lib/timers.ts that names it (debounce, batch, deadline, within, retryAfter, every, pace, nextTurn).'
+          'A timer guesses when something has happened, so it is slow when it waits too long and wrong when it waits too little: react to the event, document, observer or AbortSignal that says so. When time itself is the reason, use the helper from lib/timers.shared.ts that names it (debounce, batch, deadline, within, retryAfter, every, pace, nextTurn).'
         const imported = (node: Node) => {
           if (/^(node:)?timers(\/promises)?$/.test(String(node.source?.value)))
             context.report({ node, message })
@@ -752,7 +752,7 @@ export default {
       meta: { schema: [] },
       create(context: Context) {
         const message =
-          'Work started and not awaited is lost on a crash and never retried: create it as a task in the commit that decides it (defineEffect from lib/effect.ts), or await it. Name the two exceptions from lib/errors.ts: rebuiltOnOpen(why, work) when open derives it again (a projection, a cache, a sweep), inProcess(why, work) when it belongs to this process only (a request, a stream, a child process, shutdown).'
+          'Work started and not awaited is lost on a crash and never retried: create it as a task in the commit that decides it (defineEffect from lib/effect.ts), or await it. Name the two exceptions from lib/errors.shared.ts: rebuiltOnOpen(why, work) when open derives it again (a projection, a cache, a sweep), inProcess(why, work) when it belongs to this process only (a request, a stream, a child process, shutdown).'
         const unowned = (node: Node | undefined): boolean => {
           if (node?.type === 'UnaryExpression' && node.operator === 'void')
             return node.argument?.type === 'CallExpression'
@@ -777,7 +777,7 @@ export default {
           context.report({
             node,
             message:
-              'A swallowed error hides a bug where nobody looks: handle it, or let it go by name from lib/errors.ts (ignoring(isMissing), meansNone, overshadowed, settled; keepLast for a read in the browser).',
+              'A swallowed error hides a bug where nobody looks: handle it, or let it go by name from lib/errors.shared.ts (ignoring(isMissing), meansNone, overshadowed, settled; keepLast for a read in the browser).',
           })
         const empty = (fn: Node | undefined) => {
           if (!fn || !['ArrowFunctionExpression', 'FunctionExpression'].includes(fn.type))
@@ -813,6 +813,36 @@ export default {
             const block = node.body as Node
             if (Array.isArray(block.body) && block.body.length === 0) check(node)
           },
+        }
+      },
+    },
+    'browser-file-names': {
+      meta: { schema: [] },
+      create(context: Context) {
+        const check = (node: ImportNode) => {
+          const source = node.source?.value
+          if (typeof source !== 'string' || !source.startsWith('.') || !source.endsWith('.ts'))
+            return
+          if (node.importKind === 'type' || node.exportKind === 'type') return
+          const target = resolved(context.filename, source)
+          const [directory] = target[0] === '.ultimate' ? target.slice(1) : target
+          const file = target.at(-1) ?? ''
+          if (
+            !['extensions', 'lib'].includes(directory) ||
+            /\.(web|shared)\.ts$/.test(file) ||
+            file === 'refs.ts'
+          )
+            return
+          context.report({
+            node,
+            message: `Lint and the build tell browser code from server code by its file name, so an unsuffixed file the page runs escapes the browser rules. ${target.join('/')} runs in the page: name it *.web.ts when only the browser runs it, *.shared.ts when the server runs it too, or import it with \`import type\`.`,
+          })
+        }
+        return {
+          ImportDeclaration: check,
+          ImportExpression: check,
+          ExportNamedDeclaration: check,
+          ExportAllDeclaration: check,
         }
       },
     },
@@ -934,11 +964,12 @@ export default {
             if (
               target &&
               (['server', 'bin', 'lib', 'web'].includes(target[0]) ||
-                (target[0] === 'extensions' && !extensionFile(target, 'refs.ts', 'types.ts')))
+                (target[0] === 'extensions' &&
+                  !extensionFile(target, 'refs.ts', 'types.ts', 'types.shared.ts')))
             )
               report(
                 node,
-                "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts or types.ts.",
+                "refs.ts is browser-safe: it imports types only from packages, shared/ and extensions' refs.ts, types.ts or types.shared.ts.",
               )
             return
           }

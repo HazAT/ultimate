@@ -18,8 +18,8 @@ import {
 import { talkToUltimate } from '../subagents/ui.solid.tsx'
 import { StartAction } from './refs.ts'
 import { passLabels } from './moon.solid.tsx'
-import { PASSES } from './types.ts'
-import type { PassName } from './types.ts'
+import { PASSES } from './types.shared.ts'
+import type { PassName } from './types.shared.ts'
 
 export const dreamDialog = 'dream.start'
 

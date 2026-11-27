@@ -1,7 +1,7 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { parseConversationId } from '../../../../lib/ids.ts'
+import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { familiesCache } from '../../../models/family-state.web.ts'
 import type { FamiliesView } from '../../../models/refs.ts'

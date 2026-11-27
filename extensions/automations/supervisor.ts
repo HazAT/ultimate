@@ -14,7 +14,7 @@ import { defineTask, InboxDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-d
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { discoverAgents } from '../../lib/agents.ts'
 import { FIRST_CHAPTER } from '../../lib/chapters.ts'
-import { isMissing, settled } from '../../lib/errors.ts'
+import { isMissing, settled } from '../../lib/errors.shared.ts'
 import type { AgentDefinition } from '../../lib/agents.ts'
 import {
   closeOutput,
@@ -39,8 +39,14 @@ import {
   STANDING,
   trimLog,
   WatcherLabel,
-} from './types.ts'
-import type { Manifest, Automation, AutomationListItem, Effect, Subscriber } from './types.ts'
+} from './types.shared.ts'
+import type {
+  Manifest,
+  Automation,
+  AutomationListItem,
+  Effect,
+  Subscriber,
+} from './types.shared.ts'
 
 const owner = {
   ownership: { kind: 'conversation' as const },

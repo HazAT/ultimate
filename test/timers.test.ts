@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { batch, deadline, debounce, every, nextTurn, pace, within } from '../lib/timers.ts'
+import { batch, deadline, debounce, every, nextTurn, pace, within } from '../lib/timers.shared.ts'
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())

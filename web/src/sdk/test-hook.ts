@@ -1,8 +1,8 @@
-import { parseConversationId } from '../../../lib/ids.ts'
+import { parseConversationId } from '../../../lib/ids.shared.ts'
 import type { ConversationId } from '@earendil-works/pi-durable'
 
 import type { EventRecord } from '../../../shared/events.ts'
-import { deadline, within } from '../../../lib/timers.ts'
+import { deadline, within } from '../../../lib/timers.shared.ts'
 import { CORE_EVENTS, EVENT_FEED } from '../../../shared/events.ts'
 import type { Api } from './api.ts'
 import { ROOT } from './api.ts'

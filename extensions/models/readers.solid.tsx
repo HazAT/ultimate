@@ -12,7 +12,7 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { familyColor } from '../../lib/families.ts'
+import { familyColor } from '../../lib/families.shared.ts'
 import { familiesCache, refresh, refreshFor, thinkingOf } from './family-state.web.ts'
 import { FamiliesAction, FamilyDoc, SetFamilyAction } from './refs.ts'
 import type { FamilyView } from './refs.ts'

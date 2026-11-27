@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { useProjectSetup } from './project-setup.ts'
-import { isMissing } from './errors.ts'
+import { isMissing } from './errors.shared.ts'
 
 export function extensionSettingsFiles(projectRoot: string, userHome = homedir()) {
   return [join(userHome, '.ultimate/settings.json'), join(projectRoot, '.ultimate/settings.json')]

@@ -29,11 +29,11 @@ import {
   type SolidEntryProps,
   type SolidToolProps,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { NoteEntry } from '../entries/refs.ts'
 import { Open } from '../workspaces/ui.solid.tsx'
-import { BranchedEntry } from './entries.ts'
+import { BranchedEntry } from './entries.shared.ts'
 import { AbstractEntry, FinishedEntry, LineageResetEntry, RootsDoc } from './refs.ts'
 
 type BranchRow = { entry: typeof BranchedEntry extends Entry<infer D> ? TypedEntry<D> : never }

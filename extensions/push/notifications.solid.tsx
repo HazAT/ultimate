@@ -15,9 +15,9 @@ import {
   useDocOf,
   writingAs,
 } from '@/sdk/solid'
-import { parseConversationId } from '../../lib/ids.ts'
-import { isOpen } from '../../lib/message-state.ts'
-import { every } from '../../lib/timers.ts'
+import { parseConversationId } from '../../lib/ids.shared.ts'
+import { isOpen } from '../../lib/message-state.shared.ts'
+import { every } from '../../lib/timers.shared.ts'
 import { MessagesDoc } from '../messages/refs.ts'
 import {
   ClosedDoc,

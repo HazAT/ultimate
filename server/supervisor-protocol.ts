@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { inProcess } from '../lib/errors.ts'
+import { inProcess } from '../lib/errors.shared.ts'
 import type { BuildInfo } from '../shared/protocol.ts'
 
 export type CoreReport =

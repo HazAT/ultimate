@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createEffect, createRoot } from 'solid-js'
-import { keepLast, meansNone } from '../../lib/errors.ts'
+import { keepLast, meansNone } from '../../lib/errors.shared.ts'
 import {
   api,
   defineWebExtension,

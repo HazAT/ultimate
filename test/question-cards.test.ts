@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { draftFor, questionIndex } from '../lib/question-cards.ts'
-import type { CardQuestion } from '../lib/question-cards.ts'
+import { draftFor, questionIndex } from '../lib/question-cards.shared.ts'
+import type { CardQuestion } from '../lib/question-cards.shared.ts'
 import { checkReply } from '../lib/question-answers.ts'
 
 const choice: CardQuestion = {

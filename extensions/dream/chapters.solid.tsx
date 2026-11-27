@@ -34,7 +34,7 @@ import {
 } from '@/sdk/solid'
 import { ConversationRef } from '../conversations/ui.solid.tsx'
 import { AsleepAction, ChaptersAction, DreamDoc, SwitchAction } from './refs.ts'
-import { busyElsewhere } from './types.ts'
+import { busyElsewhere } from './types.shared.ts'
 
 export const chapterLabel = (number: number, name: string) => `Chapter ${number} · ${name}`
 
