@@ -96,7 +96,7 @@ index 54f3ef34ddf1bf85e3ad9c41bdbd216c081a476f..8a63b529154f0e896edb585fc20d3d43
                  firstKept,
              };
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
-index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b5548d22c427 100644
+index 56f3055ab58e51d429f91c90c9286531f3086106..3adaaa7f195dcbeb27b5f847453e839467c1a5d1 100644
 --- a/dist/harness/generation.js
 +++ b/dist/harness/generation.js
 @@ -6,7 +6,7 @@ import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.j
@@ -104,7 +104,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b554
  import { addTools, agentHooks, sectionExtension } from "./agent.js";
  import { compactionPolicy, createCompaction, estimateContext, selectCut } from "./compaction.js";
 -import { applyBoundary, hasQueuedReset, prepareBoundary, withdrawQueuedInputs } from "./inbox.js";
-+import { applyBoundary, hasQueuedReset, InboxDoc, prepareBoundary, withdrawQueuedInputs } from "./inbox.js";
++import { applyBoundary, hasQueuedReset, InboxDoc, prepareBoundary, refusedInputs, withdrawQueuedInputs } from "./inbox.js";
  import { cutOffCount, cutOffTooOften, endRun, LiveDoc, PROGRESS_COMMIT, salvageable, } from "./live.js";
  import { PartialChanges } from "./partial-changes.js";
  import { planSystemEntries, renderSections, replaySections } from "./prompt.js";
@@ -130,7 +130,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b554
  }
  /**
   * End a failed run, settling its inputs with `settlement`, and do with the inputs queued behind it what
-@@ -737,14 +739,29 @@ async function answer(runtime, message, context) {
+@@ -737,14 +739,33 @@ async function answer(runtime, message, context) {
          return;
      }
      const afterRun = await asksAfterRun(runtime, context);
@@ -154,14 +154,18 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b554
 +}
 +/** The boundary `concludeAnswer()` applies: none when an `afterRun` hold keeps the queued items queued. */
 +async function answerBoundary(tx, runtime, live, continuation, afterRun) {
++    if (!afterRun || live.run?.taskId !== runtime.taskId)
++        return "final";
++    if (continuation === undefined)
++        return "none";
 +    const inbox = await tx.doc(InboxDoc, runtime.conversationId);
-+    const holds = afterRun && live.run?.taskId === runtime.taskId && !takesContinuation(continuation, { inbox });
-+    return holds ? "none" : "final";
++    const refusals = await refusedInputs(tx, runtime.conversationId, inbox.items, true, runtime.settings, runtime.now());
++    return takesContinuation(continuation, { inbox, refusals }) ? "final" : "none";
 +}
  /**
   * Settle an answer that stands, or take its continuation: shared by `answer()` and the `yield` phase. A continuation is
   * taken only when the inbox holds no user item and no reset (`takesContinuation()`).
-@@ -881,8 +898,9 @@ async function createHookTasks(tx, runtime, prepared) {
+@@ -881,8 +902,9 @@ async function createHookTasks(tx, runtime, prepared) {
   */
  async function endAnsweredRun(runtime, answer, context) {
      const conversationId = runtime.conversationId;
@@ -172,16 +176,21 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b554
          const live = await tx.doc(LiveDoc, conversationId);
          const { users, first } = await applyBoundary(tx, boundary, "final", runtime.now());
          endRun(tx, live, runtime.taskId, { status: "done", answer });
-@@ -911,7 +929,7 @@ async function endAnsweredCutOff(runtime, task, answer, context) {
+@@ -911,9 +933,10 @@ async function endAnsweredCutOff(runtime, task, answer, context) {
   * otherwise run first. A continuation starts the turn count over.
   */
  function takesContinuation(continuation, boundary) {
 -    const items = boundary.inbox.items;
-+    const items = boundary.inbox.items.filter((item) => !boundary.refusals?.has(item.id));
-     return (continuation !== undefined &&
-         !items.some((item) => item.mode === "steer" || item.mode === "followUp") &&
+-    return (continuation !== undefined &&
+-        !items.some((item) => item.mode === "steer" || item.mode === "followUp") &&
++    if (continuation === undefined)
++        return false;
++    const items = boundary.inbox.items.filter((item) => !boundary.refusals.has(item.id));
++    return (!items.some((item) => item.mode === "steer" || item.mode === "followUp") &&
          !hasQueuedReset(items));
-@@ -1010,11 +1028,17 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+ }
+ /**
+@@ -1010,11 +1033,17 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
      // Read from the phase's agent, as every agent field; a `configure()` during the round applies at its end.
      const maxTurns = (await runtime.agent(context)).maxTurns;
      const afterRun = terminate && (await asksAfterRun(runtime, context));
@@ -201,7 +210,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b554
          const now = runtime.now();
          // The run's last entry so far: the newest result, or the assistant when no result has an entry.
          let last = results.reduce((newest, id) => (id > newest ? id : newest), assistant);
-@@ -1025,7 +1049,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+@@ -1025,7 +1054,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
              boundary.head = entry.id;
              last = entry.id;
          }
@@ -210,7 +219,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..20c3107b772fe0ffe3ef61f1a9b4b554
          const held = afterRun ? holdRun(tx, live, runtime, { reason: "terminate", answer: assistant, last }) : undefined;
          if (held !== undefined)
              return held;
-@@ -1038,8 +1062,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+@@ -1038,8 +1067,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
          else if (maxTurns !== undefined && turns >= maxTurns) {
              // The turn limit ends the run like a failure: `afterFailedRun` decides the queued items, and a continue resumes
              // it on the round's results. The table was read for the boundary already, before any write.
@@ -323,7 +332,7 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..0d89233c5b29c61e9a47d8e71e01a8e2
  /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
  export declare function pickInputEntry({ kind, data }: InputEntry): JsonRepresentation<InputEntry>;
 diff --git a/dist/harness/inbox.js b/dist/harness/inbox.js
-index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..23cdd6e0ffb7d3ff62f3892e606854c6c9a66f12 100644
+index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..e29b1b21037262b68beef9d84c8646a05e8cef25 100644
 --- a/dist/harness/inbox.js
 +++ b/dist/harness/inbox.js
 @@ -1,6 +1,7 @@
@@ -334,7 +343,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..23cdd6e0ffb7d3ff62f3892e606854c6
  export const InboxDoc = defineDoc({
      kind: "pi.inbox",
      version: 1,
-@@ -14,10 +15,43 @@ export const InboxDoc = defineDoc({
+@@ -14,10 +15,28 @@ export const InboxDoc = defineDoc({
   * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
   * boundary at the start of their commit.
   */
@@ -343,24 +352,9 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..23cdd6e0ffb7d3ff62f3892e606854c6
      const head = (await tx.latestHeadMarker(conversationId))?.head;
      const inbox = await tx.doc(InboxDoc, conversationId);
 +    const final = at === "final" || (at === "postTools" && hasQueuedReset(inbox.items));
-+    const refusals = new Map();
-+    const selection = () => {
-+        const remaining = inbox.items.filter((item) => !refusals.has(item.id));
-+        return selectUsers(remaining, final, modes).map((index) => remaining[index]);
-+    };
-+    for (let checked = new Set(); at !== "none";) {
-+        const selected = selection();
-+        const unchecked = selected.filter((item) => !checked.has(item.id));
-+        if (unchecked.length === 0)
-+            break;
-+        for (const item of unchecked) {
-+            checked.add(item.id);
-+            const reason = tx.refusedPlacement(item.id) ?? (await refusal(tx, conversationId, inputDraft(item.content, item.entry, now)));
-+            if (reason !== undefined)
-+                refusals.set(item.id, reason);
-+        }
-+    }
-+    const first = at === "none" ? undefined : selection()[0];
++    const refusals = at === "none" ? new Map() : await refusedInputs(tx, conversationId, inbox.items, final, modes, now);
++    const remaining = inbox.items.filter((item) => !refusals.has(item.id));
++    const first = at === "none" ? undefined : remaining[selectUsers(remaining, final, modes)[0]];
 +    const input = first === undefined ? incoming : inputDraft(first.content, first.entry, now);
 +    let entries = [];
 +    if (input !== undefined && final) {
@@ -379,10 +373,30 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..23cdd6e0ffb7d3ff62f3892e606854c6
          conversationId,
          inbox,
          steeringMode: modes.steeringMode,
-@@ -25,25 +59,44 @@ export async function prepareBoundary(tx, conversationId, modes) {
+@@ -25,25 +44,64 @@ export async function prepareBoundary(tx, conversationId, modes) {
          head,
      };
  }
++/**
++ * The queued inputs a boundary would place that a `refuseInput` hook refuses, by submission, with the reason. Checks
++ * every input the selection would place and selects again among the rest until nothing new is selected; runs no
++ * `beforeInput`.
++ */
++export async function refusedInputs(tx, conversationId, items, final, modes, now) {
++    const refusals = new Map();
++    for (const checked = new Set();;) {
++        const remaining = items.filter((item) => !refusals.has(item.id));
++        const unchecked = selectUsers(remaining, final, modes).map((index) => remaining[index]).filter((item) => !checked.has(item.id));
++        if (unchecked.length === 0)
++            return refusals;
++        for (const item of unchecked) {
++            checked.add(item.id);
++            const reason = tx.refusedPlacement(item.id) ?? (await refusal(tx, conversationId, inputDraft(item.content, item.entry, now)));
++            if (reason !== undefined)
++                refusals.set(item.id, reason);
++        }
++    }
++}
 +async function refusal(tx, conversationId, input) {
 +    try {
 +        return await tx.refuseInput(conversationId, input);
@@ -432,7 +446,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..23cdd6e0ffb7d3ff62f3892e606854c6
      // `appendEntry()` copies the drafts' values; the items are removed only afterwards.
      let first;
      for (const index of writes) {
-@@ -61,6 +114,9 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -61,6 +119,9 @@ export async function applyBoundary(tx, boundary, at, now) {
      }
      const placed = [];
      for (const index of users) {
@@ -442,7 +456,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..23cdd6e0ffb7d3ff62f3892e606854c6
          const item = items[index];
          const entry = await appendInput(tx, conversationId, item.content, item.entry, now);
          tx.placeSubmission(item.id, entry.id);
-@@ -74,10 +130,11 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -74,10 +135,11 @@ export async function applyBoundary(tx, boundary, at, now) {
  }
  /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
  export function appendInput(tx, conversationId, content, entry, now) {
