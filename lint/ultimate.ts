@@ -357,7 +357,7 @@ export default {
           )
             context.report({
               node,
-              message: `ui-sdk is in beta and changes weekly, so its components are wrapped once in our UI kit, which also carries the theme. Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.`,
+              message: `ui-sdk is in beta and changes weekly, so its components are wrapped once in our UI kit, which also carries the theme. Import the component from its file in @/components/ui/, such as @/components/ui/switch.solid.tsx; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.`,
             })
         }
         return {
@@ -379,7 +379,7 @@ export default {
               context.report({
                 node,
                 message:
-                  "A native form submit carries no source, so a change an agent submits is recorded as the person's. Use the kit's Form from @/components/ui and start the change in its type=\"submit\" Button's onClick, which Enter in a field presses too.",
+                  "A native form submit carries no source, so a change an agent submits is recorded as the person's. Use the kit's Form from @/components/ui/form.solid.tsx and start the change in its type=\"submit\" Button's onClick, which Enter in a field presses too.",
               })
             if (
               node.name?.type === 'JSXIdentifier' &&
@@ -390,7 +390,7 @@ export default {
               context.report({
                 node,
                 message:
-                  "The agent bridge sees only kit parts, so an agent can neither find nor press a bare <button>, and its click is recorded without a source. Use the kit's Button from @/components/ui (size={null} variant={null} for an unstyled one) with a name unique on the page.",
+                  "The agent bridge sees only kit parts, so an agent can neither find nor press a bare <button>, and its click is recorded without a source. Use the kit's Button from @/components/ui/button.solid.tsx (size={null} variant={null} for an unstyled one) with a name unique on the page.",
               })
           },
           JSXAttribute(node: Node & { name?: Node }) {
@@ -401,7 +401,7 @@ export default {
             if (component)
               context.report({
                 node,
-                message: `A hand-made role="${role}" lacks the keyboard, focus and ARIA behavior people and agents rely on, and the agent bridge cannot see it. Use the kit's ${component} from @/components/ui.`,
+                message: `A hand-made role="${role}" lacks the keyboard, focus and ARIA behavior people and agents rely on, and the agent bridge cannot see it. Use the kit's ${component} from its file in @/components/ui/.`,
               })
           },
         }
@@ -457,7 +457,7 @@ export default {
       create(context: Context) {
         const why =
           'One stream to Ultimate keeps every page live and reconnecting, and runs each read once for all of them'
-        const raw = `${why}: read state with useDoc/useDocOf and useAction, and call the server with api.action from @/sdk (docs/extensions/sdk.md), not fetch or a socket of your own to /api. Anything else, such as an external API or your surface's own backend, is yours to call.`
+        const raw = `${why}: read state with useDoc/useDocOf and useAction, and call the server with api.action from @/sdk/solid (docs/extensions/sdk.md), not fetch or a socket of your own to /api. Anything else, such as an external API or your surface's own backend, is yours to call.`
         const polled = `${why}: a timer that calls api.action or refetch polls once per page. Give useAction an \`every\` (the server runs the read and pushes changes) or an \`on\` that changes with what it reads (docs/extensions/sdk.md).`
         const toApi = (url: Node | undefined) => {
           const text =

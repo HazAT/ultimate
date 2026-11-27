@@ -64,8 +64,8 @@ exactly once and that feeds the result the owner reports, like the lander waking
 call, idempotent by request id; when it calls up the layering, it goes through an
 [extension point](contracts.md#services-in-apits).
 `onCommit(host.harness(), …)` (`lib/commits.ts`, over Pi Durable's `Session.observeCommits`) remains for watching Pi's
-own records (entries, tasks, submissions, conversation records, usage and live documents), which are no domain events;
-each such watcher says so in a comment above it. Do not invent an event only to replace one.
+own records (entries, tasks, submissions, conversation records, usage and live documents), which are no domain events.
+Do not invent an event only to replace one.
 
 ## Browser events
 

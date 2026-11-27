@@ -1,5 +1,3 @@
-# Inbox
-
 Everything that waits on the user, oldest first, answered in place: the `inbox` surface, first tab after Agent. Its
 items are the open questions in the live Messages log merged with the items other extensions provide (`items.ts`);
 a question leaves the moment it is answered or dismissed, wherever

@@ -17,7 +17,7 @@ Server code never starts work and drops it (`ultimate/no-unowned-work`): what op
 
 Each folder keeps its own conversations in that central projects directory. Homes describe themselves with `project.json` and debounced `conversations.json`; `host.projects()` (or `ultimate.projects()` in codemode) lists these manifests and live supervisor URLs without opening another project's SQLite.
 
-Durable events (`host.emit`, see [Extension mechanics](extensions.md#durable-events)) are entries of one ownerless
+Durable events (`host.emit`, see [Durable events](extensions/events.md#durable-events)) are entries of one ownerless
 conversation, titled Events, that never runs and is left out of conversation lists (open it by id); the root's `ultimate.events` document records its id and each reactor's
 cursor, and `ultimate.event-feed` the latest 100 for the browser. An event commits with the change it describes, and a
 reactor's cursor with its handler's writes, so those writes happen exactly once; effects outside the transaction are at

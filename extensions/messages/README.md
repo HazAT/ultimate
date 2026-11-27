@@ -1,5 +1,3 @@
-# Messages
-
 Durable messages between conversations, standing agents and the user. Built in and on by default.
 
 ## Messaging

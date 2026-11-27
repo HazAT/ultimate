@@ -416,7 +416,7 @@ it('sends a Solid form to the kit Form, whose submit Button keeps who submitted 
   </form>
 )`
   expect(lint('ui-kit-roles', 'extensions/todos/panel.solid.tsx', source)).toEqual([
-    `Use the kit's Form from @/components/ui and start the change in its type="submit" Button's onClick, which Enter in a field presses too.`,
+    `Use the kit's Form from @/components/ui/form.solid.tsx and start the change in its type="submit" Button's onClick, which Enter in a field presses too.`,
   ])
   expect(lint('ui-kit-roles', 'web/src/components/ui/form.solid.tsx', source)).toEqual([])
 })
@@ -475,7 +475,7 @@ import { createSignal } from 'solid-js'
 import { useDoc } from '@/sdk/solid'
 import { Button } from '@/components/ui/button.solid.tsx'`
   const message =
-    'Import the component from @/components/ui; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.'
+    'Import the component from its file in @/components/ui/, such as @/components/ui/switch.solid.tsx; for a behavior the kit lacks, compose it with definePrimitive from @ui-sdk/core.'
   for (const file of [
     'extensions/echo/panel.solid.tsx',
     'web/src/app/panel.solid.tsx',
@@ -512,10 +512,10 @@ it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {
   </div>
 )`
   expect(lint('ui-kit-roles', 'extensions/echo/list.solid.tsx', source)).toEqual([
-    "Use the kit's Listbox or Select from @/components/ui.",
-    "Use the kit's Switch from @/components/ui.",
-    "Use the kit's Slider from @/components/ui.",
-    "Use the kit's Tabs from @/components/ui.",
+    "Use the kit's Listbox or Select from its file in @/components/ui/.",
+    "Use the kit's Switch from its file in @/components/ui/.",
+    "Use the kit's Slider from its file in @/components/ui/.",
+    "Use the kit's Tabs from its file in @/components/ui/.",
   ])
   expect(lint('ui-kit-roles', 'web/src/components/ui/listbox.solid.tsx', source)).toEqual([])
 })

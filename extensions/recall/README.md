@@ -1,5 +1,3 @@
-# Recall
-
 Recall brings a project memory back to @ultimate when a message calls for it, deep in a long context where the memory index from its start has faded. It needs `classify` (and so `TYPESAFE_API_KEY`); without it recall does nothing. The message text and every memory's one-line summary are sent to TypeSafe (see [classify](../classify/README.md)).
 
 ## When it runs

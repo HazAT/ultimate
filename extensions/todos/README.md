@@ -1,5 +1,3 @@
-# To-dos
-
 The project's short list of open loops, each owned by the user or @ultimate. No priorities, due dates, tags or
 nesting: for planned work with tasks and reviews, use `plan`.
 

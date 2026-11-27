@@ -17,8 +17,8 @@ the event so its reactors continue the emitter's trace. Nothing to do in an exte
 Every model stream is a `model` row too (`agent` for Pi's generations and compactions, `extension` for an
 extension's own call → `<provider>/<model>`): its duration, input, output and cache tokens and stop reason, never the
 prompt or the response; an error or aborted stop is a failed row whose error is only a classification (stop reason,
-HTTP status and allowlisted error codes), since a provider message can echo the request. `completeSimple` (health's
-pings) goes through the same wrapper, as does the `modelRuntime` extensions call directly. Pi runs requests outside any traced call but sends
+HTTP status and allowlisted error codes), since a provider message can echo the request. `completeSimple` goes
+through the same wrapper, as does the `modelRuntime` extensions call directly. Pi runs requests outside any traced call but sends
 the conversation's provider session id, so a `beforeRequest` hook (`model-trace`, `server/tool-arguments.ts`) maps
 session ids to conversations; a request before its conversation's first generation in this process (a compaction just
 after a restart) stays unlinked, and an extension's call belongs to the call it runs in.
