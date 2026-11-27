@@ -564,6 +564,58 @@ it('places idle input behind what a refusal took out of the queue', async () => 
   }
 })
 
+it('checks every queued input a batch boundary would place', async () => {
+  const home = await temp()
+  const prepared = await prepareHarness({
+    ultimateRoot: home,
+    userHome: home,
+    home,
+    faux: fauxProvider(),
+  })
+  const gate = Promise.withResolvers<void>()
+  let held = false
+  let refusing = false
+  prepared.registry.install(
+    defineExtension({
+      name: 'input-test',
+      hooks: [
+        hook(GenerationTask, {
+          refuseInput: (input) =>
+            refusing && JSON.stringify(input.model).includes('refused') ? 'refused' : undefined,
+        }),
+      ],
+    }),
+  )
+  prepared.faux!.setResponses([
+    async () => {
+      held = true
+      await gate.promise
+      return fauxAssistantMessage('first answer')
+    },
+    fauxAssistantMessage('batch answer'),
+  ])
+  const f = await prepared.open()
+  try {
+    const first = await f.root.submit({ type: 'input', content: 'first' }, context)
+    await until(() => held)
+    const queued = []
+    for (const content of ['refused A', 'allowed B', 'refused C'])
+      queued.push(await f.root.submit({ type: 'input', content, whenBusy: 'followUp' }, context))
+    refusing = true
+    gate.resolve()
+    await first.wait(context)
+    const [a, b, c] = await Promise.all(queued.map((submission) => submission.wait(context)))
+    expect([a.status, b.status, c.status]).toEqual(['unanswered', 'done', 'unanswered'])
+    const users = (await f.root.context(context)).messages.flatMap((message) =>
+      message.role === 'user' ? [message.content] : [],
+    )
+    expect(users).toEqual(['first', 'allowed B'])
+  } finally {
+    gate.resolve()
+    await f.close()
+  }
+})
+
 it('starts one run with every follow-up queued while busy, and steers join the current run', async () => {
   const home = await temp()
   const prepared = await prepareHarness({

@@ -96,7 +96,7 @@ index 54f3ef34ddf1bf85e3ad9c41bdbd216c081a476f..8a63b529154f0e896edb585fc20d3d43
                  firstKept,
              };
 diff --git a/dist/harness/generation.js b/dist/harness/generation.js
-index 56f3055ab58e51d429f91c90c9286531f3086106..0cc12a0a0a6d3eb9a876c06da384e61ea3fcab7d 100644
+index 56f3055ab58e51d429f91c90c9286531f3086106..8fb4020d187163dd8275674bd48e956e10413e0d 100644
 --- a/dist/harness/generation.js
 +++ b/dist/harness/generation.js
 @@ -6,7 +6,7 @@ import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.j
@@ -172,7 +172,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..0cc12a0a0a6d3eb9a876c06da384e61e
          const live = await tx.doc(LiveDoc, conversationId);
          const { users, first } = await applyBoundary(tx, boundary, "final", runtime.now());
          endRun(tx, live, runtime.taskId, { status: "done", answer });
-@@ -1010,11 +1028,16 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+@@ -1010,11 +1028,17 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
      // Read from the phase's agent, as every agent field; a `configure()` during the round applies at its end.
      const maxTurns = (await runtime.agent(context)).maxTurns;
      const afterRun = terminate && (await asksAfterRun(runtime, context));
@@ -183,7 +183,8 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..0cc12a0a0a6d3eb9a876c06da384e61e
 +        const turnsSoFar = live.run?.taskId === runtime.taskId ? live.run.turns : 0;
 +        const limited = !terminate && maxTurns !== undefined && turnsSoFar >= maxTurns;
 +        const holds = afterRun && live.run?.taskId === runtime.taskId;
-+        const at = holds ? "none" : terminate ? "final" : limited ? (runtime.settings.afterFailedRun === "continue" ? "final" : "none") : "postTools";
++        const failurePolicy = runtime.settings.afterFailedRun;
++        const at = holds ? "none" : terminate ? "final" : limited ? (failurePolicy === "continue" ? "final" : "none") : "postTools";
 +        const boundary = await prepareBoundary(tx, conversationId, runtime.settings, at, runtime.now());
          if (added.length > 0)
              await addTools(tx, conversationId, added);
@@ -191,7 +192,7 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..0cc12a0a0a6d3eb9a876c06da384e61e
          const now = runtime.now();
          // The run's last entry so far: the newest result, or the assistant when no result has an entry.
          let last = results.reduce((newest, id) => (id > newest ? id : newest), assistant);
-@@ -1025,7 +1048,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+@@ -1025,7 +1049,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
              boundary.head = entry.id;
              last = entry.id;
          }
@@ -200,6 +201,16 @@ index 56f3055ab58e51d429f91c90c9286531f3086106..0cc12a0a0a6d3eb9a876c06da384e61e
          const held = afterRun ? holdRun(tx, live, runtime, { reason: "terminate", answer: assistant, last }) : undefined;
          if (held !== undefined)
              return held;
+@@ -1038,8 +1062,7 @@ async function endToolRound(runtime, assistant, tools, taskTerminates, context)
+         else if (maxTurns !== undefined && turns >= maxTurns) {
+             // The turn limit ends the run like a failure: `afterFailedRun` decides the queued items, and a continue resumes
+             // it on the round's results. The table was read for the boundary already, before any write.
+-            const policy = runtime.settings.afterFailedRun;
+-            const failure = { policy, ...(policy === "continue" ? { boundary } : {}) };
++            const failure = { policy: failurePolicy, ...(failurePolicy === "continue" ? { boundary } : {}) };
+             await endFailedRun(tx, runtime, live, failure, {
+                 status: "unanswered",
+                 reason: "turn_limit",
 diff --git a/dist/harness/harness.js b/dist/harness/harness.js
 index e51d731d2a64d725a1e33b575f2c5658ff8b250b..e02c57037c82c9d1dd0be7e59d4ec90a024f1e65 100644
 --- a/dist/harness/harness.js
@@ -272,7 +283,7 @@ index e51d731d2a64d725a1e33b575f2c5658ff8b250b..e02c57037c82c9d1dd0be7e59d4ec90a
          this.assertUsable();
          return this.#tasks.wake();
 diff --git a/dist/harness/inbox.d.ts b/dist/harness/inbox.d.ts
-index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..e147f84987e7f5dbb6e7cab2186198274a76c05d 100644
+index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..0d89233c5b29c61e9a47d8e71e01a8e2918f827f 100644
 --- a/dist/harness/inbox.d.ts
 +++ b/dist/harness/inbox.d.ts
 @@ -26,6 +26,9 @@ export declare const InboxDoc: import("../types.ts").ConversationDocToken<InboxS
@@ -280,8 +291,8 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..e147f84987e7f5dbb6e7cab218619827
  /** What a boundary reads before the commit's first table write, and the newest head it has seen so far. */
  export type Boundary = {
 +    readonly entries: readonly EntryDraft[];
-+    /** Queued inputs a `refuseInput` hook refused, already out of `inbox`; `applyBoundary()` settles them `unanswered`, reason `refused`. */
-+    refusals: { readonly id: SubmissionId; readonly reason: string }[];
++    /** Queued inputs a `refuseInput` hook refused, by submission, with its reason; `applyBoundary()` settles them `unanswered`, reason `refused`, removes them and places what it selects among the rest. */
++    readonly refusals: Map<SubmissionId, string>;
      readonly conversationId: ConversationId;
      readonly inbox: Draft<InboxState>;
      readonly steeringMode: QueueMode;
@@ -303,7 +314,7 @@ index b263cfb8f44c686ce0dfa0269cf0a15369c43f42..e147f84987e7f5dbb6e7cab218619827
  /** The kind and data of an input's entry as strict JSON, without other fields an untyped caller might pass. */
  export declare function pickInputEntry({ kind, data }: InputEntry): JsonRepresentation<InputEntry>;
 diff --git a/dist/harness/inbox.js b/dist/harness/inbox.js
-index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780bd6bfa772 100644
+index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..eb6547d5cf75c467d287b6dddbadb5686d380523 100644
 --- a/dist/harness/inbox.js
 +++ b/dist/harness/inbox.js
 @@ -1,6 +1,7 @@
@@ -314,7 +325,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780b
  export const InboxDoc = defineDoc({
      kind: "pi.inbox",
      version: 1,
-@@ -14,10 +15,41 @@ export const InboxDoc = defineDoc({
+@@ -14,10 +15,40 @@ export const InboxDoc = defineDoc({
   * Read what a boundary needs. Table reads must precede the commit's first table write, so callers prepare the
   * boundary at the start of their commit.
   */
@@ -323,22 +334,21 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780b
      const head = (await tx.latestHeadMarker(conversationId))?.head;
      const inbox = await tx.doc(InboxDoc, conversationId);
 +    const final = at === "final" || (at === "postTools" && hasQueuedReset(inbox.items));
-+    // Refused items leave the queue here and are settled when the boundary is applied, after the table reads; the
-+    // boundary then places what it selects among the rest, as if they had never been queued.
-+    const refusals = [];
-+    let first;
-+    while (at !== "none") {
-+        const users = selectUsers(inbox.items, final, modes);
-+        first = users.length > 0 ? inbox.items[users[0]] : undefined;
-+        if (first === undefined)
++    const refusals = new Map();
++    const remaining = () => inbox.items.filter((item) => !refusals.has(item.id));
++    for (let checked = new Set(); at !== "none";) {
++        const selected = selectUsers(remaining(), final, modes).map((index) => remaining()[index]);
++        const unchecked = selected.filter((item) => !checked.has(item.id));
++        if (unchecked.length === 0)
 +            break;
-+        const reason = tx.refusedPlacement(first.id) ?? (await refusal(tx, conversationId, inputDraft(first.content, first.entry, now)));
-+        if (reason === undefined)
-+            break;
-+        refusals.push({ id: first.id, reason });
-+        inbox.items.splice(users[0], 1);
-+        first = undefined;
++        for (const item of unchecked) {
++            checked.add(item.id);
++            const reason = tx.refusedPlacement(item.id) ?? (await refusal(tx, conversationId, inputDraft(item.content, item.entry, now)));
++            if (reason !== undefined)
++                refusals.set(item.id, reason);
++        }
 +    }
++    const first = at === "none" ? undefined : selectUsers(remaining(), final, modes).map((index) => remaining()[index])[0];
 +    const input = first === undefined ? incoming : inputDraft(first.content, first.entry, now);
 +    let entries = [];
 +    if (input !== undefined && final) {
@@ -357,7 +367,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780b
          conversationId,
          inbox,
          steeringMode: modes.steeringMode,
-@@ -25,25 +57,39 @@ export async function prepareBoundary(tx, conversationId, modes) {
+@@ -25,25 +56,44 @@ export async function prepareBoundary(tx, conversationId, modes) {
          head,
      };
  }
@@ -395,9 +405,14 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780b
 -        const indexes = items.flatMap((item, index) => (item.mode === mode ? [index] : []));
 -        return queueMode === "all" ? indexes : indexes.slice(0, 1);
 -    };
-+    for (const { id, reason } of boundary.refusals)
-+        tx.settleSubmission(id, { status: "unanswered", reason: "refused", detail: reason });
-+    boundary.refusals = [];
++    for (let index = items.length - 1; index >= 0; index--) {
++        const reason = boundary.refusals.get(items[index].id);
++        if (reason === undefined)
++            continue;
++        tx.settleSubmission(items[index].id, { status: "unanswered", reason: "refused", detail: reason });
++        items.splice(index, 1);
++    }
++    boundary.refusals.clear();
      const writes = items.flatMap((item, index) => (item.mode === "write" ? [index] : []));
 -    const users = [...pick("steer", boundary.steeringMode), ...(final ? pick("followUp", boundary.followUpMode) : [])];
 -    users.sort((a, b) => a - b);
@@ -405,7 +420,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780b
      // `appendEntry()` copies the drafts' values; the items are removed only afterwards.
      let first;
      for (const index of writes) {
-@@ -61,6 +107,9 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -61,6 +111,9 @@ export async function applyBoundary(tx, boundary, at, now) {
      }
      const placed = [];
      for (const index of users) {
@@ -415,7 +430,7 @@ index 35d2c0b8383b5d494a5f432e6fca9197bc36514e..4edbe3ca9e4b21eef2e91df6a064780b
          const item = items[index];
          const entry = await appendInput(tx, conversationId, item.content, item.entry, now);
          tx.placeSubmission(item.id, entry.id);
-@@ -74,10 +123,11 @@ export async function applyBoundary(tx, boundary, at, now) {
+@@ -74,10 +127,11 @@ export async function applyBoundary(tx, boundary, at, now) {
  }
  /** Append the entry an input is placed as: `entry`'s kind and data, or `pi.user`, with the user message of `content`. */
  export function appendInput(tx, conversationId, content, entry, now) {
@@ -510,7 +525,7 @@ index 1a6472ef7931838d30c9e418540bc225dfea315a..69139c51000d76e1b9f102169ebee648
                      catch (error) {
                          if (invocation.controller.signal.aborted)
 diff --git a/dist/harness/submissions.js b/dist/harness/submissions.js
-index 908492f520c857c8198355820ad9de96fc6ff713..eabaa84bfc9e8589a5b5b3f1b629f06b28c90341 100644
+index 908492f520c857c8198355820ad9de96fc6ff713..bfef205d369e1cac04a331af0cb8302e3535ec4b 100644
 --- a/dist/harness/submissions.js
 +++ b/dist/harness/submissions.js
 @@ -4,7 +4,7 @@ import { createTypedSpanStarter, NOOP_TELEMETRY_CONTEXT, } from "@earendil-works
@@ -552,17 +567,15 @@ index 908492f520c857c8198355820ad9de96fc6ff713..eabaa84bfc9e8589a5b5b3f1b629f06b
          const { id } = await tx.createSubmission({ ...fields, type: "continue", status: "placed" });
          // Items an earlier failed run left queued (`afterFailedRun: "keep"`) are placed first and join the run. Its history
          // starts with the failed run's, so `afterRun` hooks see what that run did.
-@@ -217,8 +224,8 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
+@@ -217,7 +224,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
          return { id, status: "placed" };
      }
      // A boundary reads the table, so it is prepared before the first table write; a busy one needs none.
 -    const boundary = busy ? undefined : await prepareBoundary(tx, conversationId, queueModes);
--    if (boundary === undefined || boundary.inbox.items.length > 0) {
 +    const boundary = busy ? undefined : await prepareBoundary(tx, conversationId, queueModes, "final", now, draft.type === "input" ? inputDraft(draft.content, draft.entry, now) : undefined);
-+    if (boundary === undefined || boundary.inbox.items.length > 0 || boundary.refusals.length > 0) {
+     if (boundary === undefined || boundary.inbox.items.length > 0) {
          const { id } = await tx.createSubmission({
              ...fields,
-             type: draft.type,
 @@ -242,7 +249,7 @@ export async function admitSubmission(tx, conversationId, draft, now, queueModes
          const { users, first } = await applyBoundary(tx, boundary, "final", now);
          if (users.length > 0)

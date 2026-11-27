@@ -28,25 +28,45 @@ function needsCheck(host: ExtensionHost, model: Ref | undefined): model is Ref {
 }
 
 type Login = Awaited<ReturnType<typeof loginCheck>>
-export type LoginChecks = Map<string, { snapshot: readonly unknown[]; login: Login }>
-
-async function loginMissing(host: ExtensionHost, provider: string, checks: LoginChecks) {
-  const snapshot = host.modelRuntime.getAvailableSnapshot()
-  const checked = checks.get(provider)
-  if (checked?.snapshot === snapshot) {
-    if (checked.login === 'inconclusive') checks.delete(provider)
-    return checked.login === 'missing'
-  }
-  const login = await loginCheck(host, provider)
-  if (login !== 'inconclusive') checks.set(provider, { snapshot, login })
-  return login === 'missing'
+export type LoginChecks = {
+  byProvider: Map<string, { snapshot: readonly unknown[]; login: Login }>
+  inconclusiveFor: Set<ConversationId>
 }
 
-export async function checkLogin(host: ExtensionHost, model: Ref | undefined, checks: LoginChecks) {
-  if (!needsCheck(host, model)) return
+export const loginChecks = (): LoginChecks => ({
+  byProvider: new Map(),
+  inconclusiveFor: new Set(),
+})
+
+async function conclusiveLogin(host: ExtensionHost, provider: string, checks: LoginChecks) {
   const snapshot = host.modelRuntime.getAvailableSnapshot()
-  if (checks.get(model.provider)?.snapshot === snapshot) return
-  checks.set(model.provider, { snapshot, login: await loginCheck(host, model.provider) })
+  const checked = checks.byProvider.get(provider)
+  if (checked?.snapshot === snapshot) return checked.login
+  const login = await loginCheck(host, provider)
+  if (login !== 'inconclusive') checks.byProvider.set(provider, { snapshot, login })
+  return login
+}
+
+export async function checkLogin(
+  host: ExtensionHost,
+  conversationId: ConversationId,
+  model: Ref | undefined,
+  checks: LoginChecks,
+) {
+  checks.inconclusiveFor.delete(conversationId)
+  if (!needsCheck(host, model)) return
+  if ((await conclusiveLogin(host, model.provider, checks)) === 'inconclusive')
+    checks.inconclusiveFor.add(conversationId)
+}
+
+async function loginMissing(
+  host: ExtensionHost,
+  conversationId: ConversationId,
+  provider: string,
+  checks: LoginChecks,
+) {
+  if (checks.inconclusiveFor.delete(conversationId)) return false
+  return (await conclusiveLogin(host, provider, checks)) === 'missing'
 }
 
 export async function fallback(
@@ -58,7 +78,7 @@ export async function fallback(
   const agent = await tx.doc(AgentDoc, conversationId)
   const runtime = host.modelRuntime
   const from = agent.model
-  if (!needsCheck(host, from) || !(await loginMissing(host, from.provider, checks)))
+  if (!needsCheck(host, from) || !(await loginMissing(host, conversationId, from.provider, checks)))
     return undefined
   const fresh = runtime.getAvailableSnapshot()
   if (hasLogin(fresh, from)) return undefined

@@ -30,8 +30,7 @@ import {
 import type { SaveFamilies } from './refs.ts'
 import { DEFAULT_FAMILY } from '../../lib/families.ts'
 import { familiesView, saveFamilies, setDefault } from './families.ts'
-import { checkLogin, fallback } from './fallback.ts'
-import type { LoginChecks } from './fallback.ts'
+import { checkLogin, fallback, loginChecks as newLoginChecks } from './fallback.ts'
 import { inProcess } from '../../lib/errors.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
@@ -261,7 +260,7 @@ export const actions = {
 
 export default function models(host: ExtensionHost) {
   const live = liveFlows(host)
-  const loginChecks = host.resource('models.login-checks', (): LoginChecks => new Map())
+  const loginChecks = host.resource('models.login-checks', newLoginChecks)
   host.onOpen(async () => {
     await host.harness().commit(async (tx) => {
       const { flows } = await tx.doc(Logins, ROOT_CONVERSATION_ID)
@@ -279,7 +278,7 @@ export default function models(host: ExtensionHost) {
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         prepareInput: async ({ conversationId }, ctx) => {
           const agent = await host.harness().snapshot(AgentDoc, conversationId, ctx)
-          await checkLogin(host, agent?.model, loginChecks)
+          await checkLogin(host, conversationId, agent?.model, loginChecks)
         },
         beforeInput: (_input, { tx, conversationId }) =>
           fallback(host, tx, conversationId, loginChecks),
