@@ -85,6 +85,7 @@ export async function requestSwap(
       if (!message.ok) {
         const error = message.error.slice(-4096)
         if (!recording) return finish(error)
+        pendingSwaps.delete(requestId)
         return inProcess(
           'a refusal settles the swap once its approval has finished writing',
           settled(recording).then(() => finish(error)),

@@ -238,10 +238,11 @@ export async function loadExtensions(
       },
       onOpen: (callback) => registerOpener(callback, sharedResource),
       onClose: (cleanup) => {
-        if (sharedResource) {
-          const callbacks = published ? cleanups : stagedCleanups
-          callbacks.add(cleanup)
-        } else facetCleanups.get(facetHost)!.add(cleanup)
+        if (sharedResource && published) cleanups.add(cleanup)
+        else {
+          if (sharedResource) stagedCleanups.add(cleanup)
+          facetCleanups.get(facetHost)!.add(cleanup)
+        }
       },
       onLoadError: (callback) => {
         loadErrorListeners.add(callback)
@@ -270,7 +271,10 @@ export async function loadExtensions(
         published = true
         for (const [key, value] of stagedResources) resources.set(key, value)
         for (const [callback, shared] of stagedOpeners) addOpener(callback, shared)
-        for (const cleanup of stagedCleanups) cleanups.add(cleanup)
+        for (const cleanup of stagedCleanups) {
+          facetCleanups.get(facetHost)!.delete(cleanup)
+          cleanups.add(cleanup)
+        }
         stagedResources.clear()
         stagedOpeners.clear()
         stagedCleanups.clear()

@@ -134,13 +134,15 @@ describe('server reload', () => {
     expect(entry().server!.loadedAt).toBe(successful)
     expect(server.host.registry.snapshot().extension('counter')).toBe(installed)
   })
-  it('runs the shared opener once when reloading a corrected facet after a rejected install', async () => {
+  it('closes the rejected resource and runs the corrected shared opener once', async () => {
     const source = (version: string, invalid = false) => `
+import { appendFile } from 'node:fs/promises'
 const key = 'shared-opener:test'
 export default (host) => {
   host.resource(key, () => {
     const state = { version: '${version}', opens: 0 }
     host.onOpen(async () => { state.opens++ })
+    host.onClose(() => appendFile(host.home + '/closed.txt', '${version}\\n'))
     return state
   })
   host.resource(key, () => { throw new Error('resource factory called twice') })
@@ -163,6 +165,7 @@ export const actions = {
     expect(
       await server.extensions.invoke('shared-opener', 'state', null, new AbortController().signal),
     ).toEqual({ version: 'corrected', opens: 1 })
+    expect(await readFile(join(server.host.home, 'closed.txt'), 'utf8')).toBe('rejected\n')
   })
   it('reloads only the owning extension when files or directories are added or removed', async () => {
     const { server } = await fixture(false, {

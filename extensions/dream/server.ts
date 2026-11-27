@@ -197,21 +197,21 @@ async function restartChapter(
   backupBeforeRestart?: () => Promise<unknown>,
 ): Promise<never> {
   const writePendingChapter = prepareChapterRequest(host.home, name, process.pid)
+  let held: ReturnType<ExtensionHost['harness']> | undefined
   try {
     await backupBeforeRestart?.()
     throw new Error(
       await host.restart(async () => {
         requireNoWorkParkedBySwitch(host)
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold() keeps the scheduler from starting tasks.
-        host.harness().hold()
-        await writePendingChapter().catch((error: unknown) => {
-          if (!host.want(PauseApi)?.paused()) host.harness().release()
-          throw error
-        })
+        held = host.harness()
+        held.hold()
+        await writePendingChapter()
       }),
     )
   } finally {
     await rm(join(host.home, PENDING_CHAPTER), { force: true })
+    if (held && held === host.harness() && !host.want(PauseApi)?.paused()) held.release()
   }
 }
 
