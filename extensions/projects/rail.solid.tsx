@@ -1,4 +1,4 @@
-import { Pin, PinOff } from '@lucide/solid'
+import { CircleSlash, Pin, PinOff } from '@lucide/solid'
 import {
   action,
   createMemo,
@@ -126,6 +126,7 @@ function ProjectsRail() {
   const loading = () => !list.data() && !list.error()
   const wide = () => hover() || pinned()
   const family = createMemo(() => projects().map((project) => project.name))
+  const machines = createMemo(() => projects().some((project) => project.machine !== undefined))
   const questions = createMemo(() =>
     projects().reduce((sum, project) => sum + (project.questions ?? 0), 0),
   )
@@ -180,17 +181,52 @@ function ProjectsRail() {
               <RailSkeleton wide={wide()} />
             </Show>
             <div class="flex animate-fade-in flex-col">
-              <For each={projects()} keyed={(project) => project.url}>
-                {(project, index) => (
-                  <Row
-                    family={family()}
-                    first={stemOf(projects()[index() - 1]?.name ?? '') !== stemOf(project().name)}
-                    last={stemOf(projects()[index() + 1]?.name ?? '') !== stemOf(project().name)}
-                    gap={index() > 0}
-                    project={project()}
-                    wide={wide()}
-                  />
-                )}
+              <For
+                each={projects()}
+                keyed={(project) => `${project.machine ?? ''}:${project.name}:${project.url}`}
+              >
+                {(project, index) => {
+                  const before = () => projects()[index() - 1]
+                  const after = () => projects()[index() + 1]
+                  const machineStart = () => !before() || before()?.machine !== project().machine
+                  const sameGroup = (other: RunningProject | undefined) =>
+                    other !== undefined &&
+                    other.machine === project().machine &&
+                    stemOf(other.name) === stemOf(project().name)
+                  return (
+                    <>
+                      <Show when={machines() && machineStart()}>
+                        <div
+                          class={cn(
+                            'mx-3 flex h-7 items-center',
+                            index() > 0 && 'mt-2',
+                            index() > 0 && wide() && 'border-t border-sidebar-border',
+                          )}
+                          title={project().machine ?? 'This machine'}
+                        >
+                          <Show
+                            when={wide()}
+                            fallback={
+                              <span aria-hidden="true" class="mx-auto h-px w-3 bg-sidebar-border" />
+                            }
+                          >
+                            <span class="section-label truncate">
+                              {project().machine ?? 'This machine'}
+                            </span>
+                          </Show>
+                        </div>
+                      </Show>
+                      <Row
+                        family={family()}
+                        first={!sameGroup(before())}
+                        last={!sameGroup(after())}
+                        gap={index() > 0 && !machineStart()}
+                        project={project()}
+                        wide={wide()}
+                      />
+                    </>
+                  )
+                }}
               </For>
             </div>
           </div>
@@ -254,8 +290,10 @@ function Row(props: {
   const title = createMemo(() =>
     [
       prettyName(props.project.name),
+      props.project.machine,
       props.project.repo?.name,
       shownPort(props.project, location),
+      props.project.unavailable && 'unavailable',
       unreachable() && 'not on the tailnet',
       questions() && `${questions()} for you`,
       busy() && 'working',
@@ -318,16 +356,25 @@ function Row(props: {
           />
           <Show when={!props.wide}>
             <Show
-              when={questions() > 0}
+              when={!props.project.unavailable}
               fallback={
-                <Show when={busy()}>
-                  <span class="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
-                </Show>
+                <span class="absolute inset-0 m-auto flex size-4 items-center justify-center rounded-full bg-sidebar ring-2 ring-sidebar">
+                  <CircleSlash aria-hidden="true" class="size-3 text-muted-foreground" />
+                </span>
               }
             >
-              <span class="absolute inset-0 m-auto flex h-4 w-fit min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] leading-none font-semibold text-black tabular-nums ring-2 ring-sidebar">
-                {questions()}
-              </span>
+              <Show
+                when={questions() > 0}
+                fallback={
+                  <Show when={busy()}>
+                    <span class="absolute inset-0 m-auto size-2 animate-pulse-dot rounded-full bg-brand ring-2 ring-sidebar" />
+                  </Show>
+                }
+              >
+                <span class="absolute inset-0 m-auto flex h-4 w-fit min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9.5px] leading-none font-semibold text-black tabular-nums ring-2 ring-sidebar">
+                  {questions()}
+                </span>
+              </Show>
             </Show>
           </Show>
         </span>
@@ -345,8 +392,13 @@ function Row(props: {
             </span>
             <span class="flex min-w-0 items-center gap-1.5 font-mono text-[10px] leading-4 text-muted-foreground/80">
               <Show when={!pending()} fallback={<span class="text-brand">opening…</span>}>
-                <Show when={props.project.repo}>
-                  {(repo) => <RepoLabel class="min-w-0" repo={repo()} />}
+                <Show
+                  when={!props.project.unavailable}
+                  fallback={<span class="text-muted-foreground">unavailable</span>}
+                >
+                  <Show when={props.project.repo}>
+                    {(repo) => <RepoLabel class="min-w-0" repo={repo()} />}
+                  </Show>
                 </Show>
                 <span class="shrink-0 text-muted-foreground/50">
                   {shownPort(props.project, location)}
@@ -355,16 +407,23 @@ function Row(props: {
             </span>
           </span>
           <Show
-            when={questions() > 0}
+            when={!props.project.unavailable}
             fallback={
-              <Show when={busy()}>
-                <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
-              </Show>
+              <CircleSlash aria-hidden="true" class="size-3 shrink-0 text-muted-foreground" />
             }
           >
-            <span class="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 px-1.5 font-mono text-[10px] font-semibold text-amber-700 tabular-nums ring-1 ring-amber-500/30 ring-inset dark:text-amber-300">
-              {questions()}
-            </span>
+            <Show
+              when={questions() > 0}
+              fallback={
+                <Show when={busy()}>
+                  <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-brand" />
+                </Show>
+              }
+            >
+              <span class="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/15 px-1.5 font-mono text-[10px] font-semibold text-amber-700 tabular-nums ring-1 ring-amber-500/30 ring-inset dark:text-amber-300">
+                {questions()}
+              </span>
+            </Show>
           </Show>
         </span>
       </Show>
