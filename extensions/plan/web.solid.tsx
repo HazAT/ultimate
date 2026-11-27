@@ -33,7 +33,7 @@ import { ConversationTaskChip as TaskChipOf } from './task-chip.solid.tsx'
 import { TaskChip, useOpenTask, useTaskOf } from './ui.solid.tsx'
 
 const pill =
-  'pointer-events-auto flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/90 px-2.5 font-mono text-[11px] text-muted-foreground shadow-sm backdrop-blur hover:text-foreground'
+  'pointer-events-auto flex h-7 max-w-(--plan-pill) min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-card/90 px-2.5 font-mono text-[11px] text-muted-foreground shadow-sm backdrop-blur hover:text-foreground'
 
 function Panel(props: {
   plan: Plan | null | undefined
@@ -83,19 +83,32 @@ function Panel(props: {
 }
 
 function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
-  const [anchor, setAnchor] = createSignal<{ right: number; bottom: number }>()
+  const [anchor, setAnchor] = createSignal<{
+    left: number
+    width: number
+    pill: number
+    bottom: number
+  }>()
   createEffect(conversationId, () => {
     let form: HTMLFormElement | null | undefined
+    let row: Element | null | undefined
     const measure = () => {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
-      setAnchor({ right: innerWidth - rect.right, bottom: innerHeight - rect.top + 6 })
+      const end = row?.querySelector('[data-ui="voice-mode-switch"]')?.getBoundingClientRect()
+      setAnchor({
+        left: rect.left,
+        width: rect.width,
+        pill: (end && end.width > 0 ? end.left - 8 : rect.right) - rect.left,
+        bottom: innerHeight - rect.top + 6,
+      })
     }
     const columnResizeObserver = new ResizeObserver(measure)
     const attach = () => {
       const container = document.querySelector('[data-composer-target="conversation"]')
       form = container?.querySelector('form')
       if (!container?.parentElement || !form) return false
+      row = container.parentElement
       appeared.disconnect()
       columnResizeObserver.observe(container.parentElement)
       columnResizeObserver.observe(form)
@@ -137,8 +150,13 @@ function PlanOverlay() {
     <Show when={surface() === 'agent' && anchor() && conversationId()} keyed>
       {(conversation) => (
         <div
-          class="pointer-events-none fixed z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-1.5"
-          style={{ right: `${anchor()!.right}px`, bottom: `${anchor()!.bottom}px` }}
+          class="pointer-events-none fixed z-30 flex flex-col items-start gap-1.5"
+          style={{
+            left: `${anchor()!.left}px`,
+            bottom: `${anchor()!.bottom}px`,
+            'max-width': `${anchor()!.width}px`,
+            '--plan-pill': `${anchor()!.pill}px`,
+          }}
         >
           <Show
             when={task()}
@@ -207,7 +225,7 @@ function CoordinatorPlan(props: {
           >
             <ClipboardList class="size-3.5 shrink-0" />
             <span class="text-foreground/80">{progress().epic.key}</span>
-            <span>
+            <span class="min-w-0 truncate">
               · <PillProgress coordinator={props.conversation} epic={progress().epic} />
             </span>
             <Show when={progress().more > 0}>
