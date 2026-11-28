@@ -388,7 +388,8 @@ export async function createWeb(options: {
       if (options.pages() > 0 || building) await buildUntilFreshSerially()
     },
     async handle(request: IncomingMessage, response: ServerResponse) {
-      if (stale || !manifest) await buildUntilFreshSerially()
+      if (!manifest && !building) stale = true
+      if (stale) await buildUntilFreshSerially()
       const bundleForEntireRequest = manifest
       if (!bundleForEntireRequest && options.held()) {
         response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5' })
