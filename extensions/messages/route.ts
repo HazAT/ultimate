@@ -283,8 +283,15 @@ async function outputsPlaced(
     if (state.status === 'terminal') return false
     const { message } = input as { message: Message }
     if (message.from === starter && message.to === branch) return message.reply
-    const { phase } = (state as { checkpoint?: { phase?: string } }).checkpoint ?? {}
-    return message.from === branch && message.to === starter && phase !== 'settled'
+    const { phase, submission } =
+      (state as { checkpoint?: { phase?: string; submission?: number } }).checkpoint ?? {}
+    return (
+      message.from === branch &&
+      message.to === starter &&
+      message.report === true &&
+      phase === 'deliver' &&
+      submission === undefined
+    )
   }
   for (;;) {
     const deliveryChanged = Promise.withResolvers<void>()
