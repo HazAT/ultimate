@@ -166,6 +166,7 @@ async function fixture(
               landingPending,
               pendingLandingCards,
               settleLanded: async () => {},
+              get: async () => undefined,
               git: async () => '',
             }
           : name === 'conversations'
@@ -1157,7 +1158,7 @@ import { WorkspacesApi } from ${JSON.stringify(resolve('extensions/workspaces/ap
 import { landingPending, pendingLandingCards, Workspaces } from ${JSON.stringify(resolve('extensions/workspaces/workspaces.ts'))}
 export default (host) => {
   host.implement(SubagentsApi, { residents: async () => [] })
-  host.implement(WorkspacesApi, { doc: Workspaces, landingPending, pendingLandingCards, settleLanded: async () => {} })
+  host.implement(WorkspacesApi, { doc: Workspaces, landingPending, pendingLandingCards, settleLanded: async () => {}, get: async () => undefined })
   host.implement(ConversationsApi, { concludedIn: async () => new Set() })
   return { name: 'core-stand-ins' }
 }

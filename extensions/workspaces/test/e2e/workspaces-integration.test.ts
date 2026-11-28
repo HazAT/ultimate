@@ -1422,6 +1422,43 @@ it.concurrent('leaves a branch open when a newer submission was queued before th
   await writeFile(join(f.directory, 'go'), '')
   await submitted(f, id)
 })
+it.concurrent("gives the asker a landed branch's final reply instead of a lost-result notice", async () => {
+  const { f, id, open } = await landedWhileBusy()
+  const asker = await f.opened.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const request = await f.opened.harness.commit(async (tx) => {
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    log.messages.find((m) => m.id === open)!.state = 'answered'
+    const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+    const message = log.next++
+    const assignedBy = (await tx.appendEntry(ROOT_CONVERSATION_ID, { kind: 'test.request' })).id
+    owners[message] = {
+      request: { message, from: asker.id },
+      owner: { kind: 'branch', id },
+      assignedBy,
+      pending: [],
+    }
+    return message
+  }, context)
+  const messages = f.host.want(MessagesApi)!
+  await messages.send(
+    ROOT_CONVERSATION_ID,
+    { to: `#${id}`, text: 'Anything left?' },
+    'starter-asks',
+    context,
+  )
+  await until(async () =>
+    (await messageLog(f)).some((m) => m.from === id && m.re !== undefined && m.state !== 'sent'),
+  )
+  await routed(f, id)
+  expect(await concludedIds(f)).toContain(id)
+  await until(async () => (await messageLog(f)).some((m) => m.to === asker.id && m.re === request))
+  expect((await messageLog(f)).find((m) => m.to === asker.id && m.re === request)).toMatchObject({
+    text: expect.stringContaining(`Result of #${id}`),
+  })
+})
 it.concurrent('wakes the starter once when a landed branch ends a run still busy', async () => {
   const { f, id, branchRuns } = await landedWhileBusy()
   await branchRuns()

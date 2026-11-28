@@ -8,7 +8,9 @@ import type {
   Tx,
 } from '@earendil-works/pi-durable'
 import { awaitWithContext } from '@earendil-works/chord/context'
+import type { Context } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { onCommit } from '../../lib/commits.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
@@ -271,6 +273,45 @@ interface Route {
   }
 }
 
+async function outputsPlaced(
+  host: ExtensionHost,
+  branch: ConversationId,
+  starter: ConversationId,
+  ctx: Context,
+) {
+  const placing = ({ input, state }: { input: unknown; state: { status: string } }) => {
+    if (state.status === 'terminal') return false
+    const { message } = input as { message: Message }
+    if (message.from === starter && message.to === branch) return message.reply
+    const { phase } = (state as { checkpoint?: { phase?: string } }).checkpoint ?? {}
+    return message.from === branch && message.to === starter && phase !== 'settled'
+  }
+  for (;;) {
+    const deliveryChanged = Promise.withResolvers<void>()
+    const unsubscribe = onCommit(host.harness(), (publication) => {
+      if (
+        publication.changes.some(
+          (change) => change.type === 'task' && change.value.kind === 'board.delivery',
+        )
+      )
+        deliveryChanged.resolve()
+    })
+    try {
+      const unplaced = await host
+        .harness()
+        .commit(
+          async (tx) =>
+            (await scanNonterminalTasks(tx, 'board.delivery', ROOT_CONVERSATION_ID)).some(placing),
+          ctx,
+        )
+      if (!unplaced) return
+      await awaitWithContext(deliveryChanged.promise, ctx)
+    } finally {
+      unsubscribe()
+    }
+  }
+}
+
 export function route(host: ExtensionHost) {
   return defineTask<
     {
@@ -485,31 +526,17 @@ export function route(host: ExtensionHost) {
       },
       landed: async (task, runtime, ctx) => {
         const id = runtime.conversationId
-        const landedOpen = (await host.need(WorkspacesApi).get(id, ctx))?.landedOpen
-        const log = landedOpen && (await runtime.watchDoc(Messages, ROOT_CONVERSATION_ID, ctx))
-        if (log) {
-          const delivered = Promise.withResolvers<void>()
-          const inspect = (value: typeof log.value) => {
-            if (
-              !value?.messages.some(
-                (m) => m.from === id && m.to === task.input.by && m.state === 'sent',
-              )
-            )
-              delivered.resolve()
-          }
-          log.start(async (call) => {
-            if (call.kind === 'value') inspect(call.value)
-          })
-          try {
-            inspect(log.value)
-            await awaitWithContext(delivered.promise, ctx)
-          } finally {
-            await log.stop()
-          }
+        if (
+          await host
+            .need(WorkspacesApi)
+            .get(id, ctx)
+            .then((own) => own?.landedOpen)
+        ) {
+          await outputsPlaced(host, id, task.input.by, ctx)
+          await host
+            .need(WorkspacesApi)
+            .settleLanded(id, ctx, async (tx) => (await tx.doc(Started, id)).lastRoute === task.id)
         }
-        await host
-          .need(WorkspacesApi)
-          .settleLanded(id, ctx, async (tx) => (await tx.doc(Started, id)).lastRoute === task.id)
         await runtime.commit(() => terminal, ctx)
       },
     },

@@ -96,6 +96,7 @@ async function fixture() {
     landingPending,
     pendingLandingCards,
     settleLanded: async () => {},
+    get: async () => undefined,
   })
   services.set('conversations', { concludedIn: async () => new Set() })
   // A card-less question stays open only when the judge says it asks something.
