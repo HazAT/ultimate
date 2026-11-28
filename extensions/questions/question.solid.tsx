@@ -14,7 +14,7 @@ const mark =
 const ring = 'outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
 
 const optionClass =
-  'group/option flex h-auto min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug font-normal whitespace-normal motion-safe:active:scale-[0.995] max-md:min-h-11'
+  'group/option flex h-auto min-h-9 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] leading-snug font-normal whitespace-normal motion-safe:active:scale-[0.995] pointer-coarse:min-h-11'
 
 function OptionControl(props: {
   name: string
@@ -362,7 +362,7 @@ function Scale(props: {
               onClick={() => props.onSelect(index)}
               style={{ 'transition-delay': value() >= index ? `${index * 20}ms` : undefined }}
               class={cn(
-                'h-9 min-w-0 flex-1 rounded-md border font-mono text-[13px] transition-[background-color,border-color,color,scale] duration-150 motion-safe:active:scale-95 max-md:h-11',
+                'h-9 min-w-0 flex-1 rounded-md border font-mono text-[13px] transition-[background-color,border-color,color,scale] duration-150 motion-safe:active:scale-95 pointer-coarse:h-11',
                 ring,
                 'data-selected:border-brand data-selected:bg-brand data-selected:text-brand-foreground',
                 value() >= index

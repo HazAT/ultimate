@@ -175,6 +175,7 @@ export function Context() {
           <Item
             name="Context use"
             class={cn(
+              'shrink-0',
               (percent() ?? 0) > 90 ? 'text-error' : (percent() ?? 0) > 70 && 'text-warning',
             )}
             tip={
