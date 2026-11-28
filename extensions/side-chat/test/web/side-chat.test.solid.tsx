@@ -72,7 +72,7 @@ import { regionOpen } from '../../../../web/src/sdk/actions.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
 import { Composer, ExtensionName, openPanel } from '../../../../web/src/sdk/solid.ts'
 import { dock, setSideChatOpen, setSideChatSource } from '../../dock.solid.tsx'
-import { SideChatPanel, SideChatOverlay } from '../../panel.solid.tsx'
+import { openSideChat, SideChatPanel, SideChatOverlay } from '../../panel.solid.tsx'
 import { SideComposer } from '../../frame.solid.tsx'
 import { PinnedQuestion } from '../../pinned.solid.tsx'
 import { StoredTurn } from '../../turns.solid.tsx'
@@ -152,13 +152,19 @@ const ended = (reason: 'quiet' | 'fresh' | 'answered', summary?: string) => ({
   },
 })
 
-it('offers no box until the source is known, so a draft never moves to another source', async () => {
+it('offers no box until the source is known, and opening it takes focus from the main box until then', async () => {
+  const main = document.createElement('textarea')
+  document.body.append(main)
+  main.focus()
   const view = renderSolid(() => <SideChatPanel />)
+  openSideChat()
   await settle()
   flush()
   expect(view.querySelector('textarea')).toBeNull()
+  expect(document.activeElement).not.toBe(main)
   await root({ sessions: {} })
-  expect(view.querySelector('textarea')).not.toBeNull()
+  expect(document.activeElement).toBe(view.querySelector('textarea'))
+  main.remove()
 })
 
 it('after it ends, shows the previous fork above a closing line naming the reason and what went back', async () => {

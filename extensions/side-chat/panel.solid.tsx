@@ -468,7 +468,7 @@ export function SideChatBody(props: {
   const shown = () => id() ?? last()?.id
   const sourceLabel = () => name() ?? 'the source'
   let anchor: HTMLSpanElement | undefined
-  useFocusWhenWanted(() => anchor?.parentElement ?? undefined)
+  useFocusWhenWanted(() => anchor?.parentElement ?? undefined, source)
   return (
     <>
       <span class="hidden" ref={anchor} />
@@ -788,11 +788,21 @@ export function focusSideChat() {
   wantFocus(true)
 }
 
-function useFocusWhenWanted(section: () => HTMLElement | undefined) {
-  createEffect(focusWanted, (wanted) => {
-    const box = section()?.querySelector<HTMLTextAreaElement>('[data-ui="composer"] textarea')
-    if (!wanted || !box) return
-    box.focus()
-    wantFocus(false)
-  })
+function useFocusWhenWanted(
+  section: () => HTMLElement | undefined,
+  source: () => ConversationId | undefined,
+) {
+  createEffect(
+    () => [focusWanted(), source()] as const,
+    ([wanted]) => {
+      if (!wanted) return
+      const box = section()?.querySelector<HTMLTextAreaElement>('[data-ui="composer"] textarea')
+      if (!box) {
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        return
+      }
+      box.focus()
+      wantFocus(false)
+    },
+  )
 }
