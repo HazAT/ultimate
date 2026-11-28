@@ -258,6 +258,32 @@ it('fires a subscriber-only schedule without creating a run conversation', async
   }
 })
 
+it('wakes a promptless schedule fire without a dangling colon, naming the schedule', async () => {
+  // The wake used to read `Automation A1 "Watch" fired: ` with an empty body.
+  const f = await fixture()
+  const target = await f.opened.harness.commit(async (tx) => {
+    const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+    await configure(tx, child.id, {})
+    return child
+  }, context)
+  const a = (await f.action('create', {
+    name: 'Watch',
+    schedule: 'every 30m',
+    subscribers: [target.id],
+  })) as Automation
+  await f.action('run', { id: a.id })
+  const fired = async () => {
+    const conversation = (await f.opened.harness.conversation(target.id, context))!
+    return (await conversation.context(context)).entries.filter(
+      (e) => e.conversationId === target.id && e.kind === 'automations.fired',
+    )
+  }
+  await until(async () => (await fired()).length === 1)
+  expect((await fired())[0].model?.[0]?.content).toBe(
+    `Automation ${a.id} "Watch" fired (Every 30 minutes)`,
+  )
+})
+
 it("delivers a prompt run's answer to its subscribers when the run ends", async () => {
   // A daily briefing's subscriber got only the empty fire notice; the answer stayed in the run conversation.
   const f = await fixture()
