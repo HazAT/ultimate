@@ -17,6 +17,8 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import { arr, obj, opt, str, union } from '@earendil-works/pi-schema'
+import type { Message } from '@earendil-works/pi-ai'
+import { serializeConversation } from '@earendil-works/pi-coding-agent'
 import { UiState } from '../../shared/ui-state.ts'
 import { safeToRerun } from '../../lib/replay.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -93,6 +95,7 @@ export const docs = [Side, Index, QuestionSides]
 export const userActions = ['open', 'discard', 'inject']
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
 const crashSafeSummaryWriteRequest = (side: ConversationId) => `sidechat:summary:${side}`
+const minCharsPerToken = 2
 
 function sideId(args: unknown): ConversationId {
   const id = args && typeof args === 'object' && 'id' in args ? args.id : undefined
@@ -213,8 +216,8 @@ export function endTask(host: ExtensionHost) {
         if (mode === 'injected') {
           let source = await runtime.memo<string>('source', ctx)
           if (source === undefined) {
-            const sourceEntries = await host.harness().commit(async (tx) => {
-              const entries = []
+            const sideMessages = await host.harness().commit(async (tx) => {
+              const messages: Message[] = []
               let cursor: Cursor | undefined
               do {
                 const page = await tx.scanEntries(
@@ -226,16 +229,23 @@ export function endTask(host: ExtensionHost) {
                   100,
                   cursor,
                 )
-                entries.push(
+                messages.push(
                   ...page.items
                     .filter((entry) => entry.kind !== 'pi.system')
-                    .map((entry) => ({ id: entry.id, kind: entry.kind, model: entry.model ?? [] })),
+                    .flatMap((entry) => entry.model ?? []),
                 )
                 cursor = page.next
               } while (cursor)
-              return entries
+              return messages
             }, ctx)
-            source = await runtime.memo('source', JSON.stringify(sourceEntries), ctx)
+            const { provider, id: modelId } = task.input.model!
+            const contextWindow = runtime.models.getModel(provider, modelId)?.contextWindow
+            const transcript = serializeConversation(sideMessages)
+            source = await runtime.memo(
+              'source',
+              contextWindow ? transcript.slice(-contextWindow * minCharsPerToken) : transcript,
+              ctx,
+            )
           }
           try {
             response = await summaries.askSummaryModel(
@@ -253,7 +263,7 @@ export function endTask(host: ExtensionHost) {
             )
             if (!['stop', 'length'].includes(response.stopReason) || !response.text.trim())
               throw new Error(
-                `summaryModel failed (${response.stopReason}): ${response.text || 'no answer'}`,
+                `summaryModel failed (${response.stopReason}): ${response.errorMessage ?? (response.text || 'no answer')}`,
               )
           } catch (error) {
             const shutdownWillResumeTask = runtime.signal.aborted
