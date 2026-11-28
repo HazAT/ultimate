@@ -1,6 +1,6 @@
 export type FoldLine =
   | { kind: 'row'; id: number; depth: number; fold?: { count: number; open: boolean } }
-  | { kind: 'earlier'; parent: number; depth: number; count: number; open: boolean }
+  | { kind: 'earlier'; parent: number; count: number; open: boolean }
 
 const KEEP = 2
 
@@ -30,7 +30,7 @@ export function foldLines(
     const folded = older.length > 1 && !opened.has(earlierKey(id))
     for (const child of ids) {
       if (older.length > 1 && child === older[0])
-        lines.push({ kind: 'earlier', parent: id, depth, count: older.length, open: !folded })
+        lines.push({ kind: 'earlier', parent: id, count: older.length, open: !folded })
       if (folded && older.includes(child)) continue
       const count = size(child)
       const fold =

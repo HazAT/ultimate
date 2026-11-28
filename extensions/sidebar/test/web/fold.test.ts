@@ -13,7 +13,7 @@ const children = (id: number) => tree[id]
 const show = (lines: FoldLine[]) =>
   lines.map((line) =>
     line.kind === 'earlier'
-      ? `${line.depth}:earlier ${line.count}${line.open ? ' open' : ''}`
+      ? `0:earlier ${line.count}${line.open ? ' open' : ''}`
       : `${line.depth}:${line.id}${line.fold ? ` +${line.fold.count}${line.fold.open ? ' open' : ''}` : ''}`,
   )
 

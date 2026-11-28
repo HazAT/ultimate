@@ -298,7 +298,9 @@ function FlightChildren(props: { id: ConversationId }) {
       parked: data.parked(parseConversationId(id)),
     }
     const state = conversationState(facts, data.log())
-    return (state === 'done' || state === 'idle') && !conversationWait(facts, data.log())
+    return (
+      (state === 'done' || state === 'idle') && !conversationWait(facts, data.log(), data.timers())
+    )
   }
   const lines = createMemo(() =>
     foldLines(
@@ -333,7 +335,6 @@ function FlightChildren(props: { id: ConversationId }) {
             {(earlier) => (
               <EarlierLine
                 count={earlier().count}
-                depth={earlier().depth}
                 open={earlier().open}
                 onToggle={() => toggle(earlierKey(earlier().parent))}
               />
@@ -348,16 +349,15 @@ function FlightChildren(props: { id: ConversationId }) {
 const rowOf = (line: FoldLine) => (line.kind === 'row' ? line : undefined)
 const earlierOf = (line: FoldLine) => (line.kind === 'earlier' ? line : undefined)
 
-function EarlierLine(props: { count: number; depth: number; open: boolean; onToggle: () => void }) {
+function EarlierLine(props: { count: number; open: boolean; onToggle: () => void }) {
   return (
     <Button
       aria-expanded={props.open ? 'true' : 'false'}
       aria-label={`${props.open ? 'Hide' : 'Show'} ${props.count} earlier finished subagents`}
-      class="mx-2 flex h-7 w-[calc(100%-1rem)] min-w-0 items-center justify-start gap-1.5 rounded-md pr-2 text-left font-mono text-[10.5px] font-normal text-muted-foreground/70 outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+      class="mx-2 flex h-7 w-[calc(100%-1rem)] min-w-0 items-center justify-start gap-1.5 rounded-md pr-2 pl-5 text-left font-mono text-[10.5px] font-normal text-muted-foreground/70 outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
       data-earlier-line
       onClick={() => props.onToggle()}
       size={null}
-      style={{ 'padding-left': `${20 + props.depth * 12}px` }}
       variant={null}
     >
       <ChevronRight
