@@ -28,7 +28,7 @@ import {
 } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
 import type { Context } from '@earendil-works/chord/context'
-import { arr, lit, num, obj, opt, str, union } from '@earendil-works/pi-schema'
+import { arr, bool, lit, num, obj, opt, str, union } from '@earendil-works/pi-schema'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { defineEffect } from '../../lib/effect.ts'
@@ -136,7 +136,7 @@ export const userActions = ['open', 'record', 'turn', 'pick', 'stop', 'end', 'qu
 const EndRequested = defineSignal({ name: 'side-chat.end', version: 1, schema: lit(true) })
 
 type Ending =
-  | { reason: 'fresh' }
+  | { reason: 'fresh' | 'handoff' }
   | { reason: 'answered'; reply: { message: number; text: string; device?: Device } }
 
 export const Session = defineDoc<SideChatSession>({
@@ -1065,8 +1065,8 @@ const quiet = (host: ExtensionHost) => {
   return task
 }
 
-async function endSession(host: ExtensionHost, id: ConversationId, ending: Ending) {
-  const task = await host.harness().commit(async (tx) => {
+function requestEnd(host: ExtensionHost, id: ConversationId, ending: Ending, ctx: Context) {
+  return host.harness().commit(async (tx) => {
     const fork = await tx.doc(Fork, id)
     if (fork.ended) {
       if (ending.reason === 'answered') throw new Error('This side chat is no longer open')
@@ -1090,7 +1090,11 @@ async function endSession(host: ExtensionHost, id: ConversationId, ending: Endin
     delete fork.quiet
     await keepAwake(tx, host, id)
     return fork.quiet
-  }, context)
+  }, ctx)
+}
+
+async function endSession(host: ExtensionHost, id: ConversationId, ending: Ending) {
+  const task = await requestEnd(host, id, ending, context)
   if (task === undefined) return
   host.harness().resume()
   const { state } = await host.harness().waitForTask(task, context)
@@ -1104,6 +1108,7 @@ const reasonText = {
   quiet: `ended after ${QUIET_MINUTES} quiet minutes`,
   fresh: 'ended when the user started fresh',
   answered: 'ended when the user sent their answer',
+  handoff: 'ended after handing off',
 }
 
 function quietTask(host: ExtensionHost) {
@@ -1140,14 +1145,21 @@ function quietTask(host: ExtensionHost) {
         }, ctx)
       },
       stop: async (task, runtime, ctx) => {
-        const conversation = (await runtime.conversation(task.input.session, ctx))!
-        await conversation.abort(ctx)
-        await conversation.waitForIdle(ctx)
+        const id = task.input.session
         const { reason } = task.state.checkpoint
-        await runtime.commit(
-          () => ({ status: 'running', checkpoint: { phase: 'end', at: runtime.now(), reason } }),
-          ctx,
-        )
+        const conversation = (await runtime.conversation(id, ctx))!
+        if (reason !== 'handoff') await conversation.abort(ctx)
+        await conversation.waitForIdle(ctx)
+        await runtime.commit(() => {
+          const at = runtime.now()
+          return {
+            status: 'running',
+            checkpoint:
+              reason === 'handoff'
+                ? { phase: 'finish', last: { id, endedAt: at, reason, handedOff: true } }
+                : { phase: 'end', at, reason },
+          }
+        }, ctx)
       },
       end: async (task, runtime, ctx) => {
         const id = task.input.session
@@ -1414,6 +1426,7 @@ export default function sideChatExtension(host: ExtensionHost) {
                 "A branch conversation on the user's screen; omit for the source conversation",
             }),
           ),
+          end: opt(bool({ description: 'End this side chat after your closing reply.' })),
           title: str({ minLength: 1 }),
           outcome: str({ minLength: 1 }),
           decided: opt(arr(str())),
@@ -1425,7 +1438,7 @@ export default function sideChatExtension(host: ExtensionHost) {
         async execute(args, api, ctx) {
           const fork = await api.snapshot(Fork, api.conversationId, ctx)
           if (fork?.of === undefined) throw new Error('side_chat_handoff works only in a side chat')
-          const { to, ...brief } = args
+          const { to, end, ...brief } = args
           const branch = to === undefined ? undefined : (to as ConversationId)
           const target = branch ?? fork.of
           const sourceName = await host
@@ -1491,7 +1504,9 @@ export default function sideChatExtension(host: ExtensionHost) {
               content: [{ type: 'text', text }, ...shared],
             })
             session.handedOff = latest
+            if (end) session.ending ??= { reason: 'handoff' }
           }, ctx)
+          if (end) await requestEnd(host, api.conversationId, { reason: 'handoff' }, ctx)
           host.harness().resume()
           return {
             output: [

@@ -8,7 +8,7 @@ Side chat is a temporary fork you can type or talk to without interrupting the s
 
 ## Handoff and ending
 
-A fork starts with the source's last completed input and answer, takes up the source's recent activity as it changes, and gets its own prompt for thinking things through with you. It can read and do quick checks, but cannot edit files. If you ask it to hand work off, `side_chat_handoff` sends a brief to the source or to a branch on screen. The brief links back to the chat, and the chat stays open.
+A fork starts with the source's last completed input and answer, takes up the source's recent activity as it changes, and gets its own prompt for thinking things through with you. It can read and do quick checks, but cannot edit files. If you ask it to hand work off, `side_chat_handoff` sends a brief to the source or to a branch on screen. The brief links back to the chat. The chat stays open unless you ask it to hand off and close; then it ends after its closing reply without sending a second summary.
 
 **Start fresh** ends the fork now; it also ends after 20 quiet minutes. If something was decided or left open beyond what was already handed off, a summary card goes back to the source without waking it. The window keeps the previous transcript and shows how it ended. The next typed or spoken turn starts a new fork and carries its summary forward.
 

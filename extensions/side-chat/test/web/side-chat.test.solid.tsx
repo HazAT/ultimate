@@ -8,7 +8,7 @@ import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { JsonObject } from '@earendil-works/pi-durable'
-import type { SideChatSession } from '../../refs.ts'
+import type { SideChatEndReason, SideChatSession } from '../../refs.ts'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -151,14 +151,14 @@ async function root(session: SideChatSession, extra: Record<string, Readonly<Jso
   flush()
 }
 
-const ended = (reason: 'quiet' | 'fresh' | 'answered', summary?: string) => ({
+const ended = (reason: SideChatEndReason, summary?: string) => ({
   sessions: {
     [ultimate]: {
       last: {
         id: fork,
         endedAt: new Date('2026-11-28T09:41:00').getTime(),
         reason,
-        handedOff: false,
+        handedOff: reason === 'handoff',
         ...(summary ? { summary } : {}),
       },
     },
@@ -212,9 +212,9 @@ it('after it ends, shows the previous fork above a closing line naming the reaso
   expect(line()).toContain('started fresh · summary sent to @ultimate')
   await root(ended('answered'))
   expect(line()).toContain('answered the card · nothing to hand back')
-  expect(view.querySelector('[data-closing-line]')?.getAttribute('data-closing-line')).toBe(
-    'answered',
-  )
+  await root(ended('handoff'))
+  expect(line()).toContain('handed off · brief sent')
+  expect(view.querySelector('[data-closing-line="handoff"]')).not.toBeNull()
   expect(harness.server!.of(fork)).toBeDefined()
   expect(view.querySelector('textarea')?.placeholder).toBe(
     'Your next message starts a fresh side chat…',

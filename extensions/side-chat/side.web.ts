@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { SideChatSourceSession } from './refs.ts'
+import type { SideChatEndReason, SideChatSourceSession } from './refs.ts'
 
 export interface TabKey {
   key: string
@@ -41,15 +41,23 @@ const reasons = {
   quiet: (minutes: number) => `ended after ${minutes} min quiet`,
   fresh: () => 'started fresh',
   answered: () => 'answered the card',
+  handoff: () => 'handed off',
+}
+
+export function closingReason(reason: SideChatEndReason, minutes: number) {
+  return reasons[reason](minutes)
 }
 
 export function closing(last: NonNullable<SideChatSourceSession['last']>, minutes: number) {
   return {
-    reason: reasons[last.reason](minutes),
-    handback: last.summary
-      ? 'summary sent'
-      : last.failed
-        ? 'summary failed'
-        : 'nothing to hand back',
+    reason: closingReason(last.reason, minutes),
+    handback:
+      last.reason === 'handoff'
+        ? 'brief sent'
+        : last.summary
+          ? 'summary sent'
+          : last.failed
+            ? 'summary failed'
+            : 'nothing to hand back',
   }
 }

@@ -856,6 +856,45 @@ it('other tools are blocked, side_chat_handoff starts @ultimate with a card and 
   expect(userParts(second.model?.[0])).not.toContainEqual(shot)
 })
 
+it('side_chat_handoff with end sends the outcome and lets the fork finish its last turn without a summary', async () => {
+  const f = await fixture()
+  const { harness } = f.server
+  const handoff = { title: 'Quiet toggle', outcome: 'Keep it', instruction: 'Take it from here' }
+  const { id } = await f.turn({
+    key: 'handoff',
+    text: `DECIDE CALL ${JSON.stringify({ name: 'side_chat_handoff', args: { ...handoff, end: true } })}`,
+  })
+  const source = (await harness.conversation(f.main, context))!
+  const sourceEntries = async () => (await source.context(context)).entries
+  await until(async () =>
+    (await sourceEntries()).some((entry) => entry.kind === 'side-chat.handoff'),
+  )
+  expect((await sourceEntries()).find((entry) => entry.kind === 'side-chat.handoff')).toMatchObject(
+    {
+      data: { ...handoff, from: id },
+    },
+  )
+  await until(async () => (await f.session())?.last?.id === id)
+  expect((await f.session())?.last).toEqual({
+    id,
+    endedAt: expect.any(Number),
+    reason: 'handoff',
+    handedOff: true,
+  })
+  expect((await f.server.host.uiState(context))['ext.conversations.concluded']).toContain(id)
+  const fork = (await harness.conversation(id, context))!
+  expect((await fork.context(context)).entries.at(-1)?.model?.[0]).toMatchObject({
+    role: 'assistant',
+    content: [{ type: 'text', text: 'echo Sent to @ultimate.' }],
+    stopReason: 'stop',
+  })
+  expect((await sourceEntries()).some((entry) => entry.kind === 'side-chat.summary')).toBe(false)
+  expect(f.summaries).toEqual([])
+
+  const next = await f.turn({ key: 'fresh', text: 'back again' })
+  expect(next.id).not.toBe(id)
+})
+
 it("side_chat_handoff carries the user's own turns of this session in order, without failed transcriptions", async () => {
   const f = await fixture()
   const speak = async (key: string, heard?: string) => {

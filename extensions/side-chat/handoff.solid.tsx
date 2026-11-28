@@ -23,6 +23,7 @@ import {
 import { QUIET_MINUTES } from './entries.shared.ts'
 import { SideChatForkDoc, type SideChatHandoff, type SideChatSummary } from './refs.ts'
 import { useSourceName } from './side.solid.tsx'
+import { closingReason } from './side.web.ts'
 
 type Brief = Omit<SideChatHandoff, 'from'>
 
@@ -189,13 +190,6 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   )
 }
 
-const ended = (reason: SideChatSummary['reason']) =>
-  reason === 'fresh'
-    ? 'started fresh'
-    : reason === 'answered'
-      ? 'answered the card'
-      : `ended after ${QUIET_MINUTES} min quiet`
-
 export function SummaryCard(props: { entry: EntryRecord & { data: SideChatSummary } }) {
   const data = () => props.entry.data
   return (
@@ -212,7 +206,8 @@ export function SummaryCard(props: { entry: EntryRecord & { data: SideChatSummar
             <span>summary</span>
             <span class="truncate">
               {data().startedAt ? `${formatTime(data().startedAt!)}–` : ''}
-              {formatTime(data().endedAt)} · {ended(data().reason)}
+              {formatTime(data().endedAt)} ·{' '}
+              {closingReason(data().reason ?? 'quiet', QUIET_MINUTES)}
             </span>
           </CollapsibleTrigger>
           <OpenLink

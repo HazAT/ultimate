@@ -7,8 +7,8 @@ import type { Reply } from '../questions/refs.ts'
 /** How one turn reached the model: the recording itself (`audio`) or its transcript (`text`). */
 export type SideChatRoute = 'audio' | 'text'
 
-/** What ended a side chat: inactivity, Start fresh, or sending the answer on its pinned card. */
-export type SideChatEndReason = 'quiet' | 'fresh' | 'answered'
+/** What ended a side chat: inactivity, Start fresh, sending the pinned answer, or a final handoff. */
+export type SideChatEndReason = 'quiet' | 'fresh' | 'answered' | 'handoff'
 
 /** One source's open fork, or its last ended fork until the next one opens. */
 export type SideChatSourceSession = {
@@ -90,7 +90,7 @@ export type SideChatHandoff = {
 
 /**
  * On a side chat fork: what it forked from, each recording's transcript by recording id once its durable transcription
- * settled (`failed` holds the error of one that did not). The session stays open across handoffs.
+ * settled (`failed` holds the error of one that did not).
  */
 export type SideChatFork = {
   of?: ConversationId
