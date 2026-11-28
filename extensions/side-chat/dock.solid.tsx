@@ -148,8 +148,7 @@ type Waiter = {
 }
 const waiting = new Map<string, Set<Waiter>>()
 capture.setKeepOpen(() => session().id !== undefined)
-export const coldDraft = (source: ConversationId | undefined) =>
-  `side-chat.cold.${source ?? 'default'}`
+export const coldDraft = (source: ConversationId) => `side-chat.cold.${source}`
 export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
   !!cold.text.trim() || cold.images.length > 0 || cold.files > 0
 export const composeIn = (id: ConversationId | undefined) => {
@@ -384,8 +383,9 @@ async function sendTurn(input: {
   }
   const hint = screen()?.text
   if (signal.aborted) return cancelled()
-  const cold = composerDraft(coldDraft(destination.source))
-  const fromCold = !input.fromComposer && (owner === undefined || coldHolds(cold))
+  const cold =
+    destination.source === undefined ? undefined : composerDraft(coldDraft(destination.source))
+  const fromCold = !!cold && !input.fromComposer && (owner === undefined || coldHolds(cold))
   const box = input.images
     ? undefined
     : fromCold

@@ -152,6 +152,15 @@ const ended = (reason: 'quiet' | 'fresh' | 'answered', summary?: string) => ({
   },
 })
 
+it('offers no box until the source is known, so a draft never moves to another source', async () => {
+  const view = renderSolid(() => <SideChatPanel />)
+  await settle()
+  flush()
+  expect(view.querySelector('textarea')).toBeNull()
+  await root({ sessions: {} })
+  expect(view.querySelector('textarea')).not.toBeNull()
+})
+
 it('after it ends, shows the previous fork above a closing line naming the reason and what went back', async () => {
   const view = renderSolid(() => <SideChatPanel />)
   const line = () =>

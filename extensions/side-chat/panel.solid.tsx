@@ -297,7 +297,7 @@ export function ClosingLine(props: {
 function Bottom(props: {
   fork: ConversationId | undefined
   ended: boolean
-  source: ConversationId | undefined
+  source: ConversationId
   sourceLabel: string
 }) {
   const chip = <PickControl pick={useSideChatPick(() => props.fork)} />
@@ -519,7 +519,9 @@ export function SideChatBody(props: {
         )}
       </Show>
       <Show when={last()}>{(ended) => <ClosingLine last={ended()} source={sourceLabel()} />}</Show>
-      <Bottom ended={!!last()} fork={id()} source={source()} sourceLabel={sourceLabel()} />
+      <Show when={source()} keyed>
+        {(at) => <Bottom ended={!!last()} fork={id()} source={at} sourceLabel={sourceLabel()} />}
+      </Show>
     </>
   )
 }
