@@ -333,10 +333,12 @@ it('Talk it through forks the asker at the card, drafts without sending, then su
   const replies = (await messages()).filter((item) => item.re === question.id)
   expect(replies).toHaveLength(1)
   expect(replies[0].text).toContain('Colour?: Teal')
-  const entries = await asker.entries()
-  const summary = entries.findIndex((entry) => entry.kind === 'side-chat.summary')
-  expect(summary).toBeGreaterThan(-1)
-  expect(entries.findIndex((entry) => entry.id === replies[0].entry)).toBeGreaterThan(summary)
+  const placed = async () =>
+    (await messages()).find((item) => item.re === question.id)?.entry as number | undefined
+  await until(async () => (await placed()) !== undefined)
+  const summary = (await asker.entries()).find((entry) => entry.kind === 'side-chat.summary')
+  expect(summary).toBeDefined()
+  expect(await placed()).toBeGreaterThan(summary!.id)
 })
 
 const userParts = (message: Message | undefined) =>

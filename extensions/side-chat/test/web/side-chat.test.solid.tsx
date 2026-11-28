@@ -167,6 +167,25 @@ it('offers no box until the source is known, and opening it takes focus from the
   main.remove()
 })
 
+it('on a phone, a control the person focuses while the source loads keeps focus', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(pointer: coarse)',
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  const control = document.createElement('button')
+  document.body.append(control)
+  const view = renderSolid(() => <SideChatPanel />)
+  openSideChat()
+  await settle()
+  flush()
+  control.focus()
+  await root({ sessions: {} })
+  expect(view.querySelector('textarea')).not.toBeNull()
+  expect(document.activeElement).toBe(control)
+  control.remove()
+})
+
 it('after it ends, shows the previous fork above a closing line naming the reason and what went back', async () => {
   const view = renderSolid(() => <SideChatPanel />)
   const line = () =>

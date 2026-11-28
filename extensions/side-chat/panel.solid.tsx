@@ -792,6 +792,7 @@ function useFocusWhenWanted(
   section: () => HTMLElement | undefined,
   source: () => ConversationId | undefined,
 ) {
+  let waited = false
   createEffect(
     () => [focusWanted(), source()] as const,
     ([wanted]) => {
@@ -799,9 +800,12 @@ function useFocusWhenWanted(
       const box = section()?.querySelector<HTMLTextAreaElement>('[data-ui="composer"] textarea')
       if (!box) {
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        waited = true
         return
       }
-      box.focus()
+      const movedOn = waited && document.activeElement !== document.body
+      waited = false
+      if (!movedOn) box.focus()
       wantFocus(false)
     },
   )
