@@ -299,7 +299,9 @@ function FlightChildren(props: { id: ConversationId }) {
     }
     const state = conversationState(facts, data.log())
     return (
-      (state === 'done' || state === 'idle') && !conversationWait(facts, data.log(), data.timers())
+      data.row(id) !== undefined &&
+      (state === 'done' || state === 'idle') &&
+      !conversationWait(facts, data.log(), data.timers())
     )
   }
   const lines = createMemo(() =>
