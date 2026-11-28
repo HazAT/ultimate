@@ -247,7 +247,10 @@ export function workspaces(host: Host) {
     const concluded = await host.harness().commit(async (tx) => {
       const open = (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)]?.landedOpen
       if (!open) return false
-      if ((await host.need(ConversationsApi).concludedIn(tx)).has(id)) return true
+      if ((await host.need(ConversationsApi).concludedIn(tx)).has(id)) {
+        delete (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].landedOpen
+        return true
+      }
       if (!(await current(tx))) return false
       if ((await tx.doc(LiveDoc, id)).run || (await tx.doc(InboxDoc, id)).items.length) return false
       if (await host.want(Branches)?.working(tx, id)) {
@@ -262,12 +265,12 @@ export function workspaces(host: Host) {
         open.escalated = true
         return false
       }
+      delete (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].landedOpen
       try {
         await host.need(ConversationsApi).concludeIn(tx, [id], id)
         return true
       } catch (error) {
         host.notice(`Not concluding landed #${id}: ${String(error)}`)
-        delete (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].landedOpen
         return false
       }
     }, context)
@@ -637,9 +640,9 @@ export function workspaces(host: Host) {
           const live = await tx.doc(LiveDoc, id)
           const inbox = await tx.doc(InboxDoc, id)
           const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+          delete index.items[String(id)].landedOpen
           if (live.run) return 'Conversation is running; wait or stop it before removal'
           if (inbox.items.length) return 'Conversation has queued input; wait or cancel it first'
-          delete index.items[String(id)].landedOpen
           const sources = new Set([workspace.path])
           let size: number
           do {

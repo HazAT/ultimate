@@ -133,7 +133,11 @@ export async function branchesConcluded(
       pending.length > 0
     )
       return []
-    if (messages.some((m) => m.from === owner.id && m.to === starter && m.report === true)) {
+    const reports = messages.filter(
+      (m) => m.from === owner.id && m.to === starter && m.report === true,
+    )
+    if (reports.some((m) => m.state === 'sent')) return []
+    if (reports.length) {
       delete owners[request.message]
       return []
     }
