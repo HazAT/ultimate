@@ -2,6 +2,7 @@ import { parseEntryId, parseConversationId } from '../../lib/ids.shared.ts'
 import type {
   ConversationId,
   GenerationResult,
+  HookApi,
   TaskId,
   Tx,
   EntryId,
@@ -301,6 +302,39 @@ export default function messages(host: ExtensionHost) {
       submitOutput(host, tx, to, input, { kind: 'automation', id }, `automation ${id} "${name}"`),
     dropped: (tx, id, source, why) => dropped(host, tx, { kind: 'automation', id }, source, why),
   })
+  const observeRun = async (api: HookApi, ctx: Context, terminated = false) => {
+    let by = (await api.snapshot(Started, api.conversationId, ctx))?.by
+    const down =
+      by === undefined &&
+      (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate === api.conversationId
+    if (down) by = api.conversationId
+    if (by === undefined || (down && terminated)) return
+    await host.harness().commit(async (tx) => {
+      const started = await tx.doc(Started, api.conversationId)
+      const generationObserverAlreadyCreated =
+        started.yielded !== undefined && started.yielded >= api.taskId
+      if (generationObserverAlreadyCreated) return
+      started.yielded = api.taskId
+      const after = started.lastRoute
+      started.lastRoute = await tx.createTask(
+        route(host),
+        {
+          generation: api.taskId as TaskId<GenerationResult>,
+          inputs: terminated
+            ? []
+            : [...((await tx.doc(LiveDoc, api.conversationId)).run?.inputs ?? [])],
+          by,
+          ...(down ? { down } : {}),
+          ...(after !== undefined ? { after } : {}),
+        },
+        {
+          ownership: { kind: 'conversation' },
+          conversationId: api.conversationId,
+          background: true,
+        },
+      )
+    }, ctx)
+  }
   return defineExtension({
     name: 'messages',
     tasks: [delivery(host), route(host), settle(host), tellTask(host)],
@@ -309,36 +343,11 @@ export default function messages(host: ExtensionHost) {
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: (_input, api) => openQuestionsNote(api.tx, api.conversationId, Date.now()),
         onYield: async (_answer, api, ctx) => {
-          let by = (await api.snapshot(Started, api.conversationId, ctx))?.by
-          const down =
-            by === undefined &&
-            (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate ===
-              api.conversationId
-          if (down) by = api.conversationId
-          if (by === undefined) return undefined
-          await host.harness().commit(async (tx) => {
-            const started = await tx.doc(Started, api.conversationId)
-            const generationObserverAlreadyCreated =
-              started.yielded !== undefined && started.yielded >= api.taskId
-            if (generationObserverAlreadyCreated) return
-            started.yielded = api.taskId
-            const after = started.lastRoute
-            started.lastRoute = await tx.createTask(
-              route(host),
-              {
-                generation: api.taskId as TaskId<GenerationResult>,
-                inputs: [...((await tx.doc(LiveDoc, api.conversationId)).run?.inputs ?? [])],
-                by,
-                ...(down ? { down } : {}),
-                ...(after !== undefined ? { after } : {}),
-              },
-              {
-                ownership: { kind: 'conversation' },
-                conversationId: api.conversationId,
-                background: true,
-              },
-            )
-          }, ctx)
+          await observeRun(api, ctx)
+          return undefined
+        },
+        afterRun: async (run, api, ctx) => {
+          if (run.reason === 'terminate') await observeRun(api, ctx, true)
           return undefined
         },
       }),

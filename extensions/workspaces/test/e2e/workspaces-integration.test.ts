@@ -194,6 +194,18 @@ async function fixture(
           },
         }),
         defineTool({
+          name: 'finish',
+          description:
+            'End the run without a final answer, as a message that answers the last open request does',
+          parameters: obj({}),
+          async execute() {
+            return {
+              output: [{ type: 'text', text: 'Sent.' }],
+              control: { terminate: true as const },
+            }
+          },
+        }),
+        defineTool({
           name: 'write_commit',
           description: 'Write and commit a change',
           parameters: obj({}),
@@ -1301,9 +1313,9 @@ async function landedWhileBusy() {
   await submitted(f, id)
   await f.opened.root.waitForIdle(context)
   expect(await concludedIds(f)).not.toContain(id)
-  const branchRuns = async () => {
+  const branchRuns = async (content = 'Report back.') => {
     const branch = (await f.opened.harness.conversation(id, context))!
-    await (await branch.submit({ type: 'input', content: 'Report back.' }, context)).wait(context)
+    await (await branch.submit({ type: 'input', content }, context)).wait(context)
     await routed(f, id)
   }
   return { f, id, open, branchRuns }
@@ -1321,6 +1333,15 @@ it.concurrent('concludes a branch that landed while busy once its next run ends 
   await until(async () => (await f.service.get(id, context))?.state === 'removed')
   expect(await rootInputs(f, 'workspaces.still-open')).toHaveLength(0)
 })
+it.concurrent('concludes a branch that landed while busy once a run ended by a tool finishes', async () => {
+  const { f, id, open, branchRuns } = await landedWhileBusy()
+  await f.opened.harness.commit(async (tx) => {
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    log.messages.find((m) => m.id === open)!.state = 'answered'
+  }, context)
+  await branchRuns(`CALL ${JSON.stringify({ tool: 'finish', args: {} })}`)
+  expect(await concludedIds(f)).toContain(id)
+})
 it.concurrent('wakes the starter once when a landed branch ends a run still busy', async () => {
   const { f, id, branchRuns } = await landedWhileBusy()
   await branchRuns()
@@ -1328,6 +1349,16 @@ it.concurrent('wakes the starter once when a landed branch ends a run still busy
   expect(await concludedIds(f)).not.toContain(id)
   const escalations = await rootInputs(f, 'workspaces.still-open')
   expect(escalations).toHaveLength(1)
+  expect(
+    await f.opened.harness.commit(
+      (tx) =>
+        tx.submissionByRequest(
+          ROOT_CONVERSATION_ID,
+          `landed-open:${(escalations[0].data as { submission: string }).submission}`,
+        ),
+      context,
+    ),
+  ).toMatchObject({ type: 'input' })
   expect(JSON.stringify(escalations[0].model)).toContain(`Landed branch #${id} is still open`)
 })
 it.concurrent('wakes only the submitter on a failed landing and leaves it open', async () => {

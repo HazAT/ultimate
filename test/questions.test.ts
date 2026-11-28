@@ -91,7 +91,12 @@ async function fixture() {
   })
   // Messages’ core dependencies: no standing agents to list, no worktrees, no concluded conversations.
   services.set('subagents', { residents: async () => [] } satisfies Partial<SubagentsService>)
-  services.set('workspaces', { doc: Workspaces, landingPending, pendingLandingCards })
+  services.set('workspaces', {
+    doc: Workspaces,
+    landingPending,
+    pendingLandingCards,
+    settleLanded: async () => {},
+  })
   services.set('conversations', { concludedIn: async () => new Set() })
   // A card-less question stays open only when the judge says it asks something.
   services.set(Judge.name, {

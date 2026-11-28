@@ -29,8 +29,9 @@ export type WorkspaceService = {
   /** Free the worktrees of concluded conversations `ids` and their descendants; returns the ones kept (busy, unlanded). */
   release: Implementation['release']
   /**
-   * After a run of `id` ends: a branch that landed while busy is concluded now when nothing is under way, else its
-   * starter wakes once with a `workspaces.still-open` input.
+   * After a run of `id` ends, while `current(tx)` holds (no newer run took over): a branch that landed while busy is
+   * concluded now when nothing is under way; when only its own work (a reply, a subagent, a notify) remains, its starter
+   * wakes once with a `workspaces.still-open` input. A new run or queued input defers to that run's end.
    */
   settleLanded: Implementation['settleLanded']
   /** Run `git` with `args` in a directory; rejects with Git's message. Use it instead of spawning Git yourself. */

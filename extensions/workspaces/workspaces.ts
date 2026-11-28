@@ -233,7 +233,11 @@ export function workspaces(host: Host) {
     },
     release: (id, context) => release([id], context),
   })
-  async function settleLanded(id: ConversationId, context: Context) {
+  async function settleLanded(
+    id: ConversationId,
+    context: Context,
+    current: (tx: Tx) => Promise<boolean>,
+  ) {
     if (!(await get(id, context))?.landedOpen) return
     const starter = await host.want(Branches)?.starter(id, context)
     const to =
@@ -241,9 +245,10 @@ export function workspaces(host: Host) {
         ? undefined
         : await host.harness().conversation(starter, context)
     const concluded = await host.harness().commit(async (tx) => {
-      const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
-      const open = index.items[String(id)]?.landedOpen
+      const open = (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)]?.landedOpen
       if (!open) return false
+      if ((await host.need(ConversationsApi).concludedIn(tx)).has(id)) return true
+      if (!(await current(tx))) return false
       if ((await tx.doc(LiveDoc, id)).run || (await tx.doc(InboxDoc, id)).items.length) return false
       if (await host.want(Branches)?.working(tx, id)) {
         if (open.escalated || !to) return false
@@ -257,12 +262,12 @@ export function workspaces(host: Host) {
         open.escalated = true
         return false
       }
-      delete index.items[String(id)].landedOpen
       try {
         await host.need(ConversationsApi).concludeIn(tx, [id], 'landing')
         return true
       } catch (error) {
         host.notice(`Not concluding landed #${id}: ${String(error)}`)
+        delete (await tx.doc(Workspaces, ROOT_CONVERSATION_ID)).items[String(id)].landedOpen
         return false
       }
     }, context)
@@ -608,11 +613,6 @@ export function workspaces(host: Host) {
   ): Promise<KeptWork[]> {
     const kept: KeptWork[] = []
     if (signal?.aborted) return kept
-    await host.harness().commit(async (tx) => {
-      const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
-      for (const id of ids)
-        if (index.items[String(id)]?.landedOpen) delete index.items[String(id)].landedOpen
-    }, context)
     const graph = await candidates(ids, context)
     const retained = new Map<number, number>()
     for (const id of graph.ids) {
@@ -639,6 +639,7 @@ export function workspaces(host: Host) {
           const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
           if (live.run) return 'Conversation is running; wait or stop it before removal'
           if (inbox.items.length) return 'Conversation has queued input; wait or cancel it first'
+          delete index.items[String(id)].landedOpen
           const sources = new Set([workspace.path])
           let size: number
           do {
@@ -855,6 +856,7 @@ export function workspaces(host: Host) {
       if (!queued) {
         await log(tx, lander, entry, { step: 'queued' })
         index.queue.push(entry)
+        delete index.items[String(id)].landedOpen
       }
       if (idleReadBeforeWrites) await startIdleLander(tx, index, source)
       const position = index.queue

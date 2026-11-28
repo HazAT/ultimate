@@ -482,8 +482,11 @@ export function route(host: ExtensionHost) {
           ctx,
         )
       },
-      landed: async (_task, runtime, ctx) => {
-        await host.need(WorkspacesApi).settleLanded(runtime.conversationId, ctx)
+      landed: async (task, runtime, ctx) => {
+        const id = runtime.conversationId
+        await host
+          .need(WorkspacesApi)
+          .settleLanded(id, ctx, async (tx) => (await tx.doc(Started, id)).lastRoute === task.id)
         await runtime.commit(() => terminal, ctx)
       },
     },

@@ -12,7 +12,7 @@ export const StillOpen = renderEntry(StillOpenEntry, (props) => (
       <span class="min-w-0 truncate text-foreground">
         <ConversationRef id={props.entry.data.id} />
       </span>
-      <span class="hidden shrink-0 sm:inline">· work still under way · conclude?</span>
+      <span class="hidden shrink-0 sm:inline">· work still under way</span>
       <div class="ml-auto flex shrink-0">
         <Open card={props.entry.id} id={props.entry.data.id} />
       </div>
