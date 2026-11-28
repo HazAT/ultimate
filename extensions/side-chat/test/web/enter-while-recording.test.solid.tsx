@@ -52,6 +52,7 @@ vi.mock('@/sdk/solid', async () => {
     useConversation: () => () => ({ entries: [], live: {}, busy: false }),
     ROOT: 1,
     useAction: () => ({ data: () => undefined, refetch: async () => undefined }),
+    useDocOf: () => () => undefined,
     useUiState: (key: string, initial: unknown) =>
       createSignal<unknown>(key === 'ext.side-chat.cues' ? false : initial),
   }

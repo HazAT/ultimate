@@ -30,7 +30,7 @@ import { pendingKey, pulsing, replying, shownPhase, transition, typedIn } from '
 import type { DockEvent, DockState, Typed } from './machine.web.ts'
 import { RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
 import type { SideChatFork, SideChatTurn } from './refs.ts'
-import { inboxChat } from './side.solid.tsx'
+import { inboxChat, standingSource } from './side.solid.tsx'
 
 export const KEYS = 'mod+shift+v'
 type Image = { data: string; mimeType: string }
@@ -58,7 +58,7 @@ const live = cell(newSession())
 const session = () => live.get()
 const sourceCell = cell<ConversationId | undefined>(undefined)
 const sourced = () => {
-  const source = sourceCell.get()
+  const source = sourceCell.get() ?? standingSource()
   return source === undefined ? {} : { source }
 }
 export function setSideChatSource(source: ConversationId | undefined) {
@@ -148,7 +148,8 @@ type Waiter = {
 }
 const waiting = new Map<string, Set<Waiter>>()
 capture.setKeepOpen(() => session().id !== undefined)
-export const COLD_DRAFT = 'side-chat.cold'
+export const coldDraft = (source: ConversationId | undefined) =>
+  `side-chat.cold.${source ?? 'default'}`
 export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
   !!cold.text.trim() || cold.images.length > 0 || cold.files > 0
 export const composeIn = (id: ConversationId | undefined) => {
@@ -383,7 +384,7 @@ async function sendTurn(input: {
   }
   const hint = screen()?.text
   if (signal.aborted) return cancelled()
-  const cold = composerDraft(COLD_DRAFT)
+  const cold = composerDraft(coldDraft(destination.source))
   const fromCold = !input.fromComposer && (owner === undefined || coldHolds(cold))
   const box = input.images
     ? undefined

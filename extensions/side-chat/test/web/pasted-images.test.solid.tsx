@@ -7,7 +7,7 @@ import { FakeSource } from '../../../../test/web/fake-source.ts'
 import { composerDraft, getDraft } from '../../../../web/src/app/drafts.ts'
 import { store as clientStore } from '../../../../web/src/sdk/client.ts'
 import {
-  COLD_DRAFT,
+  coldDraft,
   composeIn,
   coldHolds,
   dispatch,
@@ -20,6 +20,9 @@ import {
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
+  server: undefined as
+    | ReturnType<typeof import('../../../../test/web/fake-source.ts').fakeSubscriptions>
+    | undefined,
   turns: [] as Record<string, unknown>[],
   route: 'audio',
   status: undefined as Promise<void> | undefined,
@@ -34,7 +37,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createReads } = await import('../../../../web/src/sdk/reads.ts')
   const { createUiState } = await import('../../../../web/src/sdk/ui-state.ts')
   const { answerReadsWith, fakeSubscriptions } = await import('../../../../test/web/fake-source.ts')
-  const subscriptions = fakeSubscriptions(harness.sources)
+  const subscriptions = (harness.server = fakeSubscriptions(harness.sources))
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
     const action = /^\/api\/extensions\/side-chat\/actions\/(status|record|turn)$/.exec(path)?.[1]
@@ -56,8 +59,10 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       await harness.stop
       return Response.json({ result: {} })
     }
-    if (path === '/api/extensions/side-chat/actions/record')
-      return Response.json({ result: { audio: 'rec-1', session: 41 } })
+    if (path === '/api/extensions/side-chat/actions/record') {
+      const { args } = JSON.parse(init?.body as string)
+      return Response.json({ result: { audio: 'rec-1', session: args.session ?? 41 } })
+    }
     return subscriptions.handle(path, init) ?? Response.json({ ok: true })
   }
   const pageFetch = answerReadsWith(fetch)
@@ -73,7 +78,9 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   return { store, api, reads: createReads(api, store), uiState: createUiState(undefined) }
 })
 
+const primary = parseConversationId(7)
 const session = parseConversationId(40)
+const cold = coldDraft(primary)
 const shot = { data: 'cG5n', mimeType: 'image/png' }
 const speak = () =>
   sideChatSink.finish(
@@ -96,40 +103,56 @@ beforeEach(async ({ onTestFinished }) => {
   clientStore.start()
   onTestFinished(() => clientStore.stop())
   harness.sources[0].open()
+  await settle()
+  harness
+    .server!.of(1)!
+    .send('doc', { kind: 'ultimate.standing-agents', value: { ultimate: primary } })
+  flush()
   await serverEndedSession(composeIn)
   composeIn(session)
-  settleTranscripts({ of: parseConversationId(1) }, session)
+  settleTranscripts({ of: primary }, session)
   getDraft(session).set({ images: [shot] })
 })
 afterEach(() => {
   vi.unstubAllGlobals()
   getDraft(session).set({ text: '', images: [], sending: false })
-  getDraft(COLD_DRAFT).set({ text: '', images: [], files: [], sending: false })
+  getDraft(cold).set({ text: '', images: [], files: [], sending: false })
 })
 
-it('switching sources cancels a first spoken turn already waiting for its transcript', async () => {
+it('switching to an open fork cancels the first take and leaves the cold draft with its source', async () => {
   composeIn(undefined)
-  const first = parseConversationId(42)
-  setSideChatSource(first)
   harness.route = 'text'
-  getDraft(COLD_DRAFT).set({ text: 'look at this', images: [shot] })
+  const draftA = getDraft(cold)
+  draftA.set({ text: 'look at this', images: [shot] })
   const sent = speak()
   await settle()
   expect(harness.destinations).toEqual([
-    ['status', first],
-    ['record', first],
+    ['status', primary],
+    ['record', primary],
   ])
   expect(Object.values(dock.local())).toMatchObject([{ audio: 'rec-1' }])
-  expect(getDraft(COLD_DRAFT).get().sending).toBe(true)
-  setSideChatSource(parseConversationId(43))
+  expect(draftA.get().sending).toBe(true)
+  const second = parseConversationId(43)
+  setSideChatSource(second)
+  composeIn(session)
   await settle()
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({
+  expect(draftA.get().sending).toBe(false)
+  await sent
+  expect(harness.turns).toEqual([])
+
+  harness.route = 'audio'
+  getDraft(session).set({ text: 'B context', images: [] })
+  await speak()
+  expect(harness.turns).toEqual([
+    expect.objectContaining({ source: second, session, text: 'B context', images: [] }),
+  ])
+
+  setSideChatSource(primary)
+  expect(getDraft(coldDraft(primary)).get()).toMatchObject({
     text: 'look at this',
     images: [shot],
     sending: false,
   })
-  await sent
-  expect(harness.turns).toEqual([])
 })
 
 it('a spoken turn takes the images pasted into the side chat box and clears them', async () => {
@@ -141,15 +164,15 @@ it('a spoken turn takes the images pasted into the side chat box and clears them
 
 it('what was typed and pasted while cold goes with the first turn, even when the recording opened the fork', async () => {
   await serverEndedSession(composeIn)
-  getDraft(COLD_DRAFT).set({ text: 'look at this', images: [shot] })
+  getDraft(cold).set({ text: 'look at this', images: [shot] })
   composeIn(session)
   await speak()
   await settle()
   expect(harness.turns).toEqual([
     expect.objectContaining({ text: 'look at this', audio: 'rec-1', images: [shot] }),
   ])
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: '', images: [] })
-  expect(coldHolds(composerDraft(COLD_DRAFT))).toBe(false)
+  expect(getDraft(cold).get()).toMatchObject({ text: '', images: [] })
+  expect(coldHolds(composerDraft(cold))).toBe(false)
 })
 
 it('a session that ends during a send stops it before it reaches that session', async () => {
@@ -177,18 +200,18 @@ it('a session that ends during a send from the composer rejects, so the composer
 
 it('what is typed into the cold box during the first send stays in the box the session shows', async () => {
   await serverEndedSession(composeIn)
-  getDraft(COLD_DRAFT).set({ text: 'first', revision: 1 })
+  getDraft(cold).set({ text: 'first', revision: 1 })
   composeIn(session)
   let answer = () => {}
   harness.status = new Promise((resolve) => (answer = resolve))
   const sending = speak()
   await vi.waitFor(() => expect(harness.asked).toBe(1))
-  getDraft(COLD_DRAFT).set({ text: 'first and more', revision: 2 })
+  getDraft(cold).set({ text: 'first and more', revision: 2 })
   answer()
   await sending
   expect(harness.turns).toEqual([expect.objectContaining({ text: 'first' })])
-  expect(getDraft(COLD_DRAFT).get().text).toBe('first and more')
-  expect(coldHolds(composerDraft(COLD_DRAFT))).toBe(true)
+  expect(getDraft(cold).get().text).toBe('first and more')
+  expect(coldHolds(composerDraft(cold))).toBe(true)
 })
 
 it('a turn after a recording that opened the session belongs to that session', async () => {
@@ -206,9 +229,9 @@ it('a turn after a recording that opened the session belongs to that session', a
 
 it('a send from the cold box after the session opened carries its text once', async () => {
   await serverEndedSession(composeIn)
-  getDraft(COLD_DRAFT).set({ text: 'look at this' })
+  getDraft(cold).set({ text: 'look at this' })
   composeIn(session)
-  settleTranscripts({ of: parseConversationId(1) }, session)
+  settleTranscripts({ of: primary }, session)
   await sendTyped('look at this', [])
   await settle()
   expect(harness.turns).toEqual([expect.objectContaining({ text: 'look at this' })])
@@ -225,40 +248,40 @@ it('a spoken cut-in while Enter is sending the box leaves the box to that send',
 
 it('a spoken turn that ends without sending leaves the cold text and screenshot in the box', async () => {
   await serverEndedSession(composeIn)
-  getDraft(COLD_DRAFT).set({ text: 'look', images: [shot] })
+  getDraft(cold).set({ text: 'look', images: [shot] })
   let answer = () => {}
   harness.status = new Promise((resolve) => (answer = resolve))
   const spoken = speak()
   await vi.waitFor(() => expect(harness.asked).toBe(1))
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: true })
+  expect(getDraft(cold).get()).toMatchObject({ text: 'look', images: [shot], sending: true })
   await serverEndedSession(composeIn)
   answer()
   await spoken
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({ text: 'look', images: [shot], sending: false })
+  expect(getDraft(cold).get()).toMatchObject({ text: 'look', images: [shot], sending: false })
 })
 
 it('a file attached to the cold box keeps it in view when the session opens', async () => {
   await serverEndedSession(composeIn)
-  getDraft(COLD_DRAFT).set({
+  getDraft(cold).set({
     files: [{ id: 'f', name: 'spec.pdf', size: '1 KB', mimeType: 'application/pdf', path: '' }],
   })
   composeIn(session)
-  expect(coldHolds(composerDraft(COLD_DRAFT))).toBe(true)
+  expect(coldHolds(composerDraft(cold))).toBe(true)
 })
 
 it('a file upload finishing during a spoken turn still clears the text that turn sent', async () => {
   await serverEndedSession(composeIn)
   const pending = { id: 'f', name: 'spec.pdf', size: '1 KB', mimeType: 'application/pdf', path: '' }
-  getDraft(COLD_DRAFT).set({ text: 'look', files: [pending], revision: 1 })
+  getDraft(cold).set({ text: 'look', files: [pending], revision: 1 })
   let answer = () => {}
   harness.status = new Promise((resolve) => (answer = resolve))
   const spoken = speak()
   await vi.waitFor(() => expect(harness.asked).toBe(1))
-  getDraft(COLD_DRAFT).set({ files: [{ ...pending, path: '/uploads/spec.pdf' }], revision: 2 })
+  getDraft(cold).set({ files: [{ ...pending, path: '/uploads/spec.pdf' }], revision: 2 })
   answer()
   await spoken
   expect(harness.turns).toEqual([expect.objectContaining({ text: 'look' })])
-  expect(getDraft(COLD_DRAFT).get()).toMatchObject({
+  expect(getDraft(cold).get()).toMatchObject({
     text: '',
     files: [expect.objectContaining({ path: '/uploads/spec.pdf' })],
   })

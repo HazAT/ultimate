@@ -10,8 +10,10 @@ export const [inboxChat, setInboxChat] = createRoot(() =>
   createSignal<{ source: ConversationId; park: () => void }>(),
 )
 
+const standing = createRoot(() => useDocOf(() => ROOT, StandingDoc))
+export const standingSource = () => standing()?.ultimate
+
 export function useSourceName(source: Accessor<ConversationId | undefined>) {
-  const standing = useDocOf(() => ROOT, StandingDoc)
   const summary = useConversationSummary(source)
   return () => {
     const at = source()
@@ -20,11 +22,8 @@ export function useSourceName(source: Accessor<ConversationId | undefined>) {
 }
 
 export function useSideSource(override?: Accessor<ConversationId | undefined>) {
-  const standing = useDocOf(() => ROOT, StandingDoc)
   const [stored] = useUiState<number | null>(SOURCE_KEY, null)
-  return createMemo(
-    () => override?.() ?? ((stored() ?? standing()?.ultimate) as ConversationId | undefined),
-  )
+  return createMemo(() => override?.() ?? (stored() as ConversationId | null) ?? standingSource())
 }
 
 export function useSideSession(source: Accessor<ConversationId | undefined>) {

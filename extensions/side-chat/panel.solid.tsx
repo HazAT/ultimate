@@ -46,7 +46,7 @@ import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
 import { DictationOptions, shortcut, talkMode } from '../dictation/ui.solid.tsx'
 import { QUIET_MINUTES } from './entries.shared.ts'
 import {
-  COLD_DRAFT,
+  coldDraft,
   composeIn,
   dock,
   KEYS,
@@ -294,22 +294,27 @@ export function ClosingLine(props: {
   )
 }
 
-function Bottom(props: { fork: ConversationId | undefined; ended: boolean; source: string }) {
+function Bottom(props: {
+  fork: ConversationId | undefined
+  ended: boolean
+  source: ConversationId | undefined
+  sourceLabel: string
+}) {
   const chip = <PickControl pick={useSideChatPick(() => props.fork)} />
   const viewport = useViewport()
   const placeholder = () =>
     props.ended
       ? 'Your next message starts a fresh side chat…'
       : viewport() === 'phone'
-        ? `Talk it through with ${props.source}…`
-        : `Talk it through with ${props.source} · ${talkVerb()} ${holdKeys()} to speak…`
+        ? `Talk it through with ${props.sourceLabel}…`
+        : `Talk it through with ${props.sourceLabel} · ${talkVerb()} ${holdKeys()} to speak…`
   const target = (): ComposerTarget => ({
     name: 'Side chat',
     placeholder: placeholder(),
     images: true,
     ...(dock.conversation() ? { dictation: sideChatSink } : {}),
     send: (text, images) => sendTyped(text, images),
-    ...(props.fork === undefined ? { draft: COLD_DRAFT, toolbar: chip } : {}),
+    ...(props.fork === undefined ? { draft: coldDraft(props.source), toolbar: chip } : {}),
   })
   return (
     <footer class="flex shrink-0 flex-col gap-1.5 pt-1">
@@ -514,7 +519,7 @@ export function SideChatBody(props: {
         )}
       </Show>
       <Show when={last()}>{(ended) => <ClosingLine last={ended()} source={sourceLabel()} />}</Show>
-      <Bottom ended={!!last()} fork={id()} source={sourceLabel()} />
+      <Bottom ended={!!last()} fork={id()} source={source()} sourceLabel={sourceLabel()} />
     </>
   )
 }
