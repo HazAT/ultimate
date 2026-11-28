@@ -229,6 +229,32 @@ it('on a phone, a control the person focuses while the source loads keeps focus'
   control.remove()
 })
 
+it('a folded phone sheet drops the transcript and keeps its handle, Close and box', async ({
+  onTestFinished,
+}) => {
+  onTestFinished(() => uiState.set('ext.side-chat.sheet', 'rest'))
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(pointer: coarse)',
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  uiState.set('ext.side-chat.sheet', 'folded')
+  const view = renderSolid(() => (
+    <ExtensionName value="side-chat">
+      <SideChatOverlay />
+    </ExtensionName>
+  ))
+  await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
+  setSideChatOpen(true)
+  flush()
+  await settle()
+  const sheet = view.querySelector('[data-side-chat-sheet="folded"]')!
+  expect(sheet.querySelector('[data-side-chat-grabber]')).not.toBeNull()
+  expect(sheet.querySelector('[aria-label="Close side chat"]')).not.toBeNull()
+  expect(sheet.querySelector('textarea')).not.toBeNull()
+  expect(sheet.querySelector('[data-ui="transcript"]')).toBeNull()
+})
+
 it('after it ends, shows the previous fork above a closing line naming the reason and what went back', async () => {
   const view = renderSolid(() => <SideChatPanel />)
   const line = () =>
