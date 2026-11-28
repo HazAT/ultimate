@@ -2076,9 +2076,6 @@ it('sends no failure notice for a concluded branch that reported', async () => {
     report: true,
     note: false,
   })
-  await until(
-    async () => (await f.log())!.messages.find((m) => m.text === 'Built')?.state === 'delivered',
-  )
   await until(f.reactorsSettled)
   await f.opened.root.waitForIdle(context)
   await conversationActions.conclude({ ids: [id] }, f.action())

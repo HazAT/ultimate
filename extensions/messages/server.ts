@@ -319,7 +319,7 @@ export default function messages(host: ExtensionHost) {
       const generationObserverAlreadyCreated =
         started.yielded !== undefined && started.yielded >= generation
       if (generationObserverAlreadyCreated) return
-      started.yielded = generation
+      if (!terminated) started.yielded = generation
       const after = started.lastRoute
       started.lastRoute = await tx.createTask(
         route(host),

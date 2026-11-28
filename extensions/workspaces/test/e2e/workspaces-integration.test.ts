@@ -1293,7 +1293,7 @@ async function landedWhileBusy() {
       text: 'Review this?',
       at: 1,
       reply: true,
-      state: 'sent',
+      state: 'delivered',
     })
     return message
   }, context)
@@ -1421,42 +1421,6 @@ it.concurrent('leaves a branch open when a newer submission was queued before th
   expect(await concludedIds(f)).not.toContain(id)
   await writeFile(join(f.directory, 'go'), '')
   await submitted(f, id)
-})
-it.concurrent('keeps a request open while the concluded branch report to its starter is still undelivered', async () => {
-  const { f, id } = await concluding()
-  const asker = await f.opened.harness.createConversation(
-    { ownership: { kind: 'ownerless' } },
-    context,
-  )
-  const request = await f.opened.harness.commit(async (tx) => {
-    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ROOT_CONVERSATION_ID
-    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
-    const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
-    const message = log.next++
-    const assignedBy = (await tx.appendEntry(ROOT_CONVERSATION_ID, { kind: 'test.request' })).id
-    owners[message] = {
-      request: { message, from: asker.id },
-      owner: { kind: 'branch', id },
-      assignedBy,
-      pending: [],
-    }
-    log.messages.push({
-      id: log.next++,
-      from: id,
-      to: ROOT_CONVERSATION_ID,
-      text: 'Done.',
-      at: 1,
-      reply: false,
-      state: 'sent',
-      report: true,
-    })
-    return message
-  }, context)
-  await f.opened.harness.commit((tx) => concludeIn(f.host, tx, [id], id), context)
-  await reacted(f)
-  expect(
-    (await f.opened.harness.snapshot(Serving, ROOT_CONVERSATION_ID, context))!.owners[request],
-  ).toBeDefined()
 })
 it.concurrent('wakes the starter once when a landed branch ends a run still busy', async () => {
   const { f, id, branchRuns } = await landedWhileBusy()

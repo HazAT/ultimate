@@ -7,6 +7,7 @@ import type {
   TaskId,
   Tx,
 } from '@earendil-works/pi-durable'
+import { awaitWithContext } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
@@ -133,11 +134,7 @@ export async function branchesConcluded(
       pending.length > 0
     )
       return []
-    const reports = messages.filter(
-      (m) => m.from === owner.id && m.to === starter && m.report === true,
-    )
-    if (reports.some((m) => m.state === 'sent')) return []
-    if (reports.length) {
+    if (messages.some((m) => m.from === owner.id && m.to === starter && m.report === true)) {
       delete owners[request.message]
       return []
     }
@@ -488,6 +485,28 @@ export function route(host: ExtensionHost) {
       },
       landed: async (task, runtime, ctx) => {
         const id = runtime.conversationId
+        const landedOpen = (await host.need(WorkspacesApi).get(id, ctx))?.landedOpen
+        const log = landedOpen && (await runtime.watchDoc(Messages, ROOT_CONVERSATION_ID, ctx))
+        if (log) {
+          const delivered = Promise.withResolvers<void>()
+          const inspect = (value: typeof log.value) => {
+            if (
+              !value?.messages.some(
+                (m) => m.from === id && m.to === task.input.by && m.state === 'sent',
+              )
+            )
+              delivered.resolve()
+          }
+          log.start(async (call) => {
+            if (call.kind === 'value') inspect(call.value)
+          })
+          try {
+            inspect(log.value)
+            await awaitWithContext(delivered.promise, ctx)
+          } finally {
+            await log.stop()
+          }
+        }
         await host
           .need(WorkspacesApi)
           .settleLanded(id, ctx, async (tx) => (await tx.doc(Started, id)).lastRoute === task.id)
