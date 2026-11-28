@@ -142,6 +142,7 @@ beforeEach(async ({ onTestFinished }) => {
   composeIn(undefined)
   setSideChatOpen(false)
   dock.setSideMode(false)
+  uiState.set('ext.side-chat.source', null)
   uiState.receive({})
   store.start()
   onTestFinished(() => store.stop())
@@ -685,6 +686,63 @@ it('Enter in side chat mode sends the first turn to @ultimate’s side chat, ope
   })
   expect(dock.sideMode()).toBe(false)
   expect(dock.open()).toBe(true)
+})
+
+it('a branch forks itself, side mode stays in its conversation, and the window follows only to an open side chat', async () => {
+  const branch = parseConversationId(46)
+  const plain = parseConversationId(47)
+  const rows = (busy = false) => [
+    { id: parseConversationId(ultimate), busy: false, answerAt: 1 },
+    { id: branch, busy, answerAt: 1, title: 'Rename tabs', label: 'coordinator' },
+    { id: plain, busy: false, answerAt: 1 },
+  ]
+  harness.sources[0].send('conversations', rows())
+  const show = async (id: number) => {
+    store.show(parseConversationId(id))
+    await settle()
+    harness.server!.of(id)?.send('view', {
+      conversation: { id },
+      entries: [],
+      docs: { 'pi.agent': { model: { provider: 'faux', modelId: 'faux-1' } } },
+    } as unknown as StreamedView)
+    await settle()
+    flush()
+  }
+  await show(branch)
+  const view = renderSolid(() => (
+    <ExtensionName value="side-chat">
+      <SideComposer core={<Composer />} />
+      <SideChatOverlay />
+    </ExtensionName>
+  ))
+  await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
+  const editor = () => view.querySelector<HTMLTextAreaElement>('#composer-input')!
+  editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+  flush()
+  expect(editor().placeholder).toBe(`Ask on the side — #${branch} Rename tabs keeps running…`)
+  await show(ultimate)
+  expect(view.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('normal')
+  await show(branch)
+  expect(view.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('side')
+  const fill = await agent.act({
+    steps: [
+      { ref: `Prompt for conversation #${branch}`, action: 'setValue', args: ['about the branch'] },
+    ],
+  })
+  expect(fill).toMatchObject({ ok: true })
+  editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await settle()
+  expect(harness.actions.find((call) => call.name === 'turn')).toMatchObject({
+    args: { source: branch, text: 'about the branch' },
+    source: 'person',
+  })
+  const header = () => view.querySelector('[data-side-chat-panel] header')?.textContent
+  expect(header()).toContain(`#${branch} Rename tabs`)
+  await show(plain)
+  expect(header()).toContain(`#${branch} Rename tabs`)
+  await show(ultimate)
+  expect(header()).toContain('@ultimate')
+  expect(harness.writes).toContainEqual({ key: 'ext.side-chat.source', who: 'app' })
 })
 
 it('an archived voice turn with no inline text shows its recorded transcript', async () => {

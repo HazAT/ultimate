@@ -14,6 +14,7 @@ import {
   Card,
   ConversationScope,
   formatTime,
+  ROOT,
   showSurface,
   switchConversation,
   useConversationId,
@@ -22,6 +23,7 @@ import {
 } from '@/sdk/solid'
 import { QUIET_MINUTES } from './entries.shared.ts'
 import { SideChatForkDoc, type SideChatHandoff, type SideChatSummary } from './refs.ts'
+import { StandingDoc } from '../subagents/refs.ts'
 import { useSourceName } from './side.solid.tsx'
 import { closingReason } from './side.web.ts'
 
@@ -135,11 +137,19 @@ export function HandoffCard(props: { entry: EntryRecord & { data: SideChatHandof
 
 export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   const fork = useDocOf(useConversationId(), SideChatForkDoc)
-  const brief = () => props.call.args as Partial<Brief> & { to?: number }
+  const brief = () => props.call.args as Partial<Brief> & { to?: number | string }
   const place = useContext(ConversationScope) === null ? 'in the transcript' : 'in the side chat'
-  const target = () => (brief().to as ConversationId | undefined) ?? fork()?.of
+  const standing = useDocOf(() => ROOT, StandingDoc)
+  const target = () => {
+    const to = brief().to
+    if (typeof to === 'string') return standing()?.[to.slice(1)]
+    return (to as ConversationId | undefined) ?? fork()?.of
+  }
   const targetName = useSourceName(target)
-  const where = () => targetName() ?? 'the source'
+  const where = () => {
+    const to = brief().to
+    return typeof to === 'string' ? to : (targetName() ?? 'the source')
+  }
   const failed = () => props.call.status === 'error'
   const sent = () => props.call.status === 'done'
   const error = () =>

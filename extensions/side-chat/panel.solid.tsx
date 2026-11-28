@@ -8,7 +8,16 @@ import {
   X,
 } from '@lucide/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { createEffect, createRoot, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
+import {
+  createEffect,
+  createRoot,
+  createSignal,
+  For,
+  onCleanup,
+  onSettled,
+  Show,
+  untrack,
+} from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
@@ -583,6 +592,14 @@ export function SideChatOverlay() {
   const [released, setReleased] = createSignal(false)
   const docked = () => sideChatOpen() && split() && !released()
   useEvent('secrets:changed', () => void status.refetch())
+  createEffect(
+    () => (surface() === 'agent' ? shown() : undefined),
+    (now) => {
+      if (now === undefined || now === source()) return
+      if (untrack(sessions)?.sessions?.[now]?.id === undefined) return
+      writingAs('app', () => setSource(now))
+    },
+  )
   createEffect(
     () => [source(), id(), sessions()?.sessions] as const,
     ([from, fork, current], previous) => {

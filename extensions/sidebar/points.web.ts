@@ -5,6 +5,9 @@ import { definePoint } from '../../web/src/sdk/types.ts'
 export const UnderUltimate = definePoint<{ conversation: ConversationId | undefined }, JSX.Element>(
   'sidebar.under-ultimate',
 )
+export const UnderRow = definePoint<{ conversation: ConversationId }, JSX.Element>(
+  'sidebar.under-row',
+)
 export const Unlisted = definePoint<ConversationId | undefined, ReadonlySet<number>>(
   'sidebar.unlisted',
 )

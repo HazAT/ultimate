@@ -6,19 +6,16 @@ import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
   column,
   ComposerRedirect,
-  ROOT,
   useConversationId,
-  useDocOf,
   useUiState,
   writerNow,
   writingAs,
 } from '@/sdk/solid'
 import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
-import { StandingDoc } from '../subagents/refs.ts'
 import { dock, sendTyped, setSideChatSource, sideChatSink } from './dock.solid.tsx'
 import { openSideChat, SheetComposer } from './panel.solid.tsx'
-import { SOURCE_KEY, useForkable } from './side.solid.tsx'
-import { sourceName, togglesSideMode } from './side.web.ts'
+import { SOURCE_KEY, useForkable, useSourceName } from './side.solid.tsx'
+import { togglesSideMode } from './side.web.ts'
 
 export const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
@@ -28,15 +25,11 @@ export function SideComposer(props: SolidComposerProps) {
 
 function ComposerFrame(props: SolidComposerProps) {
   const id = useConversationId()
-  const ultimate = useDocOf(() => ROOT, StandingDoc)
   const [, setSource] = useUiState<number | null>(SOURCE_KEY, null)
-  const mainId = () => ultimate()?.ultimate
-  const name = () => sourceName(mainId() ?? 0, ultimate(), undefined)
-  const forkable = useForkable(mainId)
-  const active = createMemo(
-    () => id() !== undefined && id() === mainId() && !props.dock && forkable() === true,
-  )
-  const on = () => dock.sideMode() && active()
+  const name = useSourceName(id)
+  const forkable = useForkable(id)
+  const active = createMemo(() => id() !== undefined && !props.dock && forkable() === true)
+  const on = () => active() && dock.sideMode() === id()
   const outer = useContext(ComposerRedirect)
   const target = createMemo((): ComposerTarget | undefined =>
     on()
@@ -46,6 +39,9 @@ function ComposerFrame(props: SolidComposerProps) {
           ...(dock.conversation() ? { dictation: sideChatSink } : {}),
           send: async (text, images) => {
             const who = writerNow()
+            const from = id()!
+            writingAs(who, () => setSource(from))
+            setSideChatSource(from)
             const sent = sendTyped(text, images)
             writingAs(who, () => {
               dock.setSideMode(false)
@@ -58,16 +54,12 @@ function ComposerFrame(props: SolidComposerProps) {
   )
   const toggle = () => {
     const next = !on()
-    if (next) {
-      setSource(null)
-      setSideChatSource(mainId())
-    }
-    dock.setSideMode(next)
+    dock.setSideMode(next ? id()! : false)
   }
   const onKeyDown = (event: KeyboardEvent) => {
     if (!active() || !(event.target instanceof HTMLTextAreaElement)) return
     const popup = event.target.getAttribute('aria-expanded') === 'true'
-    if (!togglesSideMode(event, { conversation: id(), ultimate: mainId(), popup })) return
+    if (!togglesSideMode(event, popup)) return
     event.preventDefault()
     toggle()
   }
@@ -94,7 +86,7 @@ function ComposerFrame(props: SolidComposerProps) {
               <span class="text-brand">↵</span> forks {name()} · <Kbd>Tab</Kbd> back to normal
             </Show>
           </span>
-          <ModeSwitch name={name()} on={on()} onToggle={toggle} />
+          <ModeSwitch name={name() ?? ''} on={on()} onToggle={toggle} />
         </div>
       </Show>
       <div

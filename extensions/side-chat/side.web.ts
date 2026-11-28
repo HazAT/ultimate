@@ -1,4 +1,3 @@
-import type { ConversationId } from '@earendil-works/pi-durable'
 import type { SideChatEndReason, SideChatSourceSession } from './refs.ts'
 
 export interface TabKey {
@@ -10,10 +9,7 @@ export interface TabKey {
   isComposing: boolean
 }
 
-export function togglesSideMode(
-  event: TabKey,
-  where: { conversation?: ConversationId; ultimate?: number; popup: boolean },
-) {
+export function togglesSideMode(event: TabKey, popup: boolean) {
   return (
     event.key === 'Tab' &&
     !event.shiftKey &&
@@ -21,9 +17,7 @@ export function togglesSideMode(
     !event.ctrlKey &&
     !event.metaKey &&
     !event.isComposing &&
-    !where.popup &&
-    where.conversation !== undefined &&
-    where.conversation === where.ultimate
+    !popup
   )
 }
 

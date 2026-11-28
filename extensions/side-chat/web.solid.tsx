@@ -18,7 +18,7 @@ import { SideChatRow, sideChatForks } from './row.solid.tsx'
 import { inboxChat } from './side.solid.tsx'
 import { QuestionPane } from '../inbox/ui.solid.tsx'
 import { CardActions } from '../questions/ui.solid.tsx'
-import { UnderUltimate, Unlisted } from '../sidebar/ui.solid.tsx'
+import { UnderRow, Unlisted } from '../sidebar/ui.solid.tsx'
 import { PendingTurns, StoredTurn } from './turns.solid.tsx'
 
 export default defineWebExtension({
@@ -46,7 +46,7 @@ export default defineWebExtension({
     [LegacySummaryEntry.kind]: renderEntry(LegacySummaryEntry, LegacySummaryCard),
   },
   provides: [
-    provide(UnderUltimate, SideChatRow),
+    provide(UnderRow, SideChatRow),
     provide(Unlisted, sideChatForks),
     provide(CardActions, TalkItThrough),
     provide(QuestionPane, inboxSideChat),

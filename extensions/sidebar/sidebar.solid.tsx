@@ -60,7 +60,7 @@ import { talkToUltimate } from '../subagents/ui.solid.tsx'
 import { PendingAction } from '../workspaces/refs.ts'
 import { Landed, useLandings } from './landed.solid.tsx'
 import { LanderState } from './lander.solid.tsx'
-import { UnderUltimate } from './points.web.ts'
+import { UnderRow, UnderUltimate } from './points.web.ts'
 import { Project } from './project.solid.tsx'
 import { InFlight, inFlight, MemoryRow, StandingFlights } from './root.solid.tsx'
 import { ChildRow, Row, RowMenu, WaitLines } from './rows.solid.tsx'
@@ -461,6 +461,9 @@ function ConversationTree(props: TreeProps) {
           <MemoryRow id={props.id} working={data.working().get(props.id) === 'self'} />
         </Match>
       </Switch>
+      <Show when={!props.nested}>
+        <Provided point={UnderRow} input={{ conversation: props.id }} />
+      </Show>
       <Show when={children()?.length}>
         <Collapsible
           bind={[

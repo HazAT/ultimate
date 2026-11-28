@@ -99,7 +99,7 @@ export const dock = createRoot(() => {
   const [conversation, setConversation] = useUiState('ext.side-chat.conversation', true)
   const [cuesOn, setCuesOn] = useUiState('ext.side-chat.cues', true)
   const [open, setOpen] = useUiState('ext.side-chat.open', false)
-  const [sideMode, setSideMode] = useUiState('ext.side-chat.side-mode', false)
+  const [sideMode, setSideMode] = useUiState<number | false>('ext.side-chat.side-mode', false)
   const [now, setNow] = createSignal<DockState>(machine.get())
   machine.subscribe(() => setNow(machine.get()))
   const [local, setLocal] = createSignal<Record<string, Local>>({})

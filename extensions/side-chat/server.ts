@@ -61,7 +61,7 @@ import { Family } from '../models/api.ts'
 import { Messages, MessagesApi } from '../messages/api.ts'
 import type { Message as BoardMessage } from '../messages/api.ts'
 import { Branch } from '../lineage/api.ts'
-import { Standing } from '../subagents/api.ts'
+import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { PageAgentPages } from '../page-agent/api.ts'
 import { VideoApi } from '../video/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
@@ -346,6 +346,11 @@ async function sourceNameOf(host: ExtensionHost, tx: Tx, source: ConversationId)
   return title ? `#${source} ${title}` : `#${source}`
 }
 
+async function forkableSource(tx: Tx, source: ConversationId) {
+  if (Object.values(await tx.doc(Standing, ROOT_CONVERSATION_ID)).includes(source)) return true
+  return (await tx.doc(Branch, source)).branch !== undefined
+}
+
 async function currentFork(host: ExtensionHost, source: ConversationId | undefined) {
   if (source === undefined) return undefined
   const state = await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context)
@@ -367,6 +372,8 @@ async function openSession(
     if (!fork?.ended) return current
     if (expected !== undefined) throw new Error('This side chat ended; send again')
   }
+  if (!(await host.harness().commit((tx) => forkableSource(tx, source), context)))
+    throw new Error(`#${source} is neither a standing agent nor a branch`)
   const answer = await lastSettledInputAnswer(host, source, context)
   const configured = await sideChatModelSource(host)
   const id = await host.harness().commit(async (tx) => {
@@ -682,6 +689,7 @@ export const actions = {
     const of = await sourceOf(host, args)
     const forkable =
       of !== undefined &&
+      (await host.harness().commit((tx) => forkableSource(tx, of), context)) &&
       (await lastSettledInputAnswer(host, of, context).then(
         () => true,
         (error: unknown) => {
@@ -1433,13 +1441,16 @@ export default function sideChatExtension(host: ExtensionHost) {
         name: 'side_chat_handoff',
         deferred: true,
         description:
-          "Hand the agreed outcome of this side chat to the conversation it forked from as a message it acts on, or with `to` to the branch on the user's screen (its coordinator), which a busy coordinator reads after its current tool round. Write it the way you would brief yourself.",
+          "Hand the agreed outcome of this side chat to the conversation it forked from as a message it acts on, with `to` as a number to the branch on the user's screen (its coordinator), which a busy coordinator reads after its current tool round, or with `to` as `@name` to that standing agent. Write it the way you would brief yourself.",
         parameters: obj({
           to: opt(
-            num({
-              description:
-                "A branch conversation on the user's screen; omit for the source conversation",
-            }),
+            union(
+              [
+                num({ description: "A branch conversation on the user's screen" }),
+                str({ pattern: '^@[a-z0-9-]+$', description: 'A standing agent, as `@name`' }),
+              ],
+              { description: 'Omit for the source conversation' },
+            ),
           ),
           end: opt(bool({ description: 'End this side chat after your closing reply.' })),
           title: str({ minLength: 1 }),
@@ -1454,8 +1465,11 @@ export default function sideChatExtension(host: ExtensionHost) {
           const fork = await api.snapshot(Fork, api.conversationId, ctx)
           if (fork?.of === undefined) throw new Error('side_chat_handoff works only in a side chat')
           const { to, end, ...brief } = args
-          const branch = to === undefined ? undefined : (to as ConversationId)
-          const target = branch ?? fork.of
+          const branch = typeof to === 'number' ? (to as ConversationId) : undefined
+          const target =
+            typeof to === 'string'
+              ? await host.need(SubagentsApi).standing(to.slice(1), ctx)
+              : (branch ?? fork.of)
           const sourceName = await host
             .harness()
             .commit((tx) => sourceNameOf(host, tx, fork.of!), ctx)
@@ -1521,7 +1535,10 @@ export default function sideChatExtension(host: ExtensionHost) {
           host.harness().resume()
           return {
             output: [
-              { type: 'text', text: `Sent to ${to === undefined ? sourceName : `#${to}`}.` },
+              {
+                type: 'text',
+                text: `Sent to ${to === undefined ? sourceName : typeof to === 'string' ? to : `#${to}`}.`,
+              },
             ],
           }
         },

@@ -178,6 +178,7 @@ async function secondSource(f: Awaited<ReturnType<typeof fixture>>, title: strin
   )
   await harness.commit(async (tx) => {
     ;(await tx.doc(Metadata, source.id)).title = title
+    ;(await tx.doc(Branch, source.id)).branch = { from: f.main, at: 1 as EntryId, intent: title }
   }, context)
   const submit = async (content: string) =>
     (await source.submit({ type: 'input', content }, context)).wait(context)
@@ -642,6 +643,40 @@ it('status reports no forkable turn when the only assistant entry is a tool call
     status: 200,
     data: { result: { forkable: true } },
   })
+})
+
+it('a subagent or a root has no side chat; a branch fork hands off to a standing agent by @name', async () => {
+  const f = await fixture()
+  const { harness } = f.server
+  const child = await harness.createConversation(
+    {
+      ownership: { kind: 'ownerless' },
+      agent: { model: { provider: 'faux', modelId: 'main-faux' } },
+    },
+    context,
+  )
+  await (await child.submit({ type: 'input', content: 'CHILD HISTORY' }, context)).wait(context)
+  for (const source of [child.id, ROOT_CONVERSATION_ID]) {
+    expect(await f.action('status', { source })).toMatchObject({
+      data: { result: { forkable: false } },
+    })
+    expect((await f.action('open', { source })).data.error).toContain(
+      'neither a standing agent nor a branch',
+    )
+  }
+  const branch = await secondSource(f, 'A branch')
+  await f.turn({
+    source: branch.source,
+    key: 'named',
+    text: `CALL ${JSON.stringify({
+      name: 'side_chat_handoff',
+      args: { to: '@ultimate', title: 'Ask', outcome: 'O', instruction: 'I' },
+    })}`,
+  })
+  expect(JSON.stringify(f.requests.at(-1)!.messages.at(-1))).toContain('Sent to @ultimate.')
+  const main = await (await harness.conversation(f.main, context))!.context(context)
+  expect(main.entries.some((entry) => entry.kind === 'side-chat.handoff')).toBe(true)
+  expect((await branch.entries()).some((entry) => entry.kind === 'side-chat.handoff')).toBe(false)
 })
 
 it('the status lists the ready model and transcription', async () => {

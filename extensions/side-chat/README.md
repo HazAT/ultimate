@@ -1,14 +1,14 @@
-Side chat is a temporary fork you can type or talk to without interrupting the source conversation. Replies are read aloud by default. Open it from @ultimate's composer or use **Talk it through** to discuss a question with the conversation that asked it.
+Side chat is a temporary fork you can type or talk to without interrupting the source conversation. Replies are read aloud by default. Open it from the composer of a standing agent (@ultimate or any other) or a branch, or use **Talk it through** to discuss a question with the conversation that asked it.
 
 ## Open and talk
 
-- Use **Side chat** by @ultimate's composer, or press **Tab** there to switch the composer between Normal and Side chat. The command **Side chat: open or hide** (`Ctrl/⌘+Shift+V`) shows or hides the window.
+- Use **Side chat** above the composer of a standing agent or a branch, once it has a finished reply, or press **Tab** there to switch that composer between Normal and Side chat. Each of those conversations has its own side chat; subagents and roots have none. Switching to a conversation with an open side chat shows that one; elsewhere the window keeps its source, which its header names. The command **Side chat: open or hide** (`Ctrl/⌘+Shift+V`) shows or hides the window.
 - On the agent surface at 1280 px or wider, the window docks beside its source. It floats on smaller desktops and other surfaces, and opens as a bottom sheet on a phone. Closing the window does not end the chat: an open side chat can be brought back from the sidebar.
 - Type, click the mic, or use the Talk shortcut to speak. Both go to the same fork, and you can paste screenshots. The microphone and its cues are shared with dictation; playback and speech settings are shared with read-aloud. You can interrupt a reply with a new turn or switch off spoken replies.
 
 ## Handoff and ending
 
-A fork starts with the source's last completed input and answer, takes up the source's recent activity as it changes, and gets its own prompt for thinking things through with you. It can read and do quick checks, but cannot edit files. If you ask it to hand work off, `side_chat_handoff` sends a brief to the source or to a branch on screen. The brief links back to the chat. The chat stays open unless you ask it to hand off and close; then it ends after its closing reply without sending a second summary.
+A fork starts with the source's last completed input and answer, takes up the source's recent activity as it changes, and gets its own prompt for thinking things through with you. It can read and do quick checks, but cannot edit files. If you ask it to hand work off, `side_chat_handoff` sends a brief to the source, to a branch on screen, or to another standing agent by `@name`. The brief links back to the chat. The chat stays open unless you ask it to hand off and close; then it ends after its closing reply without sending a second summary.
 
 **Start fresh** ends the fork now; it also ends after 20 quiet minutes. If something was decided or left open beyond what was already handed off, a summary card goes back to the source without waking it. The window keeps the previous transcript and shows how it ended. The next typed or spoken turn starts a new fork and carries its summary forward.
 
