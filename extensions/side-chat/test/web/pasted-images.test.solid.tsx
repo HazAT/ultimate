@@ -13,6 +13,7 @@ import {
   dispatch,
   dock,
   sendTyped,
+  setSideChatSource,
   settleTranscripts,
   sideChatSink,
 } from '../../dock.solid.tsx'
@@ -25,6 +26,7 @@ const harness = vi.hoisted(() => ({
   asked: 0,
   stop: undefined as Promise<void> | undefined,
   stops: 0,
+  destinations: [] as [string, number | undefined][],
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const { createStore } = await import('../../../../web/src/sdk/store.ts')
@@ -35,6 +37,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const subscriptions = fakeSubscriptions(harness.sources)
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
+    const action = /^\/api\/extensions\/side-chat\/actions\/(status|record|turn)$/.exec(path)?.[1]
+    if (action) harness.destinations.push([action, JSON.parse(init?.body as string).args.source])
     if (path === '/api/extensions/side-chat/actions/status') {
       harness.asked++
       await harness.status
@@ -85,6 +89,8 @@ beforeEach(async ({ onTestFinished }) => {
   harness.asked = 0
   harness.stop = undefined
   harness.stops = 0
+  harness.destinations.length = 0
+  setSideChatSource(undefined)
   vi.stubGlobal('speechSynthesis', { cancel: () => undefined, speak: () => undefined })
   dock.setCuesOn(false)
   clientStore.start()
@@ -99,6 +105,24 @@ afterEach(() => {
   vi.unstubAllGlobals()
   getDraft(session).set({ text: '', images: [], sending: false })
   getDraft(COLD_DRAFT).set({ text: '', images: [], files: [], sending: false })
+})
+
+it('a first spoken turn keeps its original source when selection changes during status', async () => {
+  composeIn(undefined)
+  const first = parseConversationId(42)
+  setSideChatSource(first)
+  const status = Promise.withResolvers<void>()
+  harness.status = status.promise
+  const sent = speak()
+  expect(harness.destinations).toEqual([['status', first]])
+  setSideChatSource(parseConversationId(43))
+  status.resolve()
+  await sent
+  expect(harness.destinations).toEqual([
+    ['status', first],
+    ['record', first],
+    ['turn', first],
+  ])
 })
 
 it('a spoken turn takes the images pasted into the side chat box and clears them', async () => {

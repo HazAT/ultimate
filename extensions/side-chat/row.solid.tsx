@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { capture } from '../dictation/ui.solid.tsx'
 import { dock, playerState, setSideChatOpen, sideChatOpen } from './dock.solid.tsx'
+import { openSideChat } from './panel.solid.tsx'
 import { SideChatSessionDoc } from './refs.ts'
+import { inboxChat, useSideSource } from './side.solid.tsx'
 
 type Live = 'listening' | 'speaking' | 'thinking' | 'open'
 
@@ -58,6 +60,12 @@ export function SideChatRow(props: { conversation: ConversationId | undefined })
   const id = () =>
     props.conversation === undefined ? undefined : session()?.sessions?.[props.conversation]?.id
   const conversations = useConversations()
+  const source = useSideSource()
+  const shown = () => inboxChat() === undefined && sideChatOpen() && source() === props.conversation
+  const toggle = () => {
+    if (shown()) setSideChatOpen(false)
+    else if (props.conversation !== undefined) openSideChat(props.conversation)
+  }
   const busy = () => conversations().some((row) => row.id === id() && row.busy)
   const live = createMemo((): Live => {
     if (dock.phase() === 'recording') return 'listening'
@@ -68,12 +76,12 @@ export function SideChatRow(props: { conversation: ConversationId | undefined })
   return (
     <Show when={props.conversation !== undefined && id() !== undefined}>
       <Button
-        aria-current={sideChatOpen() ? 'true' : undefined}
+        aria-current={shown() ? 'true' : undefined}
         aria-label="Side chat session"
         class="mx-2 flex w-[calc(100%-1rem)] items-center justify-start gap-1.5 rounded-md py-1.5 pr-2 pl-9 text-left font-normal outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring"
         data-side-chat-row={id()}
         data-side-chat={live()}
-        onClick={() => setSideChatOpen(!sideChatOpen())}
+        onClick={toggle}
         size={null}
         title={`Side chat · ${live()}`}
         variant={null}

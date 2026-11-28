@@ -11,6 +11,8 @@ vi.mock('@/sdk/solid', async (original) => ({
   showSurface: (surface: string) => shown.push(surface),
   switchConversation: (id: number) => shown.push(id),
   useConversationId: () => () => 40,
+  useConversationSummary: (id: () => number | undefined) => () =>
+    id() === 7 ? { title: 'Release check' } : undefined,
   useDocOf: (_id: unknown, ref: { kind: string }) => () =>
     ref.kind === 'side-chat.fork' ? { of: 7 } : undefined,
 }))
@@ -25,7 +27,7 @@ const call = (id: string, patch: Partial<ToolCallView>): ToolCallView => ({
   name: 'side_chat_handoff',
   args: brief,
   status: 'done',
-  output: 'Sent to @ultimate.',
+  output: 'Sent to #7 Release check.',
   images: [],
   diagnostics: [],
   ...patch,
@@ -35,7 +37,7 @@ it('a side_chat_handoff call shows what went where, opens the target, and shows 
   const branch = call('call-branch', { args: { ...brief, to: 55 }, output: 'Sent to #55.' })
   const root = renderSolid(() => (
     <>
-      <HandoffCall call={call('call-ultimate', {})} core={null} />
+      <HandoffCall call={call('call-source', {})} core={null} />
       <HandoffCall call={branch} core={null} />
       <ConversationScope value={40 as never}>
         <HandoffCall call={branch} core={null} />
@@ -56,10 +58,10 @@ it('a side_chat_handoff call shows what went where, opens the target, and shows 
     </>
   ))
   flush()
-  const [ultimate, sent, , refused] = root.querySelectorAll('[data-side-chat-handoff]')
-  expect(ultimate.textContent).toContain('Omacut hangs')
-  expect(ultimate.textContent).toContain('Capture its state, then fix it')
-  expect(ultimate.textContent).toContain('sent to @ultimate')
+  const [source, sent, , refused] = root.querySelectorAll('[data-side-chat-handoff]')
+  expect(source.textContent).toContain('Omacut hangs')
+  expect(source.textContent).toContain('Capture its state, then fix it')
+  expect(source.textContent).toContain('sent to #7 Release check')
   expect(sent.textContent).toContain('sent to #55')
   expect(refused.textContent).toContain('#9 is not a branch on the screen')
   expect(refused.textContent).toContain('not sent')
@@ -70,7 +72,7 @@ it('a side_chat_handoff call shows what went where, opens the target, and shows 
   await agent.act({
     steps: [
       {
-        ref: 'Open @ultimate that handoff call-ultimate went to, in the transcript',
+        ref: 'Open #7 Release check that handoff call-source went to, in the transcript',
         action: 'press',
       },
       { ref: 'Open #55 that handoff call-branch went to, in the side chat', action: 'press' },

@@ -38,6 +38,7 @@ import {
   useNow,
   usePanels,
   useSurface,
+  useUiState,
   useViewport,
   writingAs,
 } from '@/sdk/solid'
@@ -58,7 +59,7 @@ import {
   sideChatOpen,
   sideChatSink,
 } from './dock.solid.tsx'
-import { EndAction, PickAction, StatusAction, SideChatForkDoc } from './refs.ts'
+import { EndAction, PickAction, StatusAction, SideChatForkDoc, SideChatSessionDoc } from './refs.ts'
 import type { SideChatSourceSession } from './refs.ts'
 import { PickControl } from '../models/ui.solid.tsx'
 import type { ModelPick } from '../models/ui.solid.tsx'
@@ -70,7 +71,13 @@ import {
   SpeechOptions,
 } from '../read-aloud/ui.solid.tsx'
 import { PinnedQuestion } from './pinned.solid.tsx'
-import { useSideSession } from './side.solid.tsx'
+import {
+  inboxChat,
+  SOURCE_KEY,
+  useSideSession,
+  useSideSource,
+  useSourceName,
+} from './side.solid.tsx'
 import { closing } from './side.web.ts'
 import { Voicing } from './turns.solid.tsx'
 import { REST, settle, type Snap } from './sheet.web.ts'
@@ -229,7 +236,7 @@ function SetupList() {
 }
 
 function useSideChatPick(open: () => ConversationId | undefined): ModelPick {
-  const { state } = useSideSession()
+  const state = useDocOf(() => ROOT, SideChatSessionDoc)
   const status = useAction(StatusAction, null, {
     conversation: ROOT,
     on: () => [open(), state()?.model, state()?.thinking],
@@ -338,10 +345,13 @@ function Bottom(props: { fork: ConversationId | undefined; ended: boolean; sourc
 function Header(props: {
   docked: boolean
   phone: boolean
+  source?: ConversationId
+  name?: string
+  fork?: ConversationId
+  onClose: () => void
   onDrag?: (event: PointerEvent & { currentTarget: HTMLElement }) => void
 }) {
-  const { session, name, source } = useSideSession()
-  const id = () => session()?.id
+  const id = () => props.fork
   const fork = useDocOf(id, SideChatForkDoc)
   const now = useNow(30_000, () => id() !== undefined)
   const [ending, setEnding] = createSignal(false)
@@ -350,7 +360,7 @@ function Header(props: {
     setEnding(true)
     setFailure(undefined)
     try {
-      await api.action(EndAction, { source: source() })
+      await api.action(EndAction, { source: props.source })
     } catch (error) {
       setFailure(errorMessage(error).replace(/^side-chat\/end: /, ''))
     } finally {
@@ -376,7 +386,7 @@ function Header(props: {
         <GitFork class="size-3.5 shrink-0 text-brand" />
         <span class="shrink-0 text-[13px] font-semibold">Side chat</span>
         <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
-          · {name() ?? '…'}
+          · {props.name ?? '…'}
         </span>
         <span class="flex-1" />
         <span class="flex shrink-0 items-center gap-0.5">
@@ -397,7 +407,7 @@ function Header(props: {
           <Button
             aria-label="Close side chat"
             class={iconButton}
-            onClick={() => setSideChatOpen(false)}
+            onClick={() => props.onClose()}
             size={null}
             title={`Close · ${keys()}`}
             variant={null}
@@ -437,9 +447,14 @@ function Header(props: {
 export function SideChatBody(props: {
   docked?: boolean
   phone?: boolean
+  source?: ConversationId
+  onClose?: () => void
   onDrag?: (event: PointerEvent & { currentTarget: HTMLElement }) => void
 }) {
-  const { session, name, source } = useSideSession()
+  const source = useSideSource(() => props.source)
+  const session = useSideSession(source)
+  const name = useSourceName(source)
+  const close = () => (props.onClose ? props.onClose() : setSideChatOpen(false))
   const surface = useSurface()
   const shownNow = useConversationId()
   const besideSource = () => surface() === 'agent' && shownNow() === source()
@@ -452,7 +467,15 @@ export function SideChatBody(props: {
   return (
     <>
       <span class="hidden" ref={anchor} />
-      <Header docked={!!props.docked} onDrag={props.onDrag} phone={!!props.phone} />
+      <Header
+        docked={!!props.docked}
+        fork={id()}
+        name={name()}
+        onClose={close}
+        onDrag={props.onDrag}
+        phone={!!props.phone}
+        source={source()}
+      />
       <Show when={id()}>
         {(open) => (
           <ScopedConversation id={open()}>
@@ -462,7 +485,11 @@ export function SideChatBody(props: {
       </Show>
       <Show when={session()?.question !== undefined && id()}>
         {(open) => (
-          <PinnedQuestion folded={besideSource()} fork={open()} message={session()!.question!} />
+          <PinnedQuestion
+            folded={props.source === undefined && besideSource()}
+            fork={open()}
+            message={session()!.question!}
+          />
         )}
       </Show>
       <Show
@@ -502,7 +529,7 @@ function useSplit() {
   })
   const surface = useSurface()
   const shown = useConversationId()
-  const { source } = useSideSession()
+  const source = useSideSource()
   return () => wide() && surface() === 'agent' && shown() !== undefined && shown() === source()
 }
 
@@ -520,7 +547,8 @@ export function SideChatPanel() {
 }
 
 export function SideChatOverlay() {
-  const { session, source } = useSideSession()
+  const source = useSideSource(() => inboxChat()?.source)
+  const session = useSideSession(source)
   const viewport = useViewport()
   const id = () => session()?.id
   const surface = useSurface()
@@ -529,34 +557,37 @@ export function SideChatOverlay() {
   const status = useAction(StatusAction, null, { conversation: ROOT })
   const split = useSplit()
   const panels = usePanels()
+  const [selectedPanel, selectPanel] = useUiState<string | null>('shell.panel', null)
   const docked = () => sideChatOpen() && split()
   useEvent('secrets:changed', () => void status.refetch())
-  createEffect(source, (next) => {
-    setSideChatSource(next)
-  })
-  createEffect(id, (open) => {
-    composeIn(open)
-  })
+  createEffect(
+    () => [source(), id()] as const,
+    ([from, fork]) => {
+      setSideChatSource(from)
+      composeIn(fork)
+    },
+  )
   createEffect(
     () => status.data()?.transcribes,
     (known) => {
       if (known !== undefined) speech.setKeyed(known)
     },
   )
-  let before: { panel?: string; open: boolean } | undefined
+  let before: { panel: string | null; open: boolean } | undefined
   createEffect(
-    () => ({ dock: docked(), active: panels.active()?.id, open: panels.open() }),
+    () => ({ dock: docked(), selected: selectedPanel(), open: panels.open() }),
     (now) => {
       if (now.dock === (before !== undefined)) return
       writingAs('app', () => {
         if (now.dock) {
-          before = { panel: now.active, open: now.open }
+          before = { panel: now.selected === PANEL ? null : now.selected, open: now.open }
           openPanel(PANEL)
           return
         }
         const back = before!
         before = undefined
-        if (back.open && back.panel && back.panel !== PANEL) openPanel(back.panel)
+        selectPanel(back.panel)
+        if (back.open) openPanel()
         else closePanel()
       })
     },
@@ -692,7 +723,7 @@ export function SideChatOverlay() {
     }
   }
   return (
-    <Show when={sideChatOpen() && !docked()}>
+    <Show when={sideChatOpen() && !docked() && inboxChat() === undefined}>
       <section
         aria-label="Side chat"
         class={cn(
@@ -737,9 +768,16 @@ export function SideChatOverlay() {
 }
 
 const [focusWanted, wantFocus] = createRoot(() => createSignal(false))
+const [, setSource] = createRoot(() => useUiState<number | null>(SOURCE_KEY, null))
 
-export function openSideChat() {
+export function openSideChat(source?: ConversationId) {
+  inboxChat()?.park()
+  if (source !== undefined) setSource(source)
   setSideChatOpen(true)
+  focusSideChat()
+}
+
+export function focusSideChat() {
   wantFocus(true)
 }
 

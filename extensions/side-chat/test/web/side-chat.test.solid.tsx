@@ -1,8 +1,8 @@
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush, useContext } from 'solid-js'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { parseConversationId } from '../../../../lib/ids.shared.ts'
+import { flush } from 'solid-js'
+import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { parseConversationId, parseEntryId } from '../../../../lib/ids.shared.ts'
 import type { StreamedView } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
@@ -70,11 +70,12 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 import { regionOpen } from '../../../../web/src/sdk/actions.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
-import { ComposerRedirect, ExtensionName } from '../../../../web/src/sdk/solid.ts'
-import { dock, setSideChatOpen } from '../../dock.solid.tsx'
+import { Composer, ExtensionName, openPanel } from '../../../../web/src/sdk/solid.ts'
+import { dock, setSideChatOpen, setSideChatSource } from '../../dock.solid.tsx'
 import { SideChatPanel, SideChatOverlay } from '../../panel.solid.tsx'
 import { SideComposer } from '../../frame.solid.tsx'
 import { PinnedQuestion } from '../../pinned.solid.tsx'
+import { StoredTurn } from '../../turns.solid.tsx'
 
 const agent = createAgent()
 const ultimate = 44
@@ -111,15 +112,15 @@ beforeEach(async ({ onTestFinished }) => {
   harness.server!.of(ultimate)!.send('view', {
     conversation: { id: ultimate },
     entries: [],
-    docs: {},
+    docs: { 'pi.agent': { model: { provider: 'faux', modelId: 'faux-1' } } },
   } as unknown as StreamedView)
   await settle()
   flush()
 })
 afterEach(() => {
   setSideChatOpen(false)
-  vi.unstubAllGlobals()
 })
+afterAll(() => vi.unstubAllGlobals())
 
 async function root(session: SideChatSession, extra: Record<string, Readonly<JsonObject>> = {}) {
   await settle()
@@ -269,34 +270,33 @@ it('the pinned card sends its answer through the side chat, and a refusal keeps 
   expect(harness.actions).toEqual([
     {
       name: 'answer',
-      args: { source: ultimate, answer: { answers: [{ question: 'Which way?', answer: 'Yes' }] } },
+      args: {
+        source: ultimate,
+        fork,
+        message: 5,
+        answer: { answers: [{ question: 'Which way?', answer: 'Yes' }] },
+      },
       source: 'person',
     },
   ])
   expect(view.querySelector('[data-pinned-question="5"]')).not.toBeNull()
 })
 
-function Core() {
-  const target = useContext(ComposerRedirect)
-  return (
-    <div>
-      <textarea id="composer-input" placeholder={target()?.placeholder ?? 'To main'} />
-      <button onClick={() => void target()?.send('a side question', [])} type="button">
-        send
-      </button>
-    </div>
-  )
-}
-
 it('Enter in side chat mode sends the first turn to @ultimate’s side chat, opens the window and returns to Normal', async () => {
-  const view = renderSolid(() => <SideComposer core={<Core />} />)
+  setSideChatSource(undefined)
+  uiState.set('ext.side-chat.source', null)
+  const view = renderSolid(() => <SideComposer core={<Composer />} />)
   await root({ sessions: {} })
-  dock.setSideMode(true)
-  flush()
   const editor = view.querySelector<HTMLTextAreaElement>('#composer-input')!
+  editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+  flush()
   expect(editor.placeholder).toBe('Ask on the side — @ultimate keeps running…')
-  view.querySelector<HTMLButtonElement>('button[type="button"]:not([aria-label])')!.click()
-  await vi.waitFor(() => expect(harness.actions.map((call) => call.name)).toContain('turn'))
+  const fill = await agent.act({
+    steps: [{ ref: 'Prompt for conversation #44', action: 'setValue', args: ['a side question'] }],
+  })
+  expect(fill).toMatchObject({ ok: true })
+  editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await settle()
   expect(harness.actions.find((call) => call.name === 'turn')).toMatchObject({
     args: { source: ultimate, text: 'a side question' },
     source: 'person',
@@ -305,7 +305,35 @@ it('Enter in side chat mode sends the first turn to @ultimate’s side chat, ope
   expect(dock.open()).toBe(true)
 })
 
-it('at 1280 px and wider on the source, the window docks in the panels region as the app, then hands it back', async () => {
+it('an archived voice turn with no inline text shows its recorded transcript', async () => {
+  const data = {
+    key: 'archived-turn',
+    text: '',
+    route: 'audio' as const,
+    audio: 'clip-b',
+    clips: ['clip-a', 'clip-b'],
+  }
+  const view = renderSolid(() => (
+    <StoredTurn
+      entry={{
+        id: parseEntryId(7),
+        kind: 'voice.turn',
+        conversationId: fork,
+        data,
+      }}
+    />
+  ))
+  await settle()
+  harness.server!.of(fork)!.send('doc', {
+    kind: 'voice.fork',
+    value: { transcripts: { 'clip-a': 'Leave the record', 'clip-b': 'as it was.' } },
+  })
+  flush()
+  expect(view.textContent).toContain('Leave the record as it was.')
+  expect(view.textContent).not.toContain('Transcript unavailable')
+})
+
+it('closing a docked side chat restores the previous panel even when Panels was closed', async () => {
   vi.stubGlobal('matchMedia', () => ({
     matches: true,
     addEventListener() {},
@@ -317,6 +345,9 @@ it('at 1280 px and wider on the source, the window docks in the panels region as
     </ExtensionName>
   ))
   await root({ sessions: {} })
+  uiState.set('shell.panel', 'tasks')
+  await uiState.flush()
+  expect(regionOpen('panels')).toBe(false)
   harness.writes.length = 0
   setSideChatOpen(true)
   flush()
@@ -329,7 +360,11 @@ it('at 1280 px and wider on the source, the window docks in the panels region as
   await settle()
   await uiState.flush()
   expect(regionOpen('panels')).toBe(false)
+  expect(uiState.get('shell.panel')).toBe('tasks')
   const shell = harness.writes.filter((write) => write.key.startsWith('shell.'))
   expect(shell.length).toBeGreaterThan(0)
   expect(new Set(shell.map((write) => write.who))).toEqual(new Set(['app']))
+  openPanel()
+  expect(regionOpen('panels')).toBe(true)
+  expect(uiState.get('shell.panel')).toBe('tasks')
 })

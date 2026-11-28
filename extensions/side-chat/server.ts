@@ -66,6 +66,7 @@ import { VideoApi } from '../video/api.ts'
 import type { ResponseReceipt } from '../conversations/summary.ts'
 import {
   LegacySummaryEntry,
+  LegacyVoiceForkDoc,
   LegacyVoiceSummaryEntry,
   QUIET_MINUTES,
   SideChatHandoffEntry,
@@ -171,7 +172,17 @@ export const Fork = defineDoc<
   initial: () => ({}),
 })
 
-export const docs = [Session, Fork]
+const LegacyVoiceFork = defineDoc<Pick<SideChatFork, 'transcripts'>>({
+  kind: LegacyVoiceForkDoc.kind,
+  checkpointWhen: checkpointEvery(100),
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({}),
+})
+
+export const docs = [Session, Fork, LegacyVoiceFork]
 
 export const hearsAudio = (model: { provider: string; modelId: string }) =>
   /gemini/i.test(model.modelId)
@@ -812,22 +823,34 @@ export const actions = {
     return openOnQuestion(host, message)
   }),
   answer: implementAction(AnswerAction, async (args, { host, device }) => {
-    const { answer } = unwrap<{ answer: unknown }>(args)
+    const { source, fork, message, answer } = unwrap<{
+      source: unknown
+      fork: unknown
+      message: unknown
+      answer: unknown
+    }>(args)
     if (answer === null || typeof answer !== 'object' || Array.isArray(answer))
       throw new Error('Expected answer as {answers?, note?} or {text}')
     checkReply(answer)
-    const id = await currentFork(host, await sourceOf(host, args))
+    const from = conversationArg(source, 'source')
+    const expected = conversationArg(fork, 'fork')
+    if (from === undefined || expected === undefined)
+      throw new Error('Expected source and fork ids')
+    const id = await currentFork(host, from)
     if (id === undefined) throw new Error('No side chat is open')
-    const fork = await host.harness().snapshot(Fork, id, context)
-    if (fork?.question === undefined) throw new Error('This side chat has no question to answer')
-    const message = (
+    if (id !== expected) throw new Error('This side chat is no longer open')
+    const open = await host.harness().snapshot(Fork, id, context)
+    const question = open?.question
+    if (open?.ended || question === undefined || question !== message)
+      throw new Error('This side chat is not open on that question')
+    const card = (
       await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, context)
-    )?.messages.find((item) => item.id === fork.question)
+    )?.messages.find((item) => item.id === question)
     await endSession(host, id, {
       reason: 'answered',
       reply: {
-        message: fork.question,
-        text: replyText(answer, message?.questions ?? []),
+        message: question,
+        text: replyText(answer, card?.questions ?? []),
         ...(device ? { device } : {}),
       },
     })

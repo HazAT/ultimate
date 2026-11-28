@@ -15,6 +15,7 @@ import { SideComposer } from './frame.solid.tsx'
 import { openSideChat, PANEL, SideChatPanel, SideChatOverlay } from './panel.solid.tsx'
 import { ForkStart, inboxSideChat, TalkItThrough } from './question.solid.tsx'
 import { SideChatRow, sideChatForks } from './row.solid.tsx'
+import { inboxChat } from './side.solid.tsx'
 import { QuestionPane } from '../inbox/ui.solid.tsx'
 import { CardActions } from '../questions/ui.solid.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.solid.tsx'
@@ -58,7 +59,9 @@ export default defineWebExtension({
       title: 'Side chat: open or hide',
       keys: KEYS,
       run: () => {
-        if (sideChatOpen()) return setSideChatOpen(false)
+        const embedded = inboxChat()
+        if (embedded) embedded.park()
+        if (embedded || sideChatOpen()) return setSideChatOpen(false)
         writingAs('app', () => dock.setSideMode(false))
         openSideChat()
       },

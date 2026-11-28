@@ -1,6 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { GitForkIcon, LoaderCircleIcon } from '@lucide/solid'
-import { createMemo, createSignal, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js'
 import type { JSX } from '@solidjs/web'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
@@ -17,12 +17,15 @@ import {
 } from '@/sdk/solid'
 import type { QuestionMessage } from '../questions/ui.solid.tsx'
 import { QuestionAction, SideChatSessionDoc } from './refs.ts'
-import { openSideChat, SideChatBody } from './panel.solid.tsx'
-import { SOURCE_KEY } from './side.solid.tsx'
+import { setSideChatOpen } from './dock.solid.tsx'
+import { focusSideChat, openSideChat, SideChatBody } from './panel.solid.tsx'
+import { setInboxChat } from './side.solid.tsx'
+
+const PARKED = 'ext.side-chat.inbox-parked'
 
 export function TalkItThrough(props: { message: QuestionMessage }) {
   const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
-  const [, setSource] = useUiState<number | null>(SOURCE_KEY, null)
+  const [, setParked] = useUiState<number | null>(PARKED, null)
   const [opening, setOpening] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
   const surface = useSurface()
@@ -39,11 +42,17 @@ export function TalkItThrough(props: { message: QuestionMessage }) {
     setFailure(undefined)
     try {
       const { source } = await api.action(QuestionAction, { message }, { who })
+      const inInbox = surface() === 'inbox'
       const showAsker = surface() === 'agent' && shown() !== source
       writingAs(who, () => {
-        setSource(source)
+        if (inInbox) {
+          setSideChatOpen(false)
+          setParked(null)
+          focusSideChat()
+          return
+        }
         if (showAsker) switchConversation(source)
-        openSideChat()
+        openSideChat(source)
       })
     } catch (error) {
       setFailure(errorMessage(error).replace(/^side-chat\/question: /, ''))
@@ -83,24 +92,43 @@ export function TalkItThrough(props: { message: QuestionMessage }) {
 }
 
 export function inboxSideChat(
-  input: () => { message: QuestionMessage | undefined; phone: boolean },
+  input: () => { message: QuestionMessage | undefined; phone: boolean; close: () => void },
 ) {
   const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
+  const [parked, setParked] = useUiState<number | null>(PARKED, null)
   const asker = createMemo(() => {
     const message = input().message
-    if (!message || typeof message.from !== 'number') return undefined
+    if (!message || message.id === parked() || typeof message.from !== 'number') return undefined
     const session = sessions()?.sessions?.[message.from]
-    return session?.id !== undefined && session.question === message.id ? message.from : undefined
+    return session?.id !== undefined && session.question === message.id
+      ? (message.from as ConversationId)
+      : undefined
+  })
+  const park = () => {
+    const pane = input()
+    setParked(pane.message?.id ?? null)
+    pane.close()
+  }
+  const close = () => {
+    park()
+    setSideChatOpen(false)
+  }
+  createEffect(asker, (source) => {
+    setInboxChat(source === undefined ? undefined : { source, park })
+  })
+  onCleanup(() => {
+    setInboxChat(undefined)
   })
   return createMemo(() => {
-    if (asker() === undefined) return undefined
+    const staticSource = asker()
+    if (staticSource === undefined) return undefined
     return () => (
       <section
         aria-label="Side chat"
         class="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
         data-side-chat-panel
       >
-        <SideChatBody docked phone={input().phone} />
+        <SideChatBody docked onClose={close} phone={input().phone} source={staticSource} />
       </section>
     )
   })

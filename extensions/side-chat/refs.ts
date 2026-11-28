@@ -177,9 +177,9 @@ export const QuestionAction = actionRef<
   { conversation: ConversationId; source: ConversationId }
 >('side-chat', 'question')
 
-/** `{source?, answer}` → `{conversation}`: summarize, send the answer unless the card was already closed, and conclude. */
+/** `{source, fork, message, answer}` → `{conversation}`: answer this fork's pinned card and conclude the fork. */
 export const AnswerAction = actionRef<
-  SideChatSource & { answer: Reply },
+  { source: ConversationId; fork: ConversationId; message: number; answer: Reply },
   { conversation: ConversationId }
 >('side-chat', 'answer')
 

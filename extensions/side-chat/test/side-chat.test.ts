@@ -308,7 +308,18 @@ it('Talk it through forks the asker at the card, drafts without sending, then su
   })
   expect((await messages()).find((item) => item.id === question.id)?.state).toBe('delivered')
 
-  const answer = () => f.action('answer', { source: asker.source, answer: { answers, note } })
+  const reply = { source: asker.source, fork: id, message: question.id, answer: { answers, note } }
+  for (const [wrong, error] of [
+    [{ fork: original.id }, 'This side chat is no longer open'],
+    [{ message: question.id + 1 }, 'This side chat is not open on that question'],
+  ] as const) {
+    const refused = await f.action('answer', { ...reply, ...wrong })
+    expect(refused.status).toBe(500)
+    expect(refused.data.error).toContain(error)
+  }
+  expect(await f.session(asker.source)).toMatchObject({ id, question: question.id })
+  expect((await messages()).find((item) => item.id === question.id)?.state).toBe('delivered')
+  const answer = () => f.action('answer', reply)
   const sent = await answer()
   expect([sent.status, sent.data.error]).toEqual([200, undefined])
   expect((await f.session(asker.source))?.last).toMatchObject({

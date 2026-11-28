@@ -23,22 +23,22 @@ export function PinnedQuestion(props: { message: number; fork: ConversationId; f
   const ready = () =>
     answered(questions(), cardOf(cards(), cardKey(props.message), questions()).drafts).length
   const waits = () => message()?.state === 'delivered'
-  const asker = () =>
-    typeof message()?.from === 'number' ? (message()!.from as number) : undefined
   const lead = () =>
     message()
       ?.text.split('\n')
       .find((line) => line.trim()) ?? ''
-  const answerWith = (answer: Reply, keepalive?: boolean) =>
-    api
-      .action(AnswerAction, { source: asker() as ConversationId, answer }, { keepalive })
-      .catch((failure: unknown) => {
-        throw new Error(
-          `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/answer: /, '')}`,
-        )
-      })
+  const answerWith =
+    (source: ConversationId, fork: ConversationId, messageId: number) =>
+    (answer: Reply, keepalive?: boolean) =>
+      api
+        .action(AnswerAction, { source, fork, message: messageId, answer }, { keepalive })
+        .catch((failure: unknown) => {
+          throw new Error(
+            `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/answer: /, '')}`,
+          )
+        })
   return (
-    <Show when={message()}>
+    <Show when={typeof message()?.from === 'number' && message()}>
       {(question) => (
         <Collapsible
           bind={[open, setOpen]}
@@ -66,7 +66,11 @@ export function PinnedQuestion(props: { message: number; fork: ConversationId; f
           <CollapsibleContent class="min-h-0 overflow-y-auto">
             <Show when={waits()}>
               <MessageQuestions
-                answerWith={answerWith}
+                answerWith={answerWith(
+                  question().from as ConversationId,
+                  props.fork,
+                  question().id,
+                )}
                 keys={viewport() !== 'phone'}
                 message={question()}
                 sendLabel="Send answer"

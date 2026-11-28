@@ -26,18 +26,11 @@ import { pageId } from '../page-agent/ui.solid.tsx'
 import { speech, splitReply } from '../read-aloud/ui.solid.tsx'
 import type { Sentence } from '../read-aloud/ui.solid.tsx'
 import { createCues } from './cues.web.ts'
-import {
-  pendingKey,
-  pulsing,
-  replying,
-  shownPhase,
-  statusOf,
-  transition,
-  typedIn,
-} from './machine.web.ts'
+import { pendingKey, pulsing, replying, shownPhase, transition, typedIn } from './machine.web.ts'
 import type { DockEvent, DockState, Typed } from './machine.web.ts'
 import { RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
 import type { SideChatFork, SideChatTurn } from './refs.ts'
+import { inboxChat } from './side.solid.tsx'
 
 export const KEYS = 'mod+shift+v'
 type Image = { data: string; mimeType: string }
@@ -66,11 +59,6 @@ const sourced = () => {
   const source = sourceCell.get()
   return source === undefined ? {} : { source }
 }
-export const sideChatSource = createRoot(() => {
-  const [now, setNow] = createSignal(sourceCell.get())
-  sourceCell.subscribe(() => setNow(sourceCell.get()))
-  return now
-})
 export function setSideChatSource(source: ConversationId | undefined) {
   if (source === sourceCell.get()) return
   if (session().id !== undefined) endLocally()
@@ -133,9 +121,7 @@ export const dock = createRoot(() => {
     setSideMode,
     state: now,
     phase: () => shownPhase(now()),
-    status: () => statusOf(now()),
     pending: () => pendingKey(now()),
-    capturing: listening,
     local,
     setLocal,
     error,
@@ -275,16 +261,21 @@ export function registerSideChatFallback() {
   setFallback({
     sink: sideChatSink,
     wake: () => {
-      if (!sideChatOpen()) setSideChatOpen(true)
+      showSideChat()
     },
   })
   return () => setFallback(undefined)
+}
+
+const showSideChat = () => {
+  if (inboxChat() === undefined && !sideChatOpen()) setSideChatOpen(true)
 }
 
 const taken = new WeakSet<Typed>()
 
 async function finishRecording(recorded: Recorded, retaking: boolean) {
   const who = writerNow()
+  const destination = sourced()
   const before = state()
   const interrupted = before.phase === 'recording' && before.busy
   const typed = typedIn(before)
@@ -312,6 +303,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
       tried &&
       (await sendTurn({
         who,
+        destination,
         interrupted: interrupted || paused !== undefined,
         wholeBox: true,
       })) !== 'empty'
@@ -320,10 +312,11 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
   }
   writingAs(who, () => {
     if (dock.sideMode()) dock.setSideMode(false)
-    if (!sideChatOpen()) setSideChatOpen(true)
+    showSideChat()
   })
   await sendTurn({
     who,
+    destination,
     recorded,
     interrupted,
     ...(typed
@@ -333,6 +326,8 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
 }
 
 export async function sendTyped(text: string, images: readonly Image[] = []) {
+  const destination = sourced()
+  const who = writerNow()
   const take = capture.take(sideChatSink)
   if (take) {
     const { signal } = session().live
@@ -350,6 +345,8 @@ export async function sendTyped(text: string, images: readonly Image[] = []) {
   const interrupted = ours().playing || replying(state())
   dock.player.pause()
   await sendTurn({
+    who,
+    destination,
     typed: text.trim(),
     images,
     interrupted,
@@ -370,10 +367,11 @@ async function sendTurn(input: {
   interrupted: boolean
   fromComposer?: boolean
   wholeBox?: boolean
-  who?: UiWho
+  who: UiWho
+  destination: { source?: ConversationId }
 }) {
   const { signal } = session().live
-  const who = input.who ?? writerNow()
+  const { who, destination } = input
   let owner = session().id
   const cancelled = () => {
     if (input.fromComposer) throw signal.reason
@@ -411,7 +409,7 @@ async function sendTurn(input: {
     if (input.interrupted) {
       dock.player.stop()
       dispatch({ type: 'interrupt' })
-      await api.action(StopAction, sourced(), { signal, who }).catch((failure: unknown) => {
+      await api.action(StopAction, destination, { signal, who }).catch((failure: unknown) => {
         if (signal.aborted) return
         if (state().phase === 'sending' && pendingKey(state()) === undefined)
           dispatch({ type: 'abandon' })
@@ -444,7 +442,7 @@ async function sendTurn(input: {
     else dock.cues.send()
     const current = () => !signal.aborted && pendingKey(state()) === key
     try {
-      const status = await api.action(StatusAction, sourced(), { signal, who })
+      const status = await api.action(StatusAction, destination, { signal, who })
       speech.setKeyed(status.transcribes)
       const audio = input.recorded ? await base64(input.recorded.blob) : undefined
       const mimeType = input.recorded?.blob.type.split(';')[0] ?? ''
@@ -454,7 +452,7 @@ async function sendTurn(input: {
             {
               audio,
               mimeType,
-              ...sourced(),
+              ...destination,
               ...(owner !== undefined ? { session: owner } : {}),
             },
             { signal, who },
@@ -475,7 +473,7 @@ async function sendTurn(input: {
       const sent = await api.action(
         TurnAction,
         {
-          ...sourced(),
+          ...destination,
           ...(owner !== undefined ? { session: owner } : {}),
           key,
           text,

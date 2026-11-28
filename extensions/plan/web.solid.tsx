@@ -109,8 +109,8 @@ function useAnchor(conversationId: Accessor<ConversationId | undefined>) {
       if (!form?.isConnected) return
       const rect = form.getBoundingClientRect()
       const toggle = form
-        .closest(':has(> * > [data-ui="voice-mode-switch"])')
-        ?.querySelector(':scope > * > [data-ui="voice-mode-switch"]')
+        .closest(':has(> * > [data-ui="side-chat-switch"])')
+        ?.querySelector(':scope > * > [data-ui="side-chat-switch"]')
       const end = toggle?.getBoundingClientRect()
       const row = toggle?.parentElement
       if (!row || !end || end.width === 0) {

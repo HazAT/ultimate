@@ -58,17 +58,8 @@ export type DockEvent =
   | { type: 'note'; note: Note }
   | { type: 'ended' }
 
-type Of<T extends { phase: string }, P extends T['phase']> = Extract<T, { phase: P }>
 type Event<E extends DockEvent['type']> = Extract<DockEvent, { type: E }>
 type Handlers<S, Out> = { [E in DockEvent['type']]: (state: S, event: Event<E>) => Out }
-
-const notes: Record<Note, string> = {
-  'kept going': 'Not enough audio · kept going',
-  'too short tap': 'Too short: tap again when you are done',
-  'too short hold': 'Too short: hold while you talk',
-  'heard nothing': 'Heard nothing: check the mic?',
-  'nothing sent': 'No words heard · nothing sent',
-}
 
 export const settled = (state: DockState): Settled =>
   state.phase === 'recording' ? state.before : state
@@ -93,27 +84,6 @@ export const pulsing = (state: DockState) => {
 
 export const typedIn = (state: DockState): Typed | undefined =>
   state.phase === 'recording' ? state.typed : undefined
-
-const noted = (state: Of<Settled, 'idle' | 'sending' | 'thinking' | 'speaking' | 'done'>) =>
-  state.note && notes[state.note]
-
-const statuses: { [P in Phase]: (state: Of<DockState, P>) => string | undefined } = {
-  recording: (state) =>
-    !state.open
-      ? statusOf(state.before)
-      : state.busy
-        ? 'Recording · say something to interrupt'
-        : 'Recording · I hear you',
-  error: (state) => state.message,
-  idle: noted,
-  sending: (state) => noted(state) ?? (state.voice ? 'Sending your voice…' : 'Sending…'),
-  thinking: (state) => noted(state) ?? 'Thinking…',
-  speaking: (state) => noted(state) ?? 'Speaking',
-  done: (state) => noted(state) ?? (state.stopped ? 'Stopped · your turn' : 'Your turn'),
-}
-
-export const statusOf = (state: DockState): string | undefined =>
-  (statuses[state.phase] as (state: DockState) => string | undefined)(state)
 
 const keyed = (key: string | undefined) => (key !== undefined ? { key } : {})
 

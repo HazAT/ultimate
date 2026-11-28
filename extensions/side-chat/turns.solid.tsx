@@ -25,7 +25,7 @@ import {
   useSpeaking,
   useTurns,
 } from './dock.solid.tsx'
-import { LegacyVoiceTurnEntry, SideChatTurnEntry } from './entries.shared.ts'
+import { LegacyVoiceForkDoc, LegacyVoiceTurnEntry, SideChatTurnEntry } from './entries.shared.ts'
 import { SideChatForkDoc, SideChatSessionDoc } from './refs.ts'
 import type { SideChatFork, SideChatTurn } from './refs.ts'
 import { splitReply, useSpokenText } from '../read-aloud/ui.solid.tsx'
@@ -114,14 +114,25 @@ export function SideChatTurnView(props: {
   conversation: ConversationId | undefined
 }) {
   const data = () => props.turn.data
-  const archived = () => props.record?.kind === LegacyVoiceTurnEntry.kind
+  const archived = () =>
+    props.record && LegacyVoiceTurnEntry.is(props.record) ? props.record.data : undefined
   const fork = useDocOf(() => (archived() ? undefined : props.conversation), SideChatForkDoc)
+  const legacy = useDocOf(
+    () => (archived() && data().audio && !data().text ? props.conversation : undefined),
+    LegacyVoiceForkDoc,
+  )
   const local = () => dock.local()[props.turn.key]
   const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
-  const said = () =>
-    archived()
-      ? data().text
-      : saidIn(data(), audio(), props.submitted ?? !!props.record, fork()?.transcripts)
+  const said = () => {
+    const old = archived()
+    if (!old) return saidIn(data(), audio(), props.submitted ?? !!props.record, fork()?.transcripts)
+    if (old.text || !old.audio) return old.text
+    const transcripts = legacy()?.transcripts
+    return (old.clips ?? [old.audio])
+      .map((clip) => transcripts?.[clip])
+      .filter(Boolean)
+      .join(' ')
+  }
   const failed = () => {
     const recording = audio()
     return local()?.failed ?? (recording ? fork()?.failed?.[recording] : undefined)

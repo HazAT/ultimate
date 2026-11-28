@@ -22,6 +22,7 @@ import {
 } from '@/sdk/solid'
 import { QUIET_MINUTES } from './entries.shared.ts'
 import { SideChatForkDoc, type SideChatHandoff, type SideChatSummary } from './refs.ts'
+import { useSourceName } from './side.solid.tsx'
 
 type Brief = Omit<SideChatHandoff, 'from'>
 
@@ -136,7 +137,8 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   const brief = () => props.call.args as Partial<Brief> & { to?: number }
   const place = useContext(ConversationScope) === null ? 'in the transcript' : 'in the side chat'
   const target = () => (brief().to as ConversationId | undefined) ?? fork()?.of
-  const where = () => (brief().to === undefined ? '@ultimate' : `#${brief().to}`)
+  const targetName = useSourceName(target)
+  const where = () => targetName() ?? 'the source'
   const failed = () => props.call.status === 'error'
   const sent = () => props.call.status === 'done'
   const error = () =>

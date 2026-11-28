@@ -147,7 +147,7 @@ function Awake(props: { data: ChapterEntry }) {
       const opened = await api.action(OpenAction, { source: conversationId }, { who })
       writingAs(source, () => {
         setChecks((previous) => ({ ...previous, [name]: opened.conversation }))
-        openSideChat()
+        openSideChat(conversationId)
       })
       await api.action(
         TurnAction,
@@ -232,7 +232,10 @@ function Awake(props: { data: ChapterEntry }) {
           <Button
             class="ml-auto h-6"
             aria-label={`Show the wake-up check for ${props.data.name}`}
-            onClick={() => openSideChat()}
+            onClick={() => {
+              const source = ultimate()
+              if (source !== undefined) openSideChat(source)
+            }}
             size="xs"
             variant="ghost"
           >
