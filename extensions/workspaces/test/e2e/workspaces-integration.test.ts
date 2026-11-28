@@ -41,6 +41,7 @@ import { setStanding } from '../../../conversations/server.ts'
 import { SubmitAfter, submitAfter } from '../../../conversations/submit.ts'
 import self from '../../../self/server.ts'
 import messagesExtension from '../../../messages/server.ts'
+import { send as sendMessage } from '../../../messages/send.ts'
 import { Messages, MessagesApi } from '../../../messages/api.ts'
 import { Serving, Started } from '../../../messages/addresses.ts'
 import promptExtension, { order as promptOrder } from '../../../prompt/server.ts'
@@ -1442,13 +1443,7 @@ it.concurrent("gives the asker a landed branch's final reply instead of a lost-r
     }
     return message
   }, context)
-  const messages = f.host.want(MessagesApi)!
-  await messages.send(
-    ROOT_CONVERSATION_ID,
-    { to: `#${id}`, text: 'Anything left?' },
-    'starter-asks',
-    context,
-  )
+  await sendMessage(f.host, ROOT_CONVERSATION_ID, { to: `#${id}`, text: 'Anything left?' }, context)
   await until(async () =>
     (await messageLog(f)).some((m) => m.from === id && m.re !== undefined && m.state !== 'sent'),
   )
