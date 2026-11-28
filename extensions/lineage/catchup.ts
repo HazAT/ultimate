@@ -11,7 +11,7 @@ import { WorkspacesApi } from '../workspaces/api.ts'
 import { Standing } from '../subagents/api.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
 
-export const Seen = defineDoc<{ main?: string; at?: number }>({
+export const Seen = defineDoc<{ main?: string; at?: number; placements?: number }>({
   kind: 'lineage.seen',
   checkpointWhen: checkpointEvery(100),
   version: 1,
@@ -200,7 +200,12 @@ async function catchupText(
   ].join('\n\n')
 }
 
-type CatchupPlacedOnlyWhileBaselineHolds = { since: string; main: Main; text?: string }
+type CatchupPlacedOnlyWhileBaselineHolds = {
+  since: string
+  placements: number
+  main: Main
+  text?: string
+}
 
 export function catchupPreparation(
   host: ExtensionHost,
@@ -237,7 +242,12 @@ export function catchupPreparation(
             return undefined
           })
         : undefined
-    prepared.set(id, { since: since ?? '', main, ...(text ? { text } : {}) })
+    prepared.set(id, {
+      since: since ?? '',
+      placements: facts.seen.placements ?? 0,
+      main,
+      ...(text ? { text } : {}),
+    })
   }
   const preparing = new Map<ConversationId, Promise<void>>()
   const prepareOnce = (id: ConversationId, ctx: Context) => {
@@ -280,7 +290,13 @@ async function catchup(
   const record = await tx.conversation(conversationId)
   if (!record || record.owner) return undefined
   const alwaysAdvancedBaseline = await tx.doc(Seen, conversationId)
-  if (!prepared || (alwaysAdvancedBaseline.main ?? '') !== prepared.since) return 'unprepared'
+  if (
+    !prepared ||
+    (alwaysAdvancedBaseline.main ?? '') !== prepared.since ||
+    (alwaysAdvancedBaseline.placements ?? 0) !== prepared.placements
+  )
+    return 'unprepared'
+  alwaysAdvancedBaseline.placements = prepared.placements + 1
   const commits = prepared.text
   alwaysAdvancedBaseline.main = prepared.main.sha
   if (!alwaysAdvancedBaseline.at || commits) alwaysAdvancedBaseline.at = Date.now()

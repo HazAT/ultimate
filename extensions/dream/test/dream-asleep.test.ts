@@ -17,7 +17,7 @@ import { chapterFiles } from '../../../lib/chapters.ts'
 import { readJson, writeJson } from '../../../lib/json-file.ts'
 import { CloudApi } from '../../cloud/api.ts'
 import type { CloudService } from '../../cloud/api.ts'
-import { hold as holdFor } from '../../../lib/harness-hold.ts'
+import { hold as holdFor, release as releaseFor } from '../../../lib/harness-hold.ts'
 import { Standing } from '../../subagents/api.ts'
 import { docs as lineageDocs } from '../../lineage/server.ts'
 import { Messages } from '../../messages/api.ts'
@@ -312,7 +312,7 @@ it.each([false, true])(
       active: 'the-beginning',
       chapters: [{ name: 'the-beginning' }, { name: 'fresh-roots' }],
     })
-    if (paused) holdFor(f.host.harness(), 'pause')
+    if (paused) holdFor(f.host, 'pause')
     f.host.restart = vi.fn<ExtensionHost['restart']>(async (approved) => {
       await chmod(f.home, 0o500)
       try {
@@ -326,6 +326,8 @@ it.each([false, true])(
     await expect(actions.switch({ chapter: 'fresh-roots' }, f.call)).rejects.toThrow('EACCES')
     expect(f.hold).toHaveBeenCalledTimes(paused ? 2 : 1)
     expect(f.release).toHaveBeenCalledTimes(paused ? 0 : 1)
+    if (paused) releaseFor(f.host, 'pause')
+    expect(f.release).toHaveBeenCalledOnce()
     expect(existsSync(join(f.home, 'pending-chapter.json'))).toBe(false)
   },
 )

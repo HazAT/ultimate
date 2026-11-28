@@ -13,4 +13,5 @@ it('takes a leaf without a pid prefix for one whose owner is gone', () => {
   expect(ownerAlive(`${process.pid}-a1b2`)).toBe(true)
   expect(ownerAlive('0-a1b2')).toBe(false)
   expect(ownerAlive('leftover')).toBe(false)
+  expect(ownerAlive('1e0-a1b2')).toBe(false)
 })

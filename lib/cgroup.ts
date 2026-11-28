@@ -45,8 +45,8 @@ export async function workMemoryMax(projectRoot: string, userHome: string) {
 }
 
 export const ownerAlive = (leaf: string) => {
-  const pid = Number(leaf.split('-')[0])
-  if (!Number.isSafeInteger(pid) || pid < 1) return false
+  const pid = /^[1-9]\d*-/.test(leaf) ? Number.parseInt(leaf) : undefined
+  if (pid === undefined) return false
   try {
     process.kill(pid, 0)
     return true

@@ -135,6 +135,7 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
     actions[name](null, { host } as unknown as ActionContext)
   return {
     home,
+    host,
     prepared,
     open,
     action,
@@ -218,10 +219,10 @@ it('keeps a chapter switch’s hold when the user plays during it', async () => 
   const f = await fixture()
   const { harness } = await f.open()
   await f.action('pause')
-  hold(harness, 'chapter switch')
+  hold(f.host, 'chapter switch')
   await f.action('play')
   expect((await harness.inspect(context)).scheduling).toBe('paused')
-  release(harness, 'chapter switch')
+  release(f.host, 'chapter switch')
   expect((await harness.inspect(context)).scheduling).toBe('running')
 })
 

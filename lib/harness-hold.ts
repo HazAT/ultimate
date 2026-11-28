@@ -1,18 +1,22 @@
-import type { Harness } from '@earendil-works/pi-durable'
+import type { ExtensionHost } from '../server/extensions.ts'
 
-const holders = ((globalThis as Record<symbol, unknown>)[Symbol.for('ultimate.harness-holds')] ??=
-  new WeakMap()) as WeakMap<Harness, Set<string>>
+type Host = Pick<ExtensionHost, 'harness' | 'resource'>
 
-// Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold()/release() keep the scheduler from starting tasks.
-export function hold(harness: Harness, holder: string) {
-  const held = holders.get(harness) ?? new Set<string>()
-  holders.set(harness, held)
-  held.add(holder)
-  harness.hold()
+const holders = (host: Host) => {
+  const byHarness = host.resource('harness.holds', () => new WeakMap<object, Set<string>>())
+  const harness = host.harness()
+  if (!byHarness.has(harness)) byHarness.set(harness, new Set())
+  return byHarness.get(harness)!
 }
 
-export function release(harness: Harness, holder: string) {
-  const held = holders.get(harness)
-  held?.delete(holder)
-  if (!held?.size) harness.release()
+// Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold()/release() keep the scheduler from starting tasks.
+export function hold(host: Host, holder: string) {
+  holders(host).add(holder)
+  host.harness().hold()
+}
+
+export function release(host: Host, holder: string) {
+  const held = holders(host)
+  held.delete(holder)
+  if (!held.size) host.harness().release()
 }

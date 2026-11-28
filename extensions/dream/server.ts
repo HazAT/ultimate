@@ -204,13 +204,13 @@ async function restartChapter(
       await host.restart(async () => {
         requireNoWorkParkedBySwitch(host)
         held = host.harness()
-        hold(held, 'chapter switch')
+        hold(host, 'chapter switch')
         await writePendingChapter()
       }),
     )
   } finally {
     await rm(join(host.home, PENDING_CHAPTER), { force: true })
-    if (held && held === host.harness()) release(held, 'chapter switch')
+    if (held && held === host.harness()) release(host, 'chapter switch')
   }
 }
 

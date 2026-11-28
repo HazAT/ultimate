@@ -46,7 +46,7 @@ const sharedPauseFlag = (host: Pick<ExtensionHost, 'resource'>) =>
 
 function holdRetryDuringPublication(host: Host) {
   sharedPauseFlag(host).paused = true
-  hold(host.harness(), HOLDER)
+  hold(host, HOLDER)
 }
 
 const read = async (host: Host) =>
@@ -129,7 +129,7 @@ async function state(host: Host): Promise<PauseState> {
 
 async function holdAndRecordPause(host: Host, limit?: RateLimit) {
   const harness = host.harness()
-  hold(harness, HOLDER)
+  hold(host, HOLDER)
   sharedPauseFlag(host).paused = true
   await harness.commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
@@ -251,7 +251,7 @@ async function holdRetryOrRelease(host: Host, limit: RateLimit) {
   } catch (error) {
     const { paused } = await read(host)
     sharedPauseFlag(host).paused = paused
-    if (!paused) release(host.harness(), HOLDER)
+    if (!paused) release(host, HOLDER)
     throw error
   }
   await writePauseLimitOnce(host, await read(host))
@@ -363,7 +363,7 @@ async function noteRunsThenRelease(host: Host, auto = false) {
   }, context)
   rearmAutoPlay(host, await read(host))
   sharedPauseFlag(host).paused = false
-  release(harness, HOLDER)
+  release(host, HOLDER)
   return state(host)
 }
 
@@ -375,7 +375,7 @@ export default function pauseExtension(host: Host) {
       const doc = await read(host)
       sharedPauseFlag(host).paused = doc.paused
       if (!doc.paused) return
-      hold(host.harness(), HOLDER)
+      hold(host, HOLDER)
       rearmAutoPlay(host, doc)
       await writePauseLimitOnce(host, doc)
     })
