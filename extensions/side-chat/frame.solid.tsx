@@ -1,4 +1,3 @@
-import type { ConversationId } from '@earendil-works/pi-durable'
 import { GitFork } from '@lucide/solid'
 import { cn } from 'cn'
 import { createMemo, Show, useContext } from 'solid-js'
@@ -31,10 +30,6 @@ function ComposerFrame(props: SolidComposerProps) {
   const forkable = useForkable(id)
   const active = createMemo(() => id() !== undefined && !props.dock && forkable() === true)
   const on = () => active() && dock.sideMode() === id() && source() === id()
-  const bind = (from: ConversationId) => {
-    setSource(from)
-    setSideChatSource(from)
-  }
   const outer = useContext(ComposerRedirect)
   const target = createMemo((): ComposerTarget | undefined =>
     on()
@@ -56,7 +51,10 @@ function ComposerFrame(props: SolidComposerProps) {
   )
   const toggle = () => {
     const next = !on()
-    if (next) bind(id()!)
+    if (next) {
+      setSource(id()!)
+      setSideChatSource(id())
+    }
     dock.setSideMode(next ? id()! : false)
   }
   const onKeyDown = (event: KeyboardEvent) => {

@@ -77,7 +77,7 @@ export function SideChatRow(props: { conversation: ConversationId | undefined })
     <Show when={props.conversation !== undefined && id() !== undefined}>
       <Button
         aria-current={shown() ? 'true' : undefined}
-        aria-label="Side chat session"
+        aria-label={`Side chat of #${props.conversation}`}
         class="mx-2 flex w-[calc(100%-1rem)] items-center justify-start gap-1.5 rounded-md py-1.5 pr-2 pl-9 text-left font-normal outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring"
         data-side-chat-row={id()}
         data-side-chat={live()}
