@@ -325,6 +325,8 @@ it('keeps typed drafts without recording them, and records a person picking and 
   expect(harness.writers).toEqual(['person'])
   card.querySelector<HTMLButtonElement>('[aria-label="Send 1 of 2: answer to message 8"]')!.click()
   await vi.advanceTimersByTimeAsync(3000)
+  expect(harness.actions).toEqual([])
+  await vi.advanceTimersByTimeAsync(5000)
   expect(harness.actions).toEqual([
     {
       name: 'answer',
@@ -383,10 +385,10 @@ it('lets an agent choose, undo a send, send again, and dismiss another card', as
   await expectDistinctAgentNames(agent)
   expect(harness.actions).toEqual([])
   await press('Undo: answer to message 5')
-  await vi.advanceTimersByTimeAsync(3000)
+  await vi.advanceTimersByTimeAsync(8000)
   expect(harness.actions).toEqual([])
   await press('Send 1 of 2: answer to message 5')
-  await vi.advanceTimersByTimeAsync(3000)
+  await vi.advanceTimersByTimeAsync(8000)
   await press('Dismiss message 6')
   expect(harness.actions).toEqual([
     {

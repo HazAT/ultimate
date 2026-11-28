@@ -30,7 +30,7 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 import { QuestionItem } from './question.solid.tsx'
 import { AnswerAction, DismissAction } from './refs.ts'
 import type { Reply } from './refs.ts'
-import { ANSWER_UNDO_WINDOW_MS, SendButton } from './send.solid.tsx'
+import { ANSWER_UNDO_WINDOW_MS, INCOMPLETE_UNDO_WINDOW_MS, SendButton } from './send.solid.tsx'
 import type { Phase } from './send.solid.tsx'
 import {
   answered,
@@ -164,6 +164,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   const uploading = () => Object.values(uploads()).some(Boolean)
   const uploadingIn = (box: string) => (pending: boolean) =>
     setUploads((all) => ({ ...all, [box]: pending }))
+  const [incomplete, setIncomplete] = createSignal(false)
   const [heldDraft, setHeldDraft] = createSignal<Pick<CardState, 'drafts' | 'note'>>()
   const drafts = () => heldDraft()?.drafts ?? state().drafts
   const note = () => heldDraft()?.note ?? state().note
@@ -173,6 +174,7 @@ function AnswerCard(props: CardProps & { id: number }) {
   const disabled = () => busy() || locked()
   const word = (i: number) => answerOf(questions()[i], drafts()[i])
   const left = () => questions().length - ready().length
+  const warn = () => phase() === 'undo' && incomplete()
   const beforeLast = () => current() < questions().length - 1
   const sendLabel = () =>
     props.sendLabel ??
@@ -265,7 +267,12 @@ function AnswerCard(props: CardProps & { id: number }) {
     }
     if (immediately) fire()
     else {
-      waiting = { cancel: deadline(ANSWER_UNDO_WINDOW_MS, fire), fire }
+      const short = answers.length > 0 && answers.length < questions().length
+      setIncomplete(short)
+      waiting = {
+        cancel: deadline(short ? INCOMPLETE_UNDO_WINDOW_MS : ANSWER_UNDO_WINDOW_MS, fire),
+        fire,
+      }
       setPhase('undo')
     }
   }
@@ -420,12 +427,35 @@ function AnswerCard(props: CardProps & { id: number }) {
   )
   return (
     <Show when={questions().length} fallback={textOnly()}>
-      <div class={frame()} data-questions-card={card()} ref={root}>
+      <div
+        class={cn(
+          frame(),
+          'relative transition-colors duration-300',
+          warn() && 'bg-warning/10 shadow-[inset_0_0_0_1px_var(--color-warning)]',
+        )}
+        data-questions-card={card()}
+        data-incomplete-send={warn() ? '' : undefined}
+        ref={root}
+      >
+        <Show when={phase() === 'undo'}>
+          <Button
+            size={null}
+            variant={null}
+            aria-label={`Take back your answer to message ${props.id}`}
+            title="Take your answer back; your picks and note stay"
+            tabindex={-1}
+            class="absolute inset-0 z-10 cursor-pointer rounded-[inherit] outline-none"
+            onClick={undo}
+          />
+        </Show>
         <div class="flex items-center gap-2 px-3 pt-2.5 pb-1 font-mono text-[11px] text-muted-foreground">
           <MessageCircleQuestion class="size-3.5 text-brand" />
           <span class="text-foreground">
             {questions().length === 1 ? '1 question' : `${questions().length} questions`}
           </span>
+          <Show when={warn()}>
+            <span class="font-semibold text-warning">· {left()} unanswered</span>
+          </Show>
           <Show when={questions().length > 1}>
             <span class="ml-auto flex items-center gap-2">
               <span>
@@ -542,6 +572,7 @@ function AnswerCard(props: CardProps & { id: number }) {
               phase={phase()}
               disabled={(!locked() && !ready().length && !note().trim()) || busy() || uploading()}
               label={sendLabel()}
+              incomplete={incomplete()}
               onSend={(source) => send(false, source)}
               onSendNow={() => send(true)}
               onUndo={undo}

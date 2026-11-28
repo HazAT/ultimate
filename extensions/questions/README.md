@@ -42,7 +42,9 @@ shows beside the options for the hovered or chosen one. Recommended options (@ul
 come already chosen: the card opens with them in its draft, on the first question without a pick. Under the questions,
 a note field is always there: whatever it holds goes after the answer lines, or on its own (“Send note”), and never
 changes a pick. Send sends what is answered (“Send 2 of 5”). Sending locks the card as it is and turns Send into
-**Undo**, which fills over a 3 s window before the answer goes out; Undo keeps the picks and the note. Holding Send for
+**Undo**, which fills over a 3 s window before the answer goes out; Undo keeps the picks and the note. A send that
+leaves a question unanswered waits 8 s instead, and the card, its header (“· 1 unanswered”) and Undo turn amber while
+it waits. While a send waits, a click or tap anywhere on the card undoes it too. Holding Send for
 1 s fills it and sends at once, with no window; released earlier it is a plain click. With Reduce Motion the fills
 advance in steps. Dismiss closes the message without an answer. Beside it, the `questions.card-actions` point
 (`CardActions`) takes another extension's control: side-chat's **Talk it through**. A card in a layer marked
