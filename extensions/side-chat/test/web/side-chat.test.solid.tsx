@@ -377,6 +377,12 @@ it('a final handoff leaves its queued reply playing, and X stops the owned playb
   utterances.at(-1)!.dispatchEvent(new Event('end'))
   flush()
   expect(playerState()).toMatchObject({ key: turn.key, index: 1, playing: true })
+  const next = parseConversationId(91)
+  await root({ sessions: { [ultimate]: { id: next, startedAt: 2 } } })
+  composeIn(next)
+  const before = harness.actions.length
+  await sendTyped('A new thought')
+  expect(harness.actions.slice(before).map((call) => call.name)).not.toContain('stop')
   expect(await agent.act({ steps: [{ ref: 'Close side chat', action: 'press' }] })).toMatchObject({
     ok: true,
   })
@@ -559,6 +565,12 @@ it('Talk is not advertised and its fallback cannot start a take while the source
     ])
     await settle()
     expect(view.textContent).toContain('to speak')
+    talk()
+    expect(press).toHaveBeenCalledExactlyOnceWith(sideChatSink)
+    press.mockClear()
+    harness.forkable = false
+    harness.sources[0].send('conversations', [{ id: parseConversationId(ultimate), busy: false }])
+    await root({ sessions: { [ultimate]: { id: fork, startedAt: 1, question: 5 } } })
     talk()
     expect(press).toHaveBeenCalledExactlyOnceWith(sideChatSink)
   } finally {

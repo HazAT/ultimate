@@ -28,6 +28,7 @@ vi.mock('@/sdk/solid', async (original) => ({
         thinking: 'low',
         route: 'text',
         transcribes: true,
+        forkable: true,
         setup: {
           model: {
             ready: false,

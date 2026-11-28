@@ -27,7 +27,7 @@ vi.mock('@/sdk/solid', async () => {
           harness.stops++
           if (harness.stopFails) return Promise.reject(new Error('stop failed'))
         }
-        if (ref.name === 'status') return Promise.resolve({ route: 'text' })
+        if (ref.name === 'status') return Promise.resolve({ route: 'text', forkable: true })
         if (ref.name === 'record') {
           harness.recordings.push(args)
           return Promise.resolve({ audio: 'rec-1', session: 40 })

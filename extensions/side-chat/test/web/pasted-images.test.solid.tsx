@@ -47,7 +47,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       await harness.status
       init?.signal?.throwIfAborted()
       return Response.json({
-        result: { model: 'faux/voice', thinking: 'low', route: harness.route },
+        result: { model: 'faux/voice', thinking: 'low', route: harness.route, forkable: true },
       })
     }
     if (path === '/api/extensions/side-chat/actions/turn') {

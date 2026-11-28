@@ -70,6 +70,7 @@ export function setSideChatSource(source: ConversationId | undefined) {
 }
 
 let voiced: string | undefined
+let draining: string | undefined
 const owned = () => {
   const key = speech.state.get().key
   return key !== undefined && key === voiced
@@ -82,6 +83,7 @@ const player = {
   play: (index: number) => speech.play(index),
   load(key: string, sentences: readonly Sentence[], streaming: boolean) {
     voiced = key
+    draining = undefined
     speech.load(key, sentences, streaming, listening)
   },
   streaming: (on: boolean) => owned() && speech.streaming(on),
@@ -223,6 +225,7 @@ const ours = () => {
         charIndex: -1,
       }
 }
+const cuttingIn = () => (ours().playing && draining === undefined) || replying(state())
 export const playerState = createRoot(() => {
   const [now, setNow] = createSignal(ours())
   dock.player.state.subscribe(() => setNow(ours()))
@@ -248,7 +251,7 @@ export const sideChatSink: Sink = {
   },
   start() {
     dock.setError(undefined)
-    const busy = ours().playing || replying(state())
+    const busy = cuttingIn()
     dock.player.pause()
     dispatch({ type: 'press', busy })
   },
@@ -352,7 +355,7 @@ export async function sendTyped(text: string, images: readonly Image[] = []) {
     if (taken.has(typed)) return
   }
   if (!text.trim() && !images.length) return
-  const interrupted = ours().playing || replying(state())
+  const interrupted = cuttingIn()
   dock.player.pause()
   await sendTurn({
     who,
@@ -686,9 +689,11 @@ function endLocally(reason: string, drain = false) {
   void capture.end(sideChatSink)
   if (drain && owned()) {
     const key = voiced
+    draining = key
     dock.player.streaming(false)
     void dock.player.idle().then(() => {
       if (voiced === key) voiced = undefined
+      if (draining === key) draining = undefined
     })
   } else {
     dock.player.stop()

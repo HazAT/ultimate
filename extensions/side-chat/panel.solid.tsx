@@ -668,7 +668,7 @@ export function SideChatOverlay() {
       })
     },
   )
-  onSettled(() => registerSideChatFallback(() => forkable() === true))
+  onSettled(() => registerSideChatFallback(() => id() !== undefined || forkable() === true))
   const phone = () => viewport() === 'phone'
   const floating = () => sideChatOpen() && !docked() && inboxChat() === undefined
   const [place, setPlace] = useExtensionUiState<{

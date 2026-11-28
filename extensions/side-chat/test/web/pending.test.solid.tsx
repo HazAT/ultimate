@@ -16,7 +16,12 @@ vi.mock('@/sdk/solid', async (original) => ({
   api: {
     action: (ref: { name: string }) => {
       if (ref.name === 'status')
-        return Promise.resolve({ route: 'text', thinking: 'low', transcribes: true })
+        return Promise.resolve({
+          route: 'text',
+          thinking: 'low',
+          transcribes: true,
+          forkable: true,
+        })
       if (ref.name !== 'turn') return Promise.resolve({})
       return new Promise((resolve) => {
         harness.stored = () => resolve({ conversation: 40, route: 'text' })
