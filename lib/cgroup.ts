@@ -44,9 +44,11 @@ export async function workMemoryMax(projectRoot: string, userHome: string) {
   return String(Math.floor(totalmem() * 0.7))
 }
 
-const ownerAlive = (leaf: string) => {
+export const ownerAlive = (leaf: string) => {
+  const pid = /^[1-9]\d*-/.test(leaf) ? Number.parseInt(leaf) : undefined
+  if (pid === undefined) return false
   try {
-    process.kill(Number(leaf.split('-')[0]), 0)
+    process.kill(pid, 0)
     return true
   } catch (error) {
     return errnoCode(error) !== 'ESRCH'

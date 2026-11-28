@@ -33,6 +33,7 @@ import {
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Standing } from '../../subagents/api.ts'
+import { hold, release } from '../../../lib/harness-hold.ts'
 
 const hosts: OpenHost[] = []
 const homes: string[] = []
@@ -134,6 +135,7 @@ async function fixture(home?: string, retry: { maxRetries?: number } = {}) {
     actions[name](null, { host } as unknown as ActionContext)
   return {
     home,
+    host,
     prepared,
     open,
     action,
@@ -211,6 +213,17 @@ it('lets a running tool finish, starts no generation after it while paused, and 
   expect(notes[0].model?.[0]?.content).toMatch(
     /^Paused for \d+(ms|\.\ds); the run continued after Play\.$/,
   )
+})
+
+it('keeps a chapter switch’s hold when the user plays during it', async () => {
+  const f = await fixture()
+  const { harness } = await f.open()
+  await f.action('pause')
+  hold(f.host, 'chapter switch')
+  await f.action('play')
+  expect((await harness.inspect(context)).scheduling).toBe('paused')
+  release(f.host, 'chapter switch')
+  expect((await harness.inspect(context)).scheduling).toBe('running')
 })
 
 it('reopens paused: nothing starts until play', async () => {
