@@ -1,5 +1,6 @@
-import { cp, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, rename, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 export async function linkDependencies(root: string) {
   const target = join(root, 'node_modules')
@@ -19,18 +20,14 @@ export async function copySource(root: string) {
   })
   await linkDependencies(root)
   const config = join(root, 'vite.config.ts')
-  // Optimize on page requests, not fixture boot.
-  // This config is immutable after boot: ignore stale native events replayed from the initial copy.
-  const replace = (text: string, from: string, to: string) => {
-    if (!text.includes(from)) throw new Error(`vite.config.ts no longer contains ${from}`)
-    return text.replace(from, to)
-  }
+  await rename(config, join(root, 'vite.config.source.ts'))
+  const fixture = pathToFileURL(resolve('test/fixture-vite.ts')).href
   await writeFile(
     config,
-    replace(
-      await readFile(config, 'utf8'),
-      'export default defineConfig({',
-      "export default defineConfig({ cacheDir: '.vite-cache', optimizeDeps: { entries: [] }, server: { watch: { ignored: [(file) => file === fileURLToPath(import.meta.url)] } },",
-    ),
+    `import { fileURLToPath } from 'node:url'
+import base from './vite.config.source.ts'
+const { fixtureConfig } = await import(new URL(${JSON.stringify(fixture)}).href)
+export default fixtureConfig(fileURLToPath(new URL('.', import.meta.url)), base)
+`,
   )
 }
