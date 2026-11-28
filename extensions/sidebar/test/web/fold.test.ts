@@ -39,6 +39,17 @@ it('keeps running and failed rows, and the rows above them, visible', () => {
   ])
 })
 
+it('shows every child of an opened row, without an earlier line', () => {
+  const nested = (id: number) => ({ 1: [10], 10: [11, 12, 13, 14] })[id]
+  expect(show(foldLines(1, nested, () => true, new Set(['10'])))).toEqual([
+    '0:10 +4 open',
+    '1:11',
+    '1:12',
+    '1:13',
+    '1:14',
+  ])
+})
+
 it('opens the earlier line and one row on their own keys', () => {
   expect(show(foldLines(1, children, () => true, new Set(['earlier:1', '10'])))).toEqual([
     '0:earlier 3 open',

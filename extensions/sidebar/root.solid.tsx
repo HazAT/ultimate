@@ -290,18 +290,15 @@ function FlightChildren(props: { id: ConversationId }) {
   const [folds, setFolds] = useSidebarState<Record<string, string[]>>('folds', {})
   const opened = () => folds()[props.id] ?? []
   const quiet = (id: number) => {
-    const conversation = data.byConversation(parseConversationId(id))
-    const state = conversationState(
-      {
-        id,
-        kind: 'subagent',
-        runState: data.row(id)?.runState,
-        busy: conversation.busy,
-        parked: data.parked(parseConversationId(id)),
-      },
-      data.log(),
-    )
-    return state === 'done' || state === 'idle'
+    const facts = {
+      id,
+      kind: 'subagent' as const,
+      runState: data.row(id)?.runState,
+      busy: data.byConversation(parseConversationId(id)).busy,
+      parked: data.parked(parseConversationId(id)),
+    }
+    const state = conversationState(facts, data.log())
+    return (state === 'done' || state === 'idle') && !conversationWait(facts, data.log())
   }
   const lines = createMemo(() =>
     foldLines(

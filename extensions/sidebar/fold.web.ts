@@ -26,7 +26,7 @@ export function foldLines(
   const lines: FoldLine[] = []
   const walk = (id: number, depth: number) => {
     const ids = children(id) ?? []
-    const older = ids.filter(isStill).slice(0, -KEEP)
+    const older = depth === 0 ? ids.filter(isStill).slice(0, -KEEP) : []
     const folded = older.length > 1 && !opened.has(earlierKey(id))
     for (const child of ids) {
       if (older.length > 1 && child === older[0])
