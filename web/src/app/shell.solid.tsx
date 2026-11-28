@@ -46,6 +46,7 @@ import { Composer } from './composer.solid.tsx'
 import { reportedFailure } from './error-stack.solid.tsx'
 import { IconButton, inlineFailure } from './header.solid.tsx'
 import { setStatusTarget } from './status-target.ts'
+import { registerSwipeTarget, swipeProgress } from './swipe.ts'
 import { Transcript } from './transcript.solid.tsx'
 
 export const sidebarWidthBeyondPhone = 'md:w-(--sidebar-width,18rem)'
@@ -133,58 +134,54 @@ function mountRegionBeforePaint(region: 'sidebar' | 'panels') {
 function Overlay(props: {
   side: 'left' | 'right'
   open: boolean
+  onOpen: () => void
   onClose: () => void
   class?: string
   children: JSX.Element
 }) {
   const everOpened = createMemo<boolean>((previous) => props.open || (previous ?? false))
-  const [drag, setDrag] = createSignal<number>()
-  let touch: { x: number; y: number; swipe?: boolean } | undefined
-  const sign = () => (props.side === 'left' ? -1 : 1)
-  const start = (event: TouchEvent) => {
-    const { clientX: x, clientY: y } = event.touches[0]
-    touch = { x, y }
-  }
-  const move = (event: TouchEvent) => {
-    const from = touch
-    if (!from) return
-    const dx = event.touches[0].clientX - from.x
-    const dy = event.touches[0].clientY - from.y
-    const firstClearMovement = from.swipe === undefined && Math.hypot(dx, dy) > 8
-    if (firstClearMovement) from.swipe = Math.abs(dx) > Math.abs(dy)
-    if (from.swipe) setDrag(Math.max(0, dx * sign()) * sign())
-  }
-  const end = () => {
-    const dragged = drag()
-    if (dragged !== undefined && Math.abs(dragged) > 64) props.onClose()
-    touch = undefined
-    setDrag(undefined)
+  let panel!: HTMLElement
+  registerSwipeTarget({
+    side: () => props.side,
+    open: () => props.open,
+    width: () => panel.offsetWidth,
+    onOpen: () => props.onOpen(),
+    onClose: () => props.onClose(),
+  })
+  const held = () => swipeProgress(props.side)
+  const offset = () => {
+    const progress = held()
+    if (progress === undefined) return undefined
+    const hidden = (1 - progress) * panel.offsetWidth
+    return `translateX(${props.side === 'left' ? -hidden : hidden}px)`
   }
   return (
-    <div class={cn('fixed inset-0 z-40', !props.open && 'pointer-events-none')} inert={!props.open}>
+    <div
+      class={cn('fixed inset-0 z-40', !props.open && held() === undefined && 'pointer-events-none')}
+      inert={!props.open && held() === undefined}
+    >
       <div
         aria-hidden="true"
         class={cn(
-          'absolute inset-0 bg-black/50 transition-opacity duration-300',
+          'absolute inset-0 bg-black/50 transition-opacity duration-300 motion-reduce:transition-none',
           props.open ? 'opacity-100' : 'opacity-0',
+          held() !== undefined && 'transition-none',
         )}
         onClick={() => props.onClose()}
+        style={held() === undefined ? undefined : { opacity: held() }}
       />
       <aside
         class={cn(
-          'absolute inset-y-0 flex w-[85%] max-w-[26rem] flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl shadow-black/40 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+          'absolute inset-y-0 flex w-[85%] max-w-[26rem] flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl shadow-black/40 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
           props.side === 'left' ? 'left-0 border-r' : 'right-0 border-l',
           !props.open && (props.side === 'left' ? '-translate-x-full' : 'translate-x-full'),
-          drag() !== undefined && 'transition-none',
+          held() !== undefined && 'transition-none',
           props.class,
         )}
-        onTouchCancel={end}
-        onTouchEnd={end}
-        onTouchMove={move}
-        onTouchStart={start}
-        style={drag() ? { transform: `translateX(${drag()}px)` } : undefined}
+        ref={panel}
+        style={held() === undefined ? undefined : { transform: offset() }}
       >
-        <Show when={props.open || everOpened()}>{props.children}</Show>
+        <Show when={props.open || everOpened() || held() !== undefined}>{props.children}</Show>
       </aside>
     </div>
   )
@@ -192,7 +189,12 @@ function Overlay(props: {
 
 const MIN_CONVERSATION_WIDTH = 360
 const regionWidths = {
-  sidebar: { key: shellKeys.sidebarWidth, initial: 288, min: 224, edge: 'right' },
+  sidebar: {
+    key: shellKeys.sidebarWidth,
+    initial: 288,
+    min: 224,
+    edge: 'right',
+  },
   panels: { key: shellKeys.panelWidth, initial: 352, min: 280, edge: 'left' },
 } as const
 
@@ -247,6 +249,7 @@ export function Sidebar() {
         <Overlay
           class={cn('overflow-y-auto', look)}
           onClose={actions.toggleSidebar}
+          onOpen={actions.toggleSidebar}
           open={open()}
           side="left"
         >
@@ -277,7 +280,10 @@ function TabIcon(props: { panel: PanelItem }) {
 function PanelTabs(props: { panels: PanelItem[]; active: PanelItem }) {
   let row!: HTMLDivElement
   let measurements!: HTMLDivElement
-  const [fit, setFit] = createSignal<Fit>({ compact: false, overflow: new Set() })
+  const [fit, setFit] = createSignal<Fit>({
+    compact: false,
+    overflow: new Set(),
+  })
   createEffect(
     () => ({ panels: props.panels, active: props.active }),
     ({ panels, active }) => {
@@ -449,6 +455,7 @@ export function Panels() {
           <Overlay
             class="border-border/70 bg-sidebar"
             onClose={actions.closePanel}
+            onOpen={() => actions.openPanel()}
             open={open()}
             side="right"
           >
