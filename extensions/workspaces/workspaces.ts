@@ -257,13 +257,13 @@ export function workspaces(host: Host) {
           requestId: `landed-open:${open.submission}`,
           whenBusy: 'followUp',
           entry: { kind: StillOpenEntry.kind, data: { id, submission: open.submission } },
-          content: `Landed branch #${id} is still open: its submission ${open.submission} landed, and its run ended with work still under way (a subagent, a reply it waits for or a pending notify). It concludes itself when a later run ends with nothing under way. Conclude it now if that work no longer matters.`,
+          content: `Landed branch #${id} is still open: its submission ${open.submission} landed, and its run ended with work still under way (a subagent, a reply it waits for or a pending notify). It concludes itself if a later run ends with nothing under way; conclude it now if that work no longer matters.`,
         })
         open.escalated = true
         return false
       }
       try {
-        await host.need(ConversationsApi).concludeIn(tx, [id], 'landing')
+        await host.need(ConversationsApi).concludeIn(tx, [id], id)
         return true
       } catch (error) {
         host.notice(`Not concluding landed #${id}: ${String(error)}`)

@@ -1265,7 +1265,7 @@ it.concurrent('keeps a landed branch and its checkout while a reply is under way
   )
   expect(reports).toHaveLength(1)
   expect(JSON.stringify(reports[0].model)).toContain(
-    `#${id} still has work under way; it reports when it stops and is then concluded.`,
+    `#${id} still has work under way; it reports when it stops and is concluded once a run ends with nothing under way.`,
   )
 })
 const routed = (f: Awaited<ReturnType<typeof fixture>>, id: ConversationId) =>
@@ -1346,6 +1346,79 @@ it.concurrent('concludes a branch that landed while busy once a run ended by its
     ),
   ).toContain('Nothing left.')
   expect(await concludedIds(f)).toContain(id)
+})
+it.concurrent('tells the asker a landed branch that ends by messaging the user will not report', async () => {
+  const { f, id, open, branchRuns } = await landedWhileBusy()
+  const asker = await f.opened.harness.createConversation(
+    { ownership: { kind: 'ownerless' } },
+    context,
+  )
+  const request = await f.opened.harness.commit(async (tx) => {
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    log.messages.find((m) => m.id === open)!.state = 'answered'
+    const { owners } = await tx.doc(Serving, ROOT_CONVERSATION_ID)
+    const message = log.next++
+    const assignedBy = (await tx.appendEntry(ROOT_CONVERSATION_ID, { kind: 'test.request' })).id
+    owners[message] = {
+      request: { message, from: asker.id },
+      owner: { kind: 'branch', id },
+      assignedBy,
+      pending: [],
+    }
+    return message
+  }, context)
+  f.prepared.registry.install(defineExtension({ name: 'test-writing' }))
+  await branchRuns(
+    `CALL ${JSON.stringify({ tool: 'message', args: { to: 'user', text: 'Done here.', reply: false } })}`,
+  )
+  expect(await concludedIds(f)).toContain(id)
+  await until(async () => (await messageLog(f)).some((m) => m.to === asker.id && m.re === request))
+  expect((await messageLog(f)).find((m) => m.to === asker.id && m.re === request)).toMatchObject({
+    state: 'failed',
+    text: expect.stringContaining('was concluded without reporting'),
+  })
+})
+it.concurrent('leaves a branch open when a newer submission was queued before the busy landing reported', async () => {
+  const { f, id } = await concluding()
+  await f.opened.harness.commit(async (tx) => {
+    ;(await tx.doc(Standing, ROOT_CONVERSATION_ID)).ultimate = ROOT_CONVERSATION_ID
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    log.messages.push({
+      id: log.next++,
+      from: id,
+      to: ROOT_CONVERSATION_ID,
+      text: 'Review this?',
+      at: 1,
+      reply: true,
+      state: 'sent',
+    })
+  }, context)
+  const workspace = (await f.service.get(id, context))!
+  f.host.projectSettings = async () => ({
+    lander: {
+      checks: [
+        `test ! -f newer.txt || while [ ! -f '${join(f.directory, 'go')}' ]; do sleep 0.02; done`,
+      ],
+    },
+  })
+  await f.service.submit(id, 'None', context)
+  await commit(workspace.path, 'newer.txt')
+  await f.service.submit(id, 'None', context)
+  await until(async () =>
+    (await f.opened.harness.conversation(id, context))!
+      .context(context)
+      .then((view) => view.entries.some((entry) => entry.kind === 'workspaces.lander-report')),
+  )
+  await f.opened.harness.commit(async (tx) => {
+    const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
+    for (const m of log.messages) if (m.from === id) m.state = 'answered'
+  }, context)
+  const branch = (await f.opened.harness.conversation(id, context))!
+  await (await branch.submit({ type: 'input', content: 'Report back.' }, context)).wait(context)
+  await routed(f, id)
+  expect(await concludedIds(f)).not.toContain(id)
+  await writeFile(join(f.directory, 'go'), '')
+  await submitted(f, id)
 })
 it.concurrent('wakes the starter once when a landed branch ends a run still busy', async () => {
   const { f, id, branchRuns } = await landedWhileBusy()
