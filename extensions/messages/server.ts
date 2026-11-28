@@ -2,7 +2,6 @@ import { parseEntryId, parseConversationId } from '../../lib/ids.shared.ts'
 import type {
   ConversationId,
   GenerationResult,
-  HookApi,
   TaskId,
   Tx,
   EntryId,
@@ -302,38 +301,49 @@ export default function messages(host: ExtensionHost) {
       submitOutput(host, tx, to, input, { kind: 'automation', id }, `automation ${id} "${name}"`),
     dropped: (tx, id, source, why) => dropped(host, tx, { kind: 'automation', id }, source, why),
   })
-  const observeRun = async (api: HookApi, ctx: Context, terminated = false) => {
-    let by = (await api.snapshot(Started, api.conversationId, ctx))?.by
+  const observeRun = async (
+    conversationId: ConversationId,
+    generation: TaskId,
+    ctx: Context,
+    terminated = false,
+  ) => {
+    const harness = host.harness()
+    let by = (await harness.snapshot(Started, conversationId, ctx))?.by
     const down =
       by === undefined &&
-      (await api.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate === api.conversationId
-    if (down) by = api.conversationId
+      (await harness.snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate === conversationId
+    if (down) by = conversationId
     if (by === undefined || (down && terminated)) return
-    await host.harness().commit(async (tx) => {
-      const started = await tx.doc(Started, api.conversationId)
+    await harness.commit(async (tx) => {
+      const started = await tx.doc(Started, conversationId)
       const generationObserverAlreadyCreated =
-        started.yielded !== undefined && started.yielded >= api.taskId
+        started.yielded !== undefined && started.yielded >= generation
       if (generationObserverAlreadyCreated) return
-      started.yielded = api.taskId
+      started.yielded = generation
       const after = started.lastRoute
       started.lastRoute = await tx.createTask(
         route(host),
         {
-          generation: api.taskId as TaskId<GenerationResult>,
+          generation: generation as TaskId<GenerationResult>,
           inputs: terminated
             ? []
-            : [...((await tx.doc(LiveDoc, api.conversationId)).run?.inputs ?? [])],
+            : [...((await tx.doc(LiveDoc, conversationId)).run?.inputs ?? [])],
           by,
           ...(down ? { down } : {}),
           ...(after !== undefined ? { after } : {}),
         },
         {
           ownership: { kind: 'conversation' },
-          conversationId: api.conversationId,
+          conversationId,
           background: true,
         },
       )
     }, ctx)
+  }
+  const terminateRun = async (conversationId: ConversationId, ctx: Context) => {
+    const run = (await host.harness().snapshot(LiveDoc, conversationId, ctx))?.run
+    if (run) await observeRun(conversationId, run.taskId, ctx, true)
+    return { terminate: true as const }
   }
   return defineExtension({
     name: 'messages',
@@ -343,11 +353,7 @@ export default function messages(host: ExtensionHost) {
         // Pi upstream: @earendil-works/pi-durable@1.6.0 — patched transactional beforeInput hook.
         beforeInput: (_input, api) => openQuestionsNote(api.tx, api.conversationId, Date.now()),
         onYield: async (_answer, api, ctx) => {
-          await observeRun(api, ctx)
-          return undefined
-        },
-        afterRun: async (run, api, ctx) => {
-          if (run.reason === 'terminate') await observeRun(api, ctx, true)
+          await observeRun(api.conversationId, api.taskId, ctx)
           return undefined
         },
       }),
@@ -448,7 +454,7 @@ export default function messages(host: ExtensionHost) {
                   text: `Sent as your answer to message ${sent.re}.`,
                 },
               ],
-              control: { terminate: true as const },
+              control: await terminateRun(api.conversationId, ctx),
             }
           if (from !== api.conversationId && input.reply !== false && sent) {
             await host
@@ -490,7 +496,7 @@ export default function messages(host: ExtensionHost) {
             )
           return {
             output: [{ type: 'text', text: `Message ${id} sent.` }],
-            ...(hasPendingReplies ? {} : { control: { terminate: true as const } }),
+            ...(hasPendingReplies ? {} : { control: await terminateRun(api.conversationId, ctx) }),
           }
         },
       }),

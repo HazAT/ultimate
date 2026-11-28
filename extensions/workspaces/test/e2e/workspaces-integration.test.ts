@@ -194,18 +194,6 @@ async function fixture(
           },
         }),
         defineTool({
-          name: 'finish',
-          description:
-            'End the run without a final answer, as a message that answers the last open request does',
-          parameters: obj({}),
-          async execute() {
-            return {
-              output: [{ type: 'text', text: 'Sent.' }],
-              control: { terminate: true as const },
-            }
-          },
-        }),
-        defineTool({
           name: 'write_commit',
           description: 'Write and commit a change',
           parameters: obj({}),
@@ -1333,13 +1321,30 @@ it.concurrent('concludes a branch that landed while busy once its next run ends 
   await until(async () => (await f.service.get(id, context))?.state === 'removed')
   expect(await rootInputs(f, 'workspaces.still-open')).toHaveLength(0)
 })
-it.concurrent('concludes a branch that landed while busy once a run ended by a tool finishes', async () => {
+it.concurrent('concludes a branch that landed while busy once a run ended by its message answer finishes', async () => {
   const { f, id, open, branchRuns } = await landedWhileBusy()
   await f.opened.harness.commit(async (tx) => {
     const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
     log.messages.find((m) => m.id === open)!.state = 'answered'
+    log.messages.push({
+      id: log.next++,
+      from: ROOT_CONVERSATION_ID,
+      to: id,
+      text: 'Anything left?',
+      at: 2,
+      reply: true,
+      state: 'delivered',
+    })
   }, context)
-  await branchRuns(`CALL ${JSON.stringify({ tool: 'finish', args: {} })}`)
+  f.prepared.registry.install(defineExtension({ name: 'test-writing' }))
+  await branchRuns(
+    `CALL ${JSON.stringify({ tool: 'message', args: { to: '#1', text: 'Nothing left.' } })}`,
+  )
+  expect(
+    JSON.stringify(
+      (await f.opened.harness.snapshot(Messages, ROOT_CONVERSATION_ID, context))!.messages.at(-1),
+    ),
+  ).toContain('Nothing left.')
   expect(await concludedIds(f)).toContain(id)
 })
 it.concurrent('wakes the starter once when a landed branch ends a run still busy', async () => {
