@@ -17,6 +17,7 @@ import {
   useAction,
   useModels,
   useSystem,
+  useViewport,
 } from '@/sdk/solid'
 import type { Usage } from '@/sdk/solid'
 import { lastAssistant, promptTokens } from '../../lib/context-usage.shared.ts'
@@ -117,6 +118,7 @@ function UsageRows(props: { buckets: Record<string, Usage>; prefix?: string }) {
 export function Tokens() {
   const conversation = useConversation()
   const models = useModels()
+  const compact = () => useViewport()() !== 'desktop'
   const parts = createMemo(() => {
     const { usage, entries, agent } = conversation()
     const total = usageTotals(usage)
@@ -140,20 +142,24 @@ export function Tokens() {
   return (
     <Show when={parts().counts.length > 0 || parts().cost}>
       <Item
-        class="max-md:hidden"
         name="Conversation usage"
         tip={
           <div class="grid grid-cols-[auto_auto] gap-x-3">
+            <Show when={compact()}>
+              <span class="col-span-2 mb-1">{parts().counts.join(' ')}</span>
+            </Show>
             <UsageRows buckets={conversation().usage.models} />
             <UsageRows buckets={conversation().usage.tools} prefix="tool " />
           </div>
         }
       >
-        <For each={parts().counts}>{(part) => <span>{part}</span>}</For>
+        <Show when={!compact()}>
+          <For each={parts().counts}>{(part) => <span>{part}</span>}</For>
+        </Show>
         <Show when={parts().cost}>
           <span class="text-foreground/80">
-            {parts().cost}
-            <Show when={parts().subscription}>
+            {compact() ? parts().cost?.replace(/(\.\d\d)\d$/, '$1') : parts().cost}
+            <Show when={parts().subscription && !compact()}>
               <span class="text-muted-foreground"> (sub)</span>
             </Show>
           </span>
@@ -165,6 +171,7 @@ export function Tokens() {
 
 export function Context() {
   const context = useDoc(ContextDoc)
+  const compact = () => useViewport()() !== 'desktop'
   return (
     <Show when={context()?.window}>
       {(window) => {
@@ -189,7 +196,11 @@ export function Context() {
                 style={{ width: `${Math.min(100, percent() ?? 0)}%` }}
               />
             </span>
-            {percent() === undefined ? '?' : `${percent()!.toFixed(1)}%`}/{formatTokens(window())}
+            {percent() === undefined
+              ? '?'
+              : compact()
+                ? `${Math.round(percent()!)}%`
+                : `${percent()!.toFixed(1)}%/${formatTokens(window())}`}
           </Item>
         )
       }}

@@ -87,12 +87,15 @@ export function Slot(props: {
   name: SlotName
   fallback: (extension: string, error: unknown, stack?: string) => JSX.Element
   phone?: boolean
+  wide?: boolean
 }) {
   const extensions = useExtensions()
   const items = createMemo(
     () =>
       slotItems(extensions(), props.name).filter(
-        (item) => props.phone === undefined || item.phone === props.phone,
+        (item) =>
+          (props.phone === undefined || item.phone === props.phone) &&
+          (props.wide === undefined || item.wide === props.wide),
       ),
     {
       equals: (a, b) =>

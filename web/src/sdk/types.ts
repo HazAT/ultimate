@@ -33,9 +33,12 @@ export type SlotName =
 
 /**
  * A slot component, optionally with an `order` (default 0; ties keep folder-name order). In the status line, `phone`
- * keeps the item on the line on a phone; the others move behind its ⋯ popover there.
+ * keeps the item on the line on a phone; the others move behind its ⋯ popover there. `wide` also shows it on the line
+ * from a tablet up (an unfolded foldable) while it fits, spread across the free width; what does not fit stays behind ⋯.
  */
-export type Contribution = Component | { component: Component; order?: number; phone?: boolean }
+export type Contribution =
+  | Component
+  | { component: Component; order?: number; phone?: boolean; wide?: boolean }
 
 /** A tab in the right panel. */
 export interface PanelContribution {

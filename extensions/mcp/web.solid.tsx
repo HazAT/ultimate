@@ -3,6 +3,6 @@ import { ExtensionDetails } from '../manager/ui.solid.tsx'
 import { Chip, Details } from './chip.solid.tsx'
 
 export default defineWebExtension({
-  slots: { 'statusline.right': [{ component: Chip, order: -2 }] },
+  slots: { 'statusline.right': [{ component: Chip, order: -2, wide: true }] },
   provides: [provide(ExtensionDetails, Details)],
 })
