@@ -747,10 +747,22 @@ it('a branch forks itself, side mode stays in its conversation, and the window f
   flush()
   expect(editor().placeholder).toBe(`Ask on the side — #${branch} Rename tabs keeps running…`)
   expect(uiState.get('ext.side-chat.source')).toBe(branch)
+  openSideChat(parseConversationId(ultimate))
+  await settle()
+  flush()
+  setSideChatOpen(false)
+  await settle()
+  flush()
+  expect(view.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('normal')
+  editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+  flush()
+  expect(uiState.get('ext.side-chat.source')).toBe(branch)
   await show(ultimate)
   expect(view.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('normal')
   await show(branch)
-  expect(view.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('side')
+  expect(view.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('normal')
+  editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+  flush()
   const fill = await agent.act({
     steps: [
       { ref: `Prompt for conversation #${branch}`, action: 'setValue', args: ['about the branch'] },

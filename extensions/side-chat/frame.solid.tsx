@@ -1,6 +1,7 @@
+import type { ConversationId } from '@earendil-works/pi-durable'
 import { GitFork } from '@lucide/solid'
 import { cn } from 'cn'
-import { createEffect, createMemo, Show, useContext } from 'solid-js'
+import { createMemo, Show, useContext } from 'solid-js'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
@@ -25,19 +26,15 @@ export function SideComposer(props: SolidComposerProps) {
 
 function ComposerFrame(props: SolidComposerProps) {
   const id = useConversationId()
-  const [, setSource] = useUiState<number | null>(SOURCE_KEY, null)
+  const [source, setSource] = useUiState<number | null>(SOURCE_KEY, null)
   const name = useSourceName(id)
   const forkable = useForkable(id)
   const active = createMemo(() => id() !== undefined && !props.dock && forkable() === true)
-  const on = () => active() && dock.sideMode() === id()
-  createEffect(
-    () => (on() ? id() : undefined),
-    (from) => {
-      if (from === undefined) return
-      writingAs('app', () => setSource(from))
-      setSideChatSource(from)
-    },
-  )
+  const on = () => active() && dock.sideMode() === id() && source() === id()
+  const bind = (from: ConversationId) => {
+    setSource(from)
+    setSideChatSource(from)
+  }
   const outer = useContext(ComposerRedirect)
   const target = createMemo((): ComposerTarget | undefined =>
     on()
@@ -59,6 +56,7 @@ function ComposerFrame(props: SolidComposerProps) {
   )
   const toggle = () => {
     const next = !on()
+    if (next) bind(id()!)
     dock.setSideMode(next ? id()! : false)
   }
   const onKeyDown = (event: KeyboardEvent) => {
