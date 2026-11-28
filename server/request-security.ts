@@ -39,13 +39,18 @@ export async function admit(
   rules: Set<AccessRule>,
 ) {
   const { host, origin } = request.headers
+  const site = request.headers['sec-fetch-site']
+  const anotherSitesNoCorsRequest =
+    !origin &&
+    (site === 'cross-site' || site === 'same-site') &&
+    request.headers['sec-fetch-mode'] !== 'navigate'
   if (
     !proxied(request.headers) &&
     loopbackAuthority(host, port) &&
-    (!origin || loopbackOrigin(origin, port))
+    (!origin || loopbackOrigin(origin, port)) &&
+    !anotherSitesNoCorsRequest
   )
     return true
-  const site = request.headers['sec-fetch-site']
   const viewOnlyRootNavigation =
     (site === 'cross-site' || site === 'same-site') &&
     request.method === 'GET' &&

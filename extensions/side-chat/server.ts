@@ -257,7 +257,11 @@ const transcribeEffect = (host: ExtensionHost) =>
   )
 
 async function dropSilentTurn(host: ExtensionHost, session: ConversationId, empty: string) {
-  const fork = await host.harness().snapshot(Fork, session, context)
+  const fork = await host.harness().commit(async (tx) => {
+    const heardNothing = await tx.doc(Fork, session)
+    heardNothing.transcripts = { ...heardNothing.transcripts, [empty]: '' }
+    return { ...heardNothing }
+  }, context)
   const silent = Object.entries(fork?.pending ?? {}).filter(([, audio]) => audio === empty)
   for (const [key] of silent) {
     const turn = await host

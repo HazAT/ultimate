@@ -75,3 +75,32 @@ it('keeps only the tailnet address Serve forwarded', () => {
   for (const outside of ['127.0.0.1', '192.168.1.5', '100.128.0.1', '::1', 'not-an-ip', ''])
     expect(address(outside)).toBeUndefined()
 })
+
+it('refuses another site’s no-cors request to loopback, which carries no Origin, but lets it navigate', async () => {
+  const host = '127.0.0.1:4799'
+  const fromAnotherSite = (mode: string, dest: string) =>
+    admit(
+      {
+        method: 'GET',
+        url: '/api/events',
+        headers: {
+          host,
+          'sec-fetch-site': 'cross-site',
+          'sec-fetch-mode': mode,
+          'sec-fetch-dest': dest,
+        },
+      },
+      '4799',
+      new Set(),
+    )
+  expect(await fromAnotherSite('no-cors', 'script')).toBe(false)
+  expect(await fromAnotherSite('no-cors', 'image')).toBe(false)
+  expect(await fromAnotherSite('navigate', 'document')).toBe(true)
+  expect(
+    await admit(
+      { headers: { host, 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors' } },
+      '4799',
+      new Set(),
+    ),
+  ).toBe(true)
+})

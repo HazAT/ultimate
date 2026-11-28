@@ -24,6 +24,9 @@ import type {
   RunningTask,
 } from './refs.ts'
 import { checkpointEvery } from '../../shared/checkpoint.ts'
+import { hold, release } from '../../lib/harness-hold.ts'
+
+const HOLDER = 'pause'
 
 const State = defineDoc<PauseDocState>({
   kind: PauseDoc.kind,
@@ -43,7 +46,7 @@ const sharedPauseFlag = (host: Pick<ExtensionHost, 'resource'>) =>
 
 function holdRetryDuringPublication(host: Host) {
   sharedPauseFlag(host).paused = true
-  host.harness().hold()
+  hold(host.harness(), HOLDER)
 }
 
 const read = async (host: Host) =>
@@ -124,10 +127,9 @@ async function state(host: Host): Promise<PauseState> {
   }
 }
 
-// Pi upstream: @earendil-works/pi-durable@1.6.0 — patched Harness.hold()/release() keep the scheduler from starting tasks.
 async function holdAndRecordPause(host: Host, limit?: RateLimit) {
   const harness = host.harness()
-  harness.hold()
+  hold(harness, HOLDER)
   sharedPauseFlag(host).paused = true
   await harness.commit(async (tx) => {
     const doc = await tx.doc(State, ROOT_CONVERSATION_ID)
@@ -249,7 +251,7 @@ async function holdRetryOrRelease(host: Host, limit: RateLimit) {
   } catch (error) {
     const { paused } = await read(host)
     sharedPauseFlag(host).paused = paused
-    if (!paused) host.harness().release()
+    if (!paused) release(host.harness(), HOLDER)
     throw error
   }
   await writePauseLimitOnce(host, await read(host))
@@ -361,7 +363,7 @@ async function noteRunsThenRelease(host: Host, auto = false) {
   }, context)
   rearmAutoPlay(host, await read(host))
   sharedPauseFlag(host).paused = false
-  harness.release()
+  release(harness, HOLDER)
   return state(host)
 }
 
@@ -373,7 +375,7 @@ export default function pauseExtension(host: Host) {
       const doc = await read(host)
       sharedPauseFlag(host).paused = doc.paused
       if (!doc.paused) return
-      host.harness().hold()
+      hold(host.harness(), HOLDER)
       rearmAutoPlay(host, doc)
       await writePauseLimitOnce(host, doc)
     })

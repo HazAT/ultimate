@@ -67,7 +67,6 @@ async function loginMissing(
   checks: LoginChecks,
 ) {
   const inconclusive = checks.inconclusiveFor.get(conversationId)
-  checks.inconclusiveFor.delete(conversationId)
   const sameCheck =
     inconclusive?.provider === provider &&
     inconclusive.snapshot === host.modelRuntime.getAvailableSnapshot()

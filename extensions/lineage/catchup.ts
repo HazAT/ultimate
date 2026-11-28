@@ -254,9 +254,7 @@ export function catchupPreparation(
       placement: { conversationId: ConversationId; tx: NoteBaselineAndInputCommitTogether },
       ctx: Context,
     ) {
-      const ready = prepared.get(placement.conversationId)
-      prepared.delete(placement.conversationId)
-      const placed = await catchup(placement, ready)
+      const placed = await catchup(placement, prepared.get(placement.conversationId))
       if (placed !== 'unprepared') return placed
       inProcess(
         'an input placed without preparation keeps the baseline, so the next input catches up',

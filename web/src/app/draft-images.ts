@@ -13,27 +13,24 @@ export function storedFiles(key: string): DraftFile[] {
   return stored ? (JSON.parse(stored) as DraftFile[]) : []
 }
 
+function keepOnlyUntilReloadWhenStorageIsFull(name: string, value: unknown[]) {
+  try {
+    localStorage.setItem(name, JSON.stringify(value))
+  } catch {
+    localStorage.removeItem(name)
+  }
+}
+
 export function storeFiles(key: string, files: DraftFile[]) {
   const completedUploads = files.filter(attached)
   if (completedUploads.length)
-    localStorage.setItem(`${key}.files`, JSON.stringify(completedUploads))
+    keepOnlyUntilReloadWhenStorageIsFull(`${key}.files`, completedUploads)
   else localStorage.removeItem(`${key}.files`)
-}
-
-function retainImagesOnlyUntilReload(storageKey: string) {
-  localStorage.removeItem(storageKey)
 }
 
 export function storeImages(key: string, images: PastedImage[]) {
   const name = `${key}.images`
   const base64Chars = images.reduce((total, image) => total + image.data.length, 0)
-  if (images.length === 0 || base64Chars > maxStoredImageChars) {
-    localStorage.removeItem(name)
-    return
-  }
-  try {
-    localStorage.setItem(name, JSON.stringify(images))
-  } catch {
-    retainImagesOnlyUntilReload(name)
-  }
+  if (images.length === 0 || base64Chars > maxStoredImageChars) localStorage.removeItem(name)
+  else keepOnlyUntilReloadWhenStorageIsFull(name, images)
 }

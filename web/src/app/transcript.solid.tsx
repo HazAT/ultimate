@@ -375,8 +375,10 @@ function TranscriptView(props: {
                 </Switch>
               </div>
             </Show>
-            <Show when={!props.loading && visible().length === 0 && !partial()}>
+            <Show when={!props.loading && history.cursor() === undefined}>
               <Slot fallback={reportedFailure} name="transcript.start" />
+            </Show>
+            <Show when={!props.loading && visible().length === 0 && !partial()}>
               <Show when={id !== undefined} fallback={<EmptyState />}>
                 <RenderedPoint
                   core={() => <EmptyState />}
@@ -389,9 +391,6 @@ function TranscriptView(props: {
                   point={EmptyTranscript}
                 />
               </Show>
-            </Show>
-            <Show when={!props.loading && visible().length > 0 && history.cursor() === undefined}>
-              <Slot fallback={reportedFailure} name="transcript.start" />
             </Show>
             <For each={threaded()} keyed={shownKey}>
               {(item, index) => {
