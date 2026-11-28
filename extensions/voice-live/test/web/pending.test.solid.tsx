@@ -1,4 +1,4 @@
-import { flush } from 'solid-js'
+import { createSignal, flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import { dock, sendTyped } from '../../dock.solid.tsx'
@@ -23,6 +23,7 @@ vi.mock('@/sdk/solid', async (original) => ({
       })
     },
   },
+  useUiState: (_key: string, initial: unknown) => createSignal<unknown>(initial),
   useConversationId: () => () => harness.id,
   useConversation: () => () => ({
     id: harness.id,
