@@ -4,6 +4,7 @@ import {
   ROOT,
   api,
   insertIntoComposer,
+  native,
   showSurface,
   switchConversation,
   useDocOf,
@@ -13,7 +14,20 @@ import { StandingAction, StandingDoc } from '../subagents/refs.ts'
 
 type Share = { title: string; text: string; url: string; files: { name: string; type: string }[] }
 
+async function takeFromApp() {
+  const share = await native.takeShare()
+  if (!share) throw new Error('The shared content is gone')
+  const files = await Promise.all(
+    share.files.map(async ({ name, type, path }) => {
+      const blob = await (await fetch(path)).blob()
+      return new File([blob], name || 'shared', { type: type || blob.type })
+    }),
+  )
+  return { share, files }
+}
+
 async function take(id: string) {
+  if (id === 'native') return takeFromApp()
   const cache = await caches.open('ultimate-share')
   const stored = await cache.match(`/share/${id}`)
   if (!stored) throw new Error('The shared content is gone')

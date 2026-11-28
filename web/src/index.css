@@ -236,6 +236,12 @@
   .safe-area:has(textarea:focus, input:focus, [contenteditable]:focus) {
     --inset-bottom: 0px;
   }
+  /* A native app (web/src/sdk/native.ts) that hides the status bar sets native-cutout: the title bar takes the top
+     strip (the phone's top bar does the same in its own classes), stepping around the camera hole by the width the app measured. */
+  .native-cutout [data-ui='titlebar'] {
+    padding-left: var(--titlebar-left);
+    padding-right: max(0.75rem, var(--titlebar-right));
+  }
   /* Installed on a phone, the status line's ends sit in from the rounded corners, so it reaches down into the
      home-indicator band: no empty strip under it, its items still 14px clear of the bottom edge and the indicator. */
   @media (display-mode: standalone) and (width < 48rem) {
