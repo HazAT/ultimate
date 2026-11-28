@@ -1,8 +1,14 @@
-import { ArrowUp, LoaderCircle, Paperclip } from '@lucide/solid'
+import { ArrowUp, ListPlus, LoaderCircle, Navigation, Paperclip } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { cn } from 'cn'
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
+import {
+  createDropdownMenuController,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu.solid.tsx'
 import { Form } from '@/components/ui/form.solid.tsx'
 import { Textarea } from '@/components/ui/input.solid.tsx'
 import { Provided } from '../sdk/parts.solid.tsx'
@@ -22,6 +28,7 @@ import { useAllProvided } from '../sdk/contribution.solid.tsx'
 import { imageMimeTypes } from '../../../shared/protocol.ts'
 import { Attached, cancelUpload, createAttach } from './attach.solid.tsx'
 import { attached, withAttachments } from './attachments.ts'
+import { bindLongPress } from './hold.ts'
 import type { DraftFile, PastedImage } from './attachments.ts'
 import {
   boundDraft,
@@ -39,8 +46,9 @@ const androidImagePasteStyle: JSX.CSSProperties = {
 }
 const iconButton =
   'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-9'
+const menuItemClass = 'pointer-coarse:min-h-11'
 const submitClass =
-  'size-7 rounded-md pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
+  'size-7 touch-none rounded-md select-none [-webkit-touch-callout:none] pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
 
 function createDraftState(props: PromptBoxProps) {
   const local = createLocalDraft()
@@ -314,47 +322,86 @@ export function PromptBox(props: PromptBoxProps) {
       </Show>
       {props.actions}
       <Show when={props.sendButton !== false && (!props.running || !empty())}>
-        <Button
-          aria-label={
-            props.loading
-              ? `Loading ${props.name}`
-              : (props.sendLabel ?? `Send prompt to ${props.name}`)
-          }
-          class={cn(
-            'ml-1',
-            submitClass,
-            minimal() && 'size-6',
-            props.loading && 'bg-muted text-muted-foreground',
-          )}
-          disabled={
-            !!props.loading ||
-            !!props.disabled ||
-            empty() ||
-            !!props.blocked ||
-            sending() ||
-            attach.reading() ||
-            uploading()
-          }
-          onClick={() => send()}
-          size="icon"
-          title={
-            props.loading
-              ? `Loading ${props.name}`
-              : uploading()
-                ? 'Uploading files…'
-                : (props.sendTitle ?? 'Send (Enter)')
-          }
-          type={minimal() ? 'button' : 'submit'}
-        >
-          <Show
-            when={props.loading}
-            fallback={<ArrowUp class={minimal() ? 'size-3.5' : 'size-4'} />}
+        {sendButton()}
+        <Show when={offersFollowUp()}>
+          <DropdownMenu
+            onAction={(how) => send(how === 'followUp' ? 'followUp' : undefined)}
+            controller={sendMenu}
           >
-            <LoaderCircle class="size-4 motion-safe:animate-spin" />
-          </Show>
-        </Button>
+            <DropdownMenuContent
+              align="end"
+              finalFocus="none"
+              onMouseDown={(event: MouseEvent) => event.preventDefault()}
+              onPointerDown={(event: PointerEvent) => event.preventDefault()}
+              side="top"
+            >
+              <DropdownMenuItem class={menuItemClass} value="steer">
+                <Navigation />
+                Steer now
+              </DropdownMenuItem>
+              <DropdownMenuItem class={menuItemClass} value="followUp">
+                <ListPlus />
+                Queue as follow-up
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Show>
       </Show>
     </>
+  )
+  const offersFollowUp = () => !!props.followUp && !!props.running && !minimal()
+  const sendMenu = createDropdownMenuController()
+  let releaseHold: (() => void) | undefined
+  onCleanup(() => releaseHold?.())
+  const holdSend = (element: HTMLButtonElement) => {
+    releaseHold?.()
+    releaseHold = bindLongPress(
+      element,
+      offersFollowUp,
+      () => void sendMenu.open({ anchor: element, focus: 'none' }),
+    )
+  }
+  const sendButton = () => (
+    <Button
+      aria-description={
+        offersFollowUp() ? 'Long-press or right-click to queue a follow-up instead' : undefined
+      }
+      aria-label={
+        props.loading
+          ? `Loading ${props.name}`
+          : (props.sendLabel ?? `Send prompt to ${props.name}`)
+      }
+      ref={holdSend}
+      class={cn(
+        'ml-1',
+        submitClass,
+        minimal() && 'size-6',
+        props.loading && 'bg-muted text-muted-foreground',
+      )}
+      disabled={
+        !!props.loading ||
+        !!props.disabled ||
+        empty() ||
+        !!props.blocked ||
+        sending() ||
+        attach.reading() ||
+        uploading()
+      }
+      onClick={() => send()}
+      size="icon"
+      title={
+        props.loading
+          ? `Loading ${props.name}`
+          : uploading()
+            ? 'Uploading files…'
+            : (props.sendTitle ?? 'Send (Enter)')
+      }
+      type={minimal() ? 'button' : 'submit'}
+    >
+      <Show when={props.loading} fallback={<ArrowUp class={minimal() ? 'size-3.5' : 'size-4'} />}>
+        <LoaderCircle class="size-4 motion-safe:animate-spin" />
+      </Show>
+    </Button>
   )
   const status = () => value().error ?? props.blocked ?? props.hint
   const textarea = () => (
