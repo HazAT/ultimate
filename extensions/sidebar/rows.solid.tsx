@@ -2,6 +2,7 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import {
   CircleCheck,
   CircleHelp,
+  ChevronRight,
   CircleX,
   Ellipsis,
   FileDiff,
@@ -565,7 +566,12 @@ export function EpicLine(props: { id: ConversationId; working: boolean }) {
   )
 }
 
-export function ChildRow(props: { id: ConversationId; depth?: number }) {
+export function ChildRow(props: {
+  id: ConversationId
+  depth?: number
+  fold?: { count: number; open: boolean }
+  onFold?: () => void
+}) {
   const data = useData()
   const task = useProvided(ConversationTask, () => props.id)
   const conversation = createMemo(() => data.byConversation(props.id))
@@ -620,7 +626,26 @@ export function ChildRow(props: { id: ConversationId; depth?: number }) {
       />
       <div class="pointer-events-none relative flex w-full min-w-0 items-center gap-1.5">
         <Show when={compact()}>
-          <span class="w-2 shrink-0 text-muted-foreground/40">└</span>
+          <Show
+            when={props.fold}
+            fallback={<span class="w-2 shrink-0 text-muted-foreground/40">└</span>}
+          >
+            {(fold) => (
+              <Button
+                aria-expanded={fold().open ? 'true' : 'false'}
+                aria-label={`${fold().open ? 'Hide' : 'Show'} ${fold().count} subagents of #${props.id}`}
+                class="pointer-events-auto -mx-1 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                data-fold={props.id}
+                onClick={() => props.onFold?.()}
+                size={null}
+                variant={null}
+              >
+                <ChevronRight
+                  class={cn('size-3 transition-transform', fold().open && 'rotate-90')}
+                />
+              </Button>
+            )}
+          </Show>
         </Show>
         <Mark id={props.id} inert state={state()} working={working() ? 'self' : undefined} />
         <span class="pointer-events-auto contents">
@@ -640,6 +665,13 @@ export function ChildRow(props: { id: ConversationId; depth?: number }) {
             <span class="text-muted-foreground/60"> #{props.id}</span>
           </Show>
         </span>
+        <Show when={props.fold && !props.fold.open && props.fold}>
+          {(fold) => (
+            <span class="shrink-0 text-[10px] text-muted-foreground/60 tabular-nums">
+              +{fold().count}
+            </span>
+          )}
+        </Show>
         <Show when={!compact() && conversation().workspace}>
           <GitBranch aria-label="Isolated checkout" class="size-3 shrink-0 text-muted-foreground" />
         </Show>
