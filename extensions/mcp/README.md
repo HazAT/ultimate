@@ -30,7 +30,7 @@ Saving either settings file reconnects every server. OAuth is not supported yet:
 
 ## Tool
 
-`mcp {server}` lists a server's tools with their input schemas; `mcp {server, tool, args}` calls one and returns its text and images. A result the server marks as an error comes back as a tool error. An error the server raises for bad arguments carries the tool's input schema. The tool's description names the configured servers, so the prompt changes only when the configuration does, however many tools they have. In codemode, `tools.mcp(...)` runs many calls and filters their results.
+`mcp {server}` lists a server's tools with their input schemas; when they would not fit in one tool result (50 KB or 2000 lines), it lists only the names and says to pass `match`. `mcp {server, match}` lists only the tools whose names match that regex (case-insensitive). `mcp {server, tool, args}` calls one and returns its text and images. A result the server marks as an error comes back as a tool error. An error the server raises for bad arguments carries the tool's input schema. The tool's description names the configured servers, so the prompt changes only when the configuration does, however many tools they have. In codemode, `tools.mcp(...)` runs many calls and filters their results.
 
 Every agent that inherits tools gets `mcp`, and @ultimate lists it in `agents/ultimate.md`. Agents with an explicit `tools` list add it there.
 

@@ -156,14 +156,31 @@ export async function secrets(host: ExtensionHost) {
   }))
 }
 
-const listing = (server: Server) =>
-  [
-    `${server.name}: ${server.tools.length} tools. Call one with mcp {server, tool, args}.`,
-    ...server.tools.map(
+const HARNESS_RESULT_BYTES = 50 * 1024
+const HARNESS_RESULT_LINES = 2000
+
+function listing(server: Server, match: string | undefined) {
+  const pattern = match === undefined ? undefined : new RegExp(match, 'i')
+  const tools = server.tools.filter((tool) => pattern?.test(tool.name) ?? true)
+  const head = `${server.name}: ${tools.length} tools${pattern ? ` match ${pattern}` : ''}. Call one with mcp {server, tool, args}.`
+  const full = [
+    head,
+    ...tools.map(
       (tool) =>
         `\n${tool.name}: ${tool.description?.trim() ?? tool.title ?? ''}\n  input: ${JSON.stringify(tool.inputSchema)}`,
     ),
   ].join('\n')
+  if (
+    Buffer.byteLength(full) <= HARNESS_RESULT_BYTES &&
+    full.split('\n').length <= HARNESS_RESULT_LINES
+  )
+    return full
+  return [
+    `${head} Their input schemas do not fit in one result: pass match, a regex on tool names, to list fewer with their schemas.`,
+    '',
+    ...tools.map((tool) => tool.name),
+  ].join('\n')
+}
 const schemaOf = (tool: Tool) => `${tool.name} input: ${JSON.stringify(tool.inputSchema)}`
 const renewTimeoutOnProgress = () => {}
 const failure = (text: string) => ({ output: [{ type: 'text' as const, text }], isError: true })
@@ -345,18 +362,24 @@ export default async function mcp(host: ExtensionHost) {
             name: 'mcp',
             description:
               `Use the tools of the configured MCP servers: ${names.join(', ')}. ` +
-              "mcp {server} lists a server's tools with their input schemas; mcp {server, tool, args} calls one. " +
+              "mcp {server} lists a server's tools with their input schemas, or only their names when the schemas are too large; " +
+              'match, a regex on tool names, lists only the tools it matches. mcp {server, tool, args} calls one. ' +
               'In codemode, tools.mcp(...) runs many calls and filters their results.',
             parameters: obj({
               server: str({ description: `One of: ${names.join(', ')}` }),
               tool: opt(str({ description: "The tool to call; omit to list the server's tools" })),
+              match: opt(
+                str({
+                  description: 'Without tool: list only the tools whose names match this regex',
+                }),
+              ),
               args: opt(
                 map(unknown(), {
                   description: "The tool's arguments, matching its input schema",
                 }),
               ),
             }),
-            async execute({ server: name, tool, args }, _api, context) {
+            async execute({ server: name, tool, args, match }, _api, context) {
               const server = servers.get(name)
               if (!server)
                 return failure(`No MCP server named ${name}. Configured: ${names.join(', ')}`)
@@ -365,7 +388,7 @@ export default async function mcp(host: ExtensionHost) {
                 return failure(
                   `MCP server ${name} is ${server.state}: ${server.error ?? 'not connected'}`,
                 )
-              if (!tool) return { output: [{ type: 'text', text: listing(server) }] }
+              if (!tool) return { output: [{ type: 'text', text: listing(server, match) }] }
               const client = server.client
               try {
                 const result = await client.callTool(tool, args ?? {}, {

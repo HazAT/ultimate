@@ -13,10 +13,28 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close()
 })
 
-/** A Streamable HTTP MCP server with `echo` and `shout` tools, answering only requests that carry the token. A call with
- * `{text: 'busy'}` is refused with a 429, as a rate-limited gateway does; `shout` without `text` gets invalid params. */
+const echoTools = [
+  {
+    name: 'echo',
+    description: 'Says it back',
+    inputSchema: { type: 'object', properties: { text: { type: 'string' } } },
+  },
+  {
+    name: 'shout',
+    description: 'Says it loud',
+    inputSchema: {
+      type: 'object',
+      properties: { text: { type: 'string' } },
+      required: ['text'],
+    },
+  },
+]
+
+/** A Streamable HTTP MCP server with `tools` (by default `echo` and `shout`), answering only requests that carry the
+ * token. A call with `{text: 'busy'}` is refused with a 429, as a rate-limited gateway does; `shout` without `text` gets
+ * invalid params. */
 let initializes = 0
-async function serve(token: string) {
+async function serve(token: string, tools: object[] = echoTools) {
   const server = createServer((request, response) => {
     if (request.method !== 'POST') {
       response.writeHead(405).end()
@@ -63,24 +81,7 @@ async function serve(token: string) {
           capabilities: { tools: {} },
           serverInfo: { name: 'echo', version: '1.0.0' },
         },
-        'tools/list': {
-          tools: [
-            {
-              name: 'echo',
-              description: 'Says it back',
-              inputSchema: { type: 'object', properties: { text: { type: 'string' } } },
-            },
-            {
-              name: 'shout',
-              description: 'Says it loud',
-              inputSchema: {
-                type: 'object',
-                properties: { text: { type: 'string' } },
-                required: ['text'],
-              },
-            },
-          ],
-        },
+        'tools/list': { tools },
         'tools/call': {
           content: [{ type: 'text', text: `echo: ${args.text ?? ''}` }],
           isError: args.text === undefined,
@@ -160,6 +161,61 @@ it('connects configured servers, lists and calls their tools, and isolates a fai
     isError: true,
     output: [{ text: expect.stringContaining('MCP server locked is failed') }],
   })
+})
+
+it('lists a server too large for one tool result by name, and gives the schemas of the tools a match names', async () => {
+  const root = await temp()
+  cleanup.push(() => removeTemp(root))
+  const tools = Array.from({ length: 200 }, (_, index) => ({
+    name: `tool_${index}`,
+    description: `Does thing ${index}`,
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'x'.repeat(300) } },
+    },
+  }))
+  const url = await serve('token', tools)
+  const shortTools = Array.from({ length: 700 }, (_, index) => ({
+    name: `short_${index}`,
+    inputSchema: { type: 'object' },
+  }))
+  const shortUrl = await serve('token', shortTools)
+  const headers = { Authorization: 'Bearer token' }
+  const closers: (() => Promise<void>)[] = []
+  const host = {
+    userHome: root,
+    projectRoot: root,
+    projectSettings: async () => ({
+      mcpServers: { many: { url, headers }, short: { url: shortUrl, headers } },
+    }),
+    onOpen: (callback: () => Promise<void>) => void callback(),
+    onClose: (callback: () => Promise<void>) => closers.push(callback),
+  } as unknown as ExtensionHost
+  const [tool] = (await mcp(host)).tools!
+  cleanup.push(async () => {
+    for (const close of closers) await close()
+  })
+  const status = () => actions.status(null, { host } as never) as unknown as McpServerStatus[]
+  await until(() => status().every((server) => server.state === 'connected'))
+  const text = async (args: unknown) => {
+    const result = await tool.execute(args as never, {} as never, {} as never)
+    return (result.output as { text: string }[])[0].text
+  }
+
+  const listing = await text({ server: 'many' })
+  expect(Buffer.byteLength(listing)).toBeLessThan(50 * 1024)
+  expect(listing).toContain('\ntool_199')
+  expect(listing).toContain('match')
+  expect(listing).not.toContain('input:')
+
+  const matched = await text({ server: 'many', match: '^TOOL_19\\d$' })
+  expect(matched).toContain('tool_199: Does thing 199\n  input: {"type":"object"')
+  expect(matched).toContain('tool_190: ')
+  expect(matched).not.toContain('tool_1: ')
+
+  const short = await text({ server: 'short' })
+  expect(short).toContain('\nshort_699')
+  expect(short).not.toContain('input:')
 })
 
 it('declares each ${NAME} of the configured servers as a secret, missing until it is written', async () => {
