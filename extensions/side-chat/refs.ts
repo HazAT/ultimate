@@ -68,7 +68,7 @@ export type SideChatSummary = {
   startedAt?: number
   endedAt: number
   /** Absent on summaries written before side chats could end explicitly. */
-  reason?: SideChatEndReason
+  reason?: Exclude<SideChatEndReason, 'handoff'>
   text: string
 }
 
@@ -202,11 +202,12 @@ export const StopAction = actionRef<SideChatSource | null, Record<string, never>
 export type SideChatSetupItem = { ready: boolean; detail: string; fix?: string }
 
 /**
- * The side chat model and whether it hears audio, plus setup checks for its provider login and OpenAI transcription.
+ * Whether the source can be forked, the side chat model and audio route, and setup checks for its provider login and OpenAI transcription.
  */
 export const StatusAction = actionRef<
   SideChatSource | null,
   {
+    forkable: boolean
     model: string
     /** Where the model comes from: a pick stored in `side-chat.session`, `sideChat.model` in user settings, or the default. */
     source: 'picked' | 'settings' | 'default'

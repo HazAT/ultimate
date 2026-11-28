@@ -1,8 +1,8 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo, createRoot, createSignal, type Accessor } from 'solid-js'
-import { ROOT, useConversationSummary, useDocOf, useUiState } from '@/sdk/solid'
+import { ROOT, useAction, useConversationSummary, useDocOf, useUiState } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'
-import { SideChatSessionDoc } from './refs.ts'
+import { SideChatSessionDoc, StatusAction } from './refs.ts'
 import { sourceName } from './side.web.ts'
 
 export const SOURCE_KEY = 'ext.side-chat.source'
@@ -23,7 +23,11 @@ export function useSourceName(source: Accessor<ConversationId | undefined>) {
 
 export function useForkable(source: Accessor<ConversationId | undefined>) {
   const summary = useConversationSummary(source)
-  return () => summary()?.answerAt !== undefined
+  const status = useAction(StatusAction, () => ({ source: source() }), {
+    conversation: ROOT,
+    on: () => [summary()?.busy, summary()?.answerAt],
+  })
+  return () => (source() === undefined ? undefined : status.data()?.forkable)
 }
 
 export function useSideSource(override?: Accessor<ConversationId | undefined>) {

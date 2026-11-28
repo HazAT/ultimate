@@ -469,7 +469,8 @@ export function SideChatBody(props: {
   const sourceLabel = () => name() ?? 'the source'
   let anchor: HTMLSpanElement | undefined
   const forkable = useForkable(source)
-  useFocusWhenWanted(() => anchor?.parentElement ?? undefined, source)
+  const canCompose = () => id() !== undefined || forkable() === true
+  useFocusWhenWanted(() => anchor?.parentElement ?? undefined, source, canCompose)
   return (
     <>
       <span class="hidden" ref={anchor} />
@@ -498,9 +499,11 @@ export function SideChatBody(props: {
             <GitFork class="mb-1 size-5 text-brand" />
             <p class="text-[14px] text-foreground">Think it through with {sourceLabel()}</p>
             <p class="max-w-sm text-[13px] text-muted-foreground">
-              Type, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> to speak. A side chat forks{' '}
-              {sourceLabel()} with everything it knows, talks it through with you, and hands the
-              result back when you agree.
+              <Show when={forkable()}>
+                Type, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> to speak.{' '}
+              </Show>
+              A side chat forks {sourceLabel()} with everything it knows, talks it through with you,
+              and hands the result back when you agree.
             </p>
             <SetupList />
           </div>
@@ -516,14 +519,16 @@ export function SideChatBody(props: {
       <Show when={source()} keyed>
         {(at) => (
           <Show
-            when={id() !== undefined || forkable()}
+            when={canCompose()}
             fallback={
-              <p
-                class="shrink-0 px-4 pt-1 pb-3 text-center font-mono text-[11px] text-muted-foreground"
-                data-side-chat-unforkable
-              >
-                {sourceLabel()} has no finished reply to fork yet
-              </p>
+              <Show when={forkable() === false}>
+                <p
+                  class="shrink-0 px-4 pt-1 pb-3 text-center font-mono text-[11px] text-muted-foreground"
+                  data-side-chat-unforkable
+                >
+                  {sourceLabel()} has no finished reply to fork yet
+                </p>
+              </Show>
             }
           >
             <Bottom ended={!!last()} fork={id()} source={at} sourceLabel={sourceLabel()} />
@@ -564,6 +569,8 @@ export function SideChatPanel() {
 export function SideChatOverlay() {
   const source = useSideSource(() => inboxChat()?.source)
   const session = useSideSession(source)
+  const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
+  const forkable = useForkable(source)
   const viewport = useViewport()
   const id = () => session()?.id
   const surface = useSurface()
@@ -577,8 +584,16 @@ export function SideChatOverlay() {
   const docked = () => sideChatOpen() && split() && !released()
   useEvent('secrets:changed', () => void status.refetch())
   createEffect(
-    () => [source(), id()] as const,
-    ([from, fork]) => {
+    () => [source(), id(), sessions()?.sessions] as const,
+    ([from, fork, current], previous) => {
+      const [priorSource, priorFork] = previous ?? []
+      if (
+        priorSource !== undefined &&
+        priorSource !== from &&
+        priorFork !== undefined &&
+        current?.[priorSource]?.last?.id === priorFork
+      )
+        composeIn(undefined)
       setSideChatSource(from)
       composeIn(fork)
     },
@@ -602,6 +617,7 @@ export function SideChatOverlay() {
     }),
     (now) => {
       const holds = now.shown && now.selected === PANEL
+      if (holds) setReleased(false)
       const previous = was ?? { want: false, open: now.open, holds }
       was = { want: now.want, open: now.open, holds }
       const region = { panel: now.selected, open: now.shown }
@@ -618,11 +634,11 @@ export function SideChatOverlay() {
         writingAs('app', () => openPanel(PANEL))
         return
       }
-      if (now.want && before && previous.holds && !holds) {
+      if (now.want && previous.holds && !holds) {
         const back = before
         before = undefined
         setReleased(true)
-        if (now.selected === PANEL) writingAs('app', () => selectPanel(back.panel))
+        if (back && now.selected === PANEL) writingAs('app', () => selectPanel(back.panel))
         return
       }
       if (now.want || !previous.want) return
@@ -652,7 +668,7 @@ export function SideChatOverlay() {
       })
     },
   )
-  onSettled(registerSideChatFallback)
+  onSettled(() => registerSideChatFallback(() => forkable() === true))
   const phone = () => viewport() === 'phone'
   const floating = () => sideChatOpen() && !docked() && inboxChat() === undefined
   const [place, setPlace] = useExtensionUiState<{
@@ -840,10 +856,11 @@ export function focusSideChat() {
 function useFocusWhenWanted(
   section: () => HTMLElement | undefined,
   source: () => ConversationId | undefined,
+  canCompose: () => boolean,
 ) {
   let waited = false
   createEffect(
-    () => [focusWanted(), source()] as const,
+    () => [focusWanted(), source(), canCompose()] as const,
     ([wanted]) => {
       if (!wanted) return
       const box = section()?.querySelector<HTMLTextAreaElement>('[data-ui="composer"] textarea')

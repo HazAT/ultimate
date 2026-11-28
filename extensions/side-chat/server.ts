@@ -52,6 +52,7 @@ import { safeToRerun } from '../../lib/replay.ts'
 import {
   answerIncludingClosingToolResults,
   lastSettledInputAnswer,
+  NoSettledInputAnswer,
 } from '../../lib/settled-answer.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { imageMimeTypes, maxImageBytes, maxImages } from '../../shared/protocol.ts'
@@ -87,7 +88,6 @@ import {
   SideChatSessionDoc,
 } from './refs.ts'
 import type {
-  SideChatEndReason,
   SideChatFork,
   SideChatHandoff,
   SideChatRoute,
@@ -680,6 +680,15 @@ const unwrap = <T extends object>(args: unknown) =>
 export const actions = {
   status: implementAction(StatusAction, async (args, { host }) => {
     const of = await sourceOf(host, args)
+    const forkable =
+      of !== undefined &&
+      (await lastSettledInputAnswer(host, of, context).then(
+        () => true,
+        (error: unknown) => {
+          if (error instanceof NoSettledInputAnswer) return false
+          throw error
+        },
+      ))
     const session = await host.harness().snapshot(Session, ROOT_CONVERSATION_ID, context)
     const open = of === undefined ? undefined : session?.sessions?.[of]?.id
     const agent =
@@ -714,6 +723,7 @@ export const actions = {
     }[source]
     const transcribes = !!(await openaiSecretOrNonOAuthKey(host))
     return {
+      forkable,
       model: name,
       source,
       thinking,
@@ -1104,12 +1114,13 @@ async function endSession(host: ExtensionHost, id: ConversationId, ending: Endin
     )
 }
 
+type SummaryReason = NonNullable<SideChatSummary['reason']>
+
 const reasonText = {
   quiet: `ended after ${QUIET_MINUTES} quiet minutes`,
   fresh: 'ended when the user started fresh',
   answered: 'ended when the user sent their answer',
-  handoff: 'ended after handing off',
-}
+} satisfies Record<SummaryReason, string>
 
 function quietTask(host: ExtensionHost) {
   const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
@@ -1117,8 +1128,12 @@ function quietTask(host: ExtensionHost) {
     { session: ConversationId },
     | { phase: 'wait' }
     | { phase: 'stop'; reason: Ending['reason'] }
-    | { phase: 'end'; at: number; reason: SideChatEndReason }
-    | { phase: 'finish'; data?: SideChatSummary; last: NonNullable<SideChatSourceSession['last']> },
+    | { phase: 'end'; at: number; reason: SummaryReason }
+    | {
+        phase: 'finish'
+        data?: SideChatSummary & { reason: SummaryReason }
+        last: NonNullable<SideChatSourceSession['last']>
+      },
     null
   >({
     name: 'side-chat.quiet',
@@ -1259,7 +1274,7 @@ function quietTask(host: ExtensionHost) {
                 model: [
                   {
                     role: 'user',
-                    content: `Side chat #${id} with ${sourceName} ${reasonText[last.reason]}. What it decided or left open (its handoffs already reached you):\n${data.text}`,
+                    content: `Side chat #${id} with ${sourceName} ${reasonText[data.reason]}. What it decided or left open (its handoffs already reached you):\n${data.text}`,
                     timestamp: last.endedAt,
                   },
                 ],
@@ -1465,15 +1480,11 @@ export default function sideChatExtension(host: ExtensionHost) {
           await host.harness().commit(async (tx) => {
             const requestId = `side-chat:handoff:${api.taskId}`
             if (await tx.submissionByRequest(target, requestId)) return
-            if (branch !== undefined)
-              await checkBranch(
-                host,
-                tx,
-                branch,
-                (await tx.doc(Fork, api.conversationId)).screen,
-                sourceName,
-              )
             const session = await tx.doc(Fork, api.conversationId)
+            if (end && (session.ended || (session.ending && session.ending.reason !== 'handoff')))
+              throw new Error('This side chat has ended or is already ending without this handoff')
+            if (branch !== undefined)
+              await checkBranch(host, tx, branch, session.screen, sourceName)
             const shared = args.attachments?.length
               ? (
                   await tx.scanEntries(

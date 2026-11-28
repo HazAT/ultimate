@@ -34,7 +34,7 @@ function ComposerFrame(props: SolidComposerProps) {
   const name = () => sourceName(mainId() ?? 0, ultimate(), undefined)
   const forkable = useForkable(mainId)
   const active = createMemo(
-    () => id() !== undefined && id() === mainId() && !props.dock && forkable(),
+    () => id() !== undefined && id() === mainId() && !props.dock && forkable() === true,
   )
   const on = () => dock.sideMode() && active()
   const outer = useContext(ComposerRedirect)

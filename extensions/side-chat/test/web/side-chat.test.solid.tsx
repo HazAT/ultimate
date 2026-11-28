@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId, parseEntryId } from '../../../../lib/ids.shared.ts'
 import type { StreamedView } from '../../../../shared/protocol.ts'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
-import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
+import { answerReadsWith, FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { JsonObject } from '@earendil-works/pi-durable'
 import type { SideChatEndReason, SideChatSession } from '../../refs.ts'
@@ -16,6 +16,8 @@ const harness = vi.hoisted(() => ({
   actions: [] as { name: string; args: unknown; source: string | null }[],
   writes: [] as { key: string; who: string }[],
   refuse: new Set<string>(),
+  forkable: true,
+  statusGate: undefined as Promise<void> | undefined,
 }))
 vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const [{ createStore }, { createApi }, { createUiState }, { createRegistry }, { createReads }] =
@@ -26,13 +28,17 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       import('../../../../web/src/sdk/registry.ts'),
       import('../../../../web/src/sdk/reads.ts'),
     ])
-  const subscriptions = (harness.server = fakeSubscriptions(harness.sources, async () =>
-    Response.json({ result: null }),
-  ))
-  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const subscriptions = (harness.server = fakeSubscriptions(harness.sources))
+  const fetch = answerReadsWith(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
     const name = /^\/api\/extensions\/side-chat\/actions\/(\w+)$/.exec(path)?.[1]
-    if (!name) return subscriptions.handle(path, init) ?? Response.json({ ok: true })
+    if (name === 'status') {
+      await harness.statusGate
+      return Response.json({
+        result: { forkable: harness.forkable, route: 'text', transcribes: false },
+      })
+    }
+    if (!name) return subscriptions.handle(path, init) ?? Response.json({ result: null })
     const { args } = JSON.parse(init!.body as string) as { args: unknown }
     harness.actions.push({
       name,
@@ -42,7 +48,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
     if (harness.refuse.has(name))
       return Response.json({ error: `side-chat/${name}: No side chat is open` }, { status: 400 })
     return Response.json({ result: { conversation: 90 } })
-  }
+  })
   const store = createStore({
     eventSource: (url) => {
       const stream = new FakeSource(url)
@@ -69,15 +75,25 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 })
 
 import { regionOpen } from '../../../../web/src/sdk/actions.ts'
-import { store, uiState } from '../../../../web/src/sdk/client.ts'
-import { closePanel, Composer, ExtensionName, openPanel } from '../../../../web/src/sdk/solid.ts'
+import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
+import {
+  closePanel,
+  Composer,
+  ExtensionName,
+  openPanel,
+  Panels,
+} from '../../../../web/src/sdk/solid.ts'
+import { capture } from '../../../dictation/capture.web.ts'
+import { DictationShortcuts } from '../../../dictation/routing.solid.tsx'
 import {
   composeIn,
   dock,
+  playerState,
   sendTyped,
   setSideChatOpen,
   setSideChatSource,
   sideChatShown,
+  sideChatSink,
   useSpeaking,
 } from '../../dock.solid.tsx'
 import type { TurnView } from '../../dock.solid.tsx'
@@ -90,8 +106,15 @@ import { StoredTurn } from '../../turns.solid.tsx'
 const agent = createAgent()
 const ultimate = 44
 const fork = parseConversationId(90)
+const utterances: EventTarget[] = []
 
-vi.stubGlobal('speechSynthesis', { cancel() {}, speak() {}, getVoices: () => [] })
+vi.stubGlobal('speechSynthesis', {
+  cancel() {},
+  speak(utterance: EventTarget) {
+    utterances.push(utterance)
+  },
+  getVoices: () => [],
+})
 vi.stubGlobal('SpeechSynthesisUtterance', EventTarget)
 vi.stubGlobal(
   'ResizeObserver',
@@ -102,8 +125,8 @@ vi.stubGlobal(
 )
 
 beforeEach(async ({ onTestFinished }) => {
-  vi.stubGlobal('matchMedia', () => ({
-    matches: false,
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(prefers-reduced-motion: reduce)',
     addEventListener() {},
     removeEventListener() {},
   }))
@@ -111,6 +134,11 @@ beforeEach(async ({ onTestFinished }) => {
   harness.actions.length = 0
   harness.writes.length = 0
   harness.refuse.clear()
+  harness.forkable = true
+  harness.statusGate = undefined
+  utterances.length = 0
+  speech.stop()
+  composeIn(undefined)
   setSideChatOpen(false)
   dock.setSideMode(false)
   uiState.receive({})
@@ -311,11 +339,47 @@ it('a reply is read aloud on its own only while Conversation mode is on and the 
   expect(await said(true, true)).toBe(true)
   expect(await said(true, false)).toBe(false)
   expect(await said(false, true)).toBe(false)
+})
+
+it('a final handoff leaves its queued reply playing, and X stops the owned playback', async () => {
+  const view = renderSolid(() => (
+    <ExtensionName value="side-chat">
+      <SideChatOverlay />
+    </ExtensionName>
+  ))
+  await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
   setSideChatOpen(true)
-  speech.load('side-chat:playing', [], true)
-  renderSolid(() => <SideChatPanel />)
   await settle()
-  await agent.act({ steps: [{ ref: 'Close side chat', action: 'press' }] })
+  await sendTyped('Hand it off')
+  const turn = harness.actions.find((call) => call.name === 'turn')!.args as { key: string }
+  harness.server!.of(fork)!.send('view', {
+    conversation: { id: fork },
+    docs: {},
+    entries: [
+      { id: 8, kind: 'side-chat.turn', data: { ...turn, text: 'Hand it off', route: 'text' } },
+      {
+        id: 9,
+        kind: 'pi.assistant',
+        model: [
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'I handed it off. You can go back now.' }],
+          },
+        ],
+      },
+    ],
+  } as unknown as StreamedView)
+  await settle()
+  expect(playerState()).toMatchObject({ key: turn.key, index: 0, playing: true })
+  await root(ended('handoff'))
+  expect(view.querySelector('[data-closing-line="handoff"]')).not.toBeNull()
+  expect(playerState()).toMatchObject({ key: turn.key, index: 0, playing: true })
+  utterances.at(-1)!.dispatchEvent(new Event('end'))
+  flush()
+  expect(playerState()).toMatchObject({ key: turn.key, index: 1, playing: true })
+  expect(await agent.act({ steps: [{ ref: 'Close side chat', action: 'press' }] })).toMatchObject({
+    ok: true,
+  })
   expect(dock.open()).toBe(false)
   expect(speech.state.get()).toMatchObject({ playing: false, paused: false })
 })
@@ -364,6 +428,43 @@ it('a docked side chat pops out as the floating window when Panels switches away
   await uiState.flush()
 })
 
+it('re-selecting Side chat in Panels leaves exactly one docked copy', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(min-width: 1280px)',
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  await registry.setLoaders({
+    '/extensions/side-chat/web.solid.tsx': async () => ({
+      default: {
+        panels: [{ id: 'side-chat', title: 'Side chat', component: SideChatPanel, tab: false }],
+      },
+    }),
+  })
+  const view = renderSolid(() => (
+    <ExtensionName value="side-chat">
+      <Panels />
+      <SideChatOverlay />
+    </ExtensionName>
+  ))
+  await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
+  const copies = () => [...view.querySelectorAll('[data-side-chat-panel]')]
+  setSideChatOpen(true)
+  await settle()
+  expect(copies()).toEqual([view.querySelector('[data-side-chat-docked]')])
+  openPanel('todos')
+  await settle()
+  expect(copies()).toHaveLength(1)
+  expect(copies()[0].hasAttribute('data-side-chat-docked')).toBe(false)
+  openPanel('side-chat')
+  await settle()
+  expect(copies()).toEqual([view.querySelector('[data-side-chat-docked]')])
+  await expectDistinctAgentNames(agent)
+  closePanel()
+  await uiState.flush()
+  await registry.setLoaders({})
+})
+
 it('the Normal / Side chat segment and Tab switch @ultimate’s box into side chat mode as the person', async () => {
   const view = renderSolid(() => <SideComposer core={<textarea id="composer-input" />} />)
   await root({ sessions: {} })
@@ -391,23 +492,78 @@ it('the Normal / Side chat segment and Tab switch @ultimate’s box into side ch
   expect(mode()).toBe('normal')
 })
 
-it('offers no side chat while the source has no finished reply to fork', async () => {
-  harness.sources[0].send('conversations', [{ id: parseConversationId(ultimate), busy: false }])
+it('waits for status and offers no switch or box when the only assistant entry is a tool call', async () => {
+  const status = Promise.withResolvers<void>()
+  harness.statusGate = status.promise
+  harness.forkable = false
+  const source = parseConversationId(45)
+  harness.sources[0].send('conversations', [{ id: source, busy: true, answerAt: 1 }])
+  store.show(source)
+  await settle()
+  harness.server!.of(source)!.send('view', {
+    conversation: { id: source },
+    entries: [],
+    docs: {},
+  })
   const frame = renderSolid(() => <SideComposer core={<textarea id="composer-input" />} />)
   const panel = renderSolid(() => <SideChatPanel />)
-  await root({ sessions: {} })
+  await root({ sessions: {} }, { 'ultimate.standing-agents': { ultimate: source } })
+  expect(frame.querySelector('[data-side-mode]')).toBeNull()
+  expect(panel.querySelector('textarea')).toBeNull()
+  expect(panel.querySelector('[data-side-chat-unforkable]')).toBeNull()
+  status.resolve()
+  await settle()
   expect(frame.querySelector('[data-side-mode]')).toBeNull()
   expect(panel.querySelector('textarea')).toBeNull()
   expect(panel.querySelector('[data-side-chat-unforkable]')?.textContent).toBe(
     '@ultimate has no finished reply to fork yet',
   )
-  harness.sources[0].send('conversations', [
-    { id: parseConversationId(ultimate), busy: false, answerAt: 1 },
-  ])
+  harness.forkable = true
+  harness.sources[0].send('conversations', [{ id: source, busy: false, answerAt: 1 }])
   await settle()
-  flush()
   expect(frame.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('normal')
   expect(panel.querySelector('textarea')).not.toBeNull()
+})
+
+it('Talk is not advertised and its fallback cannot start a take while the source is unforkable', async () => {
+  harness.forkable = false
+  const press = vi.spyOn(capture, 'press').mockReturnValue(undefined)
+  const view = renderSolid(() => (
+    <ExtensionName value="side-chat">
+      <DictationShortcuts />
+      <SideChatOverlay />
+    </ExtensionName>
+  ))
+  const talk = () =>
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: ' ',
+        code: 'Space',
+        ctrlKey: true,
+        shiftKey: true,
+        cancelable: true,
+        bubbles: true,
+      }),
+    )
+  try {
+    await root({ sessions: {} })
+    setSideChatOpen(true)
+    await settle()
+    expect(view.querySelector('[data-side-chat-unforkable]')).not.toBeNull()
+    expect(view.textContent).not.toContain('to speak')
+    talk()
+    expect(press).not.toHaveBeenCalled()
+    harness.forkable = true
+    harness.sources[0].send('conversations', [
+      { id: parseConversationId(ultimate), busy: false, answerAt: 2 },
+    ])
+    await settle()
+    expect(view.textContent).toContain('to speak')
+    talk()
+    expect(press).toHaveBeenCalledExactlyOnceWith(sideChatSink)
+  } finally {
+    press.mockRestore()
+  }
 })
 
 it('the pinned card sends its answer through the side chat, and a refusal keeps the card with the error', async () => {

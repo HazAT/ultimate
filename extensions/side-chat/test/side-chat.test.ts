@@ -38,7 +38,7 @@ afterEach(async () => {
 
 const audio = Buffer.from('voice recording bytes').toString('base64')
 
-async function fixture() {
+async function fixture(seedMain = true) {
   vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true })
   const home = await temp('ultimate-side-chat-')
   await mkdir(join(home, '.ultimate'), { recursive: true })
@@ -107,7 +107,7 @@ async function fixture() {
       const { name, args } = JSON.parse(call[1])
       return fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: 'toolUse' })
     }
-    if (text === 'HOLD') {
+    if (text === 'HOLD' || (last.role === 'toolResult' && last.toolName === 'pause_first_turn')) {
       holding = true
       await hold.promise
     }
@@ -118,12 +118,13 @@ async function fixture() {
     args: { name: 'ultimate' },
   })
   const main = standing.data.result as ConversationId
-  await (
-    await (await server.harness.conversation(main, context))!.submit(
-      { type: 'input', content: 'MAIN HISTORY' },
-      context,
-    )
-  ).wait(context)
+  if (seedMain)
+    await (
+      await (await server.harness.conversation(main, context))!.submit(
+        { type: 'input', content: 'MAIN HISTORY' },
+        context,
+      )
+    ).wait(context)
   const action = (name: string, args: unknown) =>
     post(server, `/api/extensions/side-chat/actions/${name}`, { args, conversationId: main })
   const turn = async (args: unknown) => {
@@ -614,6 +615,35 @@ it('only the side chat fork has ui, and its requests name the page that sent the
   })
 })
 
+it('status reports no forkable turn when the only assistant entry is a tool call', async () => {
+  const f = await fixture(false)
+  const source = (await f.server.harness.conversation(f.main, context))!
+  const input = await source.submit(
+    { type: 'input', content: 'CALL {"name":"pause_first_turn","args":{}}' },
+    context,
+  )
+  try {
+    await until(f.holding)
+    const replies = (await source.context(context)).entries.filter(
+      (entry) => entry.kind === 'pi.assistant',
+    )
+    expect(replies).toHaveLength(1)
+    expect(replies[0].model?.[0]).toMatchObject({ role: 'assistant', stopReason: 'toolUse' })
+    expect(await f.action('status', { source: f.main })).toMatchObject({
+      status: 200,
+      data: { result: { forkable: false } },
+    })
+    expect((await f.action('open', { source: f.main })).data.error).toContain('no finished turn')
+  } finally {
+    f.hold.resolve()
+    await input.wait(context)
+  }
+  expect(await f.action('status', { source: f.main })).toMatchObject({
+    status: 200,
+    data: { result: { forkable: true } },
+  })
+})
+
 it('the status lists the ready model and transcription', async () => {
   const f = await fixture()
   const { setup } = (await f.action('status', null)).data.result
@@ -893,6 +923,54 @@ it('side_chat_handoff with end sends the outcome and lets the fork finish its la
 
   const next = await f.turn({ key: 'fresh', text: 'back again' })
   expect(next.id).not.toBe(id)
+})
+
+it('rejects a final handoff if Start fresh wins before the handoff can submit', async () => {
+  const f = await fixture()
+  const { id } = await f.turn({ key: 'race', text: 'DECIDE' })
+  const source = (await f.server.harness.conversation(f.main, context))!
+  const before = (await source.context(context)).entries
+  const tool = f.server.host.registry
+    .snapshot()
+    .extension('side-chat')!
+    .tools!.find((item) => item.name === 'side_chat_handoff')!
+  const read = Promise.withResolvers<void>()
+  const proceed = Promise.withResolvers<void>()
+  const summary = f.holdSummary()
+  const handoff = tool.execute(
+    { title: 'Too late', outcome: 'Keep it', instruction: 'Take it from here', end: true },
+    {
+      conversationId: id,
+      taskId: 123,
+      snapshot: async () => {
+        const open = await f.forkOf(id)
+        read.resolve()
+        await proceed.promise
+        return open
+      },
+    } as never,
+    context,
+  )
+  await read.promise
+  const fresh = f.action('end', { source: f.main })
+  try {
+    await until(() => f.summaries.length > 0)
+    expect((await f.forkOf(id))?.ending).toEqual({ reason: 'fresh' })
+    proceed.resolve()
+    await expect(handoff).rejects.toThrow('already ending without this handoff')
+    expect((await source.context(context)).entries).toEqual(before)
+    expect(
+      await f.server.harness.commit(
+        (tx) => tx.submissionByRequest(f.main, 'side-chat:handoff:123'),
+        context,
+      ),
+    ).toBeUndefined()
+  } finally {
+    proceed.resolve()
+    summary.resolve()
+    await Promise.allSettled([handoff, fresh])
+  }
+  expect((await f.session())?.last?.reason).toBe('fresh')
 })
 
 it("side_chat_handoff carries the user's own turns of this session in order, without failed transcriptions", async () => {

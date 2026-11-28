@@ -152,8 +152,8 @@ export const coldDraft = (source: ConversationId) => `side-chat.cold.${source}`
 export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
   !!cold.text.trim() || cold.images.length > 0 || cold.files > 0
 export const composeIn = (id: ConversationId | undefined) => {
-  if (session().id !== undefined && id === undefined) endLocally()
-  else live.set({ ...session(), id })
+  if (session().id !== undefined && id === undefined) endLocally('The side chat ended', true)
+  else if (session().id !== id) live.set({ ...session(), id })
 }
 const settledTranscript = (audio: string, signal: AbortSignal) =>
   new Promise<string>((resolve, reject) => {
@@ -266,9 +266,10 @@ export const sideChatSink: Sink = {
   finish: finishRecording,
 }
 
-export function registerSideChatFallback() {
+export function registerSideChatFallback(ready: () => boolean) {
   setFallback({
     sink: sideChatSink,
+    ready,
     wake: () => {
       showSideChat()
     },
@@ -681,11 +682,19 @@ export function useSpeaking(
   )
 }
 
-function endLocally(reason = 'The side chat ended') {
+function endLocally(reason: string, drain = false) {
   void capture.end(sideChatSink)
-  dock.player.stop()
+  if (drain && owned()) {
+    const key = voiced
+    dock.player.streaming(false)
+    void dock.player.idle().then(() => {
+      if (voiced === key) voiced = undefined
+    })
+  } else {
+    dock.player.stop()
+    voiced = undefined
+  }
   session().live.abort(new Error(reason))
-  voiced = undefined
   live.set(newSession())
   dock.setLocal({})
   dispatch({ type: 'ended' })
