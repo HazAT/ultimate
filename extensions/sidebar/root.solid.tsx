@@ -1,5 +1,6 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
 import type { JSX } from '@solidjs/web'
+import { ChevronRight } from '@lucide/solid'
 import { createMemo, For, mapArray, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import {
@@ -31,10 +32,12 @@ import { ProgressAction } from '../workspaces/refs.ts'
 import type { WorkspaceIndex } from '../workspaces/types.ts'
 import { CommitCount, Review } from '../workspaces/ui.solid.tsx'
 import type { Landing } from './landings.web.ts'
+import { earlierKey, foldLines } from './fold.web.ts'
+import type { FoldLine } from './fold.web.ts'
 import { PreviewUp } from './points.web.ts'
 import { ChildRow, EpicLine, RenameField, RowMenu, useRename } from './rows.solid.tsx'
 import { Section } from './section.solid.tsx'
-import { shell, useData, useSurface } from './state.solid.tsx'
+import { shell, useData, useSidebarState, useSurface } from './state.solid.tsx'
 import type { SidebarConversation } from './state.solid.tsx'
 import { SummaryHistory } from './summaries.solid.tsx'
 import { workOf } from './work.web.ts'
@@ -277,22 +280,93 @@ function PhasedFlightRow(props: {
         {(activity) => <ActivityLine activity={activity()} id={props.id} />}
       </Show>
       <EpicLine id={props.id} working={data.working().get(props.id) === 'self'} />
-      <FlightChildren id={props.id} depth={0} />
+      <FlightChildren id={props.id} />
     </li>
   )
 }
 
-function FlightChildren(props: { id: ConversationId; depth: number }) {
+function FlightChildren(props: { id: ConversationId }) {
   const data = useData()
+  const [folds, setFolds] = useSidebarState<Record<string, string[]>>('folds', {})
+  const opened = () => folds()[props.id] ?? []
+  const quiet = (id: number) => {
+    const conversation = data.byConversation(parseConversationId(id))
+    const state = conversationState(
+      {
+        id,
+        kind: 'subagent',
+        runState: data.row(id)?.runState,
+        busy: conversation.busy,
+        parked: data.parked(parseConversationId(id)),
+      },
+      data.log(),
+    )
+    return state === 'done' || state === 'idle'
+  }
+  const lines = createMemo(() =>
+    foldLines(
+      props.id,
+      (id) => data.subagents().get(parseConversationId(id)),
+      quiet,
+      new Set(opened()),
+    ),
+  )
+  const toggle = (key: string) => {
+    const keys = opened()
+    setFolds({
+      ...folds(),
+      [props.id]: keys.includes(key) ? keys.filter((each) => each !== key) : [...keys, key],
+    })
+  }
   return (
-    <For each={data.subagents().get(props.id)}>
-      {(id) => (
+    <For each={lines()} keyed={(line) => (line.kind === 'row' ? line.id : earlierKey(line.parent))}>
+      {(line) => (
         <>
-          <ChildRow id={id} depth={props.depth} />
-          <FlightChildren id={id} depth={props.depth + 1} />
+          <Show when={rowOf(line())}>
+            {(row) => (
+              <ChildRow
+                id={parseConversationId(row().id)}
+                depth={row().depth}
+                fold={row().fold}
+                onFold={() => toggle(String(row().id))}
+              />
+            )}
+          </Show>
+          <Show when={earlierOf(line())}>
+            {(earlier) => (
+              <EarlierLine
+                count={earlier().count}
+                depth={earlier().depth}
+                open={earlier().open}
+                onToggle={() => toggle(earlierKey(earlier().parent))}
+              />
+            )}
+          </Show>
         </>
       )}
     </For>
+  )
+}
+
+const rowOf = (line: FoldLine) => (line.kind === 'row' ? line : undefined)
+const earlierOf = (line: FoldLine) => (line.kind === 'earlier' ? line : undefined)
+
+function EarlierLine(props: { count: number; depth: number; open: boolean; onToggle: () => void }) {
+  return (
+    <Button
+      aria-expanded={props.open ? 'true' : 'false'}
+      aria-label={`${props.open ? 'Hide' : 'Show'} ${props.count} earlier finished subagents`}
+      class="mx-2 flex h-7 w-[calc(100%-1rem)] min-w-0 items-center justify-start gap-1.5 rounded-md pr-2 text-left font-mono text-[10.5px] font-normal text-muted-foreground/70 outline-none hover:bg-sidebar-accent/50 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+      data-earlier-line
+      onClick={() => props.onToggle()}
+      size={null}
+      style={{ 'padding-left': `${20 + props.depth * 12}px` }}
+      variant={null}
+    >
+      <span class="w-2 shrink-0 text-muted-foreground/40">└</span>
+      <ChevronRight class={cn('size-3 shrink-0 transition-transform', props.open && 'rotate-90')} />
+      <span class="min-w-0 flex-1 truncate">{props.count} earlier · done</span>
+    </Button>
   )
 }
 
