@@ -363,9 +363,11 @@ function EarlierLine(props: { count: number; depth: number; open: boolean; onTog
       style={{ 'padding-left': `${20 + props.depth * 12}px` }}
       variant={null}
     >
-      <span class="w-2 shrink-0 text-muted-foreground/40">└</span>
-      <ChevronRight class={cn('size-3 shrink-0 transition-transform', props.open && 'rotate-90')} />
-      <span class="min-w-0 flex-1 truncate">{props.count} earlier · done</span>
+      <ChevronRight
+        class={cn('-mx-0.5 size-3 shrink-0 transition-transform', props.open && 'rotate-90')}
+      />
+      <span class="min-w-0 flex-1 truncate pl-[18px]">{props.count} earlier</span>
+      <span class="shrink-0 text-[10px] text-success">done</span>
     </Button>
   )
 }
