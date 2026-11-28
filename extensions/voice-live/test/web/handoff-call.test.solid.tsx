@@ -72,7 +72,7 @@ it('a voice_handoff call shows what went where, opens the target, and shows a re
         ref: 'Open @ultimate that handoff call-ultimate went to, in the transcript',
         action: 'press',
       },
-      { ref: 'Open #55 that handoff call-branch went to, in the voice dock', action: 'press' },
+      { ref: 'Open #55 that handoff call-branch went to, in the side chat', action: 'press' },
     ],
   })
   expect(shown).toEqual(['agent', 7, 'agent', 55])

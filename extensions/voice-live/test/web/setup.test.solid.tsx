@@ -55,7 +55,11 @@ vi.mock('@/sdk/solid', async (original) => ({
 vi.mock('../../../models/ui.solid.tsx', () => ({ PickControl: () => null }))
 vi.stubGlobal('speechSynthesis', { cancel() {}, speak() {}, getVoices: () => [] })
 vi.stubGlobal('SpeechSynthesisUtterance', EventTarget)
-vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {} }))
+vi.stubGlobal('matchMedia', () => ({
+  matches: false,
+  addEventListener() {},
+  removeEventListener() {},
+}))
 vi.stubGlobal(
   'ResizeObserver',
   class {

@@ -9,6 +9,7 @@ import {
   useConversation,
   useUiState,
   writerNow,
+  writingAs,
 } from '@/sdk/solid'
 type UiWho = ReturnType<typeof writerNow>
 import { cell } from '../../lib/cell.web.ts'
@@ -35,15 +36,8 @@ import {
   typedIn,
 } from './machine.web.ts'
 import type { DockEvent, DockState, Typed } from './machine.web.ts'
-import {
-  DiscardAction,
-  IntentAction,
-  RecordAction,
-  StatusAction,
-  StopAction,
-  TurnAction,
-} from './refs.ts'
-import type { VoiceClip, VoiceDelivery, VoiceFork, VoiceTurn } from './refs.ts'
+import { RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
+import type { VoiceFork, VoiceTurn } from './refs.ts'
 
 export const KEYS = 'mod+shift+v'
 type Image = { data: string; mimeType: string }
@@ -67,16 +61,21 @@ const newSession = (): Session => ({
 })
 const live = cell(newSession())
 const session = () => live.get()
-const [draft, setDraft] = createRoot(() => {
-  const [held, setHeld] = createSignal<readonly VoiceClip[]>([])
-  const sync = () => {
-    const { id, forks } = live.get()
-    setHeld((id !== undefined && forks.get(id)?.draft) || [])
-  }
-  live.subscribe(sync)
-  return [held, sync] as const
+const sourceCell = cell<ConversationId | undefined>(undefined)
+const sourced = () => {
+  const source = sourceCell.get()
+  return source === undefined ? {} : { source }
+}
+export const voiceSource = createRoot(() => {
+  const [now, setNow] = createSignal(sourceCell.get())
+  sourceCell.subscribe(() => setNow(sourceCell.get()))
+  return now
 })
-export const draftOf = draft
+export function setVoiceSource(source: ConversationId | undefined) {
+  if (source === sourceCell.get()) return
+  if (session().id !== undefined) endLocally()
+  sourceCell.set(source)
+}
 
 let voiced: string | undefined
 const owned = () => {
@@ -103,11 +102,10 @@ const machine = cell<DockState>({ phase: 'idle' })
 const state = () => machine.get()
 
 export const dock = createRoot(() => {
-  const [speak, setSpeak] = useUiState('ext.voice-live.speak', true)
+  const [conversation, setConversation] = useUiState('ext.voice-live.conversation', true)
   const [cuesOn, setCuesOn] = useUiState('ext.voice-live.cues', true)
   const [open, setOpen] = useUiState('ext.voice-live.open', false)
-  const [collect, setCollect] = useUiState('ext.voice-live.collect', false)
-  const [talking, setTalking] = useUiState('ext.voice-live.talking', false)
+  const [sideMode, setSideMode] = useUiState('ext.voice-live.side-mode', false)
   const [now, setNow] = createSignal<DockState>(machine.get())
   machine.subscribe(() => setNow(machine.get()))
   const [local, setLocal] = createSignal<Record<string, Local>>({})
@@ -125,16 +123,14 @@ export const dock = createRoot(() => {
     stopPulse = on ? every(1600, () => !listening() && cues.thinking()) : undefined
   })
   return {
-    speak,
-    setSpeak,
+    conversation,
+    setConversation,
     cuesOn,
     setCuesOn,
-    collect,
-    setCollect,
-    talking,
-    setTalking,
     open,
     setOpen,
+    sideMode,
+    setSideMode,
     state: now,
     phase: () => shownPhase(now()),
     status: () => statusOf(now()),
@@ -151,19 +147,16 @@ export const dock = createRoot(() => {
 
 export const dispatch = (event: DockEvent) => machine.set(transition(machine.get(), event))
 
-const [activity, setActivity] = createRoot(() =>
-  createSignal<{ done: number; current?: string }>({ done: 0 }),
-)
-export { activity, setActivity }
-
 const [screen, setScreen] = createRoot(() =>
   createSignal<{ text: string; conversation?: ConversationId }>(),
 )
 export { setScreen }
 
-type Waiter = { resolve: (text: string) => void; reject: (error: Error) => void }
+type Waiter = {
+  resolve: (text: string) => void
+  reject: (error: Error) => void
+}
 const waiting = new Map<string, Set<Waiter>>()
-const sending = new Set<string>()
 capture.setKeepOpen(() => session().id !== undefined)
 export const COLD_DRAFT = 'voice-live.cold'
 export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
@@ -206,7 +199,6 @@ export function settleTranscripts(
   id?: ConversationId,
 ) {
   if (fork && id !== undefined) session().forks.set(id, fork)
-  if (id !== undefined && id === session().id) setDraft()
   for (const [audio, waiters] of waiting) {
     const text = fork?.transcripts?.[audio]
     const failed = fork?.failed?.[audio]
@@ -290,7 +282,6 @@ export function registerVoiceFallback() {
 }
 
 const taken = new WeakSet<Typed>()
-let entering: Typed | undefined
 
 async function finishRecording(recorded: Recorded, retaking: boolean) {
   const who = writerNow()
@@ -303,7 +294,6 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
     type: 'stop',
     retaking,
     spoke: recorded.spoke,
-    collect: dock.collect(),
     ...(paused !== undefined ? { paused } : {}),
     ...(recorded.spoke
       ? {}
@@ -317,7 +307,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
         }),
   })
   if (!recorded.spoke) {
-    const tried = !retaking && !typed && !dock.collect() && recorded.seconds >= MIN_SPOKEN_SECONDS
+    const tried = !retaking && !typed && recorded.seconds >= MIN_SPOKEN_SECONDS
     const sent =
       tried &&
       (await sendTurn({
@@ -328,11 +318,10 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
     if (!sent && paused !== undefined) dock.player.resume()
     return
   }
-  if (dock.collect()) {
-    await collectClip(recorded, typed, who, interrupted || ours().paused)
-    return
-  }
-  if (typed && entering === typed) entering = undefined
+  writingAs(who, () => {
+    if (dock.sideMode()) dock.setSideMode(false)
+    if (!voiceOpen()) setVoiceOpen(true)
+  })
   await sendTurn({
     who,
     recorded,
@@ -343,128 +332,29 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
   })
 }
 
-async function collectClip(
-  recorded: Recorded,
-  typed: Typed | undefined,
-  who: UiWho,
-  busy: boolean,
-) {
-  const { signal } = session().live
-  const owner = session().id
-  let kept: string
-  try {
-    const audio = await base64(recorded.blob)
-    ;({ audio: kept } = await api.action(
-      RecordAction,
-      {
-        audio,
-        mimeType: recorded.blob.type.split(';')[0],
-        collect: { seconds: recorded.seconds, envelope: recorded.envelope },
-        ...(owner !== undefined ? { session: owner } : {}),
-      },
-      { signal, who },
-    ))
-  } catch (failure) {
-    if (!signal.aborted) dock.setError(errorMessage(failure))
-    if (!typed) return
-    dispatch({ type: 'abandon' })
-    throw signal.aborted ? signal.reason : failure
-  }
-  if (typed) {
-    if (entering === typed) entering = undefined
-    const earlier = draftOf().filter((clip) => clip.audio !== kept)
-    const clip = { audio: kept, seconds: recorded.seconds, envelope: recorded.envelope }
-    await sendClips('steer', typed.text, false, [...earlier, clip], {
-      fromComposer: true,
-      images: typed.images,
-      who,
-      busy,
-    })
-    return
-  }
-  try {
-    await settledTranscript(kept, signal)
-    const intent = await api.action(IntentAction, { audio: kept }, { signal, who })
-    if (intent.send && intent.clips) {
-      const chosen = new Set(intent.clips)
-      const held = draftOf()
-      const clips = held.filter((clip) => chosen.has(clip.audio))
-      const judged = held.length === chosen.size && held.every((clip) => !sending.has(clip.audio))
-      if (intent.answered && !judged) {
-        if (ours().paused) dock.player.resume()
-      } else if (clips.length === chosen.size)
-        await sendDraft(intent.send, '', intent.answered ? 'answer' : true, clips, who)
-      else dispatch({ type: 'note', note: 'clips changed' })
-    } else if (ours().paused) dock.player.resume()
-  } catch (failure) {
-    if (!signal.aborted) dock.setError(errorMessage(failure))
-  }
-}
-
-export async function sendDraft(
-  delivery: VoiceDelivery = 'steer',
-  typed = '',
-  spoken: boolean | 'answer' = false,
-  clips: readonly VoiceClip[] = draftOf(),
-  who: UiWho = writerNow(),
-) {
-  if (entering) return
-  await sendClips(delivery, typed, spoken, clips, { who })
-}
-
-async function sendClips(
-  delivery: VoiceDelivery,
-  typed: string,
-  spoken: boolean | 'answer',
-  clips: readonly VoiceClip[],
-  {
-    fromComposer = false,
-    images,
-    who = writerNow(),
-    busy = ours().playing || ours().paused || replying(state()),
-  }: { fromComposer?: boolean; images?: readonly Image[]; who?: UiWho; busy?: boolean },
-) {
-  clips = clips.filter((clip) => !sending.has(clip.audio))
-  if (!clips.length && !typed.trim() && !images?.length) return
-  const interrupted = busy && delivery === 'steer'
-  if (interrupted) dock.player.pause()
-  else if (ours().paused) dock.player.resume()
-  await sendTurn({
-    clips: [...clips],
-    typed: typed.trim(),
-    delivery,
-    interrupted,
-    spokenSend: spoken,
-    fromComposer,
-    who,
-    ...(images ? { images } : {}),
-  })
-}
-
-export const discardDraft = () => api.action(DiscardAction, null)
-
 export async function sendTyped(text: string, images: readonly Image[] = []) {
   const take = capture.take(voiceSink)
   if (take) {
     const { signal } = session().live
     const typed = { text, images }
     dispatch({ type: 'enter', typed })
-    entering = typed
     try {
       await take.release()
     } finally {
-      if (entering === typed) entering = undefined
       if (typedIn(state()) === typed) dispatch({ type: 'enter' })
     }
     signal.throwIfAborted()
     if (taken.has(typed)) return
   }
-  const free = draftOf().filter((clip) => !sending.has(clip.audio))
-  if (free.length) return sendClips('steer', text, false, free, { fromComposer: true, images })
   if (!text.trim() && !images.length) return
   const interrupted = ours().playing || replying(state())
   dock.player.pause()
-  await sendTurn({ typed: text.trim(), images, interrupted, fromComposer: true })
+  await sendTurn({
+    typed: text.trim(),
+    images,
+    interrupted,
+    fromComposer: true,
+  })
 }
 
 function heardNothing(key: string) {
@@ -477,10 +367,7 @@ async function sendTurn(input: {
   recorded?: Recorded
   typed?: string
   images?: readonly Image[]
-  clips?: VoiceClip[]
-  delivery?: VoiceDelivery
   interrupted: boolean
-  spokenSend?: boolean | 'answer'
   fromComposer?: boolean
   wholeBox?: boolean
   who?: UiWho
@@ -491,11 +378,7 @@ async function sendTurn(input: {
   const cancelled = () => {
     if (input.fromComposer) throw signal.reason
   }
-  const sentBySaying =
-    input.spokenSend === true
-      ? '(The user ended this message by saying a send command such as "send it": that sent it to you, it is not a request to hand off.)'
-      : undefined
-  const hint = [screen()?.text, sentBySaying].filter(Boolean).join('\n\n') || undefined
+  const hint = screen()?.text
   if (signal.aborted) return cancelled()
   const cold = composerDraft(COLD_DRAFT)
   const fromCold = !input.fromComposer && (owner === undefined || coldHolds(cold))
@@ -517,20 +400,18 @@ async function sendTurn(input: {
   const typed = [input.typed, carried?.text.trim(), pasted?.attachments.join('\n')]
     .filter(Boolean)
     .join('\n\n')
-  const clips = input.clips ?? []
-  if (!input.recorded && !clips.length && !typed && !images.length) {
+  if (!input.recorded && !typed && !images.length) {
     releaseBox?.()
     return 'empty' as const
   }
-  if (dock.speak()) speech.warm()
+  if (dock.conversation()) speech.warm()
   let delivered = false
   const key = crypto.randomUUID()
-  for (const clip of clips) sending.add(clip.audio)
   try {
     if (input.interrupted) {
       dock.player.stop()
       dispatch({ type: 'interrupt' })
-      await api.action(StopAction, null, { signal, who }).catch((failure: unknown) => {
+      await api.action(StopAction, sourced(), { signal, who }).catch((failure: unknown) => {
         if (signal.aborted) return
         if (state().phase === 'sending' && pendingKey(state()) === undefined)
           dispatch({ type: 'abandon' })
@@ -541,21 +422,18 @@ async function sendTurn(input: {
     delivered = await deliver()
   } finally {
     releaseBox?.(delivered ? (carried ? 'all' : 'attachments') : undefined)
-    for (const clip of clips) sending.delete(clip.audio)
   }
 
   async function deliver(): Promise<boolean> {
-    const seconds = input.recorded?.seconds ?? clips.reduce((sum, clip) => sum + clip.seconds, 0)
-    const envelope = input.recorded?.envelope ?? clips.flatMap((clip) => clip.envelope ?? [])
-    const voice = !!input.recorded || clips.length > 0
+    const seconds = input.recorded?.seconds ?? 0
+    const envelope = input.recorded?.envelope ?? []
+    const voice = !!input.recorded
     patchLocal(key, {
       optimistic: {
         key,
         text: typed,
         route: 'text',
-        ...(voice ? { audio: clips[0]?.audio ?? 'pending', seconds, envelope } : {}),
-        ...(clips.length > 1 ? { clips: clips.map((clip) => clip.audio) } : {}),
-        ...(input.spokenSend === 'answer' ? { answered: true as const } : {}),
+        ...(voice ? { audio: 'pending', seconds, envelope } : {}),
         ...(hint ? { hint } : {}),
       },
       images,
@@ -566,28 +444,29 @@ async function sendTurn(input: {
     else dock.cues.send()
     const current = () => !signal.aborted && pendingKey(state()) === key
     try {
-      const status = await api.action(StatusAction, null, { signal, who })
+      const status = await api.action(StatusAction, sourced(), { signal, who })
       speech.setKeyed(status.transcribes)
       const audio = input.recorded ? await base64(input.recorded.blob) : undefined
       const mimeType = input.recorded?.blob.type.split(';')[0] ?? ''
       const recorded = audio
         ? await api.action(
             RecordAction,
-            { audio, mimeType, ...(owner !== undefined ? { session: owner } : {}) },
+            {
+              audio,
+              mimeType,
+              ...sourced(),
+              ...(owner !== undefined ? { session: owner } : {}),
+            },
             { signal, who },
           )
         : undefined
       owner = recorded?.session ?? owner
-      const kept = recorded?.audio ?? clips[0]?.audio
+      const kept = recorded?.audio
       if (kept) patchLocal(key, { audio: kept })
       let text = typed
       if (kept && status.route === 'text') {
-        const heard = await Promise.all(
-          (clips.length ? clips.map((clip) => clip.audio) : [kept]).map((clip) =>
-            settledTranscript(clip, signal),
-          ),
-        )
-        text = [heard.filter((part) => part.trim()).join(' '), text].filter(Boolean).join('\n\n')
+        const heard = await settledTranscript(kept, signal)
+        text = [heard.trim(), text].filter(Boolean).join('\n\n')
         if (!text.trim() && !images.length) {
           heardNothing(key)
           return false
@@ -596,13 +475,11 @@ async function sendTurn(input: {
       const sent = await api.action(
         TurnAction,
         {
+          ...sourced(),
           ...(owner !== undefined ? { session: owner } : {}),
           key,
           text,
           ...(kept ? { audio: kept } : {}),
-          ...(clips.length ? { clips: clips.map((clip) => clip.audio) } : {}),
-          ...(input.delivery === 'followUp' ? { delivery: 'followUp' as const } : {}),
-          ...(input.spokenSend === 'answer' ? { answered: true as const } : {}),
           ...(voice ? { seconds, envelope } : {}),
           ...(hint ? { hint } : {}),
           ...(screen()?.conversation !== undefined ? { screen: screen()!.conversation } : {}),
@@ -622,11 +499,9 @@ async function sendTurn(input: {
         return false
       }
       if (kept && status.route !== 'text') {
-        const group = clips.length ? clips.map((clip) => clip.audio) : [kept]
-        void Promise.all(group.map((clip) => settledTranscript(clip, signal))).then(
+        void settledTranscript(kept, signal).then(
           (heard) => {
-            const silent = heard.every((part) => !part.trim())
-            if (silent && !typed && !images.length && current()) heardNothing(key)
+            if (!heard.trim() && !typed && !images.length && current()) heardNothing(key)
           },
           () => undefined,
         )
@@ -762,7 +637,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
       const from = spoken.count
       const fresh = sentences.slice(from)
       spoken.count = Math.max(spoken.count, sentences.length)
-      const voice = dock.speak() && fresh.length > 0
+      const voice = dock.conversation() && fresh.length > 0
       if (voice && voiced !== latest.key) {
         dock.player.load(latest.key, sentences, latest.busy)
         dock.player.play(from)

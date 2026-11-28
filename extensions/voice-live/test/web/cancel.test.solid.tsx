@@ -1,15 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import {
-  composeIn,
-  dispatch,
-  dock,
-  draftOf,
-  settleTranscripts,
-  voiceSink,
-} from '../../dock.solid.tsx'
+import { composeIn, dispatch, dock, voiceSink } from '../../dock.solid.tsx'
 import { flush } from 'solid-js'
 
 const actions = vi.hoisted(() => [] as string[])
@@ -58,10 +50,6 @@ vi.stubGlobal('isSecureContext', true)
 vi.stubGlobal('MediaRecorder', FakeRecorder)
 const frames: Array<() => void> = []
 vi.stubGlobal('requestAnimationFrame', (tick: () => void) => frames.push(tick))
-const speak = () => {
-  for (let at = 0; at < 10; at++) frames.splice(0).forEach((tick) => tick())
-  now += 2000
-}
 let now = 0
 vi.spyOn(performance, 'now').mockImplementation(() => now)
 vi.stubGlobal('cancelAnimationFrame', () => {})
@@ -84,39 +72,12 @@ vi.stubGlobal('navigator', {
 })
 
 const press = () => capture.press(voiceSink)?.started
-const release = () => capture.take(voiceSink)?.release()
 const cancelRecording = () => capture.take(voiceSink)?.cancel()
 const talking = () => capture.talking(voiceSink)
 
 beforeEach(async () => {
   await serverEndedSession(composeIn)
   actions.length = 0
-})
-
-it('cancelling a spoken recording uploads nothing and keeps the collected clips; the next take records and uploads', async () => {
-  const session = parseConversationId(40)
-  const clips = [{ audio: 'clip-1', seconds: 2 }]
-  composeIn(session)
-  settleTranscripts({ of: parseConversationId(1), draft: clips }, session)
-  dock.setCollect(true)
-
-  await press()
-  expect(dock.capturing()).toBe(true)
-  speak()
-  await cancelRecording()
-  await release()
-  expect(talking()).toBe(false)
-  expect(dock.capturing()).toBe(false)
-  expect(dock.phase()).toBe('idle')
-  expect(actions).toEqual([])
-  expect(draftOf()).toEqual(clips)
-
-  await press()
-  speak()
-  const sending = release()
-  await vi.waitFor(() => expect(actions).toEqual(['record']))
-  await serverEndedSession(composeIn)
-  await sending
 })
 
 it('a retake started while a cancel stops the mic keeps the interruption the cancelled take held', async () => {

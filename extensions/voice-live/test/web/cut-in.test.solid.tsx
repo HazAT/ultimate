@@ -133,7 +133,7 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
 
 it('turning Speak replies on mid-reply plays from the first new sentence, at its place in the reply', async () => {
   await serverEndedSession(composeIn)
-  dock.setSpeak(false)
+  dock.setConversation(false)
   said.length = 0
   const before = harness.turns.length
   const sent = sendTyped('quiet start')
@@ -146,7 +146,7 @@ it('turning Speak replies on mid-reply plays from the first new sentence, at its
   setView({ turns: [reply(key, 'One muted. ')], busy: true })
   flush()
   expect(said).toEqual([])
-  dock.setSpeak(true)
+  dock.setConversation(true)
   setView({ turns: [reply(key, 'One muted. Two heard. ')], busy: true })
   flush()
   expect(said).toEqual([' Two heard.'])

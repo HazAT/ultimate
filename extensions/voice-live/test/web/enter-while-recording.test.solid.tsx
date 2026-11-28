@@ -1,17 +1,8 @@
-import { flush } from 'solid-js'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import {
-  composeIn,
-  dispatch,
-  dock,
-  sendDraft,
-  sendTyped,
-  settleTranscripts,
-  voiceSink,
-} from '../../dock.solid.tsx'
+import { composeIn, sendTyped, settleTranscripts, voiceSink } from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   stops: 0,
@@ -115,7 +106,6 @@ const session = parseConversationId(40)
 const shot = { data: 'cG5n', mimeType: 'image/png' }
 
 it('Enter during a recording stops it and sends the typed text, the image and its transcript as one turn', async () => {
-  dock.setCollect(false)
   await capture.press(voiceSink)?.started
   speak()
   const sent = sendTyped('look at this', [shot])
@@ -132,83 +122,7 @@ it('Enter during a recording stops it and sends the typed text, the image and it
   ])
 })
 
-it('Enter during a recording while collecting sends the collected clips, the new one and the text as one turn', async () => {
-  dock.setCollect(true)
-  flush()
-  const earlier = { audio: 'clip-0', seconds: 2 }
-  settleTranscripts({ draft: [earlier] }, session)
-  await capture.press(voiceSink)?.started
-  speak()
-  let uploaded = () => {}
-  harness.record = new Promise((resolve) => (uploaded = resolve))
-  const sent = sendTyped('look at this', [shot])
-  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
-  await sendDraft('followUp')
-  uploaded()
-  settleTranscripts(
-    { draft: [earlier], transcripts: { 'clip-0': 'first', 'rec-1': 'second' } },
-    session,
-  )
-  await sent
-  expect(harness.stops).toBe(0)
-  expect(harness.turns).toEqual([
-    expect.objectContaining({
-      text: 'first second\n\nlook at this',
-      clips: ['clip-0', 'rec-1'],
-      images: [shot],
-    }),
-  ])
-})
-
-it('an earlier turn acknowledged while Enter uploads its clip leaves Follow-up nothing to send', async () => {
-  dock.setCollect(true)
-  flush()
-  const earlier = { audio: 'clip-0', seconds: 2 }
-  settleTranscripts({ draft: [earlier] }, session)
-  dispatch({ type: 'send', key: 'earlier', voice: false })
-  await capture.press(voiceSink)?.started
-  speak()
-  let uploaded = () => {}
-  harness.record = new Promise((resolve) => (uploaded = resolve))
-  const sent = sendTyped('look at this')
-  await vi.waitFor(() => expect(dock.state().phase).toBe('sending'))
-  dispatch({ type: 'sent', key: 'earlier' })
-  await sendDraft('followUp')
-  uploaded()
-  settleTranscripts(
-    { draft: [earlier], transcripts: { 'clip-0': 'first', 'rec-1': 'second' } },
-    session,
-  )
-  await sent
-  expect(harness.turns).toEqual([
-    expect.objectContaining({ text: 'first second\n\nlook at this', clips: ['clip-0', 'rec-1'] }),
-  ])
-})
-
-it('an Enter whose Stop fails leaves Follow-up able to send the clips it held', async () => {
-  dock.setCollect(true)
-  flush()
-  const earlier = { audio: 'clip-0', seconds: 2 }
-  settleTranscripts({ draft: [earlier] }, session)
-  dispatch({ type: 'send', key: 'earlier', voice: false })
-  await capture.press(voiceSink)?.started
-  speak()
-  harness.stopFails = true
-  let uploaded = () => {}
-  harness.record = new Promise((resolve) => (uploaded = resolve))
-  const sent = sendTyped('look at this').catch((failure: Error) => failure.message)
-  await vi.waitFor(() => expect(dock.state().phase).toBe('sending'))
-  dispatch({ type: 'sent', key: 'earlier' })
-  uploaded()
-  expect(await sent).toBe('stop failed')
-  harness.stopFails = false
-  settleTranscripts({ draft: [earlier], transcripts: { 'clip-0': 'first' } }, session)
-  await sendDraft('followUp')
-  expect(harness.turns).toEqual([expect.objectContaining({ clips: ['clip-0'] })])
-})
-
 it('a session that ends while Enter stops the recording sends nothing and leaves the typed text in the box', async () => {
-  dock.setCollect(false)
   await capture.press(voiceSink)?.started
   speak()
   const sent = sendTyped('look at this')

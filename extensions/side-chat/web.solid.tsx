@@ -45,42 +45,18 @@ import {
   useEvent,
   useUiState,
   useViewport,
-  writerNow,
-  writingAs,
 } from '@/sdk/solid'
 import { deadline } from '../../lib/timers.shared.ts'
-import { QuestionPane } from '../inbox/ui.solid.tsx'
 import { MessagesDoc } from '../messages/refs.ts'
 import type { Reply } from '../questions/refs.ts'
-import {
-  answered,
-  CardActions,
-  cardKey,
-  cardOf,
-  CARDS_KEY,
-  MessageQuestions,
-} from '../questions/ui.solid.tsx'
-import type { CardState, QuestionMessage } from '../questions/ui.solid.tsx'
+import { answered, cardKey, cardOf, CARDS_KEY, MessageQuestions } from '../questions/ui.solid.tsx'
+import type { CardState } from '../questions/ui.solid.tsx'
 import { UnderUltimate, Unlisted } from '../sidebar/ui.solid.tsx'
 import { talkToUltimate } from '../subagents/ui.solid.tsx'
 import { SideChatSummaryEntry } from './entries.shared.ts'
-import { ComposerFrame, ease } from './frame.solid.tsx'
-import {
-  contextSize,
-  createEndings,
-  endings,
-  frontSide,
-  openQuestionSide,
-  openSides,
-} from './logic.web.ts'
-import {
-  DiscardAction,
-  InjectAction,
-  OpenAction,
-  QuestionSidesDoc,
-  SideChatDoc,
-  SideChatsDoc,
-} from './refs.ts'
+import { ease } from './frame.solid.tsx'
+import { contextSize, createEndings, endings, frontSide, openSides } from './logic.web.ts'
+import { DiscardAction, InjectAction, QuestionSidesDoc, SideChatDoc, SideChatsDoc } from './refs.ts'
 import type { SideChatIndex } from './refs.ts'
 import { useSideChatFront } from './ui.solid.tsx'
 
@@ -429,78 +405,6 @@ function PinnedQuestion(props: {
   )
 }
 
-function TalkItThrough(props: { message: QuestionMessage }) {
-  const questionSides = useDocOf(() => ROOT, QuestionSidesDoc)
-  const [, setFront] = useSideChatFront()
-  const [opening, setOpening] = createSignal(false)
-  const surface = useSurface()
-  const shown = useConversationId()
-  const asker = () =>
-    typeof props.message.from === 'number' ? (props.message.from as ConversationId) : undefined
-  const open = () => openQuestionSide(questionSides()?.sides, props.message.id)
-  const talk = async (from: ConversationId, message: number) => {
-    const who = writerNow()
-    setOpening(true)
-    try {
-      const { id } = await api.action(OpenAction, { message })
-      const showAsker = surface() === 'agent' && shown() !== from
-      writingAs(who, () => {
-        setFront(id)
-        if (showAsker) switchConversation(from)
-      })
-    } finally {
-      setOpening(false)
-    }
-  }
-  return (
-    <Show when={asker()}>
-      {(asking) => (
-        <Button
-          aria-label={`Talk through question #${props.message.id}`}
-          class="text-muted-foreground"
-          data-talk-it-through={props.message.id}
-          disabled={opening()}
-          onClick={() => talk(asking(), props.message.id)}
-          size="sm"
-          title={
-            open()
-              ? 'Back to the side chat where you are talking this question through'
-              : 'Talk this question through in a read-only side chat forked from the agent that asked it'
-          }
-          variant="ghost"
-        >
-          <Show when={opening()} fallback={<GitForkIcon class="text-brand" />}>
-            <LoaderCircleIcon class="motion-safe:animate-spin" />
-          </Show>
-          Talk it through
-        </Button>
-      )}
-    </Show>
-  )
-}
-
-function inboxSideChat(input: () => { message: QuestionMessage | undefined; phone: boolean }) {
-  const sides = useDocOf(() => ROOT, QuestionSidesDoc)
-  const [front, setFront] = useSideChatFront()
-  const side = () => sides()?.sides.find((item) => item.id === front() && item.ended === undefined)
-  const sideId = createMemo(() => side()?.id)
-  return createMemo(() => {
-    const staticId = sideId()
-    if (staticId === undefined) return undefined
-    return () => (
-      <section
-        aria-label="Side chat"
-        class="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
-        data-side-chat={staticId}
-      >
-        <ScopedConversation id={staticId}>
-          <SidePane front onPark={() => setFront(null)} phone={input().phone} side={staticId} />
-        </ScopedConversation>
-      </section>
-    )
-  })
-}
-
 function QuestionSideStart(props: { conversation: ConversationId; core: JSX.Element }) {
   const side = useDocOf(() => props.conversation, SideChatDoc)
   const log = useDocOf(() => ROOT, MessagesDoc)
@@ -629,14 +533,11 @@ function sideIds(main: () => ConversationId | undefined) {
 }
 
 export default defineWebExtension({
-  composer: ComposerFrame,
   slots: { 'conversation.overlay': [Stage] },
   entries: { 'sidechat.summary': SummaryCard },
   provides: [
     provide(UnderUltimate, SideRows),
     provide(Unlisted, sideIds),
-    provide(CardActions, TalkItThrough),
-    provide(QuestionPane, inboxSideChat),
     provide(EmptyTranscript, QuestionSideStart),
   ],
 })

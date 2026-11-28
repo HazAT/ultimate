@@ -1,6 +1,6 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { MessageCircleReply, Mic } from '@lucide/solid'
-import { createEffect, createMemo, For, onCleanup, onSettled, Show } from 'solid-js'
+import { createEffect, createMemo, For, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { ToolImage } from '@/components/ai/tool.solid.tsx'
@@ -13,14 +13,13 @@ import {
   useTranscriptElements,
   UserText,
 } from '@/sdk/solid'
-import { capture, drawWave } from '../dictation/ui.solid.tsx'
+import { drawWave } from '../dictation/ui.solid.tsx'
 import {
   dock,
   imagesIn,
   imagesOf,
   playerState,
   replyOf,
-  setActivity,
   settleTranscripts,
   turnsIn,
   useSpeaking,
@@ -38,7 +37,7 @@ export const timeOf = (entry: EntryRecord) => {
   return message && 'timestamp' in message ? message.timestamp : 0
 }
 
-export function Waveform(props: { envelope?: readonly number[]; live?: boolean; class?: string }) {
+function Waveform(props: { envelope?: readonly number[]; class?: string }) {
   let canvas: HTMLCanvasElement | undefined
   const color = () => getComputedStyle(canvas!).color
   createEffect(
@@ -47,10 +46,6 @@ export function Waveform(props: { envelope?: readonly number[]; live?: boolean; 
       if (canvas && envelope) drawWave(canvas, envelope, color(), false)
     },
   )
-  onSettled(() => {
-    if (!props.live) return undefined
-    return capture.onLevel(() => canvas && drawWave(canvas, capture.levels(), color(), true))
-  })
   return <canvas aria-hidden="true" class={props.class} height={56} ref={canvas} width={440} />
 }
 
@@ -111,7 +106,11 @@ function useSpokenReply(key: () => string) {
 }
 
 export function VoiceTurnView(props: {
-  turn: { key: string; data: VoiceTurn; images: readonly { data: string; mimeType: string }[] }
+  turn: {
+    key: string
+    data: VoiceTurn
+    images: readonly { data: string; mimeType: string }[]
+  }
   record?: EntryRecord
   submitted?: boolean
   conversation: ConversationId | undefined
@@ -240,7 +239,14 @@ export function PendingTurns() {
     const candidates = [
       ...Object.entries(dock.local()).flatMap(([key, each]) =>
         each.optimistic && (each.conversation === undefined || each.conversation === here)
-          ? [{ key, data: each.optimistic, images: each.images ?? [], submitted: false }]
+          ? [
+              {
+                key,
+                data: each.optimistic,
+                images: each.images ?? [],
+                submitted: false,
+              },
+            ]
           : [],
       ),
       ...state.inbox.flatMap((item) =>
@@ -273,26 +279,6 @@ export function PendingTurns() {
   )
 }
 
-function actionLine(name: string, args: Record<string, unknown>) {
-  if (name === 'ui') {
-    if (args.op === 'act' && !Array.isArray(args.steps)) return ''
-    if (args.op === 'act')
-      return (args.steps as { ref: string; action: string; args?: unknown[] }[])
-        .map(
-          (step) =>
-            `${step.action} ${step.ref}${step.args?.length ? ` ${JSON.stringify(step.args)}` : ''}`,
-        )
-        .join(' → ')
-    if (args.op === 'query') return `find ${JSON.stringify(args.text ?? args.within ?? '')}`
-    return 'look at the page'
-  }
-  if (name === 'voice_handoff')
-    return `hand off: ${typeof args.title === 'string' ? args.title : ''}`
-  if (name === 'codemode') return 'run a script'
-  const first = Object.values(args).find((value) => typeof value === 'string')
-  return first ? first.split('\n')[0].slice(0, 80) : ''
-}
-
 export function Voicing(props: { fork: ConversationId }) {
   const fork = useDocOf(() => props.fork, VoiceForkDoc)
   createEffect(
@@ -303,49 +289,11 @@ export function Voicing(props: { fork: ConversationId }) {
             ...doc,
             transcripts: { ...doc.transcripts },
             failed: { ...doc.failed },
-            draft: (doc.draft ?? []).map((clip) => ({ ...clip })),
           } as VoiceFork)
         : doc
     },
     (doc) => settleTranscripts(doc, props.fork),
   )
-  const turns = useTurns()
-  const conversation = useConversation()
-  createEffect(
-    () => {
-      const busy = conversation().busy
-      const slots = conversation().live.tools ?? []
-      const turn = turns().turns.findLast((each) => !each.optimistic)
-      const calls = [...(turn?.replies ?? []), ...(turn?.live ? [turn.live] : [])].flatMap(
-        (message) =>
-          message.content.flatMap((part) =>
-            part.type === 'toolCall'
-              ? [{ id: part.id, name: part.name, args: part.arguments }]
-              : [],
-          ),
-      )
-      const running = slots.find((slot) => slot.status !== 'done')
-      const shown = running ? calls.find((call) => call.id === running.callId) : calls.at(-1)
-      const results = new Set(
-        conversation().entries.flatMap((entry) =>
-          (entry.model ?? []).flatMap((message) =>
-            message.role === 'toolResult' ? [message.toolCallId] : [],
-          ),
-        ),
-      )
-      return {
-        done: calls.filter((call) => results.has(call.id)).length,
-        current:
-          busy && shown
-            ? `${running ? '' : 'after '}${shown.name} ${actionLine(shown.name, shown.args)}`.trim()
-            : undefined,
-      }
-    },
-    (next) => {
-      setActivity({ ...next })
-    },
-  )
-  onCleanup(() => setActivity({ done: 0 }))
-  useSpeaking(turns)
+  useSpeaking(useTurns())
   return null
 }

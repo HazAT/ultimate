@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import { AudioLinesIcon, ChevronRight, SquareArrowOutUpRightIcon } from '@lucide/solid'
+import { GitForkIcon, ChevronRight, SquareArrowOutUpRightIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For, Show, useContext } from 'solid-js'
 import { Markdown } from '@/components/markdown/markdown.solid.tsx'
@@ -22,7 +22,7 @@ import {
   type ToolCallView,
 } from '@/sdk/solid'
 import { QUIET_MINUTES, VoiceHandoffEntry, VoiceSummaryEntry } from './entries.shared.ts'
-import { VoiceForkDoc, type VoiceHandoff } from './refs.ts'
+import { VoiceForkDoc, type VoiceHandoff, type VoiceSummary } from './refs.ts'
 
 type Brief = Omit<VoiceHandoff, 'from'>
 
@@ -61,8 +61,8 @@ function Frame(props: {
   return (
     <Card data-voice-handoff={props.id}>
       <header class="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
-        {props.icon ?? <AudioLinesIcon class="size-3.5 text-brand" />}
-        <span class="text-foreground">Voice</span>
+        {props.icon ?? <GitForkIcon class="size-3.5 text-brand" />}
+        <span class="shrink-0 whitespace-nowrap text-foreground">Side chat</span>
         <span>handoff</span>
         <span class="truncate text-foreground">{props.title}</span>
         {props.link}
@@ -98,8 +98,8 @@ export const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(p
       id={props.entry.id}
       link={
         <OpenLink
-          label={`Read voice session #${data().from} from handoff #${props.entry.id}`}
-          text="voice session"
+          label={`Read side chat #${data().from} from handoff #${props.entry.id}`}
+          text="side chat"
           to={data().from}
         />
       }
@@ -135,7 +135,7 @@ export const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(p
 export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   const fork = useDocOf(useConversationId(), VoiceForkDoc)
   const brief = () => props.call.args as Partial<Brief> & { to?: number }
-  const place = useContext(ConversationScope) === null ? 'in the transcript' : 'in the voice dock'
+  const place = useContext(ConversationScope) === null ? 'in the transcript' : 'in the side chat'
   const target = () => (brief().to as ConversationId | undefined) ?? fork()?.of
   const where = () => (brief().to === undefined ? '@ultimate' : `#${brief().to}`)
   const failed = () => props.call.status === 'error'
@@ -188,6 +188,13 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   )
 }
 
+const ended = (reason: VoiceSummary['reason']) =>
+  reason === 'fresh'
+    ? 'started fresh'
+    : reason === 'answered'
+      ? 'answered the card'
+      : `ended after ${QUIET_MINUTES} min quiet`
+
 export const SummaryCard = renderEntry(VoiceSummaryEntry, function SummaryCard(props) {
   const data = () => props.entry.data
   return (
@@ -195,21 +202,21 @@ export const SummaryCard = renderEntry(VoiceSummaryEntry, function SummaryCard(p
       <Collapsible class="group/voice-summary">
         <header class="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
           <CollapsibleTrigger
-            aria-label={`Summary of voice session #${data().from}`}
+            aria-label={`Summary of side chat #${data().from}`}
             class="flex min-w-0 items-center gap-2 hover:text-foreground"
           >
             <ChevronRight class="size-3 shrink-0 transition-transform group-data-open/voice-summary:rotate-90" />
-            <AudioLinesIcon class="size-3.5 shrink-0 text-brand" />
-            <span class="text-foreground">Voice</span>
+            <GitForkIcon class="size-3.5 shrink-0 text-brand" />
+            <span class="shrink-0 whitespace-nowrap text-foreground">Side chat</span>
             <span>summary</span>
             <span class="truncate">
               {data().startedAt ? `${formatTime(data().startedAt!)}–` : ''}
-              {formatTime(data().endedAt)} · ended after {QUIET_MINUTES} min quiet
+              {formatTime(data().endedAt)} · {ended(data().reason)}
             </span>
           </CollapsibleTrigger>
           <OpenLink
-            label={`Read voice session #${data().from} from summary #${props.entry.id}`}
-            text="voice session"
+            label={`Read side chat #${data().from} from summary #${props.entry.id}`}
+            text="side chat"
             to={data().from}
           />
         </header>

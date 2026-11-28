@@ -9,8 +9,6 @@ export type Note =
   | 'too short hold'
   | 'heard nothing'
   | 'nothing sent'
-  | 'collecting'
-  | 'clips changed'
 
 type Turn = { key?: string; note?: Note; replied?: true }
 
@@ -43,7 +41,6 @@ export type DockEvent =
       type: 'stop'
       retaking: boolean
       spoke: boolean
-      collect: boolean
       paused?: string
       note?: Note
     }
@@ -71,8 +68,6 @@ const notes: Record<Note, string> = {
   'too short hold': 'Too short: hold while you talk',
   'heard nothing': 'Heard nothing: check the mic?',
   'nothing sent': 'No words heard · nothing sent',
-  collecting: 'Collecting · say "send it" or press Enter',
-  'clips changed': 'The collected clips changed · press Enter to send',
 }
 
 export const settled = (state: DockState): Settled =>
@@ -223,23 +218,12 @@ const meanwhile = (state: Recording, event: DockEvent): DockState => ({
 })
 
 function stopped(state: Recording, event: Event<'stop'>): DockState {
-  const { typed, before } = state
+  const { before } = state
   if (event.retaking) {
     if (!event.spoke) return state
     const { typed: _taken, ...rest } = state
     return rest
   }
-  if (event.spoke && event.collect)
-    return typed
-      ? {
-          phase: 'sending',
-          voice: true,
-          ...(before.phase === 'error' ? {} : keyed(before.key)),
-          ...(before.phase === 'done' || (before.phase !== 'error' && before.replied)
-            ? { replied: true }
-            : {}),
-        }
-      : noting(before, 'collecting')
   if (event.spoke) return { phase: 'sending', voice: true }
   if (event.paused !== undefined && following(before, event.paused))
     return noting(resumed(before), 'kept going')

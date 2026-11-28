@@ -1,81 +1,65 @@
 import {
   AudioLines,
   Check,
-  LoaderCircle,
   CircleDashed,
-  Maximize2,
-  Minimize2,
+  GitFork,
   Play,
   Settings2,
   SquareArrowOutUpRight,
   X,
 } from '@lucide/solid'
 import type { ConversationId } from '@earendil-works/pi-durable'
-import {
-  createEffect,
-  createMemo,
-  createRoot,
-  createSignal,
-  For,
-  onCleanup,
-  onSettled,
-  Show,
-} from 'solid-js'
-import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
+import { createEffect, createRoot, createSignal, For, onCleanup, onSettled, Show } from 'solid-js'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.solid.tsx'
 import { Switch as Toggle } from '@/components/ui/switch.solid.tsx'
 import {
   api,
+  closePanel,
   cn,
-  column,
   Composer,
   ComposerRedirect,
   ConversationTranscript,
-  composerDraft,
-  PromptBox,
+  errorMessage,
   formatAgo,
   formatKeys,
+  formatTime,
+  openPanel,
   ROOT,
   ScopedConversation,
   switchConversation,
   useAction,
-  useEvent,
   useConversationId,
   useConversationSummary,
   useDocOf,
+  useEvent,
   useExtensionUiState,
-  useExternal,
   useNow,
+  usePanels,
   useSurface,
   useViewport,
+  writingAs,
 } from '@/sdk/solid'
 import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
-import type { JSX } from '@solidjs/web'
 import { DictationOptions, shortcut, talkMode } from '../dictation/ui.solid.tsx'
-import { ModeSwitch, TalkBar } from './talk.solid.tsx'
 import { QUIET_MINUTES } from './entries.shared.ts'
 import {
-  activity,
   COLD_DRAFT,
-  coldHolds,
   composeIn,
-  discardDraft,
   dock,
-  playerState,
-  draftOf,
   KEYS,
+  playerState,
   registerVoiceFallback,
-  sendDraft,
   sendTyped,
   setScreen,
   setVoiceOpen,
+  setVoiceSource,
   voiceOpen,
   voiceSink,
 } from './dock.solid.tsx'
-import { PickAction, StatusAction, VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
-import { StandingDoc } from '../subagents/refs.ts'
+import { EndAction, PickAction, StatusAction, VoiceForkDoc } from './refs.ts'
+import type { VoiceSourceSession } from './refs.ts'
 import { PickControl } from '../models/ui.solid.tsx'
 import type { ModelPick } from '../models/ui.solid.tsx'
 import {
@@ -85,248 +69,67 @@ import {
   speech,
   SpeechOptions,
 } from '../read-aloud/ui.solid.tsx'
-
-import { Voicing, Waveform } from './turns.solid.tsx'
+import { PinnedQuestion } from './pinned.solid.tsx'
+import { useSideSession } from './side.solid.tsx'
+import { closing } from './side.web.ts'
+import { Voicing } from './turns.solid.tsx'
 import { REST, settle, type Snap } from './sheet.web.ts'
 
 const FULL_TOP = 36
+export const PANEL = 'side-chat'
+const SPLIT = '(min-width: 1280px)'
 const [sheetRoom, setSheetRoom] = createRoot(() => createSignal(0))
+
+const iconButton =
+  'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground pointer-coarse:size-9'
+const keys = () => formatKeys(KEYS).join('+')
+const holdKeys = () => formatKeys(shortcut()).join('+')
+const talkVerb = () => (talkMode() === 'tap' ? 'tap' : 'hold')
 
 export function SheetComposer(props: SolidComposerProps) {
   const viewport = useViewport()
   return (
-    <Show when={!props.dock} fallback={props.core}>
-      <Show
-        when={!voiceOpen()}
-        fallback={
-          <Show when={viewport() === 'phone'} fallback={props.core}>
-            <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
-          </Show>
-        }
-      >
-        <TalkOrType onTalk={() => setVoiceOpen(true)}>{props.core}</TalkOrType>
-      </Show>
+    <Show when={!props.dock && voiceOpen() && viewport() === 'phone'} fallback={props.core}>
+      <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
     </Show>
   )
 }
 
-function TalkOrType(props: { onTalk?: () => void; children: JSX.Element; dock?: boolean }) {
-  return (
-    <Show
-      when={dock.talking()}
-      fallback={
-        <div class="flex flex-col">
-          <div class={cn('flex justify-end pb-1.5', column(props.dock))}>
-            <ModeSwitch onToggle={dock.setTalking} talking={false} />
-          </div>
-          {props.children}
-        </div>
-      }
-    >
-      <div class={cn('pb-2', column(props.dock))}>
-        <TalkBar onTalk={props.onTalk} settings={<Settings name="Talk bar settings" />} />
-      </div>
-    </Show>
-  )
-}
-
-const iconButton =
-  'flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-open:bg-accent data-open:text-foreground pointer-coarse:size-9'
-const keys = () => formatKeys(KEYS).join('+')
-const holdKeys = () => formatKeys(shortcut()).join('+')
-const tap = () => talkMode() === 'tap'
-const talkVerb = () => (tap() ? 'tap' : 'hold')
-
-const capturing = () => dock.capturing()
-const recording = () => capturing()
-const working = () => dock.phase() === 'sending' || dock.phase() === 'thinking'
-
-function Status(props: { class?: string }) {
-  const text = () => dock.error() ?? (speaking() ? undefined : dock.status())
-  return (
-    <output
-      class={cn(
-        'flex min-w-0 items-center gap-1.5 truncate font-mono text-[11px] text-muted-foreground',
-        (dock.error() || dock.phase() === 'error') && 'text-error',
-        recording() && 'text-error',
-        dock.phase() === 'speaking' && 'text-brand',
-        props.class,
-      )}
-      data-voice-phase={dock.phase()}
-    >
-      <Show when={recording()}>
-        <span class="size-1.5 shrink-0 animate-pulse-dot rounded-full bg-error" />
-      </Show>
-      <Show when={working() && !dock.error()} fallback={<span class="truncate">{text()}</span>}>
-        <Shimmer>{text() ?? ''}</Shimmer>
-      </Show>
-    </output>
-  )
-}
-
-function SpokenParagraph() {
-  const state = playerState
-  const paragraph = createMemo(() => {
-    const items = dock.player.items()
-    const current = items[state().index]
-    if (!current) return []
-    return items
-      .map((sentence, index) => ({ sentence, index }))
-      .filter(({ sentence }) => sentence.paragraph === current.paragraph)
-  })
-  return (
-    <span
-      class="min-w-0 flex-1 py-1.5 text-left font-sans text-[13px] leading-snug whitespace-normal text-muted-foreground"
-      data-voice-spoken
-    >
-      <For each={paragraph()}>
-        {({ sentence, index }) => (
-          <span
-            class={cn(
-              'rounded-sm transition-colors duration-300 [box-decoration-break:clone]',
-              index === state().index && 'bg-brand/15 text-foreground',
-            )}
-          >
-            {sentence.text}{' '}
-          </span>
-        )}
-      </For>
-    </span>
-  )
-}
-
-function Working() {
-  return (
-    <span
-      class="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[11px] text-muted-foreground"
-      data-voice-working
-    >
-      <LoaderCircle class="size-3 shrink-0 text-brand motion-safe:animate-spin" />
-      <span class="min-w-0 truncate text-foreground/85">{activity().current}</span>
-      <Show when={activity().done}>
-        <span class="shrink-0 text-muted-foreground/70">· {activity().done} done</span>
-      </Show>
-    </span>
-  )
-}
-
-function Unblock() {
-  return (
-    <Button
-      aria-label="Play the voice dock's reply"
-      class="h-6 min-w-0 justify-start gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-brand hover:bg-brand/10"
-      onClick={() => speech.resume()}
-      size={null}
-      variant={null}
-    >
-      <Play class="size-3 shrink-0" />
-      <span class="truncate">{SOUND_BLOCKED}</span>
-    </Button>
-  )
-}
-
-function VoiceLine(props: { words?: boolean }) {
-  const spoken = () => props.words && (playerState().playing || playerState().paused)
-  const blocked = () => playerState().blocked
-  const listening = () => capturing() && !dock.talking()
-  const shown = () =>
-    blocked() ||
-    listening() ||
-    spoken() ||
-    !!activity().current ||
-    (!!dock.error() && !dock.talking()) ||
-    !!(dock.status() && !speaking() && !dock.talking()) ||
-    (draftOf().length > 0 && !(dock.talking() && capturing()))
-  return (
-    <Show when={shown()}>
-      <div
-        class="flex min-h-6 min-w-0 items-center gap-2 px-1 font-mono text-[11px] text-muted-foreground"
-        data-voice-line
-      >
-        <Show
-          when={listening()}
-          fallback={
-            <Show
-              when={!blocked() && spoken()}
-              fallback={
-                <Show when={!blocked()} fallback={<Unblock />}>
-                  <Show
-                    when={activity().current}
-                    fallback={
-                      <Show when={!dock.talking()}>
-                        <Status class="flex-1" />
-                      </Show>
-                    }
-                  >
-                    <Working />
-                  </Show>
-                </Show>
-              }
-            >
-              <SpokenParagraph />
-            </Show>
-          }
-        >
-          <Status class="shrink-0" />
-          <Waveform class="h-4 min-w-0 flex-1 text-error" live />
-        </Show>
-        <Show when={!recording() && draftOf().length}>
-          <span class="flex shrink-0 items-center gap-1 rounded-full bg-brand/15 px-1.5 text-[10.5px] text-brand">
-            <span class="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
-            {draftOf().length} collected
-          </span>
-        </Show>
-      </div>
-    </Show>
-  )
-}
-
-const glow = `@keyframes voice-glow {
-  0%, 100% { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4), 0 0 18px 0 color-mix(in oklab, var(--color-brand) 14%, transparent); }
-  50% { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4), 0 0 36px 4px color-mix(in oklab, var(--color-brand) 30%, transparent); }
-}`
-
-const audible = () => playerState().playing
-const speaking = () =>
-  dock.status() === 'Speaking' && (playerState().playing || playerState().paused)
-
-function Settings(props: { name?: string }) {
-  const name = () => props.name ?? 'Voice settings'
+function Settings() {
   return (
     <Popover>
-      <PopoverTrigger aria-label={name()} class={iconButton} title="Voice settings">
-        <Settings2 class="size-4" />
+      <PopoverTrigger aria-label="Side chat settings" class={iconButton} title="Side chat settings">
+        <Settings2 class="size-3.5" />
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label={`${name()} options`}
+        aria-label="Side chat settings options"
         class="max-h-[70dvh] w-64 overflow-y-auto p-0 font-mono text-[11.5px]"
-        side="top"
+        side="bottom"
       >
-        <div class="px-3 pt-2.5 pb-1 section-label">Voice</div>
+        <div class="px-3 pt-2.5 pb-1 section-label">Side chat</div>
         <div class="flex flex-col gap-2.5 px-3 pt-1 pb-2.5 text-muted-foreground">
           <label class="flex items-center justify-between gap-3">
-            Speak replies
-            <Toggle aria-label="Speak replies" bind={[dock.speak, dock.setSpeak]} />
-          </label>
-          <label class="flex items-center justify-between gap-3">
             Sound cues
-            <Toggle aria-label="Voice sound cues" bind={[dock.cuesOn, dock.setCuesOn]} />
+            <Toggle aria-label="Side chat sound cues" bind={[dock.cuesOn, dock.setCuesOn]} />
           </label>
-          <SpeechOptions name={name()} />
-          <label class="flex items-start justify-between gap-3">
-            <span class="flex flex-col gap-0.5">
-              Collect until send
-              <span class="text-[10.5px] leading-snug text-muted-foreground/70">
-                Keeps every recording; sends on Enter or when you say "send it" ("follow up" queues)
-              </span>
-            </span>
-            <Toggle aria-label="Collect until send" bind={[dock.collect, dock.setCollect]} />
-          </label>
+          <SpeechOptions name="Side chat" />
         </div>
-        <DictationOptions name={props.name ?? 'Voice'} />
+        <DictationOptions name="Side chat" />
       </PopoverContent>
     </Popover>
+  )
+}
+
+function ConversationMode() {
+  return (
+    <label
+      class="flex shrink-0 items-center gap-1 pr-0.5 pl-1 text-muted-foreground"
+      title="Conversation mode. On: replies are read aloud, and the mic sends what you said as soon as you stop. Off: the mic types into the box."
+    >
+      <AudioLines class="size-3.5" />
+      <Toggle aria-label="Conversation mode" bind={[dock.conversation, dock.setConversation]} />
+    </label>
   )
 }
 
@@ -334,10 +137,10 @@ function PlaybackStrip() {
   return (
     <Show
       when={playerState().playing || playerState().paused}
-      fallback={<SpeakerBar name="Voice dock" />}
+      fallback={<SpeakerBar name="Side chat" />}
     >
       <PlaybackBar
-        name="Voice dock"
+        name="Side chat"
         status={
           playerState().blocked ? SOUND_BLOCKED : playerState().paused ? 'Paused' : 'Speaking'
         }
@@ -347,63 +150,19 @@ function PlaybackStrip() {
   )
 }
 
-function Collected(props: { fork: ConversationId | undefined }) {
-  const fork = useDocOf(() => props.fork, VoiceForkDoc)
-  const clips = () => draftOf()
-  const seconds = () => clips().reduce((sum, clip) => sum + clip.seconds, 0)
-  const text = () =>
-    clips()
-      .map((clip) => fork()?.transcripts?.[clip.audio])
-      .filter((part) => part !== undefined)
-      .join(' ')
-  const pending = () => clips().some((clip) => fork()?.transcripts?.[clip.audio] === undefined)
+function Unblock() {
   return (
-    <Show when={clips().length}>
-      <div
-        class="flex flex-col gap-1.5 rounded-lg border border-brand/40 bg-brand/5 px-3 py-2"
-        data-voice-collected
+    <Show when={playerState().blocked}>
+      <Button
+        aria-label="Play the side chat's reply"
+        class="h-6 min-w-0 justify-start gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-brand hover:bg-brand/10"
+        onClick={() => speech.resume()}
+        size={null}
+        variant={null}
       >
-        <div class="flex items-center gap-2 font-mono text-[11px] text-brand">
-          <span class="size-1.5 shrink-0 rounded-full bg-brand motion-safe:animate-pulse" />
-          Collecting · {clips().length} {clips().length === 1 ? 'clip' : 'clips'} ·{' '}
-          {seconds().toFixed(1)} s
-          <span class="ml-auto flex items-center gap-1">
-            <Button
-              aria-label="Discard collected"
-              class="h-6 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-error/10 hover:text-error"
-              onClick={() => discardDraft()}
-              size={null}
-              variant={null}
-            >
-              discard
-            </Button>
-            <Button
-              aria-label="Send collected as follow-up"
-              class="h-6 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => sendDraft('followUp')}
-              size={null}
-              variant={null}
-            >
-              follow-up
-            </Button>
-            <Button
-              aria-label="Send collected"
-              class="h-6 rounded-md bg-brand px-2 font-mono text-[11px] font-normal text-brand-foreground hover:bg-brand/90"
-              onClick={() => sendDraft('steer')}
-              size={null}
-              variant={null}
-            >
-              send ↵
-            </Button>
-          </span>
-        </div>
-        <p class="text-[13px] leading-relaxed text-foreground/90">
-          {text()}
-          <Show when={pending()}>
-            <Shimmer class="ml-1 font-mono text-[11px]">transcribing…</Shimmer>
-          </Show>
-        </p>
-      </div>
+        <Play class="size-3 shrink-0" />
+        <span class="truncate">{SOUND_BLOCKED}</span>
+      </Button>
     </Show>
   )
 }
@@ -425,12 +184,11 @@ function SetupList() {
             ...(data.source === 'picked' ? { reset: true } : {}),
           },
           { label: 'Transcription', ...setup.transcription },
-          { label: 'Hands-free send', ...setup.handsFree },
         ]
       : []
   }
   return (
-    <Show when={items().length}>
+    <Show when={items().some((item) => !item.ready)}>
       <ul
         class="mt-4 flex w-full max-w-sm flex-col gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left"
         data-voice-setup
@@ -446,9 +204,7 @@ function SetupList() {
               </Show>
               <span class="flex min-w-0 flex-col gap-0.5">
                 <span class="font-mono text-[11px] text-muted-foreground">{item.label}</span>
-                <span class={cn(item.ready ? 'text-foreground/90' : 'text-foreground')}>
-                  {item.detail}
-                </span>
+                <span class="text-foreground">{item.detail}</span>
                 <Show when={item.fix}>
                   <span class="text-muted-foreground">{item.fix}</span>
                 </Show>
@@ -472,21 +228,11 @@ function SetupList() {
   )
 }
 
-function useDefaultSession() {
-  const standing = useDocOf(() => ROOT, StandingDoc)
-  const state = useDocOf(() => ROOT, VoiceSessionDoc)
-  const session = () => {
-    const source = standing()?.ultimate
-    return source === undefined ? undefined : state()?.sessions?.[source]
-  }
-  return { state, session }
-}
-
-function useVoicePick(): ModelPick {
-  const { state, session } = useDefaultSession()
+function useVoicePick(open: () => ConversationId | undefined): ModelPick {
+  const { state } = useSideSession()
   const status = useAction(StatusAction, null, {
     conversation: ROOT,
-    on: () => [session()?.id, state()?.model, state()?.thinking],
+    on: () => [open(), state()?.model, state()?.thinking],
   })
   const ref = () => {
     const model = status.data()?.model
@@ -495,7 +241,7 @@ function useVoicePick(): ModelPick {
     return { provider: model.slice(0, at), modelId: model.slice(at + 1) }
   }
   return {
-    name: 'Voice',
+    name: 'Side chat',
     ref,
     thinking: () => status.data()?.thinking,
     configure: async (change) => {
@@ -505,97 +251,289 @@ function useVoicePick(): ModelPick {
   }
 }
 
-function Bottom(props: { fork: ConversationId | undefined; fold: boolean }) {
-  const chip = <PickControl pick={useVoicePick()} />
-  const idle = () => !recording() && !working() && dock.phase() !== 'recording'
-  const showChip = () => props.fork === undefined && idle()
-  const coldHeld = useExternal(
-    () => coldHolds(composerDraft(COLD_DRAFT)),
-    (notify) => composerDraft(COLD_DRAFT).subscribe(notify),
+export function ClosingLine(props: {
+  last: NonNullable<VoiceSourceSession['last']>
+  source: string
+}) {
+  const text = () => closing(props.last, QUIET_MINUTES)
+  return (
+    <div class="flex flex-col items-center gap-0.5 px-4 pt-1 pb-3" data-voice-ended>
+      <div
+        class="flex w-full min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground"
+        data-closing-line={props.last.reason}
+        data-ui="transcript-meta"
+      >
+        <hr class="h-px min-w-4 flex-1 border-0 border-t border-dashed border-border" />
+        <span class="flex min-w-0 items-center gap-1.5">
+          <GitFork class="size-3 shrink-0 text-brand" />
+          <span class="shrink-0">concluded</span>
+          <span class="shrink-0">· {formatTime(props.last.endedAt)}</span>
+        </span>
+        <hr
+          aria-hidden="true"
+          class="h-px min-w-4 flex-1 border-0 border-t border-dashed border-border"
+        />
+      </div>
+      <p
+        class={cn(
+          'text-center font-mono text-[11px] text-muted-foreground/80',
+          props.last.failed && 'text-error',
+        )}
+        title={props.last.failed}
+      >
+        {text().reason} · {props.last.summary ? `summary sent to ${props.source}` : text().handback}
+      </p>
+    </div>
   )
-  const hot = () => (coldHeld() ? undefined : props.fork)
+}
+
+function Bottom(props: { fork: ConversationId | undefined; ended: boolean; source: string }) {
+  const chip = <PickControl pick={useVoicePick(() => props.fork)} />
   const viewport = useViewport()
   const placeholder = () =>
-    viewport() === 'phone'
-      ? `Type, paste, or ${talkVerb()} to talk…`
-      : `Type, paste a screenshot, or ${talkVerb()} ${holdKeys()} to talk…`
+    props.ended
+      ? 'Your next message starts a fresh side chat…'
+      : viewport() === 'phone'
+        ? `Talk it through with ${props.source}…`
+        : `Talk it through with ${props.source} · ${talkVerb()} ${holdKeys()} to speak…`
   const target = (): ComposerTarget => ({
-    name: 'Voice dock',
+    name: 'Side chat',
     placeholder: placeholder(),
     images: true,
-    dictation: voiceSink,
-    ready: () => draftOf().length > 0,
+    ...(dock.conversation() ? { dictation: voiceSink } : {}),
     send: (text, images) => sendTyped(text, images),
-    ...(hot() === undefined ? { draft: COLD_DRAFT, toolbar: showChip() ? chip : undefined } : {}),
+    ...(props.fork === undefined ? { draft: COLD_DRAFT, toolbar: chip } : {}),
   })
   return (
-    <Show
-      when={!props.fold}
-      fallback={
-        <footer class="flex shrink-0 flex-col gap-1 px-2 pb-2">
-          <VoiceLine words />
-          <Show
-            when={!dock.talking()}
-            fallback={<TalkBar settings={<Settings name="Talk bar settings" />} />}
-          >
-            <PromptBox
-              accepts={{ images: true }}
-              conversation={hot()}
-              dictation={voiceSink}
-              draft={hot() ?? COLD_DRAFT}
-              minimal
-              name="Voice dock"
-              onSubmit={(input) => sendTyped(input.text, input.images)}
-              placeholder={`Talk (${holdKeys()}) or type…`}
-              ready={() => draftOf().length > 0}
-            />
-            <div class="flex justify-end">
-              <ModeSwitch onToggle={dock.setTalking} talking={false} />
-            </div>
+    <footer class="flex shrink-0 flex-col gap-1.5 pt-1">
+      <div class="flex flex-col gap-1.5 px-4 empty:hidden">
+        <PlaybackStrip />
+        <Unblock />
+        <Show when={dock.error()}>
+          <p class="font-mono text-[11px] break-words text-error" role="alert">
+            {dock.error()}
+          </p>
+        </Show>
+      </div>
+      <Show
+        when={props.fork}
+        fallback={
+          <ComposerRedirect value={target}>
+            <Composer dock />
+          </ComposerRedirect>
+        }
+      >
+        {(fork) => (
+          <ScopedConversation id={fork()}>
+            <ComposerRedirect value={target}>
+              <Composer dock />
+            </ComposerRedirect>
+          </ScopedConversation>
+        )}
+      </Show>
+    </footer>
+  )
+}
+
+function Header(props: {
+  docked: boolean
+  phone: boolean
+  onDrag?: (event: PointerEvent & { currentTarget: HTMLElement }) => void
+}) {
+  const { session, name, source } = useSideSession()
+  const id = () => session()?.id
+  const fork = useDocOf(id, VoiceForkDoc)
+  const now = useNow(30_000, () => id() !== undefined)
+  const [ending, setEnding] = createSignal(false)
+  const [failure, setFailure] = createSignal<string>()
+  const startFresh = async () => {
+    setEnding(true)
+    setFailure(undefined)
+    try {
+      await api.action(EndAction, { source: source() })
+    } catch (error) {
+      setFailure(errorMessage(error).replace(/^voice-live\/end: /, ''))
+    } finally {
+      setEnding(false)
+    }
+  }
+  const meta = () => {
+    const caught = fork()?.caughtUp
+    return caught ? `caught up ${formatAgo(caught, now(), { ago: true })}` : 'hot'
+  }
+  return (
+    <>
+      <header
+        class={cn(
+          'flex shrink-0 items-center gap-1.5 pr-1 pl-3 select-none',
+          id() === undefined && 'border-b border-border/60',
+          props.phone ? 'h-9' : 'h-10',
+          props.onDrag && !props.phone && 'cursor-grab touch-none active:cursor-grabbing',
+        )}
+        onPointerDown={(event) => props.onDrag?.(event)}
+        title={props.onDrag && !props.phone ? 'Drag to move' : undefined}
+      >
+        <GitFork class="size-3.5 shrink-0 text-brand" />
+        <span class="shrink-0 text-[13px] font-semibold">Side chat</span>
+        <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+          · {name() ?? '…'}
+        </span>
+        <span class="flex-1" />
+        <span class="flex shrink-0 items-center gap-0.5">
+          <ConversationMode />
+          <Settings />
+          <Show when={id() !== undefined && !props.phone && !props.docked}>
+            <Button
+              aria-label="Open the side chat as a conversation"
+              class={iconButton}
+              onClick={() => switchConversation(id()!)}
+              size={null}
+              title="Open the side chat as a conversation"
+              variant={null}
+            >
+              <SquareArrowOutUpRight class="size-3.5" />
+            </Button>
           </Show>
-        </footer>
-      }
-    >
-      <footer class="flex shrink-0 flex-col gap-1.5 pt-1">
-        <div class="flex flex-col gap-1.5 px-4">
-          <PlaybackStrip />
-          <Collected fork={props.fork} />
-          <VoiceLine />
+          <Button
+            aria-label="Close side chat"
+            class={iconButton}
+            onClick={() => setVoiceOpen(false)}
+            size={null}
+            title={`Close · ${keys()}`}
+            variant={null}
+          >
+            <X class="size-3.5" />
+          </Button>
+        </span>
+      </header>
+      <Show when={id() !== undefined}>
+        <div class="flex h-7 shrink-0 items-center gap-2 border-b border-border/60 px-3 font-mono text-[11px] text-muted-foreground">
+          <span class="min-w-0 flex-1 truncate">{meta()}</span>
+          <Button
+            aria-label={`Start fresh: end side chat #${id()}`}
+            class="h-6 px-1 font-mono text-[11px] font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            disabled={ending()}
+            onClick={startFresh}
+            size={null}
+            title="End this side chat now; a summary goes back only if something was decided or left open"
+            variant={null}
+          >
+            {ending() ? 'ending…' : 'start fresh'}
+          </Button>
         </div>
-        <TalkOrType dock>
-          <Show
-            when={hot()}
-            fallback={
-              <ComposerRedirect value={target}>
-                <Composer dock />
-              </ComposerRedirect>
-            }
-          >
-            {(fork) => (
-              <ScopedConversation id={fork()}>
-                <ComposerRedirect value={target}>
-                  <Composer dock />
-                </ComposerRedirect>
-              </ScopedConversation>
-            )}
-          </Show>
-        </TalkOrType>
-      </footer>
-    </Show>
+      </Show>
+      <Show when={failure()}>
+        <p
+          class="border-b border-border/60 px-3 py-1.5 font-mono text-[11px] break-words text-error"
+          role="alert"
+        >
+          {failure()}
+        </p>
+      </Show>
+    </>
+  )
+}
+
+export function SideChatBody(props: {
+  docked?: boolean
+  phone?: boolean
+  onDrag?: (event: PointerEvent & { currentTarget: HTMLElement }) => void
+}) {
+  const { session, name, source } = useSideSession()
+  const surface = useSurface()
+  const shownNow = useConversationId()
+  const besideSource = () => surface() === 'agent' && shownNow() === source()
+  const id = () => session()?.id
+  const last = () => (id() === undefined ? session()?.last : undefined)
+  const shown = () => id() ?? last()?.id
+  const sourceLabel = () => name() ?? 'the source'
+  let anchor: HTMLSpanElement | undefined
+  useFocusWhenWanted(() => anchor?.parentElement ?? undefined)
+  return (
+    <>
+      <span class="hidden" ref={anchor} />
+      <Header docked={!!props.docked} onDrag={props.onDrag} phone={!!props.phone} />
+      <Show when={id()}>
+        {(open) => (
+          <ScopedConversation id={open()}>
+            <Voicing fork={open()} />
+          </ScopedConversation>
+        )}
+      </Show>
+      <Show when={session()?.question !== undefined && id()}>
+        {(open) => (
+          <PinnedQuestion folded={besideSource()} fork={open()} message={session()!.question!} />
+        )}
+      </Show>
+      <Show
+        when={shown()}
+        fallback={
+          <div class="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-10 py-4 text-center *:first:mt-auto *:last:mb-auto">
+            <GitFork class="mb-1 size-5 text-brand" />
+            <p class="text-[14px] text-foreground">Think it through with {sourceLabel()}</p>
+            <p class="max-w-sm text-[13px] text-muted-foreground">
+              Type, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> to speak. A side chat forks{' '}
+              {sourceLabel()} with everything it knows, talks it through with you, and hands the
+              result back when you agree.
+            </p>
+            <SetupList />
+          </div>
+        }
+      >
+        {(fork) => (
+          <ScopedConversation id={fork()}>
+            <ConversationTranscript dock />
+          </ScopedConversation>
+        )}
+      </Show>
+      <Show when={last()}>{(ended) => <ClosingLine last={ended()} source={sourceLabel()} />}</Show>
+      <Bottom ended={!!last()} fork={id()} source={sourceLabel()} />
+    </>
+  )
+}
+
+function useSplit() {
+  const [wide, setWide] = createSignal(matchMedia(SPLIT).matches)
+  onSettled(() => {
+    const query = matchMedia(SPLIT)
+    const update = () => setWide(query.matches)
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  })
+  const surface = useSurface()
+  const shown = useConversationId()
+  const { source } = useSideSession()
+  return () => wide() && surface() === 'agent' && shown() !== undefined && shown() === source()
+}
+
+export function SideChatPanel() {
+  return (
+    <section
+      aria-label="Side chat"
+      class="flex h-full min-h-0 flex-col bg-background"
+      data-voice-panel
+      data-voice-docked
+    >
+      <SideChatBody docked />
+    </section>
   )
 }
 
 export function VoicePanel() {
-  const { session } = useDefaultSession()
-  const fork = useDocOf(() => session()?.id, VoiceForkDoc)
+  const { session, source } = useSideSession()
   const viewport = useViewport()
   const id = () => session()?.id
-  const now = useNow(30_000, () => id() !== undefined)
   const surface = useSurface()
   const shown = useConversationId()
   const summary = useConversationSummary(shown)
   const status = useAction(StatusAction, null, { conversation: ROOT })
+  const split = useSplit()
+  const panels = usePanels()
+  const docked = () => voiceOpen() && split()
   useEvent('secrets:changed', () => void status.refetch())
+  createEffect(source, (next) => {
+    setVoiceSource(next)
+  })
   createEffect(id, (open) => {
     composeIn(open)
   })
@@ -603,6 +541,24 @@ export function VoicePanel() {
     () => status.data()?.transcribes,
     (known) => {
       if (known !== undefined) speech.setKeyed(known)
+    },
+  )
+  let before: { panel?: string; open: boolean } | undefined
+  createEffect(
+    () => ({ dock: docked(), active: panels.active()?.id, open: panels.open() }),
+    (now) => {
+      if (now.dock === (before !== undefined)) return
+      writingAs('app', () => {
+        if (now.dock) {
+          before = { panel: now.active, open: now.open }
+          openPanel(PANEL)
+          return
+        }
+        const back = before!
+        before = undefined
+        if (back.open && back.panel && back.panel !== PANEL) openPanel(back.panel)
+        else closePanel()
+      })
     },
   )
   createEffect(
@@ -625,13 +581,9 @@ export function VoicePanel() {
     right: number
     bottom: number
   } | null>('corner', null)
-  const [desktopFolded, setDesktopFolded] = useExtensionUiState('folded', false)
   const [snapped, setSnap] = useExtensionUiState<Snap>('sheet', 'rest')
   const snap = () => snapped() as Snap
   const [dragged, setDragged] = createSignal<number>()
-  const folded = () => (phone() ? snap() === 'folded' : desktopFolded())
-  const setFolded = (fold: boolean) =>
-    phone() ? setSnap(fold ? 'folded' : 'rest') : setDesktopFolded(fold)
   let sheet: HTMLElement | undefined
   let observer: ResizeObserver | undefined
   onCleanup(() => observer?.disconnect())
@@ -686,12 +638,13 @@ export function VoicePanel() {
       const height = dragged()
       setDragged(undefined)
       if (!moving || height === undefined) return
-      const heights = {
-        folded: 120,
-        rest: window.innerHeight * REST,
-        full,
-      }
-      setSnap(settle(snap(), height, start, velocity, heights))
+      setSnap(
+        settle(snap(), height, start, velocity, {
+          folded: 120,
+          rest: window.innerHeight * REST,
+          full,
+        }),
+      )
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -707,7 +660,7 @@ export function VoicePanel() {
   }
   const drag = (event: PointerEvent & { currentTarget: HTMLElement }) => {
     if (phone()) return swipe(event)
-    if ((event.target as HTMLElement).closest('button, [popover]')) return
+    if ((event.target as HTMLElement).closest('button, [popover], label')) return
     const panel = event.currentTarget.closest<HTMLElement>('[data-voice-panel]')!
     const box = panel.getBoundingClientRect()
     const right = window.innerWidth - box.right
@@ -731,16 +684,15 @@ export function VoicePanel() {
     const at = place()
     if (phone()) return { height: sheetHeight() }
     if (!at) return undefined
-    const height = folded() ? '6rem' : 'min(44rem, 100vh - 5rem)'
     return {
       right: `min(${at.right}px, 100vw - min(36rem, 46vw) - 0.5rem)`,
-      bottom: `min(${at.bottom}px, 100vh - ${height} - 3rem)`,
+      bottom: `min(${at.bottom}px, 100vh - min(44rem, 100vh - 5rem) - 3rem)`,
     }
   }
   return (
-    <Show when={voiceOpen()}>
+    <Show when={voiceOpen() && !docked()}>
       <section
-        aria-label="Voice"
+        aria-label="Side chat"
         class={cn(
           'pointer-events-auto fixed z-40 flex flex-col overflow-hidden border border-border bg-background shadow-2xl shadow-black/40',
           phone()
@@ -749,29 +701,23 @@ export function VoicePanel() {
                   'transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
                 'inset-x-0 bottom-0 rounded-t-2xl border-x-0 border-b-0 border-t-brand/40 pb-[env(safe-area-inset-bottom)] has-[textarea:focus]:pb-0',
               )
-            : folded()
-              ? 'right-4 bottom-4 w-[min(26rem,46vw)] rounded-xl'
-              : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
-          audible() && 'border-brand/50 motion-safe:animate-[voice-glow_2.8s_ease-in-out_infinite]',
+            : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
         )}
-        data-voice-folded={folded() || undefined}
         data-voice-panel
         data-voice-sheet={phone() ? snap() : undefined}
-        data-voice-speaking={audible() || undefined}
         ref={(element) => {
           sheet = element
           measure(element)
         }}
         style={style()}
       >
-        <style>{glow}</style>
         <Show when={phone()}>
           <div
             class="flex h-5 shrink-0 touch-none items-center justify-center select-none"
             onPointerDown={drag}
           >
             <Button
-              aria-label={snap() === 'full' ? 'Shrink voice' : 'Expand voice'}
+              aria-label={snap() === 'full' ? 'Shrink side chat' : 'Expand side chat'}
               class="flex h-5 w-16 items-center justify-center"
               data-voice-grabber
               onClick={() => !swiped && setSnap(snap() === 'full' ? 'rest' : 'full')}
@@ -782,133 +728,24 @@ export function VoicePanel() {
             </Button>
           </div>
         </Show>
-        <header
-          class={cn(
-            'flex shrink-0 touch-none items-center gap-2 border-b border-border/60 px-3 select-none',
-            phone() ? 'h-9' : 'h-10',
-            !phone() && 'cursor-grab active:cursor-grabbing',
-            folded() && 'border-b-0',
-          )}
-          onDblClick={() => setFolded(!folded())}
-          onPointerDown={drag}
-          title={phone() ? undefined : 'Drag to move · double-click to fold'}
-        >
-          <AudioLines class="size-3.5 shrink-0 text-brand" />
-          <span class="text-[13px] font-semibold">Voice</span>
-          <Show when={!folded()}>
-            <span class="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
-              {id() ? (
-                `hot · ${fork()?.caughtUp ? `caught up ${formatAgo(fork()!.caughtUp!, now(), { ago: true })}` : `fork of @ultimate`} · #${id()}`
-              ) : session()?.last ? (
-                <span title={session()!.last!.failed}>
-                  {`ended after ${QUIET_MINUTES} min quiet · ${
-                    session()!.last!.summary
-                      ? 'summary sent to @ultimate'
-                      : session()!.last!.failed
-                        ? 'summary failed'
-                        : 'nothing to hand back'
-                  }`}
-                </span>
-              ) : (
-                'cold · forks @ultimate when you talk'
-              )}
-            </span>
-          </Show>
-          <span class="ml-auto flex shrink-0 items-center gap-1">
-            <Settings />
-            <Show when={!folded()}>
-              <Show when={id()}>
-                <Button
-                  aria-label="Open the voice conversation"
-                  class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-                  onClick={() => switchConversation(id()!)}
-                  size={null}
-                  title="Open the voice conversation"
-                  variant={null}
-                >
-                  <SquareArrowOutUpRight class="size-3.5" />
-                </Button>
-              </Show>
-            </Show>
-            <Button
-              aria-label={folded() ? 'Unfold voice' : 'Fold voice'}
-              class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => setFolded(!folded())}
-              size={null}
-              title={folded() ? 'Unfold' : 'Fold'}
-              variant={null}
-            >
-              <Show when={folded()} fallback={<Minimize2 class="size-3.5" />}>
-                <Maximize2 class="size-3.5" />
-              </Show>
-            </Button>
-            <Button
-              aria-label="Close voice"
-              class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => setVoiceOpen(false)}
-              size={null}
-              title={`Close · ${keys()}`}
-              variant={null}
-            >
-              <X class="size-3.5" />
-            </Button>
-          </span>
-        </header>
-        <Show when={id()}>
-          {(open) => (
-            <ScopedConversation id={open()}>
-              <Voicing fork={open()} />
-            </ScopedConversation>
-          )}
-        </Show>
-        <Show when={!folded()}>
-          <Show
-            when={id()}
-            fallback={
-              <div class="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-10 py-4 text-center *:first:mt-auto *:last:mb-auto">
-                <AudioLines class="mb-1 size-5 text-brand" />
-                <p class="text-[14px] text-foreground">Think out loud with @ultimate</p>
-                <p class="max-w-sm text-[13px] text-muted-foreground">
-                  Use the mic below, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> when no other prompt
-                  box is focused. Voice forks @ultimate with everything it knows, talks it through
-                  with you, and hands the result back when you agree.
-                </p>
-                <SetupList />
-              </div>
-            }
-          >
-            {(open) => (
-              <ScopedConversation id={open()}>
-                <ConversationTranscript dock />
-              </ScopedConversation>
-            )}
-          </Show>
-        </Show>
-        <Bottom fold={folded()} fork={id()} />
+        <SideChatBody onDrag={drag} phone={phone()} />
       </section>
     </Show>
   )
 }
 
-export function VoiceToggle() {
-  const { session } = useDefaultSession()
-  return (
-    <Button
-      aria-label={voiceOpen() ? 'Hide voice' : 'Open voice'}
-      class={cn(
-        'flex h-6 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground max-md:size-9 max-md:justify-center max-md:px-0',
-        session()?.id !== undefined && 'text-brand',
-      )}
-      onClick={() => setVoiceOpen(!voiceOpen())}
-      size={null}
-      title={`Voice · ${keys()}`}
-      variant={null}
-    >
-      <AudioLines class="size-3.5" />
-      <Show when={session()?.id !== undefined}>
-        <span class="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
-      </Show>
-      <span class="max-md:hidden">voice</span>
-    </Button>
-  )
+const [focusWanted, wantFocus] = createRoot(() => createSignal(false))
+
+export function openSideChat() {
+  setVoiceOpen(true)
+  wantFocus(true)
+}
+
+function useFocusWhenWanted(section: () => HTMLElement | undefined) {
+  createEffect(focusWanted, (wanted) => {
+    const box = section()?.querySelector<HTMLTextAreaElement>('[data-ui="composer"] textarea')
+    if (!wanted || !box) return
+    box.focus()
+    wantFocus(false)
+  })
 }

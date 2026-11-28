@@ -69,18 +69,18 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
     <Show when={props.conversation !== undefined && id() !== undefined}>
       <Button
         aria-current={voiceOpen() ? 'true' : undefined}
-        aria-label="Voice session"
+        aria-label="Side chat session"
         class="mx-2 flex w-[calc(100%-1rem)] items-center justify-start gap-1.5 rounded-md py-1.5 pr-2 pl-9 text-left font-normal outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring"
         data-voice-row={id()}
         data-voice-live={live()}
         onClick={() => setVoiceOpen(!voiceOpen())}
         size={null}
-        title={`Voice session · ${live()}`}
+        title={`Side chat · ${live()}`}
         variant={null}
       >
         <Level live={live()} />
         <span class="min-w-0 flex-1 truncate font-mono text-[10.5px] text-foreground/80">
-          Voice
+          Side chat
         </span>
         <span
           class={cn(
