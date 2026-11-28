@@ -45,11 +45,13 @@ type Local = {
 type Session = {
   id: ConversationId | undefined
   live: AbortController
+  voiceSends: Set<object>
   forks: Map<ConversationId, Readonly<SideChatFork>>
 }
 const newSession = (): Session => ({
   id: undefined,
   live: new AbortController(),
+  voiceSends: new Set(),
   forks: new Map(),
 })
 const live = cell(newSession())
@@ -61,7 +63,9 @@ const sourced = () => {
 }
 export function setSideChatSource(source: ConversationId | undefined) {
   if (source === sourceCell.get()) return
-  if (session().id !== undefined) endLocally()
+  const current = session()
+  if (current.id !== undefined || current.voiceSends.size || state().phase === 'recording')
+    endLocally('The side chat source changed')
   sourceCell.set(source)
 }
 
@@ -370,9 +374,10 @@ async function sendTurn(input: {
   who: UiWho
   destination: { source?: ConversationId }
 }) {
-  const { signal } = session().live
+  const { live: controller, id, voiceSends } = session()
+  const { signal } = controller
   const { who, destination } = input
-  let owner = session().id
+  let owner = id
   const cancelled = () => {
     if (input.fromComposer) throw signal.reason
   }
@@ -405,6 +410,7 @@ async function sendTurn(input: {
   if (dock.conversation()) speech.warm()
   let delivered = false
   const key = crypto.randomUUID()
+  if (input.recorded) voiceSends.add(input)
   try {
     if (input.interrupted) {
       dock.player.stop()
@@ -419,6 +425,7 @@ async function sendTurn(input: {
     if (signal.aborted) return cancelled()
     delivered = await deliver()
   } finally {
+    voiceSends.delete(input)
     releaseBox?.(delivered ? (carried ? 'all' : 'attachments') : undefined)
   }
 
@@ -443,8 +450,10 @@ async function sendTurn(input: {
     const current = () => !signal.aborted && pendingKey(state()) === key
     try {
       const status = await api.action(StatusAction, destination, { signal, who })
+      signal.throwIfAborted()
       speech.setKeyed(status.transcribes)
       const audio = input.recorded ? await base64(input.recorded.blob) : undefined
+      signal.throwIfAborted()
       const mimeType = input.recorded?.blob.type.split(';')[0] ?? ''
       const recorded = audio
         ? await api.action(
@@ -458,6 +467,7 @@ async function sendTurn(input: {
             { signal, who },
           )
         : undefined
+      signal.throwIfAborted()
       owner = recorded?.session ?? owner
       const kept = recorded?.audio
       if (kept) patchLocal(key, { audio: kept })
@@ -470,6 +480,7 @@ async function sendTurn(input: {
           return false
         }
       }
+      signal.throwIfAborted()
       const sent = await api.action(
         TurnAction,
         {
@@ -486,6 +497,7 @@ async function sendTurn(input: {
         },
         { signal, who },
       )
+      signal.throwIfAborted()
       patchLocal(key, { conversation: sent.conversation })
       if (!sent.dropped) retire(key)
       if (!current()) {
@@ -659,10 +671,10 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
   )
 }
 
-function endLocally() {
+function endLocally(reason = 'The side chat ended') {
   void capture.end(sideChatSink)
   dock.player.stop()
-  session().live.abort(new Error('The side chat ended'))
+  session().live.abort(new Error(reason))
   voiced = undefined
   live.set(newSession())
   dock.setLocal({})

@@ -1068,7 +1068,10 @@ const quiet = (host: ExtensionHost) => {
 async function endSession(host: ExtensionHost, id: ConversationId, ending: Ending) {
   const task = await host.harness().commit(async (tx) => {
     const fork = await tx.doc(Fork, id)
-    if (fork.ended) return undefined
+    if (fork.ended) {
+      if (ending.reason === 'answered') throw new Error('This side chat is no longer open')
+      return undefined
+    }
     const running = fork.quiet === undefined ? undefined : await tx.task(fork.quiet)
     if (running?.state.status === 'terminal' && fork.ending?.reason === 'quiet') delete fork.ending
     const pending = fork.ending

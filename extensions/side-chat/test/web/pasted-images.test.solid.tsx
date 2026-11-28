@@ -107,22 +107,29 @@ afterEach(() => {
   getDraft(COLD_DRAFT).set({ text: '', images: [], files: [], sending: false })
 })
 
-it('a first spoken turn keeps its original source when selection changes during status', async () => {
+it('switching sources cancels a first spoken turn already waiting for its transcript', async () => {
   composeIn(undefined)
   const first = parseConversationId(42)
   setSideChatSource(first)
-  const status = Promise.withResolvers<void>()
-  harness.status = status.promise
+  harness.route = 'text'
+  getDraft(COLD_DRAFT).set({ text: 'look at this', images: [shot] })
   const sent = speak()
-  expect(harness.destinations).toEqual([['status', first]])
-  setSideChatSource(parseConversationId(43))
-  status.resolve()
-  await sent
+  await settle()
   expect(harness.destinations).toEqual([
     ['status', first],
     ['record', first],
-    ['turn', first],
   ])
+  expect(Object.values(dock.local())).toMatchObject([{ audio: 'rec-1' }])
+  expect(getDraft(COLD_DRAFT).get().sending).toBe(true)
+  setSideChatSource(parseConversationId(43))
+  await settle()
+  expect(getDraft(COLD_DRAFT).get()).toMatchObject({
+    text: 'look at this',
+    images: [shot],
+    sending: false,
+  })
+  await sent
+  expect(harness.turns).toEqual([])
 })
 
 it('a spoken turn takes the images pasted into the side chat box and clears them', async () => {

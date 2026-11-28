@@ -2,13 +2,19 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import { composeIn, sendTyped, settleTranscripts, sideChatSink } from '../../dock.solid.tsx'
+import {
+  composeIn,
+  sendTyped,
+  setSideChatSource,
+  settleTranscripts,
+  sideChatSink,
+} from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   stops: 0,
   stopFails: false,
   turns: [] as Record<string, unknown>[],
-  record: undefined as Promise<void> | undefined,
+  recordings: [] as Record<string, unknown>[],
 }))
 vi.mock('@/sdk/solid', async () => {
   const { createSignal } = await import('solid-js')
@@ -22,8 +28,10 @@ vi.mock('@/sdk/solid', async () => {
           if (harness.stopFails) return Promise.reject(new Error('stop failed'))
         }
         if (ref.name === 'status') return Promise.resolve({ route: 'text' })
-        if (ref.name === 'record')
-          return Promise.resolve(harness.record).then(() => ({ audio: 'rec-1', session: 40 }))
+        if (ref.name === 'record') {
+          harness.recordings.push(args)
+          return Promise.resolve({ audio: 'rec-1', session: 40 })
+        }
         if (ref.name === 'turn') {
           harness.turns.push(args)
           return Promise.resolve({ conversation: 40 })
@@ -95,10 +103,11 @@ const speak = () => {
 
 beforeEach(async () => {
   await serverEndedSession(composeIn)
+  setSideChatSource(undefined)
   harness.turns.length = 0
+  harness.recordings.length = 0
   harness.stops = 0
   harness.stopFails = false
-  harness.record = undefined
   composeIn(parseConversationId(40))
 })
 
@@ -120,6 +129,18 @@ it('Enter during a recording stops it and sends the typed text, the image and it
       images: [shot],
     }),
   ])
+})
+
+it('switching sources while Enter releases a first recording cancels it without sending the audio or typed draft', async () => {
+  composeIn(undefined)
+  setSideChatSource(parseConversationId(42))
+  await capture.press(sideChatSink)?.started
+  speak()
+  const sent = sendTyped('look at this', [shot])
+  setSideChatSource(parseConversationId(43))
+  await expect(sent).rejects.toThrow('The side chat source changed')
+  expect(harness.recordings).toEqual([])
+  expect(harness.turns).toEqual([])
 })
 
 it('a session that ends while Enter stops the recording sends nothing and leaves the typed text in the box', async () => {
