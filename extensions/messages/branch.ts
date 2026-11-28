@@ -12,6 +12,7 @@ import {
 import { Family } from '../models/api.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
 import { LineageApi, Roots } from '../lineage/api.ts'
+import { Withheld } from '../subagents/api.ts'
 import { imagesParameter, resolveImages } from './images.ts'
 import type { ImagesRef } from './images.ts'
 import { send } from './send.ts'
@@ -80,7 +81,7 @@ export const branchTool = (host: ExtensionHost) =>
           { ...inheritedRootAgent, ...(await hostDefault(host)) },
           host.modelRuntime,
         )
-        const { model, thinkingLevel, modelTools, tools } = authenticatedOrDefaultAgent
+        const { model, thinkingLevel, modelTools, tools, withheld } = authenticatedOrDefaultAgent
         const branch = await lineage.branch(
           {
             from: root,
@@ -102,6 +103,7 @@ export const branchTool = (host: ExtensionHost) =>
             ...(modelTools && 'add' in modelTools && modelTools.add?.length ? { modelTools } : {}),
             ...(coordinator.tools || coordinator.denyTools?.length ? { tools } : {}),
           })
+          ;(await tx.doc(Withheld, branch.id)).tools = withheld
           ;(await tx.doc(host.metadata, branch.id)).label = 'coordinator'
           ;(await tx.doc(Family, branch.id)).name = definitionFamily(
             coordinator,

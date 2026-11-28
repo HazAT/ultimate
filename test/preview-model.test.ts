@@ -19,6 +19,7 @@ afterEach(() => vi.unstubAllEnvs())
 const parent = {
   tools: [],
   deferred: [],
+  callable: [],
   extensions: [],
   model: { provider: 'anthropic', modelId: 'claude-opus-4-1' },
   thinkingLevel: 'high',

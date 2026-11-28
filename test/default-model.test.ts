@@ -39,6 +39,7 @@ it('starts a branch on the configured default whose login is gone, never on the 
   const parent = {
     tools: [],
     deferred: [],
+    callable: [],
     extensions: [],
     model: defaultModel(available, settings, opus),
   } as unknown as Agent
