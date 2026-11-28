@@ -74,6 +74,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   }
 })
 
+import { getDraft } from '../../../../web/src/app/drafts.ts'
 import { regionOpen } from '../../../../web/src/sdk/actions.ts'
 import { registry, store, uiState } from '../../../../web/src/sdk/client.ts'
 import {
@@ -341,8 +342,65 @@ it('a reply is read aloud on its own only while Conversation mode is on and the 
   expect(await said(false, true)).toBe(false)
 })
 
-it('a final handoff leaves its queued reply playing, and X stops the owned playback', async () => {
-  const view = renderSolid(() => (
+it.each(['typed', 'silent talk'] as const)(
+  'a final handoff leaves its queued reply playing until the next side chat sends (%s), without stopping that fork',
+  async (via) => {
+    const view = renderSolid(() => (
+      <ExtensionName value="side-chat">
+        <SideChatOverlay />
+      </ExtensionName>
+    ))
+    await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
+    setSideChatOpen(true)
+    await settle()
+    await sendTyped('Hand it off')
+    const turn = harness.actions.find((call) => call.name === 'turn')!.args as { key: string }
+    harness.server!.of(fork)!.send('view', {
+      conversation: { id: fork },
+      docs: {},
+      entries: [
+        { id: 8, kind: 'side-chat.turn', data: { ...turn, text: 'Hand it off', route: 'text' } },
+        {
+          id: 9,
+          kind: 'pi.assistant',
+          model: [
+            {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'I handed it off. You can go back now.' }],
+            },
+          ],
+        },
+      ],
+    } as unknown as StreamedView)
+    await settle()
+    expect(playerState()).toMatchObject({ key: turn.key, index: 0, playing: true })
+    await root(ended('handoff'))
+    expect(view.querySelector('[data-closing-line="handoff"]')).not.toBeNull()
+    expect(playerState()).toMatchObject({ key: turn.key, index: 0, playing: true })
+    utterances.at(-1)!.dispatchEvent(new Event('end'))
+    flush()
+    expect(playerState()).toMatchObject({ key: turn.key, index: 1, playing: true })
+    const next = parseConversationId(91)
+    await root({ sessions: { [ultimate]: { id: next, startedAt: 2 } } })
+    composeIn(next)
+    const before = harness.actions.length
+    if (via === 'typed') await sendTyped('A new thought')
+    else {
+      sideChatSink.start!()
+      sideChatSink.recording!()
+      getDraft(next).set({ text: 'A new thought' })
+      await sideChatSink.finish(
+        { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: false, envelope: [] },
+        false,
+      )
+    }
+    expect(harness.actions.slice(before).map((call) => call.name)).toEqual(['turn'])
+    expect(speech.state.get()).toMatchObject({ playing: false, paused: false })
+  },
+)
+
+it('X stops the owned playback', async () => {
+  renderSolid(() => (
     <ExtensionName value="side-chat">
       <SideChatOverlay />
     </ExtensionName>
@@ -350,39 +408,22 @@ it('a final handoff leaves its queued reply playing, and X stops the owned playb
   await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
   setSideChatOpen(true)
   await settle()
-  await sendTyped('Hand it off')
+  await sendTyped('Say something')
   const turn = harness.actions.find((call) => call.name === 'turn')!.args as { key: string }
   harness.server!.of(fork)!.send('view', {
     conversation: { id: fork },
     docs: {},
     entries: [
-      { id: 8, kind: 'side-chat.turn', data: { ...turn, text: 'Hand it off', route: 'text' } },
+      { id: 8, kind: 'side-chat.turn', data: { ...turn, text: 'Say something', route: 'text' } },
       {
         id: 9,
         kind: 'pi.assistant',
-        model: [
-          {
-            role: 'assistant',
-            content: [{ type: 'text', text: 'I handed it off. You can go back now.' }],
-          },
-        ],
+        model: [{ role: 'assistant', content: [{ type: 'text', text: 'Here it is.' }] }],
       },
     ],
   } as unknown as StreamedView)
   await settle()
-  expect(playerState()).toMatchObject({ key: turn.key, index: 0, playing: true })
-  await root(ended('handoff'))
-  expect(view.querySelector('[data-closing-line="handoff"]')).not.toBeNull()
-  expect(playerState()).toMatchObject({ key: turn.key, index: 0, playing: true })
-  utterances.at(-1)!.dispatchEvent(new Event('end'))
-  flush()
-  expect(playerState()).toMatchObject({ key: turn.key, index: 1, playing: true })
-  const next = parseConversationId(91)
-  await root({ sessions: { [ultimate]: { id: next, startedAt: 2 } } })
-  composeIn(next)
-  const before = harness.actions.length
-  await sendTyped('A new thought')
-  expect(harness.actions.slice(before).map((call) => call.name)).not.toContain('stop')
+  expect(playerState()).toMatchObject({ key: turn.key, playing: true })
   expect(await agent.act({ steps: [{ ref: 'Close side chat', action: 'press' }] })).toMatchObject({
     ok: true,
   })

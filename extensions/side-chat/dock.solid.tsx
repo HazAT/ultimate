@@ -83,7 +83,7 @@ const player = {
   play: (index: number) => speech.play(index),
   load(key: string, sentences: readonly Sentence[], streaming: boolean) {
     voiced = key
-    draining = undefined
+    if (key !== draining) draining = undefined
     speech.load(key, sentences, streaming, listening)
   },
   streaming: (on: boolean) => owned() && speech.streaming(on),
@@ -294,6 +294,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
   const typed = typedIn(before)
   if (typed && recorded.spoke) taken.add(typed)
   const paused = !recorded.spoke && ours().paused ? ours().key : undefined
+  const pausedHere = paused !== undefined && paused !== draining
   dispatch({
     type: 'stop',
     retaking,
@@ -317,7 +318,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
       (await sendTurn({
         who,
         destination,
-        interrupted: interrupted || paused !== undefined,
+        interrupted: interrupted || pausedHere,
         wholeBox: true,
       })) !== 'empty'
     if (!sent && paused !== undefined) dock.player.resume()
@@ -416,6 +417,10 @@ async function sendTurn(input: {
   if (!input.recorded && !typed && !images.length) {
     releaseBox?.()
     return 'empty' as const
+  }
+  if (draining !== undefined) {
+    dock.player.stop()
+    draining = undefined
   }
   if (dock.conversation()) speech.warm()
   let delivered = false
