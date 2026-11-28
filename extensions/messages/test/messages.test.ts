@@ -31,7 +31,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { Context } from '@earendil-works/chord/context'
 import type { JsonValue } from '@earendil-works/chord/json'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { context, prepareHarness } from '../../../server/harness.ts'
 import type { OpenHost } from '../../../server/harness.ts'
 import type { ActionContext } from '../../../server/actions.ts'
@@ -2096,6 +2096,47 @@ it('tells the asker a concluded branch that never reported ended without a resul
     state: 'failed',
     text: `Branch #${id}, which worked on your message ${asked.id}, was concluded without reporting to @ultimate; no result will come from it.`,
   })
+})
+it('tells the asker a concluded branch whose report failed to place ended without a result', async () => {
+  const f = await fixture()
+  const { asked, id, toAsker } = await branchWorkedOnRequest(f)
+  const conversation = f.opened.harness.conversation.bind(f.opened.harness)
+  const spy = vi.spyOn(f.opened.harness, 'conversation').mockImplementation(async (target, ctx) => {
+    const found = await conversation(target, ctx)
+    if (target !== 1 || !found) return found
+    return Object.assign(Object.create(found), {
+      submit: async () => {
+        throw new Error('placing failed')
+      },
+    })
+  })
+  await sendMessage(f.host, id, { to: '#1', text: 'Built', reply: false }, context, {
+    report: true,
+    note: false,
+  })
+  await until(f.reactorsSettled)
+  const report = async () => (await f.log())!.messages.find((m) => m.from === id && m.to === 1)!
+  await until(async () => (await report()).state === 'failed')
+  spy.mockRestore()
+  expect(await report()).toMatchObject({
+    state: 'failed',
+    report: true,
+    error: expect.stringContaining('placing failed'),
+  })
+  await conversationActions.conclude({ ids: [id] }, f.action())
+  await until(f.reactorsSettled)
+  await f.opened.harness.waitForIdle(context)
+  const notice = (await toAsker()).at(-1)!
+  expect(notice).toMatchObject({
+    state: 'failed',
+    text: `Branch #${id}, which worked on your message ${asked.id}, was concluded without reporting to @ultimate; no result will come from it.`,
+  })
+  const transcript = await f.recipient.context(context)
+  expect(
+    transcript.entries.some(
+      (e) => e.kind === 'board.message' && (e.data as { id?: number })?.id === notice.id,
+    ),
+  ).toBe(true)
 })
 it("sends @ultimate's answer to a branch it concluded to the agent whose request the branch worked on", async () => {
   // danielgriesser.com: @writer asked @ultimate for a briefing, got "I've started branch #14919", and the briefing,
