@@ -21,6 +21,11 @@ export function useSourceName(source: Accessor<ConversationId | undefined>) {
   }
 }
 
+export function useForkable(source: Accessor<ConversationId | undefined>) {
+  const summary = useConversationSummary(source)
+  return () => summary()?.answerAt !== undefined
+}
+
 export function useSideSource(override?: Accessor<ConversationId | undefined>) {
   const [stored] = useUiState<number | null>(SOURCE_KEY, null)
   return createMemo(() => override?.() ?? (stored() as ConversationId | null) ?? standingSource())

@@ -117,6 +117,9 @@ beforeEach(async ({ onTestFinished }) => {
   store.start()
   onTestFinished(() => store.stop())
   harness.sources[0].open()
+  harness.sources[0].send('conversations', [
+    { id: parseConversationId(ultimate), busy: false, answerAt: 1 },
+  ])
   store.show(parseConversationId(ultimate))
   await settle()
   harness.server!.of(ultimate)!.send('view', {
@@ -386,6 +389,25 @@ it('the Normal / Side chat segment and Tab switch @ultimate’s box into side ch
   })
   expect(toggle).toMatchObject({ ok: true })
   expect(mode()).toBe('normal')
+})
+
+it('offers no side chat while the source has no finished reply to fork', async () => {
+  harness.sources[0].send('conversations', [{ id: parseConversationId(ultimate), busy: false }])
+  const frame = renderSolid(() => <SideComposer core={<textarea id="composer-input" />} />)
+  const panel = renderSolid(() => <SideChatPanel />)
+  await root({ sessions: {} })
+  expect(frame.querySelector('[data-side-mode]')).toBeNull()
+  expect(panel.querySelector('textarea')).toBeNull()
+  expect(panel.querySelector('[data-side-chat-unforkable]')?.textContent).toBe(
+    '@ultimate has no finished reply to fork yet',
+  )
+  harness.sources[0].send('conversations', [
+    { id: parseConversationId(ultimate), busy: false, answerAt: 1 },
+  ])
+  await settle()
+  flush()
+  expect(frame.querySelector('[data-side-mode]')?.getAttribute('data-side-mode')).toBe('normal')
+  expect(panel.querySelector('textarea')).not.toBeNull()
 })
 
 it('the pinned card sends its answer through the side chat, and a refusal keeps the card with the error', async () => {

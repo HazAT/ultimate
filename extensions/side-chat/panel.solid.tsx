@@ -74,6 +74,7 @@ import { PinnedQuestion } from './pinned.solid.tsx'
 import {
   inboxChat,
   SOURCE_KEY,
+  useForkable,
   useSideSession,
   useSideSource,
   useSourceName,
@@ -467,6 +468,7 @@ export function SideChatBody(props: {
   const shown = () => id() ?? last()?.id
   const sourceLabel = () => name() ?? 'the source'
   let anchor: HTMLSpanElement | undefined
+  const forkable = useForkable(source)
   useFocusWhenWanted(() => anchor?.parentElement ?? undefined, source)
   return (
     <>
@@ -512,7 +514,21 @@ export function SideChatBody(props: {
       </Show>
       <Show when={last()}>{(ended) => <ClosingLine last={ended()} source={sourceLabel()} />}</Show>
       <Show when={source()} keyed>
-        {(at) => <Bottom ended={!!last()} fork={id()} source={at} sourceLabel={sourceLabel()} />}
+        {(at) => (
+          <Show
+            when={id() !== undefined || forkable()}
+            fallback={
+              <p
+                class="shrink-0 px-4 pt-1 pb-3 text-center font-mono text-[11px] text-muted-foreground"
+                data-side-chat-unforkable
+              >
+                {sourceLabel()} has no finished reply to fork yet
+              </p>
+            }
+          >
+            <Bottom ended={!!last()} fork={id()} source={at} sourceLabel={sourceLabel()} />
+          </Show>
+        )}
       </Show>
     </>
   )

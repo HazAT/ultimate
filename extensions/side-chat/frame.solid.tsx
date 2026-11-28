@@ -17,7 +17,7 @@ import type { ComposerTarget, SolidComposerProps } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'
 import { dock, sendTyped, setSideChatSource, sideChatSink } from './dock.solid.tsx'
 import { openSideChat, SheetComposer } from './panel.solid.tsx'
-import { SOURCE_KEY } from './side.solid.tsx'
+import { SOURCE_KEY, useForkable } from './side.solid.tsx'
 import { sourceName, togglesSideMode } from './side.web.ts'
 
 export const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
@@ -32,7 +32,10 @@ function ComposerFrame(props: SolidComposerProps) {
   const [, setSource] = useUiState<number | null>(SOURCE_KEY, null)
   const mainId = () => ultimate()?.ultimate
   const name = () => sourceName(mainId() ?? 0, ultimate(), undefined)
-  const active = createMemo(() => id() !== undefined && id() === mainId() && !props.dock)
+  const forkable = useForkable(mainId)
+  const active = createMemo(
+    () => id() !== undefined && id() === mainId() && !props.dock && forkable(),
+  )
   const on = () => dock.sideMode() && active()
   const outer = useContext(ComposerRedirect)
   const target = createMemo((): ComposerTarget | undefined =>
