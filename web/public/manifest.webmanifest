@@ -5,7 +5,7 @@
   "scope": "./",
   "display": "standalone",
   "background_color": "#111112",
-  "theme_color": "#111112",
+  "theme_color": "#0e0e10",
   "share_target": {
     "action": "./share",
     "method": "POST",

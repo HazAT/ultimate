@@ -12,7 +12,7 @@ import { Waiting } from './ui.solid.tsx'
 export function Inbox() {
   const { entries, messages, failures } = Waiting()
   const viewport = useViewport()
-  const phone = () => viewport() === 'phone'
+  const phone = () => viewport() !== 'desktop'
   const now = useNow(60_000)
   const { item, selected, setSelected } = useSelection(entries)
   const rows = createMemo(() => entries().map(toRow))
