@@ -204,6 +204,11 @@ export const setSideChatOpen = (open: boolean) => {
   if (!open) void capture.take(sideChatSink)?.cancel()
   dock.setOpen(open)
 }
+export const hideSideChat = () => {
+  dock.player.stop()
+  setSideChatOpen(false)
+}
+export const sideChatShown = () => sideChatOpen() || inboxChat() !== undefined
 const ours = () => {
   const now = dock.player.state.get()
   return now.key !== undefined && now.key === voiced
@@ -608,7 +613,10 @@ export function replyOf(turn: TurnView) {
   return { parts, text: messages.map(textOf).filter(Boolean).join('\n\n') }
 }
 
-export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
+export function useSpeaking(
+  view: () => { turns: TurnView[]; busy: boolean },
+  visible: () => boolean,
+) {
   let spoken: { key: string; count: number } | undefined
   const started = new Set<string>()
   createEffect(
@@ -625,6 +633,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
         answered: turn.replies.length > 0,
         stored: !turn.optimistic,
         local: dock.local()[turn.key],
+        aloud: dock.conversation() && visible(),
       }
     },
     (latest) => {
@@ -648,7 +657,7 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
       const from = spoken.count
       const fresh = sentences.slice(from)
       spoken.count = Math.max(spoken.count, sentences.length)
-      const voice = dock.conversation() && fresh.length > 0
+      const voice = latest.aloud && fresh.length > 0
       if (voice && voiced !== latest.key) {
         dock.player.load(latest.key, sentences, latest.busy)
         dock.player.play(from)

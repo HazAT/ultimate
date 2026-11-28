@@ -1,5 +1,4 @@
 import {
-  AudioLines,
   Check,
   CircleDashed,
   GitFork,
@@ -49,6 +48,7 @@ import {
   coldDraft,
   composeIn,
   dock,
+  hideSideChat,
   KEYS,
   playerState,
   registerSideChatFallback,
@@ -116,6 +116,18 @@ function Settings() {
       >
         <div class="px-3 pt-2.5 pb-1 section-label">Side chat</div>
         <div class="flex flex-col gap-2.5 px-3 pt-1 pb-2.5 text-muted-foreground">
+          <div class="flex flex-col gap-1">
+            <label class="flex items-center justify-between gap-3 text-foreground">
+              Conversation mode
+              <Toggle
+                aria-label="Conversation mode"
+                bind={[dock.conversation, dock.setConversation]}
+              />
+            </label>
+            <span class="text-[10.5px] leading-snug text-muted-foreground/70">
+              Your message sends when you stop speaking, and replies are read aloud.
+            </span>
+          </div>
           <label class="flex items-center justify-between gap-3">
             Sound cues
             <Toggle aria-label="Side chat sound cues" bind={[dock.cuesOn, dock.setCuesOn]} />
@@ -125,18 +137,6 @@ function Settings() {
         <DictationOptions name="Side chat" />
       </PopoverContent>
     </Popover>
-  )
-}
-
-function ConversationMode() {
-  return (
-    <label
-      class="flex shrink-0 items-center gap-1 pr-0.5 pl-1 text-muted-foreground"
-      title="Conversation mode. On: replies are read aloud, and the mic sends what you said as soon as you stop. Off: the mic types into the box."
-    >
-      <AudioLines class="size-3.5" />
-      <Toggle aria-label="Conversation mode" bind={[dock.conversation, dock.setConversation]} />
-    </label>
   )
 }
 
@@ -395,7 +395,6 @@ function Header(props: {
         </span>
         <span class="flex-1" />
         <span class="flex shrink-0 items-center gap-0.5">
-          <ConversationMode />
           <Settings />
           <Show when={id() !== undefined && !props.phone && !props.docked}>
             <Button
@@ -459,7 +458,7 @@ export function SideChatBody(props: {
   const source = useSideSource(() => props.source)
   const session = useSideSession(source)
   const name = useSourceName(source)
-  const close = () => (props.onClose ? props.onClose() : setSideChatOpen(false))
+  const close = () => (props.onClose ? props.onClose() : hideSideChat())
   const surface = useSurface()
   const shownNow = useConversationId()
   const besideSource = () => surface() === 'agent' && shownNow() === source()
@@ -481,13 +480,6 @@ export function SideChatBody(props: {
         phone={!!props.phone}
         source={source()}
       />
-      <Show when={id()}>
-        {(open) => (
-          <ScopedConversation id={open()}>
-            <Voicing fork={open()} />
-          </ScopedConversation>
-        )}
-      </Show>
       <Show when={session()?.question !== undefined && id()}>
         {(open) => (
           <PinnedQuestion
@@ -565,7 +557,8 @@ export function SideChatOverlay() {
   const split = useSplit()
   const panels = usePanels()
   const [selectedPanel, selectPanel] = useUiState<string | null>('shell.panel', null)
-  const docked = () => sideChatOpen() && split()
+  const [released, setReleased] = createSignal(false)
+  const docked = () => sideChatOpen() && split() && !released()
   useEvent('secrets:changed', () => void status.refetch())
   createEffect(
     () => [source(), id()] as const,
@@ -580,19 +573,49 @@ export function SideChatOverlay() {
       if (known !== undefined) speech.setKeyed(known)
     },
   )
-  let before: { panel: string | null; open: boolean } | undefined
+  type Region = { panel: string | null; open: boolean }
+  let before: Region | undefined
+  let restored: Region | undefined
+  let was: { want: boolean; open: boolean; holds: boolean } | undefined
   createEffect(
-    () => ({ dock: docked(), selected: selectedPanel(), open: panels.open() }),
+    () => ({
+      want: sideChatOpen() && split(),
+      open: sideChatOpen(),
+      selected: selectedPanel(),
+      shown: panels.open(),
+    }),
     (now) => {
-      if (now.dock === (before !== undefined)) return
-      writingAs('app', () => {
-        if (now.dock) {
-          before = { panel: now.selected === PANEL ? null : now.selected, open: now.open }
-          openPanel(PANEL)
+      const holds = now.shown && now.selected === PANEL
+      const previous = was ?? { want: false, open: now.open, holds }
+      was = { want: now.want, open: now.open, holds }
+      const region = { panel: now.selected, open: now.shown }
+      if (now.want && !previous.want) {
+        const free =
+          !now.shown || holds || (restored?.panel === region.panel && restored.open === region.open)
+        restored = undefined
+        if (!free && previous.open) {
+          setReleased(true)
           return
         }
-        const back = before!
+        setReleased(false)
+        before = { panel: now.selected === PANEL ? null : now.selected, open: now.shown }
+        writingAs('app', () => openPanel(PANEL))
+        return
+      }
+      if (now.want && before && previous.holds && !holds) {
+        const back = before
         before = undefined
+        setReleased(true)
+        if (now.selected === PANEL) writingAs('app', () => selectPanel(back.panel))
+        return
+      }
+      if (now.want || !previous.want) return
+      setReleased(false)
+      const back = before
+      before = undefined
+      if (!back) return
+      restored = back
+      writingAs('app', () => {
         selectPanel(back.panel)
         if (back.open) openPanel()
         else closePanel()
@@ -615,6 +638,7 @@ export function SideChatOverlay() {
   )
   onSettled(registerSideChatFallback)
   const phone = () => viewport() === 'phone'
+  const floating = () => sideChatOpen() && !docked() && inboxChat() === undefined
   const [place, setPlace] = useExtensionUiState<{
     right: number
     bottom: number
@@ -730,47 +754,56 @@ export function SideChatOverlay() {
     }
   }
   return (
-    <Show when={sideChatOpen() && !docked() && inboxChat() === undefined}>
-      <section
-        aria-label="Side chat"
-        class={cn(
-          'pointer-events-auto fixed z-40 flex flex-col overflow-hidden border border-border bg-background shadow-2xl shadow-black/40',
-          phone()
-            ? cn(
-                dragged() === undefined &&
-                  'transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
-                'inset-x-0 bottom-0 rounded-t-2xl border-x-0 border-b-0 border-t-brand/40 pb-[env(safe-area-inset-bottom)] has-[textarea:focus]:pb-0',
-              )
-            : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
+    <>
+      <Show when={id()} keyed>
+        {(open) => (
+          <ScopedConversation id={open}>
+            <Voicing fork={open} />
+          </ScopedConversation>
         )}
-        data-side-chat-panel
-        data-side-chat-sheet={phone() ? snap() : undefined}
-        ref={(element) => {
-          sheet = element
-          measure(element)
-        }}
-        style={style()}
-      >
-        <Show when={phone()}>
-          <div
-            class="flex h-5 shrink-0 touch-none items-center justify-center select-none"
-            onPointerDown={drag}
-          >
-            <Button
-              aria-label={snap() === 'full' ? 'Shrink side chat' : 'Expand side chat'}
-              class="flex h-5 w-16 items-center justify-center"
-              data-side-chat-grabber
-              onClick={() => !swiped && setSnap(snap() === 'full' ? 'rest' : 'full')}
-              size={null}
-              variant={null}
+      </Show>
+      <Show when={floating()}>
+        <section
+          aria-label="Side chat"
+          class={cn(
+            'pointer-events-auto fixed z-40 flex flex-col overflow-hidden border border-border bg-background shadow-2xl shadow-black/40',
+            phone()
+              ? cn(
+                  dragged() === undefined &&
+                    'transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                  'inset-x-0 bottom-0 rounded-t-2xl border-x-0 border-b-0 border-t-brand/40 pb-[env(safe-area-inset-bottom)] has-[textarea:focus]:pb-0',
+                )
+              : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
+          )}
+          data-side-chat-panel
+          data-side-chat-sheet={phone() ? snap() : undefined}
+          ref={(element) => {
+            sheet = element
+            measure(element)
+          }}
+          style={style()}
+        >
+          <Show when={phone()}>
+            <div
+              class="flex h-5 shrink-0 touch-none items-center justify-center select-none"
+              onPointerDown={drag}
             >
-              <span class="h-1 w-9 rounded-full bg-muted-foreground/40" />
-            </Button>
-          </div>
-        </Show>
-        <SideChatBody onDrag={drag} phone={phone()} />
-      </section>
-    </Show>
+              <Button
+                aria-label={snap() === 'full' ? 'Shrink side chat' : 'Expand side chat'}
+                class="flex h-5 w-16 items-center justify-center"
+                data-side-chat-grabber
+                onClick={() => !swiped && setSnap(snap() === 'full' ? 'rest' : 'full')}
+                size={null}
+                variant={null}
+              >
+                <span class="h-1 w-9 rounded-full bg-muted-foreground/40" />
+              </Button>
+            </div>
+          </Show>
+          <SideChatBody onDrag={drag} phone={phone()} />
+        </section>
+      </Show>
+    </>
   )
 }
 

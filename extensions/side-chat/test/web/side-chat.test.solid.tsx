@@ -1,6 +1,6 @@
 import { settle } from '@ui-sdk/core/testing'
 import { createAgent } from '@ui-sdk/solid/agent'
-import { flush } from 'solid-js'
+import { createRoot, createSignal, flush } from 'solid-js'
 import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId, parseEntryId } from '../../../../lib/ids.shared.ts'
 import type { StreamedView } from '../../../../shared/protocol.ts'
@@ -70,8 +70,18 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 
 import { regionOpen } from '../../../../web/src/sdk/actions.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
-import { Composer, ExtensionName, openPanel } from '../../../../web/src/sdk/solid.ts'
-import { dock, setSideChatOpen, setSideChatSource } from '../../dock.solid.tsx'
+import { closePanel, Composer, ExtensionName, openPanel } from '../../../../web/src/sdk/solid.ts'
+import {
+  composeIn,
+  dock,
+  sendTyped,
+  setSideChatOpen,
+  setSideChatSource,
+  sideChatShown,
+  useSpeaking,
+} from '../../dock.solid.tsx'
+import type { TurnView } from '../../dock.solid.tsx'
+import { speech } from '../../../read-aloud/ui.solid.tsx'
 import { openSideChat, SideChatPanel, SideChatOverlay } from '../../panel.solid.tsx'
 import { SideComposer } from '../../frame.solid.tsx'
 import { PinnedQuestion } from '../../pinned.solid.tsx'
@@ -227,21 +237,128 @@ it('Start fresh ends the open side chat as the person, and a refusal leaves it o
   expect(view.querySelector('[data-side-chat-ended]')).toBeNull()
 })
 
-it('Conversation mode is on by default, and switching it is the person’s write', async () => {
-  renderSolid(() => <SideChatPanel />)
+it('Conversation mode lives in the settings popover, is on by default, and switching it is the person’s write', async () => {
+  const view = renderSolid(() => <SideChatPanel />)
   await root({ sessions: {} })
   expect(dock.conversation()).toBe(true)
+  expect(view.querySelector('header [aria-label="Conversation mode"]')).toBeNull()
   const result = await agent.act({
-    steps: [{ ref: 'Conversation mode', action: 'setChecked', args: [false] }],
+    steps: [
+      { ref: 'Side chat settings', action: 'setOpen', args: [true] },
+      { ref: 'Conversation mode', action: 'setChecked', args: [false] },
+    ],
   })
   expect(result).toMatchObject({ ok: true })
   await uiState.flush()
   expect(dock.conversation()).toBe(false)
   expect(harness.writes).toContainEqual({ key: 'ext.side-chat.conversation', who: 'agent' })
+  await expectDistinctAgentNames(agent)
   harness.writes.length = 0
-  dock.setConversation(true)
+  const toggle = document.querySelector<HTMLElement>('[aria-label="Conversation mode"]')!
+  expect(toggle.closest('[aria-label="Side chat settings options"]')).not.toBeNull()
+  expect(toggle.closest('label')?.parentElement?.textContent).toContain(
+    'Your message sends when you stop speaking, and replies are read aloud.',
+  )
+  toggle.click()
+  flush()
   await uiState.flush()
+  expect(dock.conversation()).toBe(true)
   expect(harness.writes).toContainEqual({ key: 'ext.side-chat.conversation', who: 'person' })
+})
+
+it('a reply is read aloud on its own only while Conversation mode is on and the side chat is shown', async () => {
+  const said = async (open: boolean, conversation: boolean) => {
+    setSideChatOpen(open)
+    dock.setConversation(conversation)
+    speech.stop()
+    const before = harness.actions.length
+    await sendTyped(`asked with open ${open}, conversation ${conversation}`)
+    const key = (
+      harness.actions.slice(before).find((call) => call.name === 'turn')!.args as {
+        key: string
+      }
+    ).key
+    const [turns, setTurns] = createSignal({ turns: [] as TurnView[], busy: true })
+    const dispose = createRoot((done) => {
+      useSpeaking(turns, sideChatShown)
+      return done
+    })
+    setTurns({
+      turns: [
+        {
+          key,
+          data: { key, text: 'hi', route: 'text' },
+          replies: [],
+          entries: [],
+          live: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Here is a thought. And another one.' }],
+          } as TurnView['replies'][number],
+        },
+      ],
+      busy: true,
+    })
+    flush()
+    const spoken = speech.state.get().key === key
+    dispose()
+    return spoken
+  }
+  await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
+  composeIn(fork)
+  expect(await said(true, true)).toBe(true)
+  expect(await said(true, false)).toBe(false)
+  expect(await said(false, true)).toBe(false)
+  setSideChatOpen(true)
+  speech.load('side-chat:playing', [], true)
+  renderSolid(() => <SideChatPanel />)
+  await settle()
+  await agent.act({ steps: [{ ref: 'Close side chat', action: 'press' }] })
+  expect(dock.open()).toBe(false)
+  expect(speech.state.get()).toMatchObject({ playing: false, paused: false })
+})
+
+it('a docked side chat pops out as the floating window when Panels switches away, and only X hides it', async () => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  const view = renderSolid(() => (
+    <ExtensionName value="side-chat">
+      <SideChatOverlay />
+    </ExtensionName>
+  ))
+  await root({ sessions: { [ultimate]: { id: fork, startedAt: 1 } } })
+  uiState.set('shell.panel', 'tasks')
+  await uiState.flush()
+  setSideChatOpen(true)
+  flush()
+  await settle()
+  await uiState.flush()
+  expect(uiState.get('shell.panel')).toBe('side-chat')
+  expect(view.querySelector('[data-side-chat-panel]')).toBeNull()
+  harness.writes.length = 0
+  openPanel('todos')
+  flush()
+  await settle()
+  await uiState.flush()
+  expect(uiState.get('shell.panel')).toBe('todos')
+  expect(regionOpen('panels')).toBe(true)
+  expect(view.querySelector('[data-side-chat-panel]')).not.toBeNull()
+  expect(harness.writes.filter((write) => write.key.startsWith('shell.'))).toEqual([
+    { key: 'shell.panel', who: 'person' },
+  ])
+  await expectDistinctAgentNames(agent)
+  expect(await agent.act({ steps: [{ ref: 'Close side chat', action: 'press' }] })).toMatchObject({
+    ok: true,
+  })
+  flush()
+  await settle()
+  expect(dock.open()).toBe(false)
+  expect(view.querySelector('[data-side-chat-panel]')).toBeNull()
+  expect(uiState.get('shell.panel')).toBe('todos')
+  closePanel()
+  await uiState.flush()
 })
 
 it('the Normal / Side chat segment and Tab switch @ultimate’s box into side chat mode as the person', async () => {

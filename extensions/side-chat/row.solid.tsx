@@ -4,7 +4,7 @@ import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { capture } from '../dictation/ui.solid.tsx'
-import { dock, playerState, setSideChatOpen, sideChatOpen } from './dock.solid.tsx'
+import { dock, hideSideChat, playerState, sideChatOpen } from './dock.solid.tsx'
 import { openSideChat } from './panel.solid.tsx'
 import { SideChatSessionDoc } from './refs.ts'
 import { inboxChat, useSideSource } from './side.solid.tsx'
@@ -63,7 +63,7 @@ export function SideChatRow(props: { conversation: ConversationId | undefined })
   const source = useSideSource()
   const shown = () => inboxChat() === undefined && sideChatOpen() && source() === props.conversation
   const toggle = () => {
-    if (shown()) setSideChatOpen(false)
+    if (shown()) hideSideChat()
     else if (props.conversation !== undefined) openSideChat(props.conversation)
   }
   const busy = () => conversations().some((row) => row.id === id() && row.busy)

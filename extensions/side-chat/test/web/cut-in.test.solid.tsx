@@ -82,7 +82,7 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
   await first
 
   const [view, setView] = createSignal({ turns: [] as TurnView[], busy: true })
-  createRoot(() => useSpeaking(view))
+  createRoot(() => useSpeaking(view, () => true))
   setView({ turns: [reply(firstKey, 'The first point is short. The second one.')], busy: true })
   flush()
   expect(said).toEqual(['The first point is short.'])
@@ -143,7 +143,7 @@ it('turning Speak replies on mid-reply plays from the first new sentence, at its
   await sent
   const key = dock.pending()!
   const [view, setView] = createSignal({ turns: [] as TurnView[], busy: true })
-  createRoot(() => useSpeaking(view))
+  createRoot(() => useSpeaking(view, () => true))
   setView({ turns: [reply(key, 'One muted. ')], busy: true })
   flush()
   expect(said).toEqual([])

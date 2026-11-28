@@ -17,7 +17,7 @@ import {
 } from '@/sdk/solid'
 import type { QuestionMessage } from '../questions/ui.solid.tsx'
 import { QuestionAction, SideChatSessionDoc } from './refs.ts'
-import { setSideChatOpen } from './dock.solid.tsx'
+import { hideSideChat, setSideChatOpen } from './dock.solid.tsx'
 import { focusSideChat, openSideChat, SideChatBody } from './panel.solid.tsx'
 import { setInboxChat } from './side.solid.tsx'
 
@@ -111,7 +111,7 @@ export function inboxSideChat(
   }
   const close = () => {
     park()
-    setSideChatOpen(false)
+    hideSideChat()
   }
   createEffect(asker, (source) => {
     setInboxChat(source === undefined ? undefined : { source, park })

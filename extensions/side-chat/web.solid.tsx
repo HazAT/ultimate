@@ -10,7 +10,7 @@ import {
   SideChatTurnEntry,
 } from './entries.shared.ts'
 import { HandoffCall, HandoffCard, LegacySummaryCard, SummaryCard } from './handoff.solid.tsx'
-import { dock, KEYS, setSideChatOpen, sideChatOpen } from './dock.solid.tsx'
+import { dock, hideSideChat, KEYS, sideChatOpen } from './dock.solid.tsx'
 import { SideComposer } from './frame.solid.tsx'
 import { openSideChat, PANEL, SideChatPanel, SideChatOverlay } from './panel.solid.tsx'
 import { ForkStart, inboxSideChat, TalkItThrough } from './question.solid.tsx'
@@ -61,7 +61,7 @@ export default defineWebExtension({
       run: () => {
         const embedded = inboxChat()
         if (embedded) embedded.park()
-        if (embedded || sideChatOpen()) return setSideChatOpen(false)
+        if (embedded || sideChatOpen()) return hideSideChat()
         writingAs('app', () => dock.setSideMode(false))
         openSideChat()
       },

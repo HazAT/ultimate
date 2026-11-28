@@ -21,6 +21,7 @@ import {
   playerState,
   replyOf,
   settleTranscripts,
+  sideChatShown,
   turnsIn,
   useSpeaking,
   useTurns,
@@ -303,6 +304,6 @@ export function Voicing(props: { fork: ConversationId }) {
     },
     (doc) => settleTranscripts(doc, props.fork),
   )
-  useSpeaking(useTurns())
+  useSpeaking(useTurns(), sideChatShown)
   return null
 }
