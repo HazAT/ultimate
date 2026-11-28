@@ -84,6 +84,7 @@ import { Voicing } from './turns.solid.tsx'
 import { REST, settle, type Snap } from './sheet.web.ts'
 
 const FULL_TOP = 36
+const FULL_HEIGHT = `calc(100dvh - env(safe-area-inset-top) - ${FULL_TOP}px)`
 export const PANEL = 'side-chat'
 const SPLIT = '(min-width: 1280px)'
 const [sheetRoom, setSheetRoom] = createRoot(() => createSignal(0))
@@ -452,6 +453,7 @@ function Header(props: {
 export function SideChatBody(props: {
   docked?: boolean
   phone?: boolean
+  folded?: boolean
   source?: ConversationId
   onClose?: () => void
   onDrag?: (event: PointerEvent & { currentTarget: HTMLElement }) => void
@@ -483,39 +485,43 @@ export function SideChatBody(props: {
         phone={!!props.phone}
         source={source()}
       />
-      <Show when={session()?.question !== undefined && id()}>
-        {(open) => (
-          <PinnedQuestion
-            folded={props.source === undefined && besideSource()}
-            fork={open()}
-            message={session()!.question!}
-          />
-        )}
+      <Show when={!props.folded}>
+        <Show when={session()?.question !== undefined && id()}>
+          {(open) => (
+            <PinnedQuestion
+              folded={props.source === undefined && besideSource()}
+              fork={open()}
+              message={session()!.question!}
+            />
+          )}
+        </Show>
+        <Show
+          when={shown()}
+          fallback={
+            <div class="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-10 py-4 text-center *:first:mt-auto *:last:mb-auto">
+              <GitFork class="mb-1 size-5 text-brand" />
+              <p class="text-[14px] text-foreground">Think it through with {sourceLabel()}</p>
+              <p class="max-w-sm text-[13px] text-muted-foreground">
+                <Show when={forkable()}>
+                  Type, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> to speak.{' '}
+                </Show>
+                A side chat forks {sourceLabel()} with everything it knows, talks it through with
+                you, and hands the result back when you agree.
+              </p>
+              <SetupList />
+            </div>
+          }
+        >
+          {(fork) => (
+            <ScopedConversation id={fork()}>
+              <ConversationTranscript dock />
+            </ScopedConversation>
+          )}
+        </Show>
+        <Show when={last()}>
+          {(ended) => <ClosingLine last={ended()} source={sourceLabel()} />}
+        </Show>
       </Show>
-      <Show
-        when={shown()}
-        fallback={
-          <div class="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-10 py-4 text-center *:first:mt-auto *:last:mb-auto">
-            <GitFork class="mb-1 size-5 text-brand" />
-            <p class="text-[14px] text-foreground">Think it through with {sourceLabel()}</p>
-            <p class="max-w-sm text-[13px] text-muted-foreground">
-              <Show when={forkable()}>
-                Type, or {talkVerb()} <Kbd>{holdKeys()}</Kbd> to speak.{' '}
-              </Show>
-              A side chat forks {sourceLabel()} with everything it knows, talks it through with you,
-              and hands the result back when you agree.
-            </p>
-            <SetupList />
-          </div>
-        }
-      >
-        {(fork) => (
-          <ScopedConversation id={fork()}>
-            <ConversationTranscript dock />
-          </ScopedConversation>
-        )}
-      </Show>
-      <Show when={last()}>{(ended) => <ClosingLine last={ended()} source={sourceLabel()} />}</Show>
       <Show when={source()} keyed>
         {(at) => (
           <Show
@@ -722,7 +728,9 @@ export function SideChatOverlay() {
       last = { y: next.clientY, at: next.timeStamp }
       setDragged(Math.max(72, Math.min(full, start + pulled)))
     }
+    const hold = (next: TouchEvent) => moving && next.preventDefault()
     const stop = () => {
+      window.removeEventListener('touchmove', hold)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
@@ -742,6 +750,7 @@ export function SideChatOverlay() {
         }),
       )
     }
+    window.addEventListener('touchmove', hold, { passive: false })
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
@@ -751,7 +760,7 @@ export function SideChatOverlay() {
     const px = dragged()
     if (px !== undefined) return `${px}px`
     if (snap() === 'folded') return undefined
-    if (snap() === 'full') return `calc(100dvh - env(safe-area-inset-top) - ${FULL_TOP}px)`
+    if (snap() === 'full') return FULL_HEIGHT
     return `${REST * 100}dvh`
   }
   const drag = (event: PointerEvent & { currentTarget: HTMLElement }) => {
@@ -778,7 +787,7 @@ export function SideChatOverlay() {
   }
   const style = () => {
     const at = place()
-    if (phone()) return { height: sheetHeight() }
+    if (phone()) return { height: sheetHeight(), 'max-height': FULL_HEIGHT }
     if (!at) return undefined
     return {
       right: `min(${at.right}px, 100vw - min(36rem, 46vw) - 0.5rem)`,
@@ -832,7 +841,7 @@ export function SideChatOverlay() {
               </Button>
             </div>
           </Show>
-          <SideChatBody onDrag={drag} phone={phone()} />
+          <SideChatBody folded={phone() && snap() === 'folded'} onDrag={drag} phone={phone()} />
         </section>
       </Show>
     </>
