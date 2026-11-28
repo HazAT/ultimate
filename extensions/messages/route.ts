@@ -282,7 +282,8 @@ export function route(host: ExtensionHost) {
     | { phase: 'observe' }
     | { phase: 'answered' }
     | { phase: 'judge'; answer: EntryId; toStarter: Route; state: JudgeState }
-    | { phase: 'forward'; routes: Route[] },
+    | { phase: 'forward'; routes: Route[] }
+    | { phase: 'landed' },
     null
   >({
     name: 'board.route',
@@ -304,6 +305,9 @@ export function route(host: ExtensionHost) {
         const answer = outcome.status === 'completed' ? outcome.result.entryId : undefined
         const { by, down } = task.input
         const id = runtime.conversationId
+        const done = down
+          ? terminal
+          : ({ status: 'running', checkpoint: { phase: 'landed' } } as const)
         await runtime.commit(async (tx) => {
           if (answer === undefined) return terminal
           const inputs = await Promise.all(
@@ -423,7 +427,7 @@ export function route(host: ExtensionHost) {
             return { status: 'running', checkpoint: { phase: 'judge', ...routes } }
           return routes.length
             ? { status: 'running', checkpoint: { phase: 'forward', routes } }
-            : terminal
+            : done
         }, ctx)
       },
       judge: async (task, runtime, ctx) => {
@@ -472,6 +476,14 @@ export function route(host: ExtensionHost) {
               : {}),
           })
         }
+        await runtime.commit(
+          () =>
+            task.input.down ? terminal : { status: 'running', checkpoint: { phase: 'landed' } },
+          ctx,
+        )
+      },
+      landed: async (_task, runtime, ctx) => {
+        await host.need(WorkspacesApi).settleLanded(runtime.conversationId, ctx)
         await runtime.commit(() => terminal, ctx)
       },
     },

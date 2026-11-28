@@ -28,6 +28,11 @@ export type WorkspaceService = {
   discard: Implementation['discard']
   /** Free the worktrees of concluded conversations `ids` and their descendants; returns the ones kept (busy, unlanded). */
   release: Implementation['release']
+  /**
+   * After a run of `id` ends: a branch that landed while busy is concluded now when nothing is under way, else its
+   * starter wakes once with a `workspaces.still-open` input.
+   */
+  settleLanded: Implementation['settleLanded']
   /** Run `git` with `args` in a directory; rejects with Git's message. Use it instead of spawning Git yourself. */
   git: typeof git
   /** The worktree index document (`ultimate.workspaces` on the root), for reads inside a transaction. */

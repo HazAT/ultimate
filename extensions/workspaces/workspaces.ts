@@ -19,7 +19,7 @@ import { needsRestart as restartNeeded } from '../../lib/layers.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi, ExternalSessions } from '../conversations/api.ts'
 import { Branches } from './api.ts'
-import { WorkspacesDoc } from './refs.ts'
+import { StillOpenEntry, WorkspacesDoc } from './refs.ts'
 import { setup } from './setup.ts'
 import {
   addCheckout,
@@ -233,6 +233,41 @@ export function workspaces(host: Host) {
     },
     release: (id, context) => release([id], context),
   })
+  async function settleLanded(id: ConversationId, context: Context) {
+    if (!(await get(id, context))?.landedOpen) return
+    const starter = await host.want(Branches)?.starter(id, context)
+    const to =
+      starter === undefined || starter === id
+        ? undefined
+        : await host.harness().conversation(starter, context)
+    const concluded = await host.harness().commit(async (tx) => {
+      const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+      const open = index.items[String(id)]?.landedOpen
+      if (!open) return false
+      if ((await tx.doc(LiveDoc, id)).run || (await tx.doc(InboxDoc, id)).items.length) return false
+      if (await host.want(Branches)?.working(tx, id)) {
+        if (open.escalated || !to) return false
+        await to.submit(tx, {
+          type: 'input',
+          requestId: `landed-open:${open.submission}`,
+          whenBusy: 'followUp',
+          entry: { kind: StillOpenEntry.kind, data: { id, submission: open.submission } },
+          content: `Landed branch #${id} is still open: its submission ${open.submission} landed, and its run ended with work still under way (a subagent, a reply it waits for or a pending notify). It concludes itself when a later run ends with nothing under way. Conclude it now if that work no longer matters.`,
+        })
+        open.escalated = true
+        return false
+      }
+      delete index.items[String(id)].landedOpen
+      try {
+        await host.need(ConversationsApi).concludeIn(tx, [id], 'landing')
+        return true
+      } catch (error) {
+        host.notice(`Not concluding landed #${id}: ${String(error)}`)
+        return false
+      }
+    }, context)
+    if (concluded) await release([id], context)
+  }
   type IdleReadBeforeWrites = string
   const startIdleLander = async (tx: Tx, index: WorkspaceIndex, source: IdleReadBeforeWrites) => {
     index.landers[source] = await tx.createTask(
@@ -573,6 +608,11 @@ export function workspaces(host: Host) {
   ): Promise<KeptWork[]> {
     const kept: KeptWork[] = []
     if (signal?.aborted) return kept
+    await host.harness().commit(async (tx) => {
+      const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+      for (const id of ids)
+        if (index.items[String(id)]?.landedOpen) delete index.items[String(id)].landedOpen
+    }, context)
     const graph = await candidates(ids, context)
     const retained = new Map<number, number>()
     for (const id of graph.ids) {
@@ -970,6 +1010,7 @@ export function workspaces(host: Host) {
     pending,
     progress,
     release,
+    settleLanded,
     sweep,
     async create(tx: Tx, id: ConversationId, cwd: string) {
       if (
