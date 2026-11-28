@@ -66,6 +66,25 @@ export function prepareChapterRequest(home: string, to: string, by?: number) {
     } satisfies PendingChapter)
 }
 
+export async function chapterHolding(home: string, active: string, id: number) {
+  for (const chapter of (await readChapters(home)).chapters) {
+    if (chapter.name === active) continue
+    const database = chapterFiles(home, chapter.name).database
+    if (!existsSync(database)) continue
+    const db = new DatabaseSync(database, { readOnly: true })
+    try {
+      const hasConversations = db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'conversations'")
+        .get()
+      if (hasConversations && db.prepare('SELECT 1 FROM conversations WHERE id = ?').get(id))
+        return chapter.name
+    } finally {
+      db.close()
+    }
+  }
+  return undefined
+}
+
 export function inFlight(database: string): number[] {
   if (!existsSync(database)) return []
   // Pi upstream: @earendil-works/pi-durable@1.6.0 src/storage/sqlite/migrations.ts — tasks.status is terminal once a task ended; background tasks (schedules, watchers) always live. Drop when Pi Durable reads a closed store's task graph.

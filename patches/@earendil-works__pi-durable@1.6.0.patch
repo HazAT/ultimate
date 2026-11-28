@@ -1,3 +1,25 @@
+diff --git a/dist/codemode/codemode.js b/dist/codemode/codemode.js
+index d9a716c2b0ea8b6b10eff5fca6fd1773bf5e78e5..0618f96f2ec3a79df3af7172bae34c1ef04c1b12 100644
+--- a/dist/codemode/codemode.js
++++ b/dist/codemode/codemode.js
+@@ -724,7 +724,16 @@ class CodemodeCall {
+             const [name] = args;
+             if (typeof name !== "string")
+                 throw new Error("describeTool() expects a tool name");
+-            return tools.find((tool) => tool.name === name || tool.jsName === name)?.description;
++            const found = tools.find((tool) => tool.name === name || tool.jsName === name);
++            if (found === undefined) {
++                const comparable = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
++                const wanted = comparable(name);
++                const close = tools
++                    .filter((tool) => { const candidate = comparable(tool.name); return candidate.includes(wanted) || wanted.includes(candidate); })
++                    .map((tool) => tool.name);
++                throw new Error(`describeTool(${JSON.stringify(name)}): no such tool.${close.length > 0 ? ` Did you mean ${close.slice(0, 5).join(", ")}?` : ""} searchTools(query) finds tools by topic; ALL_TOOLS lists every tool.`);
++            }
++            return found.description;
+         }
+         if (call.name === "describeNamespace") {
+             const [name] = args;
 diff --git a/dist/env/node.d.ts b/dist/env/node.d.ts
 index 7dc4337e83009a92045cb0b1ae4fd6a71aa86abe..7c14065c10e5a216b0f84b7cbb84681e055f5ffc 100644
 --- a/dist/env/node.d.ts
@@ -61,7 +83,7 @@ index d1530da2acd24090992c767fd20a91b78e91de9e..eb5ea05fca4548b18070a8cbcc9d8fb8
                      child.stdin?.on("error", () => { });
                      child.stdin?.end(stdinCommand);
 diff --git a/dist/errors.js b/dist/errors.js
-index 555bc15b3d8d0feb67c4678023838f436a31f901..1d7cc0acab3b2eaad618ced5bddedb5186e04003 100644
+index 555bc15b3d8d0feb67c4678023838f436a31f901..fa0de2ba6c128cdcb7b4cc5e6fdc4f9c3dfef909 100644
 --- a/dist/errors.js
 +++ b/dist/errors.js
 @@ -74,3 +74,16 @@ export class ConversationIdle extends Error {
