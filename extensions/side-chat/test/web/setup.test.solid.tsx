@@ -4,8 +4,8 @@ import { createSignal, flush } from 'solid-js'
 import { afterEach, expect, it, vi } from 'vitest'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
-import { setVoiceOpen } from '../../dock.solid.tsx'
-import { VoicePanel } from '../../panel.solid.tsx'
+import { setSideChatOpen } from '../../dock.solid.tsx'
+import { SideChatOverlay } from '../../panel.solid.tsx'
 
 const ui = vi.hoisted(() => ({
   picks: [] as unknown[],
@@ -35,7 +35,6 @@ vi.mock('@/sdk/solid', async (original) => ({
             fix: 'Use the default, or pick another model in the prompt box below.',
           },
           transcription: { ready: true, detail: 'OpenAI transcription' },
-          handsFree: { ready: true, detail: 'Jev' },
         },
       }),
       refetch: () => {
@@ -70,15 +69,15 @@ vi.stubGlobal(
 
 const agent = createAgent()
 
-afterEach(() => setVoiceOpen(false))
+afterEach(() => setSideChatOpen(false))
 
 it('a stored pick shows as picked on the setup card, and Use default clears it', async () => {
-  const view = renderSolid(() => <VoicePanel />)
-  setVoiceOpen(true)
+  const view = renderSolid(() => <SideChatOverlay />)
+  setSideChatOpen(true)
   flush()
   await settle()
   await vi.waitFor(() =>
-    expect(view.querySelector('[data-voice-setup]')?.textContent).toContain(
+    expect(view.querySelector('[data-side-chat-setup]')?.textContent).toContain(
       'antigravity/gone-model (picked): model removed',
     ),
   )
@@ -89,7 +88,7 @@ it('a stored pick shows as picked on the setup card, and Use default clears it',
   await vi.waitFor(() => expect(ui.refetched).toBe(1))
   expect(ui.picks).toEqual([{ model: null }])
   await vi.waitFor(() =>
-    expect(view.querySelector('[data-voice-setup]')?.textContent).toContain('(default)'),
+    expect(view.querySelector('[data-side-chat-setup]')?.textContent).toContain('(default)'),
   )
-  expect(view.querySelector('[data-voice-setup] button')).toBeNull()
+  expect(view.querySelector('[data-side-chat-setup] button')).toBeNull()
 })

@@ -24,7 +24,7 @@ multi-select question listing the pieces below, plus **None, thanks**.
 | Lander            | `settings.json` `lander.checks` and `lander.push`                                      | Every landing runs the project's checks on the merged result and pushes; a failure goes back to the submitting branch to fix.                                               |
 | Worktree setup    | `settings.json` `isolates.worktree.setup`                                              | Each branch works in a fresh worktree without dependencies; setup installs them before the first tool call.                                                                 |
 
-Not part of the tour, never copied: `extensions.enable` (`voice-live` is a personal choice), `assign.preview` (only for
+Not part of the tour, never copied: `extensions.enable` (personal choices), `assign.preview` (only for
 projects that preview their own extensions), `skills/ultimate-provider-smoke` and `README.md` (both about Ultimate
 itself).
 

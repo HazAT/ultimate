@@ -50,16 +50,16 @@ import {
   dock,
   KEYS,
   playerState,
-  registerVoiceFallback,
+  registerSideChatFallback,
   sendTyped,
   setScreen,
-  setVoiceOpen,
-  setVoiceSource,
-  voiceOpen,
-  voiceSink,
+  setSideChatOpen,
+  setSideChatSource,
+  sideChatOpen,
+  sideChatSink,
 } from './dock.solid.tsx'
-import { EndAction, PickAction, StatusAction, VoiceForkDoc } from './refs.ts'
-import type { VoiceSourceSession } from './refs.ts'
+import { EndAction, PickAction, StatusAction, SideChatForkDoc } from './refs.ts'
+import type { SideChatSourceSession } from './refs.ts'
 import { PickControl } from '../models/ui.solid.tsx'
 import type { ModelPick } from '../models/ui.solid.tsx'
 import {
@@ -89,8 +89,8 @@ const talkVerb = () => (talkMode() === 'tap' ? 'tap' : 'hold')
 export function SheetComposer(props: SolidComposerProps) {
   const viewport = useViewport()
   return (
-    <Show when={!props.dock && voiceOpen() && viewport() === 'phone'} fallback={props.core}>
-      <div aria-hidden="true" data-voice-sheet-room style={{ height: `${sheetRoom()}px` }} />
+    <Show when={!props.dock && sideChatOpen() && viewport() === 'phone'} fallback={props.core}>
+      <div aria-hidden="true" data-side-chat-sheet-room style={{ height: `${sheetRoom()}px` }} />
     </Show>
   )
 }
@@ -191,7 +191,7 @@ function SetupList() {
     <Show when={items().some((item) => !item.ready)}>
       <ul
         class="mt-4 flex w-full max-w-sm flex-col gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left"
-        data-voice-setup
+        data-side-chat-setup
       >
         <For each={items()}>
           {(item) => (
@@ -228,7 +228,7 @@ function SetupList() {
   )
 }
 
-function useVoicePick(open: () => ConversationId | undefined): ModelPick {
+function useSideChatPick(open: () => ConversationId | undefined): ModelPick {
   const { state } = useSideSession()
   const status = useAction(StatusAction, null, {
     conversation: ROOT,
@@ -252,12 +252,12 @@ function useVoicePick(open: () => ConversationId | undefined): ModelPick {
 }
 
 export function ClosingLine(props: {
-  last: NonNullable<VoiceSourceSession['last']>
+  last: NonNullable<SideChatSourceSession['last']>
   source: string
 }) {
   const text = () => closing(props.last, QUIET_MINUTES)
   return (
-    <div class="flex flex-col items-center gap-0.5 px-4 pt-1 pb-3" data-voice-ended>
+    <div class="flex flex-col items-center gap-0.5 px-4 pt-1 pb-3" data-side-chat-ended>
       <div
         class="flex w-full min-w-0 items-center gap-3 font-mono text-[11px] text-muted-foreground"
         data-closing-line={props.last.reason}
@@ -288,7 +288,7 @@ export function ClosingLine(props: {
 }
 
 function Bottom(props: { fork: ConversationId | undefined; ended: boolean; source: string }) {
-  const chip = <PickControl pick={useVoicePick(() => props.fork)} />
+  const chip = <PickControl pick={useSideChatPick(() => props.fork)} />
   const viewport = useViewport()
   const placeholder = () =>
     props.ended
@@ -300,7 +300,7 @@ function Bottom(props: { fork: ConversationId | undefined; ended: boolean; sourc
     name: 'Side chat',
     placeholder: placeholder(),
     images: true,
-    ...(dock.conversation() ? { dictation: voiceSink } : {}),
+    ...(dock.conversation() ? { dictation: sideChatSink } : {}),
     send: (text, images) => sendTyped(text, images),
     ...(props.fork === undefined ? { draft: COLD_DRAFT, toolbar: chip } : {}),
   })
@@ -342,7 +342,7 @@ function Header(props: {
 }) {
   const { session, name, source } = useSideSession()
   const id = () => session()?.id
-  const fork = useDocOf(id, VoiceForkDoc)
+  const fork = useDocOf(id, SideChatForkDoc)
   const now = useNow(30_000, () => id() !== undefined)
   const [ending, setEnding] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
@@ -352,7 +352,7 @@ function Header(props: {
     try {
       await api.action(EndAction, { source: source() })
     } catch (error) {
-      setFailure(errorMessage(error).replace(/^voice-live\/end: /, ''))
+      setFailure(errorMessage(error).replace(/^side-chat\/end: /, ''))
     } finally {
       setEnding(false)
     }
@@ -397,7 +397,7 @@ function Header(props: {
           <Button
             aria-label="Close side chat"
             class={iconButton}
-            onClick={() => setVoiceOpen(false)}
+            onClick={() => setSideChatOpen(false)}
             size={null}
             title={`Close · ${keys()}`}
             variant={null}
@@ -511,15 +511,15 @@ export function SideChatPanel() {
     <section
       aria-label="Side chat"
       class="flex h-full min-h-0 flex-col bg-background"
-      data-voice-panel
-      data-voice-docked
+      data-side-chat-panel
+      data-side-chat-docked
     >
       <SideChatBody docked />
     </section>
   )
 }
 
-export function VoicePanel() {
+export function SideChatOverlay() {
   const { session, source } = useSideSession()
   const viewport = useViewport()
   const id = () => session()?.id
@@ -529,10 +529,10 @@ export function VoicePanel() {
   const status = useAction(StatusAction, null, { conversation: ROOT })
   const split = useSplit()
   const panels = usePanels()
-  const docked = () => voiceOpen() && split()
+  const docked = () => sideChatOpen() && split()
   useEvent('secrets:changed', () => void status.refetch())
   createEffect(source, (next) => {
-    setVoiceSource(next)
+    setSideChatSource(next)
   })
   createEffect(id, (open) => {
     composeIn(open)
@@ -575,7 +575,7 @@ export function VoicePanel() {
       })
     },
   )
-  onSettled(registerVoiceFallback)
+  onSettled(registerSideChatFallback)
   const phone = () => viewport() === 'phone'
   const [place, setPlace] = useExtensionUiState<{
     right: number
@@ -602,7 +602,9 @@ export function VoicePanel() {
   const swipe = (event: PointerEvent & { currentTarget: HTMLElement }) => {
     swiped = false
     if (
-      (event.target as HTMLElement).closest('button:not([data-voice-grabber]), [popover], textarea')
+      (event.target as HTMLElement).closest(
+        'button:not([data-side-chat-grabber]), [popover], textarea',
+      )
     )
       return
     const handle = event.currentTarget
@@ -661,7 +663,7 @@ export function VoicePanel() {
   const drag = (event: PointerEvent & { currentTarget: HTMLElement }) => {
     if (phone()) return swipe(event)
     if ((event.target as HTMLElement).closest('button, [popover], label')) return
-    const panel = event.currentTarget.closest<HTMLElement>('[data-voice-panel]')!
+    const panel = event.currentTarget.closest<HTMLElement>('[data-side-chat-panel]')!
     const box = panel.getBoundingClientRect()
     const right = window.innerWidth - box.right
     const bottom = window.innerHeight - box.bottom
@@ -690,7 +692,7 @@ export function VoicePanel() {
     }
   }
   return (
-    <Show when={voiceOpen() && !docked()}>
+    <Show when={sideChatOpen() && !docked()}>
       <section
         aria-label="Side chat"
         class={cn(
@@ -703,8 +705,8 @@ export function VoicePanel() {
               )
             : 'right-4 bottom-4 h-[min(44rem,calc(100vh-5rem))] w-[min(36rem,46vw)] rounded-xl',
         )}
-        data-voice-panel
-        data-voice-sheet={phone() ? snap() : undefined}
+        data-side-chat-panel
+        data-side-chat-sheet={phone() ? snap() : undefined}
         ref={(element) => {
           sheet = element
           measure(element)
@@ -719,7 +721,7 @@ export function VoicePanel() {
             <Button
               aria-label={snap() === 'full' ? 'Shrink side chat' : 'Expand side chat'}
               class="flex h-5 w-16 items-center justify-center"
-              data-voice-grabber
+              data-side-chat-grabber
               onClick={() => !swiped && setSnap(snap() === 'full' ? 'rest' : 'full')}
               size={null}
               variant={null}
@@ -737,7 +739,7 @@ export function VoicePanel() {
 const [focusWanted, wantFocus] = createRoot(() => createSignal(false))
 
 export function openSideChat() {
-  setVoiceOpen(true)
+  setSideChatOpen(true)
   wantFocus(true)
 }
 

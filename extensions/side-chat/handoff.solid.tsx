@@ -1,4 +1,4 @@
-import type { ConversationId } from '@earendil-works/pi-durable'
+import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
 import { GitForkIcon, ChevronRight, SquareArrowOutUpRightIcon } from '@lucide/solid'
 import type { JSX } from '@solidjs/web'
 import { For, Show, useContext } from 'solid-js'
@@ -14,17 +14,16 @@ import {
   Card,
   ConversationScope,
   formatTime,
-  renderEntry,
   showSurface,
   switchConversation,
   useConversationId,
   useDocOf,
   type ToolCallView,
 } from '@/sdk/solid'
-import { QUIET_MINUTES, VoiceHandoffEntry, VoiceSummaryEntry } from './entries.shared.ts'
-import { VoiceForkDoc, type VoiceHandoff, type VoiceSummary } from './refs.ts'
+import { QUIET_MINUTES } from './entries.shared.ts'
+import { SideChatForkDoc, type SideChatHandoff, type SideChatSummary } from './refs.ts'
 
-type Brief = Omit<VoiceHandoff, 'from'>
+type Brief = Omit<SideChatHandoff, 'from'>
 
 function Section(props: { label: string; items: readonly string[] | undefined }) {
   return (
@@ -59,7 +58,7 @@ function Frame(props: {
   children: JSX.Element
 }) {
   return (
-    <Card data-voice-handoff={props.id}>
+    <Card data-side-chat-handoff={props.id}>
       <header class="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
         {props.icon ?? <GitForkIcon class="size-3.5 text-brand" />}
         <span class="shrink-0 whitespace-nowrap text-foreground">Side chat</span>
@@ -91,7 +90,7 @@ function OpenLink(props: { to: ConversationId; label: string; text: string }) {
   )
 }
 
-export const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(props) {
+export function HandoffCard(props: { entry: EntryRecord & { data: SideChatHandoff } }) {
   const data = () => props.entry.data
   return (
     <Frame
@@ -108,12 +107,12 @@ export const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(p
       <p>{data().outcome}</p>
       <Details brief={data()} />
       <Show when={data().words?.length}>
-        <Collapsible class="group/voice-words mt-2">
+        <Collapsible class="group/side-chat-words mt-2">
           <CollapsibleTrigger
             aria-label={`Your words in handoff #${props.entry.id}`}
             class="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
           >
-            <ChevronRight class="size-3 transition-transform group-data-open/voice-words:rotate-90" />
+            <ChevronRight class="size-3 transition-transform group-data-open/side-chat-words:rotate-90" />
             Your words · {data().words!.length}
             {data().earlier ? ` (${data().earlier} earlier left out)` : ''}
           </CollapsibleTrigger>
@@ -130,10 +129,10 @@ export const HandoffCard = renderEntry(VoiceHandoffEntry, function HandoffCard(p
       </Show>
     </Frame>
   )
-})
+}
 
 export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
-  const fork = useDocOf(useConversationId(), VoiceForkDoc)
+  const fork = useDocOf(useConversationId(), SideChatForkDoc)
   const brief = () => props.call.args as Partial<Brief> & { to?: number }
   const place = useContext(ConversationScope) === null ? 'in the transcript' : 'in the side chat'
   const target = () => (brief().to as ConversationId | undefined) ?? fork()?.of
@@ -170,12 +169,12 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
             </p>
           </Show>
           <p>{brief().outcome}</p>
-          <Collapsible class="group/voice-brief mt-2">
+          <Collapsible class="group/side-chat-brief mt-2">
             <CollapsibleTrigger
               aria-label={`Brief of handoff ${props.call.id}, ${place}`}
               class="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
             >
-              <ChevronRight class="size-3 transition-transform group-data-open/voice-brief:rotate-90" />
+              <ChevronRight class="size-3 transition-transform group-data-open/side-chat-brief:rotate-90" />
               Brief
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -188,24 +187,24 @@ export function HandoffCall(props: { call: ToolCallView; core: JSX.Element }) {
   )
 }
 
-const ended = (reason: VoiceSummary['reason']) =>
+const ended = (reason: SideChatSummary['reason']) =>
   reason === 'fresh'
     ? 'started fresh'
     : reason === 'answered'
       ? 'answered the card'
       : `ended after ${QUIET_MINUTES} min quiet`
 
-export const SummaryCard = renderEntry(VoiceSummaryEntry, function SummaryCard(props) {
+export function SummaryCard(props: { entry: EntryRecord & { data: SideChatSummary } }) {
   const data = () => props.entry.data
   return (
-    <Card data-voice-summary={props.entry.id}>
-      <Collapsible class="group/voice-summary">
+    <Card data-side-chat-summary={props.entry.id}>
+      <Collapsible class="group/side-chat-summary">
         <header class="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-muted-foreground">
           <CollapsibleTrigger
             aria-label={`Summary of side chat #${data().from}`}
             class="flex min-w-0 items-center gap-2 hover:text-foreground"
           >
-            <ChevronRight class="size-3 shrink-0 transition-transform group-data-open/voice-summary:rotate-90" />
+            <ChevronRight class="size-3 shrink-0 transition-transform group-data-open/side-chat-summary:rotate-90" />
             <GitForkIcon class="size-3.5 shrink-0 text-brand" />
             <span class="shrink-0 whitespace-nowrap text-foreground">Side chat</span>
             <span>summary</span>
@@ -228,4 +227,27 @@ export const SummaryCard = renderEntry(VoiceSummaryEntry, function SummaryCard(p
       </Collapsible>
     </Card>
   )
-})
+}
+
+export function LegacySummaryCard(props: {
+  entry: EntryRecord & { data: { side: ConversationId; text: string } }
+}) {
+  const side = () => props.entry.data.side
+  return (
+    <Card data-side-chat-summary={props.entry.id}>
+      <header class="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <GitForkIcon class="size-3.5 text-brand" />
+        <span class="text-foreground">Side chat</span>
+        <span>summary</span>
+        <OpenLink
+          label={`Read side chat #${side()} from summary #${props.entry.id}`}
+          text="side chat"
+          to={side()}
+        />
+      </header>
+      <div class="min-w-0 px-3 py-3 text-[13px] leading-relaxed">
+        <Markdown text={props.entry.data.text} />
+      </div>
+    </Card>
+  )
+}

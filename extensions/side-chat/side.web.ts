@@ -1,5 +1,5 @@
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { VoiceSourceSession } from './refs.ts'
+import type { SideChatSourceSession } from './refs.ts'
 
 export interface TabKey {
   key: string
@@ -43,7 +43,7 @@ const reasons = {
   answered: () => 'answered the card',
 }
 
-export function closing(last: NonNullable<VoiceSourceSession['last']>, minutes: number) {
+export function closing(last: NonNullable<SideChatSourceSession['last']>, minutes: number) {
   return {
     reason: reasons[last.reason](minutes),
     handback: last.summary

@@ -34,7 +34,7 @@ const chores: Record<string, string> = {
   'workspaces.prepare': 'Preparing a worktree for',
   'watchdog.failure': 'Reporting a failed run of',
   'goal.reminder': 'Updating the goal reminder',
-  'side-chat.end': 'Closing a side chat',
+  'side-chat.transcribe': 'Transcribing side chat audio in',
   'ultimate.automation-delivery': 'Delivering automation',
 }
 
@@ -88,6 +88,12 @@ export function meaning(
       return {
         group: phase === 'settled' ? 'waiting' : 'running',
         text: `Automation · ${facts?.automation ?? 'run'}`,
+      }
+    case 'side-chat.quiet':
+      return {
+        group: 'background',
+        text: phase === 'wait' ? 'Keeping a side chat open' : 'Closing a side chat',
+        who: facts?.conversation,
       }
     case 'watchdog.failure':
       if (phase === 'wait')

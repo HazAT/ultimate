@@ -2,14 +2,14 @@ import type { ConversationId } from '@earendil-works/pi-durable'
 import { createMemo } from 'solid-js'
 import { ROOT, useConversationSummary, useDocOf, useUiState } from '@/sdk/solid'
 import { StandingDoc } from '../subagents/refs.ts'
-import { VoiceSessionDoc } from './refs.ts'
+import { SideChatSessionDoc } from './refs.ts'
 import { sourceName } from './side.web.ts'
 
-export const SOURCE_KEY = 'ext.voice-live.source'
+export const SOURCE_KEY = 'ext.side-chat.source'
 
 export function useSideSession() {
   const standing = useDocOf(() => ROOT, StandingDoc)
-  const state = useDocOf(() => ROOT, VoiceSessionDoc)
+  const state = useDocOf(() => ROOT, SideChatSessionDoc)
   const [stored, setStored] = useUiState<number | null>(SOURCE_KEY, null)
   const ultimate = () => standing()?.ultimate
   const source = createMemo(() => (stored() ?? ultimate()) as ConversationId | undefined)

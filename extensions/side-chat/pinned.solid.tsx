@@ -34,7 +34,7 @@ export function PinnedQuestion(props: { message: number; fork: ConversationId; f
       .action(AnswerAction, { source: asker() as ConversationId, answer }, { keepalive })
       .catch((failure: unknown) => {
         throw new Error(
-          `Nothing was sent: ${errorMessage(failure).replace(/^voice-live\/answer: /, '')}`,
+          `Nothing was sent: ${errorMessage(failure).replace(/^side-chat\/answer: /, '')}`,
         )
       })
   return (

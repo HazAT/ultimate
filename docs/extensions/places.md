@@ -18,7 +18,7 @@ other is disabled or removed.
 
 Every extension folder is on by default, built-in, user or project: adding the folder is the opt-in. The exception is
 the built-ins listed in `defaultOff` (`shared/extension-api.ts`; see [settings](../settings.md)), which need
-something of their own and ship off until `extensions.enable` names them (including `voice-live`, voice mode). Turn one off
+something of their own and ship off until `extensions.enable` names them. Turn one off
 with `{ "extensions": { "disable": ["hello"] } }` in `~/.ultimate/settings.json` (this machine) or
 `<project>/.ultimate/settings.json` (this project), and back on with `extensions.enable`. Settings layer defaults →
 machine → project; later layers win. Settings changes apply live without a restart; unknown names produce a notice.

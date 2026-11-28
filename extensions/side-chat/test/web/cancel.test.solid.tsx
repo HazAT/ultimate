@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import { composeIn, dispatch, dock, voiceSink } from '../../dock.solid.tsx'
+import { composeIn, dispatch, dock, sideChatSink } from '../../dock.solid.tsx'
 import { flush } from 'solid-js'
 
 const actions = vi.hoisted(() => [] as string[])
@@ -29,7 +29,7 @@ vi.mock('@/sdk/solid', async () => {
     ROOT: 1,
     useAction: () => ({ data: () => undefined, refetch: async () => undefined }),
     useUiState: (key: string, initial: unknown) =>
-      createSignal<unknown>(key === 'ext.voice-live.cues' ? false : initial),
+      createSignal<unknown>(key === 'ext.side-chat.cues' ? false : initial),
   }
 })
 
@@ -71,9 +71,9 @@ vi.stubGlobal('navigator', {
   mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) },
 })
 
-const press = () => capture.press(voiceSink)?.started
-const cancelRecording = () => capture.take(voiceSink)?.cancel()
-const talking = () => capture.talking(voiceSink)
+const press = () => capture.press(sideChatSink)?.started
+const cancelRecording = () => capture.take(sideChatSink)?.cancel()
+const talking = () => capture.talking(sideChatSink)
 
 beforeEach(async () => {
   await serverEndedSession(composeIn)

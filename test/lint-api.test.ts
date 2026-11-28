@@ -521,8 +521,8 @@ it('sends hand-made widget roles to the UI kit, outside the kit itself', () => {
 })
 
 it('makes an optional extension declare the optional extensions whose browser code it runs', () => {
-  // extensions/voice-live/dock.solid.tsx at 0e174ad: voice ran dictation's and read aloud's browser code, so with
-  // either turned off it opened half-working ("OpenAI voice: Unknown extension action", a dead talk shortcut).
+  // At 0e174ad, the talk panel ran dictation's and read aloud's browser code. With either turned off it opened
+  // half-working ("OpenAI voice: Unknown extension action", a dead talk shortcut).
   const dock = `import { capture, setFallback } from '../dictation/ui.solid.tsx'
 import type { Recorded } from '../dictation/ui.solid.tsx'
 import { speech, splitReply } from '../read-aloud/ui.solid.tsx'
@@ -533,8 +533,8 @@ import { Changed } from '../health/refs.ts'`
       (message) => /echo runs ([a-z-]+)'s browser code/.exec(message)?.[1],
     ),
   ).toEqual(['dictation', 'read-aloud', 'health'])
-  expect(diagnose('declared-requires', 'extensions/voice-live/dock.solid.tsx', dock)).toEqual([
-    expect.stringContaining("voice-live runs health's browser code"),
+  expect(diagnose('declared-requires', 'extensions/side-chat/dock.solid.tsx', dock)).toEqual([
+    expect.stringContaining("side-chat runs health's browser code"),
   ])
   expect(diagnose('declared-requires', 'extensions/conversations/rows.solid.tsx', dock)).toEqual([])
 })

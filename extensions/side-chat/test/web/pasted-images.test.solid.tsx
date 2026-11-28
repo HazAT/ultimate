@@ -14,7 +14,7 @@ import {
   dock,
   sendTyped,
   settleTranscripts,
-  voiceSink,
+  sideChatSink,
 } from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
@@ -35,7 +35,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   const subscriptions = fakeSubscriptions(harness.sources)
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
-    if (path === '/api/extensions/voice-live/actions/status') {
+    if (path === '/api/extensions/side-chat/actions/status') {
       harness.asked++
       await harness.status
       init?.signal?.throwIfAborted()
@@ -43,16 +43,16 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
         result: { model: 'faux/voice', thinking: 'low', route: harness.route },
       })
     }
-    if (path === '/api/extensions/voice-live/actions/turn') {
+    if (path === '/api/extensions/side-chat/actions/turn') {
       harness.turns.push(JSON.parse(init?.body as string).args)
       return Response.json({ result: { conversation: 40, route: 'audio' } })
     }
-    if (path === '/api/extensions/voice-live/actions/stop') {
+    if (path === '/api/extensions/side-chat/actions/stop') {
       harness.stops++
       await harness.stop
       return Response.json({ result: {} })
     }
-    if (path === '/api/extensions/voice-live/actions/record')
+    if (path === '/api/extensions/side-chat/actions/record')
       return Response.json({ result: { audio: 'rec-1', session: 41 } })
     return subscriptions.handle(path, init) ?? Response.json({ ok: true })
   }
@@ -72,7 +72,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 const session = parseConversationId(40)
 const shot = { data: 'cG5n', mimeType: 'image/png' }
 const speak = () =>
-  voiceSink.finish(
+  sideChatSink.finish(
     { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: true, envelope: [] },
     false,
   )
@@ -140,7 +140,7 @@ it('a session that ends during a send from the composer rejects, so the composer
   await vi.waitFor(() => expect(harness.asked).toBe(1))
   await serverEndedSession(composeIn)
   answer()
-  await expect(sending).rejects.toThrow('The voice session ended')
+  await expect(sending).rejects.toThrow('The side chat ended')
   expect(harness.turns).toEqual([])
 })
 
@@ -168,7 +168,7 @@ it('a turn after a recording that opened the session belongs to that session', a
     spoke: true,
     envelope: [],
   }
-  await voiceSink.finish(recorded, false)
+  await sideChatSink.finish(recorded, false)
   await settle()
   expect(harness.turns).toEqual([expect.objectContaining({ session: 41 })])
 })
@@ -246,7 +246,7 @@ it('a spoken turn carries a finished video from the live box and clears its chip
 it('stopping a recording sends what was typed and pasted into the live box with it, as one turn, and clears the box', async () => {
   getDraft(session).set({ text: 'more context', images: [shot] })
   const recorded = { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: true }
-  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  await sideChatSink.finish({ ...recorded, envelope: [] }, false)
   await settle()
   expect(harness.turns).toEqual([
     expect.objectContaining({ text: 'more context', audio: 'rec-1', images: [shot] }),
@@ -257,7 +257,7 @@ it('stopping a recording sends what was typed and pasted into the live box with 
 it('a recording that heard nothing still sends what was typed and pasted into the box', async () => {
   getDraft(session).set({ text: 'more context', images: [shot] })
   const recorded = { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: false }
-  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  await sideChatSink.finish({ ...recorded, envelope: [] }, false)
   await settle()
   expect(harness.turns).toEqual([expect.objectContaining({ text: 'more context', images: [shot] })])
   expect(harness.turns[0]).not.toHaveProperty('audio')
@@ -272,10 +272,10 @@ it('a silent stop whose box holds nothing it can send stops no reply and sends n
   flush()
   const recorded = { blob: new Blob(['a'], { type: 'audio/webm' }), seconds: 2, spoke: false }
   dispatch({ type: 'press', busy: true })
-  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  await sideChatSink.finish({ ...recorded, envelope: [] }, false)
   getDraft(session).set({ images: [shot], sending: true })
   dispatch({ type: 'press', busy: true })
-  await voiceSink.finish({ ...recorded, envelope: [] }, false)
+  await sideChatSink.finish({ ...recorded, envelope: [] }, false)
   await settle()
   expect(harness.stops).toBe(0)
   expect(harness.turns).toEqual([])

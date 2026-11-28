@@ -6,6 +6,6 @@ export async function isSideChat(
   tx: Pick<Tx, 'doc'>,
   id: ConversationId,
 ): Promise<boolean> {
-  const fork = host.doc('voice.fork')
+  const fork = host.doc('side-chat.fork')
   return fork !== undefined && typeof (await tx.doc(fork, id)).of === 'number'
 }

@@ -356,7 +356,7 @@ Tooling:
   and Enter submitting a form need a real browser. `switchConversation` and `showSurface` read `matchMedia`: stub it
   with `vi.stubGlobal` in a test that navigates.
 - **A root document in a test** (`ultimate.standing-agents`) reaches `server.of(1)` only once a mounted reader watches
-  it: mount first, then send it (`extensions/side-chat/test/web/frame.test.solid.tsx`).
+  it: mount first, then send it (`extensions/side-chat/test/web/side-chat.test.solid.tsx`).
 - **Who wrote it, in a preview:** a page the browser tool drives counts every write as the agent's, clicks and keys
   included. Prove a person's attribution in a jsdom test or by the user's own click, not through the browser tool.
 - **Whole page:** the browser tool's `ui` steps (`snapshot`, `query`, `act`) wait for the first render and every

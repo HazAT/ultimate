@@ -37,7 +37,7 @@ import {
 } from './machine.web.ts'
 import type { DockEvent, DockState, Typed } from './machine.web.ts'
 import { RecordAction, StatusAction, StopAction, TurnAction } from './refs.ts'
-import type { VoiceFork, VoiceTurn } from './refs.ts'
+import type { SideChatFork, SideChatTurn } from './refs.ts'
 
 export const KEYS = 'mod+shift+v'
 type Image = { data: string; mimeType: string }
@@ -45,14 +45,14 @@ type Local = {
   conversation?: number
   audio?: string
   failed?: string
-  optimistic?: VoiceTurn
+  optimistic?: SideChatTurn
   images?: Image[]
 }
 
 type Session = {
   id: ConversationId | undefined
   live: AbortController
-  forks: Map<ConversationId, Readonly<VoiceFork>>
+  forks: Map<ConversationId, Readonly<SideChatFork>>
 }
 const newSession = (): Session => ({
   id: undefined,
@@ -66,12 +66,12 @@ const sourced = () => {
   const source = sourceCell.get()
   return source === undefined ? {} : { source }
 }
-export const voiceSource = createRoot(() => {
+export const sideChatSource = createRoot(() => {
   const [now, setNow] = createSignal(sourceCell.get())
   sourceCell.subscribe(() => setNow(sourceCell.get()))
   return now
 })
-export function setVoiceSource(source: ConversationId | undefined) {
+export function setSideChatSource(source: ConversationId | undefined) {
   if (source === sourceCell.get()) return
   if (session().id !== undefined) endLocally()
   sourceCell.set(source)
@@ -102,10 +102,10 @@ const machine = cell<DockState>({ phase: 'idle' })
 const state = () => machine.get()
 
 export const dock = createRoot(() => {
-  const [conversation, setConversation] = useUiState('ext.voice-live.conversation', true)
-  const [cuesOn, setCuesOn] = useUiState('ext.voice-live.cues', true)
-  const [open, setOpen] = useUiState('ext.voice-live.open', false)
-  const [sideMode, setSideMode] = useUiState('ext.voice-live.side-mode', false)
+  const [conversation, setConversation] = useUiState('ext.side-chat.conversation', true)
+  const [cuesOn, setCuesOn] = useUiState('ext.side-chat.cues', true)
+  const [open, setOpen] = useUiState('ext.side-chat.open', false)
+  const [sideMode, setSideMode] = useUiState('ext.side-chat.side-mode', false)
   const [now, setNow] = createSignal<DockState>(machine.get())
   machine.subscribe(() => setNow(machine.get()))
   const [local, setLocal] = createSignal<Record<string, Local>>({})
@@ -158,7 +158,7 @@ type Waiter = {
 }
 const waiting = new Map<string, Set<Waiter>>()
 capture.setKeepOpen(() => session().id !== undefined)
-export const COLD_DRAFT = 'voice-live.cold'
+export const COLD_DRAFT = 'side-chat.cold'
 export const coldHolds = (cold: { text: string; images: readonly unknown[]; files: number }) =>
   !!cold.text.trim() || cold.images.length > 0 || cold.files > 0
 export const composeIn = (id: ConversationId | undefined) => {
@@ -195,7 +195,7 @@ const settledTranscript = (audio: string, signal: AbortSignal) =>
   })
 
 export function settleTranscripts(
-  fork: Readonly<VoiceFork> | null | undefined,
+  fork: Readonly<SideChatFork> | null | undefined,
   id?: ConversationId,
 ) {
   if (fork && id !== undefined) session().forks.set(id, fork)
@@ -209,9 +209,9 @@ export function settleTranscripts(
   }
 }
 
-export const voiceOpen = () => dock.open()
-export const setVoiceOpen = (open: boolean) => {
-  if (!open) void capture.take(voiceSink)?.cancel()
+export const sideChatOpen = () => dock.open()
+export const setSideChatOpen = (open: boolean) => {
+  if (!open) void capture.take(sideChatSink)?.cancel()
   dock.setOpen(open)
 }
 const ours = () => {
@@ -244,10 +244,10 @@ export const retire = (key: string) =>
   }))
 
 function listening() {
-  return capture.capturing(voiceSink)
+  return capture.capturing(sideChatSink)
 }
 
-export const voiceSink: Sink = {
+export const sideChatSink: Sink = {
   get signal() {
     return session().live.signal
   },
@@ -271,11 +271,11 @@ export const voiceSink: Sink = {
   finish: finishRecording,
 }
 
-export function registerVoiceFallback() {
+export function registerSideChatFallback() {
   setFallback({
-    sink: voiceSink,
+    sink: sideChatSink,
     wake: () => {
-      if (!voiceOpen()) setVoiceOpen(true)
+      if (!sideChatOpen()) setSideChatOpen(true)
     },
   })
   return () => setFallback(undefined)
@@ -320,7 +320,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
   }
   writingAs(who, () => {
     if (dock.sideMode()) dock.setSideMode(false)
-    if (!voiceOpen()) setVoiceOpen(true)
+    if (!sideChatOpen()) setSideChatOpen(true)
   })
   await sendTurn({
     who,
@@ -333,7 +333,7 @@ async function finishRecording(recorded: Recorded, retaking: boolean) {
 }
 
 export async function sendTyped(text: string, images: readonly Image[] = []) {
-  const take = capture.take(voiceSink)
+  const take = capture.take(sideChatSink)
   if (take) {
     const { signal } = session().live
     const typed = { text, images }
@@ -527,7 +527,7 @@ const textOf = (message: AssistantMessage | undefined) =>
 
 export type TurnView = {
   key: string
-  data: VoiceTurn
+  data: SideChatTurn
   replies: AssistantMessage[]
   entries: number[]
   live?: AssistantMessage
@@ -543,8 +543,8 @@ export function turnsIn(conversation: ReturnType<ReturnType<typeof useConversati
   const partial = conversation.live.generation?.message as AssistantMessage | undefined
   const turns: TurnView[] = []
   for (const entry of conversation.entries) {
-    if (entry.kind === 'voice.turn') {
-      const data = entry.data as VoiceTurn
+    if (entry.kind === 'side-chat.turn') {
+      const data = entry.data as SideChatTurn
       turns.push({ key: data.key, data, replies: [], entries: [] })
     } else if (entry.kind === 'pi.assistant' && turns.length) {
       const message = entry.model?.[0]
@@ -662,9 +662,9 @@ export function useSpeaking(view: () => { turns: TurnView[]; busy: boolean }) {
 }
 
 function endLocally() {
-  void capture.end(voiceSink)
+  void capture.end(sideChatSink)
   dock.player.stop()
-  session().live.abort(new Error('The voice session ended'))
+  session().live.abort(new Error('The side chat ended'))
   voiced = undefined
   live.set(newSession())
   dock.setLocal({})

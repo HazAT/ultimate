@@ -15,14 +15,14 @@ clean catalogue.
 An optional extension that runs another optional extension's browser code (its `ui.solid.tsx` or `refs.ts`)
 declares it in its `api.ts`, documented like any contract:
 
-- `export const requires = ['dictation', 'read-aloud']` when it cannot work without them. Discovery then keeps it off
-  while one is off, with the diagnostic `voice-live stays off: it requires dictation, which is off`, and the
+- `export const requires = ['dictation', 'read-aloud', 'page-agent']` when it cannot work without them. Discovery then keeps it off
+  while one is off, with the diagnostic `side-chat stays off: it requires dictation, which is off`, and the
   Extensions panel shows what it requires.
 - `export const wants = ['inbox']` when it works without it: it hides what needs it while `useEnabled(name)` (from
   `@/sdk/solid`) says it is off.
 
 Lint's `declared-requires` fails on an undeclared one: without it, the other's browser code runs while its server is
-off, and the feature half-works with no word why (voice-live before it declared `requires`).
+off, and the feature half-works with no word why.
 
 Today's core tier: agent, prompt, coding-tools, entries, conversations, models, documents, notices, secrets, theme,
 workspaces, subagents, lineage, messages, automations, manager (the Extensions panel, the only way to turn an

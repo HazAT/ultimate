@@ -8,7 +8,7 @@ import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { FakeSource, fakeSubscriptions } from '../../../../test/web/fake-source.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 import type { JsonObject } from '@earendil-works/pi-durable'
-import type { VoiceSession } from '../../refs.ts'
+import type { SideChatSession } from '../../refs.ts'
 
 const harness = vi.hoisted(() => ({
   sources: [] as FakeSource[],
@@ -31,7 +31,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
   ))
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input as string
-    const name = /^\/api\/extensions\/voice-live\/actions\/(\w+)$/.exec(path)?.[1]
+    const name = /^\/api\/extensions\/side-chat\/actions\/(\w+)$/.exec(path)?.[1]
     if (!name) return subscriptions.handle(path, init) ?? Response.json({ ok: true })
     const { args } = JSON.parse(init!.body as string) as { args: unknown }
     harness.actions.push({
@@ -40,7 +40,7 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
       source: new Headers(init!.headers).get('x-ultimate-source'),
     })
     if (harness.refuse.has(name))
-      return Response.json({ error: `voice-live/${name}: No side chat is open` }, { status: 400 })
+      return Response.json({ error: `side-chat/${name}: No side chat is open` }, { status: 400 })
     return Response.json({ result: { conversation: 90 } })
   }
   const store = createStore({
@@ -71,8 +71,8 @@ vi.mock('../../../../web/src/sdk/client.ts', async () => {
 import { regionOpen } from '../../../../web/src/sdk/actions.ts'
 import { store, uiState } from '../../../../web/src/sdk/client.ts'
 import { ComposerRedirect, ExtensionName } from '../../../../web/src/sdk/solid.ts'
-import { dock, setVoiceOpen } from '../../dock.solid.tsx'
-import { SideChatPanel, VoicePanel } from '../../panel.solid.tsx'
+import { dock, setSideChatOpen } from '../../dock.solid.tsx'
+import { SideChatPanel, SideChatOverlay } from '../../panel.solid.tsx'
 import { SideComposer } from '../../frame.solid.tsx'
 import { PinnedQuestion } from '../../pinned.solid.tsx'
 
@@ -100,7 +100,7 @@ beforeEach(async ({ onTestFinished }) => {
   harness.actions.length = 0
   harness.writes.length = 0
   harness.refuse.clear()
-  setVoiceOpen(false)
+  setSideChatOpen(false)
   dock.setSideMode(false)
   uiState.receive({})
   store.start()
@@ -117,11 +117,11 @@ beforeEach(async ({ onTestFinished }) => {
   flush()
 })
 afterEach(() => {
-  setVoiceOpen(false)
+  setSideChatOpen(false)
   vi.unstubAllGlobals()
 })
 
-async function root(session: VoiceSession, extra: Record<string, Readonly<JsonObject>> = {}) {
+async function root(session: SideChatSession, extra: Record<string, Readonly<JsonObject>> = {}) {
   await settle()
   const at = harness.server!
   const send = (kind: string, value: Readonly<JsonObject>) => {
@@ -131,7 +131,7 @@ async function root(session: VoiceSession, extra: Record<string, Readonly<JsonOb
     if (carries) at.of(1)!.send('doc', { kind, value })
   }
   send('ultimate.standing-agents', { ultimate })
-  send('voice.session', session)
+  send('side-chat.session', session)
   for (const [kind, value] of Object.entries(extra)) send(kind, value)
   await settle()
   flush()
@@ -154,7 +154,9 @@ const ended = (reason: 'quiet' | 'fresh' | 'answered', summary?: string) => ({
 it('after it ends, shows the previous fork above a closing line naming the reason and what went back', async () => {
   const view = renderSolid(() => <SideChatPanel />)
   const line = () =>
-    [...view.querySelectorAll('[data-voice-ended] > *')].map((part) => part.textContent).join(' | ')
+    [...view.querySelectorAll('[data-side-chat-ended] > *')]
+      .map((part) => part.textContent)
+      .join(' | ')
   await root(ended('quiet'))
   expect(line()).toContain('concluded· 09:41 | ')
   expect(line()).toContain('ended after 20 min quiet · nothing to hand back')
@@ -187,7 +189,7 @@ it('Start fresh ends the open side chat as the person, and a refusal leaves it o
     { name: 'end', args: { source: ultimate }, source: 'person' },
   ])
   expect(view.querySelector(`[aria-label="Start fresh: end side chat #${fork}"]`)).not.toBeNull()
-  expect(view.querySelector('[data-voice-ended]')).toBeNull()
+  expect(view.querySelector('[data-side-chat-ended]')).toBeNull()
 })
 
 it('Conversation mode is on by default, and switching it is the person’s write', async () => {
@@ -200,11 +202,11 @@ it('Conversation mode is on by default, and switching it is the person’s write
   expect(result).toMatchObject({ ok: true })
   await uiState.flush()
   expect(dock.conversation()).toBe(false)
-  expect(harness.writes).toContainEqual({ key: 'ext.voice-live.conversation', who: 'agent' })
+  expect(harness.writes).toContainEqual({ key: 'ext.side-chat.conversation', who: 'agent' })
   harness.writes.length = 0
   dock.setConversation(true)
   await uiState.flush()
-  expect(harness.writes).toContainEqual({ key: 'ext.voice-live.conversation', who: 'person' })
+  expect(harness.writes).toContainEqual({ key: 'ext.side-chat.conversation', who: 'person' })
 })
 
 it('the Normal / Side chat segment and Tab switch @ultimate’s box into side chat mode as the person', async () => {
@@ -219,7 +221,7 @@ it('the Normal / Side chat segment and Tab switch @ultimate’s box into side ch
   flush()
   await uiState.flush()
   expect(mode()).toBe('side')
-  expect(harness.writes).toContainEqual({ key: 'ext.voice-live.side-mode', who: 'person' })
+  expect(harness.writes).toContainEqual({ key: 'ext.side-chat.side-mode', who: 'person' })
   expect(harness.actions).toEqual([])
   const toggle = await agent.act({
     steps: [
@@ -310,19 +312,19 @@ it('at 1280 px and wider on the source, the window docks in the panels region as
     removeEventListener() {},
   }))
   renderSolid(() => (
-    <ExtensionName value="voice-live">
-      <VoicePanel />
+    <ExtensionName value="side-chat">
+      <SideChatOverlay />
     </ExtensionName>
   ))
   await root({ sessions: {} })
   harness.writes.length = 0
-  setVoiceOpen(true)
+  setSideChatOpen(true)
   flush()
   await settle()
   await uiState.flush()
   expect(uiState.get('shell.panel')).toBe('side-chat')
   expect(regionOpen('panels')).toBe(true)
-  setVoiceOpen(false)
+  setSideChatOpen(false)
   flush()
   await settle()
   await uiState.flush()

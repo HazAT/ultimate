@@ -1,7 +1,7 @@
 import { createAgent } from '@ui-sdk/solid/agent'
 import { flush } from 'solid-js'
 import { expect, it, vi } from 'vitest'
-import { ConversationScope, type ToolCallView } from '@/sdk/solid'
+import { ConversationScope, type EntryRecord, type ToolCallView } from '@/sdk/solid'
 import { expectDistinctAgentNames } from '../../../../test/web/agent-names.ts'
 import { renderSolid } from '../../../../test/web/solid-dom-setup.ts'
 
@@ -12,16 +12,17 @@ vi.mock('@/sdk/solid', async (original) => ({
   switchConversation: (id: number) => shown.push(id),
   useConversationId: () => () => 40,
   useDocOf: (_id: unknown, ref: { kind: string }) => () =>
-    ref.kind === 'voice.fork' ? { of: 7 } : undefined,
+    ref.kind === 'side-chat.fork' ? { of: 7 } : undefined,
 }))
 
 import { HandoffCall } from '../../handoff.solid.tsx'
+import sideChat from '../../web.solid.tsx'
 
 const agent = createAgent()
 const brief = { title: 'Omacut hangs', outcome: 'Capture its state, then fix it', instruction: 'I' }
 const call = (id: string, patch: Partial<ToolCallView>): ToolCallView => ({
   id,
-  name: 'voice_handoff',
+  name: 'side_chat_handoff',
   args: brief,
   status: 'done',
   output: 'Sent to @ultimate.',
@@ -30,7 +31,7 @@ const call = (id: string, patch: Partial<ToolCallView>): ToolCallView => ({
   ...patch,
 })
 
-it('a voice_handoff call shows what went where, opens the target, and shows a refusal', async () => {
+it('a side_chat_handoff call shows what went where, opens the target, and shows a refusal', async () => {
   const branch = call('call-branch', { args: { ...brief, to: 55 }, output: 'Sent to #55.' })
   const root = renderSolid(() => (
     <>
@@ -55,14 +56,14 @@ it('a voice_handoff call shows what went where, opens the target, and shows a re
     </>
   ))
   flush()
-  const [ultimate, sent, , refused] = root.querySelectorAll('[data-voice-handoff]')
+  const [ultimate, sent, , refused] = root.querySelectorAll('[data-side-chat-handoff]')
   expect(ultimate.textContent).toContain('Omacut hangs')
   expect(ultimate.textContent).toContain('Capture its state, then fix it')
   expect(ultimate.textContent).toContain('sent to @ultimate')
   expect(sent.textContent).toContain('sent to #55')
   expect(refused.textContent).toContain('#9 is not a branch on the screen')
   expect(refused.textContent).toContain('not sent')
-  expect(root.querySelectorAll('[data-voice-handoff]')).toHaveLength(4)
+  expect(root.querySelectorAll('[data-side-chat-handoff]')).toHaveLength(4)
   expect(root.querySelector('[data-core-card]')).not.toBeNull()
 
   await expectDistinctAgentNames(agent)
@@ -76,4 +77,46 @@ it('a voice_handoff call shows what went where, opens the target, and shows a re
     ],
   })
   expect(shown).toEqual(['agent', 7, 'agent', 55])
+})
+
+it('renders stored summaries from both earlier side chat formats', async () => {
+  const VoiceSummary = sideChat.entries!['voice.summary']
+  const SideSummary = sideChat.entries!['sidechat.summary']
+  const record = (id: number, kind: string, data: EntryRecord['data']): EntryRecord => ({
+    id: id as EntryRecord['id'],
+    conversationId: 7 as EntryRecord['conversationId'],
+    kind,
+    data,
+  })
+  const root = renderSolid(() => (
+    <>
+      <VoiceSummary
+        core={<p>Unrendered voice summary</p>}
+        entry={record(10, 'voice.summary', {
+          from: 41,
+          endedAt: 1_000,
+          text: 'Keep the shortcut.',
+        })}
+      />
+      <SideSummary
+        core={<p>Unrendered side chat summary</p>}
+        entry={record(11, 'sidechat.summary', {
+          side: 42,
+          from: 42,
+          to: 7,
+          at: 5,
+          text: 'Move the panel.',
+        })}
+      />
+    </>
+  ))
+  flush()
+  expect(root.textContent).not.toContain('Unrendered')
+  expect(root.textContent).toContain('Move the panel.')
+  const opened = await agent.act({
+    steps: [{ ref: 'Summary of side chat #41', action: 'setOpen', args: [true] }],
+  })
+  expect(opened.ok).toBe(true)
+  expect(root.textContent).toContain('Keep the shortcut.')
+  await expectDistinctAgentNames(agent)
 })

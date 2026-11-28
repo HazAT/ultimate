@@ -4,14 +4,14 @@ import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
 import { Button } from '@/components/ui/button.solid.tsx'
 import { cn, ROOT, useConversations, useDocOf } from '@/sdk/solid'
 import { capture } from '../dictation/ui.solid.tsx'
-import { dock, playerState, setVoiceOpen, voiceOpen } from './dock.solid.tsx'
-import { VoiceSessionDoc } from './refs.ts'
+import { dock, playerState, setSideChatOpen, sideChatOpen } from './dock.solid.tsx'
+import { SideChatSessionDoc } from './refs.ts'
 
 type Live = 'listening' | 'speaking' | 'thinking' | 'open'
 
 const bars = [0.55, 1, 0.7]
 
-const sway = `@keyframes voice-row-sway {
+const sway = `@keyframes side-chat-row-sway {
   0%, 100% { transform: scaleY(0.35); }
   50% { transform: scaleY(1); }
 }`
@@ -33,10 +33,10 @@ function Level(props: { live: Live }) {
                   ? 'bg-muted-foreground/60'
                   : 'bg-brand',
               props.live === 'speaking' &&
-                'motion-safe:animate-[voice-row-sway_0.9s_ease-in-out_infinite]',
+                'motion-safe:animate-[side-chat-row-sway_0.9s_ease-in-out_infinite]',
               props.live === 'thinking' && 'animate-pulse-dot',
             )}
-            data-voice-bar={index()}
+            data-side-chat-bar={index()}
             style={{
               'animation-delay': `${index() * 0.15}s`,
               transform:
@@ -53,8 +53,8 @@ function Level(props: { live: Live }) {
   )
 }
 
-export function VoiceRow(props: { conversation: ConversationId | undefined }) {
-  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+export function SideChatRow(props: { conversation: ConversationId | undefined }) {
+  const session = useDocOf(() => ROOT, SideChatSessionDoc)
   const id = () =>
     props.conversation === undefined ? undefined : session()?.sessions?.[props.conversation]?.id
   const conversations = useConversations()
@@ -68,12 +68,12 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
   return (
     <Show when={props.conversation !== undefined && id() !== undefined}>
       <Button
-        aria-current={voiceOpen() ? 'true' : undefined}
+        aria-current={sideChatOpen() ? 'true' : undefined}
         aria-label="Side chat session"
         class="mx-2 flex w-[calc(100%-1rem)] items-center justify-start gap-1.5 rounded-md py-1.5 pr-2 pl-9 text-left font-normal outline-none hover:bg-sidebar-accent/50 focus-visible:ring-1 focus-visible:ring-ring"
-        data-voice-row={id()}
-        data-voice-live={live()}
-        onClick={() => setVoiceOpen(!voiceOpen())}
+        data-side-chat-row={id()}
+        data-side-chat={live()}
+        onClick={() => setSideChatOpen(!sideChatOpen())}
         size={null}
         title={`Side chat · ${live()}`}
         variant={null}
@@ -101,7 +101,7 @@ export function VoiceRow(props: { conversation: ConversationId | undefined }) {
   )
 }
 
-export function voiceForks() {
-  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+export function sideChatForks() {
+  const session = useDocOf(() => ROOT, SideChatSessionDoc)
   return createMemo(() => new Set<number>(session()?.forks ?? []))
 }

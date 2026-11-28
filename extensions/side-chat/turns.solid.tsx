@@ -1,5 +1,5 @@
 import type { ConversationId, EntryRecord } from '@earendil-works/pi-durable'
-import { MessageCircleReply, Mic } from '@lucide/solid'
+import { Mic } from '@lucide/solid'
 import { createEffect, createMemo, For, Show } from 'solid-js'
 import { Message, MessageContent } from '@/components/ai/message.solid.tsx'
 import { Shimmer } from '@/components/ai/shimmer.solid.tsx'
@@ -25,9 +25,9 @@ import {
   useSpeaking,
   useTurns,
 } from './dock.solid.tsx'
-import { VoiceTurnEntry } from './entries.shared.ts'
-import { VoiceForkDoc, VoiceSessionDoc } from './refs.ts'
-import type { VoiceFork, VoiceTurn } from './refs.ts'
+import { LegacyVoiceTurnEntry, SideChatTurnEntry } from './entries.shared.ts'
+import { SideChatForkDoc, SideChatSessionDoc } from './refs.ts'
+import type { SideChatFork, SideChatTurn } from './refs.ts'
 import { splitReply, useSpokenText } from '../read-aloud/ui.solid.tsx'
 
 const short = (key: string) => key.slice(0, 8)
@@ -50,16 +50,14 @@ function Waveform(props: { envelope?: readonly number[]; class?: string }) {
 }
 
 export function saidIn(
-  data: VoiceTurn,
+  data: SideChatTurn,
   recording: string | undefined,
   stored: boolean,
   transcripts: Record<string, string> | undefined,
 ) {
   if (!data.audio || (stored && data.route === 'text')) return data.text
-  const clips = data.clips ?? (recording ? [recording] : [])
-  const heard = clips.map((clip) => transcripts?.[clip])
-  if (clips.length && heard.every((text) => text !== undefined))
-    return [heard.filter(Boolean).join(' '), data.text].filter(Boolean).join('\n\n')
+  const heard = recording ? transcripts?.[recording] : undefined
+  if (heard !== undefined) return [heard, data.text].filter(Boolean).join('\n\n')
   return data.text || undefined
 }
 
@@ -105,10 +103,10 @@ function useSpokenReply(key: () => string) {
   )
 }
 
-export function VoiceTurnView(props: {
+export function SideChatTurnView(props: {
   turn: {
     key: string
-    data: VoiceTurn
+    data: SideChatTurn
     images: readonly { data: string; mimeType: string }[]
   }
   record?: EntryRecord
@@ -116,42 +114,38 @@ export function VoiceTurnView(props: {
   conversation: ConversationId | undefined
 }) {
   const data = () => props.turn.data
-  const fork = useDocOf(() => props.conversation, VoiceForkDoc)
+  const archived = () => props.record?.kind === LegacyVoiceTurnEntry.kind
+  const fork = useDocOf(() => (archived() ? undefined : props.conversation), SideChatForkDoc)
   const local = () => dock.local()[props.turn.key]
   const audio = () => (data().audio === 'pending' ? local()?.audio : data().audio)
   const said = () =>
-    saidIn(data(), audio(), props.submitted ?? !!props.record, fork()?.transcripts ?? undefined)
+    archived()
+      ? data().text
+      : saidIn(data(), audio(), props.submitted ?? !!props.record, fork()?.transcripts)
   const failed = () => {
     const recording = audio()
     return local()?.failed ?? (recording ? fork()?.failed?.[recording] : undefined)
   }
   useSpokenReply(() => props.turn.key)
   return (
-    <Message class="group/message mt-3 first:mt-0" data-voice-turn={props.turn.key} from="user">
+    <Message class="group/message mt-3 first:mt-0" data-side-chat-turn={props.turn.key} from="user">
       <MessageContent>
-        <Show when={data().audio || data().answered}>
+        <Show when={data().audio}>
           <div class="flex min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
-            <Show when={data().answered}>
-              <span class="inline-flex shrink-0 items-center gap-1 text-brand">
-                <MessageCircleReply class="size-3" /> sent as your answer
-              </span>
+            <span class="inline-flex shrink-0 items-center gap-1 tabular-nums">
+              <Mic class="size-3" />
+              {data().seconds?.toFixed(1)} s
+            </span>
+            <Show when={data().envelope}>
+              <Waveform
+                class="h-4 w-28 min-w-0 shrink text-muted-foreground/70"
+                envelope={data().envelope}
+              />
             </Show>
-            <Show when={data().audio}>
-              <span class="inline-flex shrink-0 items-center gap-1 tabular-nums">
-                <Mic class="size-3" />
-                {data().seconds?.toFixed(1)} s
+            <Show when={!archived() && said() !== undefined && !failed()}>
+              <span class="truncate text-muted-foreground/60">
+                {data().route === 'audio' ? 'the model hears your voice' : 'the model reads this'}
               </span>
-              <Show when={data().envelope}>
-                <Waveform
-                  class="h-4 w-28 min-w-0 shrink text-muted-foreground/70"
-                  envelope={data().envelope}
-                />
-              </Show>
-              <Show when={said() !== undefined && !failed()}>
-                <span class="truncate text-muted-foreground/60">
-                  {data().route === 'audio' ? 'the model hears your voice' : 'the model reads this'}
-                </span>
-              </Show>
             </Show>
           </div>
         </Show>
@@ -172,7 +166,7 @@ export function VoiceTurnView(props: {
                   when={said() === undefined}
                   fallback={
                     <span class="font-mono text-[12px] text-muted-foreground">
-                      no words heard in the transcript
+                      {archived() ? 'Transcript unavailable' : 'no words heard in the transcript'}
                     </span>
                   }
                 >
@@ -213,20 +207,24 @@ export function VoiceTurnView(props: {
   )
 }
 
-export function StoredTurn(props: { entry: EntryRecord & { data: VoiceTurn } }) {
+export function StoredTurn(props: { entry: EntryRecord & { data: SideChatTurn } }) {
   const turn = createMemo(() => ({
     key: props.entry.data.key,
     data: props.entry.data,
     images: imagesOf(props.entry),
   }))
   return (
-    <VoiceTurnView conversation={props.entry.conversationId} record={props.entry} turn={turn()} />
+    <SideChatTurnView
+      conversation={props.entry.conversationId}
+      record={props.entry}
+      turn={turn()}
+    />
   )
 }
 
 export function PendingTurns() {
   const id = useConversationId()
-  const session = useDocOf(() => ROOT, VoiceSessionDoc)
+  const session = useDocOf(() => ROOT, SideChatSessionDoc)
   const conversation = useConversation()
   const pending = createMemo(() => {
     const here = id()
@@ -250,11 +248,11 @@ export function PendingTurns() {
           : [],
       ),
       ...state.inbox.flatMap((item) =>
-        item.mode !== 'write' && item.entry?.kind === VoiceTurnEntry.kind
+        item.mode !== 'write' && item.entry?.kind === SideChatTurnEntry.kind
           ? [
               {
-                key: (item.entry.data as VoiceTurn).key,
-                data: item.entry.data as VoiceTurn,
+                key: (item.entry.data as SideChatTurn).key,
+                data: item.entry.data as SideChatTurn,
                 images: imagesIn(item.content),
                 submitted: true,
               },
@@ -264,15 +262,15 @@ export function PendingTurns() {
     ]
     if (!candidates.length) return []
     const shown = new Set(
-      state.entries.flatMap((entry) => (VoiceTurnEntry.is(entry) ? [entry.data.key] : [])),
+      state.entries.flatMap((entry) => (SideChatTurnEntry.is(entry) ? [entry.data.key] : [])),
     )
     return candidates.filter((turn) => !shown.has(turn.key) && !!shown.add(turn.key))
   })
   return (
     <For each={pending()} keyed={(turn) => turn.key}>
       {(turn) => (
-        <div class="empty-row" data-voice-pending={turn().key}>
-          <VoiceTurnView conversation={id()} submitted={turn().submitted} turn={turn()} />
+        <div class="empty-row" data-side-chat-pending={turn().key}>
+          <SideChatTurnView conversation={id()} submitted={turn().submitted} turn={turn()} />
         </div>
       )}
     </For>
@@ -280,7 +278,7 @@ export function PendingTurns() {
 }
 
 export function Voicing(props: { fork: ConversationId }) {
-  const fork = useDocOf(() => props.fork, VoiceForkDoc)
+  const fork = useDocOf(() => props.fork, SideChatForkDoc)
   createEffect(
     () => {
       const doc = fork()
@@ -289,7 +287,7 @@ export function Voicing(props: { fork: ConversationId }) {
             ...doc,
             transcripts: { ...doc.transcripts },
             failed: { ...doc.failed },
-          } as VoiceFork)
+          } as SideChatFork)
         : doc
     },
     (doc) => settleTranscripts(doc, props.fork),

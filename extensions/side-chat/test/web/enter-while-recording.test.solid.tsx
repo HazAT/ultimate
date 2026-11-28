@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { parseConversationId } from '../../../../lib/ids.shared.ts'
 import { serverEndedSession } from './session.ts'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import { composeIn, sendTyped, settleTranscripts, voiceSink } from '../../dock.solid.tsx'
+import { composeIn, sendTyped, settleTranscripts, sideChatSink } from '../../dock.solid.tsx'
 
 const harness = vi.hoisted(() => ({
   stops: 0,
@@ -45,7 +45,7 @@ vi.mock('@/sdk/solid', async () => {
     ROOT: 1,
     useAction: () => ({ data: () => undefined, refetch: async () => undefined }),
     useUiState: (key: string, initial: unknown) =>
-      createSignal<unknown>(key === 'ext.voice-live.cues' ? false : initial),
+      createSignal<unknown>(key === 'ext.side-chat.cues' ? false : initial),
   }
 })
 
@@ -106,10 +106,10 @@ const session = parseConversationId(40)
 const shot = { data: 'cG5n', mimeType: 'image/png' }
 
 it('Enter during a recording stops it and sends the typed text, the image and its transcript as one turn', async () => {
-  await capture.press(voiceSink)?.started
+  await capture.press(sideChatSink)?.started
   speak()
   const sent = sendTyped('look at this', [shot])
-  await vi.waitFor(() => expect(capture.talking(voiceSink)).toBe(false))
+  await vi.waitFor(() => expect(capture.talking(sideChatSink)).toBe(false))
   expect(harness.turns).toEqual([])
   settleTranscripts({ transcripts: { 'rec-1': 'hello there' } }, session)
   await sent
@@ -123,10 +123,10 @@ it('Enter during a recording stops it and sends the typed text, the image and it
 })
 
 it('a session that ends while Enter stops the recording sends nothing and leaves the typed text in the box', async () => {
-  await capture.press(voiceSink)?.started
+  await capture.press(sideChatSink)?.started
   speak()
   const sent = sendTyped('look at this')
   await serverEndedSession(composeIn)
-  await expect(sent).rejects.toThrow('The voice session ended')
+  await expect(sent).rejects.toThrow('The side chat ended')
   expect(harness.turns).toEqual([])
 })

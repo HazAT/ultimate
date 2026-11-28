@@ -1,8 +1,5 @@
-// A side chat is a fork that keeps its parent's prompt: its own entries carry no system prompt, so its transcript had
-// no start card. The pinned prompt, which floats over the transcript until the start card scrolls into view, then
-// stayed at the very top and covered the side chat's first rows, out of reach of the scroll. It also never gave way
-// to a start card that was there: the transcript's elements were read once, before the transcript mounted, and only
-// new entries made the pinned prompt look again.
+// The pinned prompt used to cover the first rows at the top of a fork's transcript. The start card should take over
+// when scrolled into view, even if no new entries have arrived since the transcript mounted.
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai/providers/faux'
 import type { ConversationId } from '@earendil-works/pi-durable'
@@ -37,14 +34,21 @@ it('opens a side chat at the top with its first row clear of the pinned prompt',
       )
     ).wait(context)
   await say(main, 'hello')
-  // The first turn's prompt differs from the settled one; the side chat forks after the second, at an equal prompt.
-  await say(main, 'again')
-  const opened = await post(server, '/api/extensions/side-chat/actions/open', {
-    args: { text: 'first side question' },
+  const pick = await post(server, '/api/extensions/side-chat/actions/pick', {
+    args: { model: { provider: 'faux', modelId: 'faux-1' } },
     conversationId: main,
   })
-  const side = opened.data.result.id as ConversationId
-  await say(side, 'second side question')
+  expect(pick.status).toBe(200)
+  const turn = (key: string, text: string) =>
+    post(server, '/api/extensions/side-chat/actions/turn', {
+      args: { source: main, key, text },
+      conversationId: main,
+    })
+  const opened = await turn('first', 'first side question')
+  expect(opened.status).toBe(200)
+  const side = opened.data.result.conversation as ConversationId
+  await (await server.harness.conversation(side, context))!.waitForIdle(context)
+  expect((await turn('second', 'second side question')).status).toBe(200)
 
   const browser = await chromium.launch({
     executablePath: await browserBinary(),

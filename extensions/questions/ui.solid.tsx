@@ -1,6 +1,6 @@
 /**
  * Questions for other extensions' browser code: which messages wait on the user, the card that answers one, and the
- * point where an optional extension adds a control beside the card's Dismiss (side-chat's "Talk it through").
+ * point where an optional extension adds a control beside the card's Dismiss (Side chat's "Talk it through").
  */
 export { CardActions, MessageQuestions } from './card.solid.tsx'
 export { waiting } from './open.web.ts'

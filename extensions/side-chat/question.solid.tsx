@@ -16,12 +16,12 @@ import {
   writingAs,
 } from '@/sdk/solid'
 import type { QuestionMessage } from '../questions/ui.solid.tsx'
-import { QuestionAction, VoiceSessionDoc } from './refs.ts'
+import { QuestionAction, SideChatSessionDoc } from './refs.ts'
 import { openSideChat, SideChatBody } from './panel.solid.tsx'
 import { SOURCE_KEY } from './side.solid.tsx'
 
 export function TalkItThrough(props: { message: QuestionMessage }) {
-  const sessions = useDocOf(() => ROOT, VoiceSessionDoc)
+  const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
   const [, setSource] = useUiState<number | null>(SOURCE_KEY, null)
   const [opening, setOpening] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
@@ -46,7 +46,7 @@ export function TalkItThrough(props: { message: QuestionMessage }) {
         openSideChat()
       })
     } catch (error) {
-      setFailure(errorMessage(error).replace(/^voice-live\/question: /, ''))
+      setFailure(errorMessage(error).replace(/^side-chat\/question: /, ''))
     } finally {
       setOpening(false)
     }
@@ -85,7 +85,7 @@ export function TalkItThrough(props: { message: QuestionMessage }) {
 export function inboxSideChat(
   input: () => { message: QuestionMessage | undefined; phone: boolean },
 ) {
-  const sessions = useDocOf(() => ROOT, VoiceSessionDoc)
+  const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
   const asker = createMemo(() => {
     const message = input().message
     if (!message || typeof message.from !== 'number') return undefined
@@ -98,7 +98,7 @@ export function inboxSideChat(
       <section
         aria-label="Side chat"
         class="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
-        data-voice-panel
+        data-side-chat-panel
       >
         <SideChatBody docked phone={input().phone} />
       </section>
@@ -107,7 +107,7 @@ export function inboxSideChat(
 }
 
 export function ForkStart(props: { conversation: ConversationId; core: JSX.Element }) {
-  const sessions = useDocOf(() => ROOT, VoiceSessionDoc)
+  const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
   const fork = () =>
     Object.values(sessions()?.sessions ?? {}).some(
       (each) => each?.id === props.conversation && each.question !== undefined,

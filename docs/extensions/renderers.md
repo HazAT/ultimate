@@ -191,7 +191,7 @@ Contribute a component taking `SolidComposerProps`. To send what the composer su
 elsewhere, wrap `core` in `<ComposerRedirect value={target}>` (from `@/sdk/solid`, `target` an accessor of
 `{ placeholder, send }`, inheriting the outer one with `useContext(ComposerRedirect)` while it has nothing of its own):
 while it gives a target, Enter and the send button call `send(text)` instead of submitting, with the same draft, error and
-sending states (side-chat forks @ultimate this way). A redirect also sets aside images and steer
+sending states (Side chat forks @ultimate this way). A redirect also sets aside images and steer
 and queue; to only change what the box says, provide `ComposerPlaceholder` instead:
 `provide(ComposerPlaceholder, (input) => () => (input().conversation === mine ? 'Ask the coach…' : undefined))`.
 Only the shown conversation's composer takes typing shortcuts

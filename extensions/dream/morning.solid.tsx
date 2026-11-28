@@ -24,7 +24,7 @@ import {
   type EntryRecord,
   Card,
 } from '@/sdk/solid'
-import { openSideChat, OpenAction, TurnAction, VoiceSessionDoc } from '../voice-live/ui.solid.tsx'
+import { openSideChat, OpenAction, TurnAction, SideChatSessionDoc } from '../side-chat/ui.solid.tsx'
 import { StandingDoc } from '../subagents/ui.solid.tsx'
 import {
   BusyBlocker,
@@ -66,7 +66,7 @@ export function MorningCard(props: { entry: EntryRecord }) {
 }
 
 function Morning(props: { data: ChapterEntry; at?: number }) {
-  const sideChats = useEnabled('voice-live')
+  const sideChats = useEnabled('side-chat')
   return (
     <Card data-dream-morning={props.data.name}>
       <header class="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
@@ -119,7 +119,7 @@ function Carried(props: { counts: Seed['counts'] }) {
 function Awake(props: { data: ChapterEntry }) {
   const standing = useDocOf(() => ROOT, StandingDoc)
   const ultimate = () => standing()?.ultimate
-  const sessions = useDocOf(() => ROOT, VoiceSessionDoc)
+  const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
   const conversations = useConversations()
   const [checks, setChecks] = useChecks()
   const [opening, setOpening] = createSignal(false)
@@ -160,7 +160,7 @@ function Awake(props: { data: ChapterEntry }) {
         { who },
       )
     } catch (error) {
-      setFailure(errorMessage(error).replace(/^voice-live\/\w+: /, ''))
+      setFailure(errorMessage(error).replace(/^side-chat\/\w+: /, ''))
     } finally {
       setOpening(false)
     }
