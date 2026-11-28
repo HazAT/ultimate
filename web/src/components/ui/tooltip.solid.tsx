@@ -28,7 +28,7 @@ function TooltipContent<Payload>(
       {(state) => (
         <>
           {typeof props.children === 'function' ? props.children(state) : props.children}
-          <TooltipArrow class="pointer-events-none size-2.5 rotate-45 rounded-[2px] bg-foreground" />
+          <TooltipArrow class="pointer-events-none size-2.5 rotate-45 rounded-[2px] bg-foreground data-[side=bottom]:-top-1 data-[side=left]:-right-1 data-[side=right]:-left-1 data-[side=top]:-bottom-1" />
         </>
       )}
     </TooltipContentRoot>
