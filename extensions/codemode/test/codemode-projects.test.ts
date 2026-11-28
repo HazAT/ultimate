@@ -218,6 +218,28 @@ it('reaches another machine at the address the user set in remotes, with no clou
   await expect(locate(host, 'shop', 'laptop')).rejects.toThrow('Unknown project shop on laptop')
 })
 
+it('answers a reply addressed to a machine name nobody knows from the one place running the project', async () => {
+  // macOS renames the host with the network (Mac, my-laptop.local), so a reply can name a stale machine.
+  const userHome = await temp()
+  const host = {
+    userHome,
+    notice: () => {},
+    projects: async () => [
+      { name: 'ultimate', current: true },
+      { name: 'home', current: false, running: { url: 'http://127.0.0.1:4747' } },
+    ],
+  } as unknown as ExtensionHost
+  expect(await locate(host, 'home', 'Mac')).toEqual({
+    url: 'http://127.0.0.1:4747',
+    label: 'home on this machine',
+    name: 'home',
+  })
+  await writeJson(join(userHome, '.ultimate/settings.json'), {
+    remotes: { laptop: { home: 'https://laptop.tail.ts.net:4747' } },
+  })
+  await expect(locate(host, 'home', 'Mac')).rejects.toThrow('Unknown project home on Mac')
+})
+
 it('reads a project listed on several machines from the one the read names', async () => {
   const server = createServer((_request, response) =>
     response
