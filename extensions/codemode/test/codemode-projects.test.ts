@@ -168,6 +168,17 @@ it('caps an answer at 1 MiB of encoded JSON, counting multibyte characters as by
   await expect(actions.read({ op: 'trace', args: [] }, ctx)).rejects.toThrow('larger than 1 MiB')
 })
 
+// "ask for a smaller limit" alone left another project's read of one `full: true` entry failing again.
+it('says how to narrow a read that is too large', async () => {
+  const host = {
+    trace: { query: () => ['x'.repeat(1024 * 1024)], tree: () => [] },
+  } as unknown as ExtensionHost
+  const ctx = { host, signal: new AbortController().signal } as ActionContext
+  const failed = actions.read({ op: 'trace', args: [] }, ctx)
+  for (const hint of ['`limit`', '`kinds`', '`full: true`', 'filtering in your script'])
+    await expect(failed).rejects.toThrow(hint)
+})
+
 it("answers another project's read of an exported document, and refuses an unknown kind", async () => {
   const todos = { definition: { kind: 'todos', initial: () => ({ next: 1, items: [] }) } }
   const host = createTestExtensionHost({
