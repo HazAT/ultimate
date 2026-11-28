@@ -228,7 +228,7 @@ it('on a phone, a control the person focuses while the source loads keeps focus'
   control.remove()
 })
 
-it('a folded phone sheet keeps only its handle, header and box, so its height never outgrows the screen', async ({
+it('a folded phone sheet drops the transcript and keeps its handle, Close and box', async ({
   onTestFinished,
 }) => {
   onTestFinished(() => uiState.set('ext.side-chat.sheet', 'rest'))
