@@ -61,7 +61,6 @@ export async function send(
     steer?: boolean
     re?: number
     images?: ImagesRef
-    imagesFrom?: ConversationId
     dismiss?: boolean
     questions?: Question[]
   },
@@ -146,7 +145,7 @@ export async function send(
     if (input.images !== undefined) {
       if (from === 'user')
         throw new Error('your images go along with what you submit, not with a message')
-      images = await resolveImages(tx, input.imagesFrom ?? from, input.images)
+      images = await resolveImages(tx, from, input.images)
     }
 
     if (from === 'user' && input.re !== undefined)

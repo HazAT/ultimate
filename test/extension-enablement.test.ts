@@ -435,18 +435,18 @@ it('keeps a user or project replacement of a core built-in core, over extensions
   expect(find('lineage')).toMatchObject({ source: 'project', core: true, enabled: true })
 })
 
-it('keeps voice-live off with a diagnostic while dictation, which it requires, is off', async () => {
+it('keeps side-chat off with a diagnostic while dictation, which it requires, is off', async () => {
   const { server } = await fixture(
-    JSON.stringify({ extensions: { enable: ['voice-live'], disable: ['dictation'] } }),
+    JSON.stringify({ extensions: { enable: ['side-chat'], disable: ['dictation'] } }),
   )
   const info = (name: string) => server.extensions.info().find((entry) => entry.name === name)
-  expect(info('voice-live')).toMatchObject({
+  expect(info('side-chat')).toMatchObject({
     enabled: false,
     requires: ['dictation', 'read-aloud', 'page-agent'],
   })
   expect(info('read-aloud')).toMatchObject({ enabled: true })
   expect(server.system.current().extensionDiagnostics).toEqual([
-    'voice-live stays off: it requires dictation, which is off',
+    'side-chat stays off: it requires dictation, which is off',
   ])
 })
 

@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { capture } from '../../../dictation/ui.solid.tsx'
-import { dock, voiceSink } from '../../dock.solid.tsx'
+import { dock, sideChatSink } from '../../dock.solid.tsx'
 
 let take: ReturnType<typeof capture.press>
 const press = () => {
-  take = capture.press(voiceSink)
+  take = capture.press(sideChatSink)
   return take?.started
 }
 const release = () => take!.release()
-const talking = () => capture.talking(voiceSink)
+const talking = () => capture.talking(sideChatSink)
 
 beforeEach(() => vi.stubGlobal('MediaRecorder', Object))
 afterEach(() => vi.unstubAllGlobals())
@@ -22,7 +22,7 @@ const denyingBrowser = (userAgent: string) => {
   return getUserMedia
 }
 
-it('a press refused before the mic leaves the Voice dock usable for the next press', async () => {
+it('a press refused before the mic leaves the Side chat panel usable for the next press', async () => {
   vi.stubGlobal('isSecureContext', false)
   await press()
   expect(dock.error()).toBe('Voice needs HTTPS: open Ultimate over its tailnet URL')
@@ -37,7 +37,7 @@ it('a press refused before the mic leaves the Voice dock usable for the next pre
   expect(dock.phase()).not.toBe('sending')
 })
 
-it('the Voice dock names the app’s web view when it denies the mic', async () => {
+it('the Side chat panel names the app’s web view when it denies the mic', async () => {
   denyingBrowser('Mozilla/5.0 (Linux; Android 16; Pixel; wv) AppleWebKit/537.36')
   await press()
   expect(dock.error()).toBe(

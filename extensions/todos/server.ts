@@ -10,7 +10,6 @@ import {
 } from '@earendil-works/pi-durable'
 import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { actingAs } from '../../lib/acting-as.ts'
 import { implementAction } from '../../lib/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { Standing } from '../subagents/api.ts'
@@ -204,9 +203,8 @@ export default function todosExtension(host: ExtensionHost) {
           id: opt(int({ minimum: 1 })),
         }),
         execute: async function executeOnceWithoutReplay(args, api, ctx) {
-          const callerIncludingSideChatOwner = await actingAs(host, api.conversationId, ctx)
           const text = await api.commit(async (tx) => {
-            if (!(await callerIsUltimate(tx, callerIncludingSideChatOwner)))
+            if (!(await callerIsUltimate(tx, api.conversationId)))
               throw new Error(
                 'Only @ultimate keeps the to-dos; ask @ultimate to add one (message, reply: false).',
               )

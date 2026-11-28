@@ -52,7 +52,10 @@ it('knows optional extensions and the core tier', () => {
 
 /** What turning each required built-in off keeps off with it: the default-on built-ins that declare `requires`. */
 const keptOff: Record<string, string[]> = {
+  dictation: ['side-chat'],
+  'page-agent': ['side-chat'],
   questions: ['inbox'],
+  'read-aloud': ['side-chat'],
   system: ['ui'],
 }
 

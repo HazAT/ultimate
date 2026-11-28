@@ -2,6 +2,12 @@ import type { Context } from '@earendil-works/chord/context'
 import type { ConversationId, Cursor, EntryId, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../server/extensions.ts'
 
+export class NoSettledInputAnswer extends Error {
+  constructor(conversation: ConversationId) {
+    super(`#${conversation} has no finished turn to fork yet`)
+  }
+}
+
 export async function lastSettledInputAnswer(
   host: ExtensionHost,
   conversation: ConversationId,
@@ -25,7 +31,7 @@ export async function lastSettledInputAnswer(
         answer = input.answer
     cursor = page.next
   } while (cursor)
-  if (answer === undefined) throw new Error('@ultimate has no finished turn to fork yet')
+  if (answer === undefined) throw new NoSettledInputAnswer(conversation)
   return answer
 }
 

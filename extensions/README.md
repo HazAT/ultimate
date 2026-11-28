@@ -8,7 +8,7 @@ existing extension and change it, then open only the [topic](#topics) you need:
 
 - A full-screen app with the agent docked beside it, or server data in the UI (actions):
   [the Commits example](../docs/extensions/example-app.md).
-- A surface made of the shell's own parts: `agent`. A status-line item: `status-line`.
+- A surface made of the shell's own parts: `agent`. A status-line item: `status-line`. A conversation panel with its own fork and composer: [`side-chat`](side-chat/README.md).
 - Tool renderers (diffs, terminals, images): `coding-tools`, `browser`, `instance`.
 - A right-panel tab: `info` (key/value sections), `tasks`, `subagents`.
 - Toolbar buttons, dialogs, commands, a popover: `models`.

@@ -8,7 +8,7 @@ import {
 import { createUiAgent } from '../../web/src/sdk/agent.ts'
 import { renderSolid } from './solid-dom-setup.ts'
 
-// Voice mode's `ui` act on 'System' had no exact-label resolution: ui-sdk refuses the label as naming two
+// Side chat's `ui` act on 'System' had no exact-label resolution: ui-sdk refuses the label as naming two
 // components while a transcript row 'Read live-system.png' sits open beside the System button.
 it('acts on the control a label names exactly, beside an open one holding it as a word', async () => {
   let pressed = 'none'

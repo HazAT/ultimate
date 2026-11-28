@@ -19,11 +19,12 @@ import {
   useEnabled,
   useSystem,
   useUiState,
+  writerNow,
   writingAs,
   type EntryRecord,
   Card,
 } from '@/sdk/solid'
-import { OpenAction, SideChatsDoc, useSideChatFront } from '../side-chat/ui.solid.tsx'
+import { openSideChat, OpenAction, TurnAction, SideChatSessionDoc } from '../side-chat/ui.solid.tsx'
 import { StandingDoc } from '../subagents/ui.solid.tsx'
 import {
   BusyBlocker,
@@ -118,13 +119,22 @@ function Carried(props: { counts: Seed['counts'] }) {
 function Awake(props: { data: ChapterEntry }) {
   const standing = useDocOf(() => ROOT, StandingDoc)
   const ultimate = () => standing()?.ultimate
-  const index = useDocOf(ultimate, SideChatsDoc)
+  const sessions = useDocOf(() => ROOT, SideChatSessionDoc)
   const conversations = useConversations()
-  const [, setFront] = useSideChatFront()
   const [checks, setChecks] = useChecks()
   const [opening, setOpening] = createSignal(false)
   const [failure, setFailure] = createSignal<string>()
-  const check = () => index()?.sides.find((item) => item.id === checks()[props.data.name])
+  const session = () => {
+    const at = ultimate()
+    return at === undefined ? undefined : sessions()?.sessions?.[at]
+  }
+  const check = () => {
+    const id = checks()[props.data.name]
+    if (id === undefined) return undefined
+    if (session()?.id === id) return { open: true as const }
+    const last = session()?.last
+    return last?.id === id ? { ended: last } : undefined
+  }
   const waking = () => conversations().find((item) => item.id === ultimate())?.busy
   const open = async (source: Parameters<typeof writingAs>[0]) => {
     const conversationId = ultimate()
@@ -133,13 +143,24 @@ function Awake(props: { data: ChapterEntry }) {
     setOpening(true)
     setFailure(undefined)
     try {
-      const opened = await api.action(OpenAction, { text: AWAKE_PROMPT }, { conversationId })
+      const who = writerNow()
+      const opened = await api.action(OpenAction, { source: conversationId }, { who })
       writingAs(source, () => {
-        setChecks((previous) => ({ ...previous, [name]: opened.id }))
-        setFront(opened.id)
+        setChecks((previous) => ({ ...previous, [name]: opened.conversation }))
+        openSideChat(conversationId)
       })
+      await api.action(
+        TurnAction,
+        {
+          source: conversationId,
+          session: opened.conversation,
+          key: crypto.randomUUID(),
+          text: AWAKE_PROMPT,
+        },
+        { who },
+      )
     } catch (error) {
-      setFailure(errorMessage(error).replace(/^side-chat\/open: /, ''))
+      setFailure(errorMessage(error).replace(/^side-chat\/\w+: /, ''))
     } finally {
       setOpening(false)
     }
@@ -174,13 +195,15 @@ function Awake(props: { data: ChapterEntry }) {
         </div>
       }
     >
-      <Match when={check()?.ended === 'injected'}>
+      <Match when={check()?.ended && check()!.ended!.reason !== 'fresh'}>
         <div class={cn(footer, 'text-[12px]')} data-dream-awake="checked">
           <span class="flex items-center gap-1.5 text-foreground">
             <CheckIcon class="size-3.5 text-success" />
             Awake and checked
           </span>
-          <span class="text-muted-foreground">the summary is below</span>
+          <span class="text-muted-foreground">
+            {check()?.ended?.summary ? 'the summary is below' : 'nothing to hand back'}
+          </span>
           <Button
             class="ml-auto h-6 text-muted-foreground"
             aria-label={`Check again after waking into ${props.data.name}`}
@@ -194,30 +217,31 @@ function Awake(props: { data: ChapterEntry }) {
           {failure() && <p class="w-full text-[12px] text-error">{failure()}</p>}
         </div>
       </Match>
-      <Match when={check()?.ended === 'discarded'}>
+      <Match when={check()?.ended?.reason === 'fresh'}>
         <>
           <Off data={props.data} onAgain={open} opening={opening() || !!waking()} />
           {failure() && <p class="px-4 pb-2.5 text-[12px] text-error">{failure()}</p>}
         </>
       </Match>
-      <Match when={check()}>
-        {(side) => (
-          <div class={cn(footer, 'text-[12px]')} data-dream-awake="checking">
-            <span class="flex items-center gap-1.5 text-muted-foreground">
-              <GitForkIcon class="size-3.5 text-brand" />
-              Checking in a side chat
-            </span>
-            <Button
-              class="ml-auto h-6"
-              aria-label={`Show the wake-up check for ${props.data.name}`}
-              onClick={() => setFront(side().id)}
-              size="xs"
-              variant="ghost"
-            >
-              Show it
-            </Button>
-          </div>
-        )}
+      <Match when={check()?.open}>
+        <div class={cn(footer, 'text-[12px]')} data-dream-awake="checking">
+          <span class="flex items-center gap-1.5 text-muted-foreground">
+            <GitForkIcon class="size-3.5 text-brand" />
+            Checking in a side chat
+          </span>
+          <Button
+            class="ml-auto h-6"
+            aria-label={`Show the wake-up check for ${props.data.name}`}
+            onClick={() => {
+              const source = ultimate()
+              if (source !== undefined) openSideChat(source)
+            }}
+            size="xs"
+            variant="ghost"
+          >
+            Show it
+          </Button>
+        </div>
       </Match>
     </Switch>
   )
@@ -244,8 +268,9 @@ function Off(props: {
       <p class="flex items-start gap-2 text-[12.5px] leading-relaxed">
         <Trash2Icon class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
         <span class="text-muted-foreground">
-          <span class="text-foreground">You discarded the check.</span> If something is off here, go
-          back: {props.data.from.name} is exactly as we left it, and this chapter stays too.
+          <span class="text-foreground">You started fresh on the check.</span> If something is off
+          here, go back: {props.data.from.name} is exactly as we left it, and this chapter stays
+          too.
         </span>
       </p>
       {busy().length > 0 && <BusyBlocker busy={busy()} />}

@@ -37,7 +37,7 @@ import {
   UsageDoc,
 } from '@earendil-works/pi-durable'
 import { implementAction } from '../../lib/actions.ts'
-import { actingAs, isSideChat } from '../../lib/acting-as.ts'
+import { isSideChat } from '../../lib/acting-as.ts'
 import type { ActionInput } from '../../lib/actions.ts'
 import type { ActionContext } from '../../server/actions.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
@@ -1346,13 +1346,12 @@ export default function lineageExtension(host: ExtensionHost) {
           to: union([int({ minimum: 1 }), lit('root')]),
           text: str({ minLength: 1 }),
         }),
-        async execute({ to, text }, api, ctx) {
-          const from = await actingAs(host, api.conversationId, ctx)
+        async execute({ to, text }, api) {
           const target = await leaveNote(
             host,
             typeof to === 'number' ? parseConversationId(to) : to,
             text,
-            { from },
+            { from: api.conversationId },
           )
           return { output: [{ type: 'text', text: `Left a note in #${target}.` }] }
         },
@@ -1366,11 +1365,11 @@ export default function lineageExtension(host: ExtensionHost) {
           wake: opt(bool()),
         }),
         ...safeToRerun(
-          'The transactional receipt reuses the task; cancellations and the request-id note tolerate replay.',
+          'The transactional receipt reuses the task; cancelling the replaced tasks tolerates replay.',
         ),
         async execute({ id, wake = true }, api, ctx) {
           const target = parseConversationId(id)
-          const from = await actingAs(host, api.conversationId, ctx)
+          const from = api.conversationId
           if (target === from) throw new Error('A conversation cannot notify on itself')
           const replaced = await api.commit(async (tx) => {
             const receipt = await tx.doc(NotifyReceipts, api.taskId)
@@ -1401,16 +1400,6 @@ export default function lineageExtension(host: ExtensionHost) {
             return pending
           }, ctx)
           for (const task of replaced) await host.harness().abortTask(task, ctx)
-          if (from !== api.conversationId)
-            await leaveNote(
-              host,
-              from,
-              `Side chat #${api.conversationId} requested notification for #${target} (report comes here).`,
-              {
-                from: api.conversationId,
-                requestId: `sidechat:notify:${api.taskId}:${api.callId}`,
-              },
-            )
           host.harness().resume()
           return {
             output: [

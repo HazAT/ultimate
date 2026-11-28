@@ -18,7 +18,12 @@ vi.mock('@/sdk/solid', async () => {
     api: {
       action: (ref: { name: string }, args: Record<string, unknown>) => {
         if (ref.name === 'status')
-          return Promise.resolve({ model: 'google/gemini-4-neon', thinking: 'low', route: 'audio' })
+          return Promise.resolve({
+            model: 'google/gemini-4-neon',
+            thinking: 'low',
+            route: 'audio',
+            forkable: true,
+          })
         if (ref.name === 'stop') harness.stops++
         if (ref.name !== 'turn') return Promise.resolve({})
         harness.sent.push(args)
@@ -37,9 +42,10 @@ vi.mock('@/sdk/solid', async () => {
     ROOT: 1,
     useConversation: () => () => ({ entries: [], live: {}, busy: false }),
     useAction: () => ({ data: () => undefined, refetch: async () => undefined }),
+    useDocOf: () => () => undefined,
     useUiState: (key: string, initial: unknown) =>
       solid.createSignal<unknown>(
-        key === 'ext.voice-live.cues' ? false : key === 'ext.read-aloud.voice' ? 'system' : initial,
+        key === 'ext.side-chat.cues' ? false : key === 'ext.read-aloud.voice' ? 'system' : initial,
       ),
   }
 })
@@ -81,7 +87,7 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
   await first
 
   const [view, setView] = createSignal({ turns: [] as TurnView[], busy: true })
-  createRoot(() => useSpeaking(view))
+  createRoot(() => useSpeaking(view, () => true))
   setView({ turns: [reply(firstKey, 'The first point is short. The second one.')], busy: true })
   flush()
   expect(said).toEqual(['The first point is short.'])
@@ -133,7 +139,7 @@ it('cutting in stops the earlier reply’s speech and its turn, and what it stre
 
 it('turning Speak replies on mid-reply plays from the first new sentence, at its place in the reply', async () => {
   await serverEndedSession(composeIn)
-  dock.setSpeak(false)
+  dock.setConversation(false)
   said.length = 0
   const before = harness.turns.length
   const sent = sendTyped('quiet start')
@@ -142,11 +148,11 @@ it('turning Speak replies on mid-reply plays from the first new sentence, at its
   await sent
   const key = dock.pending()!
   const [view, setView] = createSignal({ turns: [] as TurnView[], busy: true })
-  createRoot(() => useSpeaking(view))
+  createRoot(() => useSpeaking(view, () => true))
   setView({ turns: [reply(key, 'One muted. ')], busy: true })
   flush()
   expect(said).toEqual([])
-  dock.setSpeak(true)
+  dock.setConversation(true)
   setView({ turns: [reply(key, 'One muted. Two heard. ')], busy: true })
   flush()
   expect(said).toEqual([' Two heard.'])

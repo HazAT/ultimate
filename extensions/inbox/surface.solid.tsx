@@ -17,13 +17,13 @@ export function Inbox() {
   const { item, selected, setSelected } = useSelection(entries)
   const rows = createMemo(() => entries().map(toRow))
   const paneFailures = (<span class="contents" />) as HTMLElement
+  const close = () => setSelected((current) => current && { ...current, open: false })
   const takeover = useProvided(
     QuestionPane,
-    () => ({ message: item()?.message, phone: phone() }),
+    () => ({ message: item()?.message, phone: phone(), close }),
     paneFailures,
   )
   const reading = () => takeover() != null || (!!item() && !!selected()?.open)
-  const close = () => setSelected((current) => current && { ...current, open: false })
   const openItem = createMemo(() => {
     const entry = item()
     return entry ? [entry] : []
@@ -31,13 +31,14 @@ export function Inbox() {
   const pane = () => (
     <Show
       when={takeover()}
+      keyed
       fallback={
         <For each={openItem()} keyed={(entry) => entry.key}>
           {(entry) => <Reading entry={entry()} now={now()} onBack={close} phone={phone()} />}
         </For>
       }
     >
-      {(render) => render()()}
+      {(render) => render()}
     </Show>
   )
   return (

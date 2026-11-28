@@ -30,7 +30,6 @@ import { CallerAction, SettleAction } from './refs.ts'
 import type { Via } from './refs.ts'
 import { implementAction } from '../../lib/actions.ts'
 import { isOwed } from '../../lib/message-state.shared.ts'
-import { actingAs } from '../../lib/acting-as.ts'
 import { imagesParameter, SCAN_PAGE } from './images.ts'
 import { owed, parentOf, Serving, Started, starterOf } from './addresses.ts'
 import { Concluded } from '../conversations/api.ts'
@@ -181,11 +180,7 @@ export const actions = {
       throw new Error('dismiss must be a boolean')
     const ctx = BACKGROUND_CONTEXT
     const primary = (await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx))?.ultimate
-    if (
-      conversationId === undefined ||
-      primary === undefined ||
-      (await actingAs(host, conversationId, ctx)) !== primary
-    )
+    if (conversationId === undefined || conversationId !== primary)
       throw new Error("Only @ultimate settles the user's questions")
     const log = await host.harness().snapshot(Messages, ROOT_CONVERSATION_ID, ctx)
     if (log?.messages.some((m) => m.id === messageId && m.to === 'remote')) {
@@ -375,8 +370,7 @@ export default function messages(host: ExtensionHost) {
 
       section('projects', async (input, ctx) => {
         const standing = await host.harness().snapshot(Standing, ROOT_CONVERSATION_ID, ctx)
-        if (standing?.ultimate === (await actingAs(host, input.conversationId, ctx)))
-          return projectsSection(host)
+        if (standing?.ultimate === input.conversationId) return projectsSection(host)
         if (!input.agent.tools.some((tool) => tool.name === 'message')) return undefined
         if ((await parentOf(host, input.conversationId, ctx)) !== undefined) return undefined
         return 'To reach another project, ask @ultimate to relay.'
@@ -400,10 +394,6 @@ export default function messages(host: ExtensionHost) {
           'The task-scoped receipt deduplicates admission; the memo returns the same id on replay.',
         ),
         async execute(input, api, ctx) {
-          const toUserWithoutBorrowedPrivilege = input.to === 'user'
-          const from = toUserWithoutBorrowedPrivilege
-            ? api.conversationId
-            : await actingAs(host, api.conversationId, ctx)
           const informs = async () => {
             if (input.to !== 'user' || input.questions || input.reply === false) return false
             const remembered = await api.memo<number>('asks', ctx)
@@ -424,12 +414,11 @@ export default function messages(host: ExtensionHost) {
               'message-id',
               await send(
                 host,
-                from,
+                api.conversationId,
                 {
                   ...input,
                   images:
                     typeof input.images === 'number' ? parseEntryId(input.images) : input.images,
-                  imagesFrom: api.conversationId,
                 },
                 ctx,
                 {
@@ -456,18 +445,6 @@ export default function messages(host: ExtensionHost) {
               ],
               control: await terminateRun(api.conversationId, ctx),
             }
-          if (from !== api.conversationId && input.reply !== false && sent) {
-            await host
-              .need(LineageApi)
-              .leaveNote(
-                from,
-                `Side chat #${api.conversationId} messaged #${sent.to} (reply comes here): ${input.text.split('\n')[0].slice(0, 160)}`,
-                {
-                  from: api.conversationId,
-                  requestId: `sidechat:message:${api.taskId}:${api.callId}`,
-                },
-              )
-          }
           if (input.to !== 'user')
             return { output: [{ type: 'text', text: `Message ${id} sent.` }] }
 

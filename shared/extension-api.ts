@@ -42,7 +42,6 @@ export const defaultOff: readonly string[] = [
   'classify',
   'phase',
   'sounds',
-  'voice-live',
   'acp',
   'push',
   'wire',

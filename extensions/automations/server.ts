@@ -23,7 +23,6 @@ import type { ActionContext } from '../../server/actions.ts'
 import { EVENT_FEED } from '../../shared/events.ts'
 import type { EventRecord } from '../../shared/events.ts'
 import { implementAction } from '../../lib/actions.ts'
-import { actingAs } from '../../lib/acting-as.ts'
 import { errnoCode, isMissing } from '../../lib/errors.shared.ts'
 import { agentDefinitions } from '../../lib/agents.ts'
 import { validateName } from '../../lib/secrets.ts'
@@ -32,7 +31,6 @@ import { writeJson } from '../../lib/json-file.ts'
 import { Standing, SubagentsApi } from '../subagents/api.ts'
 import { MessagesApi } from '../messages/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
-import { LineageApi } from '../lineage/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { AutomationsApi, Hold } from './api.ts'
 import {
@@ -316,7 +314,6 @@ function backend(host: ExtensionHost) {
     args: Args,
     prepared: Prepared,
     caller?: ConversationId,
-    runBy = caller,
   ): Promise<{ result: JsonValue; effect?: Effect }> {
     const state = await tx.doc(Automations)
     if (args.action === 'list')
@@ -362,7 +359,7 @@ function backend(host: ExtensionHost) {
           updatedAt: Date.now(),
           subscribers,
           ...(args.key ? { key: args.key } : {}),
-          ...(await owedAtCreation(tx, sub.id, subscribers, runBy)),
+          ...(await owedAtCreation(tx, sub.id, subscribers, caller)),
         })
         sub.script!.state = 'writing'
         await deliver(tx, sub, 'create', 'writing', sub.script!.ask)
@@ -374,7 +371,7 @@ function backend(host: ExtensionHost) {
         : args.prompt
           ? []
           : [caller!]
-      const owed = await owedAtCreation(tx, id, subscribers, runBy)
+      const owed = await owedAtCreation(tx, id, subscribers, caller)
       const conversationId = await agentConversation(tx, prepared, id, name)
       const now = Date.now()
       const sub: Automation = {
@@ -572,7 +569,6 @@ function backend(host: ExtensionHost) {
     args: Args,
     prepared: Awaited<ReturnType<typeof prepare>>,
     caller?: ConversationId,
-    runBy = caller,
   ): Promise<Change> {
     if (args.action === 'events') return { result: json(trigger.list()) }
     const state = await tx.doc(Automations)
@@ -584,7 +580,7 @@ function backend(host: ExtensionHost) {
         throw new Error(`The automation for key ${args.key} was deleted meanwhile; create it again`)
     }
     if (args.action === 'create' && args.ask !== undefined)
-      return changeScript(tx, args, prepared, caller, runBy)
+      return changeScript(tx, args, prepared, caller)
     const id = args.action === 'create' ? `A${state.next++}` : required(args.id, 'id')
     if (args.action === 'create') {
       const now = Date.now()
@@ -604,7 +600,7 @@ function backend(host: ExtensionHost) {
         fires: 0,
         ...(args.key ? { key: args.key } : {}),
         subscribers,
-        ...(await owedAtCreation(tx, id, subscribers, runBy)),
+        ...(await owedAtCreation(tx, id, subscribers, caller)),
       }
     }
     const a = state.automations[id]
@@ -987,10 +983,7 @@ export default function automations(host: ExtensionHost) {
             context,
           )
           if (cached) return cached
-          const caller =
-            args.action === 'create' || args.action === 'subscribe'
-              ? await actingAs(host, tool.conversationId, context)
-              : tool.conversationId
+          const caller = tool.conversationId
           let receipt = await tool.commit(
             async (tx) =>
               json((await tx.doc(ReceiptsByToolCallId, tool.taskId))[tool.callId] ?? {}),
@@ -1000,24 +993,11 @@ export default function automations(host: ExtensionHost) {
             const prepared = await api.prepare(args, caller)
             receipt = await tool.commit(async (tx) => {
               const saved = await tx.doc(ReceiptsByToolCallId, tool.taskId)
-              saved[tool.callId] ??= json(
-                await api.change(tx, args, prepared, caller, tool.conversationId),
-              )
+              saved[tool.callId] ??= json(await api.change(tx, args, prepared, caller))
               return json(saved[tool.callId])
             }, context)
           }
           await api.apply(receipt)
-          if (caller !== tool.conversationId)
-            await host
-              .need(LineageApi)
-              .leaveNote(
-                caller,
-                `Side chat #${tool.conversationId} ${args.action === 'create' ? 'created' : 'subscribed to'} automation ${(receipt.result as Automation).id}.`,
-                {
-                  from: tool.conversationId,
-                  requestId: `sidechat:automation:${tool.taskId}:${tool.callId}`,
-                },
-              )
           return tool.memo(
             'result',
             { output: [{ type: 'text' as const, text: concise(receipt.result!) }] },
