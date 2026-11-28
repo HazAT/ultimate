@@ -7,7 +7,10 @@ import type {
   TaskId,
   Tx,
 } from '@earendil-works/pi-durable'
+import { awaitWithContext } from '@earendil-works/chord/context'
+import type { Context } from '@earendil-works/chord/context'
 import { defineTask, InboxDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
+import { onCommit } from '../../lib/commits.ts'
 import type { ExtensionHost } from '../../server/extensions.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
@@ -270,6 +273,52 @@ interface Route {
   }
 }
 
+async function outputsPlaced(
+  host: ExtensionHost,
+  branch: ConversationId,
+  starter: ConversationId,
+  ctx: Context,
+) {
+  const placing = ({ input, state }: { input: unknown; state: { status: string } }) => {
+    if (state.status === 'terminal') return false
+    const { message } = input as { message: Message }
+    if (message.from === starter && message.to === branch) return message.reply
+    const { phase, submission } =
+      (state as { checkpoint?: { phase?: string; submission?: number } }).checkpoint ?? {}
+    return (
+      message.from === branch &&
+      message.to === starter &&
+      message.report === true &&
+      phase === 'deliver' &&
+      submission === undefined
+    )
+  }
+  for (;;) {
+    const deliveryChanged = Promise.withResolvers<void>()
+    const unsubscribe = onCommit(host.harness(), (publication) => {
+      if (
+        publication.changes.some(
+          (change) => change.type === 'task' && change.value.kind === 'board.delivery',
+        )
+      )
+        deliveryChanged.resolve()
+    })
+    try {
+      const unplaced = await host
+        .harness()
+        .commit(
+          async (tx) =>
+            (await scanNonterminalTasks(tx, 'board.delivery', ROOT_CONVERSATION_ID)).some(placing),
+          ctx,
+        )
+      if (!unplaced) return
+      await awaitWithContext(deliveryChanged.promise, ctx)
+    } finally {
+      unsubscribe()
+    }
+  }
+}
+
 export function route(host: ExtensionHost) {
   return defineTask<
     {
@@ -282,7 +331,8 @@ export function route(host: ExtensionHost) {
     | { phase: 'observe' }
     | { phase: 'answered' }
     | { phase: 'judge'; answer: EntryId; toStarter: Route; state: JudgeState }
-    | { phase: 'forward'; routes: Route[] },
+    | { phase: 'forward'; routes: Route[] }
+    | { phase: 'landed' },
     null
   >({
     name: 'board.route',
@@ -304,6 +354,9 @@ export function route(host: ExtensionHost) {
         const answer = outcome.status === 'completed' ? outcome.result.entryId : undefined
         const { by, down } = task.input
         const id = runtime.conversationId
+        const done = down
+          ? terminal
+          : ({ status: 'running', checkpoint: { phase: 'landed' } } as const)
         await runtime.commit(async (tx) => {
           if (answer === undefined) return terminal
           const inputs = await Promise.all(
@@ -423,7 +476,7 @@ export function route(host: ExtensionHost) {
             return { status: 'running', checkpoint: { phase: 'judge', ...routes } }
           return routes.length
             ? { status: 'running', checkpoint: { phase: 'forward', routes } }
-            : terminal
+            : done
         }, ctx)
       },
       judge: async (task, runtime, ctx) => {
@@ -471,6 +524,25 @@ export function route(host: ExtensionHost) {
               ? { stillReports: async (tx: Tx) => !(await concludedOrWorkUnderway(host, tx, id)) }
               : {}),
           })
+        }
+        await runtime.commit(
+          () =>
+            task.input.down ? terminal : { status: 'running', checkpoint: { phase: 'landed' } },
+          ctx,
+        )
+      },
+      landed: async (task, runtime, ctx) => {
+        const id = runtime.conversationId
+        if (
+          await host
+            .need(WorkspacesApi)
+            .get(id, ctx)
+            .then((own) => own?.landedOpen)
+        ) {
+          await outputsPlaced(host, id, task.input.by, ctx)
+          await host
+            .need(WorkspacesApi)
+            .settleLanded(id, ctx, async (tx) => (await tx.doc(Started, id)).lastRoute === task.id)
         }
         await runtime.commit(() => terminal, ctx)
       },

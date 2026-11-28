@@ -3,6 +3,7 @@ import { WorkspaceCall } from './call.solid.tsx'
 import { LanderComposer } from './lander-composer.solid.tsx'
 import { LandingNote } from './landing-note.solid.tsx'
 import { LanderLogEntry, LanderReport } from './log.solid.tsx'
+import { StillOpen } from './still-open.solid.tsx'
 
 export default defineWebExtension({
   composer: LanderComposer,
@@ -11,5 +12,6 @@ export default defineWebExtension({
     'lineage.note': LandingNote,
     'ultimate.lander': LanderLogEntry,
     'workspaces.lander-report': LanderReport,
+    'workspaces.still-open': StillOpen,
   },
 })

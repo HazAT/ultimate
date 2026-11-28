@@ -10,6 +10,7 @@ export type Workspace = {
   state: 'preparing' | 'ready' | 'failed' | 'removed'
   error?: string
   landed?: string
+  landedOpen?: { submission: string; escalated?: true }
 }
 type SubmitTimeEntryId = EntryId
 type SubmitTimeSubject = ConversationSubject
