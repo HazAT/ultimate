@@ -865,7 +865,12 @@ export function createLander(
         const starter = await after.starter(branch, context)
         await runtime.commit(async (tx) => {
           let concludedInThisCommit = false
-          if (!(await after.working(tx, branch)))
+          const index = await tx.doc(Workspaces, ROOT_CONVERSATION_ID)
+          const newerSubmissionQueued = index.queue.some((item) => item.conversationId === branch)
+          if (newerSubmissionQueued) delete index.items[String(branch)].landedOpen
+          else if (await after.working(tx, branch))
+            index.items[String(branch)].landedOpen = { submission: id }
+          else
             try {
               await after.conclude(tx, branch)
               concludedInThisCommit = true
@@ -898,7 +903,7 @@ export function createLander(
           starter,
         } = task.state.checkpoint
         const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
-        const content = `${headline}\nDiverged: ${outcome.divergence}\n${conclusionCommitted ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
+        const content = `${headline}\nDiverged: ${outcome.divergence}\n${conclusionCommitted ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops and is concluded once a run ends with nothing under way.`}`
         try {
           const to =
             starter === undefined ? undefined : await runtime.conversation(starter, context)

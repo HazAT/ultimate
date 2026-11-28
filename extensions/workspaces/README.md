@@ -186,7 +186,10 @@ lander's sidebar row shows the feature it lands or landed last.
      `workspaces.branches` extension point messages provides. Then the conversation that started the branch
      (`starter`, from the same extension point) wakes with the same card, its text cut to one line (branch, sha,
      pushed, `needs restart`, flaky checks) plus the divergence, saying whether the branch is concluded or
-     still has work under way (which then reports when it stops, as any branch does). Last, a concluded branch's
+     still has work under way (which then reports when it stops, as any branch does). Such a branch is marked
+     `landedOpen` on its workspace; when a later run ends (messages' `board.route`, after it delivers the report) it is
+     concluded and released if nothing is under way, or else its starter wakes once with a `workspaces.still-open`
+     input ("landed branch #N still open"). Last, a concluded branch's
      checkout is released. A root or standing agent refuses concluding and stays open. Any later input resumes a
      concluded branch.
 
