@@ -741,7 +741,7 @@ export default function subagents(
     await configure(tx, id, { tools, modelTools, extensions })
   }
   const spawnDefinition = async (
-    args: {
+    call: {
       agent?: string
       label?: string
       family?: string
@@ -752,13 +752,14 @@ export default function subagents(
     },
     definitions: AgentDefinition[],
   ): Promise<AgentDefinition> => {
+    const args = { ...call, family: call.family || undefined, model: call.model || undefined }
     const named =
       args.agent === undefined ? undefined : definitions.find((d) => d.name === args.agent)
     if (!named && (args.agent !== undefined || !args.label?.trim()))
       throw new Error(
         `Unknown agent: ${args.agent}. Pass agent: one of ${definitions.map((agent) => agent.name).join(', ')}; or, for an agent made on the fly, label with family or model, tools and instructions`,
       )
-    if (named && (args.tools || args.instructions))
+    if (named && (args.tools?.length || args.instructions?.trim()))
       throw new Error('tools and instructions make an agent on the fly: leave out agent')
     const families = await readFamilies(host.userHome, host.projectRoot)
     if (args.family !== undefined && !Object.hasOwn(families.families, args.family))

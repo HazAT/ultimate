@@ -486,6 +486,21 @@ it('makes an agent on the fly from the call, read-only without a worktree, and r
   })
 })
 
+it('starts a named agent when the call fills the optional fields with empty values', async () => {
+  // A model sent every optional field of start, empty, beside agent; each retry was refused.
+  const f = await fixture()
+  const result = await call(f.opened, {
+    action: 'start',
+    agent: 'scout',
+    family: '',
+    model: '',
+    tools: [],
+    instructions: '',
+    task: 'facts',
+  })
+  expect(result.text).toBe('Returned model: faux/faux-1\nChild: facts')
+})
+
 it('routes asynchronous leaf reports only to their lead, not the root', async () => {
   const f = await fixture()
   await writeFile(
