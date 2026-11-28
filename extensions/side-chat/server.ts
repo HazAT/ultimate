@@ -1447,7 +1447,7 @@ export default function sideChatExtension(host: ExtensionHost) {
             union(
               [
                 num({ description: "A branch conversation on the user's screen" }),
-                str({ pattern: '^@[a-z0-9-]+$', description: 'A standing agent, as `@name`' }),
+                str({ pattern: '^@[a-zA-Z0-9_-]+$', description: 'A standing agent, as `@name`' }),
               ],
               { description: 'Omit for the source conversation' },
             ),

@@ -10,7 +10,7 @@ export { stemOf } from './colour.web.ts'
 export { PreviewUp } from './points.web.ts'
 /** Rows nested under @ultimate's row, in discovery order; the input names @ultimate's conversation when it exists. */
 export { UnderUltimate } from './points.web.ts'
-/** Rows nested under one top-level conversation's row (a standing agent, a branch or a root), above its sub-agents. */
+/** Rows nested under one conversation's own row (a standing agent, a root, or a branch in its tree or In flight), above its sub-agents. */
 export { UnderRow } from './points.web.ts'
 /** Conversations hidden from the top-level lists; the sidebar takes the union of the providers' sets. */
 export { Unlisted } from './points.web.ts'

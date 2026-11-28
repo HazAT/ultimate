@@ -10,6 +10,7 @@ import {
   formatTokens,
   keepLast,
   plural,
+  Provided,
   ROOT,
   useAction,
   useDocOf,
@@ -34,7 +35,7 @@ import { CommitCount, Review } from '../workspaces/ui.solid.tsx'
 import type { Landing } from './landings.web.ts'
 import { earlierKey, foldLines } from './fold.web.ts'
 import type { FoldLine } from './fold.web.ts'
-import { PreviewUp } from './points.web.ts'
+import { PreviewUp, UnderRow } from './points.web.ts'
 import { ChildRow, EpicLine, RenameField, RowMenu, useRename } from './rows.solid.tsx'
 import { Section } from './section.solid.tsx'
 import { shell, useData, useSidebarState, useSurface } from './state.solid.tsx'
@@ -280,6 +281,7 @@ function PhasedFlightRow(props: {
         {(activity) => <ActivityLine activity={activity()} id={props.id} />}
       </Show>
       <EpicLine id={props.id} working={data.working().get(props.id) === 'self'} />
+      <Provided point={UnderRow} input={{ conversation: props.id }} />
       <FlightChildren id={props.id} />
     </li>
   )

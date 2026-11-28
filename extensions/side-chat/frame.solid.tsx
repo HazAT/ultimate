@@ -1,6 +1,6 @@
 import { GitFork } from '@lucide/solid'
 import { cn } from 'cn'
-import { createMemo, Show, useContext } from 'solid-js'
+import { createEffect, createMemo, Show, useContext } from 'solid-js'
 import { Toggle } from '@/components/ui/toggle.solid.tsx'
 import { Kbd } from '@/components/ui/kbd.solid.tsx'
 import {
@@ -30,6 +30,14 @@ function ComposerFrame(props: SolidComposerProps) {
   const forkable = useForkable(id)
   const active = createMemo(() => id() !== undefined && !props.dock && forkable() === true)
   const on = () => active() && dock.sideMode() === id()
+  createEffect(
+    () => (on() ? id() : undefined),
+    (from) => {
+      if (from === undefined) return
+      writingAs('app', () => setSource(from))
+      setSideChatSource(from)
+    },
+  )
   const outer = useContext(ComposerRedirect)
   const target = createMemo((): ComposerTarget | undefined =>
     on()
@@ -39,9 +47,6 @@ function ComposerFrame(props: SolidComposerProps) {
           ...(dock.conversation() ? { dictation: sideChatSink } : {}),
           send: async (text, images) => {
             const who = writerNow()
-            const from = id()!
-            writingAs(who, () => setSource(from))
-            setSideChatSource(from)
             const sent = sendTyped(text, images)
             writingAs(who, () => {
               dock.setSideMode(false)

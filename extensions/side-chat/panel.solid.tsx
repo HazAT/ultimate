@@ -593,11 +593,12 @@ export function SideChatOverlay() {
   const docked = () => sideChatOpen() && split() && !released()
   useEvent('secrets:changed', () => void status.refetch())
   createEffect(
-    () => (surface() === 'agent' ? shown() : undefined),
+    () => {
+      const now = surface() === 'agent' ? shown() : undefined
+      return now !== undefined && sessions()?.sessions?.[now]?.id !== undefined ? now : undefined
+    },
     (now) => {
-      if (now === undefined || now === source()) return
-      if (untrack(sessions)?.sessions?.[now]?.id === undefined) return
-      writingAs('app', () => setSource(now))
+      if (now !== undefined && now !== untrack(source)) writingAs('app', () => setSource(now))
     },
   )
   createEffect(
