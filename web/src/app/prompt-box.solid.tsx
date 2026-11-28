@@ -42,6 +42,15 @@ const iconButton =
 const submitClass =
   'size-7 rounded-md pointer-coarse:relative pointer-coarse:size-9 pointer-coarse:after:absolute pointer-coarse:after:-inset-1'
 
+function keepKeyboard(editor: () => HTMLTextAreaElement | undefined) {
+  return (event: PointerEvent | MouseEvent) => {
+    const field = editor()
+    if (!field || document.activeElement !== field) return
+    if (event.target instanceof Element && event.target.closest('button, [role="button"], label'))
+      event.preventDefault()
+  }
+}
+
 function createDraftState(props: PromptBoxProps) {
   const local = createLocalDraft()
   const bound = boundDraft(
@@ -200,6 +209,11 @@ export function PromptBox(props: PromptBoxProps) {
     `${uploads().length ? 'Attach files' : 'Attach images'}${props.minimal ? ` to ${props.name}` : ''}`
 
   let editor: HTMLTextAreaElement | undefined
+  const keep = keepKeyboard(() => editor)
+  const keepOn = (frame: HTMLElement) => {
+    frame.addEventListener('pointerdown', keep)
+    frame.addEventListener('mousedown', keep)
+  }
   onSettled(() => {
     if (props.autofocus && !touchKeyboard()) editor?.focus()
   })
@@ -260,6 +274,9 @@ export function PromptBox(props: PromptBoxProps) {
           class="sr-only"
           disabled={inert()}
           multiple
+          onFocus={(event) => {
+            if (event.relatedTarget === editor) editor.focus()
+          }}
           onChange={(event) => {
             const picked = Array.from(event.currentTarget.files ?? [])
             event.currentTarget.value = ''
@@ -425,6 +442,7 @@ export function PromptBox(props: PromptBoxProps) {
             data-minimal
             data-signal={signal()}
             data-ui="prompt-box"
+            ref={keepOn}
             onDragOver={(event) => {
               if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
             }}
@@ -447,7 +465,13 @@ export function PromptBox(props: PromptBoxProps) {
         </div>
       }
     >
-      <Form class={frameClass()} data-signal={signal()} data-ui="prompt-box" onDrop={dropped}>
+      <Form
+        class={frameClass()}
+        data-signal={signal()}
+        data-ui="prompt-box"
+        onDrop={dropped}
+        ref={keepOn}
+      >
         {chips()}
         {textarea()}
         <div class="@container flex items-center justify-between gap-2 px-2 pt-1 pb-2">
